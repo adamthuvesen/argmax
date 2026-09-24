@@ -6,47 +6,29 @@ struct RootView: View {
     /// The app delegate, which owns the device token and the tap. Passed
     /// down rather than read from the environment so the registration below
     /// can be built with it.
-    @ObservedObject var push: PushDelegate
+    let push: PushDelegate
     let onUnpair: () -> Void
 
-    @StateObject private var store: DashboardStore
-    @StateObject private var rowActions: ChatRowActionCenter
-    /// One timeline owner per pairing, retaining the active chat across navigation.
-    @StateObject private var transcript: TranscriptStore
-    /// Also one per pairing: a device token is registered with *this* Mac,
-    /// and re-pairing has to take it off the old one.
-    @StateObject private var registration: PushRegistration
-    /// Read before Settings is opened rather than when it is. The Mac takes
-    /// close to a second to ask five providers what is left, and that
-    /// second lands on the card if nobody has asked ahead.
-    @StateObject private var planLimits: PlanLimitsStore
-    /// The Usage + Activity ledgers behind the Insights page. Owned here like
-    /// plan limits so the numbers are warm before the page opens and survive
-    /// every push and pop.
-    @StateObject private var insights: InsightsStore
-    @EnvironmentObject private var appearance: Appearance
+    /// Every store this pairing owns. Held through one object that never
+    /// publishes: this body reads none of their values, and observing them
+    /// here re-rendered the chat list on every change any of them made — a
+    /// streamed transcript chunk, a Usage load, a plan-limit refresh.
+    @StateObject private var stores: PairedStores
     @State private var confirmingRepair = false
     @Environment(\.scenePhase) private var scenePhase
+
+    private var store: DashboardStore { stores.dashboard }
+    private var rowActions: ChatRowActionCenter { stores.rowActions }
+    private var transcript: TranscriptStore { stores.transcript }
+    private var registration: PushRegistration { stores.registration }
+    private var planLimits: PlanLimitsStore { stores.planLimits }
+    private var insights: InsightsStore { stores.insights }
 
     init(paired: PairedHost, push: PushDelegate, onUnpair: @escaping () -> Void) {
         self.paired = paired
         self.push = push
         self.onUnpair = onUnpair
-        let store = DashboardStore(client: paired.client)
-        _store = StateObject(wrappedValue: store)
-        // One owner for every row action's dialog and mutation, for the
-        // screen's lifetime — see ChatRowActions.swift for why not per row.
-        _rowActions = StateObject(wrappedValue: ChatRowActionCenter(store: store, client: paired.client))
-        let transcript = TranscriptStore(client: paired.client)
-        _transcript = StateObject(wrappedValue: transcript)
-        store.onTranscriptEvent = { [weak transcript] in transcript?.receive(event: $0) }
-        store.onTranscriptConnection = { [weak transcript] in transcript?.receive(connection: $0) }
-        store.onTranscriptSnapshot = { [weak transcript] in transcript?.receive(snapshot: $0) }
-        _registration = StateObject(
-            wrappedValue: PushRegistration(client: paired.client, delegate: push)
-        )
-        _planLimits = StateObject(wrappedValue: PlanLimitsStore(client: paired.client))
-        _insights = StateObject(wrappedValue: InsightsStore(client: paired.client))
+        _stores = StateObject(wrappedValue: PairedStores(paired: paired, push: push))
     }
 
     var body: some View {
@@ -117,6 +99,43 @@ struct RootView: View {
             store.stop()
         }
         onUnpair()
+    }
+}
+
+/// The stores behind one pairing, built once with it. An `ObservableObject`
+/// only so `@StateObject` keeps it for the view's lifetime; it publishes
+/// nothing. Each screen observes the store it draws.
+@MainActor
+private final class PairedStores: ObservableObject {
+    let dashboard: DashboardStore
+    /// One owner for every row action's dialog and mutation, for the
+    /// screen's lifetime — see ChatRowActions.swift for why not per row.
+    let rowActions: ChatRowActionCenter
+    /// One timeline owner per pairing, retaining the active chat across navigation.
+    let transcript: TranscriptStore
+    /// Also one per pairing: a device token is registered with *this* Mac,
+    /// and re-pairing has to take it off the old one.
+    let registration: PushRegistration
+    /// Read before Settings is opened rather than when it is. The Mac takes
+    /// close to a second to ask five providers what is left, and that
+    /// second lands on the card if nobody has asked ahead.
+    let planLimits: PlanLimitsStore
+    /// The Usage + Activity ledgers behind the Insights page. Owned here like
+    /// plan limits so the numbers are warm before the page opens and survive
+    /// every push and pop.
+    let insights: InsightsStore
+
+    init(paired: PairedHost, push: PushDelegate) {
+        dashboard = DashboardStore(client: paired.client)
+        rowActions = ChatRowActionCenter(store: dashboard, client: paired.client)
+        let transcript = TranscriptStore(client: paired.client)
+        self.transcript = transcript
+        dashboard.onTranscriptEvent = { [weak transcript] in transcript?.receive(event: $0) }
+        dashboard.onTranscriptConnection = { [weak transcript] in transcript?.receive(connection: $0) }
+        dashboard.onTranscriptSnapshot = { [weak transcript] in transcript?.receive(snapshot: $0) }
+        registration = PushRegistration(client: paired.client, delegate: push)
+        planLimits = PlanLimitsStore(client: paired.client)
+        insights = InsightsStore(client: paired.client)
     }
 }
 

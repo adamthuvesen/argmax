@@ -275,6 +275,36 @@ final class BridgeRecoveryTests: XCTestCase {
         await client.disconnect()
     }
 
+    func testDashboardReadsShareOneRequestUntilTheHostSignalsAChange() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var events = client.events.makeAsyncIterator()
+        func dashboardReads() -> Int { socket.requests.filter { $0["channel"] as? String == "dashboard:list" }.count }
+
+        let first = Task { try await client.request("dashboard:list") }
+        let read = try await request(on: socket)
+        let joined = Task { try await client.request("dashboard:list") }
+        socket.reply(to: read, ok: ["sessions": []])
+        _ = try await first.value
+        _ = try await joined.value
+        _ = try await client.request("dashboard:list")
+        XCTAssertEqual(dashboardReads(), 1, "Readers of the same host state share one read")
+
+        socket.push(["type": "event", "channel": "dashboard:delta", "payload": ["changedSessionIds": ["s"]]])
+        _ = await events.next()
+        _ = try await client.request("dashboard:list")
+        XCTAssertEqual(dashboardReads(), 1, "A streamed chunk does not change the dashboard")
+
+        socket.push(["type": "event", "channel": "dashboard:delta", "payload": ["dashboardChanged": true]])
+        _ = await events.next()
+        let fresh = Task { try await client.request("dashboard:list") }
+        socket.reply(to: try await request(on: socket, count: 2), ok: ["sessions": []])
+        _ = try await fresh.value
+        XCTAssertEqual(dashboardReads(), 2, "A change hint needs a new read")
+        await client.disconnect()
+    }
+
     private func makeClient(
         _ sockets: [TestBridgeSocket],
         httpLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
@@ -407,6 +437,7 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
         else { response["ok"] = ok }
         feed(response)
     }
+    func push(_ frame: [String: Any]) { feed(frame) }
     private func feed(_ frame: [String: Any]) {
         do { deliver(.success(.data(try JSONSerialization.data(withJSONObject: frame)))) }
         catch { deliver(.failure(error)) }

@@ -101,7 +101,10 @@ Opening a chat prepares the newest 96 prose documents before its first paint,
 so rows do not repaint and re-lay out the stack one by one after it.
 The transcript's exact-height eager stack mounts at most 32 presentation rows.
 Every mounted row is laid out and drawn whether it is visible or not, so the
-window is what opening a chat costs. When a reader leaves the live tail, that
+window is what opening a chat costs. A chat opens with the newest rows that
+fill about three screens, estimated from their text, and mounts the rest of
+the window half a second later, above the tail, where the bottom size-change
+anchor keeps the screen still. When a reader leaves the live tail, that
 row window stays fixed as output lands and shifts by 16 rows once the reader
 is within two screens of either edge, preserving the visible reading anchor.
 The running mark (`WorkingNest`) breathes with a Core Animation group in the

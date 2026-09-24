@@ -47,7 +47,8 @@ struct NativeTranscriptView: View {
     var body: some View {
         let allRows = allRows
         let rowIDs = allRows.map(\.id)
-        let bounds = rowWindow.bounds(in: rowIDs, following: following)
+        let openingCount = rowWindow.isOpening ? TranscriptRowWindow.openingCount(allRows) : nil
+        let bounds = rowWindow.bounds(in: rowIDs, following: following, openingCount: openingCount)
         let rows = Array(allRows[bounds])
         let latestTurnRowIDs = Set(rowIDs[(turnAnchorID.flatMap(rowIDs.lastIndex(of:)) ?? rowIDs.startIndex)...])
         return VStack(spacing: 0) {
@@ -128,11 +129,22 @@ struct NativeTranscriptView: View {
             if isFollowing {
                 rowWindow.reset()
             } else {
-                rowWindow.freeze(in: rowIDs)
+                rowWindow.freeze(in: rowIDs, openingCount: openingCount)
             }
         }
         .onChange(of: transcript.sessionID) { _, _ in
             rowWindow.reset()
+            rowWindow.beginOpening()
+        }
+        // The rest of the window mounts once the push has finished: laid out
+        // with the first frame, it was most of the time between the tap and
+        // the chat moving. Rows land above the tail while following, where
+        // the bottom size-change anchor keeps what is on screen still.
+        .task(id: TranscriptOpeningKey(sessionID: transcript.sessionID, hasRows: !allRows.isEmpty,
+                                       opening: rowWindow.isOpening)) {
+            guard rowWindow.isOpening, !allRows.isEmpty else { return }
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            rowWindow.finishOpening()
         }
         .onChange(of: appearance.chatDetail) { _, _ in
             rowWindow.reset()
@@ -153,6 +165,12 @@ struct NativeTranscriptView: View {
         }
         .onChange(of: transcript.session?.sessionId) { following = true }
     }
+}
+
+private struct TranscriptOpeningKey: Equatable {
+    let sessionID: String?
+    let hasRows: Bool
+    let opening: Bool
 }
 
 /// Equal because every input a render reads is a value, and the
@@ -207,10 +225,39 @@ struct TranscriptRowWindow: Equatable {
 
     private var firstID: String?
     private var lastID: String?
+    /// A chat just opened mounts only the rows its first screens need.
+    private(set) var isOpening = true
 
-    func bounds(in ids: [String], following: Bool) -> Range<Int> {
+    /// About three screens of the newest rows, from their text: enough that
+    /// the opening frame fills the viewport and the rest can land above it.
+    static func openingCount(_ rows: [MobileTranscriptRow], height target: CGFloat = 2_600) -> Int {
+        var height: CGFloat = 0
+        var count = 0
+        for row in rows.reversed() where height < target && count < capacity {
+            count += 1
+            height += estimatedHeight(row)
+        }
+        return max(count, min(rows.count, 8))
+    }
+
+    private static func estimatedHeight(_ row: MobileTranscriptRow) -> CGFloat {
+        guard case .item(let item) = row else { return 44 }
+        switch item {
+        case .user(let message), .assistant(let message):
+            let lines = message.text.split(separator: "\n", omittingEmptySubsequences: false)
+                .reduce(0) { $0 + max(1, ($1.count + 37) / 38) }
+            return CGFloat(lines) * 22 + 24
+        default:
+            return 44
+        }
+    }
+
+    mutating func beginOpening() { isOpening = true }
+    mutating func finishOpening() { isOpening = false }
+
+    func bounds(in ids: [String], following: Bool, openingCount: Int? = nil) -> Range<Int> {
         guard !ids.isEmpty else { return 0..<0 }
-        if following { return tailBounds(in: ids) }
+        if following { return tailBounds(in: ids, count: isOpening ? openingCount : nil) }
 
         let first = firstID.flatMap { ids.firstIndex(of: $0) }
         let last = lastID.flatMap { ids.firstIndex(of: $0) }.map { $0 + 1 }
@@ -226,8 +273,11 @@ struct TranscriptRowWindow: Equatable {
         }
     }
 
-    mutating func freeze(in ids: [String]) {
-        set(bounds: tailBounds(in: ids), ids: ids)
+    /// A reader leaving the tail keeps what is mounted, the opening rows
+    /// included, and pages from there.
+    mutating func freeze(in ids: [String], openingCount: Int? = nil) {
+        set(bounds: tailBounds(in: ids, count: isOpening ? openingCount : nil), ids: ids)
+        isOpening = false
     }
 
     mutating func revealEarlier(in ids: [String]) {
@@ -247,8 +297,8 @@ struct TranscriptRowWindow: Equatable {
         lastID = nil
     }
 
-    private func tailBounds(in ids: [String]) -> Range<Int> {
-        max(ids.startIndex, ids.endIndex - Self.capacity)..<ids.endIndex
+    private func tailBounds(in ids: [String], count: Int? = nil) -> Range<Int> {
+        max(ids.startIndex, ids.endIndex - min(count ?? Self.capacity, Self.capacity))..<ids.endIndex
     }
 
     private mutating func set(bounds: Range<Int>, ids: [String]) {

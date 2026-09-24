@@ -174,6 +174,7 @@ final class TranscriptStore: ObservableObject {
     /// projections cancelled, and the generation bumped so one that is already
     /// running throws its page away instead of applying it to the next chat.
     private func discardOpenChat() {
+        flushPendingCache()
         generation += 1
         projectionVersion += 1
         projectionTask?.cancel()
@@ -273,6 +274,8 @@ final class TranscriptStore: ObservableObject {
             if let id = openSessionID, authoritative, connection == .live {
                 contentVersion += 1
                 recent.removeValue(forKey: id)
+                removedChats.insert(id)
+                pendingCache = nil
                 let scope = client.cacheNamespace
                 Task { [cache] in await cache.remove(scope: scope, key: "transcript-\(id)") }
                 cacheTask?.cancel()
@@ -532,7 +535,10 @@ final class TranscriptStore: ObservableObject {
         while let task = projectionTask { await task.value }
     }
 
-    func flushCache() async { await cacheTask?.value }
+    func flushCache() async {
+        await cacheTask?.value
+        for flush in flushTasks.values { await flush.value }
+    }
 
     private func updateProjection() {
         // Metadata lands before the first page (the dashboard snapshot is
@@ -652,6 +658,16 @@ final class TranscriptStore: ObservableObject {
         }
     }
 
+    /// The open chat's latest state, until `cacheCurrentTranscript` has
+    /// encoded and stored it.
+    private var pendingCache: (id: String, stored: StoredTranscript, items: [TranscriptItem])?
+    private var lastCachedAt = ContinuousClock.now
+    /// Stores started as a chat was left; the next chat's cache task must
+    /// not cancel them.
+    private var flushTasks: [UUID: Task<Void, Never>] = [:]
+    /// Chats the Mac removed, which an in-flight store must not bring back.
+    private var removedChats: Set<String> = []
+
     private func cacheCurrentTranscript() {
         guard let id = openSessionID, !showingCachedContent else { return }
         let stored = StoredTranscript(page: TranscriptPage(events: Array(eventsByID.values),
@@ -659,31 +675,57 @@ final class TranscriptStore: ObservableObject {
             rawOutputCursor: rawOutputCursor ?? 0, changeCursor: changeCursor,
             deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false),
             metadata: metadata, title: session?.title, workspacePath: workspacePath)
-        let projected = items
-        let scope = client.cacheNamespace
+        pendingCache = (id, stored, items)
         let version = projectionVersion
         let capturedContentVersion = contentVersion
         cacheTask?.cancel()
         cacheTask = Task { [weak self] in
-            let byteCost = await Task.detached(priority: .utility) {
-                (try? JSONEncoder().encode(stored).count) ?? Int.max / 4
-            }.value
-            guard !Task.isCancelled, let self, self.openSessionID == id,
-                  self.projectionVersion == version, self.contentVersion == capturedContentVersion else { return }
-            // Leave room for decoded models and projected text as well as wire bytes.
-            if byteCost < 4 * 1_024 * 1_024 {
-                self.recent[id] = RecentTranscript(stored: stored, items: projected, byteCost: byteCost * 2)
-                self.recentOrder.removeAll { $0 == id }
-                self.recentOrder.append(id)
-                while self.recentOrder.count > 8 || self.recent.values.reduce(0, { $0 + $1.byteCost }) > 16 * 1_024 * 1_024 {
-                    self.recent.removeValue(forKey: self.recentOrder.removeFirst())
-                }
+            // A streaming chat projects per chunk, and encoding the whole
+            // transcript each time was a quarter of the CPU streaming cost.
+            // Wait for a pause, or at most a few seconds into a long stream.
+            if let self, ContinuousClock.now - self.lastCachedAt < Self.cacheStaleness {
+                do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
             }
-            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
-            guard !Task.isCancelled, self.openSessionID == id,
-                  self.contentVersion == capturedContentVersion else { return }
-            await self.cache.write(stored, scope: scope, key: "transcript-\(id)")
+            guard !Task.isCancelled, let self, self.openSessionID == id,
+                  self.projectionVersion == version, self.contentVersion == capturedContentVersion,
+                  let pending = self.pendingCache, pending.id == id else { return }
+            self.pendingCache = nil
+            self.lastCachedAt = .now
+            await self.store(pending.stored, items: pending.items, for: id)
         }
+    }
+
+    private static let cacheStaleness: Duration = .seconds(5)
+
+    /// Leaving a chat before its latest state was stored stores it now, so
+    /// coming back opens from memory rather than waiting for the Mac.
+    private func flushPendingCache() {
+        guard let pending = pendingCache else { return }
+        pendingCache = nil
+        cacheTask?.cancel()
+        let key = UUID()
+        flushTasks[key] = Task { [weak self] in
+            await self?.store(pending.stored, items: pending.items, for: pending.id)
+            self?.flushTasks[key] = nil
+        }
+    }
+
+    /// Encode once, off the main actor: the size budgets the in-memory copy
+    /// and the same bytes go to disk.
+    private func store(_ stored: StoredTranscript, items projected: [TranscriptItem], for id: String) async {
+        let data = await Task.detached(priority: .utility) { try? JSONEncoder().encode(stored) }.value
+        guard !Task.isCancelled, !removedChats.contains(id) else { return }
+        let byteCost = data?.count ?? Int.max / 4
+        // Leave room for decoded models and projected text as well as wire bytes.
+        if byteCost < 4 * 1_024 * 1_024 {
+            recent[id] = RecentTranscript(stored: stored, items: projected, byteCost: byteCost * 2)
+            recentOrder.removeAll { $0 == id }
+            recentOrder.append(id)
+            while recentOrder.count > 8 || recent.values.reduce(0, { $0 + $1.byteCost }) > 16 * 1_024 * 1_024 {
+                recent.removeValue(forKey: recentOrder.removeFirst())
+            }
+        }
+        if let data { await cache.write(encoded: data, scope: client.cacheNamespace, key: "transcript-\(id)") }
     }
 
     private func rawFallbackItems() -> [TranscriptItem] {

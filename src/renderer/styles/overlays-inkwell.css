@@ -287,7 +287,7 @@
   color: var(--text);
   padding: 0 1px;
   border-radius: var(--radius-xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .command-palette-result.selected mark {

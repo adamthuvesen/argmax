@@ -13,8 +13,8 @@
   --fox-blush: #e08a78;
 
   color-scheme: light;
-  --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-prose: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-ui: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-prose: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
   --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
   /* Programming ligatures off, for surfaces showing text the app did not
@@ -146,16 +146,20 @@
      authored weight adds it so headings keep their emphasis relative to body
      text. Level 5 is the shipped appearance and therefore offsets by zero.
 
-     The default Geist Sans ships static weights (the browser
-     selects an available face), while Inter Variable exposes a `wght` axis, so
-     the under-regular shave below is a real render for variable picks.
-     Chrome (sidebar, palette, settings, titlebar, tabs) inherits --weight-ui
-     from :root; chat prose opts back up to --weight-prose so messages stay
-     a touch more present than chrome. Dark mode lowers both, because
-     light-on-dark strokes bloom. */
+     Every sans pick loads a variable face (or is the system font, which WebKit
+     renders on a continuous axis), so an authored weight renders as written.
+     IBM Plex Mono is the one static family; fonts.ts gives it a Text (450)
+     face for the in-between requests. Chrome (sidebar, palette, settings,
+     titlebar, tabs) inherits --weight-ui from :root; chat prose opts back up
+     to --weight-prose so messages stay a touch more present than chrome. Dark
+     mode lowers both, because light-on-dark strokes bloom.
+
+     --weight-medium is the emphasis step for labels, titles and bold prose.
+     It sits under a true 500 so emphasis reads as a step, not a jump. */
   --font-weight-offset: 0;
   --weight-ui: calc(400 + var(--font-weight-offset));
   --weight-prose: calc(400 + var(--font-weight-offset));
+  --weight-medium: calc(470 + var(--font-weight-offset));
 
   --sage: #446c56;
   --sage-soft: #e7efe7;
@@ -931,8 +935,8 @@
   }
 }
 
-/* These static families previously resolved dark's 380/390 requests to 400.
-   Keep that face at the default now that their lighter 300 face is available. */
+/* These families resolved dark's 380/390 requests to 400 while they shipped
+   static faces. Keep that weight now that they render the axis as written. */
 :root[data-font="geist-sans"],
 :root[data-font="ibm-plex-sans"],
 :root[data-font="ibm-plex-mono"] {
@@ -981,14 +985,14 @@
 }
 
 :root[data-font="geist-sans"] {
-  --font-ui: "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-ui: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-prose: var(--font-ui);
   --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
   --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
 }
 
 :root[data-font="ibm-plex-sans"] {
-  --font-ui: "IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-ui: "IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
 }

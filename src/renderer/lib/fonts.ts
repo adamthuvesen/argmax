@@ -63,7 +63,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
     id: "geist-sans",
     label: "Geist Sans",
     hint: "Vercel's modern UI sans, paired with Geist Mono for code. Clean, slightly geometric, neutral.",
-    stack: `"Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+    stack: `"Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   },
   {
     id: "geist-mono",
@@ -75,7 +75,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
     id: "ibm-plex-sans",
     label: "IBM Plex Sans",
     hint: "Warm humanist sans — slightly bookish, pairs well with the paper-grain background.",
-    stack: `"IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
+    stack: `"IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif`
   },
   {
     id: "ibm-plex-mono",
@@ -202,8 +202,20 @@ export function resolveTerminalFontSize(): number {
   return resolveCssPxVariable("--text-terminal", 11);
 }
 
+// IBM Plex Mono is the one family with no variable build, so a request between
+// 400 and 500 (--weight-medium, or a heaviness offset) would snap up to the 500
+// face. IBM's own release carries a Text (450) cut that @fontsource leaves out,
+// vendored from @ibm/plex-mono (whose postinstall runs IBM telemetry); claiming
+// 450–499 for it gives those requests a real in-between face.
+async function loadIbmPlexMonoText(): Promise<void> {
+  const { default: url } = await import("../fonts/IBMPlexMono/IBMPlexMono-Text-Latin1.woff2?url");
+  const face = new FontFace("IBM Plex Mono", `url(${url}) format("woff2")`, { weight: "450 499" });
+  document.fonts.add(face);
+  await face.load();
+}
+
 // Per-font CSS loaders. The system fonts (system, system-mono)
-// need no JS-loaded assets; the rest pull in @fontsource bundles only when
+// need no JS-loaded assets, and the system font renders any weight; the rest pull in @fontsource bundles only when
 // actually applied (ralph B6 — defers CSS-embedded font URLs from cold
 // launch). Geist Sans is the default, so its bundle loads on cold launch;
 // it pairs with Geist Mono, so both load together.
@@ -215,24 +227,16 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
       import("@fontsource/ibm-plex-mono/latin-300.css"),
       import("@fontsource/ibm-plex-mono/latin-400.css"),
       import("@fontsource/ibm-plex-mono/latin-500.css"),
-      import("@fontsource/ibm-plex-mono/latin-700.css")
+      import("@fontsource/ibm-plex-mono/latin-700.css"),
+      loadIbmPlexMonoText()
     ]),
   inter: () => import("@fontsource-variable/inter/wght.css"),
   "geist-sans": () =>
     Promise.all([
-      import("@fontsource/geist-sans/latin-300.css"),
-      import("@fontsource/geist-sans/latin-400.css"),
-      import("@fontsource/geist-sans/latin-500.css"),
-      import("@fontsource/geist-sans/latin-700.css"),
+      import("@fontsource-variable/geist/wght.css"),
       import("@fontsource-variable/geist-mono/wght.css")
     ]),
-  "ibm-plex-sans": () =>
-    Promise.all([
-      import("@fontsource/ibm-plex-sans/latin-300.css"),
-      import("@fontsource/ibm-plex-sans/latin-400.css"),
-      import("@fontsource/ibm-plex-sans/latin-500.css"),
-      import("@fontsource/ibm-plex-sans/latin-700.css")
-    ])
+  "ibm-plex-sans": () => import("@fontsource-variable/ibm-plex-sans/wght.css")
 };
 
 const loadedFonts = new Set<FontFamilyId>();

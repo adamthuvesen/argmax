@@ -261,7 +261,7 @@
   color: var(--text);
   background: var(--panel);
   cursor: pointer;
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   transition: background var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
 }
 

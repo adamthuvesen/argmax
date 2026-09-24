@@ -377,7 +377,7 @@
 }
 
 .checks-list-title {
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   color: var(--muted-strong);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -494,7 +494,7 @@
   gap: var(--space-1_5);
   align-items: center;
   white-space: nowrap;
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   /* Ticking digits hold their width mid-count so the row doesn't jitter. */
   font-variant-numeric: tabular-nums;
 }

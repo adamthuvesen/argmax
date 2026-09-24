@@ -142,7 +142,7 @@
 
 .todo-card-item[data-state="active"] .todo-card-label {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 /* While it is pulsing, rest on the same ink the Thinking cue and a running

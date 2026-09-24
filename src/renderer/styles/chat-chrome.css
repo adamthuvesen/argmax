@@ -718,7 +718,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 .effort-slider-current {
   color: var(--accent);
   font-size: var(--text-xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 /* Track hosts a clipped accent pixel field (the <canvas> that fills to the
@@ -962,7 +962,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 
 .effort-slider-stop[data-active] {
   color: var(--accent);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .effort-slider-stop[data-active] .effort-slider-stop-tick {
@@ -1020,7 +1020,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 .project-picker-item[aria-pressed="true"],
 .project-picker-item[aria-checked="true"] {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .project-picker-item:disabled,
@@ -1262,7 +1262,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 .git-actions-label {
   color: var(--muted-strong);
   font-size: var(--text-xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -1296,7 +1296,7 @@ body > .picker-popover-portaled.settings-picker-popover {
   background: var(--accent);
   color: var(--on-accent, var(--bubble-on-ink));
   font-size: var(--text-sm);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   cursor: pointer;
 }
 
@@ -1353,7 +1353,7 @@ body > .picker-popover-portaled.settings-picker-popover {
   padding: 9px 9px 3px 7px;
   color: var(--muted);
   font-size: var(--text-2xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;

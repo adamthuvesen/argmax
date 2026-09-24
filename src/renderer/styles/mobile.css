@@ -980,7 +980,7 @@ html:has(.mobile-shell[data-embed]) body,
   color: var(--muted-strong);
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .mobile-segmented button[aria-checked="true"] {

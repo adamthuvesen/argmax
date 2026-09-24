@@ -649,7 +649,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
   width: auto;
   padding: var(--space-1_5) var(--space-2_5);
   justify-content: center;
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .project-actions-confirm-cancel {

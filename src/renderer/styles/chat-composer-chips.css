@@ -1100,7 +1100,7 @@
 .slash-menu-label,
 .file-popover-name {
   flex: 0 0 auto;
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 /* The hint yields when the row runs out of room; the skill or command name
@@ -1130,7 +1130,7 @@
   padding: var(--space-2_5) var(--space-3) var(--space-1) 34px;
   color: var(--muted);
   font-size: var(--text-2xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   line-height: 1.2;
   letter-spacing: 0.06em;
   text-transform: uppercase;

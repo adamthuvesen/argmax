@@ -93,7 +93,7 @@
   gap: var(--space-1_5);
   color: var(--muted-strong);
   font-size: var(--text-xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .browser-history-import-profile select {

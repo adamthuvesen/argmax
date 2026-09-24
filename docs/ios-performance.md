@@ -96,6 +96,10 @@ Every mounted row is laid out and drawn whether it is visible or not, so the
 window is what opening a chat costs. When a reader leaves the live tail, that
 row window stays fixed as output lands and shifts by 16 rows once the reader
 is within two screens of either edge, preserving the visible reading anchor.
+The running mark (`WorkingNest`) breathes with a Core Animation group in the
+render server, so an idle screen showing live work does no per-frame main
+thread work: one running chat on the list cost 11% of the main thread while it
+was a per-frame `TimelineView` canvas.
 Image requests share a decoded-image cache. Inline images are downsampled for
 their display size. Expansion immediately shows the current preview while a
 larger representation is prepared.

@@ -21,50 +21,16 @@ struct WorkingNest: View {
     @Environment(\.accentTint) private var accent
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion || !active)) { context in
-            let elapsed = context.date.timeIntervalSinceReferenceDate
-            let (scale, opacity) = Self.ringDynamics(
-                elapsed: elapsed,
-                active: active,
-                reduceMotion: reduceMotion
-            )
-            Canvas { canvas, canvasSize in
-                let color = tint ?? accent.color
-                let metrics = Self.metrics(for: canvasSize.width)
-
-                // 1. Core: still anchor at the centre
-                let coreOrigin = CGPoint(
-                    x: (canvasSize.width - metrics.coreDiameter) / 2,
-                    y: (canvasSize.height - metrics.coreDiameter) / 2
-                )
-                canvas.fill(
-                    Path(ellipseIn: CGRect(
-                        origin: coreOrigin,
-                        size: CGSize(width: metrics.coreDiameter, height: metrics.coreDiameter)
-                    )),
-                    with: .color(color)
-                )
-
-                // 2. Ring: breathing halo
-                let ringDiameter = metrics.baseRingDiameter * scale
-                let ringRect = CGRect(
-                    x: (canvasSize.width - ringDiameter) / 2,
-                    y: (canvasSize.height - ringDiameter) / 2,
-                    width: ringDiameter,
-                    height: ringDiameter
-                ).insetBy(dx: 0.5, dy: 0.5)
-
-                canvas.stroke(
-                    Path(ellipseIn: ringRect),
-                    with: .color(color.opacity(opacity)),
-                    lineWidth: 1
-                )
-            }
+        // Core Animation breathes the ring in the render server. Driven from
+        // a `TimelineView`, one visible nest re-ran this body and redrew its
+        // canvas on every display frame: 11% of the main thread on an idle
+        // chat list with one chat running, twice that at 120 Hz.
+        WorkingNestLayerView(color: UIColor(tint ?? accent.color), size: size,
+                             breathing: active && !reduceMotion,
+                             stillOpacity: Self.ringDynamics(elapsed: 0, active: active, reduceMotion: reduceMotion).opacity)
             .frame(width: size, height: size)
-        }
-        .frame(width: size, height: size)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Running")
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Running")
     }
 
     struct Metrics: Equatable {
@@ -102,5 +68,118 @@ struct WorkingNest: View {
         let scale = 0.8 + 0.2 * CGFloat(breath)
         let opacity = 0.35 + 0.55 * breath
         return (scale, opacity)
+    }
+}
+
+private struct WorkingNestLayerView: UIViewRepresentable {
+    let color: UIColor
+    let size: CGFloat
+    let breathing: Bool
+    let stillOpacity: Double
+
+    func makeUIView(context: Context) -> WorkingNestView { WorkingNestView() }
+
+    func updateUIView(_ view: WorkingNestView, context: Context) {
+        view.update(color: color, box: size, breathing: breathing, stillOpacity: stillOpacity)
+    }
+}
+
+/// The nest's two layers. The breath is `WorkingNest.ringDynamics` as a
+/// repeating animation: a sine ease between the rest and peak rings, half a
+/// cycle each way, started at the wall clock's phase so every nest on screen
+/// breathes together, as the timeline-driven one did.
+final class WorkingNestView: UIView {
+    private let core = CAShapeLayer()
+    private let ring = CAShapeLayer()
+    private var color: UIColor = .clear
+    private var box: CGFloat = 0
+    private var breathing = false
+    private var stillOpacity: Double = 0.9
+    private static let breathKey = "breath"
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        ring.fillColor = nil
+        ring.lineWidth = 1
+        layer.addSublayer(ring)
+        layer.addSublayer(core)
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: WorkingNestView, _) in
+            view.applyColors()
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    func update(color: UIColor, box: CGFloat, breathing: Bool, stillOpacity: Double) {
+        let reshaped = box != self.box
+        let restarted = breathing != self.breathing
+        self.color = color
+        self.box = box
+        self.breathing = breathing
+        self.stillOpacity = stillOpacity
+        applyColors()
+        if reshaped { setNeedsLayout() }
+        if restarted || reshaped { restartBreath() }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let metrics = WorkingNest.metrics(for: box)
+        core.frame = bounds
+        ring.frame = bounds
+        core.path = UIBezierPath(ovalIn: centred(metrics.coreDiameter)).cgPath
+        ring.path = ringPath(scale: 1)
+        if breathing, ring.animation(forKey: Self.breathKey) == nil { restartBreath() }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // A view leaving the window loses its animations.
+        if window != nil { restartBreath() }
+    }
+
+    private func applyColors() {
+        let resolved = color.resolvedColor(with: traitCollection).cgColor
+        core.fillColor = resolved
+        ring.strokeColor = resolved
+    }
+
+    private func centred(_ diameter: CGFloat) -> CGRect {
+        CGRect(x: (box - diameter) / 2, y: (box - diameter) / 2, width: diameter, height: diameter)
+    }
+
+    private func ringPath(scale: CGFloat) -> CGPath {
+        let diameter = WorkingNest.metrics(for: box).baseRingDiameter * scale
+        return UIBezierPath(ovalIn: centred(diameter).insetBy(dx: 0.5, dy: 0.5)).cgPath
+    }
+
+    private func restartBreath() {
+        ring.removeAnimation(forKey: Self.breathKey)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        ring.opacity = Float(stillOpacity)
+        ring.path = ringPath(scale: 1)
+        CATransaction.commit()
+        guard breathing, box > 0, window != nil else { return }
+        let rest = WorkingNest.ringDynamics(elapsed: 0, active: true, reduceMotion: false)
+        let peak = WorkingNest.ringDynamics(elapsed: WorkingNest.cycle / 2, active: true, reduceMotion: false)
+        let path = CABasicAnimation(keyPath: "path")
+        path.fromValue = ringPath(scale: rest.scale)
+        path.toValue = ringPath(scale: peak.scale)
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = rest.opacity
+        opacity.toValue = peak.opacity
+        let breath = CAAnimationGroup()
+        breath.animations = [path, opacity]
+        breath.duration = WorkingNest.cycle / 2
+        breath.autoreverses = true
+        breath.repeatCount = .infinity
+        // `0.5 - 0.5 cos(πx)`, the easeInOutSine curve.
+        breath.timingFunction = CAMediaTimingFunction(controlPoints: 0.37, 0, 0.63, 1)
+        breath.isRemovedOnCompletion = false
+        let phase = Date().timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: WorkingNest.cycle)
+        breath.beginTime = ring.convertTime(CACurrentMediaTime(), from: nil) - phase
+        ring.add(breath, forKey: Self.breathKey)
     }
 }

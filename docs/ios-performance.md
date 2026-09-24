@@ -89,6 +89,8 @@ ledger's preload. The existing freshness window remains in effect.
 Transcript projection coalesces pending changes and runs on a background task.
 Only a matching session generation and content revision may publish. Completed
 Markdown documents have a bounded cache, with at most two active preparations.
+Opening a chat prepares the newest 96 prose documents before its first paint,
+so rows do not repaint and re-lay out the stack one by one after it.
 The transcript's exact-height eager stack mounts at most 32 presentation rows.
 Every mounted row is laid out and drawn whether it is visible or not, so the
 window is what opening a chat costs. When a reader leaves the live tail, that

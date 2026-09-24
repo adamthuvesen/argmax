@@ -129,6 +129,13 @@ final class TranscriptStore: ObservableObject {
         phase = .loading
         if let cached = recent[id] {
             restore(cached.stored)
+            // Painted in this frame, so its documents must be ready in this
+            // frame too. The cache may have evicted some since the chat was
+            // last open; the few missing ones cost far less here than a
+            // relayout each once they land.
+            let missing = Self.tailProseKeys(cached.items, workspacePath: workspacePath)
+                .filter { TranscriptMarkdownCache.shared.cached($0) == nil }
+            if !missing.isEmpty { TranscriptMarkdownCache.shared.store(TranscriptMarkdownCache.prepare(missing)) }
             items = cached.items
             phase = .ready
             reportOpened(cached: true)
@@ -561,10 +568,14 @@ final class TranscriptStore: ObservableObject {
                 } onCancel: { job.cancel() }
                 guard !Task.isCancelled, self.generation == startedGeneration else { return }
                 if self.items.isEmpty {
-                    // The list opens at the tail, and a row paints plain text
-                    // until its Markdown is prepared. On the first paint of an
-                    // open, prepare the tail first so that frame is the
-                    // finished one; later projections keep preparing lazily.
+                    // A row paints plain text until its Markdown is prepared,
+                    // and every document that lands after the first paint
+                    // re-lays out the eager stack under it. Two at a time,
+                    // that was a relayout per prose row for seconds after an
+                    // open. Preparing all of them costs a few milliseconds
+                    // off the main actor (27 ms for 123 documents on the
+                    // simulator), so the first frame is the finished one.
+                    // Later projections prepare their changed rows lazily.
                     let keys = Self.tailProseKeys(projected, workspacePath: workspacePath)
                         .filter { TranscriptMarkdownCache.shared.cached($0) == nil }
                     if !keys.isEmpty {
@@ -595,9 +606,10 @@ final class TranscriptStore: ObservableObject {
         }
     }
 
-    /// The prose the tail of the list paints first: the newest few bubbles.
-    /// Rows above them prepare lazily as they scroll in, as before.
-    nonisolated static func tailProseKeys(_ items: [TranscriptItem], workspacePath: String?, limit: Int = 8) -> [TranscriptMarkdownKey] {
+    /// The prose the list paints when it opens at the tail: the newest
+    /// bubbles, well past what the mounted row window holds, and within the
+    /// Markdown cache's 128 documents. Rows paged in later prepare lazily.
+    nonisolated static func tailProseKeys(_ items: [TranscriptItem], workspacePath: String?, limit: Int = 96) -> [TranscriptMarkdownKey] {
         var keys: [TranscriptMarkdownKey] = []
         for item in items.reversed() where keys.count < limit {
             switch item {

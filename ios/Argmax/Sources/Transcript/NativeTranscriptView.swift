@@ -78,19 +78,22 @@ struct NativeTranscriptView: View {
                 onLoadEarlier: { rowWindow.revealEarlier(in: rowIDs) },
                 onLoadLater: { rowWindow.revealLater(in: rowIDs) }
             ) { row in
-                MobileTranscriptRowView(row: row) { item in
-                TranscriptContentRow(item: item, client: client,
-                                     onOpenFile: onOpenFile, onOpenDiff: onOpenDiff,
-                                     onOpenSession: { navigator.awaitingSessionID = $0 })
-                }
-                    .padding(.vertical, row.verticalPadding)
-                    .environment(\.transcriptRowInLatestTurn, latestTurnRowIDs.contains(row.id))
+                TranscriptListRow(
+                    row: row,
+                    inLatestTurn: latestTurnRowIDs.contains(row.id),
+                    client: client,
+                    onOpenFile: onOpenFile,
+                    onOpenDiff: onOpenDiff,
+                    onOpenSession: { navigator.awaitingSessionID = $0 }
+                )
+                .equatable()
             } footer: {
                 TranscriptThinkingLabel(thinking: thinking, beatHolder: $beatHolder)
                     .id(thinking)
                     .padding(.vertical, Spacing.snug)
             }
             .environment(\.activityBeat, beatHolder)
+            .environment(\.transcriptSessionWorking, sessionIsWorking)
             .overlay(alignment: .bottom) {
                 if !following && !rows.isEmpty {
                     Button {
@@ -149,6 +152,42 @@ struct NativeTranscriptView: View {
             }
         }
         .onChange(of: transcript.session?.sessionId) { following = true }
+    }
+}
+
+/// Equal because every input a render reads is a value, and the
+/// store changes it on its own schedule. The callbacks are left out of the
+/// comparison: they open screens and never shape the row. Parent state
+/// changes — a scroll measurement, a keystroke in the composer — would
+/// otherwise re-render every mounted row, since a closure is never equal
+/// to the last one.
+extension NativeTranscriptView: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.client === rhs.client }
+}
+
+/// One mounted transcript row. Equatable for the same reason as the view
+/// above: a row is re-rendered when its content or its turn changes, not
+/// whenever the list around it does.
+struct TranscriptListRow: View, Equatable {
+    let row: MobileTranscriptRow
+    let inLatestTurn: Bool
+    let client: BridgeClient
+    let onOpenFile: (String) -> Void
+    let onOpenDiff: (String) -> Void
+    let onOpenSession: (String) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.row == rhs.row && lhs.inLatestTurn == rhs.inLatestTurn && lhs.client === rhs.client
+    }
+
+    var body: some View {
+        MobileTranscriptRowView(row: row) { item in
+            TranscriptContentRow(item: item, client: client,
+                                 onOpenFile: onOpenFile, onOpenDiff: onOpenDiff,
+                                 onOpenSession: onOpenSession)
+        }
+        .padding(.vertical, row.verticalPadding)
+        .environment(\.transcriptRowInLatestTurn, inLatestTurn)
     }
 }
 
@@ -218,7 +257,8 @@ struct TranscriptContentRow: View {
     let onOpenFile: (String) -> Void
     var onOpenDiff: ((String) -> Void)? = nil
     var onOpenSession: ((String) -> Void)?
-    @EnvironmentObject private var transcript: TranscriptStore
+    @Environment(\.transcriptSessionWorking) private var sessionWorking
+    @Environment(\.transcriptRowInLatestTurn) private var inLatestTurn
 
     var body: some View {
         switch item {
@@ -229,12 +269,10 @@ struct TranscriptContentRow: View {
         case .tools(let group):
             TranscriptToolsRow(group: group, onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
         case .todo(let list):
-            TranscriptTodoRow(
-                list: list,
-                running: transcript.session?.state == .running
-                    && transcript.connection == .live
-                    && list.isCurrentTurn(in: transcript.items)
-            )
+            // A plan is live while its turn is the latest one, which is
+            // what the row's latest-turn flag already says: no regular
+            // prompt follows it.
+            TranscriptTodoRow(list: list, running: sessionWorking && inLatestTurn)
         case .notice(let notice):
             Text(notice.text)
                 .typeStyle(.footnote)

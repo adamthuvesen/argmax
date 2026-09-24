@@ -29,7 +29,7 @@
   --sidebar: color-mix(in oklab, #171717, var(--background-sidebar-target) var(--background-pull));
   --panel: color-mix(in oklab, #1a1a1a, var(--background-panel-target) var(--background-pull));
   --review-panel: color-mix(in oklab, #171717, var(--background-review-panel-target) var(--background-pull));
-  --review-sidebar: color-mix(in oklab, #202020, var(--background-review-sidebar-target) var(--background-pull));
+  --review-sidebar: color-mix(in oklab, #1b1b1b, var(--background-review-sidebar-target) var(--background-pull));
   --panel-soft: color-mix(in oklab, #212121, var(--background-panel-soft-target) var(--background-pull));
   --composer-surface: color-mix(in oklab, #202020, var(--background-composer-target) var(--background-pull));
   --panel-sunken: color-mix(in oklab, #0f0f0f, var(--background-sunken-target) var(--background-pull));

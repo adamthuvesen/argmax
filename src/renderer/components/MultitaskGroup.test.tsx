@@ -28,6 +28,17 @@ describe("MultitaskGroup", () => {
     expect(screen.getByRole("button", { name: "Open multitask: Fix label" })).toBeVisible();
   });
 
+  it("opens folded when it holds more than three multitasks", () => {
+    const many = (count: number) => Array.from({ length: count }, (_, index) => ({
+      ...notices[0], childSessionId: `child-${index}`, taskLabel: `Task ${index}`, state: "complete"
+    }));
+    render(<MultitaskGroup notices={many(3)} onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Multitasks 3 finished" })).toHaveAttribute("aria-expanded", "true");
+    cleanup();
+    render(<MultitaskGroup notices={many(4)} onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Multitasks 4 finished" })).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("preserves unavailable task history without offering a broken chat action", () => {
     render(<MultitaskGroup notices={notices} onOpen={vi.fn()} />);
     expect(screen.getByText("Fix label")).toBeVisible();

@@ -9,7 +9,8 @@
   font-family: var(--font-ui);
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  scrollbar-width: thin;
+  /* No scrollbar-width here: WebKit drops the app's ::-webkit-scrollbar
+     thumb for any scroller that sets it and draws the dark system bar. */
 }
 
 .multitask-card[data-expanded="false"] {
@@ -91,7 +92,8 @@
   display: flex;
   align-items: stretch;
   min-width: 0;
-  border-radius: var(--radius-sm);
+  /* Rounds the hover fill like the sidebar's chat rows. */
+  border-radius: var(--radius-lg);
   transition: background var(--duration-fast) var(--ease);
 }
 

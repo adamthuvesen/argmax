@@ -127,7 +127,7 @@ it("uses next-action labels and persists the boolean Actions", async () => {
   const booleanActions = [
     { query: "keep computer awake", key: KEEP_AWAKE_KEY, value: "true", label: "Enable keep computer awake" },
     { query: "fast mode", key: FAST_MODE_KEY, value: "true", label: "Enable fast mode" },
-    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "false", label: "Collapse changed files" },
+    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "true", label: "Expand changed files" },
     { query: "context indicator", key: COMPOSER_CONTEXT_INDICATOR_KEY, value: "true", label: "Show context indicator" }
   ];
   for (const action of booleanActions) {
@@ -142,7 +142,7 @@ it("uses next-action labels and persists the boolean Actions", async () => {
   const reverseBooleanActions = [
     { query: "keep computer awake", key: KEEP_AWAKE_KEY, value: "false", label: "Disable keep computer awake" },
     { query: "fast mode", key: FAST_MODE_KEY, value: "false", label: "Disable fast mode" },
-    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "true", label: "Expand changed files" },
+    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "false", label: "Collapse changed files" },
     { query: "context indicator", key: COMPOSER_CONTEXT_INDICATOR_KEY, value: "false", label: "Hide context indicator" }
   ];
   for (const action of reverseBooleanActions) {

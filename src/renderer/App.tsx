@@ -275,7 +275,7 @@ export function App(): JSX.Element {
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
   const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
     TURN_CHANGES_EXPANDED_KEY,
-    true
+    false
   );
   const [goalEnabled, setGoalEnabled] = useBooleanUiPreference(GOAL_ENABLED_KEY, true);
   const [revertEnabled, setRevertEnabled] = useBooleanUiPreference(TURN_REVERT_ENABLED_KEY, true);

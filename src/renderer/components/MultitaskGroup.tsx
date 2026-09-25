@@ -14,9 +14,12 @@ export type MultitaskLive = {
   startedAt: string | null;
 };
 
+/** More rows than this open folded, so a long group does not bury the chat. */
+const OPEN_GROUP_MAX_ROWS = 3;
+
 /**
- * The chats running alongside this one, in an open group above the
- * composer. The launch turns keep the history, each chat supplies its live
+ * The chats running alongside this one, in a group above the composer that
+ * opens unless it holds more than three. The launch turns keep the history, each chat supplies its live
  * state, and the head counts them so the group still says something folded.
  */
 export function MultitaskGroup({ notices, live, onOpen, onStop, onDismiss, onLoadSessionEvents }: {
@@ -29,7 +32,8 @@ export function MultitaskGroup({ notices, live, onOpen, onStop, onDismiss, onLoa
   /** Fills a child's transcript so a row waiting on a question can quote it. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
 }): JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+  // Decided once on mount: a group that grows while open stays open.
+  const [expanded, setExpanded] = useState(() => notices.length <= OPEN_GROUP_MAX_ROWS);
   const listId = useId();
   const counts = { running: 0, "needs-you": 0, done: 0, failed: 0, stopped: 0 };
   for (const notice of notices) {

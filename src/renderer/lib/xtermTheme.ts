@@ -122,7 +122,10 @@ export function readActiveXtermTheme(): XtermThemeObject {
   const base = getXtermTheme(themeAppearance(document.documentElement.getAttribute("data-theme")));
   const intensity = document.documentElement.getAttribute("data-background-intensity");
   let background: string = base.background;
-  if (document.body && intensity && intensity !== String(DEFAULT_BACKGROUND_INTENSITY)) {
+  // Light mode remixes every level, the default included, so only dark's
+  // default keeps the static palette.
+  const shipped = base === DARK_XTERM_THEME && intensity === String(DEFAULT_BACKGROUND_INTENSITY);
+  if (document.body && intensity && !shipped) {
     const { r, g, b } = readColorToken("--terminal-surface", document.body);
     background = `rgb(${r}, ${g}, ${b})`;
   }

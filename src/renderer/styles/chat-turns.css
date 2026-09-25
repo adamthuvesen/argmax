@@ -452,17 +452,23 @@
   font-weight: inherit;
 }
 
-/* Headings paint --prose-ink-strong on their own element, so the container's
-   `color: inherit` above never reaches them. Reasoning is secondary text; a
-   bright heading inside it would outrank the answer's own prose. Keep the
-   weight and spacing so the structure still reads. */
-.thought-block-body .markdown :where(h1, h2, h3),
-.thought-block-body .markdown ol > li:only-child {
+/* Reasoning uses the answer Markdown renderer, including its heading sizes and
+   bold-only-line promotion. Keep headings readable as section labels without
+   letting a thought become a large title in the transcript. */
+.thought-block-body .markdown :is(h1, h2, h3, h4, h5, h6) {
   color: inherit;
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  line-height: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  margin: 0 0 0.4em;
+  padding: 0;
+  border: 0;
 }
 
-.thought-block-body .markdown h1 {
-  border-bottom-color: var(--line-soft);
+.thought-block-body .markdown ol > li:only-child {
+  color: inherit;
 }
 
 /* The stable word carries personality while the shared WorkingNest carries

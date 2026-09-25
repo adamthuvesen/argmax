@@ -444,8 +444,9 @@ export function MobileApp(): JSX.Element {
   useEffect(() => subscribeRemoteConnection(setConnection), []);
 
   useEffect(() => {
-    if (!toast || toast.kind === "error") return;
-    const timer = window.setTimeout(dismissToast, 4000);
+    if (!toast) return;
+    const dismissAfterMs = toast.kind === "error" ? 10_000 : 4_000;
+    const timer = window.setTimeout(dismissToast, dismissAfterMs);
     return () => window.clearTimeout(timer);
   }, [toast]);
 

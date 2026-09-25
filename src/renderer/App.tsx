@@ -654,10 +654,8 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     if (!toast) return;
-    // Errors stick until the user dismisses — losing them on a 4 s timer
-    // means a blink can hide why a launch failed. Info toasts auto-dismiss.
-    if (toast.kind === "error") return;
-    const t = setTimeout(() => dismissToast(), 4000);
+    const dismissAfterMs = toast.kind === "error" ? 10_000 : 4_000;
+    const t = setTimeout(() => dismissToast(), dismissAfterMs);
     return () => clearTimeout(t);
   }, [toast]);
 

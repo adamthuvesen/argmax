@@ -553,6 +553,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)
     },
     windows: {
+      onFocusSession: (listener) => subscribe<string>("window:focus-session", listener),
       openSession: (input) => invokeCommand<{ label: string }>("window:open-session", input),
       setSession: (input) => invokeCommand<{ label: string }>("window:set-session", input)
     },

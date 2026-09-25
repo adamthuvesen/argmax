@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
@@ -16,6 +17,7 @@ import {
   mockDashboardSnapshot,
   readWorkspaceFile,
   sessionEventsSince,
+  secondProject,
   setPriorityDismissed,
   setupAppTestMocks,
   snapshot,
@@ -23,6 +25,7 @@ import {
 } from "../../test/appTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
+import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { SESSION_VIEWED_STORAGE_KEY, resetSessionUnreadForTests } from "../lib/sessionUnread.js";
 
 // The remote transport is a page singleton the component only observes, so the
@@ -122,6 +125,48 @@ describe("MobileApp", () => {
   beforeEach(() => {
     remote.reset();
     setupAppTestMocks();
+  });
+
+  it("launches an attachment-only provider-switch seed without the launcher's old image", async () => {
+    const screenshot = { filePath: "/attachments/current.png", mimeType: "image/png" as const, sizeBytes: 4 };
+    const unrelated = { filePath: "/attachments/old-launcher.png", mimeType: "image/png" as const, sizeBytes: 4 };
+    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
+      "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] },
+      "launch-project-2": { text: "Another project's draft", attachments: [unrelated] }
+    }));
+    const seed = {
+      model: { provider: "claude" as const, label: "Sonnet 5", modelId: "claude-sonnet-5", reasoningEffort: "medium" as const },
+      prompt: "",
+      attachments: [screenshot]
+    };
+    function SeededNewSession() {
+      const [openSheet, setOpenSheet] = useState<PickerKind | null>(null);
+      return <NewSessionScreen
+        projects={[snapshot.projects[0], secondProject()]}
+        workspaces={snapshot.workspaces}
+        initialSeed={seed}
+        onClose={vi.fn()}
+        onLaunched={vi.fn()}
+        onError={vi.fn()}
+        openSheet={openSheet}
+        onOpenSheetChange={setOpenSheet}
+      />;
+    }
+    render(<SeededNewSession />);
+
+    await waitFor(() => expect(screen.getByLabelText("Task")).toHaveValue(""));
+    expect(screen.getByLabelText("Attached images").children).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Project" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Choose project" })).getByRole("button", { name: "Dotfiles" }));
+    expect(screen.getByLabelText("Task")).toHaveValue("");
+    expect(screen.getByLabelText("Attached images").children).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Start chat" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "@/attachments/current.png",
+      attachments: [screenshot]
+    })));
   });
 
   it("lists sessions with project subtitle and running marker", async () => {
@@ -430,7 +475,6 @@ describe("MobileApp", () => {
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockImplementation(function (this: Element): DOMRect {
         if (this.classList.contains("session-main-column")) return box(0, 800);
-        if (this.classList.contains("multitask-composer-lane")) return box(540, 620);
         if (this.classList.contains("session-composer-stack")) return box(620, 800);
         return box(0, 0);
       });

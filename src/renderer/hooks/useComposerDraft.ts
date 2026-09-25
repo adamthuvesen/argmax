@@ -12,11 +12,9 @@ import { clearDraft, readDraft, writeDraftText } from "../lib/composerDrafts.js"
  * restores both. Pasted screenshots ride along in the same entry.
  * See `useComposerAttachments`.
  *
- * `carryTextOnRetarget` is for composers the user retargets mid-sentence — the
- * launcher's project picker. There the typed text is aimed at whatever repo is
- * selected when they hit send, so it moves to the new target instead of being
- * left behind — even over a stale draft stored on that target, which it
- * replaces.
+ * `carryTextOnRetarget` is for the launcher's project picker. The unsent text
+ * and images move to the selected repo together, even over a stale draft on
+ * that target. An image-only draft moves with its empty text too.
  *
  * `persist` is the send lock. A submit must not keep the sent value in storage:
  * launching can unmount the composer, and the next NEW CHAT would otherwise
@@ -40,10 +38,11 @@ export function useComposerDraft(
   if (loadedKey.current !== key) {
     const previousKey = loadedKey.current;
     loadedKey.current = key;
-    // Text the user is mid-writing always wins: it is what they are aiming at
-    // the new target right now, while a draft stored there is at best stale.
+    // The current draft wins when it holds text or images. Keeping an empty
+    // text value for image-only drafts prevents the target's stale text from
+    // being paired with the carried screenshot.
     // The write effect below replaces the stored one.
-    if (carryTextOnRetarget && draft !== "") {
+    if (carryTextOnRetarget && (draft !== "" || readDraft(previousKey).attachments.length > 0)) {
       movedFrom.current = previousKey;
       carriedOnRetarget = true;
     } else {

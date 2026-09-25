@@ -128,6 +128,7 @@ export let usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
 export let usageRemaining: AppTestMockFn<ArgmaxApi["usage"]["remaining"]>;
 export let activitySummary: AppTestMockFn<ArgmaxApi["activity"]["summary"]>;
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
+export let focusSessionListener: ((sessionId: string) => void) | null = null;
 
 type Routine = Awaited<ReturnType<ArgmaxApi["routines"]["upsert"]>>;
 
@@ -364,6 +365,7 @@ export function setupAppTestMocks(): void {
     taskLabel: "Side fix"
   });
   menuCommandListener = null;
+  focusSessionListener = null;
   workspaceStatus = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue(workspaceStatusSnapshot(snapshot));
   listChangedFiles = vi.fn<ArgmaxApi["review"]["listChangedFiles"]>().mockResolvedValue([]);
   loadDiff = vi.fn<ArgmaxApi["review"]["loadDiff"]>().mockResolvedValue({
@@ -640,6 +642,10 @@ export function setupAppTestMocks(): void {
       }
     },
     windows: {
+      onFocusSession: (listener) => {
+        focusSessionListener = listener;
+        return () => { focusSessionListener = null; };
+      },
       openSession: openSessionWindow,
       setSession: () => Promise.resolve({ label: "main" })
     },

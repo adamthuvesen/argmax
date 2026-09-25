@@ -107,17 +107,34 @@ describe("multitask in the chat that dispatched it", () => {
     expect(screen.queryByRole("button", { name: "Fix the changelog date" })).toBeNull();
   });
 
-  it("attaches the row above the composer instead of leaving it in the turn", async () => {
+  it("hosts the rows in a card above the composer, not in the turn, and folds them", async () => {
     mountWithMultitask();
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    const row = await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" });
-    const lane = row.closest(".multitask-composer-lane");
+    const group = await screen.findByRole("region", { name: "Multitasks" });
+    expect(group.closest(".turn-block-body")).toBeNull();
+    expect(group.closest(".session-meta-cards")).not.toBeNull();
+    expect(group.closest(".session-meta-cards")?.nextElementSibling).toHaveClass("session-composer-stack");
+    const toggle = within(group).getByRole("button", { name: /^Multitasks/ });
+    expect(within(group).getByRole("button", { name: "Open multitask: Fix the changelog date" })).toBeVisible();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(group).queryByRole("button", { name: /^Open multitask/ })).toBeNull();
+    fireEvent.click(toggle);
+    expect(within(group).getByRole("button", { name: /^Open multitask/ })).toBeVisible();
+  });
 
-    expect(row.closest(".turn-block-body")).toBeNull();
-    expect(lane).not.toBeNull();
-    expect(lane?.nextElementSibling).toHaveClass("session-composer-stack");
+  it("closes a finished row from the card and keeps it closed", async () => {
+    mountWithMultitask();
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Dismiss multitask: Fix the changelog date" })
+    );
+
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Multitasks" })).toBeNull());
   });
 
   it("opens the multitask's chat as a tab in the dock, not as another chat", async () => {

@@ -109,12 +109,11 @@ export interface ComposerStatus {
   message: string;
 }
 
-/** What the provider-switch dialog hands the launcher when the user takes the
- *  recommended path: the model they picked, and the follow-up they had
- *  half-written for the old agent. */
+/** The model and complete draft moved from a chat to the new-session launcher. */
 export interface NewSessionSeed {
   model: ModelPickerSelection;
   prompt: string;
+  attachments: ComposerAttachment[];
 }
 
 interface ComposerChangeSummary {
@@ -923,8 +922,24 @@ export function SessionComposer({
               // message would have been delivered before it, so it goes above
               // it, and the caret lands at the end of the restored text — the
               // part the user came here to change.
-              caretAfterInput.current = content.length;
-              setInput((draft) => (draft.trim() === "" ? content : `${content}\n\n${draft}`));
+              const attachments = entry.attachments ?? [];
+              const references = attachments.map((attachment) => imageAttachmentReference(attachment.filePath)).join(" ");
+              const referenceStart = references ? content.lastIndexOf(references) : -1;
+              const referenceEnd = referenceStart + references.length;
+              const hasGeneratedReferences = referenceStart >= 0 &&
+                (referenceStart === 0 || /\s/.test(content[referenceStart - 1] ?? "")) &&
+                (referenceEnd === content.length || /\s/.test(content[referenceEnd] ?? ""));
+              const restoredContent = hasGeneratedReferences
+                ? `${content.slice(0, content[referenceStart - 1] === " " ? referenceStart - 1 : referenceStart)}${content.slice(referenceEnd)}`.trim()
+                : content;
+              caretAfterInput.current = restoredContent.length;
+              setInput((draft) =>
+                restoredContent === "" ? draft : draft.trim() === "" ? restoredContent : `${restoredContent}\n\n${draft}`
+              );
+              restoreAttachments((current) => {
+                const paths = new Set(current.map((attachment) => attachment.filePath));
+                return [...current, ...attachments.filter((attachment) => !paths.has(attachment.filePath))];
+              });
             };
             return (
               <div
@@ -1423,8 +1438,14 @@ export function SessionComposer({
                   // The draft moves to the launcher rather than being copied:
                   // leaving it here too would offer the same text twice, in two
                   // composers that send to different agents.
-                  onStartNewSession({ model: pendingProviderSwitch.model, prompt: input });
+                  onStartNewSession({
+                    model: pendingProviderSwitch.model,
+                    prompt: input,
+                    attachments: pendingAttachments
+                  });
+                  clearDraft(session.id);
                   setInput("");
+                  clearAttachments();
                   setPendingProviderSwitch(null);
                 }
               : undefined

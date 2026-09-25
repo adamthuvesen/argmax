@@ -785,8 +785,8 @@ export function MobileApp(): JSX.Element {
   // Chats this one dispatched. The phone has no dock to host them, so they
   // open in the overlay beside the subagents rather than replacing the chat.
   const multitasksByParent = useMemo(
-    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces),
-    [snapshot.sessions, snapshot.workspaces]
+    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces, snapshot.approvals),
+    [snapshot.sessions, snapshot.workspaces, snapshot.approvals]
   );
   // Park the list under a session or the new-chat screen instead of unmounting
   // it: tearing the scroller down was sending every back-to-list gesture to

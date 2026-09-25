@@ -53,7 +53,8 @@
   background: var(--row-hover);
 }
 
-.session-row[data-active="true"] {
+.session-row[data-active="true"],
+.session-link[aria-current="page"] {
   background: var(--row-selected);
 }
 
@@ -63,7 +64,8 @@
 }
 
 .session-row[data-active="true"] .session-link,
-.session-link.active {
+.session-link.active,
+.session-link[aria-current="page"] {
   color: var(--text);
   font-weight: calc(400 + var(--font-weight-offset));
 }

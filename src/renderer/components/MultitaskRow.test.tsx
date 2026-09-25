@@ -1,9 +1,9 @@
-import { CLAUSE_DWELL_MS } from "../lib/pacedHeadline.js";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MultitaskNotice } from "../lib/multitask.js";
-import { MultitaskRow } from "./MultitaskRow.js";
 
+import type { MultitaskNotice } from "../lib/multitask.js";
+import { multitaskDisplayStatus } from "../lib/multitask.js";
+import { MultitaskRow } from "./MultitaskRow.js";
 
 function notice(overrides: Partial<MultitaskNotice> = {}): MultitaskNotice {
   return {
@@ -21,189 +21,145 @@ function notice(overrides: Partial<MultitaskNotice> = {}): MultitaskNotice {
 describe("MultitaskRow", () => {
   afterEach(cleanup);
 
-  it("says it is running, and opens the chat it dispatched", () => {
+  it("opens its chat and keeps stop available while it runs", () => {
     const onOpen = vi.fn();
-    render(<MultitaskRow notice={notice()} onOpen={onOpen} />);
-
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open multitask: Fix the README typo" }));
-    expect(onOpen).toHaveBeenCalledWith("child-1");
-  });
-
-  it("marks a running multitask on its own words, in the launch row's mark slot", () => {
-    // The row borrows the subagent launch-row shape, so it borrows the live
-    // mark too: the reading wave through the task and its kind, with the dock
-    // tab's emblem holding the mark slot whatever the chat is doing.
-    const { container } = render(<MultitaskRow notice={notice()} onOpen={vi.fn()} />);
-
-    expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).not.toBeNull();
-    expect(container.querySelector(".agent-launch-title.reading-wave-text")).not.toBeNull();
-    expect(container.querySelector(".working-nest")).toBeNull();
-    expect(container.querySelector(".multitask-row-mark .agent-emblem[data-shape]")).not.toBeNull();
-
-    cleanup();
-    const settled = render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} />);
-    expect(
-      settled.container.querySelector(".agent-launch-headline[data-reading-wave='true']")
-    ).toBeNull();
-  });
-
-  it("shows one wording per beat, and only the newest, while it runs", () => {
-    // A chat that blocks on an approval and is answered a moment later used to
-    // flick a word onto the row and take it away again. One change per beat,
-    // newest wording wins: the intermediate never reaches the screen.
-    vi.useFakeTimers();
-    try {
-      const running = notice({ taskLabel: "Fix the README typo in the install section, it..." });
-      const { rerender } = render(<MultitaskRow notice={running} onOpen={vi.fn()} />);
-      // The short title its chat is given lands a second or two after dispatch.
-      rerender(
-        <MultitaskRow notice={running} liveLabel="Fix Install Section Typo" onOpen={vi.fn()} />
-      );
-      act(() => void vi.advanceTimersByTime(CLAUSE_DWELL_MS));
-      expect(screen.getByText("Fix Install Section Typo")).toBeInTheDocument();
-
-      rerender(<MultitaskRow notice={running} liveLabel="Fix Install Section Typo" liveState="blocked" onOpen={vi.fn()} />);
-      act(() => void vi.advanceTimersByTime(100));
-      expect(screen.queryByText("Waiting for you")).toBeNull();
-
-      rerender(<MultitaskRow notice={running} liveLabel="Fix Install Section Typo" liveState="running" onOpen={vi.fn()} />);
-      act(() => void vi.advanceTimersByTime(CLAUSE_DWELL_MS));
-      expect(screen.queryByText("Waiting for you")).toBeNull();
-      expect(screen.getByText("Running")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("fades up only the part that changed when its chat is renamed", () => {
-    vi.useFakeTimers();
-    try {
-      const { container, rerender } = render(<MultitaskRow notice={notice()} onOpen={vi.fn()} />);
-      rerender(
-        <MultitaskRow notice={notice()} liveLabel="Fix Install Section Typo" onOpen={vi.fn()} />
-      );
-      act(() => void vi.advanceTimersByTime(CLAUSE_DWELL_MS));
-      expect(container.querySelector(".agent-launch-title[data-arriving='true']")?.textContent)
-        .toBe("Fix Install Section Typo");
-      expect(container.querySelector(".agent-launch-status[data-arriving='true']")).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("says how it ended once it has", () => {
-    render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} />);
-    expect(screen.getByText("Completed")).toBeInTheDocument();
-
-    cleanup();
-    render(<MultitaskRow notice={notice({ state: "cancelled" })} onOpen={vi.fn()} />);
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
-  });
-
-  it("says what it found, in one line, once it has finished", () => {
-    render(
-      <MultitaskRow
-        notice={notice({ state: "complete", answer: "Corrected the 0.4 heading to 2026." })}
-        onOpen={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText(/Corrected the 0.4 heading to 2026\./)).toBeInTheDocument();
-  });
-
-  it("drops a stale answer the moment it is running again", () => {
-    // Answered again from its dock tab: the old result beside a live status
-    // would read as this turn's.
-    render(
-      <MultitaskRow
-        notice={notice({ state: "complete", answer: "Corrected the 0.4 heading to 2026." })}
-        liveState="running"
-        onOpen={vi.fn()}
-      />
-    );
-
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    expect(screen.queryByText(/Corrected the 0.4 heading/)).toBeNull();
-  });
-
-  it("says a blocked multitask is waiting on the person, not running", () => {
-    render(<MultitaskRow notice={notice({ state: "blocked" })} onOpen={vi.fn()} />);
-    expect(screen.getByText("Waiting for you")).toBeInTheDocument();
-  });
-
-  it("marks an isolated one, which is not sharing this checkout", () => {
-    render(<MultitaskRow notice={notice({ worktree: true })} onOpen={vi.fn()} />);
-    expect(screen.getByText("Multitask · isolated")).toBeInTheDocument();
-  });
-
-  it("can be dismissed once it has settled, but not while it runs", () => {
-    const onDismiss = vi.fn();
-    render(<MultitaskRow notice={notice()} onOpen={vi.fn()} onDismiss={onDismiss} />);
-    expect(
-      screen.queryByRole("button", { name: "Dismiss multitask: Fix the README typo" })
-    ).toBeNull();
-
-    cleanup();
-    render(
-      <MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} onDismiss={onDismiss} />
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss multitask: Fix the README typo" }));
-    expect(onDismiss).toHaveBeenCalledOnce();
-  });
-
-  it("stops the multitask from the row", () => {
     const onStop = vi.fn();
-    render(<MultitaskRow notice={notice()} onOpen={vi.fn()} onStop={onStop} />);
+    render(<MultitaskRow notice={notice()} liveState="running" onOpen={onOpen} onStop={onStop} />);
 
+    expect(screen.getByRole("img", { name: "Running" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open multitask: Fix the README typo" }));
     fireEvent.click(screen.getByRole("button", { name: "Stop multitask: Fix the README typo" }));
+    expect(onOpen).toHaveBeenCalledWith("child-1");
     expect(onStop).toHaveBeenCalledWith("child-1");
   });
 
-  it("offers no stop once it has stopped", () => {
-    render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} onStop={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
-  });
-
-  it("believes the session over a timeline that never saw it end", () => {
-    // The app went down mid-turn, so no finish row was ever written; the
-    // session row is what knows the process did not survive.
-    render(<MultitaskRow notice={notice()} liveState="failed" onOpen={vi.fn()} onStop={vi.fn()} />);
-
-    expect(screen.getByText("Failed")).toBeInTheDocument();
-    expect(screen.queryByText("Running")).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
-  });
-
-  it("is running again when the session is, whatever the last finish row said", () => {
+  it("counts from its start while it runs, and says the word when it has none", () => {
     render(
-      <MultitaskRow notice={notice({ state: "complete" })} liveState="running" onOpen={vi.fn()} />
+      <MultitaskRow
+        notice={notice()}
+        liveState="running"
+        liveStartedAt={new Date(Date.now() - 95_000).toISOString()}
+        onOpen={vi.fn()}
+      />
     );
+    expect(screen.getByLabelText("Running for")).toHaveTextContent(/^1m 3[45]s$/);
+    expect(screen.queryByText("Running")).toBeNull();
+
+    cleanup();
+    render(<MultitaskRow notice={notice()} liveState="running" onOpen={vi.fn()} />);
     expect(screen.getByText("Running")).toBeInTheDocument();
   });
 
-  it("takes the title its chat was given over the one written at dispatch", () => {
-    // The dispatch row carries the first line of the prompt; the short title
-    // lands on the workspace a second or two later.
+  it("surfaces live attention and keeps the chat reachable", () => {
     render(
       <MultitaskRow
-        notice={notice({ taskLabel: "Fix the README typo in the install section, it..." })}
+        notice={notice()}
+        liveState="running"
+        liveAttention="question-asked"
+        onOpen={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("img", { name: "Needs you" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open multitask: Fix the README typo" })).toBeInTheDocument();
+    expect(multitaskDisplayStatus("waiting", "approval-needed")).toBe("needs-you");
+    expect(multitaskDisplayStatus("blocked", "normal")).toBe("needs-you");
+  });
+
+  it("says what an approval wants to run, under the title, while it needs you", () => {
+    render(
+      <MultitaskRow
+        notice={notice()}
+        liveState="blocked"
+        liveAttention="approval-needed"
+        liveApprovalCommand="rm -rf dist && npm run build"
+        onOpen={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Wants to run")).toBeInTheDocument();
+    expect(screen.getByText("rm -rf dist && npm run build")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Needs you" })).toBeInTheDocument();
+  });
+
+  it("keeps the approval to itself once the chat is running again", () => {
+    // A stale command beside a live state would read as this turn's ask.
+    render(
+      <MultitaskRow
+        notice={notice()}
+        liveState="running"
+        liveAttention="normal"
+        liveApprovalCommand="rm -rf dist"
+        onOpen={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("Wants to run")).toBeNull();
+    expect(screen.queryByText("rm -rf dist")).toBeNull();
+  });
+
+  it("keeps a completed question in attention, with nothing left to stop", () => {
+    render(
+      <MultitaskRow
+        notice={notice({ state: "complete", answer: "Should this go under fixes or improvements?" })}
+        liveAttention="question-asked"
+        onOpen={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("img", { name: "Needs you" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
+  });
+
+  it("says a task finished in one line, and offers dismissal only when handed one", () => {
+    // The answer is not on the row: the dock tab holds the whole reply, and
+    // the agent gets it on the next prompt. The row is a pointer, one line.
+    render(
+      <MultitaskRow
+        notice={notice({ state: "complete", answer: "Corrected the 0.4 heading to 2026." })}
+        onOpen={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("img", { name: "Finished" })).toBeInTheDocument();
+    expect(screen.queryByText("Corrected the 0.4 heading to 2026.")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Stop multitask/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Dismiss multitask/ })).toBeNull();
+
+    cleanup();
+    const onDismiss = vi.fn();
+    render(<MultitaskRow notice={notice({ state: "complete" })} onOpen={vi.fn()} onDismiss={onDismiss} />);
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss multitask: Fix the README typo" }));
+    expect(onDismiss).toHaveBeenCalledWith("child-1");
+  });
+
+  it("uses the live session state and title over stale launch and finish events", () => {
+    render(
+      <MultitaskRow
+        notice={notice({ state: "complete", answer: "Old result" })}
+        liveState="running"
         liveLabel="Fix Install Section Typo"
         onOpen={vi.fn()}
       />
     );
 
-    expect(screen.getByText("Fix Install Section Typo")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Open multitask: Fix Install Section Typo" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Running" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open multitask: Fix Install Section Typo" })).toBeInTheDocument();
+    expect(screen.queryByText("Old result")).toBeNull();
+
+    cleanup();
+    render(<MultitaskRow notice={notice()} liveState="failed" onOpen={vi.fn()} />);
+    expect(screen.getByRole("img", { name: "Failed" })).toBeInTheDocument();
   });
 
-  it("is a plain row when there is nothing to open", () => {
-    // A finish row whose dispatch fell out of the transcript window carries no
-    // session id: it still says what happened, it just goes nowhere.
+  it("names an isolated task and leaves an orphaned finish readable", () => {
+    render(<MultitaskRow notice={notice({ worktree: true })} onOpen={vi.fn()} />);
+    expect(screen.getByText("isolated")).toBeInTheDocument();
+
+    cleanup();
     render(<MultitaskRow notice={notice({ childSessionId: null, state: "complete" })} />);
-    expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText("Fix the README typo")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

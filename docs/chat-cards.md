@@ -41,6 +41,14 @@ provider's task list.
 
 Launcher errors render in a dismissible row below the controls and preserve serialized backend messages. A failed branch switch keeps the current branch and draft, and returns focus to the prompt if the launcher is still active.
 
+Editing a queued follow-up restores its images alongside the text. Choosing
+New chat during a provider switch moves the whole draft, including images,
+to the launcher on desktop and mobile.
+
+Opening a chat retries a failed history read twice before showing an inline
+Retry action. Transient failures stay quiet. After retries are exhausted,
+available replies and new live output remain readable beside the retry notice.
+
 Composer autofocus belongs to the active pane. Selecting a session or new-chat
 pane focuses its composer. Background mounts, send completions, and launcher
 updates cannot claim focus. Inactive multitask tabs follow the same rule even
@@ -95,6 +103,9 @@ step is complete.
 
 Each turn that touched the plan gets its own card showing the plan as it stood
 when that turn ended, so scrolling back does not rewrite history.
+Plan updates follow the same user-message and compaction boundaries as the
+rest of the conversation. A plan can open its turn before any reply text or
+tool activity arrives.
 [TodoCard.tsx](../src/renderer/components/TodoCard.tsx) is expanded while its
 turn runs and collapsed to one line once it ends, until the reader says
 otherwise. The active row carries `WorkingNest`, the app's one running mark.
@@ -327,6 +338,10 @@ keeps working. A settled blocking request no longer suppresses later assistant
 messages. Blocking questions remain answerable when the composer has a draft,
 and the draft returns after the question is settled.
 
+A failed answer or dismissal keeps the question and selected answer in place.
+The dock shows a short inline retry message only after that action fails.
+Backend error details stay out of the chat.
+
 An **answered** question leaves the dock. Legacy card answers appear as user
 messages. Synchronous Codex answers settle the tool within the same turn and
 do not add a user message.
@@ -535,12 +550,12 @@ Compaction creates a transcript boundary, not a completed provider turn. The pre
 
 ## Multitask Rows
 
-A multitask dispatched from the composer writes `multitask.launched` into this chat and `multitask.finished` when the sibling chat's turn ends. Both fold into one notice associated with the dispatch turn, then [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) draws it above the composer with [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx) (`Fix the changelog date  Multitask` / `Completed`).
+A multitask dispatched from the composer writes `multitask.launched` into this chat and `multitask.finished` when the sibling chat's turn ends. Both fold into one notice associated with the dispatch turn, then [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) draws it above the composer with [MultitaskRow.tsx](../src/renderer/components/MultitaskRow.tsx), one line per multitask in a tray tucked behind the input card (`Fix the changelog date  Corrected the 0.4 heading to 2026.`).
 
 - **It stays above the composer.** The row remains visible after the parent turn finishes and while the dispatch point scrolls away. Its content aligns with the input card, and a capped lane scrolls before repeated rows can crowd out the transcript.
 - **One row per multitask.** The finish row merges into the row the dispatch opened, keyed by child session id, while the rows keep launch order.
 - **A finished row carries one line of the answer** on the status line (`Completed · Corrected the 0.4 heading to 2026.`), markdown stripped and cut at 120 characters. The full answer stays in the dock tab.
-- **The mark names it, the words say it is live.** The mark is the emblem its dock tab uses, whatever the chat is doing, hashed off its session id the way a subagent's is hashed off its codename. A running row carries the reading wave through its task and kind, the same live mark a subagent launch row and a running tool row carry, so the mark is free to be identity alone. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for — and they are paced like a running headline: one wording per beat, newest wins, so a chat that blocks on an approval and is answered a second later never flicks a word onto the row and off again ([pacedHeadline.ts](../src/renderer/lib/pacedHeadline.ts)).
+- **The mark names it, the words say it is live.** The mark is the emblem its dock tab uses, whatever the chat is doing, hashed off its session id the way a subagent's is hashed off its codename. A running row carries the reading wave through its title, the same live mark a subagent launch row and a running tool row carry, so the mark is free to be identity alone. The status words are the launch row's own (`Running` / `Completed` / `Failed`), plus `Stopped` — the one thing a person can do to a multitask that a subagent has no equivalent for — and they are paced like a running headline: one wording per beat, newest wins, so a chat that blocks on an approval and is answered a second later never flicks a word onto the row and off again ([pacedHeadline.ts](../src/renderer/lib/pacedHeadline.ts)).
 - **Stop rides the row**, revealed on hover or focus. It stops that chat only: the early-stop launcher restore and archive are pane behaviour and a multitask has no pane.
 - **Clicking opens the dock, not another chat.** A multitask has no sidebar row; it opens as a tab in this pane's Agents view beside the subagents, carrying its own chat. See [multitask.md](multitask.md).
 

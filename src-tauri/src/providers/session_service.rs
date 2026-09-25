@@ -4436,7 +4436,7 @@ impl ProviderSessionService {
             .insert(session_id_for_map, handle);
     }
 
-    fn publish(&self, delta: DashboardDelta) {
+    pub(crate) fn publish(&self, delta: DashboardDelta) {
         // Before the emptiness check and before the renderer hop: a blocked
         // `session_wait` is waiting on exactly this edge, and a send to a
         // channel with no subscribers is a cheap no-op.

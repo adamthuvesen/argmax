@@ -54,6 +54,7 @@ function QuestionDockInner({
   const [page, setPage] = useState(0);
   const [focusedOption, setFocusedOption] = useState(0);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const optionsRef = useRef<HTMLUListElement | null>(null);
   const otherInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -107,6 +108,11 @@ function QuestionDockInner({
   const submit = useCallback((): void => {
     if (sending || !answered) return;
     setSending(true);
+    setError(null);
+    const failed = (): void => {
+      setSending(false);
+      setError("Answer was not sent. Try again.");
+    };
     // Optimistic: the panel disappears with the turn it answers, so a failed
     // send has to hand the question back rather than leave a dead slab.
     void Promise.resolve(
@@ -115,16 +121,21 @@ function QuestionDockInner({
         structuredAnswers(questions, selected, otherText)
       )
     ).then((ok) => {
-      if (ok === false) setSending(false);
-    });
+      if (ok === false) failed();
+    }, failed);
   }, [answered, onAnswer, otherText, questions, selected, sending]);
 
   const dismiss = useCallback((): void => {
     if (sending) return;
     setSending(true);
+    setError(null);
+    const failed = (): void => {
+      setSending(false);
+      setError("Question is still open. Try again.");
+    };
     void Promise.resolve(onDismiss()).then((ok) => {
-      if (ok === false) setSending(false);
-    });
+      if (ok === false) failed();
+    }, failed);
   }, [onDismiss, sending]);
 
   const pick = useCallback(
@@ -354,7 +365,8 @@ function QuestionDockInner({
       </ul>
 
       <div className="question-dock-foot">
-        {question.multiSelect ? <span className="question-dock-hint">Pick as many as apply</span> : null}
+        {error ? <span className="question-dock-hint" role="alert">{error}</span> :
+          question.multiSelect ? <span className="question-dock-hint">Pick as many as apply</span> : null}
         <button
           type="button"
           className="question-dock-send"

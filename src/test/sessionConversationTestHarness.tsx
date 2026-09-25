@@ -146,6 +146,7 @@ type ConversationOptions = {
   /** Defaults to true (events already present). Pass false to reproduce a real
       reopen, where the pane mounts empty and the backfill lands later. */
   eventsBackfilled?: boolean;
+  historyLoadFailed?: boolean;
 };
 
 export function conversationElement(
@@ -160,6 +161,7 @@ export function conversationElement(
       nativeComposerFloor={options.nativeComposerFloor ?? false}
       events={events}
       eventsBackfilled={options.eventsBackfilled ?? true}
+      historyLoadFailed={options.historyLoadFailed ?? false}
       isLogOpen={false}
       onSendSessionInput={options.onSendSessionInput ?? vi.fn(() => Promise.resolve())}
       onTerminateSession={options.onTerminateSession ?? vi.fn(() => Promise.resolve())}

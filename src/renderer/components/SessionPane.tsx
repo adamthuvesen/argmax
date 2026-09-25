@@ -729,26 +729,49 @@ export function SessionPane({
   // restore window (entrance motion, typed reveal) from this rather than from
   // mount, so a slow backfill can't arrive looking like new activity.
   const [eventsBackfilled, setEventsBackfilled] = useState(false);
+  const [historyLoadFailed, setHistoryLoadFailed] = useState(false);
+  const [historyRetryKey, setHistoryRetryKey] = useState(0);
+  const retryHistoryLoad = useCallback(() => {
+    setHistoryLoadFailed(false);
+    setHistoryRetryKey((key) => key + 1);
+  }, []);
   // Backfill timeline events for this pane on mount and whenever the session
   // changes. Each pane backfills independently of the focused-pane selection,
   // so non-focused panes still stream live messages. `loadSessionEvents` is
   // sessionId-keyed and uses a cursor map, so concurrent callers are safe.
   useEffect(() => {
     if (!sessionId || !onLoadSessionEvents) {
+      setHistoryLoadFailed(false);
       setEventsBackfilled(true);
       return;
     }
     setEventsBackfilled(false);
+    setHistoryLoadFailed(false);
     let cancelled = false;
-    // Settle on failure too: a pane stuck mid-restore would never animate or
-    // type again, which is a worse failure than the one being fixed.
-    void onLoadSessionEvents(sessionId).finally(() => {
-      if (!cancelled) setEventsBackfilled(true);
-    });
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const load = (attempt: number): void => {
+      void Promise.resolve()
+        .then(() => onLoadSessionEvents(sessionId))
+        .then(
+          () => {
+            if (!cancelled) setEventsBackfilled(true);
+          },
+          () => {
+            if (cancelled) return;
+            if (attempt < 3) {
+              retryTimer = setTimeout(() => load(attempt + 1), attempt * 300);
+            } else {
+              setHistoryLoadFailed(true);
+            }
+          }
+        );
+    };
+    load(1);
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [sessionId, onLoadSessionEvents]);
+  }, [sessionId, onLoadSessionEvents, historyRetryKey]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -850,6 +873,8 @@ export function SessionPane({
           defaultFollowUpDelivery={defaultFollowUpDelivery}
           events={visibleEvents}
           eventsBackfilled={eventsBackfilled}
+          historyLoadFailed={historyLoadFailed}
+          onRetryHistoryLoad={retryHistoryLoad}
           fastModeEnabled={fastModeEnabled}
           isLogOpen={isLogOpen}
           onClose={onClose}
@@ -877,6 +902,7 @@ export function SessionPane({
           onOpenChanges={onOpenChanges}
           onOpenAgent={handleOpenAgent}
           onOpenMultitask={handleOpenMultitask}
+          onLoadSessionEvents={onLoadSessionEvents}
           multitasks={multitasks}
           onToggleLog={toggleLog}
           isTerminalOpen={terminalOpen}

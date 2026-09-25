@@ -1,8 +1,4 @@
-import type {
-  SessionSummary,
-  TimelineEvent,
-  WorkspaceSummary
-} from "../../shared/types.js";
+import type { ApprovalRequest, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
@@ -22,52 +18,20 @@ export interface MultitaskNotice {
   createdAt: string;
 }
 
-/** How much of the answer the chat row shows before it is cut. Long enough for
- *  a real sentence, short enough that the row stays one line. */
-const ANSWER_PREVIEW_CHARS = 120;
+export type MultitaskDisplayStatus = "running" | "done" | "needs-you" | "failed" | "stopped";
 
-/**
- * The one line of a finished multitask's answer that its chat row carries.
- *
- * The full answer is a whole reply in the dock tab; here it only has to say
- * what happened, so this takes the first line with something in it and unwraps
- * the markdown it was written in — a row is not the place to render a heading
- * or a bullet.
- *
- * Only paired inline markers are unwrapped. Stripping every `_` and backtick
- * turned `Renamed \`user_id\` to \`userId\`` into "Renamed userid to userId",
- * which misreports the one thing the row exists to say.
- */
-export function multitaskAnswerPreview(answer: string | null): string | null {
-  if (!answer) return null;
-  const line = answer
-    .split(/\r?\n/)
-    .map((raw) =>
-      raw
-        .replace(/^\s*(?:[#>*+-]+\s+|\d+[.)]\s+)/, "")
-        .replace(/`([^`]+)`/g, "$1")
-        .replace(/\*\*([^*]+)\*\*/g, "$1")
-        .replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, "$1$2")
-        .trim()
-    )
-    .find(isAnswerLine);
-  if (!line) return null;
-  // Cut by character, not by UTF-16 unit: slicing mid-surrogate leaves a lone
-  // half that renders as a replacement glyph.
-  const characters = Array.from(line);
-  return characters.length > ANSWER_PREVIEW_CHARS
-    ? `${characters.slice(0, ANSWER_PREVIEW_CHARS - 1).join("").trimEnd()}…`
-    : line;
-}
-
-/**
- * A line worth showing. A rule (`---`), a bare heading marker, and the
- * placeholder the backend writes when the multitask produced no message at all
- * are all "it finished" said twice — the status word already says that.
- */
-function isAnswerLine(line: string): boolean {
-  if (line.length === 0 || line === "(no answer)") return false;
-  return /[\p{L}\p{N}]/u.test(line);
+/** The session is authoritative when available; attention can require a reply mid-turn. */
+export function multitaskDisplayStatus(
+  state: string | null,
+  attention?: SessionSummary["attention"] | null
+): MultitaskDisplayStatus {
+  if (state === "failed") return "failed";
+  if (state === "cancelled") return "stopped";
+  if (state === "blocked" || attention === "approval-needed" || attention === "question-asked" || attention === "blocked") {
+    return "needs-you";
+  }
+  if (state === "complete") return "done";
+  return "running";
 }
 
 /** Row status in the three words a launch row knows, from a chat state. */
@@ -191,10 +155,13 @@ export function workspacesWithRunningMultitask(
   return working;
 }
 
-/** A multitask of `sessionId`, paired with the workspace it runs in. */
+/** A multitask of `sessionId`, paired with the workspace it runs in and the
+ *  approval it is stopped on, if any: the row in the dispatching chat says
+ *  what the chat wants to run, not only that it is waiting. */
 export interface MultitaskChild {
   session: SessionSummary;
   workspace: WorkspaceSummary | null;
+  pendingApproval: ApprovalRequest | null;
 }
 
 /**
@@ -206,7 +173,8 @@ export interface MultitaskChild {
  */
 export function multitasksByParentSession(
   sessions: readonly SessionSummary[],
-  workspaces: readonly WorkspaceSummary[]
+  workspaces: readonly WorkspaceSummary[],
+  approvals: readonly ApprovalRequest[] = []
 ): Map<string, MultitaskChild[]> {
   const byParent = new Map<string, MultitaskChild[]>();
   for (const session of sessions) {
@@ -214,7 +182,9 @@ export function multitasksByParentSession(
     if (!isMultitaskSession(session) || !launcher) continue;
     const child: MultitaskChild = {
       session,
-      workspace: workspaces.find((workspace) => workspace.id === session.workspaceId) ?? null
+      workspace: workspaces.find((workspace) => workspace.id === session.workspaceId) ?? null,
+      pendingApproval:
+        approvals.find((approval) => approval.sessionId === session.id && approval.status === "pending") ?? null
     };
     const existing = byParent.get(launcher);
     if (existing) existing.push(child);

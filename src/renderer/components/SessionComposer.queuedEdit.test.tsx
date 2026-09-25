@@ -60,6 +60,31 @@ describe("SessionComposer queued follow-up editing", () => {
     expect(prompt().selectionStart).toBe("Fix the README typo".length);
   });
 
+  it("restores queued screenshots alongside an existing draft and sends each reference once", async () => {
+    const existing = { filePath: "/attachments/existing.png", mimeType: "image/png" as const, sizeBytes: 4 };
+    const queuedImage = { filePath: "/attachments/queued.png", mimeType: "image/png" as const, sizeBytes: 4 };
+    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
+      "session-a": { text: "and check this", attachments: [existing] }
+    }));
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    renderConversation(baseSession({ state: "complete" }), [], {
+      pendingMessages: [{ ...queued[0], content: "Review the first shot @/attachments/queued.png\n\nOpen files: README.md", attachments: [queuedImage] }],
+      onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined),
+      onSendSessionInput
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit queued follow-up: Review the first shot @/attachments/queued.png Open files: README.md" }));
+    await waitFor(() => expect(prompt()).toHaveValue("Review the first shot\n\nOpen files: README.md\n\nand check this"));
+    expect(screen.getAllByRole("button", { name: "View attachment" })).toHaveLength(2);
+
+    fireEvent.keyDown(prompt(), { key: "Enter" });
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(1));
+    expect(onSendSessionInput.mock.calls[0][1]).toBe(
+      "Review the first shot\n\nOpen files: README.md\n\nand check this @/attachments/existing.png @/attachments/queued.png"
+    );
+    expect(onSendSessionInput.mock.calls[0][4]).toEqual([existing, queuedImage]);
+  });
+
   it("leaves the prompt alone when the message could not leave the queue", async () => {
     renderConversation(baseSession({ state: "running" }), [], {
       pendingMessages: queued,

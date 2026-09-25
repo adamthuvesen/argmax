@@ -9,7 +9,9 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent,
+};
 
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::util::sync::LockOrRecover;
@@ -85,8 +87,8 @@ pub fn key_window_label() -> Option<String> {
     KEY_WINDOW.lock_or_recover("key window").clone()
 }
 
-/// The window to bring forward for `session_id`: the one it was torn off
-/// into, else the last-focused chat window.
+/// Bring forward the session's window and select its chat. Without a session,
+/// just raise the last-focused chat window (for a test notification).
 pub fn focus_session_window<R: Runtime>(app: &AppHandle<R>, session_id: Option<&str>) {
     let state = app.state::<crate::state::AppState>();
     let label = session_id
@@ -98,6 +100,12 @@ pub fn focus_session_window<R: Runtime>(app: &AppHandle<R>, session_id: Option<&
     else {
         return;
     };
+    if let Some(session_id) = session_id {
+        if let Err(error) = app.emit_to(window.label(), "window:focus-session", session_id) {
+            tracing::warn!(%error, session_id, "failed to select the notified chat");
+        }
+    }
+    let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
 }

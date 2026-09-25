@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { optionName } from "../../test/optionName.js";
 import { App } from "../App.js";
 import { persistLaunchProjectId } from "../lib/launchProjectPreference.js";
+import { readDraft } from "../lib/composerDrafts.js";
 import {
   dashboardDeltaListener,
   launchProvider,
@@ -230,6 +231,29 @@ describe("launcher prompt across context changes", () => {
       window.localStorage.getItem("argmax.composer.drafts") ?? "{}"
     ) as Record<string, { attachments?: unknown[] } | undefined>;
     expect(stored["launch-project-2"]?.attachments ?? []).toEqual([]);
+  });
+
+  it("carries an attachment-only draft when the launcher switches projects", async () => {
+    const screenshot = { filePath: "/tmp/current.png", mimeType: "image/png", sizeBytes: 10 };
+    const unrelated = { filePath: "/tmp/other.png", mimeType: "image/png", sizeBytes: 10 };
+    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
+      "launch-project-1": { text: "", attachments: [screenshot] },
+      "launch-project-2": { text: "Old target draft", attachments: [unrelated] }
+    }));
+    renderWithTwoProjects();
+    expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
+
+    await pickProject("Dotfiles");
+
+    expect(screen.getByLabelText("Task prompt")).toHaveValue("");
+    expect(screen.getAllByRole("button", { name: "View attachment" })).toHaveLength(1);
+    expect(readDraft("launch-project-1")).toEqual({ text: "", attachments: [] });
+    expect(readDraft("launch-project-2")).toEqual({ text: "", attachments: [screenshot] });
+    fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "@/tmp/current.png",
+      attachments: [screenshot]
+    })));
   });
 
   it.each(["click", "Enter"])("starts a chat with only a screenshot via %s", async (method) => {

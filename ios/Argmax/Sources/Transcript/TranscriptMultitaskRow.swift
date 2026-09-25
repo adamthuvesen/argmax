@@ -100,64 +100,64 @@ struct TranscriptMultitaskRow: View {
 
     var body: some View {
         if !dismissed {
-            HStack(spacing: Spacing.row) {
-                if state.status == .running {
-                    WorkingNest(size: 18)
-                        .frame(width: 24, height: 24)
-                } else {
-                    Image(systemName: state.status == .failed ? "exclamationmark.circle.fill" : "arrow.triangle.branch")
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(agentStatusColor(state.status))
-                        .frame(width: 24, height: 24)
-                }
-
+            HStack(alignment: .top, spacing: Spacing.tight) {
                 Button {
                     showingDetail = multitask.childSessionId != nil
                 } label: {
-                    VStack(alignment: .leading, spacing: Spacing.hair) {
-                        HStack(spacing: Spacing.snug) {
-                            Text(taskLabel)
-                                .typeSubtitle(weight: .medium)
-                                .foregroundStyle(Theme.ink)
-                                .lineLimit(2)
-                            Text("Multitask")
-                                .typeStyle(.footnote)
-                                .foregroundStyle(Theme.muted)
-                        }
+                    VStack(alignment: .leading, spacing: Spacing.tight) {
+                        Text(taskLabel)
+                            .typeSubtitle(weight: .medium)
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: Spacing.tight) {
+                            if state.status == .running {
+                                WorkingNest(size: 14)
+                                    .accessibilityHidden(true)
+                            } else {
+                                Image(systemName: state.status == .failed ? "exclamationmark.circle" : "checkmark.circle")
+                                    .typeSymbol(.footnote)
+                                    .accessibilityHidden(true)
+                            }
                             Text(state.label)
                                 .typeStyle(.footnote)
-                                .foregroundStyle(agentStatusColor(state.status))
-                            if state.status != .running,
-                               let preview = transcriptMultitaskAnswerPreview(multitask.answer) {
-                                Text("· \(preview)")
-                                    .typeStyle(.footnote)
-                                    .foregroundStyle(Theme.muted)
-                                    .lineLimit(1)
-                            }
+                        }
+                        .foregroundStyle(agentStatusColor(state.status))
+                        if state.status != .running,
+                           let preview = transcriptMultitaskAnswerPreview(multitask.answer) {
+                            Text(preview)
+                                .typeMeta()
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                         if let failure {
                             Text(failure).typeStyle(.footnote).foregroundStyle(Theme.rose)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, Spacing.snug)
                     .contentShape(.rect)
                 }
                 .buttonStyle(PressDim())
                 .disabled(multitask.childSessionId == nil)
                 .accessibilityLabel("Open multitask: \(taskLabel), \(state.label)")
+                .accessibilityValue(failure ?? (state.status == .running ? "" : transcriptMultitaskAnswerPreview(multitask.answer) ?? ""))
 
                 if state.status == .running, let childSessionID = multitask.childSessionId {
                     Button {
                         stop(childSessionID)
                     } label: {
-                        if stopping {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "stop.fill")
+                        Group {
+                            if stopping {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "stop.fill")
+                                    .typeSymbol(.footnote)
+                            }
                         }
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
                     }
-                    .frame(width: 44, height: 44)
                     .buttonStyle(PressDim())
                     .foregroundStyle(Theme.stop)
                     .disabled(stopping)
@@ -169,7 +169,10 @@ struct TranscriptMultitaskRow: View {
                         }
                         dismissed = true
                     } label: {
-                        Image(systemName: "xmark").frame(width: 44, height: 44)
+                        Image(systemName: "xmark")
+                            .typeSymbol(.caption, weight: .medium)
+                            .frame(width: 44, height: 44)
+                            .contentShape(.rect)
                     }
                     .buttonStyle(PressDim())
                     .foregroundStyle(Theme.muted)
@@ -177,7 +180,7 @@ struct TranscriptMultitaskRow: View {
                 }
             }
             .padding(.horizontal, Spacing.row)
-            .padding(.vertical, Spacing.snug)
+            .padding(.vertical, Spacing.tight)
             .frame(minHeight: 60)
             .background(Theme.raised, in: .rect(cornerRadius: Radius.card, style: .continuous))
             .sheet(isPresented: $showingDetail) {

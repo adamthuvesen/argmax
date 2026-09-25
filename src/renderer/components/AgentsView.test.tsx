@@ -467,7 +467,8 @@ describe("AgentsView", () => {
         launchedBySessionId: session.id,
         prompt: "Review the implementation"
       },
-      workspace
+      workspace,
+      pendingApproval: null
     };
     const timelines = new SessionTimelines();
     timelines.merge(
@@ -513,7 +514,8 @@ describe("AgentsView", () => {
         launchedBySessionId: session.id,
         prompt: "Review the implementation"
       },
-      workspace
+      workspace,
+      pendingApproval: null
     };
     const childEvent = (eventValue: TimelineEvent): TimelineEvent => ({
       ...eventValue,

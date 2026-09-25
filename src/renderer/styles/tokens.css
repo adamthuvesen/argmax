@@ -77,11 +77,16 @@
   --line-strong: #c6ccd0;
   --scrollbar-thumb: #dce1e4;
   --scrollbar-thumb-hover: #cfd5d8;
-  /* Hairline around the two composer cards and the multitask lane above them.
+  /* Hairline around the two composer cards.
      On paper those cards are white on a near-white --bg, so the quiet lift
      alone left their edges to guesswork; this draws them. Dark switches it off
      — see the dark block. */
   --composer-edge: var(--line);
+  /* The queued follow-up tab tucked behind the composer.
+     On paper, part-way from the sunken tone back toward the
+     card's white: the sunken tone plus ink went a grey step too far and the
+     tab read as a slab under the card rather than a sheet behind it. */
+  --composer-tray: color-mix(in oklab, var(--panel) 25%, var(--panel-sunken));
 
   /* The fill every control on a composer's chip floor wears — the model pill,
      the project and branch chips, the glyph buttons, the behavior toggles at
@@ -560,6 +565,10 @@
   /* No edge on charcoal: --composer-surface already sits a step above --panel,
      and a line drawn on top of that lift reads as a double border. */
   --composer-edge: transparent;
+  /* Three-quarters of the way from the sunken tone to the card: the earlier
+     58% mix sat five points off the charcoal --bg and read as a smear under
+     the composer rather than a layer behind it. */
+  --composer-tray: color-mix(in oklab, var(--composer-surface) 78%, var(--panel-sunken));
   --composer-chip-ink: 5%;
 
   /* Ink pulled back off paper-white: #f4f2ec bloomed on dark charcoal and read

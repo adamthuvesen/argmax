@@ -665,15 +665,9 @@
   margin-bottom: -10px;
   padding-bottom: var(--space-2_5);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  background: color-mix(in oklab, var(--composer-surface) 58%, var(--panel-sunken));
+  /* A sheet tucked behind the composer. The goal strip wears this class too. */
+  background: var(--composer-tray);
   overflow: hidden;
-}
-
-/* On paper the 58% mix nearly matches the white card; the tab takes the full
-   sunken tone plus a touch of ink so it reads as a separate layer, a step
-   past the composer chips. The goal strip wears this class too. */
-:root:not([data-theme="dark"]) .composer-queued-lane {
-  background: color-mix(in oklab, var(--text) 3%, var(--panel-sunken));
 }
 
 .composer-queued-chip {

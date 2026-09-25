@@ -84,6 +84,34 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-6 Sol");
   });
 
+  it("moves a provider-switch screenshot to the launcher without mixing in its old draft", async () => {
+    const screenshot = { filePath: "/attachments/current.png", mimeType: "image/png", sizeBytes: 4 };
+    const unrelated = { filePath: "/attachments/old-launcher.png", mimeType: "image/png", sizeBytes: 4 };
+    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
+      "session-1": { text: "", attachments: [screenshot] },
+      "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] }
+    }));
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByLabelText("Chat prompt");
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).getByRole("button", { name: "New chat" }));
+
+    expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
+    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(screenshot.filePath)]);
+    fireEvent.click(screen.getByTitle("Start agent"));
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "@/attachments/current.png",
+      attachments: [screenshot]
+    })));
+  });
+
   it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
     // The collapse toggle only governs project groups, so seed a finished
     // session: a running one would float into Working and out of the group.

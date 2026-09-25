@@ -25,7 +25,7 @@ import type {
 import { SCRATCH_PROJECT_ID } from "../shared/types.js";
 import { errorMessage } from "../shared/error.js";
 import { logger } from "../shared/logger.js";
-import { launcherDraftKey, writeDraftText } from "./lib/composerDrafts.js";
+import { clearDraft, launcherDraftKey, writeDraftAttachments, writeDraftText } from "./lib/composerDrafts.js";
 import type { NewSessionSeed } from "./components/SessionComposer.js";
 import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../shared/providerModels.js";
 import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
@@ -1171,6 +1171,20 @@ export function App(): JSX.Element {
     },
     [closeWorkspacePages, snapshot.sessions, openWorkspaceChat]
   );
+  const [notifiedSessionId, setNotifiedSessionId] = useState<string | null>(null);
+  useEffect(() => window.argmax?.windows.onFocusSession(setNotifiedSessionId), []);
+  useEffect(() => {
+    if (!notifiedSessionId || loadState !== "ready") return;
+    const session = sessionsById.get(notifiedSessionId);
+    if (!session) return;
+    setNotifiedSessionId(null);
+    hideCommandPalette();
+    hideStandalonePage();
+    hideFullLauncher();
+    closeWorkspacePages();
+    // Use the notification's session, even if its workspace has a newer chat.
+    showOnlyPane({ sessionId: session.id, workspaceId: session.workspaceId });
+  }, [closeWorkspacePages, loadState, notifiedSessionId, sessionsById]);
   const onOpenLauncherRow = useCallback((): void => {
     hideStandalonePage();
     closeWorkspacePages();
@@ -1393,8 +1407,11 @@ export function App(): JSX.Element {
       if (seed) {
         handleLaunchModelChange(seed.model);
         const draftProjectId = sideChat ? SCRATCH_PROJECT_ID : launcherProject?.id ?? null;
-        if (draftProjectId && seed.prompt.trim() !== "") {
-          writeDraftText(launcherDraftKey(draftProjectId), seed.prompt);
+        if (draftProjectId && (seed.prompt.trim() !== "" || seed.attachments.length > 0)) {
+          const draftKey = launcherDraftKey(draftProjectId);
+          clearDraft(draftKey);
+          writeDraftText(draftKey, seed.prompt);
+          writeDraftAttachments(draftKey, seed.attachments);
         }
         showFullLauncher();
         return;
@@ -1816,8 +1833,8 @@ export function App(): JSX.Element {
   // which hosts it in its dock. Grouped once per snapshot so each pane can read
   // its own without rebuilding the list.
   const multitasksByParent = useMemo(
-    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces),
-    [snapshot.sessions, snapshot.workspaces]
+    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces, snapshot.approvals),
+    [snapshot.sessions, snapshot.workspaces, snapshot.approvals]
   );
 
   const paletteSnapshot = useMemo(

@@ -712,6 +712,8 @@ export interface ArgmaxApi {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
   };
   windows: {
+    /** Select the exact chat named by a clicked desktop notification. */
+    onFocusSession: (listener: (sessionId: string) => void) => EventSubscription;
     /** Opens the session in a desktop window of its own, or focuses the
      *  window already showing it. Resolves to that window's label. */
     openSession: (input: { sessionId: string }) => Promise<{ label: string }>;

@@ -944,6 +944,12 @@
   font-size: var(--text-md);
 }
 
+.conversation-history-retry {
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+}
+
 .conversation-list {
   --conversation-list-gap: var(--space-8);
   min-height: 0;

@@ -6,7 +6,8 @@ import {
   type ChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
-  type RefObject
+  type RefObject,
+  type SetStateAction
 } from "react";
 import {
   appendReferencesToPrompt,
@@ -60,8 +61,8 @@ interface ComposerAttachmentsApi {
   openFilePicker: () => void;
   /** Drop all pending attachments. Call after a successful submit. */
   clearAttachments: () => void;
-  /** Put a failed submit's attachments back after this draft was retargeted. */
-  restoreAttachments: (attachments: ComposerAttachment[]) => void;
+  /** Restore or merge attachments into the active draft. */
+  restoreAttachments: (attachments: SetStateAction<ComposerAttachment[]>) => void;
 }
 
 interface ComposerAttachmentsDeps {
@@ -401,7 +402,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     setPendingAttachments([]);
   }, [clearPreviewUrls]);
 
-  const restoreAttachments = useCallback((attachments: ComposerAttachment[]): void => {
+  const restoreAttachments = useCallback((attachments: SetStateAction<ComposerAttachment[]>): void => {
     setPendingAttachments(attachments);
   }, []);
 

@@ -62,6 +62,11 @@ Transcript pushes and history reads enter [SessionTimelines](../src/renderer/lib
 - **Bundled macOS app:** [notifications/macos.rs](../src-tauri/src/notifications/macos.rs) sends through `UNUserNotificationCenter`. It asks for permission on first launch, reports the real authorization state (a denied app fails "Send test notification" with a message instead of silently succeeding), presents banners even while Argmax is frontmost, and focuses the window when a banner is clicked. `UNUserNotificationCenter` refuses bundles that only carry the linker's signature (`UNErrorDomain 1`), so `tauri.conf.json` ad-hoc signs local builds (`signingIdentity: "-"`; `APPLE_SIGNING_IDENTITY` still wins for releases) A refused request turns notifications off for that install (usernoted denies legacy sends from a process that has used the modern API, so there is no runtime fallback); the log says why and the test button reports it. Answer the first-launch permission prompt before quitting: if the app quits while the prompt is open, macOS refuses later requests for that install (seen on macOS 26) and the only recovery is System Settings > Notifications.
 - **Unbundled binary or other platforms:** the Tauri notification plugin. On macOS that is the deprecated `NSUserNotificationCenter`, which never shows a banner while the app is frontmost and files the notification into Notification Center history instead. `tauri dev` runs unbundled, so use a bundled build to check banner behavior.
 
+A bundled macOS notification click sends `window:focus-session` to the window
+being raised. The renderer leaves Settings or other pages and selects the exact
+session named by the notification, waiting for its dashboard row if necessary.
+A chat already shown in a torn-off window is routed there.
+
 ## Pending Follow-up Recovery
 
 The composer queue is SQLite-backed. Enqueue, removal, editing, reordering,

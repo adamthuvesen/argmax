@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionConversation } from "./SessionConversation.js";
 import {
@@ -17,6 +17,58 @@ describe("SessionConversation — cards", () => {
     vi.useRealTimers();
     delete (window as { argmax?: unknown }).argmax;
     cleanup();
+  });
+  it("shows an early follow-up plan without rewriting the previous plan", () => {
+    const events = [
+      event("u1", "user.message", "First task", "2026-05-12T15:00:00.000Z"),
+      event("p1", "todo.updated", "", "2026-05-12T15:00:01.000Z", {
+        mode: "snapshot", items: [{ text: "First plan", status: "done" }]
+      }),
+      event("a1", "message.completed", "First task done", "2026-05-12T15:00:02.000Z"),
+      event("u2", "user.message", "Second task", "2026-05-12T15:00:03.000Z"),
+      event("p2", "todo.updated", "", "2026-05-12T15:00:04.000Z", {
+        mode: "snapshot", items: [{ text: "Second plan", status: "active" }]
+      })
+    ].reverse();
+    const session = baseSession({ state: "running" });
+    const { rerender } = renderConversation(session, events);
+    const plans = screen.getAllByRole("group", { name: "Plan" });
+    expect(plans).toHaveLength(2);
+    expect(within(plans[0]).getByText("First plan")).toBeInTheDocument();
+    expect(within(plans[1]).getByText("Second plan")).toBeInTheDocument();
+    expect(within(plans[1]).getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    rerenderConversation(rerender, session, [
+      event("a2", "message.completed", "Working on second task", "2026-05-12T15:00:05.000Z"),
+      ...events
+    ]);
+    expect(screen.getAllByRole("group", { name: "Plan" })[1]).toBe(plans[1]);
+  });
+
+  it.each(["answer", "dismiss"])("keeps a failed question %s actionable without exposing backend errors", async (action) => {
+    const resolve = vi.fn().mockRejectedValueOnce(new Error("internal transport details"))
+      .mockResolvedValue({ status: "answered" });
+    window.argmax = { questions: { resolve } } as unknown as NonNullable<typeof window.argmax>;
+    renderConversation(baseSession({ state: "waiting" }), [
+      event("q", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {
+        id: "question-1", name: "AskUserQuestion", input: {
+          delivery: "blocking", requestId: "request-1",
+          questions: [{ id: "scope", question: "Which scope?", header: "Scope", options: [{ label: "Focused" }] }]
+        }
+      }),
+      event("u", "user.message", "Ask me", "2026-05-12T15:00:00.000Z")
+    ]);
+    fireEvent.click(screen.getByRole("option", { name: /Focused/ }));
+    const buttonName = action === "answer" ? "Submit answer" : "Dismiss question";
+    fireEvent.click(screen.getByRole("button", { name: buttonName }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByRole("alert")).toHaveTextContent("Try again.");
+    expect(screen.queryByText("internal transport details")).toBeNull();
+    expect(screen.getByRole("option", { name: /Focused/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("button", { name: buttonName }));
+    await waitFor(() => expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument());
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
   it("takes the composer's place while the question is live, and gives it back when the question is closed", () => {
     render(

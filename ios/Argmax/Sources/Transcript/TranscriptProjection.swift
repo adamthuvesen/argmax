@@ -1117,10 +1117,6 @@ enum TranscriptProjection {
         return string(input, keys: ["query", "pattern", "search_term", "url"])
     }
 
-    /// The command as the agent meant it, peeking through the `/bin/zsh -lc
-    /// '…'` / `bash -c "…"` launcher a provider wraps it in: the desktop's
-    /// `unwrapBashCommand` (`toolCalls.ts`). Left in, the launcher was most
-    /// of what a row had room to show.
     /// Compiled once: the projection runs per streamed chunk over every
     /// command in the chat, and compiling this per call was a quarter of the
     /// CPU a streaming chat cost. `NSRegularExpression` is safe to share
@@ -1130,6 +1126,10 @@ enum TranscriptProjection {
         options: [.caseInsensitive, .dotMatchesLineSeparators]
     )
 
+    /// The command as the agent meant it, peeking through the `/bin/zsh -lc
+    /// '…'` / `bash -c "…"` launcher a provider wraps it in: the desktop's
+    /// `unwrapBashCommand` (`toolCalls.ts`). Left in, the launcher was most
+    /// of what a row had room to show.
     static func unwrapShellCommand(_ command: String) -> String {
         let launcher = shellLauncher
         var text = withoutOuterQuotes(command.trimmingCharacters(in: .whitespacesAndNewlines))

@@ -158,8 +158,9 @@ row, about 1 KB, against 684 KB. The budget: a hint moves only the rows it
 changed. On that profile a median chat's rows are 1.1 KB (session) and 0.7 KB
 (workspace), the largest 11 KB and 25 KB (a long first prompt, a PR list), and
 a new chat also carries the id orders, 16 KB; a hint that costs more than the
-rows it names plus those orders is a regression. The perf log line `dashboard:changes wireBytes= snapshotBytes=` shows
-both sides. The phone also asks at authentication for frames of 16 KiB or more
+rows it names plus those orders is a regression. The perf log line `dashboard:changes answerBytes= snapshotBytes= whole=` shows
+the merged answer's JSON size against the full snapshot, and whether it arrived
+whole. The phone also asks at authentication for frames of 16 KiB or more
 to arrive deflated (docs/remote.md); the `frame bytes= wireBytes=` log line shows
 the JSON and wire sizes of each large one. Chat histories read 4-6x smaller,
 and inflating a frame costs 0-2 ms. A transcript read queued while the socket reconnects

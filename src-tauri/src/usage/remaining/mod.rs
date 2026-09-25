@@ -188,14 +188,23 @@ impl RemainingSource for LiveRemainingSource {
     }
 
     fn http_get(&self, url: &str, headers: &[(&str, &str)]) -> HttpAnswer {
+        if crate::providers::verification::requested() {
+            return Err("Live remaining usage is disabled in verification mode.".into());
+        }
         http::get_json(url, headers, FETCH_TIMEOUT)
     }
 
     fn keychain_password(&self, service: &str) -> Option<String> {
+        if crate::providers::verification::requested() {
+            return None;
+        }
         read_keychain_password(service)
     }
 
     fn codex_rate_limits(&self) -> Result<serde_json::Value, String> {
+        if crate::providers::verification::requested() {
+            return Err("Live remaining usage is disabled in verification mode.".into());
+        }
         codex::fetch_app_server_rate_limits(&self.home)
     }
 }
@@ -284,6 +293,9 @@ pub mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
+    #[cfg(target_os = "macos")]
+    const VERIFICATION_CHILD_ENV: &str = "ARGMAX_VERIFICATION_REMAINING_TEST_CHILD";
+
     pub struct FakeSource {
         pub home: PathBuf,
         pub env: HashMap<String, String>,
@@ -334,6 +346,89 @@ pub mod tests {
 
         fn codex_rate_limits(&self) -> Result<serde_json::Value, String> {
             self.codex_limits.clone()
+        }
+    }
+
+    /// Verification mode is process-wide, so its host-isolation check runs in
+    /// a child with a private HOME and fake executables on PATH.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn verification_never_reads_live_remaining_sources() {
+        if std::env::var(VERIFICATION_CHILD_ENV).as_deref() == Ok("1") {
+            let source = LiveRemainingSource::new();
+            let listener =
+                std::net::TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
+            listener
+                .set_nonblocking(true)
+                .expect("nonblocking listener");
+            let url = format!(
+                "http://{}",
+                listener.local_addr().expect("listener address")
+            );
+            assert_eq!(
+                source.http_get(&url, &[]),
+                Err("Live remaining usage is disabled in verification mode.".into())
+            );
+            assert_eq!(
+                listener
+                    .accept()
+                    .expect_err("no HTTP request should reach loopback")
+                    .kind(),
+                std::io::ErrorKind::WouldBlock
+            );
+            assert_eq!(source.keychain_password("verification-test"), None);
+            assert_eq!(
+                source.codex_rate_limits(),
+                Err("Live remaining usage is disabled in verification mode.".into())
+            );
+            assert!(!std::path::Path::new(
+                &std::env::var("ARGMAX_VERIFICATION_REMAINING_TEST_LOG").expect("fixture log")
+            )
+            .exists());
+            return;
+        }
+
+        use std::os::unix::fs::PermissionsExt;
+
+        let profile = tempfile::tempdir().expect("isolated profile");
+        let bin = profile.path().join("bin");
+        std::fs::create_dir(&bin).expect("fixture bin");
+        for name in ["security", "codex"] {
+            let executable = bin.join(name);
+            std::fs::write(
+                &executable,
+                "#!/bin/sh\nprintf '%s\\n' invoked >> \"$ARGMAX_VERIFICATION_REMAINING_TEST_LOG\"\n",
+            )
+            .expect("fixture executable");
+            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755))
+                .expect("executable permissions");
+        }
+
+        for mode in ["1", "malformed"] {
+            let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+                .args([
+                    "--exact",
+                    "usage::remaining::tests::verification_never_reads_live_remaining_sources",
+                    "--nocapture",
+                ])
+                .env_clear()
+                .env(VERIFICATION_CHILD_ENV, "1")
+                .env(crate::providers::verification::MODE_ENV, mode)
+                .env(crate::providers::verification::HOME_ENV, profile.path())
+                .env("HOME", profile.path())
+                .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+                .env(
+                    "ARGMAX_VERIFICATION_REMAINING_TEST_LOG",
+                    profile.path().join("invocations.log"),
+                )
+                .output()
+                .expect("verification child");
+            assert!(
+                output.status.success(),
+                "verification child ({mode}) failed:\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
     }
 

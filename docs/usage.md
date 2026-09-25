@@ -78,6 +78,7 @@ their logs; those win over the table and are marked *provider reported*.
 | Cursor | none | Cursor keeps no local token log; the page says so |
 
 Remaining usage is a second, live read. It does not go through `usage_hourly`.
+Verification mode disables its network, Keychain, and Codex app-server reads.
 
 | Provider | Remaining source | Notes |
 |---|---|---|

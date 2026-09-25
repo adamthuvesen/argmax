@@ -170,6 +170,7 @@ const browser = spawn(
     "--remote-debugging-port=0",
     `--user-data-dir=${profileDir}`,
     "--no-first-run",
+    "--use-mock-keychain",
     "--hide-scrollbars",
     `--window-size=${options.width},${options.height}`,
     "about:blank"

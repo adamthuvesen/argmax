@@ -60,6 +60,8 @@ npm run tauri:build     # production Tauri bundle
 
 ## Read The Docs First
 
+Prove user-facing changes with the `verify-argmax` skill at `.agents/skills/verify-argmax/SKILL.md`.
+
 Before editing a subsystem, read the matching `docs/*.md`:
 
 - **Start here / Architecture** → [architecture.md](docs/architecture.md)

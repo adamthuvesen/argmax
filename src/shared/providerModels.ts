@@ -225,12 +225,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       contextWindow: 1_000_000
     },
     {
-      label: "Grok 4.6 (Cursor)",
-      modelId: "cursor-grok-4.6-medium",
-      supportsReasoningEffort: true,
-      contextWindow: 1_000_000
-    },
-    {
       label: "Gemini 3.8 Flash (Cursor)",
       modelId: "gemini-3.8-flash-medium",
       supportsReasoningEffort: true,
@@ -258,8 +252,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // in reasoningEffortsForModel and the Rust adapter in sync with these.
   opencode: [
     { label: "Big Pickle", modelId: "opencode/big-pickle", contextWindow: 200_000 },
-    { label: "Nemotron 3.5 Lightning Free", modelId: "opencode/nemotron-3.5-lightning-free", contextWindow: 262_144 },
-    { label: "Nemotron 3 Ultra Free", modelId: "opencode/nemotron-3-ultra-free", contextWindow: 1_000_000 },
     {
       label: "Muse Spark 1.3 Free",
       modelId: "opencode/muse-spark-1.3-contributor-free",
@@ -274,14 +266,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "DeepSeek V4 Pro", modelId: "opencode-go/deepseek-v4-pro", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "DeepSeek V4.1 Flash", modelId: "opencode-go/deepseek-v4.1-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
   ],
-  // The models `grok models` lists. All take --reasoning-effort up to xhigh
-  // (the CLI rejects max/ultra). Fast is a separate advertised SKU on 4.7
-  // only (`grok-4.7-build-fast`); 4.6 and 4.5 have no fast counterpart.
-  // 500K window per xAI's published model card.
+  // The picker offers Grok 4.7. It takes --reasoning-effort up to xhigh (the
+  // CLI rejects max/ultra). Fast is the advertised SKU `grok-4.7-build-fast`.
+  // 500K window per xAI's published model card. 4.6 and 4.5 stay priced for
+  // sessions already launched on them.
   grok: [
-    { label: "Grok 4.7", modelId: "grok-4.7", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 500_000 },
-    { label: "Grok 4.6", modelId: "grok-4.6", supportsReasoningEffort: true, contextWindow: 500_000 },
-    { label: "Grok 4.5", modelId: "grok-4.5", supportsReasoningEffort: true, contextWindow: 500_000 }
+    { label: "Grok 4.7", modelId: "grok-4.7", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 500_000 }
   ]
 };
 
@@ -296,9 +286,8 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   codex: "gpt-6-luna",
   cursor: "composer-2.5",
   opencode: "opencode/big-pickle",
-  // 4.5 is the pricier SKU. 4.7 matches 4.6's Grok Build rate; titles stay on
-  // 4.6 so a helper call does not ride the new default.
-  grok: "grok-4.6"
+  // Same Grok Build rate as the chat model. 4.5 costs twice as much.
+  grok: "grok-4.7"
 };
 
 /**

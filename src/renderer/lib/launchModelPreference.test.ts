@@ -63,7 +63,7 @@ describe("launch model preference", () => {
     persistDefaultEffort("ultra");
     window.localStorage.setItem(
       LAUNCH_MODEL_KEY,
-      JSON.stringify({ provider: "grok", modelId: "grok-4.6" })
+      JSON.stringify({ provider: "grok", modelId: "grok-4.7" })
     );
 
     expect(readStoredLaunchModel()?.reasoningEffort).toBe("medium");
@@ -85,11 +85,11 @@ describe("launch model preference", () => {
   it("keeps the stored default when a model can only offer a fallback", () => {
     persistDefaultEffort("ultra");
     // Grok resolves to Medium — a fallback, not a choice, so Ultra survives.
-    persistLaunchModel({ provider: "grok", label: "Grok 4.6", modelId: "grok-4.6", reasoningEffort: "medium" });
+    persistLaunchModel({ provider: "grok", label: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: "medium" });
     expect(readStoredDefaultEffort()).toBe("ultra");
 
     // Picking High on that same model is an explicit choice and moves the default.
-    persistLaunchModel({ provider: "grok", label: "Grok 4.6", modelId: "grok-4.6", reasoningEffort: "high" });
+    persistLaunchModel({ provider: "grok", label: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: "high" });
     expect(readStoredDefaultEffort()).toBe("high");
   });
 

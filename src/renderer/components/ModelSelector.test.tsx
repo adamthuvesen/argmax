@@ -94,8 +94,7 @@ describe("ModelSelector — one row per model", () => {
       JSON.stringify([
         "opencode:opencode-go/deepseek-v4.1-flash",
         "opencode:opencode-go/deepseek-v4-pro",
-        "grok:grok-4.5",
-        "grok:grok-4.6",
+        "grok:grok-4.7",
         "cursor:claude-opus-5-5-medium",
         "codex:gpt-6-luna"
       ])
@@ -112,11 +111,12 @@ describe("ModelSelector — one row per model", () => {
     const labels = within(screen.getByRole("listbox", { name: "Launch model" }))
       .getAllByRole("option")
       .map((option) => optionName(option));
-    expect(labels.slice(0, 3)).toEqual(["DeepSeek V4.1 Flash", "DeepSeek V4 Pro", "Grok 4.5"]);
+    expect(labels.slice(0, 3)).toEqual(["DeepSeek V4.1 Flash", "DeepSeek V4 Pro", "Grok 4.7"]);
     expect(labels).toContain("DeepSeek V4.1 Flash");
-    expect(labels).toContain("Grok 4.5");
+    expect(labels).toContain("Grok 4.7");
+    expect(labels.some((label) => label.includes("Grok 4.6") || label.includes("Grok 4.5") || label.includes("Nemotron"))).toBe(false);
     expect(labels.indexOf("DeepSeek V4.1 Flash")).toBeLessThan(labels.lastIndexOf("DeepSeek V4.1 Flash"));
-    expect(labels.indexOf("Grok 4.5")).toBeLessThan(labels.lastIndexOf("Grok 4.5"));
+    expect(labels.indexOf("Grok 4.7")).toBeLessThan(labels.lastIndexOf("Grok 4.7"));
     expect(labels.slice(3, 4)).toEqual(["Fable 5.1"]);
   });
 });
@@ -141,7 +141,7 @@ describe("Cursor Auto models", () => {
   it.each(autoModels)("selects $label without effort or speed overrides", (model) => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <ModelSelector ariaLabel="Chat model" provider="cursor" value={{ label: "Grok 4.6 (Cursor)", modelId: "cursor-grok-4.6-medium", reasoningEffort: "high" }} onChange={onChange} />
+      <ModelSelector ariaLabel="Chat model" provider="cursor" value={{ label: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: "high" }} onChange={onChange} />
     );
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(within(screen.getByRole("option", { name: model.label })).getByRole("button", { name: model.label }));

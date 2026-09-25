@@ -48,7 +48,7 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
 /** The header the recently used rows sit under, above the provider groups. */
 const RECENT_GROUP_LABEL = "Recent";
 
-/** A catalog label that names its provider ("Grok 4.6 (Cursor)") repeats the
+/** A catalog label that names its provider ("Grok 4.7 (Cursor)") repeats the
  *  group header it sits under; the row drops the suffix, the chip keeps it. */
 function rowLabel(label: string, provider: ProviderId): string {
   const suffix = ` (${PROVIDER_GROUP_LABEL[provider]})`;

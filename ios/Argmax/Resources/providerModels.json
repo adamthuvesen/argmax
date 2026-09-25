@@ -78,20 +78,6 @@
           "defaultEffort": "medium"
         },
         {
-          "label": "Opus 5",
-          "modelId": "claude-opus-5",
-          "contextWindow": 1000000,
-          "reasoningEfforts": [
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max",
-            "ultra"
-          ],
-          "defaultEffort": "medium"
-        },
-        {
           "label": "Sonnet 5",
           "modelId": "claude-sonnet-5",
           "contextWindow": 200000,
@@ -236,17 +222,6 @@
           "defaultEffort": "medium"
         },
         {
-          "label": "Grok 4.6 (Cursor)",
-          "modelId": "cursor-grok-4.6-medium",
-          "contextWindow": 1000000,
-          "reasoningEfforts": [
-            "low",
-            "medium",
-            "high"
-          ],
-          "defaultEffort": "medium"
-        },
-        {
           "label": "Gemini 3.8 Flash (Cursor)",
           "modelId": "gemini-3.8-flash-medium",
           "contextWindow": 1000000,
@@ -308,19 +283,6 @@
             "max"
           ],
           "defaultEffort": "medium"
-        },
-        {
-          "label": "Claude Opus 5 (Cursor)",
-          "modelId": "claude-opus-5-thinking-medium",
-          "contextWindow": 1000000,
-          "reasoningEfforts": [
-            "low",
-            "medium",
-            "high",
-            "xhigh",
-            "max"
-          ],
-          "defaultEffort": "medium"
         }
       ]
     },
@@ -340,20 +302,6 @@
           "label": "Big Pickle",
           "modelId": "opencode/big-pickle",
           "contextWindow": 200000,
-          "reasoningEfforts": [],
-          "defaultEffort": null
-        },
-        {
-          "label": "Nemotron 3.5 Lightning Free",
-          "modelId": "opencode/nemotron-3.5-lightning-free",
-          "contextWindow": 262144,
-          "reasoningEfforts": [],
-          "defaultEffort": null
-        },
-        {
-          "label": "Nemotron 3 Ultra Free",
-          "modelId": "opencode/nemotron-3-ultra-free",
-          "contextWindow": 1000000,
           "reasoningEfforts": [],
           "defaultEffort": null
         },
@@ -444,7 +392,7 @@
       "id": "grok",
       "displayName": "Grok Build",
       "forkCapable": true,
-      "titleModelId": "grok-4.6",
+      "titleModelId": "grok-4.7",
       "defaultModel": {
         "provider": "grok",
         "label": "Grok 4.7",
@@ -455,30 +403,6 @@
         {
           "label": "Grok 4.7",
           "modelId": "grok-4.7",
-          "contextWindow": 500000,
-          "reasoningEfforts": [
-            "low",
-            "medium",
-            "high",
-            "xhigh"
-          ],
-          "defaultEffort": "medium"
-        },
-        {
-          "label": "Grok 4.6",
-          "modelId": "grok-4.6",
-          "contextWindow": 500000,
-          "reasoningEfforts": [
-            "low",
-            "medium",
-            "high",
-            "xhigh"
-          ],
-          "defaultEffort": "medium"
-        },
-        {
-          "label": "Grok 4.5",
-          "modelId": "grok-4.5",
           "contextWindow": 500000,
           "reasoningEfforts": [
             "low",

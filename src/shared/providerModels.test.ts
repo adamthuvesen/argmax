@@ -350,11 +350,12 @@ describe("Grok Build pricing", () => {
     }
   });
 
-  // 4.5 is twice the 4.6/4.7 SKU rate. The default is 4.7 at that cheaper
-  // rate; titles stay on 4.6 so a helper call does not ride the new default.
+  // 4.5 is twice the 4.6/4.7 SKU rate. The picker, the default, and title
+  // calls stay on 4.7 at the cheaper rate.
   it("keeps the cheaper SKU rate on the default and title models", () => {
+    expect(PROVIDER_MODELS.grok.map((model) => model.modelId)).toEqual(["grok-4.7"]);
     expect(PROVIDER_MODEL_DEFAULTS.grok.modelId).toBe("grok-4.7");
-    expect(PROVIDER_TITLE_MODEL.grok).toBe("grok-4.6");
+    expect(PROVIDER_TITLE_MODEL.grok).toBe("grok-4.7");
     expect(MODEL_PRICING["grok-4.7"]).toEqual(MODEL_PRICING["grok-4.6"]);
     expect(MODEL_PRICING["grok-4.7"].input).toBeLessThan(MODEL_PRICING["grok-4.5"].input);
   });

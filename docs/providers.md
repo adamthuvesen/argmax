@@ -17,7 +17,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 - [flush_queue.rs](../src-tauri/src/providers/flush_queue.rs): Batches event writes to SQLite and emits `dashboard:delta`. Complete ordinary output shares a bounded ~25 ms persistence window per session. Newline-less fragments retain a short idle debounce so arbitrary PTY chunk boundaries stay intact. Approvals, permission blocks, errors, completion, process exit, and cancellation flush immediately.
 - [subagent_trace/](../src-tauri/src/providers/subagent_trace): Imports trace-backed child activity and reconciles authoritative child lineage when a provider omits a launch row.
 - [pricing.rs](../src-tauri/src/providers/pricing.rs): Token pricing models matching `src/shared/providerModels.ts`.
-- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model; Grok uses `grok-4.6` (same Grok Build SKU rate as 4.7, cheaper than 4.5) with `--disallowed-tools` (an empty `--tools` allowlist is ignored), `--max-turns 1`, `--output-format json`, and a `{title}` JSON schema on the title path so a screenshot launch cannot land the "I'll glance at…" tool-loop preamble as the sidebar label.
+- [one_shot.rs](../src-tauri/src/providers/one_shot.rs): One-shot helper calls to a provider CLI, all on the cheap `PROVIDER_TITLE_MODEL` (`providerModels.ts`) with tools and config loading off. Two callers: short session titles (`workspaces:autotitle`) and the composer's suggested follow-up (`session:suggest-follow-up`). Claude uses `claude-sonnet-5 --effort low`; OpenCode stays on the free `opencode/big-pickle` model; Grok uses `grok-4.7` (the Grok Build SKU rate, cheaper than 4.5) with `--disallowed-tools` (an empty `--tools` allowlist is ignored), `--max-turns 1`, `--output-format json`, and a `{title}` JSON schema on the title path so a screenshot launch cannot land the "I'll glance at…" tool-loop preamble as the sidebar label.
 
 The title prompt frames the launch prompt as data addressed to a *different* agent, because the helper has none of the session's tools: a prompt like "read this Notion page and answer her questions" otherwise reads as a question put to the titler, which answers it. That framing is a nudge, not a guarantee, so `sanitize_title` is the gate that holds for all five providers — it sits after each provider's answer extraction, scans line by line so a "Here's the title:" preamble costs only its own line, and rejects any line that opens conversationally or runs past twelve words. A rejected answer leaves the renderer's prompt-derived label (`titleFromPrompt`) in place rather than pinning a truncated refusal to the sidebar.
 
@@ -466,7 +466,7 @@ Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by worksp
 - **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
 - **Repo-local MCP servers are gated on folder trust.** `grok inspect --json` reports `projectTrusted: false` for a checkout the user has never accepted, and the `.grok/config.toml` Argmax writes is ignored until it is true. A launch therefore records the workspace in Grok's own `trusted_folders.toml` and gives the entry back at the end ([agent-tools.md](agent-tools.md)).
 - **Skills** come from `.grok/skills`, `.agents/skills`, and — by Grok's own compatibility rules — `.claude/skills`, plus `~/.grok/installed-plugins/<plugin>/skills` and the bundled cache at `~/.grok/bundled/skills`.
-- **Pricing** is the `grok-4.7-build` / `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The 4.6 rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; 4.7 is served at that same rate, and 4.5 costs twice as much. The default is 4.7; titles stay on 4.6.
+- **Pricing** is the `grok-4.7-build` / `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The 4.6 rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; 4.7 is served at that same rate, and 4.5 costs twice as much. The default and title calls use 4.7.
 - **Session sync is not supported.** Grok stores transcripts under `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/` (`$GROK_HOME/sessions/…` when that variable is set), which is a lossless cwd mapping, but Argmax has no reader for it yet — the Settings toggle renders disabled.
 
 ## Subagent Activity
@@ -620,7 +620,7 @@ The `argmax session …` CLI still speaks the same socket from a terminal. See
 Defaults are configured in Settings → Agents → Default model (`localStorage.argmax.launch.model`). When unset, the app selects the highest priority installed provider:
 1. Claude (Opus 5.5)
 2. Codex (GPT-6 Sol)
-3. Cursor (Grok 4.6)
+3. Cursor (Grok 4.7)
 4. OpenCode (GLM-5.3-Flash)
-5. Grok Build (Grok 4.6)
+5. Grok Build (Grok 4.7)
 6. Fallback: Big Pickle

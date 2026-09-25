@@ -144,7 +144,7 @@ pub fn helper_model(provider: ProviderId) -> &'static str {
         ProviderId::Codex => "gpt-6-luna",
         ProviderId::Cursor => "composer-2.5",
         ProviderId::Opencode => "opencode/big-pickle",
-        ProviderId::Grok => "grok-4.6",
+        ProviderId::Grok => "grok-4.7",
     }
 }
 

@@ -220,7 +220,7 @@
   width: max-content;
   list-style: none;
   cursor: pointer;
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .cloud-task-dialog-context summary::-webkit-details-marker {
@@ -381,7 +381,7 @@
   border-color: var(--ink);
   background: var(--ink);
   color: var(--bubble-on-ink);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .cloud-task-dialog-actions button:is([disabled], [aria-disabled="true"]) {

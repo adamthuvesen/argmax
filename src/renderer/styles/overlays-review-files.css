@@ -133,7 +133,7 @@
 .workspace-tree-file[aria-pressed="true"] {
   color: var(--text);
   background-color: color-mix(in oklab, var(--review-sidebar) 86%, var(--text));
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .workspace-tree-file[aria-pressed="true"]::before {
@@ -581,7 +581,7 @@
 
 .file-tab-close-prompt strong {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .file-tab-close-prompt-error {
@@ -760,7 +760,7 @@
 
 .file-preview-path-leaf {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .file-preview-heading-meta {
@@ -1610,7 +1610,7 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted-strong);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .project-knowledge-summary {

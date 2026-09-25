@@ -44,7 +44,9 @@ function contrast(foreground: string, background: string): number {
   return (values[0] + 0.05) / (values[1] + 0.05);
 }
 
-function fontWeight(rule: string): number {
+function fontWeight(rule: string, tokens = ""): number {
+  const token = /font-weight:\s*var\((?<name>--[\w-]+)\)/.exec(rule)?.groups?.name;
+  if (token) return fontWeight(new RegExp(`${token}:[^;]*`).exec(tokens)?.[0].replace(token, "font-weight") ?? "");
   const match = /font-weight:\s*(?:calc\()?(?<weight>\d+)/.exec(rule);
   expect(match?.groups?.weight).toBeDefined();
   return Number(match?.groups?.weight ?? 0);
@@ -178,11 +180,11 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // charcoal. #ffffff is 1.0, and the shipped pair sits a step under it.
     expect(inkStrong).toBeLessThan(0.94);
 
-    // Geist Sans ships 400/500/700 statics and CSS resolves a request above
-    // 500 upward, so anything past 500 renders the same face as the headings
-    // and the emphasis step disappears.
-    const strong = fontWeight(cssRuleBody(conversation, ".markdown strong"));
-    expect(strong).toBeLessThanOrEqual(500);
+    // Bold prose takes the medium step, kept under a true 500 so emphasis
+    // reads as a step off body text rather than a jump.
+    const strong = fontWeight(cssRuleBody(conversation, ".markdown strong"), tokens);
+    expect(strong).toBeGreaterThan(400);
+    expect(strong).toBeLessThan(500);
     for (const heading of [".markdown h1", ".markdown h2", ".markdown h3"]) {
       expect(fontWeight(cssRuleBody(conversation, heading))).toBeGreaterThan(strong);
     }
@@ -220,7 +222,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       styles.indexOf('url("./styles/background-intensity.css")')
     );
     expect(cssRuleBody(tokens, ":root")).toContain("--bg: #fcfcfb;");
-    expect(cssRuleBody(tokens, ":root")).toContain("--row-selected: #eaeae8;");
+    expect(cssRuleBody(tokens, ":root")).toContain("--row-selected: #eeeeec;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain("--bg: #141414;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain(
       "--row-selected: var(--panel-soft);"

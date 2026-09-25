@@ -101,7 +101,7 @@
   color: var(--text-soft);
   font: inherit;
   font-size: var(--text-xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   white-space: nowrap;
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease),
@@ -991,7 +991,7 @@
 }
 
 .log-record-level {
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .log-record[data-level="error"] .log-record-level,
@@ -1394,7 +1394,7 @@ button.tool-call-row-button {
    the full-row tint read as loud, so it's gone; the row uses the normal hover. */
 .tool-call-row[data-tool-type="agent"] .tool-call-row-verb {
   color: var(--path-ink);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   letter-spacing: 0;
 }
 

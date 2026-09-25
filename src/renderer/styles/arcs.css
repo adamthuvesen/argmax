@@ -255,7 +255,7 @@
   background: var(--ink);
   color: var(--bubble-on-ink);
   border-color: var(--ink);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .new-arc-dialog-actions button[disabled] {
@@ -294,7 +294,7 @@
 .arc-section-title {
   margin: 0;
   font-size: var(--text-xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   letter-spacing: 0.012em;
   color: var(--muted-strong);
 }
@@ -385,7 +385,7 @@
    than a second object beside the title. */
 .arc-hero-state {
   color: var(--muted-strong);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .arc-hero-state[data-arc-state="active"] {
@@ -541,7 +541,7 @@
   color: var(--text);
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   text-align: left;
   cursor: pointer;
 }
@@ -721,7 +721,7 @@
 .arc-event-verb {
   flex: 0 0 auto;
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .arc-event-subject {
@@ -970,7 +970,7 @@ button.arc-event-subject:hover {
 
 .new-arc-promote-intro strong {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .new-arc-promote-facts {
@@ -998,7 +998,7 @@ button.arc-event-subject:hover {
 
 .new-arc-promote-facts strong {
   color: var(--text);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
 }
 
 .new-arc-promote-facts li[data-tone="warning"],

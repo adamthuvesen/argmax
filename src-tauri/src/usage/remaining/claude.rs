@@ -173,13 +173,43 @@ fn claude_access_token(source: &dyn RemainingSource) -> Option<String> {
     if let Some(token) = source.env("CLAUDE_CODE_OAUTH_TOKEN") {
         return Some(token);
     }
-    if let Some(token) = token_from_credentials_file(source) {
-        return Some(token);
-    }
-    keychain_services(source)
-        .iter()
-        .filter_map(|service| source.keychain_password(service))
-        .find_map(|raw| token_from_credentials_json(&raw))
+    // A `.credentials.json` can outlive the login it holds: on macOS the CLI
+    // refreshes only its keychain item, so a file written once by a run that
+    // could not reach the keychain keeps an expired token forever. Take the
+    // credential that expires last; on a tie, the file wins.
+    //
+    // Compare only within one profile: the configured profile's file and
+    // keychain item first, the default profile's only when it has neither.
+    // The default profile may hold another account, so a later expiry there
+    // must not outrank the profile the sessions actually run as.
+    credentials_paths(source)
+        .into_iter()
+        .zip(keychain_services(source))
+        .find_map(|(path, service)| {
+            let file = std::fs::read_to_string(path).ok();
+            let keychain = source.keychain_password(&service);
+            let mut best: Option<OAuthCredential> = None;
+            for credential in file
+                .into_iter()
+                .chain(keychain)
+                .filter_map(|raw| credential_from_json(&raw))
+            {
+                if best
+                    .as_ref()
+                    .is_none_or(|kept| credential.expires_at > kept.expires_at)
+                {
+                    best = Some(credential);
+                }
+            }
+            best
+        })
+        .map(|credential| credential.access_token)
+}
+
+struct OAuthCredential {
+    access_token: String,
+    /// Epoch milliseconds; `None` ranks below any stated expiry.
+    expires_at: Option<i64>,
 }
 
 /// Claude Code namespaces its keychain item per config directory: the service
@@ -200,29 +230,18 @@ fn keychain_services(source: &dyn RemainingSource) -> Vec<String> {
     services
 }
 
-fn token_from_credentials_file(source: &dyn RemainingSource) -> Option<String> {
-    for path in credentials_paths(source) {
-        if let Ok(text) = std::fs::read_to_string(path) {
-            if let Some(token) = token_from_credentials_json(&text) {
-                return Some(token);
-            }
-        }
-    }
-    None
-}
-
-fn token_from_credentials_json(text: &str) -> Option<String> {
+fn credential_from_json(text: &str) -> Option<OAuthCredential> {
     let json: Value = serde_json::from_str(text).ok()?;
-    json.pointer("/claudeAiOauth/accessToken")
+    let oauth = json.get("claudeAiOauth").unwrap_or(&json);
+    let access_token = oauth
+        .get("accessToken")
         .and_then(|v| v.as_str())
-        .filter(|token| !token.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            json.get("accessToken")
-                .and_then(|v| v.as_str())
-                .filter(|token| !token.is_empty())
-                .map(str::to_string)
-        })
+        .filter(|token| !token.is_empty())?
+        .to_string();
+    Some(OAuthCredential {
+        access_token,
+        expires_at: oauth.get("expiresAt").and_then(Value::as_i64),
+    })
 }
 
 pub fn parse_usage_windows(body: &Value) -> Vec<UsageLimitWindow> {
@@ -427,6 +446,41 @@ mod tests {
             r#"{"claudeAiOauth":{"accessToken":"legacy"}}"#.into(),
         );
         assert_eq!(claude_access_token(&source).as_deref(), Some("legacy"));
+    }
+
+    #[test]
+    fn an_expired_credentials_file_loses_to_a_live_keychain_item() {
+        let dir = tempfile::tempdir().expect("temp");
+        std::fs::create_dir(dir.path().join(".claude")).expect("dir");
+        std::fs::write(
+            dir.path().join(".claude/.credentials.json"),
+            r#"{"claudeAiOauth":{"accessToken":"stale","expiresAt":1790000000000}}"#,
+        )
+        .expect("credentials");
+        let mut source = FakeSource::new(dir.path().to_path_buf());
+        source.keychain.insert(
+            "Claude Code-credentials".into(),
+            r#"{"claudeAiOauth":{"accessToken":"live","expiresAt":1790200000000}}"#.into(),
+        );
+        assert_eq!(claude_access_token(&source).as_deref(), Some("live"));
+    }
+
+    #[test]
+    fn a_later_default_profile_token_does_not_outrank_the_configured_profile() {
+        let dir = tempfile::tempdir().expect("temp");
+        let mut source = FakeSource::new(dir.path().to_path_buf());
+        source
+            .env
+            .insert("CLAUDE_CONFIG_DIR".into(), "/Users/example/.claude".into());
+        source.keychain.insert(
+            "Claude Code-credentials".into(),
+            r#"{"claudeAiOauth":{"accessToken":"other-account","expiresAt":1790900000000}}"#.into(),
+        );
+        source.keychain.insert(
+            "Claude Code-credentials-402b469b".into(),
+            r#"{"claudeAiOauth":{"accessToken":"profile","expiresAt":1790200000000}}"#.into(),
+        );
+        assert_eq!(claude_access_token(&source).as_deref(), Some("profile"));
     }
 
     fn write_account(home: &std::path::Path, org: &str, tier: &str) {

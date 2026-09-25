@@ -235,7 +235,7 @@
   flex: 0 0 auto;
   font-family: var(--font-ui);
   font-size: var(--text-2xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
 }
 
@@ -464,7 +464,7 @@
 
 .commit-dialog-message-label {
   font-size: var(--text-2xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.16em;

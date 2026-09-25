@@ -279,7 +279,7 @@
   background: transparent;
   font-family: var(--font-code);
   font-size: inherit;
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   line-height: inherit;
   text-align: left;
   overflow-wrap: anywhere;
@@ -378,7 +378,7 @@
   padding: var(--space-1) var(--workspace-card-row-inset) 0;
   color: var(--muted);
   font-size: var(--text-3xs);
-  font-weight: calc(500 + var(--font-weight-offset));
+  font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

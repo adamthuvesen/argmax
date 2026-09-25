@@ -164,7 +164,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
 /* When the sidebar (which normally holds the macOS titlebar strip) is
    collapsed, surfaces without their own top chrome still need to clear the
    traffic lights + show-sidebar button. The conversation surface opts out
-   below because its repo-title row becomes the titlebar itself. */
+   below because its header row becomes the titlebar itself. */
 .app-shell[data-sidebar-collapsed="true"] .launcher-scroll {
   padding-top: 38px;
 }

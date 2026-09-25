@@ -55,7 +55,7 @@ describe("App browser page", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     fireEvent.mouseDown(within(palette).getByRole("option", { name: /Build dashboard/ }));
 
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
     expect(window.localStorage.getItem(BROWSER_PAGE_OPEN_KEY)).toBe("false");
   });
@@ -80,7 +80,7 @@ describe("App browser page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Browser" })).not.toHaveAttribute("aria-current");
     expect(window.localStorage.getItem(BROWSER_PAGE_OPEN_KEY)).toBe("false");
@@ -98,7 +98,7 @@ describe("App browser page", () => {
   it("still opens Browser in a chat's review panel", async () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     const review = await screen.findByRole("complementary", { name: "Review panel" });
@@ -117,7 +117,7 @@ describe("App browser page", () => {
     };
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
     expect(emitAgentOpen).toBeDefined();
 

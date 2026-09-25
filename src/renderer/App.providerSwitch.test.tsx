@@ -6,7 +6,7 @@ import { NEW_SESSION_MODE_KEY } from "./lib/newSessionMode.js";
 
 async function openSessionPane(): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-  expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 }
 
 // The seeded session runs on Codex, so "Sonnet 5" crosses providers and raises

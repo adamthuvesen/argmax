@@ -878,8 +878,7 @@ describe("SessionConversation — tools & chrome", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
 
-    const repositoryHeading = screen.getByRole("heading", { level: 2 });
-    fireEvent.mouseDown(repositoryHeading);
+    fireEvent.mouseDown(screen.getByRole("region", { name: "Conversation" }));
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
   });

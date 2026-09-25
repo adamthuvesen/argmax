@@ -127,7 +127,7 @@ describe("launcher prompt across context changes", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
     const prompt = await screen.findByLabelText("Task prompt");
@@ -158,7 +158,7 @@ describe("launcher prompt across context changes", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
     expect(await screen.findByRole("button", { name: "Switch project" })).toHaveTextContent("Argmax");
@@ -175,7 +175,7 @@ describe("launcher prompt across context changes", () => {
     fireEvent.mouseDown(document.querySelector(".picker-dismiss-layer") as Element);
 
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.keyDown(document, { key: "n", metaKey: true });
 
     expect(await screen.findByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");

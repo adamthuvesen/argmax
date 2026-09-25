@@ -157,14 +157,14 @@ describe("App grid", () => {
 
     // Open the first session by clicking its sidebar row.
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     // ⌘-click the second session to split the grid to the right.
     fireEvent.click(screen.getByRole("button", { name: "Split target" }), { metaKey: true });
 
-    // Both panes are now mounted simultaneously — heading appears twice.
+    // Both panes are now mounted simultaneously — the conversation region appears twice.
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(2);
     });
 
     expect(screen.getByTitle("Build dashboard — running — in view")).toBeInTheDocument();
@@ -176,7 +176,7 @@ describe("App grid", () => {
     // Closing one via the × leaves a single pane.
     fireEvent.click(screen.getAllByRole("button", { name: "Close pane" })[1]);
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(1);
     });
   });
 
@@ -197,12 +197,12 @@ describe("App grid", () => {
 
     // Open first session
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     // ⌘-click the second session to split right
     fireEvent.click(screen.getByRole("button", { name: "Split target" }), { metaKey: true });
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(2);
     });
 
     // Archive the second session from its sidebar row
@@ -218,7 +218,7 @@ describe("App grid", () => {
 
     // Grid now has only 1 pane (the first one)
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(1);
     });
     expect(screen.getByTitle("Build dashboard — running — in view")).toBeInTheDocument();
     expect(screen.queryByTitle("Split target — complete — in view")).not.toBeInTheDocument();
@@ -236,7 +236,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: "Below target" }), { altKey: true });
 
@@ -278,7 +278,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
@@ -368,7 +368,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "New chat here" }));
@@ -389,7 +389,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
     const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
@@ -406,7 +406,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
     const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
@@ -1460,7 +1460,7 @@ describe("App grid", () => {
 
     // Promote one workspace into the grid so the new-session toggle can do work.
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     expect(screen.getByRole("group", { name: "Chat panes" })).toBeInTheDocument();
 
     // Flip the Startup → New chat toggle to "Full view".
@@ -1508,10 +1508,10 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: "Second pane" }), { metaKey: true });
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(2);
     });
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
@@ -1535,7 +1535,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     const dropTargetRow = screen.getByRole("button", { name: "Drop target" }).closest(".session-row-wrap");
     if (!(dropTargetRow instanceof HTMLElement)) throw new Error("Expected sidebar session row wrapper");
@@ -1572,7 +1572,7 @@ describe("App grid", () => {
     fireGridDragEvent(dropOverlay, "drop", 790, 300, dataTransfer);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(2);
     });
   });
 
@@ -1732,7 +1732,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: "Resize target" }), { metaKey: true });
 
     const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
@@ -1774,7 +1774,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: "Wide pane" }), { metaKey: true });
     fireEvent.click(screen.getByRole("button", { name: "Dropped pane" }), { metaKey: true });
     fireEvent.click(screen.getByRole("button", { name: "Bottom right" }), { metaKey: true });
@@ -1822,16 +1822,16 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: "CmdW target" }), { metaKey: true });
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(2);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(2);
     });
 
     fireEvent.keyDown(document, { key: "w", metaKey: true });
 
     await waitFor(() => {
-      expect(screen.getAllByRole("heading", { name: "Argmax" })).toHaveLength(1);
+      expect(screen.getAllByRole("region", { name: "Conversation" })).toHaveLength(1);
     });
   });
 
@@ -1866,7 +1866,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     fireEvent.keyDown(document, { key: "j", metaKey: true });
     await waitFor(() => {
       expect(screen.getByTestId("terminal-tabs-panel")).toHaveAttribute("data-workspace", "workspace-1");
@@ -1888,7 +1888,7 @@ describe("App grid", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     await openSettings();
 
     fireEvent.keyDown(document, { key: "j", metaKey: true });

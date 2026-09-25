@@ -144,7 +144,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(dashboardList).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -169,7 +169,7 @@ describe("App", () => {
   it("preserves the user's model selection across dashboard deltas for the same session", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     const modelButton = await screen.findByRole("button", { name: "Chat model" });
     const initialLabel = modelButton.textContent ?? "";
@@ -623,7 +623,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByText(/thread\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/turn\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/"tools"/)).not.toBeInTheDocument();
@@ -696,7 +696,7 @@ describe("App", () => {
     expect(launchProvider.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
       autotitleWorkspace.mock.invocationCallOrder[0] ?? 0
     );
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
   });
 
   it("assigns a random icon and color before launching when enabled", async () => {
@@ -758,7 +758,7 @@ describe("App", () => {
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalled());
     // The app moves to the new session, taking the launcher with it.
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     unmount();
 
     render(<App />);
@@ -773,7 +773,7 @@ describe("App", () => {
       target: { value: "Implement PTY launch" }
     });
     fireEvent.click(screen.getByTitle("Start agent"));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");

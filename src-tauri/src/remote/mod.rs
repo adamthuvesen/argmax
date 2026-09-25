@@ -11,6 +11,7 @@
 // hunt.
 
 pub mod apns;
+pub mod dashboard_changes;
 pub mod dispatch;
 pub mod ntfy;
 pub mod operations;

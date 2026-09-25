@@ -52,7 +52,15 @@ actor DeviceCache {
 
     func write<T: Encodable & Sendable>(_ value: T, scope: String, key: String) {
         do {
-            let data = try JSONEncoder().encode(value)
+            write(encoded: try JSONEncoder().encode(value), scope: scope, key: key)
+        } catch {
+            Self.log.error("Content cache encode failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// A value its owner already encoded, to size it, so it is not encoded twice.
+    func write(encoded data: Data, scope: String, key: String) {
+        do {
             guard data.count <= byteLimit / 2 else { return }
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try data.write(to: url(scope: scope, key: key), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])

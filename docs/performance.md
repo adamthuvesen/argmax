@@ -172,7 +172,24 @@ actual JSON serialization, while each conflated main-thread payload targets
 `resyncRequired` marker. The worker awaits an acknowledgement from each
 main-thread closure, leaving at most one scheduled emit outside those bounds.
 
-Metadata invalidations coalesce for 100 ms, with one read in flight. Transcript
+Metadata invalidations coalesce for 100 ms, with one read in flight. Remote
+clients read that snapshot through `dashboard:changes`
+([dashboard_changes.rs](../src-tauri/src/remote/dashboard_changes.rs)) when the
+host advertises it: the host keeps the last four snapshots it answered by
+SHA-256 digest and answers a client that names one with the id-keyed rows that
+changed, the ids that left, the id order when it moved, and any other
+top-level value that changed. An unknown or aged-out base gets the whole
+snapshot. A one-chat change on the 206-chat profile is about 1 KB instead of
+684 KB, which is the difference between a phone on cellular spending a few
+kilobytes or several megabytes a minute while a Mac is busy.
+
+A remote client that asks at authentication gets every frame of 16 KiB or more
+as raw DEFLATE in a binary message (`outbound_message` in
+[ws.rs](../src-tauri/src/remote/ws.rs)). Over 25 real transcript pages the JSON
+went from 7.1 MB to 1.3 MB (5.6x) and the 206-chat dashboard from 684 KB to
+144 KB, at about 16 ms per MB of level-6 deflate (Node's zlib on the same
+Mac). Against the dev instance the phone's large frames went from 459 KB to
+108 KB and inflating each cost 0-2 ms on the phone's socket actor. Transcript
 reads remain immediate and use change revisions, including in-place updates and
 deletions. On a private copy of a 179,092-event database, a debug build read the
 initial 500-event tail with its revision in 9 ms. The change feed adds work to

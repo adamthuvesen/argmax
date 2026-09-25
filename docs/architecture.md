@@ -43,8 +43,9 @@ Dashboard state is SQLite-first: UI reads (`dashboard:list`, `session:events-sin
 
 Pushes invalidate data instead of carrying stale copies. Session reads use a
 transactional mutation sequence to recover updates and deletions as well as
-inserts. Queue overflow and remote reconnect use the same authoritative
-snapshot recovery. Pending follow-ups are journaled in SQLite before the send
+inserts. Queue overflow and a remote `resync` use the same authoritative
+snapshot recovery; the phone catches a chat it read live up from its change
+cursor after a reconnect or reopen, and rereads only a copy loaded from disk. Pending follow-ups are journaled in SQLite before the send
 call is acknowledged, mirrored in memory for dispatch, and included in
 `dashboard:list` so they also survive a missed notification.
 

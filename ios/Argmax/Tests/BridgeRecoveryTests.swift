@@ -275,6 +275,167 @@ final class BridgeRecoveryTests: XCTestCase {
         await client.disconnect()
     }
 
+    /// A chat read live in this process catches up through the change feed
+    /// after a reconnect instead of downloading itself again.
+    @MainActor
+    func testReconnectCatchesALiveChatUpFromItsChangeCursor() async throws {
+        let first = TestBridgeSocket(), second = TestBridgeSocket()
+        let (client, directory) = try makeClient([first, second])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranscriptStore(client: client, cache: DeviceCache(directory: directory))
+        func transcriptReads(_ socket: TestBridgeSocket) -> [[String: Any]] {
+            socket.requests.filter { $0["channel"] as? String == "session:events-since" }
+        }
+        store.openSession("s-1")
+        try await wait { !transcriptReads(first).isEmpty }
+        first.reply(to: try XCTUnwrap(transcriptReads(first).first), ok: [
+            "events": [["id": "e-1", "sessionId": "s-1", "type": "message.completed", "message": "Hello",
+                        "payload": [String: Any](), "createdAt": "2026-01-01T00:00:01.000Z", "rowCursor": 1]],
+            "rawOutputs": [Any](), "eventCursor": 1, "rawOutputCursor": 0, "changeCursor": 5,
+            "deletedEventIds": [Any](), "deletedRawOutputIds": [Any](), "resetRequired": true, "hasMore": false,
+        ])
+        try await wait { !store.items.isEmpty }
+
+        store.receive(connection: .reconnecting(since: Date()))
+        await client.reconnectNow(force: true)
+        store.receive(connection: .live)
+        try await wait { !transcriptReads(second).isEmpty }
+        let input = try XCTUnwrap(transcriptReads(second).first?["input"] as? [String: Any])
+        XCTAssertEqual(input["changeCursor"] as? Int, 5, "A live chat resumes from its change cursor")
+        store.closeSession()
+        await client.disconnect()
+    }
+
+    @MainActor
+    func testReturningToAChatHeldInMemoryCatchesUpFromItsChangeCursor() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranscriptStore(client: client, cache: DeviceCache(directory: directory))
+        func transcriptReads() -> [[String: Any]] {
+            socket.requests.filter { $0["channel"] as? String == "session:events-since" }
+        }
+        func page(_ session: String, _ ids: [String], changeCursor: Int, reset: Bool) -> [String: Any] {
+            ["events": ids.enumerated().map { index, id in
+                ["id": id, "sessionId": session, "type": "message.completed", "message": id,
+                 "payload": [String: Any](), "createdAt": "2026-01-01T00:00:0\(index + 1).000Z", "rowCursor": index + 1]
+             },
+             "rawOutputs": [Any](), "eventCursor": ids.count, "rawOutputCursor": 0, "changeCursor": changeCursor,
+             "deletedEventIds": [Any](), "deletedRawOutputIds": [Any](), "resetRequired": reset, "hasMore": false]
+        }
+        store.openSession("s-1")
+        try await wait { transcriptReads().count == 1 }
+        socket.reply(to: transcriptReads()[0], ok: page("s-1", ["hello"], changeCursor: 5, reset: true))
+        try await wait { !store.items.isEmpty }
+        store.openSession("s-2")
+        try await wait { transcriptReads().count == 2 }
+        socket.reply(to: transcriptReads()[1], ok: page("s-2", ["other"], changeCursor: 9, reset: true))
+        await store.flushCache()
+
+        store.openSession("s-1")
+        try await wait { transcriptReads().count == 3 }
+        let input = try XCTUnwrap(transcriptReads()[2]["input"] as? [String: Any])
+        XCTAssertEqual(input["changeCursor"] as? Int, 5, "A chat read live this session resumes from its cursor")
+        let before = store.items
+        socket.reply(to: transcriptReads()[2], ok: page("s-1", ["hello", "again"], changeCursor: 7, reset: false))
+        try await wait { !store.showingCachedContent }
+        await store.waitForProjection()
+        XCTAssertNotEqual(store.items, before, "The catch-up page lands on the restored rows")
+        store.closeSession()
+        await client.disconnect()
+    }
+
+    func testDashboardReadsShareOneRequestUntilTheHostSignalsAChange() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var events = client.events.makeAsyncIterator()
+        func dashboardReads() -> Int { socket.requests.filter { $0["channel"] as? String == "dashboard:list" }.count }
+
+        let first = Task { try await client.request("dashboard:list") }
+        let read = try await request(on: socket)
+        let joined = Task { try await client.request("dashboard:list") }
+        socket.reply(to: read, ok: ["sessions": []])
+        _ = try await first.value
+        _ = try await joined.value
+        _ = try await client.request("dashboard:list")
+        XCTAssertEqual(dashboardReads(), 1, "Readers of the same host state share one read")
+
+        socket.push(["type": "event", "channel": "dashboard:delta", "payload": ["changedSessionIds": ["s"]]])
+        _ = await events.next()
+        _ = try await client.request("dashboard:list")
+        XCTAssertEqual(dashboardReads(), 1, "A streamed chunk does not change the dashboard")
+
+        socket.push(["type": "event", "channel": "dashboard:delta", "payload": ["dashboardChanged": true]])
+        _ = await events.next()
+        let fresh = Task { try await client.request("dashboard:list") }
+        socket.reply(to: try await request(on: socket, count: 2), ok: ["sessions": []])
+        _ = try await fresh.value
+        XCTAssertEqual(dashboardReads(), 2, "A change hint needs a new read")
+        await client.disconnect()
+    }
+
+    func testDeflatedFramesFromTheHostReadLikeText() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rows = Array(repeating: ["id": "row", "text": "the same words again"], count: 2_000)
+        let result = Task { try await client.request("projects:list") }
+        let request = try await request(on: socket)
+        XCTAssertEqual(socket.authFrame?["compression"] as? String, "deflate")
+        socket.pushDeflated(["type": "response", "id": request["id"]!, "ok": rows])
+        let data = try await result.value
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: data) as? NSArray, rows as NSArray)
+        await client.disconnect()
+    }
+
+    func testDashboardReadsMergeTheHostsChangesIntoTheLastSnapshot() async throws {
+        let socket = TestBridgeSocket(dashboardChanges: true)
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var events = client.events.makeAsyncIterator()
+        func read(answering answers: [[String: Any]]) async throws -> NSDictionary {
+            if !socket.requests.isEmpty {
+                socket.push(["type": "event", "channel": "dashboard:delta", "payload": ["dashboardChanged": true]])
+                _ = await events.next()
+            }
+            let before = socket.requests.count
+            let result = Task { try await client.request("dashboard:list") }
+            for (index, answer) in answers.enumerated() {
+                socket.reply(to: try await request(on: socket, count: before + index + 1), ok: answer)
+            }
+            let data = try await result.value
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+        }
+        func baseDigest(_ index: Int) -> String? {
+            (socket.requests[index]["input"] as? [String: Any])?["baseDigest"] as? String
+        }
+
+        let first = try await read(answering: [["digest": "d1", "snapshot": [
+            "sessions": [["id": "a", "state": "idle"], ["id": "b", "state": "idle"]], "arcs": []]]])
+        XCTAssertEqual(socket.requests[0]["channel"] as? String, "dashboard:changes")
+        XCTAssertNil(baseDigest(0))
+        XCTAssertEqual(first, ["sessions": [["id": "a", "state": "idle"], ["id": "b", "state": "idle"]], "arcs": []])
+
+        let changed = try await read(answering: [["digest": "d2", "base": "d1", "remove": [],
+            "collections": ["sessions": ["upsert": [["id": "c", "state": "idle"], ["id": "b", "state": "running"]],
+                                         "remove": ["a"], "order": ["c", "b"]]],
+            "replace": ["arcs": [["id": "x"]]]]])
+        XCTAssertEqual(baseDigest(1), "d1")
+        XCTAssertEqual(changed, ["sessions": [["id": "c", "state": "idle"], ["id": "b", "state": "running"]],
+                                 "arcs": [["id": "x"]]])
+
+        // A diff against anything but what this phone holds is never applied.
+        let recovered = try await read(answering: [
+            ["digest": "d4", "base": "d3", "collections": [:], "replace": [:], "remove": []],
+            ["digest": "d5", "snapshot": ["sessions": [], "arcs": []]],
+        ])
+        XCTAssertEqual(baseDigest(2), "d2")
+        XCTAssertNil(baseDigest(3))
+        XCTAssertEqual(recovered, ["sessions": [], "arcs": []])
+        await client.disconnect()
+    }
+
     private func makeClient(
         _ sockets: [TestBridgeSocket],
         httpLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil
@@ -362,7 +523,11 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
     private var auth: CheckedContinuation<Void, Error>?
     private var closed = false
     private let holdAuth: Bool
-    init(holdAuth: Bool = false) { self.holdAuth = holdAuth }
+    private let dashboardChanges: Bool
+    init(holdAuth: Bool = false, dashboardChanges: Bool = false) {
+        self.holdAuth = holdAuth
+        self.dashboardChanges = dashboardChanges
+    }
     var requests: [[String: Any]] { lock.withLock { messages.filter { $0["type"] as? String == "request" } } }
     var isClosed: Bool { lock.withLock { closed } }
     var authIsHeld: Bool { lock.withLock { auth != nil } }
@@ -387,7 +552,7 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
         lock.withLock { messages.append(frame) }
         if frame["type"] as? String == "auth" {
             if holdAuth { try await withCheckedThrowingContinuation { continuation in lock.withLock { auth = continuation } } }
-            else { feed(["type": "auth-ok", "operationReplay": true]) }
+            else { feed(["type": "auth-ok", "operationReplay": true, "dashboardChanges": dashboardChanges]) }
         }
     }
     func receive() async throws -> URLSessionWebSocketTask.Message {
@@ -407,6 +572,16 @@ final class TestBridgeSocket: BridgeSocket, @unchecked Sendable {
         else { response["ok"] = ok }
         feed(response)
     }
+    func push(_ frame: [String: Any]) { feed(frame) }
+    /// The host's binary frame: a zero byte, then the JSON as raw DEFLATE.
+    func pushDeflated(_ frame: [String: Any]) {
+        do {
+            let json = try JSONSerialization.data(withJSONObject: frame)
+            let compressed = try (json as NSData).compressed(using: .zlib) as Data
+            deliver(.success(.data(Data([0]) + compressed)))
+        } catch { deliver(.failure(error)) }
+    }
+    var authFrame: [String: Any]? { lock.withLock { messages.first { $0["type"] as? String == "auth" } } }
     private func feed(_ frame: [String: Any]) {
         do { deliver(.success(.data(try JSONSerialization.data(withJSONObject: frame)))) }
         catch { deliver(.failure(error)) }

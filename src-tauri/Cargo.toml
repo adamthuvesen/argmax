@@ -113,6 +113,9 @@ futures-util = { version = "0.3", default-features = false, features = [
     "std",
     "sink",
 ] }
+# Raw DEFLATE for large bridge frames to a phone that asks for it
+# (remote/ws.rs `outbound_message`); already in the tree through tower-http.
+flate2 = "1"
 
 # `bundled-full` ships SQLite (sqlite3.c vendored) with FTS5 enabled,
 # which we need for `events_fts` and `learnings_fts` sidecars.

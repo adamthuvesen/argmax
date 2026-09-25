@@ -261,7 +261,9 @@ enum TranscriptProjection {
     }
 
     private static func suppressAssistantAfterCards(_ events: [TranscriptEvent]) -> [TranscriptEvent] {
-        let tools = correlatedTools(events: events, sessionRunning: false)
+        // Only question tools matter here, so only their input is merged;
+        // projecting every tool for this was half of each projection.
+        let completions = completionsByStart(events)
         var cardStarted = false
         var pickedLegacyQuestion = false
         var activeBlockingQuestions = Set<String>()
@@ -272,16 +274,20 @@ enum TranscriptProjection {
                 activeBlockingQuestions.removeAll()
                 return true
             }
-            if event.type == "command.started", let tool = tools[event.id] {
-                let name = normalizedToolName(tool.name)
-                if isQuestionTool(name), questions(from: tool.inputObject) != nil {
-                    let requestID = tool.inputObject["requestId"]?.string
-                        ?? event.payloadObject["requestId"]?.string
-                    let delivery = tool.inputObject["delivery"]?.string
-                        ?? event.payloadObject["delivery"]?.string
+            if event.type == "command.started" {
+                let payload = event.payloadObject
+                let name = normalizedToolName(toolName(payload))
+                let input = isQuestionTool(name)
+                    ? mergedInput(payload, completions[event.id]?.payloadObject ?? [:])
+                    : [:]
+                if isQuestionTool(name), questions(from: input) != nil {
+                    let requestID = input["requestId"]?.string
+                        ?? payload["requestId"]?.string
+                    let delivery = input["delivery"]?.string
+                        ?? payload["delivery"]?.string
                     if requestID != nil {
                         if delivery == "blocking" {
-                            activeBlockingQuestions.insert(tool.toolUseId)
+                            activeBlockingQuestions.insert(string(payload, keys: ["id", "call_id"]) ?? event.id)
                         }
                     } else if !pickedLegacyQuestion {
                         pickedLegacyQuestion = true
@@ -538,20 +544,13 @@ enum TranscriptProjection {
         var completionObserved: Bool
         var completionStatus: String?
         var backgroundLaunch: Bool
+        let facts: ToolFacts
 
         var isAgent: Bool { TranscriptProjection.isAgentTool(normalizedToolName(name)) }
-        var preview: String? {
-            TranscriptProjection.preview(name: name, input: inputObject, workspacePath: workspacePath)
-        }
+        var preview: String? { facts.preview }
 
         var presentation: TranscriptTool {
-            let activityPath = activity.kind == .edit && activity.targets.count == 1
-                ? activity.targets.first
-                : nil
-            // Codex file_change carries its path inside input.changes[]. The
-            // host already extracts that shape into activity.targets, so use
-            // the single observed target when there is no top-level path.
-            let filePath = TranscriptProjection.path(in: inputObject) ?? activityPath
+            let filePath = facts.filePath
             var tool = TranscriptTool(
                 id: "tool-\(id)",
                 toolUseId: toolUseId,
@@ -564,8 +563,8 @@ enum TranscriptProjection {
                 createdAt: createdAt,
                 completedAt: completedAt,
                 filePath: filePath,
-                fileLabel: filePath.map { TranscriptProjection.relativePath($0, workspacePath: workspacePath) },
-                changeCounts: TranscriptProjection.changeCounts(activity: activity, input: inputObject),
+                fileLabel: facts.fileLabel,
+                changeCounts: facts.changeCounts,
                 activity: activity,
                 completionObserved: completionObserved,
                 completionStatus: completionStatus
@@ -587,7 +586,7 @@ enum TranscriptProjection {
         sessionRunning: Bool,
         workspacePath: String? = nil
     ) -> [String: ProjectedTool] {
-        let completions = events.filter { $0.type == "command.completed" }
+        let completions = completionsByStart(events)
         let sessionEndAt = events.reduce(into: "") { latest, event in
             let isSessionEnd = event.type == "session.completed" ||
                 event.type == "session.cancelled" ||
@@ -624,33 +623,23 @@ enum TranscriptProjection {
                     payload["stream"]?.string == nil
             )
         }
-        var usedCompletions = Set<String>()
         var result: [String: ProjectedTool] = [:]
         for start in events where start.type == "command.started" {
             let payload = start.payloadObject
             let toolUseID = string(payload, keys: ["id", "call_id"]) ?? start.id
             let invocation = payload["providerInvocationId"]?.string
-            let completion = completions.first { event in
-                guard !usedCompletions.contains(event.id) else { return false }
-                let endPayload = event.payloadObject
-                let endID = string(endPayload, keys: ["tool_use_id", "id", "call_id"])
-                let endInvocation = endPayload["providerInvocationId"]?.string
-                return endID == toolUseID && (invocation == nil ? endInvocation == nil : endInvocation == invocation)
-            }
-            if let completion { usedCompletions.insert(completion.id) }
+            let completion = completions[start.id]
             let endPayload = completion?.payloadObject ?? [:]
-            let input = mergedInput(payload, endPayload)
-            let name = toolName(payload)
-            let failed = isFailed(endPayload)
+            let facts = toolFacts(start: start, completion: completion, workspacePath: workspacePath)
+            let input = facts.input
+            let name = facts.name
+            let failed = facts.failed
             let lifecycle = isAgentTool(normalizedToolName(name))
                 ? nativeAgentLifecycles[nativeAgentLifecycleKey(invocationID: invocation, runID: toolUseID)]
                 : nil
             let hasLaterAnswer = latestAnswer.map { compare(start, $0) == .orderedAscending } ?? false
             let isAgent = isAgentTool(normalizedToolName(name))
-            let activity = mergedActivity(
-                start: decodedActivity(payload["activity"]),
-                end: decodedActivity(endPayload["activity"])
-            ) ?? legacyActivity(name: name, input: input)
+            let activity = facts.activity
             let transportStatus: TranscriptToolStatus = completion == nil
                 ? (sessionRunning && (!hasLaterAnswer || isAgent) ? .running : .done)
                 : (failed ? .failed : .done)
@@ -685,9 +674,9 @@ enum TranscriptProjection {
                 toolUseId: toolUseID,
                 name: name,
                 inputObject: input,
-                inputText: formatted(displayInput(input, name: name)),
-                output: displayOutput(output(endPayload), name: name),
-                error: status == .failed ? displayOutput(error(endPayload), name: name) : nil,
+                inputText: facts.inputText,
+                output: facts.output,
+                error: status == .failed ? facts.failureText : nil,
                 status: status,
                 createdAt: start.createdAt,
                 completedAt: status == .running
@@ -706,9 +695,126 @@ enum TranscriptProjection {
                 workspacePath: workspacePath,
                 activity: activity,
                 completionObserved: completion != nil,
-                completionStatus: completionStatus(endPayload),
-                backgroundLaunch: backgroundLaunch
+                completionStatus: facts.completionStatus,
+                backgroundLaunch: backgroundLaunch,
+                facts: facts
             )
+        }
+        return result
+    }
+
+    /// What one tool call's own events say, whatever the rest of the chat
+    /// does: its name, input, output text, activity and file facts.
+    struct ToolFacts: Sendable {
+        let name: String
+        let input: [String: TranscriptJSONValue]
+        let inputText: String?
+        let output: String?
+        let failureText: String?
+        let failed: Bool
+        let activity: TranscriptToolActivity
+        let completionStatus: String?
+        let preview: String?
+        let filePath: String?
+        let fileLabel: String?
+        let changeCounts: TranscriptChangeCounts?
+    }
+
+    /// A streaming chat projects its whole history per chunk, and deriving
+    /// these for every tool each time — formatting inputs, parsing diffs for
+    /// line counts — was most of what was left of that projection. A tool
+    /// whose two events are unchanged reuses them; comparing unchanged events
+    /// is cheap because they share storage with the last projection's.
+    private final class ToolFactsCache: @unchecked Sendable {
+        private struct Entry {
+            let start: TranscriptEvent
+            let completion: TranscriptEvent?
+            let workspacePath: String?
+            let facts: ToolFacts
+        }
+        private let lock = NSLock()
+        private var entries: [String: Entry] = [:]
+        private static let limit = 8_192
+
+        func facts(start: TranscriptEvent, completion: TranscriptEvent?, workspacePath: String?,
+                   derive: () -> ToolFacts) -> ToolFacts {
+            if let entry = lock.withLock({ entries[start.id] }), entry.workspacePath == workspacePath,
+               entry.start == start, entry.completion == completion {
+                return entry.facts
+            }
+            let facts = derive()
+            lock.withLock {
+                if entries.count >= Self.limit { entries.removeAll(keepingCapacity: true) }
+                entries[start.id] = Entry(start: start, completion: completion,
+                                          workspacePath: workspacePath, facts: facts)
+            }
+            return facts
+        }
+    }
+
+    private static let toolFactsCache = ToolFactsCache()
+
+    private static func toolFacts(start: TranscriptEvent, completion: TranscriptEvent?,
+                                  workspacePath: String?) -> ToolFacts {
+        toolFactsCache.facts(start: start, completion: completion, workspacePath: workspacePath) {
+            let payload = start.payloadObject
+            let endPayload = completion?.payloadObject ?? [:]
+            let input = mergedInput(payload, endPayload)
+            let name = toolName(payload)
+            let activity = mergedActivity(
+                start: decodedActivity(payload["activity"]),
+                end: decodedActivity(endPayload["activity"])
+            ) ?? legacyActivity(name: name, input: input)
+            // Codex file_change carries its path inside input.changes[]. The
+            // host already extracts that shape into activity.targets, so use
+            // the single observed target when there is no top-level path.
+            let activityPath = activity.kind == .edit && activity.targets.count == 1
+                ? activity.targets.first
+                : nil
+            let filePath = path(in: input) ?? activityPath
+            return ToolFacts(
+                name: name,
+                input: input,
+                inputText: formatted(displayInput(input, name: name)),
+                output: displayOutput(output(endPayload), name: name),
+                failureText: displayOutput(error(endPayload), name: name),
+                failed: isFailed(endPayload),
+                activity: activity,
+                completionStatus: completionStatus(endPayload),
+                preview: preview(name: name, input: input, workspacePath: workspacePath),
+                filePath: filePath,
+                fileLabel: filePath.map { relativePath($0, workspacePath: workspacePath) },
+                changeCounts: changeCounts(activity: activity, input: input)
+            )
+        }
+    }
+
+    /// Each tool start's completion: the first `command.completed`, in
+    /// order, with the same tool-use id and provider invocation that no
+    /// earlier start claimed. Queued by that pair rather than searched per
+    /// start, which was quadratic in a long chat's tool calls.
+    private static func completionsByStart(_ events: [TranscriptEvent]) -> [String: TranscriptEvent] {
+        struct Pair: Hashable {
+            let toolUseID: String
+            let invocation: String?
+        }
+        var queues: [Pair: [TranscriptEvent]] = [:]
+        for event in events where event.type == "command.completed" {
+            let payload = event.payloadObject
+            guard let endID = string(payload, keys: ["tool_use_id", "id", "call_id"]) else { continue }
+            queues[Pair(toolUseID: endID, invocation: payload["providerInvocationId"]?.string), default: []]
+                .append(event)
+        }
+        var claimed: [Pair: Int] = [:]
+        var result: [String: TranscriptEvent] = [:]
+        for start in events where start.type == "command.started" {
+            let payload = start.payloadObject
+            let pair = Pair(toolUseID: string(payload, keys: ["id", "call_id"]) ?? start.id,
+                            invocation: payload["providerInvocationId"]?.string)
+            let next = claimed[pair, default: 0]
+            guard let queue = queues[pair], next < queue.count else { continue }
+            result[start.id] = queue[next]
+            claimed[pair] = next + 1
         }
         return result
     }
@@ -1011,15 +1117,21 @@ enum TranscriptProjection {
         return string(input, keys: ["query", "pattern", "search_term", "url"])
     }
 
+    /// Compiled once: the projection runs per streamed chunk over every
+    /// command in the chat, and compiling this per call was a quarter of the
+    /// CPU a streaming chat cost. `NSRegularExpression` is safe to share
+    /// across threads.
+    private static let shellLauncher = try! NSRegularExpression(
+        pattern: "^(?:[\\w./-]+/)?(?:zsh|bash|sh)\\s+-l?c\\s+(.+)$",
+        options: [.caseInsensitive, .dotMatchesLineSeparators]
+    )
+
     /// The command as the agent meant it, peeking through the `/bin/zsh -lc
     /// '…'` / `bash -c "…"` launcher a provider wraps it in: the desktop's
     /// `unwrapBashCommand` (`toolCalls.ts`). Left in, the launcher was most
     /// of what a row had room to show.
     static func unwrapShellCommand(_ command: String) -> String {
-        let launcher = try! NSRegularExpression(
-            pattern: "^(?:[\\w./-]+/)?(?:zsh|bash|sh)\\s+-l?c\\s+(.+)$",
-            options: [.caseInsensitive, .dotMatchesLineSeparators]
-        )
+        let launcher = shellLauncher
         var text = withoutOuterQuotes(command.trimmingCharacters(in: .whitespacesAndNewlines))
         for _ in 0..<2 {
             let range = NSRange(text.startIndex..., in: text)

@@ -44,6 +44,28 @@ In Instruments, use Time Profiler, SwiftUI, Hangs, and Points of Interest.
 Markdown preparation, image-thumbnail preparation, file-tree preparation, and
 review-document preparation in both Debug and Release builds.
 
+The same builds log the user-facing milestones under the `perf` category, so a
+run on real data can be timed without Instruments:
+
+```sh
+xcrun simctl spawn booted log stream --level debug \
+  --predicate 'subsystem == "com.argmax.remote" AND category == "perf"'
+```
+
+- `launch→list` is milliseconds from process start (pre-main included) to the
+  first chat list, once from the saved snapshot and once from the Mac.
+- `chat open→saved` and `chat open→live` are milliseconds from opening a chat
+  to its first rows, saved and authoritative.
+- `request` lines carry each bridge read's channel, response bytes, round trip,
+  and decode time. `frame` lines time the socket actor's frame parse for
+  frames over 64 KiB.
+
+Launch a paired simulator build with `-argmax-pair <link>` and optionally
+`-argmax-open-session <id>` to open a real chat. Drive taps from a UI test by
+coordinate: an element query takes an accessibility snapshot of the whole
+transcript, which occupies the main thread for seconds and swamps the
+measurement.
+
 ## Content and preloading
 
 `DeviceCache` is disposable, pairing-scoped storage with a 32 MiB total and
@@ -55,8 +77,14 @@ with restoration.
 The dashboard restores its last snapshot. The transcript retains up to eight
 recent chats within a 16 MiB estimated memory budget and persists recent
 transcript snapshots. Saved transcript content is labeled as saved and is
-reconciled using the existing authoritative tail read. Cached cursors never
-replace that read. Host removal cancels pending preparation and invalidates
+reconciled using the existing authoritative tail read. Cursors saved to disk
+never replace that read. A chat read live in this process instead catches up
+through the host's change feed, which answers a pruned cursor with a full
+reset: after a reconnect, and when the chat is opened again from the in-memory
+copy, which is only ever made from live content with its cursors captured
+alongside. Returning from the background to a 1,471-event chat moved 173 bytes
+of transcript instead of 1.7 MB, and reopening six real chats in a row moved
+52 KB instead of 5.2 MB. Host removal cancels pending preparation and invalidates
 the open chat's cache.
 
 Usage and Activity still preload from `RootView` at launch and on foreground
@@ -65,11 +93,30 @@ time zone. Opening Insights does not start from scratch or cancel the other
 ledger's preload. The existing freshness window remains in effect.
 
 Transcript projection coalesces pending changes and runs on a background task.
+A streaming chat projects its whole history per chunk, so the projection has to
+stay linear: completions are matched to tool starts through a keyed queue,
+patterns are compiled once, and each tool's own derived text (formatted input,
+output, diff line counts) is reused while its two events are unchanged. The store writes the open chat's saved copy after a
+300 ms pause, or every five seconds during a long stream, encoding it once for
+both the size budget and the disk; leaving the chat stores what is pending.
+Replaying a real 2,200-event chat at 20 chunks a second, these cut the process
+CPU from 15.7 s to 3.6 s over 11 s of streaming.
 Only a matching session generation and content revision may publish. Completed
 Markdown documents have a bounded cache, with at most two active preparations.
-The transcript's exact-height eager stack mounts at most 120 presentation rows.
-When a reader leaves the live tail, that row window stays fixed as output lands
-and shifts by 60 rows near either edge, preserving the visible reading anchor.
+Opening a chat prepares the newest 96 prose documents before its first paint,
+so rows do not repaint and re-lay out the stack one by one after it.
+The transcript's exact-height eager stack mounts at most 32 presentation rows.
+Every mounted row is laid out and drawn whether it is visible or not, so the
+window is what opening a chat costs. A chat opens with the newest rows that
+fill about three screens, estimated from their text, and mounts the rest of
+the window half a second later, above the tail, where the bottom size-change
+anchor keeps the screen still. When a reader leaves the live tail, that
+row window stays fixed as output lands and shifts by 16 rows once the reader
+is within two screens of either edge, preserving the visible reading anchor.
+The running mark (`WorkingNest`) breathes with a Core Animation group in the
+render server, so an idle screen showing live work does no per-frame main
+thread work: one running chat on the list cost 11% of the main thread while it
+was a per-frame `TimelineView` canvas.
 Image requests share a decoded-image cache. Inline images are downsampled for
 their display size. Expansion immediately shows the current preview while a
 larger representation is prepared.
@@ -90,6 +137,35 @@ and reconnect callbacks from retired generations cannot affect a replacement
 connection. Foregrounding and network-path changes prompt recovery, with
 bounded backoff and heartbeat as fallback. A usable network path does not
 prove the Mac is reachable.
+
+Every `dashboard:list` caller shares one read per host change: the list, the
+open chat's composer metadata, and delegated-work cards each read the whole
+dashboard on the same hint. A delta that hints at a change or carries rows, a
+resync, a dropped socket, and any mutation this phone sends retire the shared
+answer; otherwise it is reused for at most five seconds. With a chat open on a
+busy Mac this halved the dashboard reads sent (24 asked, 13 sent in a minute)
+at about 740 KB each. A Mac that advertises `dashboardChanges` at authentication
+answers that read as `dashboard:changes` instead: a diff against the last
+snapshot this phone merged, named by its digest, which `BridgeClient` merges
+below the shared read ([DashboardChanges.swift](../ios/Argmax/Sources/Bridge/DashboardChanges.swift)),
+so every caller still receives a whole snapshot. An answer that does not apply
+to exactly that base costs one full read instead. The base survives reconnects,
+since the host keys it by digest rather than by socket. Against the isolated dev
+instance, a chat launch, a turn and six pins produced nine reads of 0.8–4.7 KB
+each for a 51.7 KB list, and the store equalled an independent `dashboard:list`
+afterwards. On the real 206-chat profile the same change after a hint is one
+row, about 1 KB, against 684 KB. The budget: a hint moves only the rows it
+changed. On that profile a median chat's rows are 1.1 KB (session) and 0.7 KB
+(workspace), the largest 11 KB and 25 KB (a long first prompt, a PR list), and
+a new chat also carries the id orders, 16 KB; a hint that costs more than the
+rows it names plus those orders is a regression. The perf log line `dashboard:changes answerBytes= snapshotBytes= whole=` shows
+the merged answer's JSON size against the full snapshot, and whether it arrived
+whole. The phone also asks at authentication for frames of 16 KiB or more
+to arrive deflated (docs/remote.md); the `frame bytes= wireBytes=` log line shows
+the JSON and wire sizes of each large one. Chat histories read 4-6x smaller,
+and inflating a frame costs 0-2 ms. A transcript read queued while the socket reconnects
+goes out on the new connection, so reconnecting does not request the chat a
+second time.
 
 A new mutation waits for authentication and replay capability before being
 journaled or sent. The protected, pairing-scoped journal stores canonical input

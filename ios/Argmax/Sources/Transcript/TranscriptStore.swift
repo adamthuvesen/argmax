@@ -48,6 +48,8 @@ final class TranscriptStore: ObservableObject {
 
     private var ownerID: UUID?
     private var openSessionID: String?
+    /// When the open chat was asked for, until its live rows are published.
+    private var openedAt: ContinuousClock.Instant?
     private var metadata: TranscriptSessionMetadata?
     private var workspacePath: String?
     private var eventsByID: [String: TranscriptEvent] = [:]
@@ -81,6 +83,9 @@ final class TranscriptStore: ObservableObject {
     private var readTask: Task<Void, Never>?
     private var metadataTask: Task<Void, Never>?
     private var transcriptDirty = false
+    /// The read in flight began while the socket was not live, so the
+    /// request is sent after the next authentication.
+    private var readAwaitsConnection = false
     private var authoritativeReadRequested = false
     private var metadataDirty = false
 
@@ -120,14 +125,33 @@ final class TranscriptStore: ObservableObject {
         }
         discardOpenChat()
         openSessionID = id
+        openedAt = ContinuousClock.now
         showingCachedContent = false
         contentVersion = 0
         hasMoreHistory = false
         phase = .loading
+        var catchesUp = false
         if let cached = recent[id] {
             restore(cached.stored)
+            // Only content read live in this process is ever stored, and its
+            // cursors were captured with it, so this chat catches up through
+            // the change feed like a reconnect does. Coming back to a chat
+            // re-downloaded its whole history instead. A saved copy read from
+            // disk below still takes the authoritative read.
+            eventCursor = cached.stored.page.eventCursor
+            rawOutputCursor = cached.stored.page.rawOutputCursor
+            changeCursor = cached.stored.page.changeCursor
+            catchesUp = changeCursor != nil
+            // Painted in this frame, so its documents must be ready in this
+            // frame too. The cache may have evicted some since the chat was
+            // last open; the few missing ones cost far less here than a
+            // relayout each once they land.
+            let missing = Self.tailProseKeys(cached.items, workspacePath: workspacePath)
+                .filter { TranscriptMarkdownCache.shared.cached($0) == nil }
+            if !missing.isEmpty { TranscriptMarkdownCache.shared.store(TranscriptMarkdownCache.prepare(missing)) }
             items = cached.items
             phase = .ready
+            reportOpened(cached: true)
             recentOrder.removeAll { $0 == id }
             recentOrder.append(id)
         } else {
@@ -141,7 +165,7 @@ final class TranscriptStore: ObservableObject {
                 self.updateProjection()
             }
         }
-        authoritativeReadRequested = true
+        if catchesUp { transcriptDirty = true } else { authoritativeReadRequested = true }
         metadataDirty = true
         scheduleReads()
     }
@@ -160,6 +184,7 @@ final class TranscriptStore: ObservableObject {
     /// projections cancelled, and the generation bumped so one that is already
     /// running throws its page away instead of applying it to the next chat.
     private func discardOpenChat() {
+        flushPendingCache()
         generation += 1
         projectionVersion += 1
         projectionTask?.cancel()
@@ -235,7 +260,24 @@ final class TranscriptStore: ObservableObject {
         switch state {
         case .live:
             if openSessionID != nil, case .failed = phase { phase = .loading }
-            authoritativeReadRequested = true
+            // A read queued while the socket was down goes out on this
+            // connection, so it already sees everything the gap missed.
+            // Asking again downloaded the whole chat twice on every cold
+            // open, a notification tap's included.
+            if readTask == nil || !readAwaitsConnection {
+                // Content read live in this process catches up through the
+                // change feed, which records every insert, update and
+                // deletion made while the socket was down and answers a
+                // pruned cursor with a full reset. A return from the
+                // background re-downloaded the whole chat instead. Saved
+                // content's cursors came from disk, so it still takes the
+                // authoritative read.
+                if contentVersion > 0, !showingCachedContent, changeCursor != nil {
+                    transcriptDirty = true
+                } else {
+                    authoritativeReadRequested = true
+                }
+            }
             metadataDirty = true
             scheduleReads()
         case .unauthorized:
@@ -255,6 +297,8 @@ final class TranscriptStore: ObservableObject {
             if let id = openSessionID, authoritative, connection == .live {
                 contentVersion += 1
                 recent.removeValue(forKey: id)
+                removedChats.insert(id)
+                pendingCache = nil
                 let scope = client.cacheNamespace
                 Task { [cache] in await cache.remove(scope: scope, key: "transcript-\(id)") }
                 cacheTask?.cancel()
@@ -346,6 +390,10 @@ final class TranscriptStore: ObservableObject {
     private func scheduleReads() {
         guard openSessionID != nil else { return }
         if readTask == nil, transcriptDirty || authoritativeReadRequested {
+            // Recorded here, not when the task first runs: the socket can go
+            // live in between, and that transition must see this read as the
+            // one that will go out on it.
+            readAwaitsConnection = connection != .live
             readTask = Task { [weak self] in await self?.drainTranscriptReads() }
         }
         if metadataTask == nil, metadataDirty {
@@ -361,6 +409,7 @@ final class TranscriptStore: ObservableObject {
         }
         while !Task.isCancelled, generation == startedGeneration, let id = openSessionID {
             let authoritative = authoritativeReadRequested || changeCursor == nil
+            readAwaitsConnection = connection != .live
             authoritativeReadRequested = false
             transcriptDirty = false
             do {
@@ -502,7 +551,8 @@ final class TranscriptStore: ObservableObject {
         eventsByID = Dictionary(cached.page.events.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
         rawOutputsByID = Dictionary(cached.page.rawOutputs.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
         workspacePath = cached.workspacePath
-        // Cached cursors are never a substitute for authoritative recovery.
+        // Cursors saved to disk are never a substitute for authoritative
+        // recovery; `openSession` adopts only those of an in-memory copy.
         if metadata == nil, let row = cached.metadata {
             ingest(metadata: row, title: cached.title, pendingMessages: [])
         }
@@ -513,7 +563,10 @@ final class TranscriptStore: ObservableObject {
         while let task = projectionTask { await task.value }
     }
 
-    func flushCache() async { await cacheTask?.value }
+    func flushCache() async {
+        await cacheTask?.value
+        for flush in flushTasks.values { await flush.value }
+    }
 
     private func updateProjection() {
         // Metadata lands before the first page (the dashboard snapshot is
@@ -557,10 +610,14 @@ final class TranscriptStore: ObservableObject {
                 } onCancel: { job.cancel() }
                 guard !Task.isCancelled, self.generation == startedGeneration else { return }
                 if self.items.isEmpty {
-                    // The list opens at the tail, and a row paints plain text
-                    // until its Markdown is prepared. On the first paint of an
-                    // open, prepare the tail first so that frame is the
-                    // finished one; later projections keep preparing lazily.
+                    // A row paints plain text until its Markdown is prepared,
+                    // and every document that lands after the first paint
+                    // re-lays out the eager stack under it. Two at a time,
+                    // that was a relayout per prose row for seconds after an
+                    // open. Preparing all of them costs a few milliseconds
+                    // off the main actor (27 ms for 123 documents on the
+                    // simulator), so the first frame is the finished one.
+                    // Later projections prepare their changed rows lazily.
                     let keys = Self.tailProseKeys(projected, workspacePath: workspacePath)
                         .filter { TranscriptMarkdownCache.shared.cached($0) == nil }
                     if !keys.isEmpty {
@@ -579,6 +636,7 @@ final class TranscriptStore: ObservableObject {
                 self.publishProjection(projected.isEmpty ? fallback : projected)
                 // Readiness and the rows it describes must change together.
                 if includesLiveContent { self.showingCachedContent = false }
+                self.reportOpened(cached: !includesLiveContent)
                 // Content has arrived by now (the guard above), so an empty
                 // projection is a genuinely empty chat.
                 if self.phase == .loading { self.phase = .ready }
@@ -590,9 +648,10 @@ final class TranscriptStore: ObservableObject {
         }
     }
 
-    /// The prose the tail of the list paints first: the newest few bubbles.
-    /// Rows above them prepare lazily as they scroll in, as before.
-    nonisolated static func tailProseKeys(_ items: [TranscriptItem], workspacePath: String?, limit: Int = 8) -> [TranscriptMarkdownKey] {
+    /// The prose the list paints when it opens at the tail: the newest
+    /// bubbles, well past what the mounted row window holds, and within the
+    /// Markdown cache's 128 documents. Rows paged in later prepare lazily.
+    nonisolated static func tailProseKeys(_ items: [TranscriptItem], workspacePath: String?, limit: Int = 96) -> [TranscriptMarkdownKey] {
         var keys: [TranscriptMarkdownKey] = []
         for item in items.reversed() where keys.count < limit {
             switch item {
@@ -603,6 +662,15 @@ final class TranscriptStore: ObservableObject {
             }
         }
         return keys
+    }
+
+    /// The `perf` log's chat-open milestones: first rows of any kind, then
+    /// the first rows built from the host's authoritative read.
+    private func reportOpened(cached: Bool) {
+        guard let openedAt, !items.isEmpty else { return }
+        NativePerformance.event("Chat painted")
+        NativePerformance.log.debug("chat open→\(cached ? "saved" : "live", privacy: .public) rows ms=\((ContinuousClock.now - openedAt).milliseconds) rows=\(self.items.count) events=\(self.eventsByID.count)")
+        if !cached { self.openedAt = nil }
     }
 
     private func publishProjection(_ projected: [TranscriptItem]) {
@@ -618,6 +686,16 @@ final class TranscriptStore: ObservableObject {
         }
     }
 
+    /// The open chat's latest state, until `cacheCurrentTranscript` has
+    /// encoded and stored it.
+    private var pendingCache: (id: String, stored: StoredTranscript, items: [TranscriptItem])?
+    private var lastCachedAt = ContinuousClock.now
+    /// Stores started as a chat was left; the next chat's cache task must
+    /// not cancel them.
+    private var flushTasks: [UUID: Task<Void, Never>] = [:]
+    /// Chats the Mac removed, which an in-flight store must not bring back.
+    private var removedChats: Set<String> = []
+
     private func cacheCurrentTranscript() {
         guard let id = openSessionID, !showingCachedContent else { return }
         let stored = StoredTranscript(page: TranscriptPage(events: Array(eventsByID.values),
@@ -625,31 +703,57 @@ final class TranscriptStore: ObservableObject {
             rawOutputCursor: rawOutputCursor ?? 0, changeCursor: changeCursor,
             deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false),
             metadata: metadata, title: session?.title, workspacePath: workspacePath)
-        let projected = items
-        let scope = client.cacheNamespace
+        pendingCache = (id, stored, items)
         let version = projectionVersion
         let capturedContentVersion = contentVersion
         cacheTask?.cancel()
         cacheTask = Task { [weak self] in
-            let byteCost = await Task.detached(priority: .utility) {
-                (try? JSONEncoder().encode(stored).count) ?? Int.max / 4
-            }.value
-            guard !Task.isCancelled, let self, self.openSessionID == id,
-                  self.projectionVersion == version, self.contentVersion == capturedContentVersion else { return }
-            // Leave room for decoded models and projected text as well as wire bytes.
-            if byteCost < 4 * 1_024 * 1_024 {
-                self.recent[id] = RecentTranscript(stored: stored, items: projected, byteCost: byteCost * 2)
-                self.recentOrder.removeAll { $0 == id }
-                self.recentOrder.append(id)
-                while self.recentOrder.count > 8 || self.recent.values.reduce(0, { $0 + $1.byteCost }) > 16 * 1_024 * 1_024 {
-                    self.recent.removeValue(forKey: self.recentOrder.removeFirst())
-                }
+            // A streaming chat projects per chunk, and encoding the whole
+            // transcript each time was a quarter of the CPU streaming cost.
+            // Wait for a pause, or at most a few seconds into a long stream.
+            if let self, ContinuousClock.now - self.lastCachedAt < Self.cacheStaleness {
+                do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
             }
-            do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
-            guard !Task.isCancelled, self.openSessionID == id,
-                  self.contentVersion == capturedContentVersion else { return }
-            await self.cache.write(stored, scope: scope, key: "transcript-\(id)")
+            guard !Task.isCancelled, let self, self.openSessionID == id,
+                  self.projectionVersion == version, self.contentVersion == capturedContentVersion,
+                  let pending = self.pendingCache, pending.id == id else { return }
+            self.pendingCache = nil
+            self.lastCachedAt = .now
+            await self.store(pending.stored, items: pending.items, for: id)
         }
+    }
+
+    private static let cacheStaleness: Duration = .seconds(5)
+
+    /// Leaving a chat before its latest state was stored stores it now, so
+    /// coming back opens from memory rather than waiting for the Mac.
+    private func flushPendingCache() {
+        guard let pending = pendingCache else { return }
+        pendingCache = nil
+        cacheTask?.cancel()
+        let key = UUID()
+        flushTasks[key] = Task { [weak self] in
+            await self?.store(pending.stored, items: pending.items, for: pending.id)
+            self?.flushTasks[key] = nil
+        }
+    }
+
+    /// Encode once, off the main actor: the size budgets the in-memory copy
+    /// and the same bytes go to disk.
+    private func store(_ stored: StoredTranscript, items projected: [TranscriptItem], for id: String) async {
+        let data = await Task.detached(priority: .utility) { try? JSONEncoder().encode(stored) }.value
+        guard !Task.isCancelled, !removedChats.contains(id) else { return }
+        let byteCost = data?.count ?? Int.max / 4
+        // Leave room for decoded models and projected text as well as wire bytes.
+        if byteCost < 4 * 1_024 * 1_024 {
+            recent[id] = RecentTranscript(stored: stored, items: projected, byteCost: byteCost * 2)
+            recentOrder.removeAll { $0 == id }
+            recentOrder.append(id)
+            while recentOrder.count > 8 || recent.values.reduce(0, { $0 + $1.byteCost }) > 16 * 1_024 * 1_024 {
+                recent.removeValue(forKey: recentOrder.removeFirst())
+            }
+        }
+        if let data { await cache.write(encoded: data, scope: client.cacheNamespace, key: "transcript-\(id)") }
     }
 
     private func rawFallbackItems() -> [TranscriptItem] {

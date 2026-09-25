@@ -254,10 +254,23 @@ private struct TranscriptRowInLatestTurnKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+/// Whether the open chat's turn is still running on a live connection. Rows
+/// read it from the environment rather than observing `TranscriptStore`: an
+/// observing row re-renders on every change the store publishes, which is
+/// every streamed chunk and every composer keystroke's metadata.
+private struct TranscriptSessionWorkingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var transcriptRowInLatestTurn: Bool {
         get { self[TranscriptRowInLatestTurnKey.self] }
         set { self[TranscriptRowInLatestTurnKey.self] = newValue }
+    }
+
+    var transcriptSessionWorking: Bool {
+        get { self[TranscriptSessionWorkingKey.self] }
+        set { self[TranscriptSessionWorkingKey.self] = newValue }
     }
 }
 

@@ -42,7 +42,10 @@ struct InsightsScreen: View {
     // MARK: - Page
 
     private var pageBody: some View {
-        VStack(alignment: .leading, spacing: Spacing.section) {
+        // Lazy: the page is a dozen cards, most of them screens below the
+        // fold — the daily chart is two screens down — and an eager stack
+        // laid all of them out, Swift Charts included, before the push.
+        LazyVStack(alignment: .leading, spacing: Spacing.section) {
             Segmented(
                 options: InsightsStore.Tab.allCases,
                 selection: $store.tab,
@@ -268,7 +271,7 @@ struct InsightsScreen: View {
             InsightsCard(title: "Remaining on your plans", trailing: nil) {
                 PlanLimitsSection(store: limits)
             }
-            UsageDailyChart(store: store)
+            UsageDailyChart(usage: store.usage, mode: store.usageMode).equatable()
             UsageTokenFlow(summary: summary)
             UsageBreakdown(store: store)
         }
@@ -292,7 +295,8 @@ struct InsightsScreen: View {
                 in: .rect(cornerRadius: Radius.control, style: .continuous)
             )
             ActivityHeatmap(summary: summary)
-            ActivityDailyChart(store: store)
+            ActivityDailyChart(activity: store.activity, mode: store.activityMode,
+                               projectFilter: store.projectFilter).equatable()
             ActivityRepositories(store: store)
             ActivityGithubNotice(state: summary.github)
             ActivityPullRequests(store: store)

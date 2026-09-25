@@ -4,12 +4,14 @@ import Network
 
 // The phone's half of the remote bridge protocol (docs/remote.md, and
 // src-tauri/src/remote/ws.rs for the host's half). JSON text frames over one
-// WebSocket:
+// WebSocket, except that a host told `"compression":"deflate"` at auth sends
+// frames over 16 KiB as binary: a zero byte, then the JSON as raw DEFLATE.
 //
-//   client → {"type":"auth","token":"…"}
+//   client → {"type":"auth","token":"…","compression":"deflate"}
 //            {"type":"request","id":1,"channel":"…","input":{},"operation":{…}}
 //            {"type":"ping"}
-//   host   → {"type":"auth-ok","operationReplay":true} | {"type":"auth-error"}
+//   host   → {"type":"auth-ok","operationReplay":true,"dashboardChanges":true,
+//             "compression":"deflate"} | {"type":"auth-error"}
 //            {"type":"response","id":1,"ok":…} | {"type":"response","id":1,"error":…}
 //            {"type":"event","channel":"dashboard:delta","payload":…}
 //            {"type":"pong"} | {"type":"resync"}
@@ -146,6 +148,12 @@ actor BridgeClient {
     private let operationStore: RemoteOperationStore
     private var activeOperationIDs: Set<String> = []
     private var operationReplay = false
+    /// The host answers `dashboard:changes` (see DashboardChanges.swift).
+    private var dashboardChanges = false
+    /// The last dashboard merged, which the next `dashboard:changes` is a
+    /// diff against. Kept across reconnects: the host holds it by digest,
+    /// not by socket, so a return from the background reads only what moved.
+    private var dashboardBase: DashboardChanges.Snapshot?
     private var generation = 0
     private var lifecycle = 0
     private var authTask: Task<Void, Never>?
@@ -324,15 +332,131 @@ actor BridgeClient {
         input: some Encodable & Sendable,
         as: Output.Type
     ) async throws -> Output {
+        let clock = ContinuousClock()
+        let started = clock.now
         let payload = try await send(channel: channel, input: input)
+        let received = clock.now
         do {
-            return try JSONDecoder().decode(Output.self, from: payload)
+            let decoded = try JSONDecoder().decode(Output.self, from: payload)
+            NativePerformance.log.debug("request \(channel, privacy: .public) bytes=\(payload.count) roundTripMs=\((received - started).milliseconds) decodeMs=\((clock.now - received).milliseconds)")
+            return decoded
         } catch {
             throw BridgeError.malformedResponse
         }
     }
 
     private func send(channel: String, input: some Encodable & Sendable) async throws -> Data {
+        guard channel == "dashboard:list" else { return try await sendUnshared(channel: channel, input: input) }
+        return try await sharedDashboardRead(input: input)
+    }
+
+    // MARK: - Shared dashboard reads
+
+    /// One `dashboard:list` in flight or answered, shared by every caller.
+    private struct SharedDashboardRead {
+        let id: UUID
+        let epoch: Int
+        let startedAt: ContinuousClock.Instant
+        let task: Task<Data, Error>
+        var answer: Data?
+    }
+
+    /// Advanced whenever the host may answer `dashboard:list` differently: a
+    /// resync, and a delta that hints at a change or carries rows. A streamed
+    /// chunk's `changedSessionIds` alone does not. A dropped connection
+    /// discards an answered read instead (`teardown`).
+    private var dashboardEpoch = 0
+    private var dashboardRead: SharedDashboardRead?
+    private var dashboardWaiters: [UUID: (read: UUID, continuation: CheckedContinuation<Data, Error>)] = [:]
+    /// Every unanswered read, including one a newer read has replaced, so
+    /// it can be stopped once nobody waits for it.
+    private var dashboardReadTasks: [UUID: Task<Data, Error>] = [:]
+    /// A read nothing has invalidated is still reused only this long.
+    private static let dashboardReuseWindow: Duration = .seconds(5)
+
+    /// One `dashboard:list` per host change, whoever asks. The list, the open
+    /// chat's composer metadata, and a delegated-work card each read it on the
+    /// same hint; at ~740 KB for a two-hundred-chat Mac, reading it three
+    /// times was most of the bytes a quiet phone received. A read started
+    /// after the latest invalidation already answers for it.
+    private func sharedDashboardRead(input: some Encodable & Sendable) async throws -> Data {
+        try Task.checkCancellation()
+        let read: SharedDashboardRead
+        if let current = dashboardRead, current.epoch == dashboardEpoch,
+           ContinuousClock.now - current.startedAt < Self.dashboardReuseWindow {
+            if let answer = current.answer { return answer }
+            read = current
+        } else {
+            let id = UUID()
+            let task = Task { try await self.readDashboard(input: input) }
+            read = SharedDashboardRead(id: id, epoch: dashboardEpoch, startedAt: .now, task: task)
+            dashboardRead = read
+            dashboardReadTasks[id] = task
+            Task { self.finishDashboardRead(id, with: await task.result) }
+        }
+        // Each caller waits on its own continuation so that one cancelled
+        // caller stops waiting at once, without cancelling the read for the
+        // others.
+        let waiter = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                dashboardWaiters[waiter] = (read.id, continuation)
+            }
+        } onCancel: {
+            Task { await self.cancelDashboardWaiter(waiter) }
+        }
+    }
+
+    private func finishDashboardRead(_ id: UUID, with result: Result<Data, Error>) {
+        dashboardReadTasks.removeValue(forKey: id)
+        if dashboardRead?.id == id {
+            if case .success(let data) = result { dashboardRead?.answer = data } else { dashboardRead = nil }
+        }
+        for (key, waiter) in dashboardWaiters where waiter.read == id {
+            dashboardWaiters.removeValue(forKey: key)
+            waiter.continuation.resume(with: result)
+        }
+    }
+
+    private func cancelDashboardWaiter(_ waiter: UUID) {
+        guard let (read, continuation) = dashboardWaiters.removeValue(forKey: waiter) else { return }
+        continuation.resume(throwing: CancellationError())
+        // Nobody is left to use the answer: stop the read itself, so it
+        // leaves no request behind on the socket.
+        guard !dashboardWaiters.values.contains(where: { $0.read == read }),
+              let task = dashboardReadTasks.removeValue(forKey: read) else { return }
+        task.cancel()
+        if dashboardRead?.id == read { dashboardRead = nil }
+    }
+
+    private func invalidateDashboardRead() {
+        dashboardEpoch += 1
+    }
+
+    /// `dashboard:list`, or from a host that offers it, the same snapshot as
+    /// a diff against the last one merged. An answer that does not apply
+    /// costs one full read, never a guess.
+    private func readDashboard(input: some Encodable & Sendable) async throws -> Data {
+        try await waitUntilAuthenticated()
+        guard dashboardChanges else { return try await sendUnshared(channel: "dashboard:list", input: input) }
+        let base = dashboardBase
+        var reply = try await sendUnshared(channel: "dashboard:changes",
+                                           input: DashboardChanges.Input(baseDigest: base?.digest))
+        let merged: DashboardChanges.Snapshot
+        do {
+            merged = try DashboardChanges.merge(reply, into: base)
+        } catch where base != nil {
+            dashboardBase = nil
+            reply = try await sendUnshared(channel: "dashboard:changes", input: DashboardChanges.Input(baseDigest: nil))
+            merged = try DashboardChanges.merge(reply, into: nil)
+        }
+        dashboardBase = merged
+        let snapshot = try JSONSerialization.data(withJSONObject: merged.value)
+        NativePerformance.log.debug("dashboard:changes answerBytes=\(reply.count) snapshotBytes=\(snapshot.count) whole=\(merged.arrivedWhole)")
+        return snapshot
+    }
+
+    private func sendUnshared(channel: String, input: some Encodable & Sendable) async throws -> Data {
         let startedLifecycle = lifecycle
         await acquireSlot()
         defer { releaseSlot() }
@@ -345,6 +469,11 @@ actor BridgeClient {
         encoder.outputFormatting = [.sortedKeys]
         let encoded = try encoder.encode(input)
         let isMutation = RemoteChannels.isMutation(channel)
+        // This phone's own change must be visible to the next dashboard read
+        // even when the host's delta for it is late, so a mutation retires
+        // any shared answer both before and after it runs.
+        if isMutation { invalidateDashboardRead() }
+        defer { if isMutation { invalidateDashboardRead() } }
         var operation: UnresolvedRemoteOperation?
         if isMutation {
             guard operationReplay else {
@@ -646,7 +775,10 @@ actor BridgeClient {
         // seconds, so this goes first and everything else waits behind it.
         authTask = Task {
             do {
-                let auth = try JSONSerialization.data(withJSONObject: ["type": "auth", "token": token])
+                // A host that knows `compression` sends its large frames
+                // deflated; one that does not ignores the field.
+                let auth = try JSONSerialization.data(withJSONObject: ["type": "auth", "token": token,
+                                                                       "compression": "deflate"])
                 try await socket.send(.string(String(decoding: auth, as: UTF8.self)))
             } catch {
                 self.socketFailed(generation: mine)
@@ -669,11 +801,19 @@ actor BridgeClient {
 
     private func receive(_ message: URLSessionWebSocketTask.Message, generation mine: Int) {
         guard mine == generation else { return }
-        let data: Data
+        let wire: Data
         switch message {
-        case .string(let text): data = Data(text.utf8)
-        case .data(let raw): data = raw
+        case .string(let text): wire = Data(text.utf8)
+        case .data(let raw): wire = raw
         @unknown default: return
+        }
+        let clock = ContinuousClock()
+        let parseStarted = clock.now
+        guard let data = Self.inflated(wire) else { return }
+        defer {
+            if data.count > 64 * 1_024 {
+                NativePerformance.log.debug("frame bytes=\(data.count) wireBytes=\(wire.count) actorMs=\((clock.now - parseStarted).milliseconds)")
+            }
         }
         guard let frame = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = frame["type"] as? String
@@ -683,6 +823,7 @@ actor BridgeClient {
         case "auth-ok":
             authenticated = true
             operationReplay = frame["operationReplay"] as? Bool == true
+            dashboardChanges = frame["dashboardChanges"] as? Bool == true
             reconnectAttempt = 0
             droppedAt = nil
             publish(.live)
@@ -700,9 +841,11 @@ actor BridgeClient {
             pongTimer?.cancel()
             pongTimer = nil
         case "resync":
+            invalidateDashboardRead()
             eventContinuation.yield(.resync)
         case "event":
             guard let channel = frame["channel"] as? String, let payload = frame["payload"] else { return }
+            if channel == "dashboard:delta", Self.deltaChangesDashboard(payload) { invalidateDashboardRead() }
             guard let encoded = try? JSONSerialization.data(withJSONObject: payload, options: [.fragmentsAllowed])
             else { return }
             eventContinuation.yield(.push(channel: channel, payload: encoded))
@@ -719,6 +862,15 @@ actor BridgeClient {
             }
         default:
             return
+        }
+    }
+
+    /// Whether a `dashboard:delta` may change what `dashboard:list` answers.
+    static func deltaChangesDashboard(_ payload: Any) -> Bool {
+        guard let delta = payload as? [String: Any] else { return true }
+        if delta["dashboardChanged"] as? Bool == true || delta["resyncRequired"] as? Bool == true { return true }
+        return ["projects", "workspaces", "sessions", "removedSessionIds", "removedWorkspaceIds"].contains { key in
+            (delta[key] as? [Any])?.isEmpty == false
         }
     }
 
@@ -792,9 +944,15 @@ actor BridgeClient {
     }
 
     private func teardown(failPendingWith error: BridgeError?) {
+        // Whatever the host announced while no socket was listening is
+        // lost, so an answer from before the drop no longer stands in for a
+        // fresh read. A read still in flight either fails with this socket
+        // or, queued behind authentication, goes out on the next one.
+        if dashboardRead?.answer != nil { dashboardRead = nil }
         generation += 1
         authenticated = false
         operationReplay = false
+        dashboardChanges = false
         authTask?.cancel()
         authTask = nil
         receiveLoop?.cancel()
@@ -823,6 +981,14 @@ actor BridgeClient {
     private func reconnectIfCurrent(_ mine: Int) {
         guard generation == mine, !stopped else { return }
         openSocket()
+    }
+
+    /// A binary frame that opens with a zero byte is the rest of it as raw
+    /// DEFLATE, which the host sends only because this client asked at
+    /// authentication; JSON never starts with one.
+    static func inflated(_ wire: Data) -> Data? {
+        guard wire.first == 0 else { return wire }
+        return try? (Data(wire.dropFirst()) as NSData).decompressed(using: .zlib) as Data
     }
 
     private static func canonicalInput(_ data: Data) -> Data? {

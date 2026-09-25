@@ -281,6 +281,10 @@ final class InsightsStore: ObservableObject {
     /// Series buckets with only the selected project's commits/lines. The
     /// heatmap and repository shares always read the unfiltered summary.
     func activitySeries() -> [ActivitySeriesPoint] {
+        Self.activitySeries(activity, projectFilter: projectFilter)
+    }
+
+    static func activitySeries(_ activity: ActivitySummary?, projectFilter: String?) -> [ActivitySeriesPoint] {
         guard let activity else { return [] }
         guard let project = projectFilter else { return activity.series }
         return activity.series.map { point in

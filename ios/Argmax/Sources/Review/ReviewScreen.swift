@@ -187,7 +187,7 @@ struct ReviewScreen: View {
                 subtitle: detail.pathAndKind,
                 onBack: { openDetail = nil }
             ) {
-                expandControl
+                if case .diff = detail { expandControl }
             }
         } else {
             ScreenHeader(
@@ -204,11 +204,15 @@ struct ReviewScreen: View {
     /// while there is a rung left, which is the viewer's answer, not ours.
     /// It rides the header's trailing slot, the only bar an embedded viewer
     /// has now that the tab strip is gone.
-    @ViewBuilder
+    ///
+    /// Hidden rather than removed: the 44pt button is taller than the title
+    /// block, so dropping it while the next rung loads re-centred the title
+    /// 3pt and gave its truncation 44pt more — the header visibly jumped.
     private var expandControl: some View {
-        if canExpandDiff {
-            ReviewContextButton { diffContext = DiffParser.nextContext(after: diffContext) }
-        }
+        ReviewContextButton { diffContext = DiffParser.nextContext(after: diffContext) }
+            .opacity(canExpandDiff ? 1 : 0)
+            .disabled(!canExpandDiff)
+            .accessibilityHidden(!canExpandDiff)
     }
 
     /// One quiet line under the header: which slice, and what it adds up to.

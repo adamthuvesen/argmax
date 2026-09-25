@@ -355,3 +355,21 @@ final class CollapsedChatSectionsTests: XCTestCase {
         XCTAssertEqual(collapsedChatSections(from: ""), [])
     }
 }
+
+final class WireTimestampTests: XCTestCase {
+    /// The formatter-free path must read exactly what the formatters read,
+    /// and leave every other spelling to them.
+    func testMatchesTheFormattersOnEveryShape() {
+        let stamps = [
+            "2026-09-23T16:19:11.287Z", "2026-09-23T16:19:11Z", "2024-02-29T23:59:59.999Z",
+            "2000-01-01T00:00:00.000Z", "1970-01-01T00:00:00Z", "2026-12-31T23:59:59.001Z",
+            "2023-02-29T00:00:00Z", "2026-13-01T00:00:00Z", "2026-09-24T24:00:00Z",
+            "2026-09-24T10:00:00+02:00", "2026-09-24T10:00:00.5Z", "0001-01-01T00:00:00Z", "yesterday",
+        ]
+        for stamp in stamps {
+            let formatter = ISO8601DateFormatter.withMilliseconds.date(from: stamp)
+                ?? ISO8601DateFormatter.wholeSeconds.date(from: stamp)
+            XCTAssertEqual(parseWireTimestamp(stamp), formatter, stamp)
+        }
+    }
+}

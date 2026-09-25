@@ -92,6 +92,9 @@ pub struct AppState {
     /// Same, for `terminal:data` / `terminal:exit`. Kept apart so a terminal
     /// flood cannot evict a queued delta — see `REMOTE_TERMINAL_EVENT_CAPACITY`.
     pub remote_terminal_events: broadcast::Sender<RemoteEvent>,
+    /// The last few dashboards sent to remote clients, which
+    /// `dashboard:changes` answers as a diff against.
+    pub remote_dashboard_baselines: crate::remote::dashboard_changes::DashboardBaselines,
     /// Outcome of the most recent session-sync sweep, for the Settings pane.
     pub sync_report: std::sync::Mutex<Option<crate::sync::SyncReport>>,
     /// One session-sync sweep at a time. `sync:set-config`, `sync:run-now` and
@@ -162,6 +165,7 @@ impl Default for AppState {
             remote_server: std::sync::Mutex::new(None),
             remote_events: broadcast::channel(REMOTE_EVENT_CAPACITY).0,
             remote_terminal_events: broadcast::channel(REMOTE_TERMINAL_EVENT_CAPACITY).0,
+            remote_dashboard_baselines: Default::default(),
             sync_report: std::sync::Mutex::new(None),
             sync_sweep: Arc::new(std::sync::Mutex::new(())),
             chat_cleanup_plan: std::sync::Mutex::new(None),

@@ -100,13 +100,15 @@ struct DiffScreen: View {
         load == .ready && DiffParser.nextContext(after: contextLines.wrappedValue) != nil && hasGaps
     }
 
-    @ViewBuilder
+    /// Hidden rather than removed, so the title keeps its width and the header
+    /// holds still while the next rung loads.
     private var expandControl: some View {
-        if canExpand {
-            ReviewContextButton(size: 32) {
-                contextLines.wrappedValue = DiffParser.nextContext(after: contextLines.wrappedValue)
-            }
+        ReviewContextButton(size: 32) {
+            contextLines.wrappedValue = DiffParser.nextContext(after: contextLines.wrappedValue)
         }
+        .opacity(canExpand ? 1 : 0)
+        .disabled(!canExpand)
+        .accessibilityHidden(!canExpand)
     }
 
     private var hasGaps: Bool {

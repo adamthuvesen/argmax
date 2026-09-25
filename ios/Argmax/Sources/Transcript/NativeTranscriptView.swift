@@ -47,7 +47,8 @@ struct NativeTranscriptView: View {
     var body: some View {
         let allRows = allRows
         let rowIDs = allRows.map(\.id)
-        let bounds = rowWindow.bounds(in: rowIDs, following: following)
+        let openingCount = rowWindow.isOpening ? TranscriptRowWindow.openingCount(allRows) : nil
+        let bounds = rowWindow.bounds(in: rowIDs, following: following, openingCount: openingCount)
         let rows = Array(allRows[bounds])
         let latestTurnRowIDs = Set(rowIDs[(turnAnchorID.flatMap(rowIDs.lastIndex(of:)) ?? rowIDs.startIndex)...])
         return VStack(spacing: 0) {
@@ -78,19 +79,22 @@ struct NativeTranscriptView: View {
                 onLoadEarlier: { rowWindow.revealEarlier(in: rowIDs) },
                 onLoadLater: { rowWindow.revealLater(in: rowIDs) }
             ) { row in
-                MobileTranscriptRowView(row: row) { item in
-                TranscriptContentRow(item: item, client: client,
-                                     onOpenFile: onOpenFile, onOpenDiff: onOpenDiff,
-                                     onOpenSession: { navigator.awaitingSessionID = $0 })
-                }
-                    .padding(.vertical, row.verticalPadding)
-                    .environment(\.transcriptRowInLatestTurn, latestTurnRowIDs.contains(row.id))
+                TranscriptListRow(
+                    row: row,
+                    inLatestTurn: latestTurnRowIDs.contains(row.id),
+                    client: client,
+                    onOpenFile: onOpenFile,
+                    onOpenDiff: onOpenDiff,
+                    onOpenSession: { navigator.awaitingSessionID = $0 }
+                )
+                .equatable()
             } footer: {
                 TranscriptThinkingLabel(thinking: thinking, beatHolder: $beatHolder)
                     .id(thinking)
                     .padding(.vertical, Spacing.snug)
             }
             .environment(\.activityBeat, beatHolder)
+            .environment(\.transcriptSessionWorking, sessionIsWorking)
             .overlay(alignment: .bottom) {
                 if !following && !rows.isEmpty {
                     Button {
@@ -125,11 +129,22 @@ struct NativeTranscriptView: View {
             if isFollowing {
                 rowWindow.reset()
             } else {
-                rowWindow.freeze(in: rowIDs)
+                rowWindow.freeze(in: rowIDs, openingCount: openingCount)
             }
         }
         .onChange(of: transcript.sessionID) { _, _ in
             rowWindow.reset()
+            rowWindow.beginOpening()
+        }
+        // The rest of the window mounts once the push has finished: laid out
+        // with the first frame, it was most of the time between the tap and
+        // the chat moving. Rows land above the tail while following, where
+        // the bottom size-change anchor keeps what is on screen still.
+        .task(id: TranscriptOpeningKey(sessionID: transcript.sessionID, hasRows: !allRows.isEmpty,
+                                       opening: rowWindow.isOpening)) {
+            guard rowWindow.isOpening, !allRows.isEmpty else { return }
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            rowWindow.finishOpening()
         }
         .onChange(of: appearance.chatDetail) { _, _ in
             rowWindow.reset()
@@ -152,20 +167,97 @@ struct NativeTranscriptView: View {
     }
 }
 
+private struct TranscriptOpeningKey: Equatable {
+    let sessionID: String?
+    let hasRows: Bool
+    let opening: Bool
+}
+
+/// Equal because every input a render reads is a value, and the
+/// store changes it on its own schedule. The callbacks are left out of the
+/// comparison: they open screens and never shape the row. Parent state
+/// changes — a scroll measurement, a keystroke in the composer — would
+/// otherwise re-render every mounted row, since a closure is never equal
+/// to the last one.
+extension NativeTranscriptView: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.client === rhs.client }
+}
+
+/// One mounted transcript row. Equatable for the same reason as the view
+/// above: a row is re-rendered when its content or its turn changes, not
+/// whenever the list around it does.
+struct TranscriptListRow: View, Equatable {
+    let row: MobileTranscriptRow
+    let inLatestTurn: Bool
+    let client: BridgeClient
+    let onOpenFile: (String) -> Void
+    let onOpenDiff: (String) -> Void
+    let onOpenSession: (String) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.row == rhs.row && lhs.inLatestTurn == rhs.inLatestTurn && lhs.client === rhs.client
+    }
+
+    var body: some View {
+        MobileTranscriptRowView(row: row) { item in
+            TranscriptContentRow(item: item, client: client,
+                                 onOpenFile: onOpenFile, onOpenDiff: onOpenDiff,
+                                 onOpenSession: onOpenSession)
+        }
+        .padding(.vertical, row.verticalPadding)
+        .environment(\.transcriptRowInLatestTurn, inLatestTurn)
+    }
+}
+
 /// The exact-height transcript stack stays eager, but only for the rows near
 /// the reader. Stable boundary ids keep live output from moving a detached
 /// history window, while fixed-size steps let either edge page through rows
 /// already projected by `TranscriptStore`.
+///
+/// Every mounted row is laid out, shaped, and drawn whether it is on screen
+/// or not, so the window is the cost of opening a chat: 120 rows held the
+/// main thread for 1.2 s opening a 94-row chat on the simulator, 32 rows
+/// for 0.4 s. A reader heading into history is paged in well before the
+/// window's edge (`NativeTranscriptList.requestWindowPage`).
 struct TranscriptRowWindow: Equatable {
-    static let capacity = 120
-    static let step = 60
+    static let capacity = 32
+    static let step = 16
 
     private var firstID: String?
     private var lastID: String?
+    /// A chat just opened mounts only the rows its first screens need.
+    private(set) var isOpening = true
 
-    func bounds(in ids: [String], following: Bool) -> Range<Int> {
+    /// About three screens of the newest rows, from their text: enough that
+    /// the opening frame fills the viewport and the rest can land above it.
+    static func openingCount(_ rows: [MobileTranscriptRow], height target: CGFloat = 2_600) -> Int {
+        var height: CGFloat = 0
+        var count = 0
+        for row in rows.reversed() where height < target && count < capacity {
+            count += 1
+            height += estimatedHeight(row)
+        }
+        return max(count, min(rows.count, 8))
+    }
+
+    private static func estimatedHeight(_ row: MobileTranscriptRow) -> CGFloat {
+        guard case .item(let item) = row else { return 44 }
+        switch item {
+        case .user(let message), .assistant(let message):
+            let lines = message.text.split(separator: "\n", omittingEmptySubsequences: false)
+                .reduce(0) { $0 + max(1, ($1.count + 37) / 38) }
+            return CGFloat(lines) * 22 + 24
+        default:
+            return 44
+        }
+    }
+
+    mutating func beginOpening() { isOpening = true }
+    mutating func finishOpening() { isOpening = false }
+
+    func bounds(in ids: [String], following: Bool, openingCount: Int? = nil) -> Range<Int> {
         guard !ids.isEmpty else { return 0..<0 }
-        if following { return tailBounds(in: ids) }
+        if following { return tailBounds(in: ids, count: isOpening ? openingCount : nil) }
 
         let first = firstID.flatMap { ids.firstIndex(of: $0) }
         let last = lastID.flatMap { ids.firstIndex(of: $0) }.map { $0 + 1 }
@@ -181,8 +273,11 @@ struct TranscriptRowWindow: Equatable {
         }
     }
 
-    mutating func freeze(in ids: [String]) {
-        set(bounds: tailBounds(in: ids), ids: ids)
+    /// A reader leaving the tail keeps what is mounted, the opening rows
+    /// included, and pages from there.
+    mutating func freeze(in ids: [String], openingCount: Int? = nil) {
+        set(bounds: tailBounds(in: ids, count: isOpening ? openingCount : nil), ids: ids)
+        isOpening = false
     }
 
     mutating func revealEarlier(in ids: [String]) {
@@ -202,8 +297,8 @@ struct TranscriptRowWindow: Equatable {
         lastID = nil
     }
 
-    private func tailBounds(in ids: [String]) -> Range<Int> {
-        max(ids.startIndex, ids.endIndex - Self.capacity)..<ids.endIndex
+    private func tailBounds(in ids: [String], count: Int? = nil) -> Range<Int> {
+        max(ids.startIndex, ids.endIndex - min(count ?? Self.capacity, Self.capacity))..<ids.endIndex
     }
 
     private mutating func set(bounds: Range<Int>, ids: [String]) {
@@ -218,7 +313,8 @@ struct TranscriptContentRow: View {
     let onOpenFile: (String) -> Void
     var onOpenDiff: ((String) -> Void)? = nil
     var onOpenSession: ((String) -> Void)?
-    @EnvironmentObject private var transcript: TranscriptStore
+    @Environment(\.transcriptSessionWorking) private var sessionWorking
+    @Environment(\.transcriptRowInLatestTurn) private var inLatestTurn
 
     var body: some View {
         switch item {
@@ -229,12 +325,10 @@ struct TranscriptContentRow: View {
         case .tools(let group):
             TranscriptToolsRow(group: group, onOpenFile: onOpenFile, onOpenDiff: onOpenDiff)
         case .todo(let list):
-            TranscriptTodoRow(
-                list: list,
-                running: transcript.session?.state == .running
-                    && transcript.connection == .live
-                    && list.isCurrentTurn(in: transcript.items)
-            )
+            // A plan is live while its turn is the latest one, which is
+            // what the row's latest-turn flag already says: no regular
+            // prompt follows it.
+            TranscriptTodoRow(list: list, running: sessionWorking && inLatestTurn)
         case .notice(let notice):
             Text(notice.text)
                 .typeStyle(.footnote)

@@ -2258,9 +2258,9 @@ export function App(): JSX.Element {
             // An automatic fold is governed by window width. The existing
             // toggle remains the manual preference and is intentionally not
             // allowed to persist a responsive fold. A click at that width
-            // opens the existing hover-peek overlay instead.
+            // toggles the existing hover-peek overlay instead.
             if (sidebarResponsiveCollapsed && !sidebarCollapsed) {
-              setSidebarPeek(true);
+              setSidebarPeek(!sidebarPeek);
               return;
             }
             toggleSidebarCollapsed();

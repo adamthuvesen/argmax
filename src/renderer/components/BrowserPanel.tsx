@@ -259,8 +259,7 @@ export function BrowserPanel({
   /** The peeked sidebar must receive clicks above native content. Dialogs
    *  scoped to other panes only hide the webview when their boxes overlap. */
   const overlaysSurface = useCallback((bounds: BrowserBounds): boolean => {
-    const { collapsed, peeking } = sidebarChromeSnapshot();
-    if (collapsed && peeking) return true;
+    if (sidebarChromeSnapshot().peeking) return true;
     const right = bounds.x + bounds.width;
     const bottom = bounds.y + bounds.height;
     if (bounds.width <= 0 || bounds.height <= 0) return false;

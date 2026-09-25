@@ -273,7 +273,7 @@ export function Sidebar({
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
 }): JSX.Element {
-  const { collapsed } = useSidebarChrome();
+  const { peeking } = useSidebarChrome();
   const grid = usePaneGrid();
   const { fullLauncherOpen } = useLauncherSurface();
   const [newArcDialogOpen, setNewArcDialogOpen] = useState(false);
@@ -1181,7 +1181,7 @@ export function Sidebar({
     <aside
       className="sidebar"
       data-loading={loadState === "loading" ? "true" : undefined}
-      onMouseLeave={collapsed ? endSidebarPeek : undefined}
+      onMouseLeave={peeking ? endSidebarPeek : undefined}
     >
       <div className="window-controls" data-window-drag />
       <nav className="rail-nav" aria-label="Primary">

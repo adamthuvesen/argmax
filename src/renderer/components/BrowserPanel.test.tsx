@@ -898,6 +898,19 @@ describe("BrowserPanel", () => {
     expect(browserStub.setBounds).toHaveBeenLastCalledWith(
       expect.objectContaining({ visible: true, tabId })
     );
+
+    act(() => {
+      // A responsive fold leaves the persisted collapse preference off.
+      toggleSidebarCollapsed();
+      setSidebarPeek(true);
+    });
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false, tabId })
+    );
+    act(() => setSidebarPeek(false));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId })
+    );
     expect(browserStub.open).toHaveBeenCalledTimes(1);
   });
 

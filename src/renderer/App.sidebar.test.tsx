@@ -35,9 +35,12 @@ import {
 } from "../test/appTestHarness.js";
 
 describe("App sidebar", () => {
+  const initialViewportWidth = window.innerWidth;
+
   afterEach(() => {
     vi.useRealTimers();
     cleanup();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: initialViewportWidth });
   });
 
   beforeEach(() => {
@@ -256,7 +259,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Second chat" }));
 
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Chat model" })).toHaveTextContent("Sonnet 5");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
@@ -455,7 +458,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     const input = await screen.findByLabelText("Chat prompt");
     fireEvent.change(input, {
       target: { value: "continue with tests" }
@@ -996,7 +999,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("button", { name: "Hide sidebar" }));
 
@@ -1006,6 +1009,32 @@ describe("App sidebar", () => {
         '.app-shell[data-sidebar-collapsed="true"] .session-multigrid-cell:first-child .conversation-surface > .section-heading'
       )
     ).toBeInTheDocument();
+  });
+
+  it("ends a responsive sidebar peek on leave or a second toggle click", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "Hide sidebar" });
+
+    act(() => {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 600 });
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    const shell = document.querySelector(".app-shell");
+    const sidebar = document.querySelector(".sidebar");
+    const peekZone = document.querySelector(".sidebar-peek-zone");
+    expect(shell).toHaveAttribute("data-sidebar-collapsed", "true");
+    expect(sidebar).toBeInTheDocument();
+    expect(peekZone).toBeInTheDocument();
+
+    fireEvent.mouseEnter(peekZone!);
+    expect(shell).toHaveAttribute("data-sidebar-peek", "true");
+    fireEvent.mouseLeave(sidebar!);
+    expect(shell).not.toHaveAttribute("data-sidebar-peek");
+
+    fireEvent.mouseEnter(peekZone!);
+    fireEvent.click(screen.getByRole("button", { name: "Show sidebar" }));
+    expect(shell).not.toHaveAttribute("data-sidebar-peek");
   });
 
   it("keeps launcher review controls available with the sidebar collapsed", async () => {
@@ -1174,7 +1203,7 @@ describe("App sidebar", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     const projectVisibility = screen.getByRole("button", { name: "Hide Argmax chats" });
     fireEvent.click(screen.getByRole("button", { name: "Argmax" }));

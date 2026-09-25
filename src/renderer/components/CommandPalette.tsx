@@ -9,7 +9,7 @@ import {
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent
 } from "react";
-import { Command, FileSearch, FileText, Folder, MessageSquare, Quote, SlidersHorizontal } from "lucide-react";
+import { Command, FileSearch, FileText, Folder, MessageSquare, Quote, SlidersHorizontal, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { FileIcon } from "@react-symbols/icons/utils";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
@@ -22,6 +22,14 @@ import {
   type PaletteHit,
   type PaletteItem
 } from "../lib/paletteSearch.js";
+import {
+  itemFrecency,
+  learnedPicks,
+  readPaletteUsage,
+  recordPaletteUse,
+  usageBoost,
+  type PaletteUsage
+} from "../lib/paletteUsage.js";
 import type {
   WorkspaceContentSearchFile,
   WorkspaceContentSearchResult
@@ -70,12 +78,12 @@ const SCOPE_TABS: ReadonlyArray<{ scope: PaletteScope; label: string }> = [
   { scope: "settings", label: "Settings" }
 ];
 
-// Sessions lead the mixed list: the thing a user reaches for by name is almost
-// always a running agent, and files/actions stay one keystroke away via tabs.
-// `all` deliberately omits Contents: a git grep needs a checkout and costs a
-// subprocess per keystroke, so it stays behind its own tab.
+// Actions lead the mixed list: running a command is what ⌘K is reached for
+// most, so they win ties. `all` deliberately omits Contents: a git grep needs
+// a checkout and costs a subprocess per keystroke, so it stays behind its own
+// tab. Suggested only ever fills with an empty query.
 const SCOPE_GROUPS: Record<PaletteScope, PaletteGroup[]> = {
-  all: ["Sessions", "Files", "Actions", "Settings", "Projects", "Messages"],
+  all: ["Suggested", "Actions", "Sessions", "Files", "Settings", "Projects", "Messages"],
   agents: ["Sessions", "Projects", "Messages"],
   files: ["Files"],
   messages: ["Messages"],
@@ -83,6 +91,30 @@ const SCOPE_GROUPS: Record<PaletteScope, PaletteGroup[]> = {
   actions: ["Actions"],
   settings: ["Settings"]
 };
+
+// The empty All palette: what fits right now, then where the user was, then
+// the catalogs.
+const EMPTY_ALL_GROUPS: PaletteGroup[] = ["Suggested", "Sessions", "Actions", "Projects", "Settings"];
+
+// Handicap per group, in match-rank tiers, applied before usage lifts a hit.
+// A file is the least likely ⌘K target, an action the most.
+const GROUP_PRIOR: Record<PaletteGroup, number> = {
+  Suggested: 0,
+  Actions: 0,
+  Sessions: 0.25,
+  Settings: 0.5,
+  Projects: 0.5,
+  Messages: 0.5,
+  Contents: 0.5,
+  Files: 0.75
+};
+
+// Static catalogs, ordered by habit when the query is empty. Sessions and
+// Projects keep their recency order: "Recent" is what their headers promise.
+const HABIT_GROUPS = new Set<PaletteGroup>(["Actions", "Settings"]);
+
+// Typing one of these first in All jumps to that filter, VS Code style.
+const PREFIX_SCOPES: Record<string, PaletteScope> = { ">": "actions", "@": "files", "#": "messages" };
 
 // Argmax names its own surfaces: a session is the agent a user is talking to.
 const GROUP_LABEL: Record<PaletteGroup, string> = {
@@ -92,7 +124,8 @@ const GROUP_LABEL: Record<PaletteGroup, string> = {
   Files: "Files",
   Messages: "Messages",
   Contents: "File Contents",
-  Settings: "Settings"
+  Settings: "Settings",
+  Suggested: "Suggested"
 };
 
 // With no query these groups list what the user touched last, so the header
@@ -119,12 +152,18 @@ const GROUP_ICON: Record<PaletteGroup, LucideIcon> = {
   Files: FileText,
   Messages: Quote,
   Contents: FileSearch,
-  Settings: SlidersHorizontal
+  Settings: SlidersHorizontal,
+  Suggested: Sparkles
 };
 
 interface PaletteFileSource {
   kind: "workspace" | "project";
   id: string;
+}
+
+/** A query that names a path (`src/`, `App.tsx`) wants files even from All. */
+function looksLikePath(query: string): boolean {
+  return /[/\\]/u.test(query) || /\.[a-z0-9]{1,8}$/iu.test(query);
 }
 
 function basename(path: string): string {
@@ -153,6 +192,12 @@ export interface MessageHit {
  * one row per matching line, so keyboard nav walks matches without leaving the
  * single linear index the rest of the palette uses.
  */
+/** A hit with its final rank: text match, group prior, and learned usage. */
+interface RankedHit {
+  hit: PaletteHit;
+  rank: number;
+}
+
 type PaletteRow =
   | { kind: "hit"; hit: PaletteHit; group: PaletteGroup }
   | { kind: "message"; hit: MessageHit; group: "Messages" }
@@ -184,6 +229,14 @@ interface CommandPaletteProps {
    * and cached for the palette session. Picking a file calls `onFilePick`.
    */
   fileSource?: PaletteFileSource | null;
+  /**
+   * The files or changes view is showing beside the chat. Only then does the
+   * All filter mix in files; otherwise they wait for the Files tab, `@`, or a
+   * query that looks like a path.
+   */
+  filesVisible?: boolean;
+  /** The checkout's changed files, which lead the Files results. */
+  changedPaths?: ReadonlySet<string> | undefined;
   loadFiles?: (source: PaletteFileSource) => Promise<string[]>;
   onFilePick?: (path: string) => void;
   /**
@@ -203,6 +256,8 @@ export function CommandPalette({
   initialScope = "all",
   searchMessages,
   fileSource = null,
+  filesVisible = false,
+  changedPaths,
   loadFiles,
   onFilePick,
   searchContents
@@ -226,6 +281,9 @@ export function CommandPalette({
   const messageTokenRef = useRef(0);
   const filesTokenRef = useRef(0);
   const contentTokenRef = useRef(0);
+  // The filter to fall back to when Backspace empties a prefix-picked one.
+  const prefixReturnScopeRef = useRef<PaletteScope | null>(null);
+  const lastInitialScopeRef = useRef(initialScope);
 
   // Document-level Esc + outside-click via the shared hook means Esc works even
   // if focus drifts to a result row (e.g. via screen-reader navigation).
@@ -259,10 +317,19 @@ export function CommandPalette({
         setContentsRunning(false);
         setContentError(null);
         filesCacheKeyRef.current = null;
+        prefixReturnScopeRef.current = null;
       }
       return;
     }
     // Re-opening with a different shortcut (⌘K vs ⌘P vs ⌘F) re-selects the tab.
+    // A row that reopens the palette on another filter (Go to file) lands
+    // while it is still open, so the query that found that row starts over.
+    if (lastInitialScopeRef.current !== initialScope) {
+      lastInitialScopeRef.current = initialScope;
+      setQuery("");
+      setSelectedRowKey(null);
+      prefixReturnScopeRef.current = null;
+    }
     setScope(initialScope);
     inputRef.current?.focus();
   }, [open, initialScope, motionState]);
@@ -275,6 +342,13 @@ export function CommandPalette({
   // The Files tab is a file picker: it lists recents with an empty query, so
   // the path list loads on open instead of waiting for a first keystroke.
   const filesEagerly = showsGroup("Files") && visibleGroups.length === 1;
+  const filesWanted = showsGroup("Files") && (filesEagerly || filesVisible || looksLikePath(query.trim()));
+  // Read once per opening: picks made while it is up (keepOpen steps) should
+  // not reshuffle the rows under the user.
+  const usage = useMemo<{ picks: PaletteUsage; at: number } | null>(
+    () => (open ? { picks: readPaletteUsage(), at: Date.now() } : null),
+    [open]
+  );
 
   // Debounced message backend — only when query is long enough to be useful.
   useEffect(() => {
@@ -377,6 +451,9 @@ export function CommandPalette({
       setFilesError(null);
       return;
     }
+    // Not wanted in All right now: keep whatever already loaded, so a query
+    // flipping in and out of looking like a path never reloads the list.
+    if (!filesWanted) return;
     const cacheKey = `${fileSource.kind}:${fileSource.id}`;
     if (filesCacheKeyRef.current === cacheKey) return;
     if (query.trim().length === 0 && !filesEagerly) {
@@ -409,13 +486,13 @@ export function CommandPalette({
       .finally(() => {
         if (token === filesTokenRef.current) setFilesRunning(false);
       });
-  }, [open, fileSource, loadFiles, query, filesEagerly, showsGroup]);
+  }, [open, fileSource, loadFiles, query, filesEagerly, filesWanted, showsGroup]);
 
   const fileHits = useMemo<PaletteHit[]>(() => {
-    if (!open || !onFilePick || filePaths.length === 0) return [];
+    if (!open || !onFilePick || filePaths.length === 0 || !filesWanted) return [];
     const trimmed = query.trim();
     if (!trimmed && !filesEagerly) return [];
-    return searchFilePaths(filePaths, trimmed, MAX_PER_GROUP).map((path) => ({
+    return searchFilePaths(filePaths, trimmed, MAX_PER_GROUP, changedPaths).map((path) => ({
       item: {
         id: `file:${path}`,
         label: basename(path),
@@ -426,46 +503,100 @@ export function CommandPalette({
       labelRanges: null,
       subtitleRanges: null
     }));
-  }, [filePaths, filesEagerly, onFilePick, open, query]);
+  }, [changedPaths, filePaths, filesEagerly, filesWanted, onFilePick, open, query]);
 
-  // Run uFuzzy synchronously on each keystroke against the local command catalog.
-  // Files are ranked separately by full path, then capped before row creation.
-  const localHits = useMemo<PaletteHit[]>(() => {
+  // Run uFuzzy synchronously on each keystroke against the local command catalog,
+  // then rank each hit by text match, its group's prior, and what the user has
+  // picked before. Files are ranked separately by full path.
+  const frecencyOf = useCallback(
+    (id: string): number => (usage ? itemFrecency(usage.picks, id, usage.at) : 0),
+    [usage]
+  );
+  const localHits = useMemo<RankedHit[]>(() => {
     if (!open) return [];
-    return searchPaletteItems(commands, query);
-  }, [commands, query, open]);
+    const hits = searchPaletteItems(commands, query);
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return hits
+        .map((hit) => ({
+          hit,
+          rank: hit.item.suggest ? -Number.MAX_SAFE_INTEGER : HABIT_GROUPS.has(hit.item.group) ? -frecencyOf(hit.item.id) : 0
+        }))
+        .sort((left, right) => left.rank - right.rank);
+    }
+    const learned = usage ? learnedPicks(usage.picks, trimmed, usage.at) : new Map<string, number>();
+    return hits
+      .map((hit) => ({
+        hit,
+        rank:
+          (hit.matchRank ?? 5) +
+          GROUP_PRIOR[hit.item.group] -
+          usageBoost(frecencyOf(hit.item.id), learned.get(hit.item.id) ?? 0) -
+          (hit.item.suggest ? 0.5 : 0)
+      }))
+      .sort((left, right) => left.rank - right.rank);
+  }, [commands, frecencyOf, open, query, usage]);
 
   // Flatten hits in display order so keyboard nav has a single linear index.
   // Each row carries its group so we can insert headers without breaking the
   // index/option mapping.
   const flatRows = useMemo<PaletteRow[]>(() => {
+    const trimmed = query.trim();
     const perGroup =
-      query.trim().length === 0 && visibleGroups.length > 1
+      trimmed.length === 0 && visibleGroups.length > 1
         ? MAX_RECENT_PER_GROUP
         : MAX_PER_GROUP;
-    const byGroup = new Map<PaletteGroup, PaletteHit[]>();
-    for (const hit of localHits) {
-      const list = byGroup.get(hit.item.group) ?? [];
+
+    // The empty All palette leads with what fits right now (a chat waiting on
+    // the user, Stop mid-turn), then the actions and settings used most. Each
+    // is lifted out of its own group rather than listed twice.
+    const suggested: PaletteHit[] = [];
+    if (trimmed.length === 0 && scope === "all") {
+      for (const { hit } of localHits) {
+        if (hit.item.suggest) suggested.push(hit);
+      }
+      const habitual = localHits
+        .filter(({ hit }) => !hit.item.suggest && HABIT_GROUPS.has(hit.item.group) && frecencyOf(hit.item.id) > 0)
+        .sort((left, right) => frecencyOf(right.hit.item.id) - frecencyOf(left.hit.item.id));
+      for (const { hit } of habitual) suggested.push(hit);
+      suggested.splice(MAX_RECENT_PER_GROUP);
+    }
+    const suggestedIds = new Set(suggested.map((hit) => hit.item.id));
+
+    const byGroup = new Map<PaletteGroup, RankedHit[]>();
+    for (const ranked of localHits) {
+      if (suggestedIds.has(ranked.hit.item.id)) continue;
+      const list = byGroup.get(ranked.hit.item.group) ?? [];
       if (list.length < perGroup) {
-        list.push(hit);
-        byGroup.set(hit.item.group, list);
+        list.push(ranked);
+        byGroup.set(ranked.hit.item.group, list);
       }
     }
 
-    const groups = [...visibleGroups];
-    if (query.trim()) {
+    const groups = trimmed.length === 0 && scope === "all" ? [...EMPTY_ALL_GROUPS] : [...visibleGroups];
+    if (trimmed) {
+      const learned = usage ? learnedPicks(usage.picks, trimmed, usage.at) : new Map<string, number>();
       const bestRank = (group: PaletteGroup): number => {
-        const hits = group === "Files" ? fileHits : byGroup.get(group) ?? [];
-        return Math.min(...hits.map((hit) => hit.matchRank ??
-          Math.min(searchMatchRank(hit.item.label, query),
-            6 + searchMatchRank(hit.item.subtitle ?? hit.item.meta ?? "", query))));
+        if (group === "Files") {
+          return Math.min(...fileHits.map(({ item }) =>
+            Math.min(searchMatchRank(item.label, trimmed), 6 + searchMatchRank(item.subtitle ?? "", trimmed)) +
+            GROUP_PRIOR.Files -
+            usageBoost(frecencyOf(item.id), learned.get(item.id) ?? 0)));
+        }
+        return Math.min(...(byGroup.get(group) ?? []).map(({ rank }) => rank));
       };
-      // Keep groups legible, but let the strongest match lead instead of
-      // making every chat match outrank an exact file or action name.
+      // Keep groups legible, but let the strongest hit lead: an exact file
+      // name can still beat a vague action, and a habit can beat both.
       groups.sort((left, right) => bestRank(left) - bestRank(right));
     }
     const rows: PaletteRow[] = [];
     for (const group of groups) {
+      if (group === "Suggested") {
+        for (const hit of suggested) {
+          rows.push({ kind: "hit", hit, group });
+        }
+        continue;
+      }
       if (group === "Files") {
         for (const hit of fileHits) {
           rows.push({ kind: "hit", hit, group });
@@ -489,12 +620,12 @@ export function CommandPalette({
       }
       const list = byGroup.get(group);
       if (!list) continue;
-      for (const hit of list) {
+      for (const { hit } of list) {
         rows.push({ kind: "hit", hit, group });
       }
     }
     return rows;
-  }, [contentResult.files, fileHits, localHits, messageHits, query, visibleGroups]);
+  }, [contentResult.files, fileHits, frecencyOf, localHits, messageHits, query, scope, usage, visibleGroups]);
 
   const selectedIndex = Math.max(0, flatRows.findIndex((row) => rowKey(row) === selectedRowKey));
 
@@ -504,6 +635,7 @@ export function CommandPalette({
   // exception: it runs and the palette stays up for the next step.
   const activateRow = useCallback(
     (row: PaletteRow): void => {
+      if (row.kind === "hit") recordPaletteUse(row.hit.item.id, query);
       if (row.kind === "hit" && row.hit.item.keepOpen) {
         row.hit.item.run();
         return;
@@ -526,10 +658,11 @@ export function CommandPalette({
         }
       }
     },
-    [onClose, onFilePick]
+    [onClose, onFilePick, query]
   );
 
   const selectScope = useCallback((next: PaletteScope): void => {
+    prefixReturnScopeRef.current = null;
     setScope(next);
     setSelectedRowKey(null);
     inputRef.current?.focus();
@@ -573,6 +706,12 @@ export function CommandPalette({
     if (event.key === "Tab") {
       event.preventDefault();
       cycleScope(event.shiftKey ? -1 : 1);
+      return;
+    }
+    // Backspace on an empty query undoes a prefix jump (`>` → Actions).
+    if (event.key === "Backspace" && query === "" && prefixReturnScopeRef.current) {
+      event.preventDefault();
+      selectScope(prefixReturnScopeRef.current);
       return;
     }
     if (event.key === "ArrowDown") {
@@ -640,7 +779,15 @@ export function CommandPalette({
             autoComplete="off"
             value={query}
             onChange={(event) => {
-              setQuery(event.target.value);
+              const value = event.target.value;
+              const prefixScope = scope === "all" ? PREFIX_SCOPES[value.charAt(0)] : undefined;
+              if (prefixScope) {
+                setScope(prefixScope);
+                prefixReturnScopeRef.current = "all";
+                setQuery(value.slice(1));
+              } else {
+                setQuery(value);
+              }
               setSelectedRowKey(null);
             }}
             onKeyDown={handleKeyDown}
@@ -762,7 +909,9 @@ export function CommandPalette({
                   ) : (
                     <RowIcon
                       icon={
-                        (row.kind === "hit" ? row.hit.item.icon : undefined) ?? GROUP_ICON[row.group]
+                        row.kind === "hit"
+                          ? row.hit.item.icon ?? GROUP_ICON[row.hit.item.group]
+                          : GROUP_ICON[row.group]
                       }
                     />
                   )}
@@ -795,6 +944,11 @@ export function CommandPalette({
                       <HighlightedText text={row.hit.item.meta} ranges={row.hit.subtitleRanges} />
                     </span>
                   ) : null}
+                  {row.kind === "hit" && row.hit.item.shortcut ? (
+                    <kbd className="command-palette-result-shortcut" aria-hidden="true">
+                      {row.hit.item.shortcut}
+                    </kbd>
+                  ) : null}
                   {row.kind === "content-file" ? (
                     <span className="command-palette-result-meta" aria-hidden="true">
                       {row.file.matches.length}
@@ -815,7 +969,7 @@ export function CommandPalette({
           <span className="command-palette-footer-sep">·</span>
           <span><kbd>⏎</kbd> open</span>
           <span className="command-palette-footer-sep">·</span>
-          <span><kbd>⇥</kbd><kbd>⇧⇥</kbd> change filter</span>
+          <span><kbd>⇥</kbd><kbd>&gt;</kbd><kbd>@</kbd><kbd>#</kbd> change filter</span>
           <span className="command-palette-footer-sep">·</span>
           <span><kbd>esc</kbd> close</span>
         </footer>

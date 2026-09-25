@@ -249,7 +249,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   transition: background var(--duration-fast) var(--ease);
   /* Off-screen rows skip layout + paint — a no-JS, no-dependency windowing for
      long session lists. Rows stay in the DOM, so keyboard nav and the sidebar's

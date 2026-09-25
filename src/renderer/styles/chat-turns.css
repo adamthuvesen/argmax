@@ -1635,7 +1635,7 @@ button.tool-call-row-button {
 
 .turn-changes-title {
   color: var(--muted-strong);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
 }
 
 .turn-changes-review {
@@ -1729,7 +1729,7 @@ button.tool-call-row-button {
   /* The name is what the row is for, so it sits on chrome ink rather than the
      muted step the directory beside it takes. */
   color: var(--text-soft);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

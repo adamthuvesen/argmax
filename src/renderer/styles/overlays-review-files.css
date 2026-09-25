@@ -319,6 +319,10 @@
   flex: 0 1 auto;
 }
 
+.agent-active-tabs .file-tab[data-active="true"] {
+  box-shadow: none;
+}
+
 .agent-active-tabs .file-tab > button[role="tab"] {
   padding-right: 10px;
 }

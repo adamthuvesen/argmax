@@ -276,10 +276,27 @@
   flex: 0 1 auto;
 }
 
+/* A length, not a percentage: in the row's `auto` grid track a percentage
+   resolves against the track's own width, which cut "Argmax" to "A…". */
 .command-palette-result-meta {
   flex: 0 0 auto;
-  max-width: 40%;
+  max-width: 18em;
   padding-left: var(--space-2_5);
+}
+
+/* The row's shortcut, so the palette teaches the chord it just saved a user
+   from needing. Quieter than the footer keys: it sits on every action row.
+   It takes the row's trailing column, which action rows leave free of meta. */
+.command-palette-result-shortcut {
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  line-height: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .command-palette-result mark {

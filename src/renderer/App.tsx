@@ -29,7 +29,7 @@ import { clearDraft, launcherDraftKey, writeDraftAttachments, writeDraftText } f
 import type { NewSessionSeed } from "./components/SessionComposer.js";
 import { effortForModel, PROVIDER_TITLE_MODEL, type ReasoningEffort } from "../shared/providerModels.js";
 import type { MessageHit as PaletteMessageHit } from "./components/CommandPalette.js";
-import { parseFtsSnippet } from "./lib/paletteSearch.js";
+import { parseFtsSnippet, type PaletteSurfaceContext } from "./lib/paletteSearch.js";
 import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
 import { useMotionPresence } from "./hooks/useMotionPresence.js";
 import { EmptyState } from "./components/EmptyState.js";
@@ -425,10 +425,7 @@ export function App(): JSX.Element {
   // session is open) registers its file source + pick handler here so the
   // command palette can surface Files for that surface's scope.
   // ⌘K and ⌘P open the same palette; only the pre-selected filter differs.
-  const [paletteFileContext, setPaletteFileContext] = useState<{
-    source: { kind: "workspace" | "project"; id: string };
-    onPick: (path: string) => void;
-  } | null>(null);
+  const [paletteFileContext, setPaletteFileContext] = useState<PaletteSurfaceContext | null>(null);
 
   useLayoutEffect(() => {
     const node = workspaceRef.current;
@@ -1851,9 +1848,24 @@ export function App(): JSX.Element {
     [snapshot.projects, snapshot.workspaces, snapshot.sessions]
   );
 
+  // The focused surface's live state, read once per palette opening. Keyed on
+  // the getter, which is stable per surface, not on the registration, which
+  // a dashboard delta can replace mid-palette.
+  const readPaletteLive = paletteFileContext?.readLive;
+  const paletteLive = useMemo(
+    () => (paletteOpen && readPaletteLive ? readPaletteLive() : null),
+    [paletteOpen, readPaletteLive]
+  );
+  const paletteChangedPaths = useMemo(
+    () => (paletteLive ? new Set(paletteLive.changedPaths) : undefined),
+    [paletteLive]
+  );
+
+  // Built only while the palette is on screen (closing included): the catalog
+  // scans every chat's attention, which a closed palette need not pay per delta.
   const paletteCommands = useMemo(
     () =>
-      buildPaletteCommands({
+      !paletteMotion.present ? [] : buildPaletteCommands({
         snapshot: paletteSnapshot,
         selectedSession,
         onNewSession: () => handleMenuCommand("new-session"),
@@ -1902,6 +1914,31 @@ export function App(): JSX.Element {
           onContextIndicatorEnabledChange: setContextIndicatorEnabled
         },
         onStopSession: (sessionId) => void terminateSession(sessionId),
+        onNewSideChat: () => {
+          hideCommandPalette();
+          hideStandalonePage();
+          closeWorkspacePages();
+          openLauncherSurface(true);
+        },
+        onGoToFile: openFilePalette,
+        onSearchContents: openContentPalette,
+        onToggleTerminal: toggleIntegratedTerminal,
+        onToggleRightSidebar: () => handleMenuCommand("toggle-sidebar"),
+        onToggleLeftSidebar: () => handleMenuCommand("toggle-left-sidebar"),
+        onSwitchToLastChat: () => handleMenuCommand("next-chat"),
+        onShowShortcuts: () => handleMenuCommand("open-cheat-sheet"),
+        onToggleDebugLog: () => handleMenuCommand("toggle-debug-log"),
+        onForkSession: (sessionId) => void forkSession(sessionId),
+        onArchiveWorkspace: onArchiveWorkspaceRow,
+        openInIde: defaultIde
+          ? {
+              label: detectedIdes.find((entry) => entry.id === defaultIde)?.label ?? defaultIde,
+              run: (workspaceId) => onOpenWorkspaceInIdePane(workspaceId, defaultIde)
+            }
+          : undefined,
+        onOpenInNewWindow: window.argmax?.windows && !secondaryWindow ? onOpenInWindowRow : undefined,
+        paneActions: paletteLive?.actions,
+        nowMs: Date.now(),
         onOpenWorkspace: openWorkspaceChat,
         onSelectProject: (projectId) => {
           persistLaunchProjectId(projectId);
@@ -1915,10 +1952,22 @@ export function App(): JSX.Element {
         }
       }),
     [
+      paletteMotion.present,
       paletteSnapshot,
       selectedSession,
       handleMenuCommand,
       terminateSession,
+      openLauncherSurface,
+      openFilePalette,
+      openContentPalette,
+      toggleIntegratedTerminal,
+      forkSession,
+      onArchiveWorkspaceRow,
+      defaultIde,
+      detectedIdes,
+      onOpenWorkspaceInIdePane,
+      onOpenInWindowRow,
+      paletteLive,
       openWorkspaceChat,
       openMessagePalette,
       onOpenBrowserRow,
@@ -2258,6 +2307,8 @@ export function App(): JSX.Element {
             onClose={() => hideCommandPalette()}
             searchMessages={searchMessages}
             fileSource={paletteFileContext?.source ?? null}
+            filesVisible={paletteLive?.filesVisible ?? false}
+            changedPaths={paletteChangedPaths}
             loadFiles={loadPaletteFiles}
             onFilePick={paletteFileContext?.onPick}
             searchContents={searchWorkspaceContents}

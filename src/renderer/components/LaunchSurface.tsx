@@ -4,6 +4,7 @@ import {
   Cloud,
   Folder,
   FolderGit2,
+  FolderTree,
   GitBranch,
   MessageCircle,
   MoreHorizontal,
@@ -50,6 +51,7 @@ import {
 } from "../lib/composerAttachments.js";
 import { clearDraft, launcherDraftKey, readDraft } from "../lib/composerDrafts.js";
 import { parseGoalCommand } from "../lib/goalCommand.js";
+import type { PaletteSurfaceContext, PaletteSurfaceLive } from "../lib/paletteSearch.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -199,7 +201,7 @@ export function LaunchSurface({
   resetSignal?: number;
   rightPanelToggleSignal?: number;
   registerPaletteFileContext?: (
-    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+    context: PaletteSurfaceContext | null
   ) => void;
   sideChatMode?: boolean;
   /** Workspaces from the dashboard snapshot — used to resolve the checkout
@@ -342,6 +344,34 @@ export function LaunchSurface({
     void ensureCheckoutWorkspace();
   }, [activeProject, ensureCheckoutWorkspace, reviewState.isPanelOpen]);
 
+  // ⌘G, shared with the palette row that names it.
+  const toggleFilesPane = useCallback((): void => {
+    if (reviewIsPanelOpen && reviewModes.includes("files")) {
+      reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
+    } else {
+      reviewOpenPanelInFilesMode();
+    }
+  }, [reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode]);
+
+  // What the palette reads about this launcher when it opens, rebuilt each
+  // render so the read is current without re-registering.
+  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
+  paletteLiveRef.current = (): PaletteSurfaceLive => ({
+    filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
+    changedPaths: reviewState.files.map((file) => file.path),
+    actions: [{
+      id: "pane:toggle-files",
+      label: "Toggle files",
+      subtitle: "Browse this checkout",
+      group: "Actions",
+      icon: FolderTree,
+      shortcut: "⌘G",
+      keywords: ["file tree", "explorer"],
+      run: toggleFilesPane
+    }]
+  });
+  const readPaletteLive = useCallback((): PaletteSurfaceLive => paletteLiveRef.current(), []);
+
   // Register this surface's file source + pick handler with App so the
   // command palette can surface project files in its Files group. Cleared
   // on unmount or when no project is selected.
@@ -353,10 +383,11 @@ export function LaunchSurface({
     }
     registerPaletteFileContext({
       source: { kind: "project", id: activeProject.id },
-      onPick: reviewOpenInFilesView
+      onPick: reviewOpenInFilesView,
+      readLive: readPaletteLive
     });
     return () => registerPaletteFileContext(null);
-  }, [activeProject, registerPaletteFileContext, reviewOpenInFilesView]);
+  }, [activeProject, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
   const toggleReviewPanel = useCallback((): void => {
     if (reviewIsPanelOpen) {
       reviewClosePanel();
@@ -378,16 +409,12 @@ export function LaunchSurface({
       }
       if (key === "g") {
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewModes.includes("files")) {
-          reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
-        } else {
-          reviewOpenPanelInFilesMode();
-        }
+        toggleFilesPane();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [activeProject, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode, toggleReviewPanel]);
+  }, [activeProject, toggleFilesPane, toggleReviewPanel]);
 
   // ⌘⇧M, ⌘⇧E and ⌘⇧R open the model, effort and folder pickers and ⌘⇧I
   // toggles the browser. Only the focused launcher answers, and the folder

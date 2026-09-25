@@ -225,9 +225,9 @@
   flex: 0 0 auto;
   white-space: nowrap;
   color: var(--muted);
-  font-size: var(--text-sm);
-  /* On the title's line box, so it sits on the title's baseline. Tabular so
-     a running count ticks in place. */
+  font-size: var(--text-xs);
+  /* On the title's line box, so the smaller word centres on the title's
+     line. Tabular so a running count ticks in place. */
   line-height: calc(var(--text-sm) * 1.5);
   font-variant-numeric: tabular-nums;
 }

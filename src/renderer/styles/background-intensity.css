@@ -1,10 +1,12 @@
 /* Light mode runs from slightly cream paper at level 1 to pure white at
-   level 10 in nine equal oklab steps. Each surface mixes between its own two
-   endpoints, so every rung moves every surface by the same share and the
-   offsets between chrome, panels, and recessed surfaces shrink evenly toward
-   white. The cream end is the shipped palette moved 40% toward heavy paper
-   stock (Anthropic's ivory, #f0eee6, is the tint); lines and scrollbars stay
-   grey at the white end so borders still separate surfaces there. An absent
+   level 10 in nine equal oklab steps. Surfaces mix between their own two
+   endpoints, so every rung moves them by the same share and the offsets
+   between chrome, panels, and recessed surfaces shrink evenly toward white.
+   The queued composer tray keeps a small text tint so it remains distinct at
+   the white endpoint. The cream end is the shipped palette moved 40% toward
+   heavy paper stock (Anthropic's ivory, #f0eee6, is the tint); lines and
+   scrollbars stay grey at the white end so borders still separate surfaces
+   there. An absent
    attribute keeps the shipped literals in tokens.css. */
 :root:not([data-theme="dark"]):is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="7"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
   --bg: color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness));

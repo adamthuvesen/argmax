@@ -10,11 +10,13 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
+import { FileDiff, FolderTree, GitCommitVertical, Globe } from "lucide-react";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 import type { MultitaskChild } from "../lib/multitask.js";
+import type { PaletteItem, PaletteSurfaceContext, PaletteSurfaceLive } from "../lib/paletteSearch.js";
 import type {
   AgentMode,
   AgentReference,
@@ -287,7 +289,7 @@ export function SessionPane({
       review-pane file-pick handler with the command palette so its Files
       group routes to this pane's review panel. */
   registerPaletteFileContext?: (
-    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+    context: PaletteSurfaceContext | null
   ) => void;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
@@ -606,6 +608,81 @@ export function SessionPane({
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
 
+  // ⌘G and ⌘⇧I, shared with the palette rows that name them.
+  const toggleFilesPane = useCallback((): void => {
+    if (reviewIsPanelOpen && reviewModes.includes("files")) {
+      reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
+    } else {
+      reviewOpenPanelInFilesMode();
+    }
+  }, [reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode]);
+  const toggleBrowserPane = useCallback((): void => {
+    if (reviewIsPanelOpen && reviewModes.includes("browser")) {
+      reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
+    } else {
+      reviewOpenBrowser();
+    }
+  }, [reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser]);
+
+  // What the palette reads about this pane when it opens. Rebuilt as a
+  // closure each render so the read is current without re-registering.
+  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
+  paletteLiveRef.current = (): PaletteSurfaceLive => {
+    const changedCount = reviewState.files.length;
+    const actions: PaletteItem[] = [
+      {
+        id: "pane:toggle-files",
+        label: "Toggle files",
+        subtitle: "Browse this checkout",
+        group: "Actions",
+        icon: FolderTree,
+        shortcut: "⌘G",
+        keywords: ["file tree", "explorer"],
+        run: toggleFilesPane
+      },
+      ...(onOpenChanges
+        ? []
+        : [{
+            id: "pane:toggle-changes",
+            label: "Toggle changes",
+            subtitle: "This chat's diff",
+            group: "Actions" as const,
+            icon: FileDiff,
+            keywords: ["diff", "review", "git status"],
+            run: reviewState.toggleChangesPanel
+          }]),
+      ...(window.argmax?.browser
+        ? [{
+            id: "pane:toggle-browser",
+            label: "Toggle browser panel",
+            subtitle: "A browser beside the chat",
+            group: "Actions" as const,
+            icon: Globe,
+            shortcut: "⌘⇧I",
+            keywords: ["web", "preview", "localhost"],
+            run: toggleBrowserPane
+          }]
+        : []),
+      ...(changedCount > 0
+        ? [{
+            id: "pane:commit",
+            label: "Commit changes",
+            subtitle: `${changedCount} changed ${changedCount === 1 ? "file" : "files"}`,
+            group: "Actions" as const,
+            icon: GitCommitVertical,
+            keywords: ["git", "stage", "save"],
+            run: handleOpenCommitDialog
+          }]
+        : [])
+    ];
+    return {
+      filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
+      changedPaths: reviewState.files.map((file) => file.path),
+      actions
+    };
+  };
+  const readPaletteLive = useCallback((): PaletteSurfaceLive => paletteLiveRef.current(), []);
+
   // Register this pane's file source + pick handler with the command
   // palette when focused. Only the focused pane registers so multiple
   // panes can coexist without fighting over the palette's Files group.
@@ -616,10 +693,11 @@ export function SessionPane({
     }
     registerPaletteFileContext({
       source: { kind: "workspace", id: workspace.id },
-      onPick: reviewOpenInFilesView
+      onPick: reviewOpenInFilesView,
+      readLive: readPaletteLive
     });
     return () => registerPaletteFileContext(null);
-  }, [isFocused, workspace, registerPaletteFileContext, reviewOpenInFilesView]);
+  }, [isFocused, workspace, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
@@ -688,11 +766,7 @@ export function SessionPane({
       if (event.shiftKey) {
         if (key !== "i" || !window.argmax?.browser) return;
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewModes.includes("browser")) {
-          reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
-        } else {
-          reviewOpenBrowser();
-        }
+        toggleBrowserPane();
         return;
       }
       if (key === "b") {
@@ -702,11 +776,7 @@ export function SessionPane({
       }
       if (key === "g") {
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewModes.includes("files")) {
-          reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
-        } else {
-          reviewOpenPanelInFilesMode();
-        }
+        toggleFilesPane();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -717,12 +787,10 @@ export function SessionPane({
     onTerminateSession,
     reviewClosePanel,
     reviewIsPanelOpen,
-    reviewModes,
-    reviewClosePane,
-    reviewOpenBrowser,
-    reviewOpenPanelInFilesMode,
     reviewTogglePanel,
-    session
+    session,
+    toggleBrowserPane,
+    toggleFilesPane
   ]);
 
   // Until the backfill below lands, the transcript is whatever was left over

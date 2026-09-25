@@ -428,8 +428,8 @@
           "defaultEffort": "high"
         },
         {
-          "label": "DeepSeek V4 Flash",
-          "modelId": "opencode-go/deepseek-v4-flash",
+          "label": "DeepSeek V4.1 Flash",
+          "modelId": "opencode-go/deepseek-v4.1-flash",
           "contextWindow": 1000000,
           "reasoningEfforts": [
             "low",

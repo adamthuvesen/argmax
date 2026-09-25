@@ -92,7 +92,7 @@ describe("ModelSelector — one row per model", () => {
     window.localStorage.setItem(
       LAUNCH_MODEL_RECENCY_KEY,
       JSON.stringify([
-        "opencode:opencode-go/deepseek-v4-flash",
+        "opencode:opencode-go/deepseek-v4.1-flash",
         "opencode:opencode-go/deepseek-v4-pro",
         "grok:grok-4.5",
         "grok:grok-4.6",
@@ -112,10 +112,10 @@ describe("ModelSelector — one row per model", () => {
     const labels = within(screen.getByRole("listbox", { name: "Launch model" }))
       .getAllByRole("option")
       .map((option) => optionName(option));
-    expect(labels.slice(0, 3)).toEqual(["DeepSeek V4 Flash", "DeepSeek V4 Pro", "Grok 4.5"]);
-    expect(labels).toContain("DeepSeek V4 Flash");
+    expect(labels.slice(0, 3)).toEqual(["DeepSeek V4.1 Flash", "DeepSeek V4 Pro", "Grok 4.5"]);
+    expect(labels).toContain("DeepSeek V4.1 Flash");
     expect(labels).toContain("Grok 4.5");
-    expect(labels.indexOf("DeepSeek V4 Flash")).toBeLessThan(labels.lastIndexOf("DeepSeek V4 Flash"));
+    expect(labels.indexOf("DeepSeek V4.1 Flash")).toBeLessThan(labels.lastIndexOf("DeepSeek V4.1 Flash"));
     expect(labels.indexOf("Grok 4.5")).toBeLessThan(labels.lastIndexOf("Grok 4.5"));
     expect(labels.slice(3, 4)).toEqual(["Fable 5.1"]);
   });

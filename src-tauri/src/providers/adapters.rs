@@ -140,7 +140,11 @@ fn claude_common_args(
     session_id: Option<&str>,
 ) -> Vec<String> {
     let mut args = claude_permission_args(input);
-    args.extend(claude_reasoning_args(input));
+    args.extend([
+        "--append-system-prompt".to_string(),
+        CLAUDE_NATIVE_AGENT_GUIDANCE.to_string(),
+    ]);
+    args.extend(claude_effort_args(input));
     args.extend(claude_settings_args(input, mcp));
     args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
     args.extend(["--model".to_string(), claude_model_arg(&input.model_id)]);
@@ -438,7 +442,10 @@ fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec
             ReasoningEffort::High,
             ReasoningEffort::Xhigh,
         ][..],
-        "opencode-go/glm-5.3-flash" | "opencode-go/glm-5.3" | "opencode-go/deepseek-v4-flash" => &[
+        "opencode-go/glm-5.3-flash"
+        | "opencode-go/glm-5.3"
+        | "opencode-go/deepseek-v4-flash"
+        | "opencode-go/deepseek-v4.1-flash" => &[
             ReasoningEffort::Low,
             ReasoningEffort::High,
             ReasoningEffort::Max,
@@ -601,29 +608,19 @@ fn opencode_permission_args(input: &ProviderLaunchInput) -> Vec<String> {
 
 const CLAUDE_NATIVE_AGENT_GUIDANCE: &str = "When delegating bounded work, use Claude's native subagents. If an existing native agent is named in the prompt and its context is relevant, continue it with SendMessage using the supplied native agent ID. Treat SendMessage delivery separately from the agent's task completion.";
 
-fn claude_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
-    let reasoning_prompt = input.reasoning_effort.map(|reasoning_effort| match reasoning_effort {
-        ReasoningEffort::Low => "Reason step by step through this task before acting.",
-        ReasoningEffort::Medium => {
-            "Reason carefully through this task. Consider edge cases and trade-offs before acting."
-        }
-        ReasoningEffort::High => {
-            "Reason deeply through this task. Explore alternatives, consider edge cases, and weigh trade-offs before acting."
-        }
-        ReasoningEffort::Xhigh => {
-            "Reason exhaustively through this task. Enumerate every alternative, edge case, and trade-off, and verify your conclusions before acting. Take as much thinking as the problem demands."
-        }
-        ReasoningEffort::Max => {
-            "Think as hard as you can. Reason exhaustively from first principles: enumerate every alternative, edge case, and failure mode, argue against your own conclusions, and verify each step before acting. Do not shortcut the analysis."
-        }
-        ReasoningEffort::Ultra => {
-            "Ultrathink. Use your maximum reasoning budget on this task. Exhaustively decompose the problem, enumerate and evaluate every alternative and edge case, adversarially challenge each conclusion, and re-derive and verify your answer before acting. Spare no thinking."
-        }
-    });
-    let prompt = reasoning_prompt
-        .map(|reasoning| format!("{reasoning}\n\n{CLAUDE_NATIVE_AGENT_GUIDANCE}"))
-        .unwrap_or_else(|| CLAUDE_NATIVE_AGENT_GUIDANCE.to_string());
-    vec!["--append-system-prompt".to_string(), prompt.to_string()]
+// Effort rides the CLI's real `--effort` flag, not prompt text: the appended
+// system prompt stays byte-identical across efforts, so changing effort on a
+// follow-up keeps the cached system prompt. `--effort` tops out at max (the
+// CLI ignores anything else and falls back to its default), so Ultra clamps.
+fn claude_effort_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let Some(reasoning_effort) = input.reasoning_effort else {
+        return Vec::new();
+    };
+    let effort = match reasoning_effort {
+        ReasoningEffort::Ultra => "max",
+        other => other.as_str(),
+    };
+    vec!["--effort".to_string(), effort.to_string()]
 }
 
 // One inline `--settings` carries fast mode, foreground tools, and the inbox hook
@@ -879,18 +876,32 @@ mod tests {
     }
 
     #[test]
-    fn claude_reasoning_prompt_is_carried_by_append_system_prompt() {
-        let input = ProviderLaunchInput {
-            reasoning_effort: Some(ReasoningEffort::High),
-            ..launch_input(ProviderId::Claude)
-        };
-        let args = (get_provider_definition(ProviderId::Claude).structured_args)(&input, None);
-        let index = args
-            .iter()
-            .position(|arg| arg == "--append-system-prompt")
-            .expect("append system prompt flag");
-        assert!(args[index + 1].contains("Reason deeply"));
-        assert!(args[index + 1].contains("continue it with SendMessage"));
+    fn claude_effort_rides_the_effort_flag_and_leaves_the_system_prompt_alone() {
+        let definition = get_provider_definition(ProviderId::Claude);
+        for (effort, expected) in [
+            (ReasoningEffort::Low, "low"),
+            (ReasoningEffort::Xhigh, "xhigh"),
+            (ReasoningEffort::Max, "max"),
+            (ReasoningEffort::Ultra, "max"),
+        ] {
+            let input = ProviderLaunchInput {
+                reasoning_effort: Some(effort),
+                ..launch_input(ProviderId::Claude)
+            };
+            let args = (definition.structured_args)(&input, None);
+            let flag = args
+                .iter()
+                .position(|arg| arg == "--effort")
+                .expect("effort flag");
+            assert_eq!(args[flag + 1], expected);
+            // A changed system prompt would invalidate the prompt cache on every
+            // effort change, so it must not vary with effort.
+            let prompt = args
+                .iter()
+                .position(|arg| arg == "--append-system-prompt")
+                .expect("append system prompt flag");
+            assert_eq!(args[prompt + 1], CLAUDE_NATIVE_AGENT_GUIDANCE);
+        }
     }
 
     #[test]

@@ -70,7 +70,8 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "opencode-go/qwen3.8-max" => ModelPricing { input: 2.0, output: 6.0, cache_read: 0.25, cache_write: 2.5 },
     "opencode-go/qwen3.8-flash" => ModelPricing { input: 0.15, output: 0.47, cache_read: 0.016, cache_write: 0.2 },
     "opencode-go/deepseek-v4-pro" => ModelPricing { input: 0.66, output: 1.98, cache_read: 0.022, cache_write: 0.0 },
-    "opencode-go/deepseek-v4-flash" => ModelPricing { input: 0.22, output: 0.66, cache_read: 0.007, cache_write: 0.0 },
+    // OpenCode's catalog reports the off-peak rate. Peak pricing is not modeled.
+    "opencode-go/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.0 },
     // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
     // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
     // price. 4.6 rates were solved from the CLI's own `total_cost_usd` across
@@ -90,6 +91,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
+    "opencode-go/deepseek-v4-flash" => ModelPricing { input: 0.22, output: 0.66, cache_read: 0.007, cache_write: 0.0 },
     "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-7" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },

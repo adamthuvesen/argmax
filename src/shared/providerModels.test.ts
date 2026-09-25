@@ -251,6 +251,9 @@ describe("costOf — golden fixtures", () => {
   });
 
   it("prices persisted model ids without restoring them to the model table", () => {
+    expect(MODEL_PRICING["opencode-go/deepseek-v4-flash"]).toBeUndefined();
+    expect(costOf(million, "opencode-go/deepseek-v4-flash")).toBeCloseTo(0.22, 9);
+    expect(costOf(million, "opencode-go/deepseek-v4.1-flash")).toBeCloseTo(0.15, 9);
     expect(MODEL_PRICING["claude-sonnet-4-6"]).toBeUndefined();
     expect(MODEL_PRICING["gpt-5.4-codex"]).toBeUndefined();
     expect(MODEL_PRICING["o4-mini"]).toBeUndefined();

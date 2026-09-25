@@ -122,7 +122,8 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
     "opencode-go/kimi-k3": ["max"],
     "opencode-go/qwen3.8-flash": ["high", "max"],
     "opencode-go/deepseek-v4-pro": ["high", "max"],
-    "opencode-go/deepseek-v4-flash": ["low", "high", "max"]
+    "opencode-go/deepseek-v4-flash": ["low", "high", "max"],
+    "opencode-go/deepseek-v4.1-flash": ["low", "high", "max"]
   };
   if (provider === "opencode" && modelId in opencodeVariants) return opencodeVariants[modelId];
   // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
@@ -271,7 +272,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Qwen3.8 Max", modelId: "opencode-go/qwen3.8-max", contextWindow: 1_000_000 },
     { label: "Qwen3.8 Flash", modelId: "opencode-go/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "DeepSeek V4 Pro", modelId: "opencode-go/deepseek-v4-pro", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "DeepSeek V4 Flash", modelId: "opencode-go/deepseek-v4-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
+    { label: "DeepSeek V4.1 Flash", modelId: "opencode-go/deepseek-v4.1-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
   ],
   // The models `grok models` lists. All take --reasoning-effort up to xhigh
   // (the CLI rejects max/ultra). Fast is a separate advertised SKU on 4.7
@@ -405,7 +406,8 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "opencode-go/qwen3.8-max":                   { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
   "opencode-go/qwen3.8-flash":                 { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
   "opencode-go/deepseek-v4-pro":               { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
-  "opencode-go/deepseek-v4-flash":             { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 },
+  // OpenCode's catalog reports the off-peak rate. Peak pricing is not modeled.
+  "opencode-go/deepseek-v4.1-flash":           { input: 0.15,  output: 0.6,    cacheRead: 0.003, cacheWrite: 0 },
 
   // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
   // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
@@ -421,6 +423,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
+  "opencode-go/deepseek-v4-flash": { input: 0.22, output: 0.66, cacheRead: 0.007, cacheWrite: 0 },
   "claude-fable-5":       { input: 10,   output: 50,   cacheRead: 1,     cacheWrite: 12.5 },
   "claude-opus-4-8":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-7":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },

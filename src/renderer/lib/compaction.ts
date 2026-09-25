@@ -39,18 +39,39 @@ export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
 }
 
 /**
+ * A row that can land during a compaction without the parent having said a
+ * word: a spawned child agent's own rows (Codex forwards a child's tool calls
+ * and answer while the parent is mid-rewrite), and a tool result, including
+ * the spawn call's completion carrying that child's answer, for a call that
+ * predates the rewrite.
+ */
+function landsDuringCompaction(event: TimelineEvent): boolean {
+  if (event.type === "command.completed") return true;
+  const canonical = decodeTimelineEvent(event);
+  return canonical.parentToolUseId !== null ||
+    canonical.providerThreadId !== null ||
+    canonical.providerChildSessionId !== null;
+}
+
+/**
  * True while a compaction is in flight. `events` is newest-first (the order
- * the dashboard merge keeps), so the newest compaction row decides.
+ * the dashboard merge keeps).
  *
- * A compaction is total provider silence, so the start row stays newest for as
- * long as it runs: anything newer means the rewrite is over. That is the only
- * evidence a compaction cut short by a Stop leaves — it never gets its closing
- * row, and a start row trusted forever suppresses the progress cue for the
- * rest of the chat's life.
+ * A compaction is silence from the parent, so its start row stays the newest
+ * thing the parent produced for as long as it runs: any newer row of its own
+ * means the rewrite is over. That is the only evidence a compaction cut short
+ * by a Stop leaves — it never gets its closing row, and a start row trusted
+ * forever suppresses the progress cue for the rest of the chat's life. Rows
+ * that are not the parent's (see `landsDuringCompaction`) do not count, or a
+ * chat with children running showed a Thinking clock under "Compacting…".
  */
 export function isCompacting(events: readonly TimelineEvent[]): boolean {
-  const [newest] = events;
-  if (!newest || !isCompactionEvent(newest)) return false;
-  const canonical = decodeTimelineEvent(newest);
-  return canonical.kind === "lifecycle" && canonical.name === "compacting";
+  for (const event of events) {
+    if (isCompactionEvent(event)) {
+      const canonical = decodeTimelineEvent(event);
+      return canonical.kind === "lifecycle" && canonical.name === "compacting";
+    }
+    if (!landsDuringCompaction(event)) return false;
+  }
+  return false;
 }

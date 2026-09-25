@@ -189,7 +189,7 @@ body:has(.app-shell[data-sidebar-translucent="true"]) {
   color: var(--text-soft);
   text-align: left;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);

@@ -16,8 +16,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {
-        index: resolve(__dirname, "index.html"),
-        mobile: resolve(__dirname, "mobile.html")
+        index: resolve(import.meta.dirname, "index.html"),
+        mobile: resolve(import.meta.dirname, "mobile.html")
       },
       output: {
         // Split a few specific heavyweight vendor packages into named chunks

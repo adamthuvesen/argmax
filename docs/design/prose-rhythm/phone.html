@@ -1,0 +1,291 @@
+<title>Argmax Phone Prose</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ecebe6;
+    --line: #dcdad3;
+    --ink: #1f1e1a;
+    --ink-strong: #141310;
+    --ink-dim: #4a4843;
+    --muted: #7d7a72;
+    --accent: #c4672a;
+    --chip: #e4e2dc;
+    --chip-on: #1f1e1a;
+    --chip-on-ink: #f6f5f2;
+    --phone-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f0f0e; --panel: #171716; --line: #2a2a28;
+      --ink: #ebe9e4; --ink-strong: #f5f3ed; --ink-dim: #cfccc4; --muted: #8b8880;
+      --accent: #d9905a; --chip: #23232180; --chip-on: #ebe9e4; --chip-on-ink: #0f0f0e;
+      --phone-bg: #000000;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f0f0e; --panel: #171716; --line: #2a2a28;
+    --ink: #ebe9e4; --ink-strong: #f5f3ed; --ink-dim: #cfccc4; --muted: #8b8880;
+    --accent: #d9905a; --chip: #23232180; --chip-on: #ebe9e4; --chip-on-ink: #0f0f0e;
+    --phone-bg: #000000;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Geist", ui-sans-serif, -apple-system, system-ui, sans-serif; font-size: 14px;
+    padding-inline: 16px; padding-block: 0 48px;
+  }
+  .app { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: auto 1fr; gap: 40px; justify-content: center; }
+  @media (max-width: 800px) { .app { grid-template-columns: 1fr; } .side { position: static !important; } }
+
+  header { grid-column: 1 / -1; padding-block: 28px 8px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .theme { margin-left: auto; display: flex; gap: 6px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; margin-bottom: 18px; }
+  .chip {
+    font: inherit; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--chip); color: var(--ink); cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); border-color: transparent; }
+  .chip:focus-visible, .btn:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .side { position: sticky; top: 16px; align-self: start; display: grid; gap: 14px; max-width: 320px; }
+  .side h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 2px; }
+  .note { color: var(--ink-dim); font-size: 13px; line-height: 1.5; margin: 0; }
+  .ctl { display: grid; grid-template-columns: 1fr 64px; gap: 2px 10px; align-items: center; font-size: 12.5px; }
+  .ctl label { color: var(--ink-dim); }
+  .ctl output { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .ctl input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 0 0 6px; }
+  .ctl select { grid-column: 1 / -1; font: inherit; font-size: 12.5px; padding: 4px 6px; margin: 0 0 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .btn { font: inherit; font-size: 12.5px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  pre.out { margin: 0; font-size: 11px; line-height: 1.45; white-space: pre-wrap; color: var(--ink-dim); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 260px; overflow: auto; }
+
+  /* ---- the phone ---- */
+  .phone {
+    width: 390px; max-width: 100%; margin: 0 auto; background: var(--phone-bg);
+    border: 1px solid var(--line); border-radius: 44px; padding: 54px 20px 34px; position: relative;
+    box-shadow: 0 20px 60px -30px #0008;
+  }
+  .phone::before { content: ""; position: absolute; top: 14px; left: 50%; width: 120px; height: 34px; transform: translateX(-50%); background: #000; border-radius: 20px; }
+  .phone::after { content: ""; position: absolute; bottom: 10px; left: 50%; width: 134px; height: 5px; transform: translateX(-50%); background: var(--ink); opacity: .7; border-radius: 3px; }
+  .meta { font-size: 13px; color: var(--muted); margin-bottom: 14px; display: flex; gap: 8px; align-items: center; }
+  .meta::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  /* SwiftUI VStack(spacing: block) of blocks; each Text gets lineSpacing(pt) */
+  .md { display: flex; flex-direction: column; gap: calc(var(--s-block) * 1px); color: var(--ink); }
+  .md p, .md li {
+    margin: 0;
+    font-size: calc(var(--s-size) * 1px);
+    font-weight: 400;
+    /* UIKit line height for Geist ≈ 1.21 × size; lineSpacing adds points between lines */
+    line-height: calc(var(--s-size) * 1.21px + var(--s-ls) * 1px);
+  }
+  .md strong { font-weight: var(--s-strong); color: var(--ink-strong); }
+  .md em { font-style: italic; color: var(--ink-dim); }
+  .md h3 {
+    margin: 0;
+    font-size: calc(var(--s-h3) * 1px);
+    font-weight: var(--s-h3w);
+    line-height: calc(var(--s-h3) * 1.21px + var(--s-ls) * 1px);
+    color: var(--ink-strong);
+    padding-top: calc(var(--s-h3pad) * 1px);
+    letter-spacing: -0.01em;
+  }
+  .md ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: calc(var(--s-ligap) * 1px); }
+  .md li { position: relative; padding-left: 23px; }
+  .md li::before { content: "•"; position: absolute; left: 0; width: 15px; text-align: right; color: var(--muted); }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Phone prose rhythm</h1>
+    <p>The native iPhone transcript. Knobs are the ones SwiftUI has: text styles, Geist cuts, points.</p>
+    <div class="theme" role="group" aria-label="Theme">
+      <button class="chip" type="button" data-set="light" aria-pressed="false">Light</button>
+      <button class="chip" type="button" data-set="dark" aria-pressed="false">Dark</button>
+      <button class="chip" type="button" data-set="" aria-pressed="false">System</button>
+    </div>
+  </header>
+
+  <div class="chips" id="chips" role="group" aria-label="Presets"></div>
+
+  <div class="phone">
+    <div class="meta">04:57 PM &nbsp; Worked for 27s · 7 steps ›</div>
+    <div class="md" id="md">
+      <p>I searched in the Argmax browser (DuckDuckGo) and read two critics' lists in full: Entertainment Weekly (July 6) and Empire (July 20). Both are "so far" lists from mid-year, so anything released after July isn't included.</p>
+      <h3>On both lists</h3>
+      <ul>
+        <li><strong>Project Hail Mary</strong>: Phil Lord and Christopher Miller's version of Andy Weir's novel. Ryan Gosling plays a science teacher on a mission to save Earth. Empire ranks it #2.</li>
+        <li><strong>Obsession</strong>: a horror film by Curry Barker, a director who came up on YouTube. Low-to-mid budget, a hit through word of mouth, and EW already calls it an early Oscar contender. Empire ranks it #3.</li>
+        <li><strong>28 Years Later: The Bone Temple</strong>: Nia DaCosta's sequel to Danny Boyle's 2025 zombie film, with standout turns from Ralph Fiennes and Jack O'Connell.</li>
+        <li><strong>The Invite</strong>: Olivia Wilde directs and stars alongside Seth Rogen, Penélope Cruz and Edward Norton. A sex comedy that turns into a tender look at long-term relationships.</li>
+      </ul>
+      <p><strong>Empire's #1: The Odyssey</strong> Christopher Nolan's follow-up to Oppenheimer, starring Matt Damon as Odysseus and shot for IMAX. Empire calls it "gods-tier cinema."</p>
+      <h3>Other picks</h3>
+      <ul>
+        <li><strong>Empire only:</strong> <em>The Secret Agent</em>, <em>Sirāt</em>, <em>Nirvanna The Band The Show The Movie</em>, Soderbergh's <em>The Christophers</em> and Linklater's <em>Nouvelle Vague</em>.</li>
+        <li><strong>EW only:</strong> <em>Send Help</em>, <em>Toy Story 5</em>, A24's <em>The Drama</em>, Baz Luhrmann's <em>EPiC</em>, <em>Omaha</em>, and <em>The Sheep Detectives</em>.</li>
+      </ul>
+      <p><strong>Trends:</strong> horror has been the big story of the year (EW notes that <em>Sinners</em> won Best Picture). Original mid-budget films are also doing well alongside the blockbusters.</p>
+      <p>If you tell me what you're in the mood for, I can narrow this to one pick.</p>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div>
+      <h2 id="preset-name">Preset</h2>
+      <p class="note" id="preset-note"></p>
+    </div>
+    <div>
+      <h2>Knobs</h2>
+      <div class="ctl" id="ctls"></div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <button class="btn" id="copy">Copy as Swift</button>
+      <button class="btn" id="reset">Reset preset</button>
+    </div>
+    <pre class="out" id="out" hidden></pre>
+  </aside>
+</div>
+
+<script>
+  const STYLES = { subheadline: 15, callout: 16, body: 17, headline: 17, title3: 20, title2: 22, title1: 28 };
+  const CUTS = { regular: 400, medium: 500, semibold: 600, bold: 700 };
+
+  // [key, label, kind, options | [min,max,step]]
+  const CTLS = [
+    ["size", "Body style", "select", ["subheadline", "callout", "body"]],
+    ["ls", "Line spacing (pt)", "range", [0, 8, 0.5]],
+    ["block", "Block spacing (pt)", "range", [4, 20, 1]],
+    ["ligap", "Bullet gap (pt)", "range", [0, 20, 1]],
+    ["strong", "Bold cut", "select", ["medium", "semibold", "bold"]],
+    ["h3", "Heading style (h3)", "select", ["headline", "title3", "title2"]],
+    ["h3w", "Heading cut", "select", ["semibold", "bold"]],
+    ["h3pad", "Heading top padding (pt)", "range", [0, 16, 1]],
+  ];
+
+  const PRESETS = {
+    "Before": {
+      note: "What the phone shipped until today. h3 was the body style in semibold, bold was semibold too, and every block (paragraphs and bullets alike) sat 12pt apart. Same river as the Mac.",
+      v: { size: "body", ls: 4, block: 12, ligap: 12, strong: "semibold", h3: "body", h3w: "semibold", h3pad: 2 },
+    },
+    "Shipped now": {
+      note: "Today's commit: h3 steps to title3 (20pt) in Geist Bold, bold stays semibold, 6pt of padding over a heading. Bullets still share the 12pt block gap.",
+      v: { size: "body", ls: 4, block: 12, ligap: 12, strong: "semibold", h3: "title3", h3w: "bold", h3pad: 6 },
+    },
+    "P1 · tighter bullets": {
+      note: "Shipped now, plus bullets pulled to 7pt so a list has a tighter texture than paragraphs. This one needs a code change: the VStack spacing has to differ between list rows and other blocks.",
+      v: { size: "body", ls: 4, block: 13, ligap: 7, strong: "semibold", h3: "title3", h3w: "bold", h3pad: 6 },
+    },
+    "P2 · semibold, medium bold": {
+      note: "Softer ladder in the cuts the phone has: heading title3 semibold, bold in medium. Closest to the Mac's 590 / 660 feel, but medium can vanish on a dark screen.",
+      v: { size: "body", ls: 4, block: 13, ligap: 7, strong: "medium", h3: "title3", h3w: "semibold", h3pad: 6 },
+    },
+    "P3 · headline bold": {
+      note: "Heading stays at body size (headline, 17pt) but in the bold cut, with 10pt of air above. Weight-only hierarchy, like the Mac's C2. Cheapest visually, and the only one that keeps line count.",
+      v: { size: "body", ls: 4, block: 13, ligap: 7, strong: "semibold", h3: "headline", h3w: "bold", h3pad: 10 },
+    },
+    "P4 · callout body": {
+      note: "Body one style down (callout, 16pt) with 5pt line spacing, so title3 headings sit a full 4pt over it. More words per screen on a 390pt phone.",
+      v: { size: "callout", ls: 5, block: 12, ligap: 7, strong: "semibold", h3: "title3", h3w: "bold", h3pad: 6 },
+    },
+    "P5 · title2": {
+      note: "Heading at title2 (22pt) bold with 10pt above. Unmistakable sections, at the cost of feeling like a document rather than a reply.",
+      v: { size: "body", ls: 4, block: 13, ligap: 7, strong: "semibold", h3: "title2", h3w: "bold", h3pad: 10 },
+    },
+  };
+
+  const md = document.getElementById("md");
+  const chips = document.getElementById("chips");
+  const ctls = document.getElementById("ctls");
+  const out = document.getElementById("out");
+  let current = "Shipped now";
+  const state = {};
+
+  function apply() {
+    md.style.setProperty("--s-size", STYLES[state.size]);
+    md.style.setProperty("--s-ls", state.ls);
+    md.style.setProperty("--s-block", state.block);
+    md.style.setProperty("--s-ligap", state.ligap);
+    md.style.setProperty("--s-strong", CUTS[state.strong]);
+    md.style.setProperty("--s-h3", STYLES[state.h3]);
+    md.style.setProperty("--s-h3w", CUTS[state.h3w]);
+    md.style.setProperty("--s-h3pad", state.h3pad);
+    for (const [k, , kind] of CTLS) {
+      const el = document.getElementById("in-" + k);
+      if (el && String(el.value) !== String(state[k])) el.value = state[k];
+      const o = document.getElementById("out-" + k);
+      if (o) o.value = kind === "select" ? (STYLES[state[k]] ? STYLES[state[k]] + "pt" : CUTS[state[k]]) : state[k];
+    }
+  }
+
+  function load(name) {
+    current = name;
+    Object.assign(state, PRESETS[name].v);
+    document.getElementById("preset-name").textContent = name;
+    document.getElementById("preset-note").textContent = PRESETS[name].note;
+    for (const b of chips.children) b.setAttribute("aria-pressed", b.textContent === name);
+    apply();
+    try { localStorage.setItem("phone-prose-preset", name); } catch {}
+  }
+
+  for (const name in PRESETS) {
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.textContent = name; b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => load(name));
+    chips.appendChild(b);
+  }
+
+  for (const [k, label, kind, opts] of CTLS) {
+    const l = document.createElement("label"); l.textContent = label; l.htmlFor = "in-" + k;
+    const o = document.createElement("output"); o.id = "out-" + k;
+    let el;
+    if (kind === "select") {
+      el = document.createElement("select"); el.id = "in-" + k;
+      for (const v of opts) { const op = document.createElement("option"); op.value = v; op.textContent = v; el.appendChild(op); }
+      el.addEventListener("change", () => { state[k] = el.value; apply(); });
+    } else {
+      el = document.createElement("input"); el.type = "range"; el.id = "in-" + k;
+      [el.min, el.max, el.step] = opts;
+      el.addEventListener("input", () => { state[k] = +el.value; apply(); });
+    }
+    ctls.append(l, o, el);
+  }
+
+  document.getElementById("reset").addEventListener("click", () => load(current));
+  document.getElementById("copy").addEventListener("click", async () => {
+    const s = state;
+    const swift = `// ${current}
+// TranscriptMarkdown.swift
+private var proseStyle: Font.TextStyle { .${s.size} }          // body copy
+VStack(alignment: .leading, spacing: ${s.block})                 // between blocks
+// list rows: ${s.ligap}pt${s.ligap !== s.block ? "  (needs per-row spacing; today rows share the block gap)" : ""}
+.typeStyle(headingStyle(level), weight: .${s.h3w})              // h3 → .${s.h3}
+.padding(.top, ${s.h3pad})                                       // over a heading
+text.semiboldStrongRuns(scale.font(style, weight: .${s.strong})) // **bold** cut
+// Metrics.swift
+static let proseLine: CGFloat = ${s.ls}                          // lineSpacing`;
+    out.textContent = swift; out.hidden = false;
+    try { await navigator.clipboard.writeText(swift); } catch {}
+  });
+
+  const themeBtns = document.querySelectorAll(".theme .chip");
+  function setTheme(t) {
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    for (const b of themeBtns) b.setAttribute("aria-pressed", b.dataset.set === t);
+    try { localStorage.setItem("phone-prose-theme", t); } catch {}
+  }
+  for (const b of themeBtns) b.addEventListener("click", () => setTheme(b.dataset.set));
+  let savedTheme = "";
+  try { savedTheme = localStorage.getItem("phone-prose-theme") || ""; } catch {}
+  setTheme(savedTheme);
+
+  let saved = null;
+  try { saved = localStorage.getItem("phone-prose-preset"); } catch {}
+  load(saved && PRESETS[saved] ? saved : "Shipped now");
+</script>

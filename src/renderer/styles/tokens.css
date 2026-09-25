@@ -156,8 +156,10 @@
      to --weight-prose so messages stay a touch more present than chrome. Dark
      mode lowers both, because light-on-dark strokes bloom.
 
-     --weight-medium is the emphasis step for labels, titles and bold prose.
-     It sits under a true 500 so emphasis reads as a step, not a jump. */
+     --weight-medium is the emphasis step for labels and titles. It sits
+     under a true 500 so emphasis reads as a step, not a jump. Bold inside
+     rendered prose needs a larger step to show in a paragraph; see
+     `.markdown strong` in chat-conversation.css. */
   --font-weight-offset: 0;
   --weight-ui: calc(400 + var(--font-weight-offset));
   --weight-prose: calc(400 + var(--font-weight-offset));
@@ -586,7 +588,7 @@
   --prose-ink-strong: color-mix(in oklab, #f5f3ed, var(--ink-toward) var(--ink-pull));
 
   --weight-ui: calc(380 + var(--font-weight-offset));
-  --weight-prose: calc(390 + var(--font-weight-offset));
+  --weight-prose: calc(380 + var(--font-weight-offset));
 
   --sage: #6dab86;
   --sage-soft: rgba(109, 171, 134, 0.14);

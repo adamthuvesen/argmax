@@ -338,7 +338,7 @@
   min-height: 26px;
   padding: 0 8px;
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: 999px;
   background: transparent;
   color: var(--muted-strong);
   font-family: var(--font-ui);
@@ -453,7 +453,7 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: 999px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -466,8 +466,9 @@
 }
 
 /* Tabs read as quiet labels: icon plus muted name, no surface. Only the active
-   tab lifts to a rounded pill (hairline-ringed in dark), and the close ✕ stays invisible
-   (but in flow, so nothing shifts) until the tab is hovered or focused. */
+   tab lifts to a pill (hairline-ringed in dark), and the close ✕ stays invisible
+   (but in flow, so nothing shifts) until the tab is hovered or focused. The
+   pill is the side panel's one tab shape (see .review-mode-tabs). */
 .file-tab {
   display: inline-flex;
   align-items: center;
@@ -475,7 +476,7 @@
   height: 26px;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
-  border-radius: var(--radius-lg);
+  border-radius: 999px;
   color: var(--muted);
   background: transparent;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
@@ -503,11 +504,7 @@
   box-shadow: none;
 }
 
-/* Shell tabs echo the soft, rounded selection in the panel's mode switcher. */
-.review-terminal .file-tab {
-  border-radius: 999px;
-}
-
+/* Shell tabs take the mode switcher's flat selection fill, no ring. */
 .review-terminal .file-tab[data-active="true"] {
   background: var(--row-selected);
   box-shadow: none;
@@ -560,7 +557,7 @@
   padding: 0;
   margin-right: 7px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;

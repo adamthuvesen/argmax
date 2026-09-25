@@ -27,8 +27,7 @@ interface ServerIconLayer {
   /** Fill colour, or null for a black mark that takes the row's text colour
    *  instead of vanishing on the dark theme. */
   fill: string | null;
-  /** Depth to hold under monochrome. Only the mascot sets it; a brand mark is
-   *  either a single path already or stays legible flattened. */
+  /** Depth to hold under monochrome. Only the mascot sets it. Badges use dedicated monochrome artwork. */
   tone?: ServerIconTone;
 }
 
@@ -38,6 +37,8 @@ export interface ServerIcon {
   viewBox: string;
   /** Painted in order; a single layer for the monochrome marks. */
   layers: ServerIconLayer[];
+  /** Dedicated bare glyph when flattening the colour badge would hide its mark. */
+  monochrome?: { viewBox: string; layers: ServerIconLayer[] };
 }
 
 // Slack's four-colour mark, as Slack publishes it; it identifies a Slack
@@ -86,6 +87,10 @@ const GMAIL: ServerIcon = {
 const GOOGLE_CALENDAR: ServerIcon = {
   title: "Google Calendar",
   viewBox: "-3.75 -3.75 200 200",
+  monochrome: {
+    viewBox: "0 0 24 24",
+    layers: [{ fill: null, path: "M3 2h18v20H3V2zm2 5v13h14V7H5zM7 9h5v8H7v-2h3v-1H8v-2h2v-1H7V9zm7 0h3v8h-2v-6h-1V9z" }]
+  },
   layers: [
     { fill: "#FFFFFF", path: "M148.882 43.618l-47.368-5.263-57.895 5.263L38.355 96.25l5.263 52.632 52.632 6.579 52.632-6.579 5.263-53.947z" },
     { fill: "#EA4335", path: "M148.882 196.25l47.368-47.368-23.684-10.526-23.684 10.526-10.526 23.684z" },
@@ -103,6 +108,7 @@ const GOOGLE_CALENDAR: ServerIcon = {
 const LINEAR: ServerIcon = {
   title: siLinear.title,
   viewBox: "-8 -8 40 40",
+  monochrome: { viewBox: "0 0 24 24", layers: [{ fill: null, path: siLinear.path }] },
   layers: [
     { fill: "#08090A", path: "M1-8h22a9 9 0 0 1 9 9v22a9 9 0 0 1-9 9H1a9 9 0 0 1-9-9V1a9 9 0 0 1 9-9Z" },
     { fill: "#F7F8F8", path: siLinear.path }
@@ -115,6 +121,7 @@ const LINEAR: ServerIcon = {
 const DATADOG: ServerIcon = {
   title: siDatadog.title,
   viewBox: "-3 -3 30 30",
+  monochrome: { viewBox: "0 0 24 24", layers: [{ fill: null, path: siDatadog.path }] },
   layers: [
     { fill: `#${siDatadog.hex}`, path: "M4-3h16a7 7 0 0 1 7 7v16a7 7 0 0 1-7 7H4a7 7 0 0 1-7-7V4a7 7 0 0 1 7-7Z" },
     { fill: "#FFFFFF", path: siDatadog.path }
@@ -178,6 +185,7 @@ const BADGE = "M5.5 0h13A5.5 5.5 0 0 1 24 5.5v13a5.5 5.5 0 0 1-5.5 5.5h-13A5.5 5
 const ENGRAM: ServerIcon = {
   title: "Engram",
   viewBox: "0 0 24 24",
+  monochrome: { viewBox: "4 3 16 18", layers: [{ fill: null, path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z" }] },
   layers: [
     { fill: "#6E56CF", path: BADGE },
     { fill: "#FFFFFF", path: "M7 4.5h10v3.4H7zM7 4.5h3.4v15H7zM7 10.3h8.4v3.4H7zM7 16.1h10v3.4H7z" }
@@ -187,6 +195,7 @@ const ENGRAM: ServerIcon = {
 const SHUNT: ServerIcon = {
   title: "Shunt",
   viewBox: "0 0 24 24",
+  monochrome: { viewBox: "4 3 16 18", layers: [{ fill: null, path: "M17.5 4.5h-11v9.2h7.6v2.4H6.5v3.4h11v-9.2H9.9V7.9h7.6z" }] },
   layers: [
     { fill: "#0F766E", path: BADGE },
     { fill: "#FFFFFF", path: "M17.5 4.5h-11v9.2h7.6v2.4H6.5v3.4h11v-9.2H9.9V7.9h7.6z" }
@@ -196,6 +205,7 @@ const SHUNT: ServerIcon = {
 const TRACE: ServerIcon = {
   title: "Trace",
   viewBox: "0 0 24 24",
+  monochrome: { viewBox: "4 3 16 18", layers: [{ fill: null, path: "M6 4.5h12v3.6H6zM10.2 4.5h3.6v15h-3.6z" }] },
   layers: [
     { fill: "#B45309", path: BADGE },
     { fill: "#FFFFFF", path: "M6 4.5h12v3.6H6zM10.2 4.5h3.6v15h-3.6z" }
@@ -211,10 +221,12 @@ const TRACE: ServerIcon = {
 // Even at 70% the letters only separate from about 20px up, so this is the
 // whole word on purpose, chosen over the counter-free lettermark the local
 // tools below use: Hex is a brand with a wordmark, and the badge reads as Hex
-// by colour at row size either way. Don't quietly demote it to an H.
+// by colour at row size either way. Monochrome uses a chunky H because the
+// wordmark loses that colour cue and its tiny counters close up.
 const HEX: ServerIcon = {
   title: "Hex",
   viewBox: "0 0 24 24",
+  monochrome: { viewBox: "0 0 24 24", layers: [{ fill: null, path: "M4 3h6v7h4V3h6v18h-6v-7h-4v7H4z" }] },
   layers: [
     { fill: "#030119", path: "M12 0A12 12 0 1 1 12 24 12 12 0 1 1 12 0Z" },
     {
@@ -233,6 +245,7 @@ const HEX: ServerIcon = {
 const EXECUTOR: ServerIcon = {
   title: "Executor",
   viewBox: "0 0 28 28",
+  monochrome: { viewBox: "4 4 20 20", layers: [{ fill: null, path: "M8 6h12v4h-8v8h8v4H8zM12 12l5 2-5 2z" }] },
   layers: [
     { fill: "#000000", path: "M14 0A14 14 0 1 1 14 28 14 14 0 1 1 14 0Z" },
     { fill: "#F3EFE7", path: "M8 6h12v4h-8v8h8v4H8zM12 12l5 2-5 2z" }

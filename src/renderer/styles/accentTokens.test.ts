@@ -180,11 +180,10 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // charcoal. #ffffff is 1.0, and the shipped pair sits a step under it.
     expect(inkStrong).toBeLessThan(0.94);
 
-    // Bold prose takes the medium step, kept under a true 500 so emphasis
-    // reads as a step off body text rather than a jump.
+    // Bold prose needs a clear step over the 400 body: the labels' 470 read as
+    // body text inside a paragraph. It stays under the headings.
     const strong = fontWeight(cssRuleBody(conversation, ".markdown strong"), tokens);
-    expect(strong).toBeGreaterThan(400);
-    expect(strong).toBeLessThan(500);
+    expect(strong).toBeGreaterThanOrEqual(500);
     for (const heading of [".markdown h1", ".markdown h2", ".markdown h3"]) {
       expect(fontWeight(cssRuleBody(conversation, heading))).toBeGreaterThan(strong);
     }

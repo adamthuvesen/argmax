@@ -4,16 +4,8 @@ import UIKit
 
 /// Start a chat.
 ///
-/// The same four choices the web launcher makes — project, where the files
-/// live, which agent, and the task — and the same two calls at the end of
-/// them (`NewChatPlan`).
-///
-/// The prompt is first and biggest because it is the point: the other four
-/// have a defensible default and the task does not. They sit under it in one
-/// grid of equal cells, the way the desktop composer carries them in one
-/// row, and each cell opens the app's own picker. This was a `Form` in the
-/// first pass, which put the task last, behind three grouped-inset sections
-/// and a navigation-link drill-down per choice.
+/// Chat starts without a project. Code exposes project and checkout choices
+/// above the same composer, keeping the draft intact when switching tabs.
 struct NewChatSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -30,6 +22,9 @@ struct NewChatSheet: View {
     @State private var branches: [String] = []
     @State private var discovered: [ProviderCapability] = []
     @State private var projectID: String?
+    @AppStorage("argmax.launch.isCode") private var savedCode = false
+    @State private var isCode: Bool
+    /// Keep the checkout choice while Chat is selected.
     @State private var mode: NewChatMode
     @State private var baseRef: String?
     @State private var model: ModelSelection
@@ -47,6 +42,7 @@ struct NewChatSheet: View {
     @State private var promptFocused = false
     @Environment(\.accentTint) private var accent
     @Environment(\.mascotVisible) private var mascotVisible
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Which chip is open. One at a time, so one sheet.
     private enum Picking: String, Identifiable {
@@ -83,7 +79,10 @@ struct NewChatSheet: View {
             store.snapshot.workspaces.first { $0.id == id }
         }
         let branchable = source.map { $0.kind == .git && !$0.sharedWorkspace && !$0.branch.isEmpty } ?? false
-        _mode = State(initialValue: seeded.isEmpty ? .sideChat : (branchable ? .branchFrom : .current))
+        let contextualCode = source.map { $0.kind == .git }
+            ?? preselectedProjectID.map { $0 != scratchProjectID }
+        _isCode = State(initialValue: contextualCode ?? UserDefaults.standard.bool(forKey: "argmax.launch.isCode"))
+        _mode = State(initialValue: branchable ? .branchFrom : .current)
         _baseRef = State(initialValue: branchable ? source?.branch : nil)
         _projectID = State(
             initialValue: source?.projectId ?? preselectedProjectID ?? seeded.first?.id
@@ -94,9 +93,12 @@ struct NewChatSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // A screen in the stack, like the transcript: back is the way out.
-            ScreenHeader(title: "New chat", onBack: { dismiss() })
-            hero
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            header
+            ViewThatFits(in: .vertical) {
+                hero
+                Color.clear.frame(height: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             if let failure {
                 Text(failure)
                     .typeStyle(.footnote)
@@ -104,9 +106,11 @@ struct NewChatSheet: View {
                     .screenGutter()
                     .padding(.bottom, Spacing.snug)
             }
-            choiceRows
-                .screenGutter()
-                .padding(.bottom, Spacing.row)
+            if isCode {
+                choiceRows
+                    .screenGutter()
+                    .padding(.bottom, Spacing.row)
+            }
             composerCard
                 .screenGutter()
                 .padding(.bottom, Spacing.row)
@@ -119,11 +123,65 @@ struct NewChatSheet: View {
         .onChange(of: mode) { _, _ in
             Task { await loadBranchesIfNeeded() }
         }
+        .onChange(of: isCode) { _, value in
+            savedCode = value
+        }
         .onChange(of: projectID) { _, _ in
             baseRef = nil
             branches = []
             Task { await loadBranchesIfNeeded() }
         }
+    }
+
+    private var launchMode: NewChatMode { isCode ? mode : .sideChat }
+
+    private var header: some View {
+        HStack(spacing: Spacing.snug) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .typeSymbol(.body, weight: .semibold)
+                    .frame(width: 44, height: 44)
+                    .contentShape(.rect)
+            }
+            .accessibilityLabel("Back")
+            Spacer(minLength: 0)
+            HStack(spacing: 0) {
+                modeTab("Chat", code: false)
+                modeTab("Code", code: true)
+            }
+            .padding(Spacing.tight)
+            .background(Theme.ground, in: .capsule)
+            .shadow(color: .black.opacity(0.06), radius: 16, y: 5)
+            .frame(maxWidth: 200)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("New chat mode")
+            Spacer(minLength: 0)
+            Color.clear.frame(width: 44, height: 44).accessibilityHidden(true)
+        }
+        .foregroundStyle(Theme.ink)
+        .buttonStyle(.plain)
+        .screenGutter()
+        .padding(.bottom, Spacing.snug)
+    }
+
+    private func modeTab(_ title: String, code: Bool) -> some View {
+        Button {
+            guard isCode != code else { return }
+            Haptics.selection()
+            isCode = code
+        } label: {
+            Text(title)
+                .typeStyle(.body, weight: .medium)
+                .padding(.horizontal, Spacing.row)
+                .padding(.vertical, Spacing.snug)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(isCode == code ? Theme.pressed : .clear, in: .capsule)
+                .contentShape(.capsule)
+        }
+        .disabled(launching)
+        .accessibilityIdentifier(code ? "new-chat-code" : "new-chat-chat")
+        .accessibilityAddTraits(isCode == code ? .isSelected : [])
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isCode)
     }
 
     // MARK: - The task
@@ -165,10 +223,13 @@ struct NewChatSheet: View {
     private var hero: some View {
         VStack(spacing: Spacing.row) {
             if mascotVisible { FoxMark(size: 72) }
-            Text(Self.greeting(for: mode))
+            Text(Self.greeting(for: launchMode))
                 .typeStyle(.body, weight: .medium)
                 .foregroundStyle(Theme.ink.opacity(0.85))
+                .multilineTextAlignment(.center)
         }
+        .screenGutter()
+        .fixedSize(horizontal: false, vertical: true)
         .allowsHitTesting(false)
     }
 
@@ -181,7 +242,7 @@ struct NewChatSheet: View {
                 ComposerImageStrip(images: images)
             }
             ComposerTextInput(
-                mode == .sideChat ? "Ask anything" : "Describe the task",
+                isCode ? "Describe the task" : "Ask anything",
                 text: $prompt,
                 accessibilityLabel: "Task",
                 lineLimits: 2...6,
@@ -234,7 +295,7 @@ struct NewChatSheet: View {
     /// on the desktop, and the hidden scratch project for a side chat, which
     /// is the key the web launcher uses for the same pick.
     private var attachmentStoreKey: String {
-        "launch-\(mode == .sideChat ? scratchProjectID : (projectID ?? scratchProjectID))"
+        "launch-\(isCode ? (projectID ?? scratchProjectID) : scratchProjectID)"
     }
 
     /// Where and in what, as a column above the composer — each a line you
@@ -245,8 +306,12 @@ struct NewChatSheet: View {
             if !projects.isEmpty {
                 ChoiceRow(systemImage: "folder", value: selectedProject?.name ?? "Choose project") { picking = .project }
                 ChoiceRow(systemImage: "laptopcomputer", value: mode.title) { picking = .mode }
+            } else {
+                Text("Add a project in Argmax on your Mac to start coding.")
+                    .typeStyle(.subheadline)
+                    .foregroundStyle(Theme.muted)
             }
-            if mode.takesBaseRef {
+            if mode.takesBaseRef, selectedProject != nil {
                 ChoiceRow(
                     systemImage: "arrow.triangle.branch",
                     value: baseRef ?? "Choose branch",
@@ -314,7 +379,9 @@ struct NewChatSheet: View {
         case .mode:
             PickerSheet(
                 title: "Workspace",
-                options: NewChatMode.allCases.map { PickerOption(value: $0, label: $0.title, detail: hint($0)) },
+                options: NewChatMode.allCases.filter { $0 != .sideChat }.map {
+                    PickerOption(value: $0, label: $0.title, detail: hint($0))
+                },
                 selection: $mode
             )
         case .branch:
@@ -397,7 +464,7 @@ struct NewChatSheet: View {
     /// a launch. The button reads this rather than re-deriving the rules.
     private var plan: NewChatPlan? {
         NewChatPlan(
-            mode: mode,
+            mode: launchMode,
             project: selectedProject,
             baseRef: mode.takesBaseRef ? baseRef : nil,
             model: model,
@@ -440,7 +507,6 @@ struct NewChatSheet: View {
                 let preselected = projects.first { $0.id == preselectedProjectID }
                 projectID = preselected?.id ?? projects.first?.id
             }
-            if projects.isEmpty { mode = .sideChat }
         }
         if let capabilities = await loadedProviders {
             discovered = capabilities
@@ -514,6 +580,7 @@ struct NewChatSheet: View {
             let autoTitle = plan.autoTitleInput(workspaceID: workspace.id)
             Task { _ = try? await client.autoTitleWorkspace(autoTitle) }
             Haptics.success()
+            savedCode = isCode
             onLaunched(workspace, session)
         } catch {
             Haptics.error()

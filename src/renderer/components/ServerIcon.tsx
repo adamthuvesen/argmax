@@ -1,5 +1,6 @@
 import { Globe, Monitor, Plug } from "lucide-react";
 import type { JSX } from "react";
+import { useActivityIconColorMode } from "../lib/activityIconColorMode.js";
 import { serverIconFor } from "../lib/serverIcons.js";
 
 /**
@@ -16,6 +17,7 @@ export function ServerIcon({
   server: string | null;
   web?: boolean;
 }): JSX.Element | null {
+  const colorMode = useActivityIconColorMode();
   if (server === "cua repl") {
     return <Monitor size={14} className="tool-call-row-server-icon" role="img" aria-label="Computer use" />;
   }
@@ -34,10 +36,11 @@ export function ServerIcon({
     if (!server) return null;
     return <Plug size={14} className="tool-call-row-server-icon" aria-hidden="true" />;
   }
+  const artwork = colorMode === "monochrome" ? icon.monochrome ?? icon : icon;
   return (
     <svg
       className="tool-call-row-server-icon"
-      viewBox={icon.viewBox}
+      viewBox={artwork.viewBox}
       width={14}
       height={14}
       role="img"
@@ -46,7 +49,7 @@ export function ServerIcon({
     >
       {/* A style fill, not the attribute: the mascot's layers are theme tokens,
           and a presentation attribute cannot hold a var(). */}
-      {icon.layers.map((layer, index) => (
+      {artwork.layers.map((layer, index) => (
         <path
           key={index}
           d={layer.path}

@@ -1063,9 +1063,12 @@
      alone. */
   overflow-wrap: break-word;
   /* Book-column leading (1.9) floated headings so far from their first line
-     that they stopped reading as owning the section below them. 1.74 keeps the
-     transcript airy without breaking that attachment. */
-  line-height: 1.74;
+     that they stopped reading as owning the section below them, and 1.74 left
+     so little difference between the gap inside a paragraph and the gap
+     between two that blocks stopped reading as blocks. 1.65 keeps the
+     transcript airy while the paragraph margin below stays visibly wider
+     than a line's own leading. */
+  line-height: 1.65;
   font-weight: var(--weight-prose);
   color: var(--prose-ink);
 }
@@ -1091,7 +1094,9 @@
 }
 
 .markdown p {
-  margin: 0 0 15px;
+  /* em, not px: the gap has to stay a full line and a bit at every type step,
+     or the largest sizes collapse back into the river this fixes. */
+  margin: 0 0 1.2em;
   white-space: normal;
 }
 
@@ -1111,16 +1116,17 @@
    weight, this doesn't need to imitate one. */
 .markdown p:has(+ ul),
 .markdown p:has(+ ol) {
-  margin-bottom: var(--space-2);
+  margin-bottom: 0.4em;
 }
 
-/* 500, not 520. The app bundles Geist Sans as 400/500/700 statics, and CSS
-   resolves a request above 500 by searching upward first — so 520 rendered
-   Geist 700, the same face as the headings, and every bold lead-in in an
-   answer landed with heading weight. 500 asks for the medium that is actually
-   in the bundle. */
+/* Bold prose sits well above the body and just under the headings. The
+   labels' --weight-medium (470) is 70-80 over a 390-400 body, which vanished
+   in a paragraph, worst in dark where the ink step is also small. Every sans
+   choice renders the weight axis as written, so 590 lands as 590: two clear
+   steps over the body, one under the 660 headings, and still short of the
+   column of shouting that a bullet list of 620 lead-ins became. */
 .markdown strong {
-  font-weight: var(--weight-medium);
+  font-weight: calc(590 + var(--font-weight-offset));
   color: var(--prose-ink-strong);
 }
 
@@ -1221,9 +1227,9 @@
 
 .markdown ul,
 .markdown ol {
-  /* Hug the lead-in above and leave a clear gap below so the bulleted group
-     separates from the next section without becoming a ladder of rows. */
-  margin: 6px 0 18px;
+  /* Hug the lead-in above and leave the paragraph gap below so the bulleted
+     group separates from the next section without becoming a ladder of rows. */
+  margin: 6px 0 1.2em;
   /* em, not px: the marker column has to widen with --type-step or a
      double-digit marker ("11.") overflows it at the larger font sizes and
      shunts the whole list left. */
@@ -1245,17 +1251,17 @@
 }
 
 .markdown ol:has(+ ul) > li:only-child {
-  font-size: var(--text-base-plus);
-  font-weight: calc(600 + var(--font-weight-offset));
-  letter-spacing: -0.004em;
+  font-size: var(--text-md-plus);
+  font-weight: calc(660 + var(--font-weight-offset));
+  letter-spacing: -0.014em;
   color: var(--prose-ink-strong);
-  margin: 22px 0 6px;
-  line-height: 1.42;
+  margin: 1.4em 0 0.45em;
+  line-height: 1.3;
 }
 
 .markdown ol:has(+ ul) > li:only-child::marker {
   color: var(--accent);
-  font-weight: calc(600 + var(--font-weight-offset));
+  font-weight: calc(660 + var(--font-weight-offset));
 }
 
 .markdown ol:has(> li:only-child) + ul {
@@ -1273,13 +1279,13 @@
 .markdown li {
   margin: 0;
   padding-left: 2px;
-  line-height: 1.6;
+  line-height: 1.58;
 }
 
 /* Between siblings only, so the first and last rows stay hugged to the list's
    own margins and the group reads as one block. */
 .markdown li + li {
-  margin-top: 9px;
+  margin-top: 7px;
 }
 
 /* A nested list is one level tighter than its parent, so depth reads as
@@ -1309,25 +1315,21 @@
 }
 
 /* The ink ladder has to stay monotonic: h1-h3 on --prose-ink-strong, `strong`
-   at 500 one step under them, body on --prose-ink. Painting headings from
+   at 550 one step under them, body on --prose-ink. Painting headings from
    --text-soft/--muted put them *behind* the paragraphs they introduce and let
    bold body text win the page, which is what made a heading-heavy answer read
-   as one flat river.
+   as one flat river. Headings keep their lead over `strong` through size as
+   well as the 570-600 weights below.
 
-   The weights below all resolve to Geist 700 — the bundle carries 400/500/700
-   statics, and 570-600 rounds up. That is the intent (headings are the top of
-   the ladder), but it is also why `strong` has to sit at 500 rather than at a
-   number that merely *looks* lower: anything past 500 lands on the same face
-   the headings use and the step disappears.
-
-   Size does little of the work here — the range is one token wider than the
-   body, so an answer full of `##` never shouts inside a 780px prose column.
-   Weight, ink, and asymmetric space carry the hierarchy instead: generous
-   above (the previous section ends), tight below (this heading owns what
-   follows). */
+   Size now does real work: an `h3` sits a fifth over the body, which is the
+   step that finally separated it from a bold lead-in at the same size (see
+   docs/design/prose-rhythm). h2 and h1 keep one token each above it so the
+   ladder stays monotonic. Weight, ink, and asymmetric space carry the rest:
+   generous above (the previous section ends), tight below (this heading owns
+   what follows). */
 .markdown h1 {
-  font-size: var(--text-lg);
-  font-weight: calc(580 + var(--font-weight-offset));
+  font-size: var(--text-lg-plus);
+  font-weight: calc(620 + var(--font-weight-offset));
   /* Optical tracking scales with the size — at 13px it would be invisible, at
      18px an untracked line reads loose. */
   letter-spacing: -0.014em;
@@ -1340,9 +1342,19 @@
   border-bottom: 1px solid color-mix(in oklab, var(--accent) 26%, var(--line));
 }
 
+/* An answer that opens with `#` is titling itself, not breaking from a
+   section above. The rule is the chapter-break mark, so a leading h1 drops
+   it and takes a little air instead of sitting flush under the meta line;
+   the first-child reset would otherwise zero it. */
+.markdown > h1:first-child {
+  margin-top: 0.3em;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
 .markdown h2 {
-  font-size: var(--text-md);
-  font-weight: calc(570 + var(--font-weight-offset));
+  font-size: var(--text-lg-tight);
+  font-weight: calc(600 + var(--font-weight-offset));
   letter-spacing: -0.009em;
   line-height: 1.34;
   color: var(--prose-ink-strong);
@@ -1350,12 +1362,22 @@
 }
 
 .markdown h3 {
-  font-size: var(--text-base-plus);
-  font-weight: calc(600 + var(--font-weight-offset));
-  letter-spacing: -0.004em;
-  line-height: 1.42;
+  font-size: var(--text-md-plus);
+  font-weight: calc(660 + var(--font-weight-offset));
+  letter-spacing: -0.014em;
+  line-height: 1.3;
   color: var(--prose-ink-strong);
-  margin: 22px 0 6px;
+  /* In the heading's own em so the section break scales with it: about one
+     body line above, under half below. */
+  margin: 1.4em 0 0.45em;
+}
+
+/* A bold-only line promoted to a heading (`isBoldOnlyLine` in
+   StreamingMarkdown.tsx) still carries its `strong`; the heading's own weight
+   and ink win, or the 590 bold would pull it back under the real headings. */
+.markdown h3 strong {
+  font-weight: inherit;
+  color: inherit;
 }
 
 /* The one small-caps step. Below body size it needs the tracking and the case

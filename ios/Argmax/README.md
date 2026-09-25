@@ -37,6 +37,14 @@ history into pages, the store accumulates them before publishing the rows so
 the screen opens on the latest messages. Live output follows the bottom until
 the reader scrolls away.
 
+The chat header centers a compact title above the project and branch. It omits
+session activity labels such as Running and Idle. Messages scroll beneath a
+translucent blur that fades into the transcript, while Reduce Transparency
+uses an opaque background. Circular Back and Chat actions buttons flank the
+title. Files and changes, including the live changed-file count, lives inside
+Chat actions alongside Fork chat and New chat here. Scratch chats omit the
+Files and changes entry, while transcript file links remain available.
+
 Opening a chat uses iOS 18's system zoom navigation transition, matched by the
 session id from its list row. The transition remains continuously interactive,
 including when a person catches the push with the edge-swipe gesture and
@@ -156,6 +164,15 @@ failure. The same setting applies to subagent and multitask details.
   the sheet and the row's swipe actions and context menu.
 - `Sources/Chats/ProviderCatalog.swift` — the model catalogue, decoded from
   `Resources/providerModels.json`.
+
+New chat has a Chat / Code switch in its header. Chat starts without a project
+and hides the project and checkout rows. Code shows those rows, with Current
+checkout, New worktree, and Branch from… in the workspace picker. Switching
+keeps the draft, attachments, model, and checkout selection intact. The last
+selected tab persists on this phone under `argmax.launch.isCode`, with Chat as
+the initial default. “New chat here” uses the source chat's project context
+instead, and a successful launch remembers that tab too. Code without any
+registered projects explains that a project must be added on the Mac.
 
 `Sources/Review` is the review surface — Changes, the checkout's tree, one
 file's diff, one file's text — over the four reads the desktop panel makes
@@ -304,8 +321,10 @@ xcodebuild -project Argmax.xcodeproj -scheme Argmax \
 ## Tests
 
 `ArgmaxTests` covers models, projection, native rendering, and hosted scroll
-behavior. `ArgmaxUITests` drives real gestures against a deterministic debug
-transcript with the production composer and rows. Neither suite needs a paired
+behavior. `ArgmaxUITests` drives real gestures against deterministic debug
+transcript and new-chat fixtures with the production composers and rows.
+New-chat tests cover mode persistence across relaunches, draft preservation,
+and contextual launches. Neither suite needs a paired
 Mac or a paid provider session.
 
 ```bash

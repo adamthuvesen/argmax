@@ -66,6 +66,7 @@ struct TranscriptTable: Sendable {
 
 struct TranscriptTableBlock: View {
     let table: TranscriptTable
+    @Environment(\.typeScale) private var scale
     @State private var expanded = false
 
     var body: some View {
@@ -119,10 +120,17 @@ struct TranscriptTableBlock: View {
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.line, lineWidth: 0.5))
     }
 
+    /// Header cells are already semibold, so their bold stays on the trait.
+    private func cellText(_ cell: String, header: Bool) -> AttributedString {
+        let parsed = (try? AttributedString(markdown: cell, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(cell)
+        return header ? parsed : parsed.semiboldStrongRuns(scale.font(.footnote, weight: .semibold))
+    }
+
     private func tableRow(_ cells: [String], header: Bool) -> some View {
         GridRow {
             ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
-                Text((try? AttributedString(markdown: cell, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(cell))
+                Text(cellText(cell, header: header))
                     .typeStyle(.footnote, weight: header ? .semibold : nil)
                     .foregroundStyle(Theme.ink)
                     .textSelection(.enabled)

@@ -83,8 +83,9 @@ export function openLauncherPane(
   }
   const alreadyOpen = findLauncherCell(grid) !== null;
   const next = openLauncherInGrid(grid, cell, layout);
+  const gridFull = next === grid && !alreadyOpen;
   publish(next);
-  return next === grid && !alreadyOpen ? "grid-full" : "opened";
+  return gridFull ? "grid-full" : "opened";
 }
 
 export function setLauncherPaneProject(projectId: string): void {
@@ -110,6 +111,14 @@ export function showOnlyPane(cell: SessionGridCell): void {
 
 export function clearPaneGrid(): void {
   publish(EMPTY_GRID);
+}
+
+/** Restores a grid captured by the app's in-window navigation history. */
+export function restorePaneGrid(snapshot: GridState): void {
+  publish({
+    rows: snapshot.rows.map((row) => row.map((cell) => ({ ...cell }))),
+    focused: snapshot.focused ? { ...snapshot.focused } : null
+  });
 }
 
 /** Turns a stopped session's pane back into the composer it launched from. */

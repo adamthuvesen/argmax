@@ -106,14 +106,10 @@ export function SelectionToolbar({
         syncFromSelection();
       });
     };
-    const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setActive(null);
-    };
     const container = containerRef.current;
     document.addEventListener("selectionchange", handleSelectionChange);
     document.addEventListener("mousedown", handleMouseDown);
     document.addEventListener("mouseup", handleMouseUp);
-    document.addEventListener("keydown", handleKeyDown);
     // Capture-phase so the inner `.conversation-list` scroller (a descendant)
     // re-anchors the toolbar to the selection's new on-screen position.
     container?.addEventListener("scroll", syncFromSelection, true);
@@ -122,7 +118,6 @@ export function SelectionToolbar({
       document.removeEventListener("selectionchange", handleSelectionChange);
       document.removeEventListener("mousedown", handleMouseDown);
       document.removeEventListener("mouseup", handleMouseUp);
-      document.removeEventListener("keydown", handleKeyDown);
       container?.removeEventListener("scroll", syncFromSelection, true);
       window.removeEventListener("resize", syncFromSelection);
       if (settleFrameRef.current !== null) {
@@ -131,6 +126,18 @@ export function SelectionToolbar({
       }
     };
   }, [containerRef, isCoarsePointer, syncFromSelection]);
+
+  useEffect(() => {
+    if (!active) return;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      event.preventDefault();
+      setActive(null);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [active]);
 
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {

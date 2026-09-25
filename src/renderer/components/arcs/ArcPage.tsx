@@ -225,6 +225,15 @@ export function ArcPage({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) return;
       if (isTypingTarget(event.target)) return;
       if (document.querySelector('[role="dialog"]')) return;
       event.preventDefault();

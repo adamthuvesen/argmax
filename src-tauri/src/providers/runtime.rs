@@ -228,6 +228,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                         &input,
                         session_launch.as_ref(),
                         self.approvals.clone(),
+                        self.questions.clone(),
                         Arc::clone(&on_event),
                     )
                     .await;
@@ -250,11 +251,18 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
             }
 
             if input.provider == ProviderId::Opencode {
+                let questions = self.questions.clone().ok_or_else(|| {
+                    ArgmaxError::service(
+                        "QUESTION_SERVICE_NOT_READY",
+                        "Question service is not initialized",
+                    )
+                })?;
                 return super::opencode_server::launch_turn(
                     &binary_path,
                     &input,
                     session_launch.as_ref(),
                     self.required_approvals()?,
+                    questions,
                     on_event,
                 )
                 .await;

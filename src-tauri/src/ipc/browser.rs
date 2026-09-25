@@ -233,9 +233,8 @@ const BROWSER_INIT_SCRIPT: &str = r#"
     },
     true
   );
-  // Mouse thumb buttons: 3 = back, 4 = forward. The page's own history is the
-  // webview's, so relay them as commands and let the pane drive navigation —
-  // history.back() inside the page would skip the pane's toolbar state.
+  // Mouse thumb buttons: 3 = back, 4 = forward. Navigate the page directly:
+  // a tab can receive these events without a mounted pane to relay a command.
   var historyCommand = function (button) {
     if (window.__argmaxBrowserPopup) return null;
     return button === 3 ? "back" : button === 4 ? "forward" : null;
@@ -253,7 +252,8 @@ const BROWSER_INIT_SCRIPT: &str = r#"
       var command = historyCommand(event.button);
       if (!command) return;
       event.preventDefault();
-      window.location.href = "argmax-newtab://command?c=" + command;
+      if (command === "back") window.history.back();
+      else window.history.forward();
     },
     true
   );

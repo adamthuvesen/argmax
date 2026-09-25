@@ -83,6 +83,8 @@ export function AppearanceSettings({
   onAccentChange,
   userBubbleTint,
   onUserBubbleTintChange,
+  sidebarArcsVisible,
+  onSidebarArcsVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
   sidebarTranslucent,
@@ -130,6 +132,8 @@ export function AppearanceSettings({
   onAccentChange: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
   onUserBubbleTintChange: (tint: UserBubbleTint) => void;
+  sidebarArcsVisible: boolean;
+  onSidebarArcsVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   sidebarTranslucent: boolean;
@@ -396,6 +400,17 @@ export function AppearanceSettings({
                 { value: "left", label: "Left" },
                 { value: "right", label: "Right" }
               ]}
+            />
+          }
+        />
+        <SettingRow
+          label="Show arcs"
+          description="Show the Arcs section in the sidebar."
+          control={
+            <Toggle
+              ariaLabel="Show arcs"
+              checked={sidebarArcsVisible}
+              onChange={onSidebarArcsVisibleChange}
             />
           }
         />

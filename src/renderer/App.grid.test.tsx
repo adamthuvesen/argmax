@@ -284,6 +284,7 @@ describe("App grid", () => {
 
     expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
+    expect(screen.queryByText("The grid is full. Close a pane to start a new chat here.")).not.toBeInTheDocument();
     const rows = document.querySelectorAll(".session-multigrid-row");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.querySelectorAll(".session-multigrid-cell")).toHaveLength(2);

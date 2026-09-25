@@ -72,6 +72,13 @@ Shell state that several surfaces move lives in `src/renderer/state/`, not in `A
 
 Snapshot and selection stay in [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts); [useAppGridSelection](../src/renderer/hooks/useAppGridSelection.ts) resolves grid moves against that snapshot and writes them to `paneGrid`.
 
+Mouse back and forward buttons move through each window's app navigation
+history: chats, New chat, Settings groups, Schedule, Usage, Activity, arcs, and
+the Browser page. History is bounded and stays in memory until the window
+closes. Opening a new destination after going back discards forward history.
+Dashboard refreshes and transient dialogs do not add navigation entries.
+Clicks inside a browser pane use that tab's web history instead.
+
 Dashboard React state contains metadata and approvals. Transcript events, raw output, and read cursors live together in [SessionTimelines](../src/renderer/lib/sessionTimelines.ts). Each conversation subscribes to its session through `useSessionTimeline`, so a token does not update unrelated panes or the dashboard shell. Agent traces use their parent session's history, while multitasks subscribe to their own session. Subscribed histories stay resident, and the store retains at most 12 inactive histories. Eviction drops the history and its cursors together so reopening a session fetches a complete tail.
 
 Renderer code routes timeline meaning through [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts). Its cached decoder turns each persisted `TimelineEvent` into a discriminated union for messages, tools, lifecycle rows, multitasks, approvals, errors, and unknown rows. Consumers branch on that union instead of interpreting provider payload keys independently. The original event remains available for lossless debug output and large tool input or output bodies.

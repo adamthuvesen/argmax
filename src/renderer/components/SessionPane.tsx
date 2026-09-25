@@ -41,8 +41,14 @@ import { resolveOpenablePath } from "../lib/openableFile.js";
 import { showErrorToast } from "../state/toast.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
-import { isTypingTarget } from "../lib/typingTarget.js";
-import { readBoundedNumberPreference, type FollowUpDelivery, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
+import {
+  ESCAPE_STOPS_CHAT_KEY,
+  readBooleanPreference,
+  readBoundedNumberPreference,
+  type FollowUpDelivery,
+  type ThinkingDisplay,
+  type ToolCallsDisplay
+} from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
 import { useAgentTabs } from "../hooks/useAgentTabs.js";
@@ -94,6 +100,15 @@ const SESSION_RIGHT_PANEL_MAX = 2000;
  *  from handing the dock a third of the screen. */
 const SESSION_RIGHT_PANEL_AUTO_WIDTH = `clamp(${SESSION_RIGHT_PANEL_MIN}px, 33.3%, 560px)`;
 const SESSION_LOG_PANEL_MIN = 300;
+
+function isEditorEscapeTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(".xterm, .cm-editor") !== null;
+}
+
+function hasActiveDialog(): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
+    .some((dialog) => dialog.getAttribute("aria-hidden") !== "true");
+}
 
 /** Null when the user has never dragged the handle, which leaves the dock on
  *  `SESSION_RIGHT_PANEL_AUTO_WIDTH` instead of freezing it at a stored width. */
@@ -334,6 +349,7 @@ export function SessionPane({
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
+  const escapeTerminationPendingRef = useRef<object | null>(null);
   // Null while the dock is on its automatic share of the pane; a pixel width
   // once the user has dragged the handle.
   const [pinnedPanelWidth, setPinnedPanelWidth] = useState<number | null>(readPinnedPanelWidth);
@@ -619,20 +635,48 @@ export function SessionPane({
   }, [debugLogToggleSignal, isFocused, toggleLog]);
 
   useEffect(() => {
+    escapeTerminationPendingRef.current = null;
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        if (
+          event.defaultPrevented ||
+          event.isComposing ||
+          event.repeat ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.shiftKey ||
+          isEditorEscapeTarget(event.target) ||
+          hasActiveDialog()
+        ) return;
         if (isLogOpen) {
-          if (isTypingTarget(event.target)) return;
           event.preventDefault();
           setIsLogOpen(false);
           return;
         }
         if (reviewIsPanelOpen) {
-          if (isTypingTarget(event.target)) return;
           event.preventDefault();
           reviewClosePanel();
+          return;
         }
+        if (
+          session?.state !== "running" ||
+          !readBooleanPreference(ESCAPE_STOPS_CHAT_KEY, false) ||
+          escapeTerminationPendingRef.current !== null
+        ) return;
+        event.preventDefault();
+        const terminationRequest = {};
+        escapeTerminationPendingRef.current = terminationRequest;
+        const clearPending = (): void => {
+          if (escapeTerminationPendingRef.current === terminationRequest) {
+            escapeTerminationPendingRef.current = null;
+          }
+        };
+        void onTerminateSession(session.id).then(clearPending, clearPending);
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
@@ -663,18 +707,20 @@ export function SessionPane({
         }
       }
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isFocused,
     isLogOpen,
+    onTerminateSession,
     reviewClosePanel,
     reviewIsPanelOpen,
     reviewModes,
     reviewClosePane,
     reviewOpenBrowser,
     reviewOpenPanelInFilesMode,
-    reviewTogglePanel
+    reviewTogglePanel,
+    session
   ]);
 
   // Until the backfill below lands, the transcript is whatever was left over

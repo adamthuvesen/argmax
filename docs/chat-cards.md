@@ -4,6 +4,17 @@ The chat surface renders assistant bubbles, tools, and interactive cards: **Ques
 
 ## Components and Structure
 
+Settings → General → **Escape stops a running chat** optionally binds Escape
+to the focused chat's Stop action. It is off by default. Menus, autocomplete,
+Settings, and the right sidebar consume Escape before a chat can stop, so one
+press closes one surface. With nothing to dismiss, Escape also works from the
+chat composer. Terminal and code-editor input keep their own Escape behavior.
+Holding Escape does not dismiss successive surfaces or stop a newly revealed
+chat.
+Stopping with Escape within the first ten seconds uses the same early-stop
+behavior as the Stop button: restore the launcher with its prompt and project,
+then archive the short-lived chat after the stop succeeds.
+
 - **Conversation Shell:** [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) derives timeline projections, thinking states, turn models, and scroll anchoring.
 - **Turns & Cards:** [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx) renders individual turns and their card containers. The question is the exception: the turn never draws it. [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx) hoists the live one into [QuestionDock.tsx](../src/renderer/components/QuestionDock.tsx), and an answered one is not drawn at all.
 - **Timeline Logic:** [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) decodes persisted rows into one typed event contract. [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) uses that contract for event filtering, raw transcript suppression checks, tool pairing, and last-significant-event selection.
@@ -56,7 +67,7 @@ normalizer reduces all five dialects to one `todo.updated` event
 
 `Status` is `pending | active | done | cancelled | removed`, resolved in Rust so
 the renderer's fold is provider-blind. Two rules keep it honest: **no list in
-the payload means no event** — Cursor's ACP `updateTodos` arrives with the list
+the payload means no event** — Cursor's ACP `updateTodos` opens with the list
 stripped, and an empty snapshot would wipe a list the user is reading — and
 **every status arrives resolved**, so `TODO_STATUS_IN_PROGRESS`, `inProgress`
 and `in_progress` all become `active` in one place.
@@ -66,7 +77,7 @@ and `in_progress` all become `active` in one place.
 | Codex | app-server `turn/plan/updated` | snapshot, with a real `inProgress` |
 | OpenCode | `todowrite` args | snapshot, no ids |
 | Grok | ACP: `TodosUpdated` inside a tool result; CLI: `todo_write` args | snapshot (ACP, keyed by id) or `merge:true` delta (CLI) |
-| Cursor | `updateTodosToolCall` / `todo_write` / `todowrite` | as shaped |
+| Cursor | `updateTodosToolCall` / `todo_write` / `todowrite` args; ACP `plan` from CreatePlan | as shaped; `plan` is a snapshot, no ids |
 | Claude | `TaskCreate` result + `TaskUpdate` args | merge, one task per call |
 
 Three of the five send deltas, so the card is a **fold over the persisted
@@ -104,13 +115,24 @@ ordered sibling `todos` array is preferred when present, then
 `summary_for_prompt`, then numeric key order. Its CLI path sends the
 `todo_write` array instead. Both are read.
 
-Known gaps, both provider-side:
+Cursor's ACP `updateTodos` opens as `{"_toolName":"updateTodos"}` and then
+streams the list into `rawInput` one item per update (`[alpha]`, then
+`[alpha, beta]`, …). The ACP translation in
+[cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs) therefore draws a todo
+call's row only at completion, from the last list it saw; drawn from the
+opening line it published nothing, and from the first named update a one-item
+list. Cursor also sends each list as a `cursor/update_todos` extension request,
+which Argmax answers with method-not-found so the list is published once.
+ACP's `plan` update comes only from Cursor's CreatePlan tool. It is a snapshot
+of entries without ids, and a plan with no todos arrives as one
+`high`-priority entry holding the plan's own name, which is dropped.
 
-- **Cursor's ACP `updateTodos` carries no list.** Its `args` are
-  `{"_toolName":"updateTodos"}` on both `started` and `completed`. Cursor's tool
-  name depends on the model behind ACP — `composer-2.5` alone emitted
-  `updateTodos`, `todo_write` and `todowrite` across two days — so Cursor shows
-  a plan for some models and not others.
+Known gaps:
+
+- **Cursor's plan items have no ids.** A later `updateTodos` with
+  `merge: true` addresses the ids CreatePlan assigned, which the `plan` update
+  never carried, so the fold appends those rows beside the plan's instead of
+  updating them. A `merge: false` list replaces the plan outright.
 - **Claude's task id exists only in prose.** `TaskCreate` returns
   ``Task #${id} created successfully: ${subject}``, and `TaskUpdate` addresses
   that id. When that literal changes the task still reaches the card, keyed by
@@ -295,7 +317,9 @@ messages visible. Claude's blocking question cards still suppress fallback
 prose emitted after the ask. Submitting either kind uses the existing
 stop-before-answer flow.
 
-Blocking Codex questions carry `delivery: "blocking"` and `requestId`.
+Blocking questions (Codex's `request_user_input`, Cursor's
+`cursor/ask_question`, OpenCode's `question`) carry `delivery: "blocking"` and
+`requestId`.
 Their answers go to `questions:resolve`, which resumes the waiting request
 within the same turn. Nonblocking `request_user_input` requests carry
 `delivery: "async"`, so the dock uses the next-user-message flow while Codex
@@ -505,6 +529,7 @@ Compaction creates a transcript boundary, not a completed provider turn. The pre
 
 - **Context compaction:** Provider compaction events (`session.compacting` / `session.compacted`) are collapsed into a single `compaction` render item by [foldConversation.ts](../src/renderer/lib/foldConversation.ts) and rendered by [CompactionNotice.tsx](../src/renderer/components/CompactionNotice.tsx) (`Compacted context · 471k → 10.7k`). Claude repeats the opening row — `system/status status:"compacting"` is a heartbeat every 30s for as long as the run takes — so the collapse folds consecutive running markers too, not just the start/end pair, and the seam keeps the first row's id. Codex brackets the same seam with `item.started` / `item.completed` on a `context_compaction` item, mapped in [normalizer/codex.rs](../src-tauri/src/providers/normalizer/codex.rs); that item carries no token counts, so its notice reads `Compacting context` and then `Compacted context` with no sizes. Synthetic summary prompts injected by the provider are dropped. A compaction is total provider silence, so `isCompacting` only trusts an opening row that is still the newest event — a marker stranded by a Stop mid-compaction never gets its closing row, and trusting it forever suppressed the progress cue for the rest of the chat's life.
 - **Provider handoff:** Changing providers on an idle session creates a `session.provider-changed` marker rendered by [ProviderSwitchNotice.tsx](../src/renderer/components/ProviderSwitchNotice.tsx) (`Cursor → Codex · GPT-5.6 Sol`). Follow-ups restart fresh with the capped transcript.
+  Choosing **New chat** in the provider-switch dialog instead opens the full-view launcher with the selected model and carried draft, regardless of the new-chat split preference. Launching shows only the new session.
 - **Project handoff:** Moving a session creates a `session.moved` marker rendered by [ProjectMoveNotice.tsx](../src/renderer/components/ProjectMoveNotice.tsx) (`HQ → Argmax · shared checkout`). The destination starts a fresh provider conversation with the capped transcript and checkout path.
 - **Session notes:** What Argmax did to the chat itself — resuming a move or archive promised before the last quit, or dropping one the turn never earned — is a `session.note` row carrying the `operation` (`session.move`, `workspace.archive`, or `turn.input-undelivered` — a turn stopped before the model ever read its message), rendered by [SessionNote.tsx](../src/renderer/components/SessionNote.tsx) as one muted centered line. It is not a seam: nothing changed hands, so it has no rules on either side, and [foldConversation.ts](../src/renderer/lib/foldConversation.ts) lets it follow the turn it landed in rather than ending that turn and splitting one answer across two blocks. The failure that may have caused it is its own `error` row.
 

@@ -18,6 +18,7 @@ struct ChatListView: View {
     /// Where a tapped notification lands. The list owns the path, so it is
     /// the only screen that can act on one.
     @EnvironmentObject private var push: PushDelegate
+    @EnvironmentObject private var appearance: Appearance
     /// A row is a button, not a `NavigationLink` — a link inside a list
     /// draws a disclosure chevron and there is no way to ask it not to — so
     /// the stack's path is held here and pushed by hand. Settings rides the
@@ -270,7 +271,7 @@ struct ChatListView: View {
     @ViewBuilder
     private var arcsSection: some View {
         let arcs = liveArcs(store.snapshot.arcs)
-        if !arcs.isEmpty {
+        if appearance.showArcs, !arcs.isEmpty {
             Group {
                 heading("Arcs", id: "arcs", count: arcs.count)
                 ForEach(Array((isCollapsed("arcs") ? [] : arcs).enumerated()), id: \.element.id) { index, arc in
@@ -422,9 +423,10 @@ struct ChatListView: View {
     // One mark, one line, one action.
 
     private var placeholder: ChatListPlaceholder? {
-        chatListPlaceholder(
+        let hasVisibleArcs = appearance.showArcs && !liveArcs(store.snapshot.arcs).isEmpty
+        return chatListPlaceholder(
             connection: store.connection,
-            hasRows: !store.sections.isEmpty || !liveArcs(store.snapshot.arcs).isEmpty,
+            hasRows: !store.sections.isEmpty || hasVisibleArcs,
             loadedOnce: store.loadedOnce,
             failed: store.loadFailure != nil
         )

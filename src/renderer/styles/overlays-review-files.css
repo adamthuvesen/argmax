@@ -503,6 +503,16 @@
   box-shadow: none;
 }
 
+/* Shell tabs echo the soft, rounded selection in the panel's mode switcher. */
+.review-terminal .file-tab {
+  border-radius: 999px;
+}
+
+.review-terminal .file-tab[data-active="true"] {
+  background: var(--row-selected);
+  box-shadow: none;
+}
+
 /* Padding math keeps the pill visually symmetric: 10px from the left edge to
    the icon, and the ✕ glyph (12px inside its 18px hit box, so 3px of inset)
    plus its 7px margin lands 10px from the right edge too. */

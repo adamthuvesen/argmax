@@ -463,8 +463,11 @@ export function useReviewState(
   );
 
   const openBrowser = useCallback(
-    (): void => openBrowserAt(lastBrowsedUrl(browserScopeId)),
-    [browserScopeId, openBrowserAt]
+    (): void => openBrowserAt(
+      browserRequest?.tabId ? browserRequest.url : lastBrowsedUrl(browserScopeId),
+      browserRequest?.tabId
+    ),
+    [browserRequest, browserScopeId, openBrowserAt]
   );
 
   const showsBrowser = isPanelOpen && layout.modes.includes("browser");
@@ -499,18 +502,38 @@ export function useReviewState(
     consumeBrowserRequest(request.seq);
   }), [browserScopeId, openBrowserAt]);
 
-  // A tab this panel's session opened: show it here, so the user watches the
-  // agent browse. Every panel sees the request; only the one whose session
+  // Reveal the first agent tab once per session. Later requests update the
+  // browser without disturbing the user's panel layout or visibility.
+  // Every panel sees the request; only the one whose session
   // matches acts, and a session with no panel mounted simply gets a tab in
   // the strip the next time someone opens the browser.
   const paneSessionId = options?.sessionId ?? null;
   const agentBrowserOpen = useSyncExternalStore(subscribeAgentBrowserOpen, getAgentBrowserOpen);
   const handledAgentSeq = useRef(agentBrowserOpen?.seq ?? 0);
+  const revealedBrowserSessions = useRef(new Set<string>());
   useEffect(() => {
     if (!agentBrowserOpen || agentBrowserOpen.seq === handledAgentSeq.current) return;
     handledAgentSeq.current = agentBrowserOpen.seq;
     if (!paneSessionId || agentBrowserOpen.sessionId !== paneSessionId) return;
-    openBrowserAt(agentBrowserOpen.url, agentBrowserOpen.tabId);
+    if (!hostsBrowserSurface()) return;
+    const revealKey = `argmax.browser.agentRevealed.${paneSessionId}`;
+    let alreadyRevealed = revealedBrowserSessions.current.has(paneSessionId);
+    try {
+      alreadyRevealed ||= window.localStorage.getItem(revealKey) === "true";
+      window.localStorage.setItem(revealKey, "true");
+    } catch {
+      // Keep the one-time reveal in memory when appearance storage is unavailable.
+    }
+    revealedBrowserSessions.current.add(paneSessionId);
+    if (!alreadyRevealed) {
+      openBrowserAt(agentBrowserOpen.url, agentBrowserOpen.tabId);
+    } else {
+      setBrowserRequest((current) => ({
+        url: agentBrowserOpen.url,
+        tabId: agentBrowserOpen.tabId,
+        seq: (current?.seq ?? 0) + 1
+      }));
+    }
   }, [agentBrowserOpen, openBrowserAt, paneSessionId]);
 
   const hasTranscript = lastTurnPaths !== null;

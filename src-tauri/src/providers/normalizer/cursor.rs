@@ -200,10 +200,11 @@ pub fn normalize_tool_call(
 }
 
 /// Cursor's todo list arrives under four different tool names depending on the
-/// model behind ACP, so the shape decides rather than the name. One of the
-/// four, `updateTodos`, is stripped to `args: {"_toolName":"updateTodos"}`
-/// before it reaches us — that carries no list, so it produces no update and
-/// leaves whatever the card is already showing alone.
+/// model behind ACP, so the shape decides rather than the name. ACP's
+/// `updateTodos` opens as `args: {"_toolName":"updateTodos"}` and streams the
+/// list in later updates; the ACP translation holds the row until the call
+/// completes so the list is here. A call that still carries no list produces
+/// no update and leaves whatever the card is already showing alone.
 pub fn normalize_todo_call(
     event: &ProviderOutputEvent,
     payload: &Map<String, Value>,
@@ -224,6 +225,23 @@ pub fn normalize_todo_call(
         &update,
         string_value(payload.get("call_id")),
     ))
+}
+
+/// ACP's `plan` update, which the ACP translation forwards as
+/// `{"type":"plan","entries":[{content, priority, status}]}`: always the whole
+/// list, never a delta, and its items carry no ids.
+pub fn normalize_plan_update(
+    event: &ProviderOutputEvent,
+    payload: &Map<String, Value>,
+    provider_type: Option<&str>,
+) -> Option<PersistTimelineEventInput> {
+    if provider_type != Some("plan") {
+        return None;
+    }
+    let mut input = Map::new();
+    input.insert("todos".to_string(), payload.get("entries")?.clone());
+    let update = todos_array_update(&input)?;
+    Some(todo_event(event, &update, None))
 }
 
 /// Cursor's one-shot task tool assigns the authoritative child identity only

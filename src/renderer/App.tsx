@@ -100,6 +100,7 @@ import {
   focusPane,
   openWorkspacePane,
   revertPaneToLauncher,
+  restorePaneGrid,
   setLauncherPaneProject,
   showOnlyPane
 } from "./state/paneGrid.js";
@@ -158,6 +159,7 @@ import {
   PR_MILESTONE_CELEBRATION_KEY,
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
+  SIDEBAR_ARCS_KEY,
   SIDEBAR_PRIORITY_KEY,
   SIDEBAR_TRANSLUCENT_KEY,
   SIDEBAR_TRANSLUCENCY_DEFAULT,
@@ -180,6 +182,10 @@ import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
 import { useStandaloneBrowserLinks } from "./hooks/useStandaloneBrowserLinks.js";
+import {
+  useAppNavigationHistory,
+  type AppNavigationDestination
+} from "./hooks/useAppNavigationHistory.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
@@ -235,6 +241,7 @@ export function App(): JSX.Element {
     () => resolveChatVerbosity(chatVerbosity),
     [chatVerbosity]
   );
+  const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, true);
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [sidebarTranslucent, setSidebarTranslucent] = useBooleanUiPreference(SIDEBAR_TRANSLUCENT_KEY, false);
   const [sidebarTranslucency, setSidebarTranslucency] = useBoundedNumberPreference(
@@ -765,18 +772,21 @@ export function App(): JSX.Element {
 
   // Esc closes the standalone full launcher (only meaningful when the grid
   // has active panes — when the grid is empty, the LaunchSurface is the only
-  // surface and dismissing it would strand the user). Mirrors the typing-
-  // target guard from the overlay store so Esc inside the prompt textarea
-  // doesn't dismiss the surface itself.
+  // surface and dismissing it would strand the user). An open picker consumes
+  // Esc first; otherwise the launcher closes even when its prompt has focus.
   useEffect(() => {
     if (!isFullLauncherOpen) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
-      const target = event.target;
-      if (target instanceof HTMLElement) {
-        const tag = target.tagName;
-        if (tag === "TEXTAREA" || tag === "INPUT" || target.isContentEditable) return;
-      }
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) return;
       hideFullLauncher();
       event.preventDefault();
     };
@@ -1275,6 +1285,96 @@ export function App(): JSX.Element {
     (selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID ? selectedProject : null) ??
     realProjects[0] ??
     null;
+  const appNavigationDestination = useMemo<AppNavigationDestination>(() => {
+    if (standalonePage === "settings") return { kind: "settings", group: settingsGroup };
+    if (standalonePage !== null) return { kind: standalonePage };
+    if (isBrowserPageOpen) return { kind: "browser" };
+    if (selectedArcId !== null) return { kind: "arc", arcId: selectedArcId };
+    if (isFullLauncherOpen || grid.rows.length === 0) {
+      return {
+        kind: "launcher",
+        sideChatMode: launcherSideChatMode,
+        projectId: launcherSideChatMode ? null : launcherProject?.id ?? null
+      };
+    }
+    return { kind: "grid", grid };
+  }, [
+    grid,
+    isBrowserPageOpen,
+    isFullLauncherOpen,
+    launcherProject?.id,
+    launcherSideChatMode,
+    selectedArcId,
+    settingsGroup,
+    standalonePage
+  ]);
+  const canRestoreAppDestination = useCallback(
+    (destination: AppNavigationDestination): boolean => {
+      if (destination.kind === "browser") return hostsBrowserSurface();
+      if (destination.kind === "arc") {
+        return snapshot.arcs?.some((arc) => arc.id === destination.arcId) ?? true;
+      }
+      if (destination.kind === "launcher") {
+        if (destination.sideChatMode) return true;
+        return destination.projectId === null
+          ? realProjects.length === 0
+          : projectsById.has(destination.projectId);
+      }
+      if (destination.kind !== "grid") return true;
+      return destination.grid.rows.every((row) => row.every((cell) => {
+        if (cell.kind === "launcher") return projectsById.has(cell.projectId);
+        const workspace = workspacesById.get(cell.workspaceId);
+        return sessionsById.has(cell.sessionId) && workspace !== undefined && workspace.state !== "archived";
+      }));
+    },
+    [projectsById, realProjects.length, sessionsById, snapshot.arcs, workspacesById]
+  );
+  const restoreAppDestination = useCallback(
+    (destination: AppNavigationDestination): void => {
+      hideCommandPalette();
+      setIsBrowserPageOpen(destination.kind === "browser");
+      if (destination.kind === "settings") {
+        showSettings(destination.group);
+        return;
+      }
+      if (destination.kind === "schedule") {
+        showSchedulePage();
+        return;
+      }
+      if (destination.kind === "usage") {
+        showUsagePage();
+        return;
+      }
+      if (destination.kind === "activity") {
+        showActivityPage();
+        return;
+      }
+      hideStandalonePage();
+      if (destination.kind === "arc") {
+        showArcPage(destination.arcId);
+        return;
+      }
+      hideArcPage();
+      if (destination.kind === "launcher") {
+        if (!destination.sideChatMode) {
+          if (destination.projectId !== null) persistLaunchProjectId(destination.projectId);
+          setSelectedProjectId(destination.projectId);
+        }
+        setLauncherSideChatMode(destination.sideChatMode);
+        showFullLauncher();
+        return;
+      }
+      hideFullLauncher();
+      if (destination.kind === "grid") restorePaneGrid(destination.grid);
+    },
+    [setIsBrowserPageOpen, setSelectedProjectId]
+  );
+  useAppNavigationHistory({
+    destination: appNavigationDestination,
+    enabled: loadState === "ready",
+    canRestore: canRestoreAppDestination,
+    restore: restoreAppDestination
+  });
   const sidebarProject = !isBrowserPageOpen && !isArcPageOpen && (isFullLauncherOpen || grid.rows.length === 0)
     ? (launcherSideChatMode ? null : launcherProject)
     : selectedProject;
@@ -1282,23 +1382,23 @@ export function App(): JSX.Element {
   // "New session here" from a pane menu skips openLauncherSurface, so it
   // resets chat mode itself before opening the in-grid launcher cell.
   //
-  // The provider-switch dialog uses the same entry point with a seed: it aims
-  // the launcher at the model the user picked and moves the follow-up they had
-  // started onto the launcher's draft, so the recommended path costs one click
-  // rather than retyping. Defined below `launcherProject` because that is the
-  // project the launcher will open on, and therefore the draft's owner.
+  // A provider-switch seed opens the full launcher regardless of the split
+  // preference: the new provider replaces the current view. Its model and
+  // draft belong to the project that the full launcher will open on.
   const openNewSessionPaneInGrid = useCallback(
     (seed?: NewSessionSeed): void => {
       const sideChat = selectedProject?.id === SCRATCH_PROJECT_ID;
+      // A side chat has no repo, so its replacement is another side chat.
+      setLauncherSideChatMode(sideChat);
       if (seed) {
         handleLaunchModelChange(seed.model);
         const draftProjectId = sideChat ? SCRATCH_PROJECT_ID : launcherProject?.id ?? null;
         if (draftProjectId && seed.prompt.trim() !== "") {
           writeDraftText(launcherDraftKey(draftProjectId), seed.prompt);
         }
+        showFullLauncher();
+        return;
       }
-      // A side chat has no repo, so its replacement is another side chat.
-      setLauncherSideChatMode(sideChat);
       openLauncherPaneInGrid({ seedFromFocusedSession: true });
     },
     [handleLaunchModelChange, launcherProject, openLauncherPaneInGrid, selectedProject]
@@ -2207,6 +2307,7 @@ export function App(): JSX.Element {
           onClearPriority={onClearPrioritySection}
           onSetWorkspaceIcon={onSetWorkspaceIconRow}
           onSyncNowWorkspace={onSyncNowWorkspaceRow}
+          showArcs={sidebarArcsVisible}
           showPriority={sidebarPriorityVisible}
           onOpenLauncher={onOpenLauncherRow}
           onAddProject={onAddProjectRow}
@@ -2266,6 +2367,8 @@ export function App(): JSX.Element {
                 onDefaultEffortChange={handleDefaultEffortChange}
                 chatVerbosity={chatVerbosity}
                 onChatVerbosityChange={setChatVerbosity}
+                sidebarArcsVisible={sidebarArcsVisible}
+                onSidebarArcsVisibleChange={setSidebarArcsVisible}
                 sidebarPriorityVisible={sidebarPriorityVisible}
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
                 sidebarTranslucent={sidebarTranslucent}

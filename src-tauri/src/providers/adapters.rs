@@ -205,6 +205,10 @@ fn codex_common_args(
     args.extend([
         "-c".to_string(),
         "tools.update_plan.enabled=true".to_string(),
+        // Live search fetches pages as they are now; the default, `cached`,
+        // answers from an index. See codex_app_server.rs.
+        "-c".to_string(),
+        r#"web_search="live""#.to_string(),
     ]);
     args.extend(codex_reasoning_args(input));
     args.extend(codex_fast_mode_args(input));
@@ -647,11 +651,17 @@ fn claude_settings_args(
     // `-p` sessions, which it counts as the Agent SDK, and `enableArtifact`
     // does not override that. CLAUDE_CODE_ARTIFACT does, verified against
     // 2.1.281, but it is undocumented, so a CLI update could change it.
+    //
+    // The task tools (TaskCreate / TaskUpdate, Claude's todo list) are off for
+    // every model newer than the 4.x line unless CLAUDE_CODE_ENABLE_TODO_TOOLS
+    // opts in, so Opus 5.5 and Fable 5.1 launched with no plan to publish.
+    // Verified against 2.1.282.
     settings.insert(
         "env".to_string(),
         serde_json::json!({
             "CLAUDE_CODE_ARTIFACT": "1",
             "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+            "CLAUDE_CODE_ENABLE_TODO_TOOLS": "true",
             "ENABLE_TOOL_SEARCH": "true",
         }),
     );
@@ -748,7 +758,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","CLAUDE_CODE_ENABLE_TODO_TOOLS":"true","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--session-id",
@@ -854,7 +864,7 @@ mod tests {
                 "--append-system-prompt",
                 CLAUDE_NATIVE_AGENT_GUIDANCE,
                 "--settings",
-                r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
+                r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","CLAUDE_CODE_ENABLE_TODO_TOOLS":"true","ENABLE_TOOL_SEARCH":"true"},"fastMode":false}"#,
                 "--model",
                 "haiku",
                 "--output-format",
@@ -896,7 +906,7 @@ mod tests {
             .expect("settings flag");
         assert_eq!(
             args[index + 1],
-            r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","ENABLE_TOOL_SEARCH":"true"},"fastMode":true}"#
+            r#"{"env":{"CLAUDE_CODE_ARTIFACT":"1","CLAUDE_CODE_DISABLE_BACKGROUND_TASKS":"1","CLAUDE_CODE_ENABLE_TODO_TOOLS":"true","ENABLE_TOOL_SEARCH":"true"},"fastMode":true}"#
         );
     }
 
@@ -942,6 +952,8 @@ mod tests {
                 // Codex's todo list, which `exec` withholds without this.
                 "-c",
                 "tools.update_plan.enabled=true",
+                "-c",
+                "web_search=\"live\"",
                 "-c",
                 "model_reasoning_effort=\"low\"",
                 "-",
@@ -1058,6 +1070,8 @@ mod tests {
                 // Codex's todo list, which `exec` withholds without this.
                 "-c",
                 "tools.update_plan.enabled=true",
+                "-c",
+                "web_search=\"live\"",
                 "-c",
                 "model_reasoning_effort=\"low\"",
                 "thread-1",

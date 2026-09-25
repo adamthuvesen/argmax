@@ -1,4 +1,5 @@
-//! Keeps Codex blocking questions connected to their live JSON-RPC responders.
+//! Keeps provider blocking questions (Codex `request_user_input`, OpenCode's
+//! `question` tool) connected to the live request waiting for their answer.
 //!
 //! The question card itself is a durable timeline tool event. Answers stay in
 //! memory and travel only to the waiting provider request, including secret
@@ -55,6 +56,7 @@ struct PendingQuestion {
     request_id: String,
     provider_request_id: String,
     item_id: String,
+    provider: String,
     questions: Vec<QuestionDefinition>,
     sender: oneshot::Sender<Value>,
 }
@@ -169,6 +171,7 @@ impl QuestionService {
                 request_id: public_request_id,
                 provider_request_id: request_id.to_string(),
                 item_id: parsed.item_id,
+                provider: parsed.provider,
                 questions: parsed.questions,
                 sender,
             },
@@ -373,7 +376,7 @@ impl QuestionService {
                         "type": "AskUserQuestion",
                         "name": "AskUserQuestion",
                         "status": "cancelled",
-                        "provider": "codex",
+                        "provider": payload.get("provider").cloned().unwrap_or_else(|| json!("codex")),
                         "requestId": payload.get("requestId").cloned().unwrap_or(Value::Null),
                         "providerRequestId": payload.get("providerRequestId").cloned().unwrap_or(Value::Null),
                         "providerInvocationId": payload.get("providerInvocationId").cloned().unwrap_or(Value::Null),
@@ -409,6 +412,8 @@ impl QuestionService {
 }
 
 struct ParsedRequest {
+    /// Codex's params carry no provider; OpenCode's adapter names itself.
+    provider: String,
     is_blocking: bool,
     item_id: String,
     thread_id: String,
@@ -418,10 +423,15 @@ struct ParsedRequest {
 }
 
 fn parse_request(params: &Value) -> ArgmaxResult<ParsedRequest> {
+    let provider = params
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("codex")
+        .to_string();
     let is_blocking = params
         .get("isBlocking")
         .and_then(Value::as_bool)
-        .ok_or_else(|| invalid_request("Codex question has no isBlocking flag"))?;
+        .ok_or_else(|| invalid_request("The question has no isBlocking flag"))?;
     let item_id = required_text(params, "itemId")?;
     let thread_id = required_text(params, "threadId")?;
     let turn_id = required_text(params, "turnId")?;
@@ -429,16 +439,14 @@ fn parse_request(params: &Value) -> ArgmaxResult<ParsedRequest> {
         .get("questions")
         .and_then(Value::as_array)
         .filter(|questions| !questions.is_empty() && questions.len() <= MAX_QUESTIONS)
-        .ok_or_else(|| {
-            invalid_request("Codex question request must contain one to three questions")
-        })?;
+        .ok_or_else(|| invalid_request("A question request must contain one to three questions"))?;
     let mut ids = HashSet::new();
     let mut normalized_questions = Vec::with_capacity(raw_questions.len());
     let mut questions = Vec::with_capacity(raw_questions.len());
     for raw in raw_questions {
         let id = required_text(raw, "id")?;
         if !ids.insert(id.clone()) {
-            return Err(invalid_request("Codex question ids must be unique"));
+            return Err(invalid_request("Question ids must be unique"));
         }
         let header = required_text(raw, "header")?;
         let question = required_text(raw, "question")?;
@@ -447,19 +455,29 @@ fn parse_request(params: &Value) -> ArgmaxResult<ParsedRequest> {
             Some(Value::Array(options)) if options.len() <= MAX_OPTIONS => options.as_slice(),
             _ => {
                 return Err(invalid_request(
-                    "Each Codex question may contain at most four options",
+                    "Each question may contain at most four options",
                 ))
             }
         };
         let mut options = Vec::with_capacity(raw_options.len());
         for raw_option in raw_options {
             let label = required_text(raw_option, "label")?;
-            let description = required_text(raw_option, "description")?;
-            options.push(json!({ "label": label, "description": description }));
+            // Codex describes every option; Cursor's options are labels alone.
+            options.push(match raw_option.get("description") {
+                None | Some(Value::Null) => json!({ "label": label }),
+                Some(_) => {
+                    let description = required_text(raw_option, "description")?;
+                    json!({ "label": label, "description": description })
+                }
+            });
         }
         let is_other = raw.get("isOther").and_then(Value::as_bool).unwrap_or(false);
         let is_secret = raw
             .get("isSecret")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let multi_select = raw
+            .get("multiSelect")
             .and_then(Value::as_bool)
             .unwrap_or(false);
         normalized_questions.push(json!({
@@ -467,13 +485,14 @@ fn parse_request(params: &Value) -> ArgmaxResult<ParsedRequest> {
             "header": header,
             "question": question,
             "options": options,
-            "multiSelect": false,
+            "multiSelect": multi_select,
             "isOther": is_other,
             "isSecret": is_secret,
         }));
         questions.push(QuestionDefinition { id, is_secret });
     }
     Ok(ParsedRequest {
+        provider,
         is_blocking,
         item_id,
         thread_id,
@@ -493,7 +512,7 @@ fn async_question_started_payload(
         "type": "AskUserQuestion",
         "name": "AskUserQuestion",
         "status": "running",
-        "provider": "codex",
+        "provider": request.provider,
         "providerRequestId": provider_request_id,
         "providerInvocationId": invocation_id,
         "threadId": request.thread_id,
@@ -515,10 +534,16 @@ fn async_question_completed_payload(
         "type": "AskUserQuestion",
         "name": "AskUserQuestion",
         "status": "completed",
-        "provider": "codex",
+        "provider": request.provider,
         "providerRequestId": provider_request_id,
         "providerInvocationId": invocation_id,
     })
+}
+
+/// The dock marks typed text `user_note: `, Codex's convention for an answer
+/// that is none of the options. Other providers want the words alone.
+pub(crate) fn typed_answer_text(answer: &str) -> &str {
+    answer.strip_prefix("user_note: ").unwrap_or(answer)
 }
 
 fn required_text(value: &Value, field: &str) -> ArgmaxResult<String> {
@@ -526,11 +551,9 @@ fn required_text(value: &Value, field: &str) -> ArgmaxResult<String> {
         .get(field)
         .and_then(Value::as_str)
         .filter(|text| !text.trim().is_empty())
-        .ok_or_else(|| invalid_request(format!("Codex question has no {field}")))?;
+        .ok_or_else(|| invalid_request(format!("The question has no {field}")))?;
     if text.len() > MAX_TEXT_BYTES || text.contains('\0') {
-        return Err(invalid_request(format!(
-            "Codex question {field} is invalid"
-        )));
+        return Err(invalid_request(format!("The question {field} is invalid")));
     }
     Ok(text.to_string())
 }
@@ -589,7 +612,7 @@ fn question_started_payload(
         "type": "AskUserQuestion",
         "name": "AskUserQuestion",
         "status": "running",
-        "provider": "codex",
+        "provider": request.provider,
         "requestId": request_id,
         "providerRequestId": provider_request_id,
         "providerInvocationId": invocation_id,
@@ -609,7 +632,7 @@ fn question_completed_payload(request: &PendingQuestion, status: &str) -> Value 
         "type": "AskUserQuestion",
         "name": "AskUserQuestion",
         "status": status,
-        "provider": "codex",
+        "provider": request.provider,
         "requestId": request.request_id,
         "providerRequestId": request.provider_request_id,
         "providerInvocationId": request.invocation_id,
@@ -843,6 +866,38 @@ mod tests {
         assert!(
             matches!(duplicate, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "QUESTION_NOT_PENDING")
         );
+    }
+
+    #[tokio::test]
+    async fn opencode_question_keeps_its_provider_and_multi_select_on_the_card() {
+        let database = setup();
+        let service = QuestionService::new(Arc::clone(&database));
+        let mut params = request_params(false);
+        params["provider"] = json!("opencode");
+        params["questions"][0]["multiSelect"] = json!(true);
+        let waiter = {
+            let service = Arc::clone(&service);
+            tokio::spawn(async move {
+                service
+                    .request_native("s1", "invocation-1", "que_1", &params)
+                    .await
+            })
+        };
+        let request_id = wait_for_public_request_id(&database).await;
+        service
+            .resolve("s1", &request_id, BTreeMap::new(), true)
+            .unwrap();
+        assert_eq!(waiter.await.unwrap().unwrap(), json!({"answers": {}}));
+        let events = list_session_events_since(&database.connection(), "s1", None, None)
+            .unwrap()
+            .events;
+        assert_eq!(events[0].payload["provider"], "opencode");
+        assert_eq!(
+            events[0].payload.pointer("/input/questions/0/multiSelect"),
+            Some(&json!(true))
+        );
+        assert_eq!(events[1].payload["provider"], "opencode");
+        assert_eq!(events[1].payload["status"], "dismissed");
     }
 
     #[tokio::test]

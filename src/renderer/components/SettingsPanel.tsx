@@ -47,6 +47,8 @@ export function SettingsPanel({
   onDefaultModelChange,
   chatVerbosity,
   onChatVerbosityChange,
+  sidebarArcsVisible,
+  onSidebarArcsVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
   sidebarTranslucent,
@@ -126,6 +128,8 @@ export function SettingsPanel({
   onDefaultModelChange: (model: ModelPickerSelection) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
+  sidebarArcsVisible: boolean;
+  onSidebarArcsVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   sidebarTranslucent: boolean;
@@ -375,6 +379,8 @@ export function SettingsPanel({
             onAccentChange={onAccentChange}
             userBubbleTint={userBubbleTint}
             onUserBubbleTintChange={onUserBubbleTintChange}
+            sidebarArcsVisible={sidebarArcsVisible}
+            onSidebarArcsVisibleChange={onSidebarArcsVisibleChange}
             sidebarPriorityVisible={sidebarPriorityVisible}
             onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
             sidebarTranslucent={sidebarTranslucent}

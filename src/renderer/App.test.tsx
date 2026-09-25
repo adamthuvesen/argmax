@@ -4,6 +4,7 @@ import { App } from "./App.js";
 import { persistLaunchModel } from "./lib/launchModelPreference.js";
 import { SESSION_ICON_COLORS, SESSION_ICON_NAMES } from "./lib/sessionIcons.js";
 import { attachmentProtocolUrl } from "../shared/attachmentProtocol.js";
+import { ESCAPE_STOPS_CHAT_KEY } from "./lib/uiPreferences.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
   archiveWorkspace,
@@ -750,7 +751,8 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
   });
 
-  it("returns to the new chat composer view with prompt and repo persisted when stopped within 10s of launch", async () => {
+  it.each(["button", "Escape"])("returns to the launcher and archives a chat stopped after two seconds using %s", async (stopAction) => {
+    window.localStorage.setItem(ESCAPE_STOPS_CHAT_KEY, "true");
     const freshWorkspace = {
       ...snapshot.workspaces[0],
       id: "workspace-new",
@@ -762,7 +764,7 @@ describe("App", () => {
       id: "session-new",
       workspaceId: "workspace-new",
       prompt: "Fix login auth bug in wrong repo",
-      startedAt: new Date().toISOString(),
+      startedAt: new Date(Date.now() - 2_000).toISOString(),
       state: "running" as const
     };
     launchProvider.mockResolvedValue(freshSession);
@@ -778,7 +780,11 @@ describe("App", () => {
     const stopButton = await screen.findByRole("button", { name: "Stop chat" });
     expect(stopButton).toBeInTheDocument();
 
-    fireEvent.click(stopButton);
+    if (stopAction === "Escape") {
+      fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
+    } else {
+      fireEvent.click(stopButton);
+    }
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
     await waitFor(() =>

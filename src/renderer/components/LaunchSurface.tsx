@@ -66,7 +66,6 @@ import {
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
-import { isTypingTarget } from "../lib/typingTarget.js";
 import type { FontSize } from "../lib/fonts.js";
 import {
   persistLaunchProjectId,
@@ -463,7 +462,15 @@ export function LaunchSurface({
     if (!activeProject || !reviewIsPanelOpen) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
-      if (isTypingTarget(event.target)) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) return;
       event.preventDefault();
       reviewClosePanel();
     };

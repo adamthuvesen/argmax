@@ -8,6 +8,7 @@ import { BROWSER_THEME_STORAGE_KEY } from "./lib/browserTheme.js";
 import { LAUNCH_MODEL_KEY } from "./lib/launchModelPreference.js";
 import {
   CHAT_VERBOSITY_KEY,
+  ESCAPE_STOPS_CHAT_KEY,
   FOLLOW_UP_DELIVERY_KEY,
   COMPOSER_CONTEXT_INDICATOR_KEY,
   TURN_REVERT_ENABLED_KEY,
@@ -250,7 +251,8 @@ describe("App settings", () => {
   // A preference that also changes something on screen gets its own test.
   it.each([
     ["Appearance", "Layout", "Celebrate PR milestones", PR_MILESTONE_CELEBRATION_KEY],
-    ["General", "Startup", "Random icon for new chats", RANDOM_SESSION_ICON_KEY]
+    ["General", "Startup", "Random icon for new chats", RANDOM_SESSION_ICON_KEY],
+    ["General", "Startup", "Escape stops a running chat", ESCAPE_STOPS_CHAT_KEY]
   ] as const)("leaves %s → %s's “%s” off until it is turned on", async (group, heading, label, key) => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });

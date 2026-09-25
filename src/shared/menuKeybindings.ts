@@ -138,5 +138,5 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘⇧R", label: "Open the folder picker (new chat)" },
   { displayAccelerator: "⌘⇧I", label: "Toggle browser panel" },
   { displayAccelerator: "⌘↑", label: "Recall the last sent message into an empty draft" },
-  { displayAccelerator: "Esc", label: "Close the topmost overlay" }
+  { displayAccelerator: "Esc", label: "Close the topmost menu or panel, then stop the focused chat if enabled" }
 ] as const;

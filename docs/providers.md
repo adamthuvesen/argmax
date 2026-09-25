@@ -275,7 +275,7 @@ account and a temporary project.
 ### The agent's todo list
 
 Every provider can publish a plan and each does it differently; the normalizer
-reduces all five to one `todo.updated` event. The shapes, the two Cursor gaps,
+reduces all five to one `todo.updated` event. The shapes, the known gaps,
 and the `surface: "todo"` stamp that hides the rows are documented in
 [chat-cards.md](chat-cards.md). One provider-launch consequence lives here:
 **Codex's `update_plan` is off unless asked for.** Both the app-server args in
@@ -289,10 +289,24 @@ context telling Codex to publish a completed step before starting the next one.
 Argmax never infers completion from prose because only the provider knows
 whether a plan step is actually done.
 
+**Codex searches the live web.** Codex 0.156 defaults `web_search` to
+`cached`, which answers from an index rather than fetching the page. Both launch
+paths pass `-c web_search="live"`, which overrides the user's own
+`~/.codex/config.toml` for this key. Grok needs no equivalent: its `web_fetch`
+tool is on by the server-side `web_fetch_enabled` setting (Grok 1.0.41).
+
+**Claude's task tools are off for current models too.** Claude Code 2.1.282
+enables `TaskCreate` / `TaskUpdate` only for the 4.x models (and background
+jobs); Opus 5.5, Opus 5 and Fable 5.1 get them only with
+`CLAUDE_CODE_ENABLE_TODO_TOOLS=true`, which the inline `--settings` env in
+[adapters.rs](../src-tauri/src/providers/adapters.rs) sets. Without it the
+session's `init` lists only `Task` and `TaskStop`, and no todo card ever
+appears.
+
 ### Questions the agent asks the user
 
 The question card is documented in [chat-cards.md](chat-cards.md). Claude,
-Cursor, and Codex's async questions reach it.
+Cursor, Codex, and OpenCode questions reach it.
 
 **Codex's `request_user_input_async` reaches the question dock.** Codex 0.154.0
 delivers it as an `agent_message` item with `delivery: "async"` and structured
@@ -320,6 +334,22 @@ duplicate or stale answers fail. Answer values are not persisted in the
 question events, including answers to secret questions. The launch flag and
 protocol remain experimental, so verify their schema when upgrading Codex.
 
+**Cursor's `cursor/ask_question` is a blocking question too.** Cursor sends it
+as an ACP extension request, `{toolCallId, title?, questions: [{id, prompt,
+options: [{id, label}], allowMultiple}]}`, and waits for the response. The
+params name no session, so [acp.rs](../src-tauri/src/providers/acp.rs) finds
+the chat from the `tool_call` update that opened `toolCallId`, and
+[cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs) publishes the same
+blocking card Codex's `request_user_input` uses. An answer goes back as
+`{outcome: {outcome: "answered", answers: [{questionId, selectedOptionIds}]}}`,
+with the picked labels mapped back to Cursor's option ids. Dismissing sends
+`skipped`, and a turn that ends first sends `cancelled`; Cursor reports both to
+the model as a rejected question. A question Argmax cannot show, or cannot
+place in one chat, is `skipped` with a reason telling the model to ask in
+prose. Cursor 2026.09.23 does not offer the tool to ACP clients at all, in
+agent or plan mode, so this path was verified against the CLI bundle's own
+handler rather than a live turn.
+
 **MCP elicitations are declined until Argmax has a general form surface.** An
 app or MCP server can send `mcpServer/elicitation/request` for structured input
 or a URL flow such as connector reauthentication. Argmax returns the protocol's
@@ -336,7 +366,28 @@ is unavailable and answers in prose, under every permission mode and with
 `GROK_ASK_USER_QUESTION` set. Its `enter_plan_mode` / `exit_plan_mode` do arrive
 as ordinary ACP tool calls, so the gap is specific to the question tool. Asking
 Grok to recite its own tool list is not a check: it claims the tool and then
-cannot call it. OpenCode has no such tool at all.
+cannot call it.
+
+**OpenCode's `question` tool blocks its run until the card is answered.**
+OpenCode 1.18.32 registers the tool when `OPENCODE_CLIENT` is `app`, `cli`, or
+`desktop`, or when `OPENCODE_ENABLE_QUESTION_TOOL` is set. `opencode serve`
+leaves the client at its `cli` default, so every Argmax chat has the tool.
+(`opencode acp` sets `acp` and drops the tool, and `opencode run` denies it
+on the sessions it creates by default.) The call emits `question.asked` on the event stream and waits.
+[opencode_server.rs](../src-tauri/src/providers/opencode_server.rs) passes the
+request to the same pending-question service as Codex's blocking
+`request_user_input`. OpenCode's questions carry no ids, so their position
+names them (`q1`, `q2`, ...). `multiple` becomes the card's multi-select and
+`custom` (default true) becomes its free-text choice. An answer goes to
+`POST /question/{id}/reply` as one list of labels per question (typed text
+without the dock's `user_note: ` marker), and the tool returns the answers to
+the model within the same turn. A dismissal goes to `/question/{id}/reject`,
+which fails the tool with "The user dismissed this question" and ends
+OpenCode's run. A request the card cannot hold (more than three questions, more
+than four options, or an empty option description) is answered with the reason
+and a request to ask in prose, as Cursor's is, so the turn goes on instead of
+failing. The tool's own row lands after the card closes and carries the answer
+text. The tool raises no `permission.asked` under Ask for approval.
 
 ### Session moves and the provider conversation
 
@@ -393,7 +444,7 @@ Chat launches run over Agent Client Protocol (ACP) against a pooled `cursor-agen
 - **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Each translated line carries the native ACP session id, which lets completed task rows link child-agent runs to their provider parent. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.
 - **A tool row waits for the update that names it.** Cursor opens *every* tool call nameless — `{"title":"Edit File","kind":"edit","rawInput":{}}` — and fills in `rawInput` and `locations` one `tool_call_update` later. Drawing the row from the opening line froze those empty arguments onto the transcript, which is why an edit read as "Edited file" with no path, no diff, and no place in the changed-files card. A bare `status: in_progress` still draws nothing, since it says nothing about what the tool is; a completion draws the row regardless, because after it nothing more is coming.
 - **A write's diff is computed from the pair Cursor sends.** ACP reports a completed write as `content: [{type:"diff", path, oldText, newText}]`, and both sides are the file's *whole* text. A one-line change to a 60-line file arrives as 60 lines each way. `unified_diff` in [unified_diff.rs](../src-tauri/src/providers/unified_diff.rs) reduces the pair to hunks with git's own three lines of context, and the result rides the tool's arguments as `unified_diff`, where the chat's file-change card reads it. Passing the pair through instead would have reported every line of the file as rewritten, `+60 −60` included. Two of Cursor's own markers are decoded on the way: a create arrives as unified-diff header lines with one marker character eaten (`oldText` is the literal `-- /dev/null`, `newText` opens with `++ b/<path>`), and a delete reports the removed path as its own `oldText` with an empty `newText`. These rows also carry an explicit create or delete operation, so an empty-file create and a contentless delete still reach the changed-files card. A diff past 128 KiB is a rewrite and is dropped, leaving the path without a stat.
-- **Permissions:** Provider defaults preserves native permission rules. Full access launches a separate forced ACP pool and allows requests. Ask for approval forwards native requests to the chat, but Cursor actions already allowed by its rules may still run without prompting. A request whose options carry more than one `allow_once` is Cursor's question tool rather than a permission, and is declined instead of shown — see [approvals-checks.md](approvals-checks.md). Pools are isolated by permission mode.
+- **Permissions:** Provider defaults preserves native permission rules. Full access launches a separate forced ACP pool and allows requests. Ask for approval forwards native requests to the chat, but Cursor actions already allowed by its rules may still run without prompting. Cursor's question tool arrives as its own `cursor/ask_question` request and reaches the question dock; a permission request whose options carry more than one `allow_once` is that tool's fallback rather than a permission, and is declined instead of shown — see [approvals-checks.md](approvals-checks.md). Pools are isolated by permission mode.
 - **MCP servers:** Cursor stores user-MCP OAuth grants against the ACP process's launch directory rather than `session/new.cwd`. Argmax therefore starts every Cursor ACP process from the user's home directory, giving all Argmax Cursor chats one Cursor-owned authentication scope; authenticate a user MCP once with `cd ~ && cursor-agent mcp login <name>`. The session still works in its checkout. Argmax passes Cursor-approved entries from the checkout's `.cursor/mcp.json` through `session/new` / `session/load` beside its per-session `argmax` server, and starts project stdio servers in that checkout so relative paths retain their meaning. Approve a project server with `cursor-agent mcp enable <name>` from the checkout, and authenticate a project-only remote server there too. Unapproved project servers remain unavailable, matching Cursor's trust gate. If a project server uses configuration ACP cannot represent exactly, Argmax keeps Cursor's native per-checkout launch and logs that the separate checkout login is still required rather than silently dropping fields. The pool fingerprints global and project config, project approvals, and the names holding grants in the active scope, so configuration, approval, or completed login reaches the next chat while token refresh alone does not churn a warm process.
 - **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed. The server runs in its own process group and teardown signals the group, so the MCP servers it started die with it.
 
@@ -401,6 +452,7 @@ Chat launches run over Agent Client Protocol (ACP) against a pooled `cursor-agen
 
 OpenCode chats use a dedicated authenticated localhost `opencode serve` process. Argmax subscribes to SSE before submitting the prompt and responds to native permissions through HTTP. Requests carry the workspace directory. The `run --format json` argument builder remains for restricted helper flows.
 - **File changes:** `edit` sends `filePath`, `oldString`, and `newString`. `write` sends `filePath` and `content`. The renderer builds an inline diff from those values and includes the path in the changed-files card. Replacement strings are snippets, so their synthetic diff hides line numbers rather than claiming the change starts at line 1.
+- **Plan mode stays off.** `OPENCODE_EXPERIMENTAL_PLAN_MODE=true` (honored only for client `cli`) adds `plan_exit` and no other tool: OpenCode 1.18.32 has no `plan_enter` tool, and Argmax never selects the `plan` agent. OpenCode's defaults deny `plan_exit` outside that agent, but Argmax's inline `permission` override (`allow` / `ask`) re-allows it for `build`. Verified live: the build agent calls it, and its Yes/No question arrives through the question card. A Yes then injects a synthetic "The plan at .opencode/plans/<file>.md has been approved... Execute the plan" message pointing at a file that was never written, and the agent spends the turn searching for it.
 - OpenCode uses a SQLite store at `~/.local/share/opencode/opencode.db`. Discovery probes and title generation use temporary `XDG_DATA_HOME` directories to prevent database lock contention with active sessions.
 - **Muse Spark 1.3 is free because it is a contributor SKU.** Meta trains on the prompts and completions it sees, which is what `-contributor-free` in its id means. Zen offers no non-contributor Muse 1.3. It is also the only free-tier model that takes `--variant`, so `opencode_variant_args` matches on the full id rather than the `opencode-go/` prefix; its ladder is low → xhigh (the CLI's `minimal` variant has no rung on Argmax's ladder, and Meta's `max` reasoning mode had not shipped as of the 2026-09-02 release).
 

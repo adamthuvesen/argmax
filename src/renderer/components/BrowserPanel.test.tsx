@@ -1271,9 +1271,11 @@ describe("BrowserPanel", () => {
     const tabId = activeTabId();
     const toolbarTarget = screen.getByRole("textbox", { name: "Address" });
 
+    fireEvent.mouseDown(toolbarTarget, { button: 3 });
     fireEvent.mouseUp(toolbarTarget, { button: 3 });
     expect(browserStub.back).toHaveBeenCalledWith(tabId);
 
+    fireEvent.mouseDown(toolbarTarget, { button: 4 });
     fireEvent.mouseUp(toolbarTarget, { button: 4 });
     expect(browserStub.forward).toHaveBeenCalledWith(tabId);
   });

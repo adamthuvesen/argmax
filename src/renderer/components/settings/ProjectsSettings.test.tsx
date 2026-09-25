@@ -1,10 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, ProjectSummary } from "../../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { ProjectsSettings } from "./ProjectsSettings.js";
 
 afterEach(() => {
   cleanup();
+  resetToastForTests();
   delete (window as unknown as { argmax?: ArgmaxApi }).argmax;
 });
 
@@ -124,7 +126,7 @@ describe("ProjectsSettings", () => {
     fireEvent.change(screen.getByLabelText("Check commands"), { target: { value: "npm test" } });
     fireEvent.click(screen.getByRole("button", { name: "Save project settings" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("PROJECT_NOT_FOUND");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("PROJECT_NOT_FOUND"));
   });
 
   it("switches the form when another project is picked", () => {

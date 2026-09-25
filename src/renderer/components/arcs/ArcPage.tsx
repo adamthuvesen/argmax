@@ -119,7 +119,6 @@ export function ArcPage({
   const arc = detail?.arc ?? null;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
@@ -132,7 +131,6 @@ export function ArcPage({
   const [briefDraft, setBriefDraft] = useState("");
   const [briefOpen, setBriefOpen] = useState(false);
   const [briefSaving, setBriefSaving] = useState(false);
-  const [briefError, setBriefError] = useState<string | null>(null);
 
   const [copyFlash, copy] = useCopyToClipboard();
 
@@ -192,7 +190,6 @@ export function ArcPage({
     seededArc.current = null;
     setDetail(null);
     setLoadError(null);
-    setActionError(null);
     setEditingName(false);
   }, [arcId]);
 
@@ -251,12 +248,11 @@ export function ArcPage({
       );
       if (!confirmed) return;
       setRemovingRoutineId(routine.id);
-      setTriggersError(null);
       try {
         await window.argmax.routines.delete(routine.id);
         await loadTriggers();
       } catch (error) {
-        setTriggersError(errorMessage(error, "Could not remove the trigger."));
+        showErrorToast(errorMessage(error, "Could not remove the trigger."));
       } finally {
         setRemovingRoutineId(null);
       }
@@ -327,11 +323,10 @@ export function ArcPage({
     async (state: ArcState): Promise<void> => {
       if (!arc || !window.argmax) return;
       setBusy(true);
-      setActionError(null);
       try {
         applyArc(await window.argmax.arcs.setState({ id: arc.id, state }));
       } catch (error) {
-        setActionError(errorMessage(error, "Could not update the arc."));
+        showErrorToast(errorMessage(error, "Could not update the arc."));
       } finally {
         setBusy(false);
       }
@@ -348,13 +343,12 @@ export function ArcPage({
       return;
     }
     setBusy(true);
-    setActionError(null);
     try {
       const updated = await window.argmax.arcs.update({ id: arc.id, name: trimmed, brief: null });
       applyArc(updated);
       setEditingName(false);
     } catch (error) {
-      setActionError(errorMessage(error, "Could not rename the arc."));
+      showErrorToast(errorMessage(error, "Could not rename the arc."));
     } finally {
       setBusy(false);
     }
@@ -365,11 +359,10 @@ export function ArcPage({
   const handleSaveBrief = useCallback(async (): Promise<void> => {
     if (!arc || !window.argmax) return;
     setBriefSaving(true);
-    setBriefError(null);
     try {
       applyArc(await window.argmax.arcs.update({ id: arc.id, name: null, brief: briefDraft }));
     } catch (error) {
-      setBriefError(errorMessage(error, "Could not save the brief."));
+      showErrorToast(errorMessage(error, "Could not save the brief."));
     } finally {
       setBriefSaving(false);
     }
@@ -385,7 +378,6 @@ export function ArcPage({
         if (!confirmed) return;
       }
       setBusy(true);
-      setActionError(null);
       const model = resolveCoordinatorModel(coordinator, coordinatorSession);
       try {
         applyArc(
@@ -492,11 +484,6 @@ export function ArcPage({
           <span aria-hidden="true"> · </span>started {formatDay(arc.createdAt)}
           <span aria-hidden="true"> · </span>last activity {formatTimeAgo(lastActivity)}
         </p>
-        {actionError ? (
-          <p className="arc-inline-error" role="alert">
-            {actionError}
-          </p>
-        ) : null}
 
         {briefOpen ? (
           <div className="arc-brief arc-brief-editing">
@@ -509,11 +496,6 @@ export function ArcPage({
               placeholder="What this arc is for, and what done looks like."
               onChange={(event) => setBriefDraft(event.target.value)}
             />
-            {briefError ? (
-              <p className="arc-inline-error" role="alert">
-                {briefError}
-              </p>
-            ) : null}
             <div className="arc-card-actions">
               <p className="arc-card-hint">Saved to BRIEF.md, which every member reads first.</p>
               <div className="arc-brief-buttons">

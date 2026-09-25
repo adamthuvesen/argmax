@@ -43,6 +43,7 @@ import {
 } from "../../shared/cloudProviders.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { errorMessage } from "../../shared/error.js";
+import { showErrorToast } from "../state/toast.js";
 import {
   appendReferencesToPrompt,
   imageAttachmentReference
@@ -262,7 +263,6 @@ export function LaunchSurface({
     draftKey,
     workspacePath: activeProject?.repoPath ?? null,
     setInput: setPrompt,
-    setStatus,
     carriedOnRetarget: promptCarriedOnRetarget,
     persist: !isSubmitting
   });
@@ -584,7 +584,7 @@ export function LaunchSurface({
       setBranchPickerOpen(true);
     } catch (error) {
       setBranchPickerOpen(false);
-      setStatus(errorMessage(error) || "Could not load branches.");
+      showErrorToast(errorMessage(error) || "Could not load branches.");
     }
   }, [activeProject]);
 
@@ -598,7 +598,7 @@ export function LaunchSurface({
       const updated = await window.argmax.projects.switchBranch(activeProject.id, branch);
       onBranchSwitch(updated);
     } catch (error) {
-      setStatus(errorMessage(error) || "Could not switch branch.");
+      showErrorToast(errorMessage(error) || "Could not switch branch.");
       if (isFocusedRef.current) promptInputRef.current?.focus();
     }
   }, [activeProject, onBranchSwitch]);
@@ -950,7 +950,7 @@ export function LaunchSurface({
       setPrompt("");
       clearAttachments();
     } catch (error) {
-      setStatus(errorMessage(error) || "Could not start agent.");
+      showErrorToast(errorMessage(error) || "Could not start agent.");
     } finally {
       setIsSubmitting(false);
     }

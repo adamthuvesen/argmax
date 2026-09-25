@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, Learning, ProjectSummary } from "../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import { ProjectKnowledgePanel } from "./ProjectKnowledgePanel.js";
 
 const PROJECT: ProjectSummary = {
@@ -41,6 +42,7 @@ describe("ProjectKnowledgePanel", () => {
   let originalArgmax: typeof window.argmax;
 
   beforeEach(() => {
+    resetToastForTests();
     originalArgmax = window.argmax;
     listSpy = vi
       .fn<ArgmaxApi["learnings"]["list"]>()
@@ -82,6 +84,19 @@ describe("ProjectKnowledgePanel", () => {
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
     expect(updateSpy).toHaveBeenCalledWith({ id: "L1", summary: "Run prettier + eslint pre-commit" });
+  });
+
+  it("toasts a failed summary save and preserves the draft for retry", async () => {
+    updateSpy.mockRejectedValueOnce(new Error("LEARNING_WRITE_FAILED"));
+    render(<ProjectKnowledgePanel projects={[PROJECT]} />);
+    const input = await screen.findByLabelText("Edit summary for learning L1");
+
+    fireEvent.change(input, { target: { value: "Keep this edit" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("LEARNING_WRITE_FAILED"));
+    expect(input).toHaveValue("Keep this edit");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("deletes a learning via the new IPC", async () => {

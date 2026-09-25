@@ -4,6 +4,7 @@ import { optionName } from "../../test/optionName.js";
 import { App } from "../App.js";
 import { persistLaunchProjectId } from "../lib/launchProjectPreference.js";
 import { readDraft } from "../lib/composerDrafts.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import {
   dashboardDeltaListener,
   launchProvider,
@@ -36,6 +37,7 @@ describe("launcher prompt across context changes", () => {
 
   afterEach(() => {
     cleanup();
+    resetToastForTests();
   });
 
   it.each([
@@ -52,9 +54,10 @@ describe("launcher prompt across context changes", () => {
     const listbox = await screen.findByRole("listbox", { name: "Select branch" });
     fireEvent.click(within(listbox).getByRole("button", { name: "feature" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    await waitFor(() => expect(toastSnapshot()?.message).toBe(
       "Your local changes would be overwritten by checkout."
-    );
+    ));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(prompt).toHaveValue("Refactor the auth guard");
     expect(prompt).toBeEnabled();
     expect(prompt).toHaveFocus();
@@ -62,8 +65,8 @@ describe("launcher prompt across context changes", () => {
     expect(screen.getByRole("button", { name: "Start agent" })).toBeEnabled();
 
     fireEvent.change(prompt, { target: { value: "Refactor the auth guard safely" } });
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(toastSnapshot()).toBeNull();
     expect(prompt).toHaveValue("Refactor the auth guard safely");
     expect(prompt).toHaveFocus();
 

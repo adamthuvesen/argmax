@@ -25,6 +25,7 @@ import {
 } from "../../test/appTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
+import { showErrorToast, showInfoToast } from "../state/toast.js";
 import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
 import { SESSION_VIEWED_STORAGE_KEY, resetSessionUnreadForTests } from "../lib/sessionUnread.js";
 
@@ -52,6 +53,7 @@ const remote = vi.hoisted(() => {
 });
 
 vi.mock("../lib/wsTransport.js", () => ({
+  REMOTE_CONNECTION_LOST_MESSAGE: "Argmax remote connection lost",
   createWsTransport: vi.fn(),
   subscribeRemoteConnection: remote.subscribe
 }));
@@ -176,6 +178,37 @@ describe("MobileApp", () => {
     const row = within(section).getByRole("button", { name: /Build dashboard/ });
     expect(row).toHaveTextContent("Argmax");
     expect(within(row).getByLabelText("running")).toBeInTheDocument();
+  });
+
+  it("shows shared action errors until dismissed and only auto-dismisses info", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+    vi.useFakeTimers();
+    try {
+      act(() => showErrorToast("Could not save the file."));
+      const toast = screen.getByRole("status");
+      expect(toast).toHaveTextContent("Could not save the file.");
+      act(() => showInfoToast("Copied."));
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      expect(toast).toBeInTheDocument();
+      expect(toast).toHaveTextContent("Could not save the file.");
+      fireEvent.click(within(toast).getByRole("button", { name: "Dismiss" }));
+      expect(screen.queryByText("Could not save the file.")).not.toBeInTheDocument();
+
+      act(() => showInfoToast("Copied."));
+      expect(screen.getByRole("status")).toHaveTextContent("Copied.");
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+      expect(screen.queryByText("Copied.")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves connection-loss reporting to the persistent reconnecting banner", async () => {
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+    act(() => showErrorToast("Argmax remote connection lost"));
+    expect(screen.queryByText("Argmax remote connection lost")).not.toBeInTheDocument();
   });
 
   it("keeps the launching chat marked running while a multitask is still working", async () => {

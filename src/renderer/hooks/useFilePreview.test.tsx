@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, WorkspaceFilePreview } from "../../shared/types.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import { useFilePreview } from "./useFilePreview.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function makeDispatch(readFile: (path: string) => Promise<WorkspaceFilePreview>): ReviewIpcDispatch {
   return {
@@ -64,7 +65,32 @@ describe("useFilePreview dirty buffers", () => {
 
   afterEach(() => {
     cleanup();
+    resetToastForTests();
     delete (window as unknown as { argmax?: unknown }).argmax;
+  });
+
+  it("keeps a failed save retryable and reports it in the toast", async () => {
+    const readFile = vi.fn<(path: string) => Promise<WorkspaceFilePreview>>().mockResolvedValue({
+      kind: "text", content: "on disk\n", size: 8, mtimeMs: 10
+    });
+    const writeFile = vi.fn<ReviewIpcDispatch["writeFile"]>()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockResolvedValueOnce({ ok: "true", mtimeMs: 11, size: 6 });
+    const { result } = renderHook(() => usePreview(
+      "workspace-retry", { ...makeDispatch(readFile), writeFile }, "files.session-retry"
+    ));
+
+    act(() => result.current.openFile("src/file.ts"));
+    await waitFor(() => expect(result.current.previewState).toBe("ready"));
+    act(() => result.current.editFile("draft\n"));
+    await act(async () => result.current.saveFile());
+
+    expect(toastSnapshot()).toEqual({ kind: "error", message: "disk full" });
+    expect(result.current.isDirty).toBe(true);
+    expect(result.current.buffer).toBe("draft\n");
+    await act(async () => result.current.saveFile());
+    expect(writeFile).toHaveBeenCalledTimes(2);
+    expect(result.current.isDirty).toBe(false);
   });
 
   it("restores a dirty buffer when its session pane remounts", async () => {

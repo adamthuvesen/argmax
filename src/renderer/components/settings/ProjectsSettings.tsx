@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type JSX } from "react";
 import type { ProjectSummary } from "../../../shared/types.js";
+import { showErrorToast } from "../../state/toast.js";
 import { ProjectSourcesPanel } from "./ProjectSourcesPanel.js";
 import { SettingGroup, SettingRow, SettingsListPicker, Toggle } from "./settingsPrimitives.js";
 
@@ -85,8 +86,9 @@ function ProjectSettingsForm({
     archiveOnMerge !== project.settings.archiveOnMerge;
 
   const save = useCallback(async (): Promise<void> => {
+    setStatus(null);
     if (!window.argmax) {
-      setStatus({ kind: "error", message: "Open Argmax on your Mac to edit project settings." });
+      showErrorToast("Open Argmax on your Mac to edit project settings.");
       return;
     }
     const location = worktreeLocation.trim();
@@ -97,7 +99,6 @@ function ProjectSettingsForm({
       return;
     }
     setSaving(true);
-    setStatus(null);
     try {
       const updated = await window.argmax.projects.updateSettings({
         projectId: project.id,
@@ -111,10 +112,7 @@ function ProjectSettingsForm({
       onProjectUpdated(updated);
       setStatus({ kind: "saved", message: "Project settings saved." });
     } catch (error) {
-      setStatus({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Could not save project settings."
-      });
+      showErrorToast(error instanceof Error ? error.message : "Could not save project settings.");
     } finally {
       setSaving(false);
     }

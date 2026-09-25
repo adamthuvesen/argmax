@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudHandoffPreview } from "../../shared/types.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 const preview: CloudHandoffPreview = {
   provider: "claude",
@@ -45,6 +46,7 @@ function installCloudApi(
 describe("CloudTaskDialog", () => {
   afterEach(() => {
     cleanup();
+    resetToastForTests();
     delete (window as { argmax?: unknown }).argmax;
   });
 
@@ -137,7 +139,8 @@ describe("CloudTaskDialog", () => {
     await screen.findByText(preview.brief);
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Claude Cloud rejected the task");
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("Claude Cloud rejected the task"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText(preview.brief)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
@@ -211,7 +214,8 @@ describe("CloudTaskDialog", () => {
     installCloudApi(prepare, vi.fn());
 
     render(<CloudTaskDialog open provider="claude" sessionId="session-1" onClose={vi.fn()} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Push the branch before launching");
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("Push the branch before launching"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() => expect(prepare).toHaveBeenCalledTimes(2));
@@ -246,7 +250,7 @@ describe("CloudTaskDialog", () => {
 
   it("reports an unavailable bridge instead of waiting indefinitely", async () => {
     render(<CloudTaskDialog open provider="claude" sessionId="session-1" onClose={vi.fn()} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("available only in the Argmax desktop app");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("available only in the Argmax desktop app"));
     expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "false");

@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900">
+<rect width="1440" height="900" fill="#fcfcfb"/>
+<rect x="0" y="0" width="1440" height="50" rx="0" fill="#fbfbf9"/>
+<path d="M0 50 L1440 50" stroke="#e5e5e1" stroke-width="1"/>
+<circle cx="22" cy="25" r="5" fill="#d9d6ce"/>
+<circle cx="40" cy="25" r="5" fill="#d9d6ce"/>
+<circle cx="58" cy="25" r="5" fill="#d9d6ce"/>
+<text x="92" y="30" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="650" fill="#77736a" text-anchor="start" letter-spacing="1.6">ARGMAX</text>
+<text x="720" y="31" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="520" fill="#605d55" text-anchor="middle">Argmax · UI polish</text>
+<text x="1395" y="31" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="500" fill="#8a857b" text-anchor="middle">···</text>
+<rect x="0" y="50" width="220" height="850" rx="0" fill="#fbfbf9"/>
+<path d="M220 50 L220 900" stroke="#e5e5e1" stroke-width="1"/>
+<text x="25" y="91" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="650" fill="#98938a" text-anchor="start" letter-spacing="1.3">WORKSPACE</text>
+<text x="25" y="129" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="400" fill="#77736a" text-anchor="start">⌕   Search</text>
+<text x="25" y="175" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="650" fill="#98938a" text-anchor="start" letter-spacing="1.3">RECENT</text>
+<rect x="11" y="190" width="198" height="38" rx="8" fill="#eeeeec"/>
+<circle cx="29" cy="209" r="4" fill="#446c56"/>
+<text x="43" y="214" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="540" fill="#292823" text-anchor="start">Argmax · UI polish</text>
+<text x="25" y="255" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="400" fill="#77736a" text-anchor="start">Toast placement</text>
+<text x="25" y="286" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="400" fill="#77736a" text-anchor="start">Provider sync</text>
+<path d="M10 833 L210 833" stroke="#e8e8e4" stroke-width="1"/>
+<text x="25" y="862" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="400" fill="#77736a" text-anchor="start">Settings</text>
+<rect x="1085" y="50" width="355" height="850" rx="0" fill="#fafaf8"/>
+<path d="M1085 50 L1085 900" stroke="#e3e5df" stroke-width="1"/>
+<text x="267" y="93" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="590" fill="#24231f" text-anchor="start">Argmax · UI polish</text>
+<text x="267" y="120" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="400" fill="#827d74" text-anchor="start">main  /  Codex</text>
+<rect x="933" y="77" width="120" height="29" rx="14" fill="#e8f0ea"/>
+<circle cx="947" cy="91" r="4" fill="#446c56"/>
+<text x="958" y="96" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="550" fill="#355a45" text-anchor="start">Working  1m 19s</text>
+<path d="M246 140 L1056 140" stroke="#e3e4e1" stroke-width="1"/>
+<rect x="488" y="172" width="564" height="58" rx="20" fill="#efefed"/>
+<text x="510" y="207" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="16" font-weight="400" fill="#22211e" text-anchor="start">Move all action errors to the bottom-right toast.</text>
+<text x="267" y="278" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="400" fill="#98938a" text-anchor="start">11:11 AM</text>
+<path d="M340 273 L1053 273" stroke="#e3e4e1" stroke-width="1"/>
+<text x="267" y="328" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="400" fill="#24231f" text-anchor="start">I’ll route failed actions through the shared toast</text>
+<text x="267" y="360" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="400" fill="#24231f" text-anchor="start">and move it to the bottom-right, keeping field</text>
+<text x="267" y="392" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="400" fill="#24231f" text-anchor="start">validation inline. I’m using the impl skill.</text>
+<text x="267" y="464" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="650" fill="#8d887f" text-anchor="start" letter-spacing="1.3">WORK LOG</text>
+<path d="M267 480 L1053 480" stroke="#e3e4e1" stroke-width="1"/>
+<text x="273" y="518" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="400" fill="#446c56" text-anchor="start">⌁</text>
+<text x="301" y="516" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="400" fill="#67635b" text-anchor="start">Read 8 files, ran 2 commands</text>
+<text x="1039" y="516" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="17" font-weight="400" fill="#99948a" text-anchor="end">⌄</text>
+<path d="M267 541 L1053 541" stroke="#efefeb" stroke-width="1"/>
+<text x="273" y="579" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="23" font-weight="400" fill="#aa6e3c" text-anchor="start">›</text>
+<text x="301" y="576" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="400" fill="#67635b" text-anchor="start">Command completed</text>
+<text x="1039" y="576" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="17" font-weight="400" fill="#99948a" text-anchor="end">⌄</text>
+<path d="M267 601 L1053 601" stroke="#efefeb" stroke-width="1"/>
+<text x="273" y="638" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="20" font-weight="400" fill="#446c56" text-anchor="start">⌁</text>
+<text x="301" y="636" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="400" fill="#67635b" text-anchor="start">Read 4 files</text>
+<text x="1039" y="636" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="17" font-weight="400" fill="#99948a" text-anchor="end">⌄</text>
+<path d="M267 661 L1053 661" stroke="#efefeb" stroke-width="1"/>
+<circle cx="274" cy="705" r="4" fill="#b29bcc"/>
+<text x="290" y="710" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="400" fill="#938a9b" text-anchor="start">Thinking</text>
+<rect x="251" y="803" width="818" height="72" rx="14" fill="#fff" stroke="#d9dde0" stroke-width="1"/>
+<text x="276" y="843" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="15" font-weight="400" fill="#aaa59c" text-anchor="start">Ask a follow-up…</text>
+<text x="1027" y="852" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="22" font-weight="500" fill="#446c56" text-anchor="end">↗</text>
+<text x="1110" y="92" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="650" fill="#8d887f" text-anchor="start" letter-spacing="1.4">IN PROGRESS</text>
+<text x="1411" y="92" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="500" fill="#a19c93" text-anchor="end">•••</text>
+<path d="M1110 107 L1412 107" stroke="#e3e4e1" stroke-width="1"/>
+<text x="1110" y="144" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="18" font-weight="590" fill="#282720" text-anchor="start">Plan</text>
+<text x="1412" y="144" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="500" fill="#8e897f" text-anchor="end">0 / 3</text>
+<rect x="1110" y="162" width="302" height="4" rx="2" fill="#e1e6df"/>
+<rect x="1110" y="162" width="18" height="4" rx="2" fill="#446c56"/>
+<rect x="1110" y="186" width="302" height="91" rx="10" fill="#fff" stroke="#e1e4df" stroke-width="1"/>
+<rect x="1125" y="202" width="3" height="58" rx="2" fill="#446c56"/>
+<text x="1143" y="214" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="10" font-weight="650" fill="#446c56" text-anchor="start" letter-spacing="1.1">NOW</text>
+<text x="1143" y="238" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="500" fill="#282720" text-anchor="start">Identify action errors and</text>
+<text x="1143" y="258" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="500" fill="#282720" text-anchor="start">shared toast behavior</text>
+<circle cx="1120" cy="305" r="5" fill="#fafaf8" stroke="#c8cec7" stroke-width="1.7"/>
+<text x="1138" y="310" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="400" fill="#716d64" text-anchor="start">Route failures through toast</text>
+<circle cx="1120" cy="344" r="5" fill="#fafaf8" stroke="#c8cec7" stroke-width="1.7"/>
+<text x="1138" y="349" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="400" fill="#716d64" text-anchor="start">Run checks and verify UI</text>
+<path d="M1110 387 L1412 387" stroke="#e3e4e1" stroke-width="1"/>
+<text x="1110" y="422" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="18" font-weight="590" fill="#282720" text-anchor="start">Delegates</text>
+<text x="1412" y="422" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="500" fill="#8e897f" text-anchor="end">2 active</text>
+<rect x="1110" y="442" width="302" height="64" rx="10" fill="#fff" stroke="#e1e4df" stroke-width="1"/>
+<circle cx="1132" cy="474" r="7" fill="#446c56"/>
+<text x="1151" y="468" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="550" fill="#282720" text-anchor="start">Newton</text>
+<text x="1151" y="488" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="400" fill="#837e75" text-anchor="start">implementer · working</text>
+<text x="1394" y="480" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="17" font-weight="500" fill="#8b867d" text-anchor="end">↗</text>
+<rect x="1110" y="516" width="302" height="64" rx="10" fill="#fff" stroke="#e1e4df" stroke-width="1"/>
+<circle cx="1132" cy="548" r="7" fill="#3e73ad"/>
+<text x="1151" y="542" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="14" font-weight="550" fill="#282720" text-anchor="start">Abel</text>
+<text x="1151" y="562" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="400" fill="#837e75" text-anchor="start">implementer · working</text>
+<text x="1394" y="554" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="17" font-weight="500" fill="#8b867d" text-anchor="end">↗</text>
+<path d="M1110 614 L1412 614" stroke="#e3e4e1" stroke-width="1"/>
+<text x="1110" y="649" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="18" font-weight="590" fill="#282720" text-anchor="start">Activity</text>
+<text x="1110" y="679" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="400" fill="#938e84" text-anchor="start">Last update just now</text>
+<text x="1110" y="704" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" font-weight="400" fill="#938e84" text-anchor="start">8 files read  ·  2 commands</text>
+</svg>

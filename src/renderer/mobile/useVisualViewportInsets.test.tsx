@@ -17,8 +17,7 @@ function Harness(): JSX.Element {
   const { attachmentInputRef, openFilePicker, onAttachmentInputChange } = useComposerAttachments({
     draftKey: "launch-viewport",
     workspacePath: null,
-    setInput: () => undefined,
-    setStatus: () => undefined
+    setInput: () => undefined
   });
   return (
     <div ref={shellRef} className="mobile-shell">

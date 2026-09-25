@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArcRecord, ArgmaxApi, ProjectSummary, Routine } from "../../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { ScheduledTasksPanel } from "./ScheduledTasksPanel.js";
 
 function routine(overrides: Partial<Routine> = {}): Routine {
@@ -80,6 +81,7 @@ const arcsStub = {
 };
 
 beforeEach(() => {
+  resetToastForTests();
   vi.restoreAllMocks();
   routinesStub.list.mockReset();
   routinesStub.upsert.mockReset();
@@ -321,18 +323,18 @@ describe("ScheduledTasksPanel", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("confirmation unavailable");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("confirmation unavailable"));
     expect(routinesStub.delete).not.toHaveBeenCalled();
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("reports a failed confirmed deletion as an alert, not as a success status", async () => {
+  it("reports a failed confirmed deletion as a toast without a success status", async () => {
     routinesStub.delete.mockRejectedValue(new Error("routine not found: r1"));
     render(<ScheduledTasksPanel projects={[project()]} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Delete Morning triage" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("routine not found: r1");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("routine not found: r1"));
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -346,7 +348,7 @@ describe("ScheduledTasksPanel", () => {
     expect(screen.queryByRole("button", { name: /New task/ })).toBeNull();
   });
 
-  it("surfaces the backend validation error inline instead of saving", async () => {
+  it("surfaces the backend validation error in a toast instead of saving", async () => {
     routinesStub.upsert.mockRejectedValue(new Error("provide a cron expression or a one-shot time"));
     render(<ScheduledTasksPanel projects={[project()]} />);
 
@@ -355,9 +357,7 @@ describe("ScheduledTasksPanel", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Do things" } });
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "provide a cron expression or a one-shot time"
-    );
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("provide a cron expression or a one-shot time"));
     expect(routinesStub.list).toHaveBeenCalledTimes(1);
   });
 });

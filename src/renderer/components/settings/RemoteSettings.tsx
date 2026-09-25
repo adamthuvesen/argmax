@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
 import type { RemoteStatus } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
+import { showErrorToast } from "../../state/toast.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
 
@@ -31,7 +32,7 @@ export function RemoteSettings(): JSX.Element {
     setTeamIdField(next.apns.teamId ?? "");
   }, []);
 
-  const loadStatus = useCallback(async (): Promise<void> => {
+  const loadStatus = useCallback(async (explicit = false): Promise<void> => {
     if (!window.argmax) {
       setLoadError("Open the Argmax desktop app to configure remote access.");
       return;
@@ -40,7 +41,8 @@ export function RemoteSettings(): JSX.Element {
       adoptStatus(await window.argmax.remote.getStatus());
       setLoadError(null);
     } catch (error) {
-      setLoadError(errorMessage(error));
+      if (explicit) showErrorToast(errorMessage(error));
+      else setLoadError(errorMessage(error));
     }
   }, [adoptStatus]);
 
@@ -69,16 +71,13 @@ export function RemoteSettings(): JSX.Element {
           ntfyTopic: source.ntfyTopic
         });
         adoptStatus(next);
-        setNote(
-          next.enabled && !next.serving
-            ? {
-                kind: "error",
-                message: `The bridge could not start on port ${next.port} — is something else using it?`
-              }
-            : { kind: "saved", message: "Saved." }
-        );
+        if (next.enabled && !next.serving) {
+          showErrorToast(`The bridge could not start on port ${next.port} — is something else using it?`);
+        } else {
+          setNote({ kind: "saved", message: "Saved." });
+        }
       } catch (error) {
-        setNote({ kind: "error", message: errorMessage(error) });
+        showErrorToast(errorMessage(error));
       } finally {
         setBusy(false);
       }
@@ -94,7 +93,7 @@ export function RemoteSettings(): JSX.Element {
       await window.argmax.remote.testNotification();
       setNote({ kind: "saved", message: "Test notification sent — check your phone." });
     } catch (error) {
-      setNote({ kind: "error", message: `Test notification failed: ${errorMessage(error)}` });
+      showErrorToast(`Test notification failed: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -116,7 +115,7 @@ export function RemoteSettings(): JSX.Element {
         );
         setNote({ kind: "saved", message: "Saved." });
       } catch (error) {
-        setNote({ kind: "error", message: errorMessage(error) });
+        showErrorToast(errorMessage(error));
       } finally {
         setBusy(false);
       }
@@ -132,7 +131,7 @@ export function RemoteSettings(): JSX.Element {
       const devices = await window.argmax.remote.unregisterPushDevice({ token });
       setStatus((current) => (current ? { ...current, apns: { ...current.apns, devices } } : current));
     } catch (error) {
-      setNote({ kind: "error", message: errorMessage(error) });
+      showErrorToast(errorMessage(error));
     } finally {
       setBusy(false);
     }
@@ -145,23 +144,14 @@ export function RemoteSettings(): JSX.Element {
     try {
       const results = await window.argmax.remote.pushTest();
       const failed = results.filter((result) => !result.ok);
-      setNote(
-        failed.length === 0
-          ? {
-              kind: "saved",
-              message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.`
-            }
-          : {
-              kind: "error",
-              // Naming the device matters: one retired phone in a list of two
-              // is a very different problem from a bad auth key.
-              message: failed
-                .map((result) => `${result.name}: ${result.error ?? "failed"}`)
-                .join("; ")
-            }
-      );
+      if (failed.length === 0) {
+        setNote({ kind: "saved", message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.` });
+      } else {
+        // Naming the device matters when only one of several pushes fails.
+        showErrorToast(failed.map((result) => `${result.name}: ${result.error ?? "failed"}`).join("; "));
+      }
     } catch (error) {
-      setNote({ kind: "error", message: `Test push failed: ${errorMessage(error)}` });
+      showErrorToast(`Test push failed: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -408,7 +398,7 @@ export function RemoteSettings(): JSX.Element {
               className="settings-button"
               aria-label="Refresh remote status"
               disabled={busy}
-              onClick={() => void loadStatus()}
+              onClick={() => void loadStatus(true)}
             >
               <RefreshCw size={13} aria-hidden="true" />
               <span>Refresh</span>

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChangedFileSummary, GitCommitInput, GitCommitResult } from "../../shared/types.js";
 import { CommitDialog } from "./CommitDialog.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 const FILES: ChangedFileSummary[] = [
   { path: "src/a.ts", status: "modified", additions: 4, deletions: 1 , staged: false },
@@ -33,6 +34,7 @@ describe("CommitDialog", () => {
 
   afterEach(() => {
     cleanup();
+    resetToastForTests();
     delete (window as { argmax?: unknown }).argmax;
   });
 
@@ -99,7 +101,7 @@ describe("CommitDialog", () => {
     expect(onCommitted).toHaveBeenCalledWith({ commitSha: "abcdef1234567890", branch: "argmax/review" });
   });
 
-  it("keeps the dialog open and surfaces an inline error on IPC failure", async () => {
+  it("keeps the dialog open and reports an IPC failure in the toast", async () => {
     commitMock.mockRejectedValue(new Error("git refused"));
     const onClose = vi.fn();
     render(
@@ -115,7 +117,8 @@ describe("CommitDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Commit" }));
 
     await waitFor(() => expect(commitMock).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole("alert")).toHaveTextContent("git refused");
+    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "git refused" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Commit selected changes" })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });

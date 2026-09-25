@@ -31,6 +31,7 @@ import {
   type ArcTimelineFilter
 } from "../../lib/arcTimeline.js";
 import { openWebUrl } from "../../lib/openWebUrl.js";
+import { showErrorToast } from "../../state/toast.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
 
 const PAGE_SIZE = 60;
@@ -131,7 +132,7 @@ export function ArcTimeline({
       setError(null);
     } catch (cause) {
       if (generation !== requestGeneration.current) return;
-      setError(cause instanceof Error ? cause.message : "Could not load earlier events.");
+      showErrorToast(cause instanceof Error ? cause.message : "Could not load earlier events.");
     } finally {
       if (generation === requestGeneration.current) setLoadingEarlier(false);
     }

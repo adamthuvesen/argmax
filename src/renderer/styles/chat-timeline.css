@@ -1,0 +1,241 @@
+/* The quiet thread connects only neighboring activity. Rows keep stable DOM
+   parents while the plan changes or prose arrives between them. */
+.turn-block,
+.conversation-tail {
+  --thread-surface: var(--bg);
+  --thread-line: color-mix(in oklab, var(--line) 76%, var(--thread-surface));
+  --thread-gap: var(--space-3);
+  --thread-inset: calc(var(--activity-mark-size) + var(--space-2));
+  --thread-center: calc(5px + var(--text-base) * 0.7);
+}
+
+.agent-activity-content .turn-block {
+  --thread-surface: var(--review-panel);
+}
+
+.turn-body-item {
+  position: relative;
+  min-width: 0;
+}
+
+.turn-body-item[data-activity] + .turn-body-item[data-activity] {
+  margin-top: calc(var(--thread-gap) - var(--space-4));
+}
+
+/* Each seam has an incoming segment and an outgoing segment. No connector
+   crosses prose, a history reveal, a turn boundary, or an absent section. */
+.turn-body-item[data-activity] + .turn-body-item[data-activity]::before,
+.turn-body-item[data-activity]:has(+ .turn-body-item[data-activity])::after,
+.agent-launch-row:has(+ .agent-launch-row)::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--activity-mark-size) / 2 - 0.5px);
+  width: 1px;
+  background: var(--thread-line);
+  pointer-events: none;
+}
+
+.turn-body-item[data-activity] + .turn-body-item[data-activity]::before {
+  top: calc(-1 * var(--thread-gap));
+  height: calc(var(--thread-gap) + var(--thread-center) - 12px);
+}
+
+.turn-body-item[data-activity]:has(+ .turn-body-item[data-activity])::after {
+  top: calc(var(--thread-center) + 12px);
+  bottom: 0;
+}
+
+/* The emblem masks the continuous line when a row contains several agents.
+   The surface comes from the containing chat or Agents pane, in either theme. */
+.turn-body-item[data-activity] .agent-launch-mark {
+  position: relative;
+  z-index: 1;
+  background: var(--thread-surface);
+  box-shadow: 0 0 0 4px var(--thread-surface);
+}
+
+.turn-body-item[data-activity] :is(.tool-call-group-header, .tool-call-row-button, .thought-block-eyebrow) {
+  column-gap: var(--space-2);
+}
+
+/* Details sit inside their beat, leaving the spine clear when opened. */
+.turn-body-item[data-activity] > .tool-call-group > .tool-call-group-body,
+.turn-body-item[data-activity] > .tool-call-group > .tool-call-row > .tool-call-detail,
+.turn-body-item[data-activity] > .tool-call-row > .tool-call-detail,
+.turn-body-item[data-activity] .thought-block > :is(.thought-block-body, .thought-block-preview) {
+  margin-left: var(--thread-inset);
+  min-width: 0;
+}
+
+.turn-body-item[data-activity] > .tool-call-group > .tool-call-group-body {
+  padding-top: var(--space-1);
+}
+
+.todo-card {
+  --todo-card-lead: var(--activity-mark-size);
+  --todo-card-gap: var(--space-2);
+}
+
+.todo-card-head {
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  color: var(--chip-ink);
+}
+
+.todo-card-head-verb {
+  color: var(--text-soft);
+  font-weight: var(--weight-medium);
+}
+
+.todo-card-head-count,
+.todo-card-head-now {
+  font-size: var(--text-xs);
+  color: var(--chip-ink);
+}
+
+.todo-card-head-chevron,
+.todo-card[data-expanded="true"] .todo-card-head-chevron {
+  opacity: 0.65;
+}
+
+.todo-card-head:focus-visible,
+.turn-body-item[data-activity] :is(.tool-call-group-header, .thought-block-header):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.todo-card-list {
+  margin: var(--space-1_5) 0 0;
+  padding-left: calc(var(--activity-mark-size) + var(--space-2));
+}
+
+.todo-card-item {
+  padding-block: var(--space-1_5);
+  align-items: start;
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+.todo-card-mark {
+  height: 1.5em;
+}
+
+.todo-card-label {
+  overflow-wrap: anywhere;
+}
+
+.todo-card-item[data-state="pending"] .todo-card-label {
+  color: var(--chip-ink);
+}
+
+.todo-card-item[data-state="active"] .todo-card-mark {
+  color: var(--sage);
+}
+
+.todo-card-dot {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--sage) 14%, transparent);
+}
+
+.turn-body-item[data-activity] .agent-launch-list {
+  gap: var(--space-4);
+  padding: 0;
+}
+
+.turn-body-item[data-activity] .agent-launch-row {
+  position: relative;
+}
+
+.agent-launch-row:has(+ .agent-launch-row)::before {
+  top: calc(var(--thread-center) + 12px);
+  bottom: calc(-1 * var(--space-4) - var(--thread-center) + 12px);
+}
+
+.turn-body-item[data-activity] .agent-launch-row-main {
+  gap: var(--space-2);
+}
+
+.turn-body-item[data-activity] .agent-launch-mark {
+  --agent-launch-mark-size: var(--activity-mark-size);
+  margin: calc(var(--thread-center) - var(--activity-mark-size) / 2) 0 0;
+}
+
+.turn-body-item[data-activity] .agent-launch-row-button {
+  flex: 1 1 auto;
+  padding: 5px 0;
+  gap: var(--space-1);
+}
+
+.turn-body-item[data-activity] .agent-launch-headline {
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.turn-body-item[data-activity] .agent-launch-identity {
+  order: -1;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.turn-body-item[data-activity] .agent-launch-headline:has(.agent-launch-identity) .agent-launch-title {
+  color: var(--chip-ink);
+  font-size: var(--text-xs);
+}
+
+.turn-body-item[data-activity] .agent-launch-status {
+  font-size: var(--text-xs);
+  color: var(--chip-ink);
+}
+
+.turn-body-item[data-activity] .agent-launch-row[data-status="running"] .agent-launch-status {
+  color: var(--sage);
+}
+
+.turn-body-item[data-activity] .agent-launch-row[data-status="error"] .agent-launch-status {
+  color: var(--rose);
+}
+
+.turn-body-item[data-activity] .agent-launch-row > .tool-call-detail {
+  margin-left: var(--thread-inset);
+}
+
+/* Keep the wait slot's height unchanged: the mark is shorter than the label's
+   line box at every supported type size. Only its inline inset changes. */
+.conversation-tail .thinking-label-stream::before {
+  content: "";
+  flex: 0 0 var(--activity-mark-size);
+  width: var(--activity-mark-size);
+  height: 1em;
+  margin-right: calc(var(--space-2) - var(--space-1_5));
+  background: radial-gradient(circle, var(--activity-purple) 2.5px, transparent 3px) center / 100% 100% no-repeat;
+}
+
+/* The wait cue lives outside TurnBlock to preserve scroll height. It joins
+   only a live turn whose final visible row is activity. */
+.conversation-content > .turn-block[data-running]:has(+ .conversation-tail > .thinking-indicator) > .turn-block-body:last-child > .turn-body-item[data-activity]:last-child::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--activity-mark-size) / 2 - 0.5px);
+  top: calc(var(--thread-center) + 12px);
+  bottom: calc(-1 * var(--space-4));
+  width: 1px;
+  background: var(--thread-line);
+  pointer-events: none;
+}
+
+.conversation-content > .turn-block[data-running]:has(> .turn-block-body:last-child > .turn-body-item[data-activity]:last-child) + .conversation-tail:has(> .thinking-indicator)::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--activity-mark-size) / 2 - 0.5px);
+  top: 0;
+  height: calc(4px + var(--text-base) * 0.6 - 6px);
+  width: 1px;
+  background: var(--thread-line);
+  pointer-events: none;
+}
+
+.conversation-tail {
+  position: relative;
+}

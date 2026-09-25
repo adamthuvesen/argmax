@@ -280,11 +280,6 @@
   overflow-wrap: anywhere;
 }
 
-.cloud-task-dialog-notice--error {
-  background: var(--rose-soft);
-  color: var(--rose);
-}
-
 /* Not a failure: the task may exist, or exists without a saved link. The
    words stay in body ink; only the mark carries the amber. */
 .cloud-task-dialog-notice--caution {

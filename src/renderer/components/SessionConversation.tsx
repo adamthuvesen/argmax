@@ -1,5 +1,6 @@
 import { usePrMilestone } from "../hooks/usePrMilestone.js";
 import { TurnExhale } from "./TurnExhale.js";
+import { showErrorToast } from "../state/toast.js";
 import {
   GitBranch,
   MessageSquarePlus,
@@ -583,13 +584,10 @@ export function SessionConversation({
     if (!onOpenSideChat) return undefined;
     return (selection: ChatSelection): void => {
       void onOpenSideChat(buildSideChatSeed(selection.text, conversationEvents)).catch((error) => {
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not open a chat."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not open a chat.");
       });
     };
-  }, [conversationEvents, onOpenSideChat, setStatus]);
+  }, [conversationEvents, onOpenSideChat]);
   const askDetails = useMemo(() => {
     if (!onOpenDetails) return undefined;
     return (selection: ChatSelection): void => {
@@ -598,13 +596,10 @@ export function SessionConversation({
         // button attach that excerpt to this composer instead.
         attachToChat: () => addAnnotation(selection)
       }).catch((error) => {
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not open the details popup."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not open the details popup.");
       });
     };
-  }, [addAnnotation, conversationEvents, onOpenDetails, setStatus]);
+  }, [addAnnotation, conversationEvents, onOpenDetails]);
   // Hide the raw-stdout fallback as soon as ANY renderable content exists —
   // a streamed message OR a tool call. Otherwise the agent's first beat (often
   // a tool_use before any text) flashes the raw provider JSONL through the
@@ -1599,7 +1594,6 @@ export function SessionConversation({
                   : undefined
               }
               session={session}
-              setStatus={setStatus}
               workspace={workspace}
             />
           )}

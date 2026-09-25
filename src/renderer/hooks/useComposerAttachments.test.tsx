@@ -43,8 +43,7 @@ describe("useComposerAttachments — text paste stays native", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
 
@@ -73,8 +72,7 @@ describe("useComposerAttachments — text paste stays native", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput,
-        setStatus: () => undefined
+        setInput
       })
     );
 
@@ -115,8 +113,7 @@ describe("useComposerAttachments — text paste stays native", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput,
-        setStatus: () => undefined
+        setInput
       })
     );
 
@@ -158,8 +155,7 @@ describe("useComposerAttachments — save races the composer retarget", () => {
         useComposerAttachments({
           draftKey,
           workspacePath: null,
-          setInput: () => undefined,
-          setStatus: () => undefined
+          setInput: () => undefined
         }),
       { initialProps: { draftKey: "launch-a" } }
     );
@@ -204,7 +200,6 @@ describe("useComposerAttachments — save races the composer retarget", () => {
           draftKey,
           workspacePath: null,
           setInput: () => undefined,
-          setStatus: () => undefined,
           carriedOnRetarget
         }),
       { initialProps: { draftKey: "launch-a", carriedOnRetarget: false } }
@@ -262,8 +257,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const event = dragEvent({ types: ["image/png"] });
@@ -279,8 +273,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const event = dragEvent({ types: ["public.png"] });
@@ -296,8 +289,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const event = dragEvent({
@@ -316,8 +308,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const event = dragEvent({ types: ["text/plain"] });
@@ -341,8 +332,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "image/png" });
@@ -373,8 +363,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const file = new File(
@@ -403,8 +392,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "" });
@@ -431,8 +419,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput,
-        setStatus: () => undefined
+        setInput
       })
     );
     const file = new File([new Uint8Array([1, 2, 3])], "shot.png", { type: "" });
@@ -467,8 +454,7 @@ describe("useComposerAttachments — screenshot drag", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput,
-        setStatus: () => undefined
+        setInput
       })
     );
     const file = new File(
@@ -506,8 +492,7 @@ describe("useComposerAttachments — transient previews", () => {
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput: () => undefined,
-        setStatus: () => undefined
+        setInput: () => undefined
       })
     );
     const paste = () => ({

@@ -221,17 +221,11 @@ export function useSessionCommands({
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to clear a chat.");
       }
-      const ok = await withToast(
-        () => window.argmax!.session.clear({ sessionId }),
-        setToast,
-        "Could not clear the conversation."
-      );
-      if (!ok) {
-        throw new Error("Could not clear the conversation.");
-      }
+      // Let the composer report the original failure once, with its reason.
+      await window.argmax.session.clear({ sessionId });
       await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
-    [refreshDashboardStatus, loadSessionEvents, setToast]
+    [refreshDashboardStatus, loadSessionEvents]
   );
 
   return {

@@ -1329,6 +1329,20 @@ describe("App", () => {
   });
 
 
+  it.each([
+    new Error("The conversation is still running."),
+    { message: "The conversation is still running.", code: "SESSION_RUNNING" }
+  ])("shows the backend reason when clearing a chat fails: %j", async (failure) => {
+    window.argmax!.session.clear = vi.fn().mockRejectedValueOnce(failure);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = screen.getByRole("textbox", { name: "Chat prompt" });
+    fireEvent.change(input, { target: { value: "/clear" } });
+    fireEvent.mouseDown(await screen.findByRole("option", { name: /^Clear/ }));
+    expect(await screen.findByText("The conversation is still running.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("auto-dismisses info toasts after the 4s window", async () => {
     pickProjectFolder.mockResolvedValueOnce({ cancelled: false, project: primaryProject() });
     vi.useFakeTimers({ shouldAdvanceTime: true });

@@ -242,6 +242,39 @@ describe("TurnBlock", () => {
     expect(onToggleTools).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps disclosure elements mounted when a plan moves and later activity arrives", () => {
+    const activity = toolChild("activity", "Read files");
+    const disclosure: TurnBodyChild = {
+      kind: "tool",
+      id: "disclosure",
+      node: <details><summary>Inspect tool output</summary><p>Tool output</p></details>
+    };
+    const plan: TurnBodyChild = {
+      kind: "assistant",
+      id: "plan",
+      node: <details><summary>Plan</summary><p>Review the changes</p></details>
+    };
+    const props = { toolItems: [{ kind: "tool" as const, tool: tool() }], assistantTimestamps: [] };
+    const { rerender } = render(<TurnBlock {...props} body={body(activity, disclosure)} />);
+    const toolDetails = screen.getByText("Inspect tool output").closest("details");
+    expect(toolDetails).not.toBeNull();
+    fireEvent.click(screen.getByText("Inspect tool output"));
+    expect(toolDetails).toHaveAttribute("open");
+
+    rerender(<TurnBlock {...props} body={body(activity, disclosure, plan)} />);
+    const planDetails = screen.getByText("Plan").closest("details");
+    expect(planDetails).not.toBeNull();
+    fireEvent.click(screen.getByText("Plan"));
+    expect(planDetails).toHaveAttribute("open");
+
+    rerender(<TurnBlock {...props} body={body(plan, activity, disclosure, assistantChild("reply", "Done"))} />);
+    expect(screen.getByText("Inspect tool output").closest("details")).toBe(toolDetails);
+    expect(screen.getByText("Plan").closest("details")).toBe(planDetails);
+    expect(toolDetails).toHaveAttribute("open");
+    expect(planDetails).toHaveAttribute("open");
+    expect(screen.getByText("Done")).toBeInTheDocument();
+  });
+
   it("shows static turn metadata when the turn is complete and had no tool items", () => {
     render(
       <TurnBlock

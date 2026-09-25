@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi } from "../../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { ChatHistorySettings } from "./ChatHistorySettings.js";
 
 const previewPayload = {
@@ -21,6 +22,7 @@ const settingsStub = {
 };
 
 beforeEach(() => {
+  resetToastForTests();
   window.localStorage.removeItem("argmax.chatHistory.lastCleanup");
   settingsStub.previewChatCleanup.mockClear();
   settingsStub.deleteOldChats.mockClear();
@@ -101,23 +103,23 @@ describe("ChatHistorySettings", () => {
     expect(settingsStub.deleteOldChats).not.toHaveBeenCalled();
   });
 
-  it("surfaces preview failure in an alert", async () => {
+  it("surfaces preview failure in a toast", async () => {
     settingsStub.previewChatCleanup.mockRejectedValue(new Error("disk full"));
     render(<ChatHistorySettings />);
     fireEvent.click(await screen.findByRole("button", { name: /delete old chats/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("disk full");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("disk full"));
     expect(settingsStub.deleteOldChats).not.toHaveBeenCalled();
   });
 
-  it("surfaces delete failure in an alert and does not claim success", async () => {
+  it("surfaces delete failure in a toast and does not claim success", async () => {
     settingsStub.deleteOldChats.mockRejectedValue(new Error("locked"));
     render(<ChatHistorySettings />);
     fireEvent.click(await screen.findByRole("button", { name: /delete old chats/i }));
     await screen.findByRole("button", { name: "Delete 3 chats" });
     fireEvent.click(screen.getByRole("button", { name: "Delete 3 chats" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("locked");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("locked"));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 

@@ -1,17 +1,21 @@
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import type { ProjectSource, SourceInput } from "../../../shared/types.js";
+import { showErrorToast } from "../../state/toast.js";
 
 export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.Element {
   const [sources, setSources] = useState<ProjectSource[]>([]);
   const [revision, setRevision] = useState(0);
+  const explicitRefresh = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProjectSource | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let active = true;
+    const explicit = explicitRefresh.current;
+    explicitRefresh.current = false;
     setLoading(true);
-    setError(null);
+    if (!explicit) setError(null);
     const api = window.argmax?.sources;
     if (!api) {
       setLoading(false);
@@ -19,9 +23,15 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
       return;
     }
     void api.list({ projectId }).then((result) => {
-      if (active) setSources(result);
+      if (active) {
+        setSources(result);
+        setError(null);
+      }
     }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : "Could not load sources.");
+      if (!active) return;
+      const message = reason instanceof Error ? reason.message : "Could not load sources.";
+      if (explicit) showErrorToast(message);
+      else setError(message);
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [projectId, revision]);
@@ -40,7 +50,7 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
       setEditing(null);
       setRevision((value) => value + 1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save source.");
+      showErrorToast(reason instanceof Error ? reason.message : "Could not save source.");
     } finally { setBusy(false); }
   }
 
@@ -54,7 +64,7 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
       setSources((items) => items.filter((item) => item.id !== id));
       if (editing !== "new" && editing?.id === id) setEditing(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not remove source.");
+      showErrorToast(reason instanceof Error ? reason.message : "Could not remove source.");
     } finally { setBusy(false); }
   }
 
@@ -64,7 +74,10 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
       <p className="settings-note">Save repository paths and web links with guidance on when to consult them. Agents can add references as they work and read current content on demand. Source reads appear in the chat.</p>
       <div className="project-source-actions">
         <button className="settings-button" disabled={busy || loading || !window.argmax?.sources} onClick={() => setEditing("new")}>Add source</button>
-        <button className="settings-button" disabled={busy || loading} onClick={() => setRevision((value) => value + 1)}>Refresh sources</button>
+        <button className="settings-button" disabled={busy || loading} onClick={() => {
+          explicitRefresh.current = true;
+          setRevision((value) => value + 1);
+        }}>Refresh sources</button>
       </div>
       {!window.argmax?.sources ? <p className="settings-note">Open the Argmax app to manage project sources.</p> : null}
       {error ? <p role="alert" className="settings-note">{error}</p> : null}

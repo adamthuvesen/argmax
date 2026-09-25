@@ -49,7 +49,6 @@ export function NewArcDialog({
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [draftState, setDraftState] = useState<DraftState>(null);
   // A drafted value only fills a field the person has not typed into.
   const nameTouched = useRef(false);
@@ -67,7 +66,6 @@ export function NewArcDialog({
     setFolderOpen(false);
     setModel(readStoredLaunchModel() ?? factoryLaunchModel());
     setSubmitting(false);
-    setError(null);
     nameTouched.current = false;
     briefTouched.current = false;
     setDraftState(null);
@@ -127,7 +125,6 @@ export function NewArcDialog({
   const handlePromote = async (source: ArcPromoteSource): Promise<void> => {
     if (!window.argmax) return;
     setSubmitting(true);
-    setError(null);
     try {
       await window.argmax.arcs.promote({
         sessionId: source.sessionId,
@@ -144,7 +141,7 @@ export function NewArcDialog({
         onClose();
         showErrorToast(message);
       } else {
-        setError(message);
+        showErrorToast(message);
       }
     } finally {
       setSubmitting(false);
@@ -158,7 +155,6 @@ export function NewArcDialog({
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const arc = await window.argmax.arcs.create({
         name: trimmedName,
@@ -182,7 +178,7 @@ export function NewArcDialog({
         showErrorToast(errorMessage(launchError, "The arc was created, but its coordinator could not start."));
       }
     } catch (createError) {
-      setError(errorMessage(createError, "Could not create the arc."));
+      showErrorToast(errorMessage(createError, "Could not create the arc."));
     } finally {
       setSubmitting(false);
     }
@@ -378,11 +374,6 @@ export function NewArcDialog({
           </div>
         </details>
 
-        {error ? (
-          <p className="new-arc-dialog-error" role="alert">
-            {error}
-          </p>
-        ) : null}
         </div>
 
         <footer className="new-arc-dialog-actions">

@@ -220,12 +220,6 @@
   margin-bottom: var(--space-2);
 }
 
-.new-arc-dialog-error {
-  margin: 0;
-  color: var(--rose);
-  font-size: var(--text-sm);
-}
-
 .new-arc-dialog-actions {
   display: flex;
   align-items: center;

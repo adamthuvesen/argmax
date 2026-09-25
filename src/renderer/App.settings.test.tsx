@@ -389,7 +389,7 @@ describe("App settings", () => {
     expect(toggle).not.toBeChecked();
   });
 
-  it("snaps the browser-tools toggle back when the write fails", async () => {
+  it("toasts a failed browser-tools save and restores the toggle", async () => {
     setBrowserToolsStub.mockRejectedValueOnce(new Error("no database"));
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -400,6 +400,7 @@ describe("App settings", () => {
     const toggle = screen.getByRole("checkbox", { name: "Browser tools" });
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle).toBeChecked());
+    expect(await screen.findByRole("status")).toHaveTextContent("no database");
   });
 
   it("hides the goal turn budget when goals are off", async () => {
@@ -606,15 +607,17 @@ describe("App settings", () => {
     }
   });
 
-  it("shows a failed host defaults save and retries the current preference", async () => {
+  it("toasts a failed host defaults save and retries the current preference", async () => {
     const save = vi.mocked(window.argmax!.system.setDefaultAgent);
     save.mockRejectedValueOnce(new Error("DEFAULT_AGENT_WRITE"));
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Agents");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Scheduled and automatic chats still use the previous settings");
+    const toastText = await screen.findByText(/Scheduled and automatic chats still use the previous settings/);
+    expect(toastText.parentElement).toHaveAttribute("role", "status");
+    expect(screen.getByText("Default settings are not saved.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry saving defaults" }));
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry saving defaults" })).toBeNull());
     expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionModes: { claude: "provider-defaults", codex: "provider-defaults", cursor: "provider-defaults", opencode: "provider-defaults", grok: "provider-defaults" } }));
     expect(save).toHaveBeenCalledTimes(2);
   });

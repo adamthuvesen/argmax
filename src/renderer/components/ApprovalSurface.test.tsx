@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ApprovalRequest, TimelineEvent } from "../../shared/types.js";
 import { ApprovalSurface } from "./ApprovalSurface.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 const approval: ApprovalRequest = {
   id: "approval-1",
@@ -60,7 +61,8 @@ describe("ApprovalSurface", () => {
     expect(approve).toBeDisabled();
   });
 
-  it("keeps a failed request actionable and reports the failure inline", async () => {
+  it("keeps a failed request actionable and reports it in the shared toast", async () => {
+    resetToastForTests();
     const onResolveApproval = vi.fn().mockRejectedValue(new Error("Request expired"));
     render(
       <ApprovalSurface approvals={[approval]} events={[event]} onResolveApproval={onResolveApproval} />
@@ -69,9 +71,8 @@ describe("ApprovalSurface", () => {
     const approve = screen.getByRole("button", { name: `Approve action: ${approval.command}` });
     fireEvent.click(approve);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not send your response. Request expired"
-    );
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("Could not send your response. Request expired"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(approve).not.toBeDisabled();
   });
 

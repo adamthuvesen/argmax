@@ -5,7 +5,7 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
 import { ShowEarlier } from "./ShowEarlier.js";
-import { groupToolRuns, type TurnBodyChild } from "../lib/turnChildren.js";
+import type { TurnBodyChild } from "../lib/turnChildren.js";
 
 export type { TurnToolItem, TurnBodyChild };
 
@@ -306,7 +306,17 @@ export function TurnBlock({
               onClick={onShowEarlierBody}
             />
           ) : null}
-          {groupToolRuns(visibleBody)}
+          {/* Each row keeps its parent as neighboring activity arrives or
+              moves. Regrouping runs here remounts open disclosures. */}
+          {visibleBody.filter((child) => child.node !== null).map((child) => (
+            <div
+              key={child.id}
+              className="turn-body-item"
+              data-activity={child.kind === "tool" || child.activity ? "true" : undefined}
+            >
+              {child.node}
+            </div>
+          ))}
         </div>
       ) : null}
       {!running ? changes ?? null : null}

@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ListTodo } from "lucide-react";
 import { useRef, useState, type JSX } from "react";
 import { useReadingWave } from "../lib/readingWave.js";
 import type { TodoItem, TodoList, TodoStatus } from "../lib/todoList.js";
@@ -27,7 +27,6 @@ const STATUS_LABEL: Record<ShownStatus, string> = {
 function collapsedTail(list: TodoList): string | null {
   const activeText = list.active?.text;
   if (activeText != null) return `· ${activeText}`;
-  if (list.doneCount === list.items.length) return "· all done";
   if (list.doneCount === 0) return "· not started";
   return null;
 }
@@ -90,9 +89,9 @@ function markGlyph(status: ShownStatus): JSX.Element {
  *
  * No fill, no border, no radius: a plan in progress is a beat in the
  * conversation rather than a document.
- * The lead column is the tool row's chevron column, so an item's mark lands
- * where every disclosure chevron lands and its label lands on the verb column.
- * Mockups and the decision: `docs/design/todo-list`.
+ * The list glyph sits on the activity connector. Checklist marks are inset
+ * beneath the heading so the plan reads as one beat in the connected thread.
+ * Mockups: `docs/design/chat-timeline-concepts`.
  */
 export function TodoCard({ list, running }: TodoCardProps): JSX.Element {
   // Expanded while the turn runs, collapsed once it ends — but only until the
@@ -100,7 +99,8 @@ export function TodoCard({ list, running }: TodoCardProps): JSX.Element {
   // closed, and must still collapse one they never touched.
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const expanded = userExpanded ?? running;
-  const tail = expanded ? null : collapsedTail(list);
+  const complete = list.items.length > 0 && list.doneCount === list.items.length;
+  const tail = expanded || complete ? null : collapsedTail(list);
   const shown = list.items.filter((item): item is TodoItem & { status: ShownStatus } =>
     item.status !== "removed"
   );
@@ -125,11 +125,19 @@ export function TodoCard({ list, running }: TodoCardProps): JSX.Element {
         aria-expanded={expanded}
         onClick={() => setUserExpanded(!expanded)}
       >
-        <ChevronRight size={12} className="todo-card-head-chevron" aria-hidden="true" />
+        <span className="activity-icon-slot">
+          <ListTodo size={16} aria-hidden="true" />
+        </span>
         <span className="todo-card-head-verb">Plan</span>
         <span className="todo-card-head-count">
           {list.doneCount} of {list.items.length}
         </span>
+        <ChevronRight size={12} className="todo-card-head-chevron" aria-hidden="true" />
+        {complete ? (
+          <span className="todo-card-head-complete" role="img" aria-label="All done">
+            {markGlyph("done")}
+          </span>
+        ) : null}
         {tail === null ? null : <span className="todo-card-head-now">{tail}</span>}
       </button>
       <ul className="todo-card-list">

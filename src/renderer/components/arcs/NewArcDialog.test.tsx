@@ -120,7 +120,7 @@ describe("NewArcDialog", () => {
     expect(overlaysSnapshot().selectedArcId).toBe("arc-1");
   });
 
-  it("shows the backend's ARC_DIR_INVALID message inline and keeps the dialog open", async () => {
+  it("toasts the backend's ARC_DIR_INVALID message and keeps the dialog open", async () => {
     createMock.mockRejectedValue(new Error("ARC_DIR_INVALID: folder does not exist"));
     const onClose = vi.fn();
 
@@ -130,7 +130,7 @@ describe("NewArcDialog", () => {
     fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Ship the new tiers." } });
     fireEvent.click(screen.getByRole("button", { name: "Create arc" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("ARC_DIR_INVALID");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("ARC_DIR_INVALID"));
     expect(screen.getByRole("dialog", { name: "New arc" })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     expect(launchCoordinatorMock).not.toHaveBeenCalled();

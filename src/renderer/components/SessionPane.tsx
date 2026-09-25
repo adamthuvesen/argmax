@@ -577,7 +577,7 @@ export function SessionPane({
       if (opts?.preferIde && workspaceId && window.argmax) {
         void window.argmax.workspaces
           .openInIde({ workspaceId, ide: "default" })
-          .catch(() => undefined);
+          .catch((error: unknown) => showErrorToast(error instanceof Error ? error.message : "Could not open the editor."));
         return;
       }
       if (!workspaceId || !window.argmax) return;
@@ -593,7 +593,9 @@ export function SessionPane({
         // Files outside this workspace cannot use its guarded preview. An
         // absolute path can still open in its system-associated application.
         if (path.startsWith("/")) {
-          void window.argmax?.system.openPath({ path }).catch(() => undefined);
+          void window.argmax?.system.openPath({ path }).catch((error: unknown) => {
+            showErrorToast(error instanceof Error ? error.message : "Could not open the file.");
+          });
           return;
         }
         showErrorToast(`Could not find a single ${path} in this workspace.`);

@@ -7,6 +7,7 @@ import { emblemForCodename, emblemForKey } from "../lib/agentEmblems.js";
 import type { WorkspaceSessionPr } from "../lib/sessionPrs.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function sessionPr(overrides: Partial<WorkspaceSessionPr> = {}): WorkspaceSessionPr {
   return {
@@ -316,7 +317,8 @@ describe("WorkspaceCard", () => {
     await waitFor(() => expect(dismiss).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
   });
 
-  it("reports a failed pull-request call through the session status line", async () => {
+  it("reports a failed pull-request call through the shared toast", async () => {
+    resetToastForTests();
     const setStatus = vi.fn();
     (window as { argmax?: unknown }).argmax = {
       git: { viewOrCreatePr: vi.fn().mockRejectedValue(new Error("gh not authenticated")) },
@@ -326,9 +328,8 @@ describe("WorkspaceCard", () => {
     renderCard({ setStatus });
     fireEvent.click(screen.getByRole("button", { name: "Create PR for checkout branch" }));
 
-    await waitFor(() =>
-      expect(setStatus).toHaveBeenCalledWith({ kind: "error", message: "gh not authenticated" })
-    );
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("gh not authenticated"));
+    expect(setStatus).toHaveBeenCalledWith(null);
   });
 
   it("hides itself from its own dismiss control", () => {

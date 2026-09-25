@@ -2,6 +2,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PendingMessage } from "../../shared/types.js";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function prompt(): HTMLTextAreaElement {
   return screen.getByLabelText("Chat prompt");
@@ -22,7 +23,7 @@ const editButton = (): HTMLElement =>
 
 describe("SessionComposer queued follow-up editing", () => {
   beforeEach(() => window.localStorage.clear());
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); resetToastForTests(); });
 
   it("takes the queued message out of the queue and back into the prompt", async () => {
     const onCancelQueuedMessage = vi.fn().mockResolvedValue(undefined);
@@ -93,7 +94,7 @@ describe("SessionComposer queued follow-up editing", () => {
 
     fireEvent.click(editButton());
 
-    await waitFor(() => expect(screen.getByText("queue is busy")).toBeInTheDocument());
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("queue is busy"));
     // Restoring it anyway would send the same prompt twice.
     expect(prompt().value).toBe("");
   });

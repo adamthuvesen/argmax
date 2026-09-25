@@ -1120,12 +1120,6 @@ html:has(.mobile-shell[data-embed]) body,
   color: var(--muted);
 }
 
-.mobile-new-status {
-  padding-top: var(--space-1);
-  color: var(--rose);
-  font-size: var(--text-xs);
-}
-
 /* ---- Shared chrome ---- */
 
 .mobile-empty {
@@ -1157,24 +1151,10 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-toast {
-  position: fixed;
-  left: 16px;
-  right: 16px;
   /* Fixed elements measure the layout viewport, so a raised keyboard would
      bury the toast; the inset lifts it clear of one. */
   bottom: calc(16px + env(safe-area-inset-bottom) + var(--mobile-keyboard-inset, 0px));
   padding: 12px 14px;
-  border-radius: var(--radius-xl);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  color: var(--text);
-  font-size: var(--text-base);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  z-index: 3;
-}
-
-.mobile-toast-error {
-  border-color: var(--rose);
 }
 
 /* ---- Files & changes screen ---- */

@@ -1,6 +1,7 @@
 import { Check, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX } from "react";
 import type { Learning, ProjectSummary } from "../../shared/types.js";
+import { showErrorToast } from "../state/toast.js";
 import { SettingRow, SettingsListPicker } from "./settings/settingsPrimitives.js";
 
 export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[] }): JSX.Element {
@@ -53,17 +54,14 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       const updated = await window.argmax.learnings.update({ id: learning.id, summary: trimmed });
       if (projectGeneration.current !== generation) return;
       setLearnings((current) => current.map((item) => (item.id === learning.id ? updated : item)));
+      setDraftSummaries((current) => {
+        const next = { ...current };
+        delete next[learning.id];
+        return next;
+      });
     } catch (error) {
       if (projectGeneration.current !== generation) return;
-      setLoadError(error instanceof Error ? error.message : "Could not update learning.");
-    } finally {
-      if (projectGeneration.current === generation) {
-        setDraftSummaries((current) => {
-          const next = { ...current };
-          delete next[learning.id];
-          return next;
-        });
-      }
+      showErrorToast(error instanceof Error ? error.message : "Could not update learning.");
     }
   };
 
@@ -84,7 +82,7 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       setLearnings((current) =>
         current.map((item) => (item.id === learning.id ? { ...item, verified: learning.verified } : item))
       );
-      setLoadError(error instanceof Error ? error.message : "Could not toggle verified.");
+      showErrorToast(error instanceof Error ? error.message : "Could not toggle verified.");
     }
   };
 
@@ -99,7 +97,7 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       if (projectGeneration.current !== generation) return;
       // Restore on failure.
       setLearnings((current) => [...current, learning]);
-      setLoadError(error instanceof Error ? error.message : "Could not delete learning.");
+      showErrorToast(error instanceof Error ? error.message : "Could not delete learning.");
     }
   };
 

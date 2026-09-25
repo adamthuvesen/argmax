@@ -8,6 +8,7 @@ import {
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import type * as TauriBridgeModule from "../lib/tauriBridge.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 const SCREENSHOT_PATH = "/attachments/session-a/shot.png";
 
@@ -208,6 +209,7 @@ describe("SessionComposer unsent drafts", () => {
   });
 
   it("leaves the screenshot in place when the send fails", async () => {
+    resetToastForTests();
     const onSendSessionInput = vi.fn().mockRejectedValue(new Error("provider offline"));
     renderConversation(baseSession(), [], { onSendSessionInput });
     pasteScreenshot();
@@ -217,6 +219,7 @@ describe("SessionComposer unsent drafts", () => {
     fireEvent.keyDown(prompt(), { key: "Enter" });
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("provider offline"));
     cleanup();
 
     renderConversation(baseSession());

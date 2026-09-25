@@ -45,13 +45,15 @@ describe("TodoCard", () => {
     expect(screen.getByRole("button", { name: /· Write the projection/ })).toBeTruthy();
   });
 
-  it("says all done when nothing is left", () => {
+  it("marks a completed plan with an accessible check instead of a text tail", () => {
     const done = list([
       { id: "1", text: "One", status: "done" },
       { id: "2", text: "Two", status: "done" }
     ]);
     render(<TodoCard list={done} running={false} />);
-    expect(screen.getByRole("button", { name: /· all done/ })).toBeTruthy();
+    const heading = screen.getByRole("button", { name: /Plan 2 of 2 All done/ });
+    expect(within(heading).getByRole("img", { name: "All done" })).toBeTruthy();
+    expect(heading.textContent).toBe("Plan2 of 2");
   });
 
   it("says not started before any work begins", () => {

@@ -1,18 +1,11 @@
-/* The chats running alongside this one, in a card of their own directly above
-   the composer. It is furniture the chat keeps, like the checks card beside
-   it, and it is deliberately not the queued follow-up's tucked tab: a queued
-   message is something you will send, a multitask is work already running.
-   The card takes the composer's rounding so the two read as one column of
-   surfaces, and a capped height so a long run of side work scrolls here
-   rather than taking the viewport from the chat. */
+/* Chats running alongside this one stay above the composer. A single rule
+   anchors the group, with the timeline's mark column continuing below it.
+   The height cap keeps side work from taking the viewport from the chat. */
 .multitask-card {
   min-width: 0;
   max-height: min(240px, 34vh);
   padding: 0 0 var(--space-1_5);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-2xl);
-  background: var(--panel);
-  box-shadow: var(--shadow-1);
+  border-top: 1px solid var(--line);
   font-family: var(--font-ui);
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -23,7 +16,7 @@
   padding-bottom: 0;
 }
 
-/* The head names the card and counts what is in it, so the card still says
+/* The head names the group and counts what is in it, so the group still says
    something folded. One quiet control: the chevron at the far end. */
 .multitask-card-head {
   display: flex;
@@ -31,13 +24,13 @@
   gap: var(--space-2);
   width: 100%;
   margin: 0;
-  padding: var(--space-2_5) var(--space-4) var(--space-1_5);
+  padding: var(--space-3) 0 var(--space-1_5);
   border: 0;
   background: none;
   color: inherit;
   text-align: left;
   font-family: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   line-height: 1.4;
   cursor: pointer;
 }
@@ -49,7 +42,7 @@
 .multitask-card-head:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--accent) 46%, transparent);
   outline-offset: -2px;
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-sm);
 }
 
 .multitask-card-title {
@@ -87,18 +80,18 @@
 .multitask-list {
   list-style: none;
   margin: 0;
-  padding: 0 var(--space-1_5);
+  padding: 0;
 }
 
 /* One row per chat: the mark, the title, the state, and a reserved seat for
    the one action. The row is the click target and says so on hover with a
-   soft pill inside the card, not a rule between rows. */
+   soft fill that leaves the resting group open. */
 .multitask-row {
   position: relative;
   display: flex;
   align-items: stretch;
   min-width: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   transition: background var(--duration-fast) var(--ease);
 }
 
@@ -109,16 +102,16 @@
 .multitask-row-open {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
+  grid-template-columns: var(--activity-mark-size) minmax(0, 1fr) auto;
   /* Everything hangs from the title's first line: the mark and the state
      word share its box, so a row that grows a second line for its ask keeps
      them beside the title rather than drifting to the row's middle. The
      padding, not a min-height, sets the 36px of a one-line row. */
   align-items: start;
-  column-gap: var(--space-2_5);
+  column-gap: var(--space-2);
   min-width: 0;
   margin: 0;
-  padding: 8px 0 8px var(--space-2_5);
+  padding: var(--space-2) 0;
   border: 0;
   background: transparent;
   color: inherit;
@@ -130,17 +123,16 @@
 .multitask-row-open:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--accent) 46%, transparent);
   outline-offset: -2px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
 }
 
 /* The mark sits on the title's first line, so a row that grows a second line
    for its ask keeps the mark beside the title, not floating mid-row. */
-/* Flush left in its column, so the dot, the check and the head's first
-   letter share one edge; a centred glyph drifted 3px in from the head. */
+/* Center every state glyph on the timeline's shared mark column. */
 .multitask-mark {
   display: grid;
-  place-items: center start;
-  width: 14px;
+  place-items: center;
+  width: var(--activity-mark-size);
   height: calc(var(--text-sm) * 1.5);
   color: var(--text);
   font-size: var(--text-sm);
@@ -240,7 +232,7 @@
 
 .multitask-row[data-status="running"] .multitask-mark,
 .multitask-row[data-status="running"] .multitask-row-state {
-  color: var(--accent);
+  color: var(--sage);
 }
 
 .multitask-row[data-status="done"] .multitask-mark {

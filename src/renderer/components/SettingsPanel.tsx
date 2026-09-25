@@ -15,6 +15,7 @@ import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
 import type { UserBubbleTint } from "../lib/userBubbleTint.js";
 import { useAgentToolsSettings } from "../hooks/useAgentToolsSettings.js";
+import { showErrorToast } from "../state/toast.js";
 import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ReasoningEffort } from "../../shared/providerModels.js";
 import type { ModelPickerSelection } from "../lib/models.js";
@@ -252,7 +253,7 @@ export function SettingsPanel({
       await navigator.clipboard.writeText(JSON.stringify(diagnostics, null, 2));
       setDiagnosticsStatus("Diagnostics copied to clipboard.");
     } catch {
-      setDiagnosticsStatus("Clipboard unavailable. Copy from the visible fields below.");
+      showErrorToast("Clipboard unavailable. Copy from the visible fields below.");
     }
   }, [diagnostics]);
 
@@ -261,7 +262,7 @@ export function SettingsPanel({
     try {
       await window.argmax.system.openPath({ path: diagnostics.databasePath });
     } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not reveal database file.");
+      showErrorToast(error instanceof Error ? error.message : "Could not reveal database file.");
     }
   }, [diagnostics]);
 
@@ -270,7 +271,7 @@ export function SettingsPanel({
     try {
       await window.argmax.system.openPath({ path: diagnostics.archiveRecoveryPath });
     } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not open archived workspaces.");
+      showErrorToast(error instanceof Error ? error.message : "Could not open archived workspaces.");
     }
   }, [diagnostics]);
 
@@ -281,7 +282,8 @@ export function SettingsPanel({
       await window.argmax.system.vacuumDatabase();
       setDiagnosticsStatus("Storage compacted.");
     } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not compact storage.");
+      setDiagnosticsStatus(null);
+      showErrorToast(error instanceof Error ? error.message : "Could not compact storage.");
     }
   }, []);
 

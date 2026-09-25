@@ -79,6 +79,7 @@ import { importChunk } from "../lib/importChunk.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
+import { showErrorToast } from "../state/toast.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 
 // The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
@@ -315,9 +316,6 @@ function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | 
           <span>
             Save changes to <strong>{promptName}</strong>?
           </span>
-          {state.dirtyClosePrompt?.saveError ? (
-            <span className="file-tab-close-prompt-error">{state.dirtyClosePrompt.saveError}</span>
-          ) : null}
           <div className="file-tab-close-prompt-actions">
             <button
               type="button"
@@ -557,7 +555,6 @@ function ReviewPanelPane({
   const [cursor, setCursor] = useState<EditorCursor | null>(null);
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
   const [reviewActionPending, setReviewActionPending] = useState(false);
-  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const [copyPathState, copyPath] = useCopyToClipboard();
   const reviewActionBusy = useRef(false);
   const panelRef = useRef<HTMLElement>(null);
@@ -565,8 +562,7 @@ function ReviewPanelPane({
     if (reviewActionBusy.current) return;
     reviewActionBusy.current = true;
     setReviewActionPending(true);
-    setReviewActionError(null);
-    void action().catch((error: unknown) => setReviewActionError(error instanceof Error ? error.message : "Could not run that review action.")).finally(() => {
+    void action().catch((error: unknown) => showErrorToast(error instanceof Error ? error.message : "Could not run that review action.")).finally(() => {
       reviewActionBusy.current = false;
       setReviewActionPending(false);
     });
@@ -921,7 +917,6 @@ function ReviewPanelPane({
         <div className={isChanges ? "review-diff review-diff-changes" : "review-diff review-diff-files"}>
           {isChanges ? (
             <>
-              {reviewActionError && <p className="review-empty review-error" role="alert">{reviewActionError}</p>}
               {review.filesState === "error" && <p className="review-empty review-error" role="alert">{review.filesError ?? "Couldn't load changed files."}</p>}
               {review.filesState === "ready" && review.files.length === 0 ? (
                 <p className="review-empty">

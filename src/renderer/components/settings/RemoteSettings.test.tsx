@@ -6,10 +6,12 @@ import type {
   RemotePushDevice,
   RemoteStatus
 } from "../../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { RemoteSettings } from "./RemoteSettings.js";
 
 afterEach(() => {
   cleanup();
+  resetToastForTests();
   delete (window as unknown as { argmax?: ArgmaxApi }).argmax;
 });
 
@@ -251,9 +253,7 @@ describe("RemoteSettings", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Send test push" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Old iPhone: APNs returned 410 (Unregistered)"
-    );
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("Old iPhone: APNs returned 410 (Unregistered)"));
   });
 
   it("blocks the test push until the key is saved and a phone is paired", async () => {

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCopyToClipboard } from "./useCopyToClipboard.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function CopyButton({ text }: { text: string }): JSX.Element {
   const [flash, copy] = useCopyToClipboard();
@@ -14,6 +15,7 @@ function CopyButton({ text }: { text: string }): JSX.Element {
 
 afterEach(() => {
   cleanup();
+  resetToastForTests();
   Reflect.deleteProperty(document, "execCommand");
 });
 
@@ -60,5 +62,6 @@ describe("useCopyToClipboard", () => {
 
     fireEvent.click(button);
     await vi.waitFor(() => expect(button).toHaveTextContent("failed"));
+    expect(toastSnapshot()).toEqual({ kind: "error", message: "Could not copy to clipboard." });
   });
 });

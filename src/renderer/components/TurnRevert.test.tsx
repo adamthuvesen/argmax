@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, Checkpoint, RewindPreview } from "../../shared/types.js";
 import { TurnRevert } from "./TurnRevert.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function checkpoint(): Checkpoint {
   return {
@@ -69,7 +70,7 @@ describe("TurnRevert", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Revert to here" }));
 
-    expect(await screen.findByText(/No checkpoint was saved before this turn/)).toBeInTheDocument();
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("No checkpoint was saved before this turn"));
     expect(checkpoints.previewRewind).not.toHaveBeenCalled();
   });
 
@@ -107,14 +108,15 @@ describe("TurnRevert", () => {
     expect(await screen.findByText(/No working files change/)).toBeInTheDocument();
   });
 
-  /// A rewind refused by the backend (the checkout moved to another commit)
-  /// has to say why rather than looking like a click that never landed.
-  it("surfaces a refused rewind as an alert", async () => {
+  // A refused rewind keeps its preview so the user can retry after checking the checkout.
+  it("surfaces a refused rewind in the toast and keeps the confirmation", async () => {
+    resetToastForTests();
     checkpoints.rewindFiles.mockRejectedValue(new Error("The checkout moved to another revision"));
     renderRevert();
     fireEvent.click(screen.getByRole("button", { name: "Revert to here" }));
     fireEvent.click(await screen.findByRole("button", { name: "Revert files" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("The checkout moved to another revision");
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("The checkout moved to another revision"));
+    expect(screen.getByRole("button", { name: "Revert files" })).toBeEnabled();
   });
 
   it("cannot revert while the turn's checkout is still moving", () => {

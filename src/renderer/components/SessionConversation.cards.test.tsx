@@ -11,12 +11,14 @@ import {
   workspace
 } from "../../test/sessionConversationTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 describe("SessionConversation — cards", () => {
   afterEach(() => {
     vi.useRealTimers();
     delete (window as { argmax?: unknown }).argmax;
     cleanup();
+    resetToastForTests();
   });
   it("shows an early follow-up plan without rewriting the previous plan", () => {
     const events = [
@@ -60,8 +62,8 @@ describe("SessionConversation — cards", () => {
     fireEvent.click(screen.getByRole("option", { name: /Focused/ }));
     const buttonName = action === "answer" ? "Submit answer" : "Dismiss question";
     fireEvent.click(screen.getByRole("button", { name: buttonName }));
-    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
-    expect(screen.getByRole("alert")).toHaveTextContent("Try again.");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("Try again."));
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByText("internal transport details")).toBeNull();
     expect(screen.getByRole("option", { name: /Focused/ })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(screen.getByRole("button", { name: buttonName }));

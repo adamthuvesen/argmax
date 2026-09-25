@@ -591,16 +591,6 @@
   font-weight: var(--weight-medium);
 }
 
-.file-tab-close-prompt-error {
-  flex: 1;
-  min-width: 0;
-  color: var(--rose);
-  font-size: var(--text-xs);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .file-tab-close-prompt-actions {
   display: inline-flex;
   align-items: center;
@@ -826,16 +816,6 @@
 .file-preview-stale-secondary:hover {
   color: var(--text);
   background: var(--panel-sunken);
-}
-
-.file-preview-save-error {
-  margin: 8px 18px 0;
-  padding: var(--space-1_5) var(--space-2_5);
-  border: 1px solid rgba(190, 60, 60, 0.35);
-  border-radius: var(--radius-md);
-  background: rgba(220, 80, 80, 0.06);
-  color: rgb(160, 40, 40);
-  font-size: var(--text-sm);
 }
 
 /* CodeMirror frame. We let CodeMirror own its internals (gutter, scroller,

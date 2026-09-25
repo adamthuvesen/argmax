@@ -79,13 +79,6 @@
   color: var(--chip-ink);
 }
 
-.turn-revert-error {
-  margin: 0;
-  min-width: 0;
-  color: var(--rose);
-  overflow-wrap: anywhere;
-}
-
 .turn-revert-actions {
   display: inline-flex;
   gap: var(--space-1_5);
@@ -244,13 +237,6 @@
 
 .turn-block-header[data-brief] {
   gap: var(--space-3);
-}
-
-.turn-block-tools {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1_5);
-  margin: 0;
 }
 
 /* Thinking → answered transition. The first visible child of a freshly

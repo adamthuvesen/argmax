@@ -10,7 +10,7 @@ Argmax uses plain CSS in [src/renderer/styles.css](../src/renderer/styles.css) w
 |---|---|---|
 | Shell | `shell.css` | `shell-layout.css`, `shell-sessions.css`, `shell-session-icons.css` |
 | Settings | `settings.css` | `settings-layout.css`, `settings-controls.css`, `settings-diagnostics.css` |
-| Chat | `chat.css` | `chat-chrome.css`, `chat-conversation.css`, `chat-composer.css`, `chat-turns.css`, `chat-tools.css`, `chat-composer-chips.css`, `chat-workspace-card.css`, `agent-emblems.css` |
+| Chat | `chat.css` | `chat-chrome.css`, `chat-conversation.css`, `chat-composer.css`, `chat-turns.css`, `chat-tools.css`, `chat-timeline.css`, `chat-composer-chips.css`, `chat-workspace-card.css`, `agent-emblems.css` |
 | Usage | `usage.css` | `usage-page.css`, `usage-fold.css`, `usage-flow.css`, `usage-table.css`, `usage-chart.css`, `usage-remaining.css` |
 | Overlays | `overlays.css` | `overlays-inkwell.css` (command palette), `overlays-review.css`, `overlays-review-files.css`, `overlays-launcher.css`, `overlays-launcher-composer.css`, `overlays-launcher-panels.css`, `overlays-launcher-cards.css` |
 
@@ -19,6 +19,10 @@ Keep individual surface files under 1,000 lines. Aggregator files should only co
 `background-intensity.css` follows `tokens.css` and overrides neutral surface colors for nondefault intensity levels. Keep the original palette in `tokens.css` so level 7 retains its exact colors.
 
 ## Core Design Constraints
+
+- **Connected timeline:** `chat-timeline.css` owns the activity connector and the shared mark column. It joins consecutive activity rows, breaks at prose, and contracts when a plan or agent is absent. The connector uses theme tokens and the container's surface, including the Agents pane. It never measures layout in JavaScript or animates its geometry. Plan items and expanded details are inset from the spine. Stable keyed row wrappers preserve open disclosures while streaming changes the surrounding content.
+
+- **Action errors:** Failed user actions use the shared toast in `state/toast.ts`, anchored 16px from the bottom-right of the window above dialogs. Errors remain until dismissed or resolved. Info toasts dismiss after four seconds. Do not also render the failure above a composer or inside a card. Field validation stays beside the input, and ongoing failure states such as unavailable content, unsaved changes, or uncertain delivery stay in the affected surface. The mobile renderer subscribes to the same store and lifts the toast above the keyboard and safe area.
 
 - **Themes:** Light, Dark, and System modes. Dark is the default. Tokens are declared in `:root` (light) and `:root[data-theme="dark"]` in [tokens.css](../src/renderer/styles/tokens.css). Theme choice persists in `localStorage.argmax.theme.mode` and `userData/theme.json`.
   - In light mode both sidebars use a warm paper tint (`#fbfbf9`) barely under the near-white main view (`#fcfcfb`), so `--line` rather than a step in fill is what draws the boundary between them. The review file tree sits one step darker (`#f8f8f5`). Background intensity walks this pair toward heavier paper below the default and holds the near-flat boundary above it — it cannot go brighter, so a lighter sidebar than this belongs in the baseline rather than on a rung.

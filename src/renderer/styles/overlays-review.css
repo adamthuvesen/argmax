@@ -508,11 +508,6 @@
   line-height: 1.3;
 }
 
-.commit-dialog-feedback--error {
-  background: var(--danger-soft, rgba(220, 38, 38, 0.08));
-  color: var(--danger-strong, #b91c1c);
-}
-
 .commit-dialog-feedback--success {
   background: var(--success-soft, rgba(34, 197, 94, 0.08));
   color: var(--success-strong, #15803d);

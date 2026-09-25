@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
 import type { SyncStatus } from "../../../shared/types.js";
+import { showErrorToast } from "../../state/toast.js";
 import { SegmentedControl, SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimitives.js";
 
 const PROVIDERS = ["claude", "codex", "cursor", "opencode", "grok"] as const;
@@ -21,7 +22,7 @@ const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
 export function SessionSyncSettings(): JSX.Element {
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [note, setNote] = useState<{ kind: "saved" | "error"; message: string } | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
@@ -49,13 +50,10 @@ export function SessionSyncSettings(): JSX.Element {
       try {
         const updated = await window.argmax.sync.setConfig(next);
         setStatus(updated);
-        setNote(
-          updated.lastError
-            ? { kind: "error", message: updated.lastError }
-            : { kind: "saved", message: syncSummary(updated) }
-        );
+        if (updated.lastError) showErrorToast(updated.lastError);
+        else setNote(syncSummary(updated));
       } catch (error) {
-        setNote({ kind: "error", message: errorMessage(error) });
+        showErrorToast(errorMessage(error));
       } finally {
         setBusy(false);
       }
@@ -120,15 +118,7 @@ export function SessionSyncSettings(): JSX.Element {
         continued in Argmax. Nothing is lost: the agent&apos;s own history still has them, and turning
         sync back on brings them back.
       </SettingNote>
-      {note ? (
-        <p
-          className="settings-note settings-form-status"
-          data-status={note.kind}
-          role={note.kind === "error" ? "alert" : "status"}
-        >
-          {note.message}
-        </p>
-      ) : null}
+      {note ? <p className="settings-note settings-form-status" data-status="saved" role="status">{note}</p> : null}
     </SettingGroup>
   );
 }

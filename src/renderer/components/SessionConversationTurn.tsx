@@ -305,6 +305,7 @@ function SessionConversationTurnInner({
           kind: "assistant",
           id: group.id,
           node,
+          activity: true,
           ...(compactActivity
             ? {
                 activityMember: {
@@ -354,6 +355,7 @@ function SessionConversationTurnInner({
       kind: "assistant",
       id: `todo-${item.id}`,
       node: <TodoCard key={`todo-${item.id}`} list={todo} running={isStreamingTurn} />,
+      activity: true,
       createdAt: todo.updatedAt,
       sortAt: todo.updatedAt
     });
@@ -483,7 +485,7 @@ function SessionConversationTurnInner({
         )
       };
     }
-    return { kind: child.kind, id: child.id, node: child.node };
+    return { kind: child.kind, id: child.id, node: child.node, activity: child.activity };
   });
   const {
     visibleItems: mountedBodyChildren,

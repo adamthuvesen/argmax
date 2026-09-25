@@ -2,10 +2,11 @@ import type { PerformanceCapture } from "../../shared/types.js";
 
 export function savePerformanceCapture(
   capture: PerformanceCapture,
-  setStatus: (status: string | null) => void
+  setStatus: (status: string | null) => void,
+  onError: (message: string) => void
 ): void {
   if (capture.samples.length === 0) {
-    setStatus("No performance samples to save yet.");
+    onError("No performance samples to save yet.");
     return;
   }
   try {
@@ -21,6 +22,6 @@ export function savePerformanceCapture(
     URL.revokeObjectURL(url);
     setStatus(`Saved ${capture.samples.length} performance samples.`);
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Could not save performance capture.");
+    onError(error instanceof Error ? error.message : "Could not save performance capture.");
   }
 }

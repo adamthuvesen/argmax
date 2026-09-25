@@ -136,8 +136,7 @@
   text-overflow: ellipsis;
 }
 
-.approval-reason,
-.approval-error {
+.approval-reason {
   margin: 0;
   font-size: var(--text-xs);
   line-height: 1.45;
@@ -145,14 +144,6 @@
 
 .approval-reason {
   color: var(--muted-strong);
-}
-
-.approval-error {
-  padding: var(--space-1_5) var(--space-2);
-  border-left: 2px solid var(--rose);
-  border-radius: var(--radius-xs);
-  background: var(--rose-soft);
-  color: var(--rose);
 }
 
 .approval-actions {
@@ -208,5 +199,4 @@
   cursor: not-allowed;
   opacity: 0.42;
 }
-
 

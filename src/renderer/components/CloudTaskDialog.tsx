@@ -14,6 +14,7 @@ import { useMotionPresence } from "../hooks/useMotionPresence.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { SettingsListPicker } from "./settings/settingsPrimitives.js";
 import { WebLink } from "./WebLink.js";
+import { showErrorToast } from "../state/toast.js";
 import "../styles/cloud-handoff.css";
 
 export function CloudTaskDialog({
@@ -90,7 +91,7 @@ export function CloudTaskDialog({
     launchingRef.current = false;
 
     if (!window.argmax?.cloud) {
-      setError("Cloud tasks are available only in the Argmax desktop app.");
+      showErrorToast("Cloud tasks are available only in the Argmax desktop app.");
       setPreparing(false);
       return;
     }
@@ -112,7 +113,7 @@ export function CloudTaskDialog({
       })
       .catch((cause: unknown) => {
         if (requestGeneration.current !== request) return;
-        setError(errorMessage(cause) || "Couldn’t check this task’s setup.");
+        showErrorToast(errorMessage(cause) || "Couldn’t check this task’s setup.");
       })
       .finally(() => {
         if (requestGeneration.current === request) setPreparing(false);
@@ -161,8 +162,14 @@ export function CloudTaskDialog({
       onLaunched?.();
     } catch (cause) {
       if (requestGeneration.current !== request) return;
-      setError(errorMessage(cause) || "Couldn’t start the cloud task.");
-      if (errorSubCode(cause) === "CLOUD_LAUNCH_DELIVERY_UNKNOWN") setDeliveryUnknown(true);
+      const message = errorMessage(cause) || "Couldn’t start the cloud task.";
+      if (errorSubCode(cause) === "CLOUD_LAUNCH_DELIVERY_UNKNOWN") {
+        showErrorToast(`Could not confirm delivery to ${providerName}. Check the task status before sending again.`);
+        setDeliveryUnknown(true);
+        setError(message);
+      } else {
+        showErrorToast(message);
+      }
     } finally {
       if (requestGeneration.current === request) setLaunching(false);
       launchingRef.current = false;
@@ -274,9 +281,9 @@ export function CloudTaskDialog({
             </div>
           ) : null}
 
-          {error ? (
+          {deliveryUnknown && error ? (
             <p
-              className={`cloud-task-dialog-notice cloud-task-dialog-notice--${deliveryUnknown ? "caution" : "error"}`}
+              className="cloud-task-dialog-notice cloud-task-dialog-notice--caution"
               role="alert"
             >
               <AlertCircle size={15} aria-hidden="true" />

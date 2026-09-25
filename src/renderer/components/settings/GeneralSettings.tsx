@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react";
+import { showErrorToast } from "../../state/toast.js";
 import { useState, type JSX } from "react";
 import type { DetectedIde, IdeId } from "../../../shared/types.js";
 import {
@@ -71,7 +72,7 @@ export function GeneralSettings({
 
   const handleTestNotification = async (): Promise<void> => {
     if (!window.argmax?.system?.testNotification) {
-      setTestNotificationStatus("Test notifications need the desktop app.");
+      showErrorToast("Test notifications need the desktop app.");
       return;
     }
     setIsTestingNotification(true);
@@ -82,9 +83,7 @@ export function GeneralSettings({
         "Test notification sent. No banner? Check System Settings > Notifications > Argmax."
       );
     } catch (error) {
-      setTestNotificationStatus(
-        error instanceof Error ? error.message : "Failed to send notification"
-      );
+      showErrorToast(error instanceof Error ? error.message : "Failed to send notification");
     } finally {
       setIsTestingNotification(false);
     }

@@ -15,9 +15,9 @@ export type MultitaskLive = {
 };
 
 /**
- * The chats running alongside this one, in a card of their own above the
+ * The chats running alongside this one, in an open group above the
  * composer. The launch turns keep the history, each chat supplies its live
- * state, and the head counts them so the card still says something folded.
+ * state, and the head counts them so the group still says something folded.
  */
 export function MultitaskGroup({ notices, live, onOpen, onStop, onDismiss, onLoadSessionEvents }: {
   notices: readonly MultitaskNotice[];

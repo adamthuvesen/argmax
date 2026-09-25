@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary } from "../../shared/types.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import type { ToolCall } from "../lib/toolCalls.js";
+import type { TodoList } from "../lib/todoList.js";
 import type * as TurnFileChanges from "../lib/turnFileChanges.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 
@@ -52,6 +53,23 @@ const edit: ToolCall = {
   error: null
 };
 
+const agent: ToolCall = {
+  ...edit,
+  id: "agent-1",
+  toolUseId: "agent-1",
+  name: "Agent",
+  inputPreview: "Map the design",
+  inputFull: { description: "Map the design", prompt: "Inspect the chat timeline" },
+  createdAt: "2026-05-12T15:00:03.000Z"
+};
+
+const plan: TodoList = {
+  items: [{ id: "step-1", text: "Review the changes", status: "active" }],
+  updatedAt: "2026-05-12T15:00:03.500Z",
+  doneCount: 0,
+  active: { id: "step-1", text: "Review the changes", status: "active" }
+};
+
 const turn: Extract<RenderItem, { kind: "turn" }> = {
   kind: "turn",
   id: "turn-user-1",
@@ -79,6 +97,8 @@ function renderTurn(
     defaultToolCallsDisplay?: ToolCallsDisplay;
     defaultToolCallGroupsExpanded?: boolean;
     thinkingDisplay?: ThinkingDisplay;
+    todo?: TodoList | null;
+    onOpenAgent?: (tool: ToolCall) => void;
   } = {}
 ): { rerender: () => void; container: HTMLElement } {
   // A fresh `onOpenFile` per render is what SessionConversation itself hands
@@ -95,6 +115,8 @@ function renderTurn(
       defaultToolCallsDisplay={overrides.defaultToolCallsDisplay}
       defaultToolCallGroupsExpanded={overrides.defaultToolCallGroupsExpanded}
       thinkingDisplay={overrides.thinkingDisplay}
+      todo={overrides.todo}
+      onOpenAgent={overrides.onOpenAgent}
     />
   );
   const result = render(element());
@@ -108,6 +130,68 @@ afterEach(() => {
 });
 
 describe("SessionConversationTurn", () => {
+  it.each([
+    { hasPlan: true, hasAgent: false },
+    { hasPlan: false, hasAgent: true },
+    { hasPlan: false, hasAgent: false },
+    { hasPlan: true, hasAgent: true }
+  ])("renders connected activity in order with plan=$hasPlan and agent=$hasAgent", ({ hasPlan, hasAgent }) => {
+    const item = hasAgent ? { ...turn, toolItems: [...turn.toolItems, { kind: "tool" as const, tool: agent }] } : turn;
+    renderTurn({
+      item,
+      todo: hasPlan ? plan : null,
+      onOpenAgent: () => undefined,
+      defaultToolCallsDisplay: "collapsed",
+      defaultToolCallGroupsExpanded: false
+    });
+
+    const activity = screen.getByRole("button", { name: "Edited a file" });
+    const planGroup = screen.queryByRole("group", { name: "Plan" });
+    const agentLaunch = screen.queryByRole("button", { name: /^Started agent / });
+    const reply = screen.getByText("Done.");
+    expect(Boolean(planGroup)).toBe(hasPlan);
+    expect(Boolean(agentLaunch)).toBe(hasAgent);
+    const timeline = [activity, agentLaunch, planGroup, reply].filter((node): node is HTMLElement => node !== null);
+    for (let index = 1; index < timeline.length; index += 1) {
+      expect(timeline[index - 1].compareDocumentPosition(timeline[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it("preserves the reader's open activity and plan when the plan moves and a reply arrives", () => {
+    const options = {
+      item: turn,
+      todo: plan,
+      defaultToolCallsDisplay: "collapsed" as const,
+      defaultToolCallGroupsExpanded: false,
+      onOpenAgent: () => undefined
+    };
+    const { rerender } = renderTurn(options);
+    const activity = screen.getByRole("button", { name: "Edited a file" });
+    const planToggle = within(screen.getByRole("group", { name: "Plan" })).getByRole("button");
+    fireEvent.click(activity);
+    fireEvent.click(planToggle);
+    expect(activity).toHaveAttribute("aria-expanded", "true");
+    expect(planToggle).toHaveAttribute("aria-expanded", "true");
+
+    options.item = {
+      ...turn,
+      toolItems: [...turn.toolItems, { kind: "tool", tool: agent }],
+      assistantEvents: [...turn.assistantEvents, {
+        id: "later-reply", sessionId: session.id, type: "message.completed" as const,
+        message: "The agents finished.", payload: {}, createdAt: "2026-05-12T15:00:05.000Z"
+      }]
+    };
+    options.todo = { ...plan, updatedAt: "2026-05-12T15:00:01.000Z" };
+    rerender();
+
+    expect(screen.getByRole("button", { name: "Edited a file" })).toBe(activity);
+    expect(within(screen.getByRole("group", { name: "Plan" })).getByRole("button")).toBe(planToggle);
+    expect(activity).toHaveAttribute("aria-expanded", "true");
+    expect(planToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^Started agent / })).toBeInTheDocument();
+    expect(screen.getByText("The agents finished.")).toBeInTheDocument();
+  });
+
   it.each(["complete", "failed", "cancelled"] as const)(
     "settles a waiting turn when its session becomes %s",
     (state) => {

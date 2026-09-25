@@ -11,6 +11,7 @@ import { useCallback, useState, type FormEvent, type JSX, type MouseEvent } from
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
 import { primaryWorkspacePr } from "../lib/sessionPrs.js";
+import { showErrorToast } from "../state/toast.js";
 import { GithubIcon } from "./GithubIcon.js";
 
 const BRANCH_NAME_PATTERN = /^[A-Za-z0-9._/-]+$/;
@@ -20,10 +21,6 @@ type Mode = "menu" | "create-branch";
 interface Feedback {
   kind: "success" | "error";
   message: string;
-}
-
-function errorFeedback(error: unknown, fallback: string): Feedback {
-  return { kind: "error", message: error instanceof Error ? error.message : fallback };
 }
 
 /**
@@ -67,7 +64,7 @@ export function GitActionsMenu({
           : `Pushed ${result.branch} to origin.`
       });
     } catch (error) {
-      setFeedback(errorFeedback(error, "Could not push."));
+      showErrorToast(error instanceof Error ? error.message : "Could not push.");
     } finally {
       setBusy(false);
     }
@@ -94,7 +91,7 @@ export function GitActionsMenu({
         });
         onPrsRefresh?.();
       } catch (error) {
-        setFeedback(errorFeedback(error, "Could not create PR."));
+        showErrorToast(error instanceof Error ? error.message : "Could not create PR.");
       } finally {
         setBusy(false);
       }
@@ -133,7 +130,7 @@ export function GitActionsMenu({
           setMode("menu");
         })
         .catch((error: unknown) => {
-          setFeedback(errorFeedback(error, "Could not create branch."));
+          showErrorToast(error instanceof Error ? error.message : "Could not create branch.");
         })
         .finally(() => setBusy(false));
     },

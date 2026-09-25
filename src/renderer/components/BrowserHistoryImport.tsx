@@ -6,6 +6,7 @@ import { errorMessage } from "../../shared/error.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { mergeBrowserHistory } from "../lib/browserHistory.js";
+import { showErrorToast } from "../state/toast.js";
 import "../styles/browser-history-import.css";
 
 interface ImportSummary {
@@ -23,7 +24,6 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
   const [profiles, setProfiles] = useState<ChromeProfile[] | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
 
@@ -37,7 +37,6 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
     const request = ++profileRequestRef.current;
     setProfiles(null);
     setLoadError(null);
-    setImportError(null);
     if (!browser) {
       setProfiles([]);
       setLoadError("The desktop browser bridge is unavailable.");
@@ -71,14 +70,13 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
   const handleImport = async (): Promise<void> => {
     if (!browser || !selectedProfileId || importing) return;
     setImporting(true);
-    setImportError(null);
     setSummary(null);
     try {
       const result = await browser.importChromeHistory(selectedProfileId);
       const added = await mergeBrowserHistory(result.entries);
       setSummary({ read: result.entries.length, totalAvailable: result.totalAvailable, added });
     } catch (error) {
-      setImportError(errorMessage(error));
+      showErrorToast(`Import failed: ${errorMessage(error)}`);
     } finally {
       setImporting(false);
     }
@@ -106,7 +104,6 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
         disabled={importing}
         onChange={(event) => {
           setSelectedProfileId(event.target.value);
-          setImportError(null);
           setSummary(null);
         }}
       >
@@ -151,12 +148,6 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
         </p>
 
         {profileControls}
-
-        {importError ? (
-          <p className="browser-history-import-error" role="alert">
-            Import failed: {importError}
-          </p>
-        ) : null}
 
         {summary ? (
           <div className="browser-history-import-success" role="status">

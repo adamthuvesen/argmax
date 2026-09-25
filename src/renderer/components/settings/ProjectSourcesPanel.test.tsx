@@ -2,9 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, ProjectSource } from "../../../shared/types.js";
 import { ProjectSourcesPanel } from "./ProjectSourcesPanel.js";
+import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 
 afterEach(() => {
   cleanup();
+  resetToastForTests();
   delete (window as unknown as { argmax?: ArgmaxApi }).argmax;
 });
 
@@ -32,6 +34,17 @@ function installSourcesStub(sources: Partial<NonNullable<ArgmaxApi["sources"]>>)
 }
 
 describe("ProjectSourcesPanel", () => {
+  it("toasts a failed refresh while keeping the previously loaded sources", async () => {
+    const list = vi.fn().mockResolvedValueOnce([projectSource()]).mockRejectedValueOnce(new Error("Sources unavailable"));
+    installSourcesStub({ list });
+    render(<ProjectSourcesPanel projectId="project-1" />);
+    await screen.findByText("README");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh sources" }));
+    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "Sources unavailable" }));
+    expect(screen.getByText("README")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("adds, edits, and removes a reference with projectId and payload", async () => {
     const created = projectSource();
     const updated = projectSource({

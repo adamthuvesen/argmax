@@ -789,12 +789,10 @@ export async function openSettings(group: SettingsGroup = "General"): Promise<vo
   fireEvent.click(screen.getByRole("button", { name: "Argmax menu" }));
   const menu = await screen.findByRole("menu", { name: "Argmax menu" });
   fireEvent.click(within(menu).getByRole("menuitem", { name: /Settings/ }));
-  // Settings replaces the app sidebar with its own rail; the panel itself is
-  // lazy, so wait for its page title rather than for the rail.
+  // Settings replaces the app sidebar with its own rail and reopens on the
+  // group last shown, so always pick the group; the panel itself is lazy, so
+  // wait for its page title rather than for the rail.
   const settingsGroups = await screen.findByRole("complementary", { name: "Settings groups" });
-  await screen.findByRole("heading", { name: "General" });
-  if (group === "General") return settle();
-
   fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`^${group}$`) }));
   await screen.findByRole("heading", { name: group });
   if (group === "Advanced") {

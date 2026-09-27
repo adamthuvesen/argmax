@@ -54,6 +54,16 @@
   box-shadow: 0 0 0 4px var(--thread-surface);
 }
 
+/* A backgrounded launch keeps the working nest in this slot; the solid thread
+   mask reads as a dark tile behind the nest's open geometry. The same
+   translucent emblem wash the masthead uses (agent-emblems.css) keeps the
+   agent's hue without blocking the surface — the box-shadow still masks the
+   spine. */
+.turn-body-item[data-activity] .agent-emblem-tint .agent-launch-mark.working-nest:is([data-active="true"], [data-settling="true"]) {
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--emblem-face) 15%, transparent);
+}
+
 .turn-body-item[data-activity] :is(.tool-call-group-header, .tool-call-row-button, .thought-block-eyebrow) {
   column-gap: var(--space-2);
 }

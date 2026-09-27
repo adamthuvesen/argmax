@@ -736,7 +736,7 @@ export function App(): JSX.Element {
             hideStandalonePage();
             return;
           }
-          showSettings("general");
+          showSettings();
           return;
         case "new-session":
           hideCommandPalette();
@@ -1934,7 +1934,7 @@ export function App(): JSX.Element {
         snapshot: paletteSnapshot,
         selectedSession,
         onNewSession: () => handleMenuCommand("new-session"),
-        onOpenSettings: () => showSettings("general"),
+        onOpenSettings: () => showSettings(),
         onOpenScheduledTasks: showSchedulePage,
         onOpenBrowser:
           typeof window !== "undefined" && window.argmax?.browser && !secondaryWindow

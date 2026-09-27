@@ -52,6 +52,16 @@ describe("overlays", () => {
     expect(second?.requestId).toBe((first?.requestId ?? 0) + 1);
   });
 
+  it("reopens settings on the group last shown", () => {
+    showSettings();
+    expect(overlaysSnapshot().settingsGroup).toBe("general");
+
+    showSettings("appearance");
+    hideStandalonePage();
+    showSettings();
+    expect(overlaysSnapshot().settingsGroup).toBe("appearance");
+  });
+
   it("dismisses one overlay per Esc, topmost first", () => {
     showSettings();
     showKeyboardCheatSheet();

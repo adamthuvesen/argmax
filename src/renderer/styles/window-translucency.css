@@ -25,16 +25,22 @@
    Grounds (page, sidebars, panels) take the slider as it is. Light takes it
    further: its backdrop is a pale frosted grey, so the film that reads as
    tinted glass in dark reads as fog on paper.
-   Surfaces raised off a ground (cards, composer, selection, blocks) always sit
+   Surfaces raised off a ground (cards, selection, blocks) always sit
    on that film, so their own film stacks on it: what shows is
    1 - (1 - ground) * (1 - surface). They take a thinner film than the ground
    so a card is a step up from the page, not a slab: at 50% on the slider the
    page is 50% opaque and a card on it about 65%. A 0.6 share once put every
    card at 85%, and pages made mostly of cards (Usage, Settings, an Arc) read
-   as solid. */
+   as solid. Composers (launcher and session input) use 0.85× ground instead:
+   they float on clear workspace glass, so the card film was too thin and the
+   field washed out over vibrancy. */
 :root[data-window-translucent="true"] {
   --window-ground-translucency: var(--window-translucency, 0%);
   --window-surface-translucency: min(calc(var(--window-ground-translucency) * 1.4), 90%);
+  /* Composers are the live typing surface: they sit over clear workspace glass,
+     not over a thinned panel, so the surface film reads washed out. Keep more
+     of the solid fill than cards do (0.85× ground vs 1.4×). */
+  --window-composer-translucency: min(calc(var(--window-ground-translucency) * 0.85), 80%);
 }
 
 :root[data-window-translucent="true"]:not([data-theme="dark"]) {
@@ -64,6 +70,7 @@
   --composer-chip-solid: var(--composer-chip);
   --composer-chip-hover-solid: var(--composer-chip-hover);
   --composer-tray-solid: var(--composer-tray);
+  --overlay-panel-solid: var(--overlay-panel);
 }
 
 :root[data-window-translucent="true"] .app-shell {
@@ -74,14 +81,14 @@
   --panel: color-mix(in srgb, var(--panel-solid) calc(100% - var(--window-surface-translucency)), transparent);
   --panel-soft: color-mix(in srgb, var(--panel-soft-solid) calc(100% - var(--window-surface-translucency)), transparent);
   --panel-sunken: color-mix(in srgb, var(--panel-sunken-solid) calc(100% - var(--window-surface-translucency)), transparent);
-  --composer-surface: color-mix(in srgb, var(--composer-surface-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --composer-surface: color-mix(in srgb, var(--composer-surface-solid) calc(100% - var(--window-composer-translucency)), transparent);
   --row-selected: color-mix(in srgb, var(--row-selected-solid) calc(100% - var(--window-surface-translucency)), transparent);
   --code-surface: color-mix(in srgb, var(--code-surface-solid) calc(100% - var(--window-surface-translucency)), transparent);
   --tool-block-surface: color-mix(in srgb, var(--tool-block-surface-solid) calc(100% - var(--window-surface-translucency)), transparent);
   --user-message-bg: color-mix(in srgb, var(--user-message-bg-solid) calc(100% - var(--window-surface-translucency)), transparent);
-  --composer-chip: color-mix(in srgb, var(--composer-chip-solid) calc(100% - var(--window-surface-translucency)), transparent);
-  --composer-chip-hover: color-mix(in srgb, var(--composer-chip-hover-solid) calc(100% - var(--window-surface-translucency)), transparent);
-  --composer-tray: color-mix(in srgb, var(--composer-tray-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --composer-chip: color-mix(in srgb, var(--composer-chip-solid) calc(100% - var(--window-composer-translucency)), transparent);
+  --composer-chip-hover: color-mix(in srgb, var(--composer-chip-hover-solid) calc(100% - var(--window-composer-translucency)), transparent);
+  --composer-tray: color-mix(in srgb, var(--composer-tray-solid) calc(100% - var(--window-composer-translucency)), transparent);
 }
 
 /* Dark wells lift instead of sinking. `--panel-sunken` is the darkest colour
@@ -135,6 +142,27 @@
   --composer-chip: var(--composer-chip-solid);
   --composer-chip-hover: var(--composer-chip-hover-solid);
   --composer-tray: var(--composer-tray-solid);
+}
+
+/* In dark the solid fill is near black, and the glass behind a menu reads a
+   few steps lighter than the charcoal it replaced, so the island read as a
+   hole. Lift it a little toward the ink: still darker than the glass, no
+   longer black. Most menus portal out of the shell, so this is not scoped to
+   it; the island list above has lower specificity and loses to this. */
+:root[data-window-translucent="true"][data-theme="dark"] :is(
+    [role="menu"],
+    [role="listbox"],
+    [role="dialog"],
+    [role="tooltip"],
+    .project-picker-popover,
+    .command-palette,
+    .slash-menu,
+    .file-preview-popover,
+    .selection-toolbar,
+    .workspace-card-pr-actions-menu
+  ) {
+  --panel: color-mix(in oklab, var(--panel-solid), var(--text) 5%);
+  --overlay-panel: color-mix(in oklab, var(--overlay-panel-solid), var(--text) 5%);
 }
 
 /* The Browser's page is a native webview and cannot go translucent. Its
@@ -218,7 +246,7 @@
    gutters are left out on purpose: a backdrop filter on every line is too
    costly for what it buys. */
 :root[data-window-translucent="true"] :is(
-    .sidebar,
+    .app-shell[data-sidebar-collapsed="true"] .sidebar,
     .workspace-card,
     .rail-heading,
     .workspace-tree-sticky,

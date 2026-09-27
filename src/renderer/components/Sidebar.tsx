@@ -185,7 +185,7 @@ const IMPORTED_PROVIDER_LABELS: Record<string, string> = {
 
 // Module scope, so these keep one identity across renders and the memoized
 // rows below don't re-render because the sidebar did.
-const openGeneralSettings = (): void => showSettings("general");
+const openSettings = (): void => showSettings();
 const openProviderSettings = (): void => showSettings("agents", "settings-providers");
 const openDiagnosticsSettings = (): void => showSettings("advanced", "settings-diagnostics");
 const openAboutSettings = (): void => showSettings("advanced", "settings-about");
@@ -1265,7 +1265,7 @@ export function Sidebar({
           type="button"
           title="Customize"
           aria-label="Customize"
-          onClick={openGeneralSettings}
+          onClick={openSettings}
         >
           <span className="rail-nav-glyph" aria-hidden="true">
             <Settings2 size={14} />
@@ -1826,7 +1826,7 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(openGeneralSettings)}
+                  onClick={() => runIdentityAction(openSettings)}
                 >
                   <Settings size={14} aria-hidden="true" />
                   <span>Settings</span>

@@ -49,7 +49,11 @@ launch.
 
 Low confidence is settled before the grid (`settle` in `mod.rs`): kind
 confidence below 0.5 is treated as **coding**, and difficulty confidence below
-0.5 rounds difficulty **up** one level.
+0.5 rounds difficulty **up** one level, but only when Jev's level probabilities
+put at least half their weight on that higher level or above (moderate+ for
+Light → Standard, hard+ for Standard → Heavy). Confidence alone swings across
+0.5 between identical calls; a moderate/hard split of 0.48/0.41 stays Standard.
+Without probabilities in the answer, an unsure difficulty always rounds up.
 
 ### The key
 

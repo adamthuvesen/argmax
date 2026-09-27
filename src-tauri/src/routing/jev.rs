@@ -67,6 +67,8 @@ pub struct Classification {
     /// Expected level on the 0 (trivial) – 4 (very hard) scale.
     pub difficulty_score: f64,
     pub difficulty_confidence: f64,
+    /// Jev's probability for each level 0–4, when it sent them.
+    pub level_probabilities: Option<[f64; 5]>,
     /// Probability the message reports a wrong previous answer; only asked
     /// for follow-ups.
     pub correction: Option<f64>,
@@ -80,6 +82,12 @@ impl Classification {
             2 => Difficulty::Standard,
             _ => Difficulty::Heavy,
         }
+    }
+
+    /// How likely the task sits at `level` or harder on the 0–4 scale.
+    pub fn probability_at_least(&self, level: usize) -> Option<f64> {
+        self.level_probabilities
+            .map(|probabilities| probabilities[level.min(4)..].iter().sum())
     }
 }
 
@@ -149,6 +157,7 @@ struct Answer {
     score: Option<f64>,
     noul: Option<f64>,
     confidence: Option<f64>,
+    probabilities: Option<HashMap<String, f64>>,
 }
 
 fn parse_response(body: &Value) -> ArgmaxResult<Classification> {
@@ -179,6 +188,9 @@ fn parse_response(body: &Value) -> ArgmaxResult<Classification> {
         kind_confidence: kind_answer.confidence.unwrap_or(0.0),
         difficulty_score,
         difficulty_confidence: difficulty_answer.confidence.unwrap_or(0.0),
+        level_probabilities: difficulty_answer.probabilities.as_ref().map(|by_level| {
+            std::array::from_fn(|level| by_level.get(&level.to_string()).copied().unwrap_or(0.0))
+        }),
         correction: parsed
             .answers
             .get("correction")
@@ -216,6 +228,8 @@ mod tests {
         assert_eq!(parsed.kind_confidence, 0.93);
         assert_eq!(parsed.difficulty(), Difficulty::Standard);
         assert_eq!(parsed.correction, Some(0.81));
+        assert_eq!(parsed.probability_at_least(0), Some(0.23));
+        assert_eq!(parsed.probability_at_least(1), Some(0.0));
     }
 
     #[test]

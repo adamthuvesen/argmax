@@ -487,7 +487,7 @@ fn apply_theme<R: Runtime>(app: &AppHandle<R>, mode: ThemeMode) -> ArgmaxResult<
     app.set_theme(theme);
     for window in crate::windows::chat_windows(app) {
         // No window background colour: the window is transparent so the
-        // translucent sidebar can show macOS's sidebar vibrancy through it
+        // translucent window can show macOS's sidebar vibrancy through it
         // (tauri.conf.json `windowEffects`), and an opaque NSWindow background
         // would sit in front of that material. The page paints its own ground.
         window

@@ -57,10 +57,10 @@ export function SettingsPanel({
   onSidebarArchivedVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
-  sidebarTranslucent,
-  onSidebarTranslucentChange,
-  sidebarTranslucency,
-  onSidebarTranslucencyChange,
+  windowTranslucent,
+  onWindowTranslucentChange,
+  windowTranslucency,
+  onWindowTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   developerToolsEnabled,
@@ -143,10 +143,10 @@ export function SettingsPanel({
   onSidebarArchivedVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
-  sidebarTranslucent: boolean;
-  onSidebarTranslucentChange: (v: boolean) => void;
-  sidebarTranslucency: number;
-  onSidebarTranslucencyChange: (v: number) => void;
+  windowTranslucent: boolean;
+  onWindowTranslucentChange: (v: boolean) => void;
+  windowTranslucency: number;
+  onWindowTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   developerToolsEnabled: boolean;
@@ -397,10 +397,10 @@ export function SettingsPanel({
             onSidebarArchivedVisibleChange={onSidebarArchivedVisibleChange}
             sidebarPriorityVisible={sidebarPriorityVisible}
             onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
-            sidebarTranslucent={sidebarTranslucent}
-            onSidebarTranslucentChange={onSidebarTranslucentChange}
-            sidebarTranslucency={sidebarTranslucency}
-            onSidebarTranslucencyChange={onSidebarTranslucencyChange}
+            windowTranslucent={windowTranslucent}
+            onWindowTranslucentChange={onWindowTranslucentChange}
+            windowTranslucency={windowTranslucency}
+            onWindowTranslucencyChange={onWindowTranslucencyChange}
             workspaceCardVisible={workspaceCardVisible}
             onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
             contextIndicatorEnabled={contextIndicatorEnabled}

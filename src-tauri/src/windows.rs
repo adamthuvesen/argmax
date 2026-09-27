@@ -211,9 +211,12 @@ pub fn open_session_window<R: Runtime>(
         .inner_size(CHAT_WINDOW_SIZE.0, CHAT_WINDOW_SIZE.1)
         .min_inner_size(CHAT_WINDOW_MIN_SIZE.0, CHAT_WINDOW_MIN_SIZE.1)
         .transparent(true)
+        // Always active: macOS swaps an inactive window's vibrancy for a flat
+        // opaque fill, which made the translucent window look solid whenever
+        // another app had focus. The page paints over it when translucency is off.
         .effects(tauri::utils::config::WindowEffectsConfig {
             effects: vec![tauri::window::Effect::Sidebar],
-            state: Some(tauri::window::EffectState::FollowsWindowActiveState),
+            state: Some(tauri::window::EffectState::Active),
             radius: None,
             color: None,
         })

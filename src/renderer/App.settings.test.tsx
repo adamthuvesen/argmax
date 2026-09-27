@@ -16,10 +16,9 @@ import {
   FAST_MODE_KEY,
   GOAL_ENABLED_KEY,
   PR_MILESTONE_CELEBRATION_KEY,
-  RANDOM_SESSION_ICON_KEY,
-  SIDEBAR_TRANSLUCENT_KEY,
-  SIDEBAR_TRANSLUCENCY_KEY
+  RANDOM_SESSION_ICON_KEY
 } from "./lib/uiPreferences.js";
+import { WINDOW_TRANSLUCENCY_KEY, WINDOW_TRANSLUCENT_KEY } from "./lib/windowTranslucency.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import * as tauriBridge from "./lib/tauriBridge.js";
 import { APP_VERSION, APP_VERSION_LABEL } from "../shared/appVersion.js";
@@ -298,42 +297,43 @@ describe("App settings", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the sidebar opaque by default and persists its translucent surface settings", async () => {
+  it("keeps the window opaque by default and persists its translucency settings", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
+    const root = document.documentElement;
     const shell = document.querySelector<HTMLElement>(".app-shell");
-    expect(shell).not.toHaveAttribute("data-sidebar-translucent");
+    expect(root).not.toHaveAttribute("data-window-translucent");
 
     await openSettings("Appearance");
-    const toggle = screen.getByRole("checkbox", { name: "Translucent sidebar" });
-    const slider = screen.getByRole("slider", { name: "Sidebar translucency" });
+    const toggle = screen.getByRole("checkbox", { name: "Translucent window" });
+    const slider = screen.getByRole("slider", { name: "Window translucency" });
     expect(toggle).not.toBeChecked();
     expect(slider).toBeDisabled();
     expect(slider).toHaveValue("30");
 
     fireEvent.click(toggle);
-    expect(shell).toHaveAttribute("data-sidebar-translucent", "true");
+    expect(root).toHaveAttribute("data-window-translucent", "true");
     expect(slider).toBeEnabled();
 
     fireEvent.change(slider, { target: { value: "50" } });
     await waitFor(() => {
-      expect(window.localStorage.getItem(SIDEBAR_TRANSLUCENT_KEY)).toBe("true");
-      expect(window.localStorage.getItem(SIDEBAR_TRANSLUCENCY_KEY)).toBe("50");
-      expect(shell?.style.getPropertyValue("--sidebar-translucency")).toBe("50%");
+      expect(window.localStorage.getItem(WINDOW_TRANSLUCENT_KEY)).toBe("true");
+      expect(window.localStorage.getItem(WINDOW_TRANSLUCENCY_KEY)).toBe("50");
+      expect(root.style.getPropertyValue("--window-translucency")).toBe("50%");
     });
 
     await closeSettings();
-    expect(shell).toHaveAttribute("data-sidebar-translucent", "true");
+    expect(root).toHaveAttribute("data-window-translucent", "true");
     // The sidebar stays in the grid: the desktop shows through its column, so
     // the workspace never has to make room for an overlay.
     expect(shell?.style.gridTemplateColumns).toBe("272px minmax(0, 1fr)");
 
     await openSettings("Appearance");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Translucent sidebar" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Translucent window" }));
     await closeSettings();
-    expect(shell).not.toHaveAttribute("data-sidebar-translucent");
-    expect(shell?.style.getPropertyValue("--sidebar-translucency")).toBe("0%");
+    expect(root).not.toHaveAttribute("data-window-translucent");
+    expect(root.style.getPropertyValue("--window-translucency")).toBe("");
   });
 
   it("shows the fox by default and hides every mascot when turned off", async () => {

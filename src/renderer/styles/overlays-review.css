@@ -848,10 +848,10 @@
 }
 
 /* Sidebar hidden: the tab strip doubles as the macOS titlebar, the way a
-   browser's tabs share the band with its traffic lights. Park the 28px tabs
+   browser's tabs share the band with its traffic lights. Park the 26px tabs
    on --titlebar-center and clear the fixed sidebar toggle. */
 .app-shell[data-sidebar-collapsed="true"] .browser-page .browser-tab-strip {
-  padding-top: calc(var(--titlebar-center) - 14px);
+  padding-top: calc(var(--titlebar-center) - 13px);
   padding-left: var(--titlebar-leading-inset);
 }
 
@@ -978,7 +978,8 @@
   width: 0;
   min-width: var(--browser-tab-min, 72px);
   max-width: 180px;
-  height: 28px;
+  /* The Files and Terminal strips' tab height, so the panel's tabs match. */
+  height: 26px;
   border-radius: 999px;
   color: var(--muted);
   /* A tab is a handle to carry, so a press on one never anchors a selection. */
@@ -1167,8 +1168,8 @@
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   margin-left: 2px;
   border: none;
   border-radius: 999px;

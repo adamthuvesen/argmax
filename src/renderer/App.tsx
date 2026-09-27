@@ -171,11 +171,6 @@ import {
   SIDEBAR_ARCS_KEY,
   SIDEBAR_ARCHIVED_KEY,
   SIDEBAR_PRIORITY_KEY,
-  SIDEBAR_TRANSLUCENT_KEY,
-  SIDEBAR_TRANSLUCENCY_DEFAULT,
-  SIDEBAR_TRANSLUCENCY_KEY,
-  SIDEBAR_TRANSLUCENCY_MAX,
-  SIDEBAR_TRANSLUCENCY_MIN,
   WORKSPACE_CARD_KEY,
   DEVELOPER_TOOLS_KEY,
   DeveloperToolsContext,
@@ -186,6 +181,14 @@ import {
   useChatVerbosityPreference,
   useFollowUpDeliveryPreference
 } from "./lib/uiPreferences.js";
+import {
+  applyWindowTranslucencyToDocument,
+  WINDOW_TRANSLUCENT_KEY,
+  WINDOW_TRANSLUCENCY_DEFAULT,
+  WINDOW_TRANSLUCENCY_KEY,
+  WINDOW_TRANSLUCENCY_MAX,
+  WINDOW_TRANSLUCENCY_MIN
+} from "./lib/windowTranslucency.js";
 import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { isMultitaskSession, multitasksByParentSession } from "./lib/multitask.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
@@ -283,15 +286,18 @@ export function App(): JSX.Element {
   const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, true);
   const [sidebarArchivedVisible, setSidebarArchivedVisible] = useBooleanUiPreference(SIDEBAR_ARCHIVED_KEY, true);
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
-  const [sidebarTranslucent, setSidebarTranslucent] = useBooleanUiPreference(SIDEBAR_TRANSLUCENT_KEY, false);
-  const [sidebarTranslucency, setSidebarTranslucency] = useBoundedNumberPreference(
-    SIDEBAR_TRANSLUCENCY_KEY,
+  const [windowTranslucent, setWindowTranslucent] = useBooleanUiPreference(WINDOW_TRANSLUCENT_KEY, false);
+  const [windowTranslucency, setWindowTranslucency] = useBoundedNumberPreference(
+    WINDOW_TRANSLUCENCY_KEY,
     {
-      min: SIDEBAR_TRANSLUCENCY_MIN,
-      max: SIDEBAR_TRANSLUCENCY_MAX,
-      fallback: SIDEBAR_TRANSLUCENCY_DEFAULT
+      min: WINDOW_TRANSLUCENCY_MIN,
+      max: WINDOW_TRANSLUCENCY_MAX,
+      fallback: WINDOW_TRANSLUCENCY_DEFAULT
     }
   );
+  useEffect(() => {
+    applyWindowTranslucencyToDocument(windowTranslucent, windowTranslucency);
+  }, [windowTranslucent, windowTranslucency]);
   const { collapsed: sidebarCollapsed, peeking: sidebarPeek } = useSidebarChrome();
   const [browserPageOpenPreference, setIsBrowserPageOpen] = useBooleanUiPreference(BROWSER_PAGE_OPEN_KEY, false);
   // The preference is shared across windows through localStorage, but the
@@ -1969,7 +1975,9 @@ export function App(): JSX.Element {
           turnChangesExpanded,
           onTurnChangesExpandedChange: setTurnChangesExpanded,
           contextIndicatorEnabled,
-          onContextIndicatorEnabledChange: setContextIndicatorEnabled
+          onContextIndicatorEnabledChange: setContextIndicatorEnabled,
+          windowTranslucent,
+          onWindowTranslucentChange: setWindowTranslucent
         },
         onStopSession: (sessionId) => void terminateSession(sessionId),
         onNewSideChat: () => {
@@ -2062,7 +2070,9 @@ export function App(): JSX.Element {
       turnChangesExpanded,
       setTurnChangesExpanded,
       contextIndicatorEnabled,
-      setContextIndicatorEnabled
+      setContextIndicatorEnabled,
+      windowTranslucent,
+      setWindowTranslucent
     ]
   );
 
@@ -2294,8 +2304,7 @@ export function App(): JSX.Element {
             : effectiveSidebarCollapsed
               ? "minmax(0, 1fr)"
               : `${sidebarWidth}px minmax(0, 1fr)`,
-        ["--sidebar-width" as string]: `${sidebarWidth}px`,
-        ["--sidebar-translucency" as string]: sidebarTranslucent ? `${sidebarTranslucency}%` : "0%"
+        ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
       data-resizing={isResizing ? "true" : undefined}
       data-chat-width={String(chatWidth)}
@@ -2308,7 +2317,6 @@ export function App(): JSX.Element {
       data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
       data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
       data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
-      data-sidebar-translucent={sidebarTranslucent ? "true" : undefined}
     >
       {settingsRailOpen ? null : (
         <button
@@ -2504,10 +2512,10 @@ export function App(): JSX.Element {
                 onSidebarArchivedVisibleChange={setSidebarArchivedVisible}
                 sidebarPriorityVisible={sidebarPriorityVisible}
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
-                sidebarTranslucent={sidebarTranslucent}
-                onSidebarTranslucentChange={setSidebarTranslucent}
-                sidebarTranslucency={sidebarTranslucency}
-                onSidebarTranslucencyChange={setSidebarTranslucency}
+                windowTranslucent={windowTranslucent}
+                onWindowTranslucentChange={setWindowTranslucent}
+                windowTranslucency={windowTranslucency}
+                onWindowTranslucencyChange={setWindowTranslucency}
                 workspaceCardVisible={workspaceCardVisible}
                 onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
                 developerToolsEnabled={developerToolsEnabled}

@@ -1,16 +1,24 @@
+import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 
 /**
- * `FitAddon.fit()` throws when the terminal's container has no dimensions
- * (first mount, hidden tab, race against ResizeObserver). The xterm contract
- * is "size is unknown until the wrapper has measurable width" — every call
- * site treats the throw as "retry on the next observer tick", so wrap once
- * here instead of repeating the try/catch at every fit point.
+ * Fit the terminal to its host, but only when the host is laid out.
  *
- * Returns `true` when the fit succeeded, `false` when it bailed (so the
- * caller can short-circuit work that depends on the new size).
+ * `FitAddon.fit()` reads the parent's computed height and width. Under a
+ * `display: none` ancestor (a hidden panel mode, an inactive tab) WebKit
+ * reports those as the specified `100%`, which the addon parses as 100px, and
+ * a zero-height container parses as 0 — either way it shrinks xterm to a
+ * handful of cells instead of bailing. That grid reaches the PTY, zsh redraws
+ * its prompt wrapped at 20 columns, and when the terminal is shown again the
+ * wrapped rows are left as blank lines above the prompt. A host with no box
+ * is "size unknown": skip, and let the next observer tick fit it.
+ *
+ * Returns `true` when the fit ran, `false` when it bailed (so the caller can
+ * short-circuit work that depends on the new size).
  */
-export function tryFit(fit: FitAddon): boolean {
+export function tryFit(term: Terminal, fit: FitAddon): boolean {
+  const host = term.element?.parentElement;
+  if (!host || host.clientWidth === 0 || host.clientHeight === 0) return false;
   try {
     fit.fit();
     return true;

@@ -19,7 +19,7 @@
         "minWidth": 600,
         "minHeight": 640,
         "transparent": true,
-        "windowEffects": { "effects": ["sidebar"], "state": "followsWindowActiveState" },
+        "windowEffects": { "effects": ["sidebar"], "state": "active" },
         "backgroundThrottling": "disabled",
         "dragDropEnabled": false,
         "titleBarStyle": "Overlay",

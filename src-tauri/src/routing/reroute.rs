@@ -342,6 +342,7 @@ mod tests {
             kind_confidence: confidence,
             difficulty_score: score,
             difficulty_confidence: confidence,
+            level_probabilities: None,
             correction: Some(0.2),
         }
     }

@@ -296,7 +296,6 @@
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-gutter: stable;
 }
 
 /* Agents are a live workload, not file history. The strip keeps only the
@@ -476,7 +475,8 @@
 .file-tab {
   display: inline-flex;
   align-items: center;
-  max-width: 220px;
+  /* The browser tab's cap, so no tab in the panel runs wider. */
+  max-width: 180px;
   height: 26px;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
@@ -491,27 +491,18 @@
   background: color-mix(in oklab, var(--panel) 60%, var(--panel-sunken));
 }
 
+/* The fill alone marks the active tab, flat, in both themes. A ring read as a
+   border drawn around the pill, and on paper it only showed at the rounded
+   corners, where it stacked into four dark smudges. Dark keeps a little ink
+   lift in the fill so the pill still separates from the strip. */
 .file-tab[data-active="true"] {
   color: var(--text);
   background: color-mix(in oklab, var(--panel) 88%, var(--text));
-  box-shadow:
-    0 0 0 1px var(--line-strong),
-    0 1px 2px rgba(31, 28, 24, 0.16);
 }
 
-/* On paper the active tab is the sidebar's selected row: the --row-selected
-   fill alone, flat. The ring and shadow only showed at the rounded corners,
-   where they stacked into four dark smudges while the straight edges vanished
-   into the fill. Dark keeps the ink lift and ring above. */
+/* On paper the active tab is the sidebar's selected row. */
 :root:not([data-theme="dark"]) .file-tab[data-active="true"] {
   background: var(--row-selected);
-  box-shadow: none;
-}
-
-/* Shell tabs take the mode switcher's flat selection fill, no ring. */
-.review-terminal .file-tab[data-active="true"] {
-  background: var(--row-selected);
-  box-shadow: none;
 }
 
 /* Padding math keeps the pill visually symmetric: 10px from the left edge to

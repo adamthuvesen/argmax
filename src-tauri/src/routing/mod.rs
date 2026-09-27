@@ -142,7 +142,8 @@ pub(crate) fn decide(tier: AutoTier, classification: &Classification) -> RouteDe
 }
 
 /// Applies the confidence rules: an unsure kind becomes coding, an unsure
-/// difficulty rounds up one level.
+/// difficulty rounds up one level when the higher level holds half of Jev's
+/// weight.
 pub(crate) fn settle(classification: &Classification) -> (TaskKind, Difficulty, Vec<&'static str>) {
     let mut notes = Vec::new();
     let kind = if classification.kind_confidence < MIN_CONFIDENCE {
@@ -153,11 +154,17 @@ pub(crate) fn settle(classification: &Classification) -> (TaskKind, Difficulty, 
     };
     let mut difficulty = classification.difficulty();
     if classification.difficulty_confidence < MIN_CONFIDENCE {
-        notes.push("unsure of difficulty, rounded up");
-        difficulty = match difficulty {
-            Difficulty::Light => Difficulty::Standard,
-            Difficulty::Standard | Difficulty::Heavy => Difficulty::Heavy,
+        let (rounded, lowest_level) = match difficulty {
+            Difficulty::Light => (Difficulty::Standard, 2),
+            Difficulty::Standard | Difficulty::Heavy => (Difficulty::Heavy, 3),
         };
+        // Confidence alone swings across 0.5 between identical calls, so round
+        // up only when Jev puts at least half its weight on the higher level.
+        let upper_weight = classification.probability_at_least(lowest_level);
+        if rounded != difficulty && upper_weight.is_none_or(|p| p >= MIN_CONFIDENCE) {
+            notes.push("unsure of difficulty, rounded up");
+            difficulty = rounded;
+        }
     }
     (kind, difficulty, notes)
 }
@@ -246,6 +253,7 @@ mod tests {
             kind_confidence,
             difficulty_score: score,
             difficulty_confidence,
+            level_probabilities: None,
             correction: None,
         }
     }
@@ -282,6 +290,28 @@ mod tests {
             "{}",
             decision.reason
         );
+    }
+
+    #[test]
+    fn unsure_difficulty_rounds_up_only_when_the_higher_level_holds_half_the_weight() {
+        // Split measured on "implement the translucent sidebar for the full
+        // app" (2026-09-27): moderate 0.48, hard 0.41.
+        let split = Classification {
+            level_probabilities: Some([0.0, 0.11, 0.48, 0.41, 0.0]),
+            ..classification(TaskKind::Coding, 1.0, 2.3, 0.45)
+        };
+        let decision = decide(AutoTier::Balanced, &split);
+        assert_eq!(decision.difficulty, Some(Difficulty::Standard));
+        assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
+        assert_eq!(decision.reason, "coding · standard");
+
+        let leaning_hard = Classification {
+            level_probabilities: Some([0.0, 0.05, 0.4, 0.5, 0.05]),
+            ..split
+        };
+        let decision = decide(AutoTier::Balanced, &leaning_hard);
+        assert_eq!(decision.difficulty, Some(Difficulty::Heavy));
+        assert_eq!(decision.effort, Some(ReasoningEffort::High));
     }
 
     #[test]

@@ -37,6 +37,8 @@ function inputWith(overrides: Partial<SettingCommandsInput> = {}): SettingComman
     onTurnChangesExpandedChange: vi.fn(),
     contextIndicatorEnabled: false,
     onContextIndicatorEnabledChange: vi.fn(),
+    windowTranslucent: false,
+    onWindowTranslucentChange: vi.fn(),
     ...overrides
   };
 }

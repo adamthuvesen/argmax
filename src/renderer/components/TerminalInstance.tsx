@@ -37,7 +37,7 @@ export function TerminalInstance({
     runtimeRef.current = runtime;
 
     const ro = new ResizeObserver(() => {
-      if (!tryFit(runtime.fit)) return;
+      if (!tryFit(runtime.term, runtime.fit)) return;
       syncTerminalSize(runtime);
     });
     ro.observe(container);
@@ -56,7 +56,7 @@ export function TerminalInstance({
     if (!visible) return;
     const runtime = runtimeRef.current;
     if (!runtime) return;
-    if (!tryFit(runtime.fit)) return;
+    if (!tryFit(runtime.term, runtime.fit)) return;
     syncTerminalSize(runtime);
     runtime.term.focus();
   }, [visible]);

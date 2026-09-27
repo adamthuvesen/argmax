@@ -281,10 +281,10 @@ export function LaunchModelSelector({
         return {
           key: autoTierKey(autoTier),
           // Under the Router header the prefix is noise, as a provider name is
-          // under its own header; Recent keeps the full label.
+          // under its own header; under Recent the group header gives context.
           label: AUTO_TIER_SHORT_LABELS[autoTier],
           fullLabel: selection.label,
-          recentLabel: selection.label,
+          recentLabel: AUTO_TIER_SHORT_LABELS[autoTier],
           group: AUTO_GROUP_LABEL,
           description: AUTO_TIER_DESCRIPTIONS[autoTier],
           // The router picks the effort, so an Auto row never shows one.

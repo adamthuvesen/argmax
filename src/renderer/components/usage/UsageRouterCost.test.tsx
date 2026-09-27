@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, RouterCostSummary, RouterTierCost } from "../../../shared/types.js";
 import { RouterCostCard } from "./UsageRouterCost.js";
@@ -22,6 +22,7 @@ function tier(overrides: Partial<RouterTierCost>): RouterTierCost {
     estimatedCostUsd: 0,
     unpricedTurns: 0,
     models: [],
+    decisions: [],
     medianTurnSeconds: null,
     medianFirstAnswerSeconds: null,
     ...overrides
@@ -91,6 +92,53 @@ describe("RouterCostCard", () => {
     // Speed: an estimate, and the unpriced turn is left out of the per-turn figure.
     expect(within(rows[2]).getByText("≈$0.50")).toBeInTheDocument();
     expect(within(rows[2]).getByText("≈$0.13")).toBeInTheDocument();
-    expect(within(rows[2]).getByText(/mystery-model ×1 · 1 unpriced/)).toBeInTheDocument();
+    expect(within(rows[2]).getByText(/mystery-model ×1/)).toBeInTheDocument();
+    expect(within(rows[2]).getByText("4/5 turns priced")).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "First activity" })).toBeInTheDocument();
+  });
+
+  it("expands grouped decisions with effort, classification, and the recorded reason", async () => {
+    stubRouterCost({ tiers: [tier({
+      turns: 4,
+      decisions: [
+        {
+          provider: "claude", modelId: "claude-opus-5-5", reasoningEffort: "medium",
+          kind: "coding", difficulty: "standard", decision: "kept",
+          reason: "coding · standard; routes to Composer 2.5 on another provider, staying",
+          count: 2, turns: 3
+        },
+        {
+          provider: "claude", modelId: "claude-opus-5-5", reasoningEffort: "high",
+          kind: null, difficulty: null, decision: "fallback",
+          reason: "unrouted: classifier timeout", count: 1, turns: 1
+        }
+      ]
+    })] });
+    render(<RouterCostCard usageWindow="7d" visible />);
+    const toggle = await screen.findByRole("button", { name: "Balance routing decisions" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("table", { name: "Balance routing decisions" })).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const details = screen.getByRole("table", { name: "Balance routing decisions" });
+    expect(within(details).getByText("Follow-up · kept")).toBeInTheDocument();
+    expect(within(details).getByText(/routes to Composer 2.5 on another provider, staying/)).toBeInTheDocument();
+    expect(within(details).getByText(/· medium/)).toBeInTheDocument();
+    expect(within(details).getByText(/· high/)).toBeInTheDocument();
+    expect(within(details).getByText("Launch · fallback")).toBeInTheDocument();
+    expect(within(details).getByText("Not classified")).toBeInTheDocument();
+    const cells = within(within(details).getAllByRole("row")[1]).getAllByRole("cell");
+    expect(cells.slice(-2).map((cell) => cell.textContent)).toEqual(["2", "3"]);
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("table", { name: "Balance routing decisions" })).toBeNull();
+  });
+
+  it("leaves costs unknown when none of the answered turns are priced", async () => {
+    stubRouterCost({ tiers: [tier({ turns: 2, unpricedTurns: 2 })] });
+    render(<RouterCostCard usageWindow="7d" visible />);
+    const table = await screen.findByRole("table", { name: "Router cost by tier" });
+    expect(within(table).getByText("0/2 turns priced")).toBeInTheDocument();
+    expect(within(table).queryByText("$0.00")).toBeNull();
+    expect(within(table).getAllByText("—")).toHaveLength(4);
   });
 });

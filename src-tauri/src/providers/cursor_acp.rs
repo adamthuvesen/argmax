@@ -2565,6 +2565,51 @@ mod tests {
     }
 
     #[test]
+    fn resumed_cursor_selection_can_lower_and_restore_effort_and_model() {
+        for (model_id, advertised, effort, expected_option) in [
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::High,
+                ("effort", "high"),
+            ),
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::Low,
+                ("effort", "low"),
+            ),
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::High,
+                ("effort", "high"),
+            ),
+            (
+                "grok-4.7-medium",
+                "grok-4.7",
+                ReasoningEffort::Low,
+                ("reasoning_effort", "low"),
+            ),
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::High,
+                ("effort", "high"),
+            ),
+        ] {
+            let mut input = launch_input(model_id);
+            input.resume_conversation_id = Some("native-conversation".into());
+            input.reasoning_effort = Some(effort);
+            assert!(cursor_model_matches(advertised, &input));
+            assert_eq!(
+                changes(advertised, &input),
+                [(expected_option.0.into(), expected_option.1.into())]
+            );
+        }
+    }
+
+    #[test]
     fn auto_targets_the_catalog_entrys_optimize_for() {
         let input = launch_input("auto-smart[optimize_for=cost]");
         assert_eq!(

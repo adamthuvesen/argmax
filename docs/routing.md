@@ -34,13 +34,19 @@ Agents launch a routed chat through `session_launch` with `model: "auto"`
 TypeSafe's Jev (`jev-latest` at `https://api.typesafe.ai/v1/systemone`) answers
 typed questions about a text with calibrated probabilities. Argmax sends:
 
-- the **prompt only**, truncated to 8,000 characters — no transcript, files or
-  repo context;
+- for launches, the prompt capped at 8,000 characters
+- for follow-ups, bounded conversation and invoked skill context, with the new
+  request first, recent visible messages and routing decisions, and relevant
+  skill instructions using provider and checkout precedence. Clear hides earlier
+  context, subagent traces are excluded, and missing or clipped context is marked;
 - a **kind** question (choice: coding, mechanical, research, review, question);
 - a **difficulty** question (score 0 trivial – 4 very hard), folded to
   **Light** (≤ 1), **Standard** (2), **Heavy** (≥ 3);
 - for follow-ups only, a **correction** question: the probability the user is
-  unhappy with the previous work (failing, disliked, or to be redone).
+  unhappy with the previous work (failing, disliked, or to be redone)
+- for follow-ups, the relationship to earlier tasks (continuation, independent
+  new task, or bounded finishing step), its confidence, and whether the entire
+  upcoming workflow clearly needs less capability.
 
 The request has a 1.5 s connect and total timeout, no retries and no
 redirects. A 401/403 is `ROUTING_KEY_INVALID`; any other failure is
@@ -111,35 +117,82 @@ on its model.
 
 ## Follow-ups
 
-A chat is routed once at launch; after that a switch has to be free or pay for
-itself, because every model or effort change throws away the prompt cache
-([reroute.rs](../src-tauri/src/routing/reroute.rs)).
+The router reassesses the entire next task between turns. It uses a separate
+same-provider policy in [table.rs](../src-tauri/src/routing/table.rs), so a
+cross-provider launch preference cannot prevent adaptation within the existing
+native conversation. Model capability is explicit policy, independent of price.
 
 The router considers a follow-up only when the chat still has an `auto_tier`
-and the send is headed for a relaunch. A message that steers a live turn or is
-queued behind one is not classified then; a queued row is routed when it
-drains. Goal turns are never classified (see [Goals](#goals)). With no key or a
-Jev failure, the follow-up stays on its model.
+and the send is headed for a relaunch. Steering does not reclassify the active
+turn. Pending messages classify when dispatched. Goal turns keep their existing
+policy. A missing key, unavailable context, or Jev failure retains the current
+model and effort with a recorded reason.
+
+The bounded classifier context includes invoked skills as task data. `/ship`,
+`$ship`, and a request to use the ship skill include its workflow instructions
+and bounded relevant direct references. Merely mentioning a skill does not
+invoke it. Shipping with reviews, CI feedback, and unresolved repairs is judged
+as the whole workflow. Multiple steps alone do not imply maximum effort.
+`Continue`, `implement that`, and a return to earlier work inherit the relevant
+task's complexity. Labeled recent routes let Jev match a resumed task to its
+earlier model and effort, including an escalated effort above high. Restoration
+requires scope and match confidence of at least 0.9 and stays on the same provider. Missing skill context blocks reductions, while ordinary
+requests need no skill body.
 
 Each classified follow-up ends in one decision:
 
-- **escalate** — correction probability ≥ 0.85: move one rung up the chat's
-  provider ladder. At the top of the ladder the decision is `kept`.
-- **kept** — the grid's candidate is the current model and effort; or it is on
-  another provider (no CLI resumes another's conversation); or the chat is on
-  Cursor (unpriced, so the break-even test cannot run); or the router already
-  switched this chat within the provider's cache window; or the switch would
-  not pay back.
-- **reroute** — same provider, different model or effort, and one of:
-  - the cache is already cold: idle at least the provider's cache TTL (Codex
-    30 min, everyone else 5 min);
-  - a confident upgrade: the candidate is stronger and both kind and difficulty
-    confidence are ≥ 0.7;
-  - break-even: `context_tokens × (write_new − cache_read_old)` is at most two
-    turns' saving, where the saving prices the chat's last turn of
-    `usage_events` on both models.
+- `escalate`: correction probability at least 0.85 moves one rung up the existing
+  ladder. At the top, the route is kept.
+- `reroute` upward: kind and difficulty confidence at least 0.7 justify increased
+  capability, including a return to difficult work after a simple interlude.
+  This bypasses the cooldown and economic test.
+- `reroute` downward: complete relevant context plus kind, difficulty, scope,
+  and simpler-task scores at least 0.9 are required. These are policy thresholds,
+  not measured calibration of the new follow-up questions. Effort reduction on
+  the current model is preferred. A five-minute anti-oscillation cooldown applies
+  to continuing work, with a bypass for a confidently independent task or bounded
+  finishing step.
+- `kept`: insufficient evidence, an unsupported target, cooldown, or a model switch
+  that cannot cover a possible cache rebuild. The reason names the limiting gate.
 
-`fallback` rows come only from a launch whose classification failed.
+The provider targets are:
+
+| Provider | Follow-up policy |
+|---|---|
+| Claude | Opus with supported low, medium, or high effort. Frontier heavy questions target Fable. A retained stronger model can reduce or restore effort in place. |
+| Codex | Sol for lighter work, Astra for heavy substantive work and Frontier standard review or research. Effort can fall on the current model before considering a cheaper one. |
+| Cursor | Composer for lighter work, Cursor Opus for review and more demanding work. Opus effort can fall in place. Model downgrades stay blocked while pricing is unavailable. |
+| OpenCode | DeepSeek V4.1 Flash, clamped to the routing policy's high or max levels. A simpler task can step down from max to high. |
+| Grok Build | Grok 4.7 at low. Higher efforts have no demonstrated quality benefit in the current routing evidence. A previous higher effort can step down. |
+
+### Cache and economics
+
+Same-model effort changes are supported task-sizing decisions. Their reasons
+explicitly say the cache effect is unverified and make no savings claim. Claude
+Code documents conditional effort-cache preservation, but Argmax does not yet
+establish every endpoint, billing, and configuration precondition at runtime.
+Codex's experimental effort override is not enabled by this routing change.
+The native transport contracts and limits are in [providers.md](providers.md).
+
+Model downgrades require positive estimated savings for the next turn sufficient
+to pay for a full possible context rebuild. The estimate caps previous input and
+output observations at 256 each for a finishing step, 1,000 input and 500 output
+for Light work, and 4,000 input and 2,000 output otherwise. It credits at most one
+context read and no later turns. These are conservative policy caps, not forecasts
+validated by live measurements. Missing context size, pricing, or usable usage
+observations cannot establish payback. Claude's rebuild estimate allows the
+one-hour write rate.
+
+Elapsed idle time never proves a switch is free. Cache retention depends on the
+provider and serving path. A miss does not imply deletion, and switching back
+may reuse a surviving prefix without guaranteeing it. The cooldown is a routing
+policy, independent of retention. No automatic cross-provider downgrade occurs.
+
+Deterministic tests cover policy and native adapter requests. They cannot prove
+inference cache reuse. The live measurement matrix remains unchanged → effort
+down → effort back and model A → B → A, recording cached and uncached inputs,
+writes, latency, cost, process restart/resume, and compaction. No live matrix was
+run for this implementation under the shared-checkout execution restriction.
 
 ### Escalation ladders
 
@@ -165,7 +218,9 @@ inside the same Cursor conversation.
 A follow-up that names a different provider, model or effort than the chat's
 current one is the user picking by hand. It ends Auto routing for that chat:
 `sessions.auto_tier` and `auto_route` are cleared and the chip drops its tier.
-A follow-up that names no model (an agent's message, a script) is not a pin.
+The renderer sends no model override when its selection follows Auto. A
+follow-up that names no model (an Auto composer send, an agent's message, or a
+script) is not a pin, even if another window has changed the route meanwhile.
 
 The pin also writes a `pinned` row to `turn_routes`. A `pinned` row closes the
 chat's routing; it is not a turn and not a switch. It exists so the Router
@@ -191,11 +246,15 @@ v57 widened `turn_routes.decision` to allow `pinned`.
 `turn_routes` has one row per decision: `session_id`, `created_at`, `tier`,
 `provider`, `model_id`, `reasoning_effort`, `kind`, `difficulty`, the two
 confidences, `decision` (`launch`, `reroute`, `escalate`, `kept`, `fallback`,
-`pinned`) and `reason`. Every decision except `kept` also writes the
-session's `auto_tier` / `auto_route` (a pin then clears them), so dashboard
-reads need no join. A
+`pinned`) and `reason`. Decisions, including `kept`, refresh the session's
+`auto_tier` / `auto_route` so the chip explains retained routes too. A pin
+clears those fields. Dashboard reads need no join. A
 follow-up's row is written only once the send is admitted, so a send that Stop
-cancelled leaves no route behind. The hysteresis reads the latest `reroute` or
+cancelled leaves no route behind. Admission also checks the model, effort,
+provider, tier, activity stamp, and native conversation ID against the
+classification snapshot. A changed session retains its admitted route rather
+than applying stale classification. Echoed Auto selections are removed before
+queueing. The cooldown reads the latest `reroute` or
 `escalate` row as the chat's last switch.
 
 ## Project check

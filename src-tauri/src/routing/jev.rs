@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::table::{Difficulty, TaskKind};
+use super::context::FollowUpContext;
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 const JEV_URL: &str = "https://api.typesafe.ai/v1/systemone";
@@ -59,6 +60,21 @@ const DIFFICULTY_CRITERIA: [&str; 5] = [
 /// 2026-09-27, failure reports, "let's redo this", "start over" and "this is
 /// ugly" scored 0.90–0.97; preferences and new requests 0.16 or less.
 const CORRECTION_INSTRUCTIONS: &str = "The user is unhappy with the agent's previous work: it is failing or wrong (the change broke something or does not work, tests or the bug still fail, the answer is incorrect, the agent keeps making the same mistake), the user dislikes the result (for example it looks ugly or bad), or the user wants it redone or thrown away and started over. Asking for an alternative, stating a preference, suggesting an idea, asking a follow-up question or requesting a new change does not count.";
+const SCOPE_INSTRUCTIONS: &str = "How does the NEW USER REQUEST relate to earlier visible user tasks? Judge the whole upcoming workflow, including invoked skill instructions. A continuation such as 'continue' or 'implement that' inherits the relevant earlier task. Returning to an earlier hard task after a simple interlude is a continuation of that hard task.";
+const SCOPE_CRITERIA: [(&str, &str); 3] = [
+    ("continuation", "Continue or resume earlier substantive work, including a return to an earlier task after an interlude."),
+    ("new_task", "A clearly independent new task with its own goal."),
+    ("finishing_step", "A bounded final step of earlier work whose remaining scope is explicitly clear."),
+];
+const SIMPLER_INSTRUCTIONS: &str = "Is the ENTIRE upcoming task clearly simpler and safe for less model capability than the relevant earlier work? Include every step of invoked skills, external reviews, CI feedback, repairs, and repeated checks. Multi-step alone does not make a task hard, but unresolved difficult repairs do. Do not answer yes for ambiguous references, missing or truncated skill instructions, an uncertain continuation, or a return to an earlier hard task after a simple interlude. An independent, clearly easy task can answer yes even if earlier work was hard.";
+const RESUME_INSTRUCTIONS: &str = "Only when the NEW USER REQUEST clearly continues or returns to the exact earlier user task attached to a labeled route, choose that R label. A similar kind of work is not enough. Prefer none when the link is unclear, the route's user task is unavailable, or the request is independent.";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FollowUpScope {
+    Continuation,
+    NewTask,
+    FinishingStep,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Classification {
@@ -72,6 +88,13 @@ pub struct Classification {
     /// Probability the message reports a wrong previous answer; only asked
     /// for follow-ups.
     pub correction: Option<f64>,
+    pub follow_up_scope: Option<FollowUpScope>,
+    pub scope_confidence: Option<f64>,
+    /// Jev's probability that the complete upcoming workflow clearly needs
+    /// less capability than the relevant prior task.
+    pub simpler_task: Option<f64>,
+    pub resume_route: Option<String>,
+    pub resume_confidence: Option<f64>,
 }
 
 impl Classification {
@@ -97,6 +120,13 @@ pub async fn classify(
     ask_correction: bool,
 ) -> ArgmaxResult<Classification> {
     parse_response(&post(&request_body(prompt, ask_correction), api_key, JEV_TIMEOUT).await?)
+}
+
+pub async fn classify_follow_up(
+    context: &FollowUpContext,
+    api_key: &str,
+) -> ArgmaxResult<Classification> {
+    parse_response(&post(&follow_up_request_body(context), api_key, JEV_TIMEOUT).await?)
 }
 
 /// One Choice question over caller-described options: Jev's probability for
@@ -194,6 +224,33 @@ fn request_body(prompt: &str, ask_correction: bool) -> Value {
     json!({ "model": JEV_MODEL, "state": state, "questions": questions })
 }
 
+fn follow_up_request_body(context: &FollowUpContext) -> Value {
+    let mut body = request_body(&context.state, true);
+    body["questions"]["correction"]["instructions"] = json!("Judge ONLY the NEW USER REQUEST: does it say the previous agent work is failing, wrong, disliked, or needs redoing? Old complaints quoted in visible history or skill instructions are context, not a new correction.");
+    body["questions"]["kind"]["instructions"] = json!("Classify the entire next turn described by NEW USER REQUEST, including any invoked skill workflow and likely review, verification, and repair. A ship skill may involve more than a git command.");
+    body["questions"]["difficulty"]["instructions"] = json!("How much effort and reasoning will the complete next turn need, including the invoked workflow and relevant unresolved prior work? Judge the new request first. A short finishing step need not inherit every token of a long debugging turn.");
+    body["questions"]["scope"] = json!({
+        "type": "choice", "instructions": SCOPE_INSTRUCTIONS,
+        "criteria": SCOPE_CRITERIA.iter().map(|(key, value)| ((*key).to_string(), Value::from(*value))).collect::<serde_json::Map<String, Value>>()
+    });
+    body["questions"]["simpler"] = json!({ "type": "noul", "instructions": SIMPLER_INSTRUCTIONS });
+    if !context.routes.is_empty() {
+        let mut criteria = serde_json::Map::new();
+        criteria.insert("none".to_string(), Value::from("No clear continuation of one labeled earlier user task."));
+        for route in &context.routes {
+            if route.user_task.is_some() {
+                criteria.insert(route.id.clone(), Value::from(format!("Continue the exact earlier user task marked {} in the state.", route.id)));
+            }
+        }
+        if criteria.len() > 1 {
+            body["questions"]["resume"] = json!({
+                "type": "choice", "instructions": RESUME_INSTRUCTIONS, "criteria": criteria
+            });
+        }
+    }
+    body
+}
+
 #[derive(Debug, Deserialize)]
 struct Answers {
     answers: HashMap<String, Answer>,
@@ -233,17 +290,33 @@ fn parse_response(body: &Value) -> ArgmaxResult<Classification> {
         .ok_or_else(|| jev_error("difficulty answer has no score"))?;
     Ok(Classification {
         kind,
-        kind_confidence: kind_answer.confidence.unwrap_or(0.0),
+        kind_confidence: kind_answer.confidence.and_then(valid_probability).unwrap_or(0.0),
         difficulty_score,
-        difficulty_confidence: difficulty_answer.confidence.unwrap_or(0.0),
+        difficulty_confidence: difficulty_answer.confidence.and_then(valid_probability).unwrap_or(0.0),
         level_probabilities: difficulty_answer.probabilities.as_ref().map(|by_level| {
-            std::array::from_fn(|level| by_level.get(&level.to_string()).copied().unwrap_or(0.0))
+            std::array::from_fn(|level| by_level.get(&level.to_string()).copied().and_then(valid_probability).unwrap_or(0.0))
         }),
         correction: parsed
             .answers
             .get("correction")
-            .and_then(|answer| answer.noul),
+            .and_then(|answer| answer.noul.and_then(valid_probability)),
+        follow_up_scope: parsed.answers.get("scope").and_then(|answer| match answer.choice.as_deref() {
+            Some("continuation") => Some(FollowUpScope::Continuation),
+            Some("new_task") => Some(FollowUpScope::NewTask),
+            Some("finishing_step") => Some(FollowUpScope::FinishingStep),
+            _ => None,
+        }),
+        scope_confidence: parsed.answers.get("scope").and_then(|answer| answer.confidence.and_then(valid_probability)),
+        simpler_task: parsed.answers.get("simpler").and_then(|answer| answer.noul.and_then(valid_probability)),
+        resume_route: parsed.answers.get("resume").and_then(|answer| answer.choice.as_deref())
+            .filter(|route| route.starts_with('R') && route.len() > 1 && route[1..].chars().all(|c| c.is_ascii_digit()))
+            .map(str::to_string),
+        resume_confidence: parsed.answers.get("resume").and_then(|answer| answer.confidence.and_then(valid_probability)),
     })
+}
+
+fn valid_probability(value: f64) -> Option<f64> {
+    (value.is_finite() && (0.0..=1.0).contains(&value)).then_some(value)
 }
 
 fn jev_error(detail: impl std::fmt::Display) -> ArgmaxError {
@@ -322,5 +395,45 @@ mod tests {
             request_body("fix it", true)["questions"]["correction"]["type"],
             "noul"
         );
+    }
+
+    #[test]
+    fn follow_up_asks_about_entire_scope_and_parses_reduction_evidence() {
+        let context = FollowUpContext {
+            state: "NEW USER REQUEST: ship this\nSkill ship: Review CI and repair failures".to_string(),
+            downgrade_safe: true,
+            routes: vec![super::super::context::ContextRoute {
+                id: "R0".to_string(), provider: crate::ipc::validation::ProviderId::Codex,
+                model_id: "gpt-6-astra".to_string(), effort: Some(crate::ipc::validation::ReasoningEffort::Xhigh),
+                user_task: Some("Investigate the hard bug".to_string()),
+            }],
+        };
+        let body = follow_up_request_body(&context);
+        assert_eq!(body["questions"]["scope"]["type"], "choice");
+        assert_eq!(body["questions"]["simpler"]["type"], "noul");
+        assert_eq!(body["questions"]["resume"]["criteria"]["R0"].as_str(), Some("Continue the exact earlier user task marked R0 in the state."));
+        assert!(body["state"].as_str().unwrap().contains("Review CI"));
+
+        let mut response = live_shaped_response("coding", 3.0);
+        response["answers"]["scope"] = json!({"choice": "continuation", "confidence": 0.91});
+        response["answers"]["simpler"] = json!({"noul": 0.03});
+        response["answers"]["resume"] = json!({"choice": "R0", "confidence": 0.96});
+        let parsed = parse_response(&response).unwrap();
+        assert_eq!(parsed.follow_up_scope, Some(FollowUpScope::Continuation));
+        assert_eq!(parsed.scope_confidence, Some(0.91));
+        assert_eq!(parsed.simpler_task, Some(0.03));
+        assert_eq!(parsed.resume_route.as_deref(), Some("R0"));
+        assert_eq!(parsed.resume_confidence, Some(0.96));
+    }
+
+    #[test]
+    fn invalid_follow_up_probabilities_cannot_justify_a_switch() {
+        let mut response = live_shaped_response("coding", 1.0);
+        response["answers"]["scope"] = json!({"choice": "new_task", "confidence": 1.1});
+        response["answers"]["simpler"] = json!({"noul": -0.1});
+        response["answers"]["resume"] = json!({"choice": "R0", "confidence": 0.0});
+        let parsed = parse_response(&response).unwrap();
+        assert_eq!(parsed.scope_confidence, None);
+        assert_eq!(parsed.simpler_task, None);
     }
 }

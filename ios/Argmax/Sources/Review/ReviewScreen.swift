@@ -102,7 +102,7 @@ struct ReviewScreen: View {
                     body(for: mode)
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) { header }
+            .screenHeaderBar { header }
         }
         .toolbar(.hidden, for: .navigationBar)
         .interactivePop()
@@ -234,10 +234,8 @@ struct ReviewScreen: View {
                     .foregroundStyle(Theme.ink)
                     .padding(.horizontal, Spacing.row)
                     .padding(.vertical, 7)
-                    // `composerChipSurface` fills with the ground, which is
-                    // the step *inside* a composer card. On the screen's own
-                    // ground that is no step at all, so the chip takes the
-                    // raised one instead and reads as a control.
+                    // On the screen's own ground a chip would vanish, so this
+                    // control takes the raised surface instead.
                     .background(Theme.raised, in: .capsule)
                 }
                 .buttonStyle(PressDim())

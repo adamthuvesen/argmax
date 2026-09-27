@@ -15,11 +15,11 @@ final class ThemeTests: XCTestCase {
 
     func testSurfacesAndInkAreTheDesktopTokens() {
         XCTAssertEqual(hex(Theme.groundColor, light), "#FDFDFD")
-        XCTAssertEqual(hex(Theme.groundColor, dark), "#141414")
+        XCTAssertEqual(hex(Theme.groundColor, dark), "#0F0F0F")
         XCTAssertEqual(hex(Theme.inkColor, light), "#1F1D18")
         XCTAssertEqual(hex(Theme.inkColor, dark), "#F4F2EC")
         XCTAssertEqual(hex(Theme.lineColor, light), "#E3E6E8")
-        XCTAssertEqual(hex(Theme.lineColor, dark), "#2B2B29")
+        XCTAssertEqual(hex(Theme.lineColor, dark), "#262624")
         // Paper takes the ink-ward blend (`--chip-ink`); charcoal keeps the
         // raw `--muted`, which already clears AA there.
         XCTAssertEqual(hex(Theme.mutedColor, light), "#7A766C")
@@ -35,12 +35,12 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(hex(Theme.sageColor, dark), "#6DAB86")
     }
 
-    /// A raised surface is the ground plus 4% ink — never a grey card with a
-    /// shadow, and never a hardcoded second hex that drifts when the ground
-    /// moves.
+    /// Paper keeps the ground-plus-4%-ink recipe; charcoal takes
+    /// `--composer-surface`, lifted above `--panel-sunken` ground.
     func testRaisedIsTheGroundPlusFourPercentInk() {
         XCTAssertEqual(hex(Theme.raisedColor, light), "#F4F4F4")
-        XCTAssertEqual(hex(Theme.raisedColor, dark), "#1D1D1D")
+        XCTAssertEqual(hex(Theme.raisedColor, dark), "#202020")
+        XCTAssertEqual(hex(Theme.insetColor, dark), "#1A1A1A")
         // Pressed is the same recipe one step up, so the two never invert.
         XCTAssertGreaterThan(distance(Theme.pressedColor, Theme.groundColor, dark),
                              distance(Theme.raisedColor, Theme.groundColor, dark))

@@ -51,6 +51,17 @@ final class ModelRecencyTests: XCTestCase {
         XCTAssertEqual(result.map(\.value), ["codex/gpt-5.6-sol"])
     }
 
+    func testPrefixedUsesShortLabelForRecentRouterTier() {
+        let speed = PickerOption(value: AutoTier.cost.pickerValue, label: AutoTier.cost.shortLabel, group: "Router")
+        ModelRecency.touch(AutoTier.cost.pickerValue)
+
+        let result = ModelRecency.prefixed([speed])
+
+        XCTAssertEqual(result[0].group, "Recent")
+        XCTAssertEqual(result[0].label, "Speed")
+        XCTAssertEqual(result[1].label, "Speed", "catalogue row keeps the Router-section label")
+    }
+
     func testPrefixedCapsAtThreeRecentRows() {
         let options = (1...5).map { PickerOption(value: "claude/model-\($0)", label: "Model \($0)", group: "Claude") }
         for option in options { ModelRecency.touch(option.value) }

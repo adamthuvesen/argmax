@@ -200,6 +200,79 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty) -> RoutedMo
     }
 }
 
+/// Follow-ups stay within the native conversation's provider. This is a
+/// capability policy, independent of list price and of the launch grid.
+pub fn follow_up_target(
+    provider: ProviderId,
+    tier: AutoTier,
+    kind: TaskKind,
+    difficulty: Difficulty,
+) -> RoutedModel {
+    let (_, mut effort) = column_and_effort(tier, difficulty);
+    if difficulty == Difficulty::Light && tier != AutoTier::Intelligence {
+        effort = Low;
+    }
+    if kind == TaskKind::Mechanical {
+        effort = if difficulty == Difficulty::Light { Low } else { Medium };
+    }
+    let model = match provider {
+        ProviderId::Claude => {
+            if tier == AutoTier::Intelligence
+                && difficulty == Difficulty::Heavy
+                && kind == TaskKind::Question
+            {
+                &FABLE
+            } else {
+                &OPUS
+            }
+        }
+        ProviderId::Codex => {
+            if (difficulty == Difficulty::Heavy && kind != TaskKind::Mechanical)
+                || (tier == AutoTier::Intelligence
+                    && difficulty == Difficulty::Standard
+                    && matches!(kind, TaskKind::Review | TaskKind::Research))
+            {
+                &ASTRA
+            } else {
+                &SOL
+            }
+        }
+        ProviderId::Cursor => {
+            if kind == TaskKind::Review
+                || difficulty == Difficulty::Heavy
+                || (difficulty == Difficulty::Standard && tier != AutoTier::Cost)
+                || tier == AutoTier::Intelligence
+            {
+                &CURSOR_OPUS
+            } else {
+                &COMPOSER
+            }
+        }
+        ProviderId::Opencode => &DEEPSEEK_FLASH,
+        // Higher Grok effort has no demonstrated quality benefit in the
+        // routing evidence. Keep its established low-effort policy.
+        ProviderId::Grok => {
+            effort = Low;
+            &GROK
+        }
+    };
+    RoutedModel {
+        model,
+        effort: clamp_effort(effort, model),
+    }
+}
+
+/// Only compares models in the router's explicit policy. Unknown models are
+/// retained, never assigned a capability based on their price.
+pub(crate) fn capability(model_id: &str) -> Option<usize> {
+    match model_id {
+        "composer-2.5" | "opencode-go/deepseek-v4.1-flash" | "grok-4.7" => Some(0),
+        "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6-sol" => Some(1),
+        "claude-fable-5-1" | "gpt-6-astra" => Some(2),
+        _ => None,
+    }
+}
+
 /// Used when Jev is unavailable: the tier's standard coding cell, so an
 /// Speed chat stays cheap and fast (Composer) rather than landing on Opus.
 pub fn fallback(tier: AutoTier) -> RoutedModel {

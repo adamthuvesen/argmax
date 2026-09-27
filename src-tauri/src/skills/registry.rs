@@ -39,10 +39,24 @@ pub struct SkillSummary {
     pub source: SkillSource,
 }
 
+/// Internal routing input. The public `/` menu still receives only summaries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillInstructions {
+    pub name: String,
+    pub text: String,
+    pub complete: bool,
+}
+
+#[derive(Debug, Clone)]
+struct DiscoveredSkill {
+    summary: SkillSummary,
+    path: PathBuf,
+}
+
 #[derive(Debug)]
 pub struct SkillRegistry {
     home_dir: PathBuf,
-    cache: Mutex<BTreeMap<String, (Instant, Vec<SkillSummary>)>>,
+    cache: Mutex<BTreeMap<String, (Instant, Vec<DiscoveredSkill>)>>,
 }
 
 impl SkillRegistry {
@@ -69,6 +83,15 @@ impl SkillRegistry {
         provider: ProviderId,
         workspace_cwd: Option<&Path>,
     ) -> Vec<SkillSummary> {
+        self.discover_skills(provider, workspace_cwd)
+            .into_iter().map(|skill| skill.summary).collect()
+    }
+
+    fn discover_skills(
+        &self,
+        provider: ProviderId,
+        workspace_cwd: Option<&Path>,
+    ) -> Vec<DiscoveredSkill> {
         let cache_key = format!(
             "{provider:?}::{}",
             workspace_cwd
@@ -86,10 +109,12 @@ impl SkillRegistry {
             }
         }
 
-        let mut collected = BTreeMap::<String, SkillSummary>::new();
+        let mut collected = BTreeMap::<String, DiscoveredSkill>::new();
         for source in self.resolve_sources(provider, workspace_cwd) {
             for skill in load_source(&source) {
-                collected.entry(skill.name.clone()).or_insert(skill);
+                collected
+                    .entry(skill.summary.name.to_ascii_lowercase())
+                    .or_insert(skill);
             }
         }
         let result = collected.into_values().collect::<Vec<_>>();
@@ -97,6 +122,41 @@ impl SkillRegistry {
             .lock_or_recover("skills cache")
             .insert(cache_key, (Instant::now(), result.clone()));
         result
+    }
+
+    /// Reads only explicitly invoked names, using the same source order and
+    /// first-wins discovery as autocomplete. Missing names stay visible to the
+    /// caller so they cannot be mistaken for a simple task.
+    pub fn invoked_instructions(
+        &self,
+        provider: ProviderId,
+        workspace_cwd: Option<&Path>,
+        names: &[String],
+        max_chars: usize,
+    ) -> Vec<SkillInstructions> {
+        let mut wanted = names.iter().map(|name| name.to_ascii_lowercase()).collect::<Vec<_>>();
+        wanted.sort();
+        wanted.dedup();
+        let mut found = BTreeMap::<String, SkillInstructions>::new();
+        for skill in self.discover_skills(provider, workspace_cwd) {
+            let key = skill.summary.name.to_ascii_lowercase();
+            if !wanted.contains(&key) || found.contains_key(&key) {
+                continue;
+            }
+            if !fs::metadata(&skill.path).ok().is_some_and(|metadata| metadata.len() <= SKILL_FILE_SIZE_CAP_BYTES) {
+                continue;
+            }
+            let Some(text) = fs::read_to_string(&skill.path).ok() else {
+                continue;
+            };
+            let (text, complete) = bounded_instructions(&skill.path, &text, max_chars);
+            found.insert(key, SkillInstructions { name: skill.summary.name, text, complete });
+        }
+        names.iter().map(|name| {
+            found.get(&name.to_ascii_lowercase()).cloned().unwrap_or_else(|| SkillInstructions {
+                name: name.clone(), text: String::new(), complete: false,
+            })
+        }).collect()
     }
 
     fn resolve_sources(
@@ -314,7 +374,7 @@ impl SourceDescriptor {
     }
 }
 
-fn load_source(source: &SourceDescriptor) -> Vec<SkillSummary> {
+fn load_source(source: &SourceDescriptor) -> Vec<DiscoveredSkill> {
     match source.kind {
         SourceKind::SkillDir => {
             load_skill_dir(&source.root, source.source, source.exclude_dot_dirs)
@@ -325,7 +385,7 @@ fn load_source(source: &SourceDescriptor) -> Vec<SkillSummary> {
     }
 }
 
-fn load_skill_dir(root: &Path, source: SkillSource, exclude_dot_dirs: bool) -> Vec<SkillSummary> {
+fn load_skill_dir(root: &Path, source: SkillSource, exclude_dot_dirs: bool) -> Vec<DiscoveredSkill> {
     let mut results = Vec::new();
     for entry in read_dir_names(root) {
         if exclude_dot_dirs && entry.starts_with('.') {
@@ -342,7 +402,7 @@ fn load_skill_dir(root: &Path, source: SkillSource, exclude_dot_dirs: bool) -> V
     results
 }
 
-fn load_prompt_dir(root: &Path, source: SkillSource) -> Vec<SkillSummary> {
+fn load_prompt_dir(root: &Path, source: SkillSource) -> Vec<DiscoveredSkill> {
     let mut results = Vec::new();
     for entry in read_dir_names(root) {
         let path = root.join(&entry);
@@ -363,7 +423,7 @@ fn load_prompt_dir(root: &Path, source: SkillSource) -> Vec<SkillSummary> {
     results
 }
 
-fn load_plugin_root(root: &Path, source: SkillSource) -> Vec<SkillSummary> {
+fn load_plugin_root(root: &Path, source: SkillSource) -> Vec<DiscoveredSkill> {
     let mut results = Vec::new();
     for plugin in read_dir_names(root) {
         let skills_root = root.join(plugin).join("skills");
@@ -374,7 +434,7 @@ fn load_plugin_root(root: &Path, source: SkillSource) -> Vec<SkillSummary> {
     results
 }
 
-fn load_plugin_cache(root: &Path, source: SkillSource) -> Vec<SkillSummary> {
+fn load_plugin_cache(root: &Path, source: SkillSource) -> Vec<DiscoveredSkill> {
     let mut results = Vec::new();
     for distribution in read_dir_names(root) {
         let distribution_path = root.join(distribution);
@@ -401,7 +461,7 @@ fn parse_skill_file(
     file_path: &Path,
     fallback_name: &str,
     source: SkillSource,
-) -> Option<SkillSummary> {
+) -> Option<DiscoveredSkill> {
     let metadata = fs::metadata(file_path).ok()?;
     if metadata.len() > SKILL_FILE_SIZE_CAP_BYTES {
         tracing::warn!(
@@ -415,11 +475,85 @@ fn parse_skill_file(
     }
     let content = fs::read_to_string(file_path).ok()?;
     let frontmatter = parse_frontmatter(&content);
-    Some(SkillSummary {
-        name: frontmatter.name.unwrap_or_else(|| fallback_name.to_owned()),
-        description: frontmatter.description.unwrap_or_default(),
-        source,
+    Some(DiscoveredSkill {
+        summary: SkillSummary {
+            name: frontmatter.name.unwrap_or_else(|| fallback_name.to_owned()),
+            description: frontmatter.description.unwrap_or_default(),
+            source,
+        },
+        path: file_path.to_path_buf(),
     })
+}
+
+fn bounded_instructions(path: &Path, body: &str, max_chars: usize) -> (String, bool) {
+    let skill_dir = path.parent().unwrap_or(Path::new("."));
+    let canonical_dir = skill_dir.canonicalize().ok();
+    let mut references = Vec::new();
+    let mut missing_reference = false;
+    for word in body.split_whitespace() {
+        let candidate = word.rsplit_once("](").map_or(word, |(_, path)| path)
+            .trim_end_matches(|character: char| matches!(character, ')' | '.' | ',' | ';' | ':'))
+            .trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '.' && character != '/' && character != '-');
+        if !candidate.ends_with(".md") {
+            continue;
+        }
+        if Path::new(candidate).is_absolute() {
+            missing_reference = true;
+            continue;
+        }
+        let reference = skill_dir.join(candidate);
+        if !canonical_dir.as_ref().is_some_and(|root| {
+            reference.canonicalize().ok().is_some_and(|resolved| resolved.starts_with(root))
+        }) {
+            missing_reference = true;
+            continue;
+        }
+        if references.contains(&reference) {
+            continue;
+        }
+        if references.len() == 2 {
+            missing_reference = true;
+            continue;
+        }
+        references.push(reference);
+    }
+
+    let mut text = String::new();
+    let body_budget = if references.is_empty() { max_chars } else { max_chars * 3 / 5 };
+    let (body_excerpt, body_complete) = take_chars(body, body_budget);
+    text.push_str(&body_excerpt);
+    let mut complete = body_complete && !missing_reference;
+    for reference in references {
+        let Ok(metadata) = fs::metadata(&reference) else {
+            complete = false;
+            continue;
+        };
+        if metadata.len() > SKILL_FILE_SIZE_CAP_BYTES {
+            complete = false;
+            continue;
+        }
+        let Ok(contents) = fs::read_to_string(&reference) else {
+            complete = false;
+            continue;
+        };
+        let remaining = max_chars.saturating_sub(text.chars().count());
+        let label = format!("\nDirect reference {}:\n", reference.file_name().unwrap_or_default().to_string_lossy());
+        if remaining <= label.chars().count() {
+            complete = false;
+            break;
+        }
+        text.push_str(&label);
+        let (excerpt, reference_complete) = take_chars(&contents, remaining - label.chars().count());
+        text.push_str(&excerpt);
+        complete &= reference_complete;
+    }
+    (text, complete)
+}
+
+fn take_chars(text: &str, max_chars: usize) -> (String, bool) {
+    let mut chars = text.chars();
+    let excerpt: String = chars.by_ref().take(max_chars).collect();
+    (excerpt, chars.next().is_none())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -734,6 +868,53 @@ mod tests {
         let without_workspace = registry.list_skills(ProviderId::Claude, None);
         assert_eq!(without_workspace[0].description, "from user");
         assert_eq!(without_workspace[0].source, SkillSource::User);
+    }
+
+    #[test]
+    fn invoked_body_uses_workspace_precedence_and_bounded_direct_reference() {
+        let home = tempdir().unwrap();
+        let workspace = tempdir().unwrap();
+        let registry = SkillRegistry::new(home.path());
+        write_skill(&home.path().join(".claude/skills"), "Ship", "name: Ship\ndescription: user");
+        let workspace_skills = workspace.path().join(".claude/skills");
+        write_skill(&workspace_skills, "ship", "name: ship\ndescription: workspace");
+        let skill_dir = workspace_skills.join("ship");
+        fs::create_dir_all(skill_dir.join("references")).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "---\nname: ship\n---\nRun reviews and [babysit](references/babysit.md), then [next](next.md).\n").unwrap();
+        fs::write(skill_dir.join("references/babysit.md"), "Repair CI failures before merging.").unwrap();
+        fs::write(skill_dir.join("next.md"), "Confirm the merged result.").unwrap();
+
+        assert_eq!(registry.list_skills(ProviderId::Claude, Some(workspace.path())).len(), 1);
+
+        let instructions = registry.invoked_instructions(
+            ProviderId::Claude, Some(workspace.path()), &["ship".to_string()], 2_000,
+        );
+        assert_eq!(instructions.len(), 1);
+        assert!(instructions[0].complete);
+        assert!(instructions[0].text.contains("Repair CI failures"));
+        assert!(instructions[0].text.contains("Confirm the merged result"));
+        assert!(!instructions[0].text.contains("description: user"));
+    }
+
+    #[test]
+    fn missing_or_clipped_invoked_body_is_explicit() {
+        let home = tempdir().unwrap();
+        let registry = SkillRegistry::new(home.path());
+        assert!(!registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 100)[0].complete);
+        write_skill(&home.path().join(".claude/skills"), "ship", "name: ship\ndescription: workflow");
+        registry.clear_cache();
+        assert!(!registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 5)[0].complete);
+    }
+
+    #[test]
+    fn absolute_skill_reference_does_not_look_complete() {
+        let home = tempdir().unwrap();
+        let registry = SkillRegistry::new(home.path());
+        let skill_dir = home.path().join(".claude/skills/ship");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "---\nname: ship\n---\nRead [next](/outside/next.md).\n").unwrap();
+        let instructions = registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 2_000);
+        assert!(!instructions[0].complete);
     }
 
     #[test]

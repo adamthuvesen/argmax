@@ -44,13 +44,68 @@ func transcriptMultitaskAnswerPreview(_ answer: String?) -> String? {
     return String(line.prefix(119)).trimmingCharacters(in: .whitespaces) + "…"
 }
 
-func transcriptMultitaskStatus(_ state: String?) -> (label: String, status: TranscriptToolStatus) {
-    switch state {
-    case "complete": return ("Completed", .done)
-    case "cancelled": return ("Stopped", .failed)
-    case "failed": return ("Failed", .failed)
-    case "blocked": return ("Waiting for you", .running)
-    default: return ("Running", .running)
+enum TranscriptMultitaskDisplayStatus: Equatable {
+    case running
+    case done
+    case needsYou
+    case failed
+    case stopped
+}
+
+/// Session state is authoritative; attention can claim the reader mid-turn.
+func transcriptMultitaskDisplayStatus(
+    state: String?,
+    attention: AttentionState? = nil
+) -> TranscriptMultitaskDisplayStatus {
+    if state == "failed" { return .failed }
+    if state == "cancelled" { return .stopped }
+    if state == "blocked" { return .needsYou }
+    if let attention {
+        switch attention {
+        case .approvalNeeded, .questionAsked, .blocked: return .needsYou
+        default: break
+        }
+    }
+    if state == "complete" { return .done }
+    return .running
+}
+
+func transcriptMultitaskStatus(
+    _ state: String?,
+    attention: AttentionState? = nil
+) -> (label: String, status: TranscriptToolStatus) {
+    switch transcriptMultitaskDisplayStatus(state: state, attention: attention) {
+    case .done: return ("Completed", .done)
+    case .stopped: return ("Stopped", .failed)
+    case .failed: return ("Failed", .failed)
+    case .needsYou: return ("Waiting for you", .running)
+    case .running: return ("Running", .running)
+    }
+}
+
+enum TranscriptComposerMultitasks {
+    static func notices(from items: [TranscriptItem]) -> [TranscriptMultitask] {
+        items.compactMap { item in
+            guard case .multitask(let multitask) = item else { return nil }
+            return multitask
+        }
+    }
+
+    static func visible(
+        _ multitasks: [TranscriptMultitask],
+        sessions: [SessionSummary],
+        defaults: UserDefaults = .standard
+    ) -> [TranscriptMultitask] {
+        multitasks.filter { multitask in
+            guard let childID = multitask.childSessionId else { return true }
+            if !TranscriptMultitaskDismissals.contains(childID, defaults: defaults) { return true }
+            let session = sessions.first { $0.id == childID }
+            let status = transcriptMultitaskDisplayStatus(
+                state: session?.state.rawWire ?? multitask.state,
+                attention: session?.attention
+            )
+            return status == .running || status == .needsYou
+        }
     }
 }
 
@@ -58,18 +113,27 @@ struct TranscriptMultitaskRow: View {
     let multitask: TranscriptMultitask
     let liveState: String?
     let liveLabel: String?
+    let liveAttention: AttentionState?
     let client: BridgeClient
     let onLoad: (String) async throws -> TranscriptMultitaskDetailSnapshot
     var onOpenFile: (String) -> Void = { _ in }
     var onOpenFullChat: ((String) -> Void)?
+    /// When true, the row is one lane inside the composer stack — no outer card.
+    var embedInComposerLane = false
 
     @State private var showingDetail = false
     @State private var dismissed: Bool
     @State private var stopping = false
     @State private var failure: String?
 
+    private var resolvedWireState: String? { liveState ?? multitask.state }
+
     private var state: (label: String, status: TranscriptToolStatus) {
-        transcriptMultitaskStatus(liveState ?? multitask.state)
+        transcriptMultitaskStatus(resolvedWireState, attention: liveAttention)
+    }
+
+    private var displayStatus: TranscriptMultitaskDisplayStatus {
+        transcriptMultitaskDisplayStatus(state: resolvedWireState, attention: liveAttention)
     }
 
     private var taskLabel: String {
@@ -81,21 +145,26 @@ struct TranscriptMultitaskRow: View {
         multitask: TranscriptMultitask,
         liveState: String? = nil,
         liveLabel: String? = nil,
+        liveAttention: AttentionState? = nil,
         client: BridgeClient,
         onLoad: @escaping (String) async throws -> TranscriptMultitaskDetailSnapshot,
         onOpenFile: @escaping (String) -> Void = { _ in },
-        onOpenFullChat: ((String) -> Void)? = nil
+        onOpenFullChat: ((String) -> Void)? = nil,
+        embedInComposerLane: Bool = false
     ) {
         self.multitask = multitask
         self.liveState = liveState
         self.liveLabel = liveLabel
+        self.liveAttention = liveAttention
         self.client = client
         self.onLoad = onLoad
         self.onOpenFile = onOpenFile
         self.onOpenFullChat = onOpenFullChat
+        self.embedInComposerLane = embedInComposerLane
         let persisted = multitask.childSessionId.map { TranscriptMultitaskDismissals.contains($0) } ?? false
         let resolvedState = liveState ?? multitask.state
-        _dismissed = State(initialValue: persisted && transcriptMultitaskStatus(resolvedState).status != .running)
+        let status = transcriptMultitaskDisplayStatus(state: resolvedState, attention: liveAttention)
+        _dismissed = State(initialValue: persisted && status != .running && status != .needsYou)
     }
 
     var body: some View {
@@ -143,7 +212,8 @@ struct TranscriptMultitaskRow: View {
                 .accessibilityLabel("Open multitask: \(taskLabel), \(state.label)")
                 .accessibilityValue(failure ?? (state.status == .running ? "" : transcriptMultitaskAnswerPreview(multitask.answer) ?? ""))
 
-                if state.status == .running, let childSessionID = multitask.childSessionId {
+                if displayStatus == .running || displayStatus == .needsYou,
+                   let childSessionID = multitask.childSessionId {
                     Button {
                         stop(childSessionID)
                     } label: {
@@ -162,12 +232,9 @@ struct TranscriptMultitaskRow: View {
                     .foregroundStyle(Theme.stop)
                     .disabled(stopping)
                     .accessibilityLabel("Stop multitask: \(taskLabel)")
-                } else if state.status != .running {
+                } else if displayStatus != .running {
                     Button {
-                        if let childSessionID = multitask.childSessionId {
-                            TranscriptMultitaskDismissals.dismiss(childSessionID)
-                        }
-                        dismissed = true
+                        dismissRow()
                     } label: {
                         Image(systemName: "xmark")
                             .typeSymbol(.caption, weight: .medium)
@@ -179,10 +246,24 @@ struct TranscriptMultitaskRow: View {
                     .accessibilityLabel("Dismiss multitask: \(taskLabel)")
                 }
             }
-            .padding(.horizontal, Spacing.row)
+            .padding(.horizontal, embedInComposerLane ? Spacing.row : Spacing.row)
             .padding(.vertical, Spacing.tight)
-            .frame(minHeight: 60)
-            .background(Theme.raised, in: .rect(cornerRadius: Radius.card, style: .continuous))
+            .frame(minHeight: embedInComposerLane ? 52 : 60)
+            .background {
+                if !embedInComposerLane {
+                    Theme.raised
+                        .clipShape(.rect(cornerRadius: Radius.card, style: .continuous))
+                }
+            }
+            .contentShape(.rect)
+            .onLongPressGesture(minimumDuration: 0.45) {
+                guard displayStatus != .running else { return }
+                dismissRow()
+            }
+            .accessibilityAction(named: "Dismiss") {
+                guard displayStatus != .running else { return }
+                dismissRow()
+            }
             .sheet(isPresented: $showingDetail) {
                 if let childSessionID = multitask.childSessionId {
                     TranscriptMultitaskDetail(
@@ -196,10 +277,18 @@ struct TranscriptMultitaskRow: View {
                     )
                 }
             }
-            .onChange(of: state.status) {
-                if state.status == .running { dismissed = false }
+            .onChange(of: displayStatus) {
+                if displayStatus == .running || displayStatus == .needsYou { dismissed = false }
             }
         }
+    }
+
+    private func dismissRow() {
+        if let childSessionID = multitask.childSessionId {
+            TranscriptMultitaskDismissals.dismiss(childSessionID)
+        }
+        dismissed = true
+        Haptics.selection()
     }
 
     private func stop(_ sessionID: String) {
@@ -433,6 +522,8 @@ private struct TranscriptMultitaskDetail: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !sending else { return }
         sending = true
+        // The keyboard leaves with the message, as in the chat composer.
+        composerFocused = false
         Task {
             if await actions.sendMessage(text, context: context) {
                 draft = ""
@@ -443,5 +534,125 @@ private struct TranscriptMultitaskDetail: View {
             }
             sending = false
         }
+    }
+}
+
+/// Multitasks pinned above the composer (and above queued follow-ups), matching
+/// the desktop checks lane rather than scrolling away in the transcript.
+struct TranscriptComposerMultitaskSection: View {
+    let multitasks: [TranscriptMultitask]
+    let client: BridgeClient
+    let onLoad: (String) async throws -> TranscriptMultitaskDetailSnapshot
+    var onOpenFile: (String) -> Void = { _ in }
+    var onOpenFullChat: ((String) -> Void)?
+
+    @EnvironmentObject private var store: DashboardStore
+    @State private var expanded = true
+
+    private static let openGroupMaxRows = 3
+
+    var body: some View {
+        if !multitasks.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                if multitasks.count > 1 {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) { expanded.toggle() }
+                    } label: {
+                        HStack(spacing: Spacing.tight) {
+                            Image(systemName: "rectangle.split.2x1")
+                                .typeSymbol(.caption2)
+                                .foregroundStyle(Theme.muted)
+                                .accessibilityHidden(true)
+                            Text("Alongside")
+                                .typeStyle(.caption2, weight: .semibold)
+                                .foregroundStyle(Theme.mutedStrong)
+                            Text(summary)
+                                .typeStyle(.caption2)
+                                .foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.down")
+                                .typeSymbol(.caption2, weight: .semibold)
+                                .foregroundStyle(Theme.muted)
+                                .rotationEffect(.degrees(expanded ? 0 : -90))
+                                .accessibilityHidden(true)
+                        }
+                        .padding(.horizontal, Spacing.row)
+                        .padding(.vertical, Spacing.tight + 2)
+                        .frame(minHeight: 40, alignment: .leading)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Alongside multitasks, \(summary)")
+                    .accessibilityValue(expanded ? "Expanded" : "Collapsed")
+                }
+
+                if expanded || multitasks.count == 1 {
+                    ForEach(Array(multitasks.enumerated()), id: \.element.id) { index, multitask in
+                        if index > 0 {
+                            HairlineDivider().padding(.leading, Spacing.row)
+                        }
+                        let live = liveSession(for: multitask)
+                        TranscriptMultitaskRow(
+                            multitask: multitask,
+                            liveState: live?.state.rawWire,
+                            liveLabel: live?.taskLabel,
+                            liveAttention: live?.attention,
+                            client: client,
+                            onLoad: onLoad,
+                            onOpenFile: onOpenFile,
+                            onOpenFullChat: onOpenFullChat,
+                            embedInComposerLane: true
+                        )
+                        .accessibilityIdentifier("composer-multitask-\(multitask.id)")
+                    }
+                }
+            }
+            .background(Theme.raised, in: .rect(cornerRadius: Radius.control, style: .continuous))
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("composer-multitask-lane")
+            .onAppear {
+                expanded = multitasks.count <= Self.openGroupMaxRows
+            }
+            .onChange(of: multitasks.count) {
+                if multitasks.count <= Self.openGroupMaxRows { expanded = true }
+            }
+        }
+    }
+
+    private var summary: String {
+        var running = 0
+        var needsYou = 0
+        var done = 0
+        var failed = 0
+        var stopped = 0
+        for multitask in multitasks {
+            let live = liveSession(for: multitask)
+            switch transcriptMultitaskDisplayStatus(
+                state: live?.state.rawWire ?? multitask.state,
+                attention: live?.attention
+            ) {
+            case .running: running += 1
+            case .needsYou: needsYou += 1
+            case .done: done += 1
+            case .failed: failed += 1
+            case .stopped: stopped += 1
+            }
+        }
+        return [
+            running > 0 ? "\(running) running" : nil,
+            needsYou > 0 ? "\(needsYou) needs you" : nil,
+            failed > 0 ? "\(failed) failed" : nil,
+            stopped > 0 ? "\(stopped) stopped" : nil,
+            done > 0 ? "\(done) finished" : nil
+        ].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func liveSession(for multitask: TranscriptMultitask) -> (state: SessionState, attention: AttentionState, taskLabel: String?)? {
+        guard let childID = multitask.childSessionId,
+              let session = store.snapshot.sessions.first(where: { $0.id == childID })
+        else { return nil }
+        let label = store.snapshot.workspaces.first(where: { $0.id == session.workspaceId })?.taskLabel
+        return (session.state, session.attention, label)
     }
 }

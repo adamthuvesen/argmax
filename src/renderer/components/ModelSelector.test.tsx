@@ -832,11 +832,11 @@ describe("LaunchModelSelector — Auto rows", () => {
     expect(onChange).toHaveBeenCalledWith(autoTierSelection("cost"));
   });
 
-  it("keeps the full Router label for a recent tier", () => {
+  it("uses the short Router label for a recent tier", () => {
     window.localStorage.setItem(LAUNCH_MODEL_RECENCY_KEY, JSON.stringify(["auto:intelligence"]));
     openLaunchPicker({ autoRouting: true });
     const [recent] = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole("option");
-    expect(recent).toHaveTextContent(/^Router Frontier$/);
+    expect(recent).toHaveTextContent(/^Frontier$/);
   });
 
   it("hides the effort chip for an Auto selection", () => {

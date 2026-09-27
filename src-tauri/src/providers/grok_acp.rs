@@ -929,6 +929,85 @@ mod tests {
         assert_eq!(grok_effort(ReasoningEffort::Ultra), "xhigh");
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn resumed_grok_selection_sends_model_and_mode_on_each_turn() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-grok-acp");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+id=1
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> requests.jsonl
+  printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
+  id=$((id + 1))
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+        let client = AcpClient::spawn(
+            server.to_str().unwrap(),
+            &[],
+            temp.path(),
+            Vec::<(String, String)>::new(),
+            None,
+            None,
+        )
+        .unwrap();
+        let response = json!({ "models": { "availableModels": [
+            { "modelId": "grok-4.7" }, { "modelId": "grok-4.6" }
+        ] } });
+        let selections = [
+            ("grok-4.7", ReasoningEffort::High, "high"),
+            ("grok-4.7", ReasoningEffort::Low, "low"),
+            ("grok-4.7", ReasoningEffort::High, "high"),
+            ("grok-4.6", ReasoningEffort::High, "high"),
+            ("grok-4.7", ReasoningEffort::High, "high"),
+        ];
+        for (model, effort, _) in selections {
+            let input = ProviderLaunchInput {
+                provider: ProviderId::Grok,
+                session_id: "s".into(),
+                workspace_path: "/tmp".into(),
+                prompt: "p".into(),
+                model_label: model.into(),
+                model_id: model.into(),
+                reasoning_effort: Some(effort),
+                fast_mode: false,
+                resume_conversation_id: Some("native-conversation".into()),
+                resume_fork: false,
+                permission_mode: PermissionMode::ProviderDefaults,
+                agent_mode: AgentMode::Auto,
+                cols: 80,
+                rows: 24,
+            };
+            assert!(is_acp_eligible(&input));
+            select_grok_model(&client, "native-conversation", &input, &response)
+                .await
+                .unwrap();
+        }
+        client.kill();
+        let requests = fs::read_to_string(temp.path().join("requests.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(requests.len(), 10);
+        for (pair, (model, _, expected_mode)) in requests.chunks_exact(2).zip(selections) {
+            assert_eq!(pair[0]["method"], "session/set_model");
+            assert_eq!(pair[0]["params"]["sessionId"], "native-conversation");
+            assert_eq!(pair[0]["params"]["modelId"], model);
+            assert_eq!(pair[1]["method"], "session/set_mode");
+            assert_eq!(pair[1]["params"]["sessionId"], "native-conversation");
+            assert_eq!(pair[1]["params"]["modeId"], expected_mode);
+        }
+    }
+
     #[test]
     fn eligibility_includes_all_modes_except_forks() {
         let mut input = ProviderLaunchInput {

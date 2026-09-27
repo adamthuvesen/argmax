@@ -386,6 +386,29 @@ final class TranscriptStore: ObservableObject {
         )
     }
 
+    func loadMultitaskDetail(childSessionID: String) async throws -> TranscriptMultitaskDetailSnapshot {
+        async let page = client.transcriptEvents(sessionID: childSessionID)
+        async let dashboard = client.transcriptDashboard()
+        let (loadedPage, loadedDashboard) = try await (page, dashboard)
+        guard let session = loadedDashboard.sessions.first(where: { $0.id == childSessionID }) else {
+            throw BridgeError.malformedResponse
+        }
+        let childWorkspacePath = loadedDashboard.workspaces.first { $0.id == session.workspaceId }?.path
+        let sendContext = TranscriptSendContext(
+            sessionID: session.id,
+            provider: session.provider,
+            modelLabel: session.modelLabel,
+            modelID: session.modelId,
+            reasoningEffort: session.reasoningEffort,
+            isRunning: session.state == .running
+        )
+        return TranscriptMultitaskDetailSnapshot(
+            items: TranscriptProjection.project(events: loadedPage.events, workspacePath: childWorkspacePath),
+            sendContext: sendContext,
+            workspacePath: childWorkspacePath
+        )
+    }
+
     // MARK: - Serialized reads
 
     private func scheduleReads() {

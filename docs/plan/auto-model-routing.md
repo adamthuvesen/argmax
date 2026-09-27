@@ -220,3 +220,31 @@ them); Grok and Gemini took 2.5-4.5x longer. CursorBench 4.0 separates them: Opu
 43.7% ($1.17/task), Grok 4.7 medium 41.6% ($3.49), Gemini 3.8 Flash medium 37.3%
 ($4.06), Composer 27.7% ($0.68), Sonnet 5 low/medium 24.1%/28.0%. The cheap review
 cell moved to Opus low; research stays on Composer.
+
+## Matched implementation check (2026-09-27)
+
+Keep the current Balance grid. Composer is promising for bounded implementation,
+but this sample does not establish which Standard coding prompts can safely move.
+
+Three small JavaScript tasks ran through an isolated Argmax instance on both
+Composer 2.5 and Opus 5.5 medium. Each had an identical initial prompt and one
+standardized follow-up, with model order alternated. Acceptance tests were
+written before the runs, kept outside the fixture repositories, and checked
+after each turn. The follow-up checks also reran the initial requirements.
+All twelve stages passed.
+
+| Task, including follow-up | Composer | Opus medium |
+|---|---:|---:|
+| Incremental event updates | 35.9 s | 54.0 s |
+| Filtered metric aggregation | 42.7 s | 54.0 s |
+| Bounded queue and cancellation | 42.9 s | 35.2 s |
+| Total | 121.6 s | 143.2 s |
+
+Composer used 15.1% less elapsed time overall and won two of three tasks.
+Opus's three session totals summed to $0.727. Cursor supplied no billing data,
+so the run establishes no dollar saving. Three small deterministic tasks also
+cannot establish production quality or performance on larger repositories.
+Four pilot turns that inherited Argmax's repository instructions were excluded.
+
+Local evidence, including prompts, acceptance tests, transcripts, and diffs:
+`.verify/runs/router-balance-eval-20260927T1828Z/clean-summary.json`.

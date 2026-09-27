@@ -21,7 +21,7 @@ struct InsightsScreen: View {
             pageBody
         }
         .background(Theme.ground.ignoresSafeArea())
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .screenHeaderBar {
             ScreenHeader(
                 title: store.tab == .usage ? "Usage" : "Activity",
                 subtitle: rangeSubtitle,

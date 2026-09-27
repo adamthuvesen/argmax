@@ -77,25 +77,39 @@ for Cursor", from `UsageSummary::estimated_cost_usd` / `estimated_tokens`).
 
 Below the remaining card, a **Router** card shows what each Auto tier cost in
 the page's window: Frontier, Balance, Speed, each with chats, turns, total
-cost, cost per turn, median turn time and time to first answer, escalations,
+cost, cost per turn, median turn time and time to first activity, escalations,
 and the model mix. It appears only when a
 chat was routed in the window. The read is `usage:router-cost`
 ([routing/cost.rs](../src-tauri/src/routing/cost.rs)).
+
+Each desktop tier expands to its recorded routing decisions, grouped by task
+kind, difficulty, provider, model, effort, decision, and reason. The breakdown
+separates launches (including classifier fallbacks), kept follow-ups, reroutes,
+and escalations. It shows both decision counts and turns, because goal
+continuations can share a route decision. It uses the same answered route
+windows as the totals, excluding pins and unanswered windows. Missing
+classification or effort stays explicitly unrecorded. Escalations measure
+router actions, not successful outcomes or all user corrections.
+
+Desktop shows pricing coverage as priced turns / total turns.
+On desktop and iPhone, **First activity** includes reasoning and tool calls, not only a
+text answer. Its existing wire field remains `medianFirstAnswerSeconds`.
 
 The iPhone Usage tab shows the same card under its remaining card
 ([RouterViews.swift](../ios/Argmax/Sources/Insights/RouterViews.swift)). The
 table is too wide for a phone, so a bar splits the turns across tiers, and
 each tier is a block: cost beside its name, chats, turns and cost per turn
-under it, then turn time, first answer and escalations in a stat strip. The
+under it, then turn time, first activity and escalations in a stat strip. The
 phone fetches it beside `usage:summary`, caches it with that summary, and
 hides the card when the read fails or the Mac predates the channel.
 
 - **One window per `turn_routes` row.** Every routed turn records a row, `kept`
   included. A row's window runs from its `created_at` to the chat's next row
   (open-ended for the last), and its turns are charged to the tier on its own
-  row, so a chat that escalated splits across tiers. A window's turns are the
-  `session.completed` / `session.cancelled` events inside it, at least one, so
-  goal continuations, which record no row, count in the window before them.
+  row, so a chat that escalated splits across tiers. The route timestamp starts
+  its first turn. A `user.message` after completion or cancellation starts a
+  continuation, while messages steering an active turn do not. Goal
+  continuations, which record no route row, count in the window before them.
   Rows from the window's start (the same start as the page's range) are
   counted.
 - **A pin ends the chat's Router spend.** When the user picks another model,
@@ -103,11 +117,14 @@ hides the card when the read fails or the Mac predates the channel.
   ([routing.md](routing.md)). That row closes the window before it and is
   never a turn itself, so later work is not charged to a tier.
 - **Claude, Codex, Grok, OpenCode** are priced from the `usage_events` inside
-  the turn's window, by the ledger's rule: Grok and OpenCode's own dollar
-  figure wins, then the list-price table.
+  each turn's window, by the ledger's rule: Grok and OpenCode's own dollar
+  figure wins, then the list-price table. Pricing runs up to the next turn's
+  start, clipped at the next route, because final usage can be recorded just
+  after completion. A continuation without usage stays unpriced even when
+  an earlier turn on the same route has usage.
 - **Times are medians per tier.** Turn time runs from the send to the turn's
   `session.completed` / `session.cancelled`, less any time an approval waited
-  on the user; first answer runs from the send to the first text, reasoning,
+  on the user; first activity runs from the send to the first text, reasoning,
   or tool call. A window's first turn starts at its route row; a later one (a
   goal continuation) at its own `user.message`, so a message sent mid-turn
   starts nothing. Running and unanswered turns have no time. Medians, because

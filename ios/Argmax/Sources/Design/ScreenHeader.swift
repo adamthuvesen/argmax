@@ -80,9 +80,22 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
         .screenGutter()
         .padding(.bottom, Spacing.snug)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(alignment: .top) {
-            // Rows dissolve under the header rather than being cut by a
-            // line: the same rule the desktop's scrollers follow.
+        .background(alignment: .top) { HeaderScrollScrim() }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Rows dissolve under the header rather than being cut by a line. On iOS 26
+/// the header sits in a `safeAreaBar`, whose soft scroll edge blurs the rows
+/// through it, so this paints nothing there. A material cannot stand in for
+/// that on older systems: its blur flattens text on charcoal into a grey
+/// band.
+struct HeaderScrollScrim: View {
+    var fadeHeight: CGFloat = 14
+
+    var body: some View {
+        if #unavailable(iOS 26) {
             VStack(spacing: 0) {
                 Theme.ground
                 LinearGradient(
@@ -90,13 +103,24 @@ struct ScreenHeader<Trailing: View, Center: View>: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 14)
+                .frame(height: fadeHeight)
             }
             .ignoresSafeArea(edges: .top)
             .allowsHitTesting(false)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension View {
+    /// Pins a screen's header above its scrolling content.
+    @ViewBuilder
+    func screenHeaderBar(@ViewBuilder _ header: () -> some View) -> some View {
+        if #available(iOS 26, *) {
+            scrollEdgeEffectStyle(.soft, for: .top)
+                .safeAreaBar(edge: .top, spacing: 0, content: header)
+        } else {
+            safeAreaInset(edge: .top, spacing: 0, content: header)
+        }
     }
 }
 

@@ -269,8 +269,59 @@ account and a temporary project.
 - **Session moves:** An agent-requested move waits for the current turn to settle and copies the transcript into a fresh session at the destination. A cross-project move always clears `provider_conversation_id`. A move to another checkout of the same project carries it where the provider allows — see below. The first destination turn receives the handoff note, plus the capped transcript when the conversation did not travel.
 - **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). A fresh install starts on Opus 5 at Medium. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
 - **Fast mode:** The model catalog explicitly marks eligible models. The picker offers the Fast mode row and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Eligible today: Codex Astra, Sol, Terra, and Luna (`serviceTier: "priority"` per turn), Grok 4.7 (`grok-4.7-build-fast` on ACP and the CLI), Claude Opus 5.5 (`"fastMode": true` in `--settings`, twice the price), and every Cursor model whose ACP config has a `fast` option (Composer 2.5, Grok 4.7, GPT-5.6 Sol/Terra/Luna, Opus 5.5; not Gemini 3.8 Flash or Auto). Availability depends on the provider account. OpenCode has none. [Claude's documentation](https://code.claude.com/docs/en/fast-mode) limits Fast to Opus 5.5, 5 and 4.8 and says enabling it on another model switches to Opus, so the rest of the Claude catalog stays ineligible. Unknown models default to ineligible. The picker's control is the **Fast mode** row at the foot of the list (Off / On); it is not called Speed because that names a Router tier. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
-- **Reasoning effort:** Claude gets the CLI's `--effort` flag (low → max; Ultra clamps to max, the flag's ceiling). The appended system prompt never varies with effort, so an effort change on a follow-up keeps the cached system prompt. Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP sets it as the model's `thought_level` config option, described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
+- **Reasoning effort:** Claude gets the CLI's `--effort` flag (low → max; Ultra clamps to max, the flag's ceiling). The appended system prompt never varies with effort, while cache reuse still depends on the model and endpoint below. Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP sets it as the model's `thought_level` config option, described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
 - **Context window:** Claude's 1M models launch on the `[1m]` spelling of their id (`claude-opus-5-5[1m]`, `claude-opus-5[1m]`, `claude-fable-5-1[1m]`), since the CLI only resolves a bare id's window through a first-party lookup — behind a custom `ANTHROPIC_BASE_URL` it assumes 200k and auto-compacts there, a fifth of the way into the advertised window. The suffix rides on the launch flag alone; the CLI reports the bare id back, so usage and pricing are unchanged. The catalog's `contextWindow` decides which ids get it (`CLAUDE_LONG_CONTEXT_MODELS` in [adapters.rs](../src-tauri/src/providers/adapters.rs)).
+
+### Follow-up cache boundaries
+
+Argmax chooses a model and effort between turns. A native conversation ID
+preserves the provider's history, but does not prove that a server-side prompt
+cache entry survived. A cache miss can leave an earlier matching prefix alive,
+so returning from model B to model A may reuse A's prefix if it is still
+available. No idle duration proves that a switch is free.
+
+- **Codex:** Each turn starts a new app-server process, resumes the durable
+  thread, and sends the selected model and effort in `turn/start`. Codex
+  0.156.1's `reasoning_effort_override` is an opt-in development feature;
+  Argmax does not enable it, though the user's Codex configuration still
+  applies. A request-level effort change has no established
+  cache-preservation guarantee. The public GPT-6
+  `configuration_update` mechanism requires a stable request-level effort and
+  compatible history handling around compaction and truncation. Those API
+  rules alone do not establish the behavior of Codex app-server on resumed
+  turns. [App-server protocol](https://learn.chatgpt.com/docs/app-server),
+  [reasoning updates](https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation),
+  [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
+- **Claude Code:** The resumed control process receives `--model` and
+  `--effort` again. Claude Code documents cache-preserving effort changes on
+  Opus 5.5 and Fable 5.1 with an API key or Claude subscription, subject to
+  its listed platform, gateway, beta, and HIPAA exclusions. Other effort
+  changes can reset the cache. A model switch starts a model-specific cache.
+  The main conversation may use a one-hour TTL within subscription usage and
+  five minutes under API-key or usage-credit billing; custom settings can
+  change it. [Claude Code caching](https://code.claude.com/docs/en/prompt-caching).
+- **Cursor:** ACP resumes a session and sets its model and thought-level
+  options. Cursor documents a cache miss on model switches; it makes no
+  corresponding guarantee for ACP effort changes. Argmax lacks native Cursor
+  token-usage accounting for cache reads. [Cursor harness](https://cursor.com/blog/continually-improving-agent-harness).
+- **OpenCode:** Its native HTTP transport resumes the session and sends the
+  selected model and variant with the next prompt. OpenCode Go recommends a
+  stable session identifier for routing and caching, but does not guarantee
+  cache reuse after a variant change. The underlying service determines cache
+  behavior. [OpenCode Go](https://opencode.ai/docs/go/).
+- **Grok Build:** ACP loads the session and sets the model and reasoning mode.
+  xAI describes stable conversation routing and possible eviction for its API,
+  but does not specify an ACP cache contract for these changes. The provider
+  reports cache-read and cache-write tokens when available.
+  [xAI caching](https://docs.x.ai/developers/advanced-api-usage/prompt-caching/best-practices).
+
+The provider tests check selected settings for effort down → back and model
+A → B → A sequences. The Codex fixture additionally starts a fresh process
+each turn, resumes the thread, and emits a compaction notification. These
+fixture assertions cover selected wire parameters when run; they do not
+measure cache reuse or model compliance. A live cache check must record cached and
+uncached input tokens, writes, latency, and cost for unchanged, effort-down,
+effort-back, and model A → B → A turns, including resume and compaction.
 
 ### The agent's todo list
 

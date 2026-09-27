@@ -38,12 +38,9 @@ pub fn record_route(
             route.reason.as_str(),
         ))
         .map_err(sqlite_error)?;
-    // A kept route leaves the chat on its model, so the chip's reason stays;
-    // a pinned one ends routing, which `clear_auto_tier` records.
-    if !matches!(
-        route.decision,
-        RouteDecisionKind::Kept | RouteDecisionKind::Pinned
-    ) {
+    // A kept decision now explains why the same route still fits. A pin ends
+    // Auto routing and `clear_auto_tier` removes the chip instead.
+    if route.decision != RouteDecisionKind::Pinned {
         connection
             .prepare_cached("UPDATE sessions SET auto_tier = ?, auto_route = ? WHERE id = ?")
             .map_err(sqlite_error)?
@@ -102,4 +99,105 @@ pub fn last_switch_at(connection: &Connection, session_id: &str) -> ArgmaxResult
         .map_err(sqlite_error)?
         .query_row([session_id], |row| row.get(0))
         .map_err(sqlite_error)
+}
+
+/// The latest decisions since Clear, newest first. This is classifier context,
+/// not a persisted route or a UI API.
+#[derive(Debug, Clone)]
+pub struct RecentRoutingDecision {
+    pub provider: String,
+    pub model_id: String,
+    pub effort: Option<String>,
+    pub kind: String,
+    pub difficulty: String,
+    pub decision: String,
+    pub reason: String,
+    pub reason_truncated: bool,
+    pub user_task: Option<String>,
+    pub user_task_truncated: bool,
+}
+
+pub fn recent_routing_decisions(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<RecentRoutingDecision>> {
+    let mut statement = connection.prepare_cached(
+        r#"
+        SELECT route.provider, route.model_id, route.reasoning_effort,
+               COALESCE(route.kind, ''), COALESCE(route.difficulty, ''),
+               route.decision, substr(route.reason, 1, 91), length(route.reason) > 90,
+               CASE WHEN route.decision IN ('launch', 'fallback')
+                 THEN substr(session.prompt, 1, 191)
+                 ELSE (SELECT substr(message, 1, 191) FROM events user_task
+                WHERE user_task.session_id = route.session_id
+                  AND user_task.type = 'user.message'
+                  AND user_task.created_at >= route.created_at
+                  AND julianday(user_task.created_at) <= julianday(route.created_at) + (10.0 / 86400.0)
+                  AND json_extract(user_task.payload_json, '$.parent_tool_use_id') IS NULL
+                  AND json_extract(user_task.payload_json, '$.traceImported') IS NULL
+                ORDER BY user_task.created_at, user_task.rowid LIMIT 1)
+               END,
+               CASE WHEN route.decision IN ('launch', 'fallback')
+                 THEN length(session.prompt) > 190
+                 ELSE COALESCE((SELECT length(message) > 190 FROM events user_task
+                WHERE user_task.session_id = route.session_id
+                  AND user_task.type = 'user.message'
+                  AND user_task.created_at >= route.created_at
+                  AND julianday(user_task.created_at) <= julianday(route.created_at) + (10.0 / 86400.0)
+                  AND json_extract(user_task.payload_json, '$.parent_tool_use_id') IS NULL
+                  AND json_extract(user_task.payload_json, '$.traceImported') IS NULL
+                ORDER BY user_task.created_at, user_task.rowid LIMIT 1), 0)
+               END
+        FROM turn_routes route
+        JOIN sessions session ON session.id = route.session_id
+        WHERE route.session_id = ?1
+          AND route.created_at > COALESCE((
+            SELECT MAX(created_at) FROM events
+            WHERE session_id = ?1 AND type = 'session.cleared'
+          ), '')
+          AND route.decision != 'pinned'
+        ORDER BY route.id DESC LIMIT 6
+        "#,
+    ).map_err(sqlite_error)?;
+    let rows = statement.query_map([session_id], |row| {
+        Ok(RecentRoutingDecision {
+            provider: row.get(0)?, model_id: row.get(1)?, effort: row.get(2)?,
+            kind: row.get(3)?, difficulty: row.get(4)?, decision: row.get(5)?,
+            reason: row.get(6)?, reason_truncated: row.get(7)?,
+            user_task: row.get(8)?, user_task_truncated: row.get(9)?,
+        })
+    }).map_err(sqlite_error)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+}
+
+#[cfg(test)]
+mod routing_context_tests {
+    use super::*;
+
+    #[test]
+    fn launch_route_keeps_its_original_task_until_clear() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(r#"
+            CREATE TABLE sessions (id TEXT PRIMARY KEY, prompt TEXT NOT NULL);
+            CREATE TABLE events (session_id TEXT, type TEXT, message TEXT, payload_json TEXT, created_at TEXT);
+            CREATE TABLE turn_routes (id INTEGER PRIMARY KEY, session_id TEXT, created_at TEXT,
+                provider TEXT, model_id TEXT, reasoning_effort TEXT, kind TEXT, difficulty TEXT,
+                decision TEXT, reason TEXT);
+            INSERT INTO sessions VALUES ('s', 'Investigate the hard bug');
+            INSERT INTO events VALUES ('s', 'user.message', 'Investigate the hard bug', '{}', '2026-09-27T10:00:00.000Z');
+            INSERT INTO turn_routes VALUES (1, 's', '2026-09-27T10:00:01.000Z',
+                'codex', 'gpt-6-astra', 'high', 'coding', 'heavy', 'launch', 'hard task');
+            INSERT INTO turn_routes VALUES (2, 's', '2026-09-27T11:00:00.000Z',
+                'codex', 'gpt-6-astra', 'low', 'mechanical', 'light', 'reroute', 'simple task');
+            INSERT INTO events VALUES ('s', 'user.message', 'Rename the label', '{}', '2026-09-27T11:00:01.000Z');
+        "#).unwrap();
+
+        let routes = recent_routing_decisions(&connection, "s").unwrap();
+        assert_eq!(routes[0].user_task.as_deref(), Some("Rename the label"));
+        assert_eq!(routes[1].user_task.as_deref(), Some("Investigate the hard bug"));
+        assert_eq!(routes[1].effort.as_deref(), Some("high"));
+
+        connection.execute("INSERT INTO events VALUES ('s', 'session.cleared', '', '{}', '2026-09-27T12:00:00.000Z')", []).unwrap();
+        assert!(recent_routing_decisions(&connection, "s").unwrap().is_empty());
+    }
 }

@@ -1777,6 +1777,26 @@ mod tests {
     }
 
     #[test]
+    fn resumed_opencode_prompts_select_each_model_and_variant() {
+        for (model, effort, expected_variant) in [
+            ("deepseek-v4.1-flash", super::super::ReasoningEffort::Max, "max"),
+            ("deepseek-v4.1-flash", super::super::ReasoningEffort::High, "high"),
+            ("deepseek-v4.1-flash", super::super::ReasoningEffort::Max, "max"),
+            ("glm-5.3-flash", super::super::ReasoningEffort::High, "high"),
+            ("deepseek-v4.1-flash", super::super::ReasoningEffort::Max, "max"),
+        ] {
+            let mut input = input(PermissionMode::ProviderDefaults, AgentMode::Auto);
+            input.resume_conversation_id = Some("native-conversation".into());
+            input.model_id = format!("opencode-go/{model}");
+            input.reasoning_effort = Some(effort);
+            let body = prompt_body(&input).unwrap();
+            assert_eq!(body["model"]["providerID"], "opencode-go");
+            assert_eq!(body["model"]["modelID"], model);
+            assert_eq!(body["variant"], expected_variant);
+        }
+    }
+
+    #[test]
     fn server_events_match_the_existing_run_json_contract() {
         let mut sessions = HashSet::from(["ses_root".to_string()]);
         let text = json!({

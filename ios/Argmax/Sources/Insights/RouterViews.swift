@@ -2,10 +2,10 @@ import SwiftUI
 
 // The Router card: the desktop `RouterCostCard` table, which is eight columns
 // wide, redrawn for a phone. The turn split across tiers leads as one bar,
-// then each tier is a block — cost on its title row, chats and turns under
-// it, the two median times and escalations in a stat strip, and the model
-// mix last. Stacked blocks keep each figure in the same place from tier to
-// tier, so reading down compares them the way a column did.
+// then each tier is a block — cost on its title row, usage under it, and the
+// two median times and escalations in a stat strip. Stacked blocks keep each
+// figure in the same place from tier to tier, so reading down compares them
+// the way a column did.
 
 struct RouterCostCard: View {
     let summary: RouterCostSummary
@@ -19,15 +19,12 @@ struct RouterCostCard: View {
             VStack(spacing: 0) {
                 ForEach(summary.tiers) { tier in
                     RouterTierBlock(tier: tier)
-                        .padding(.vertical, Spacing.row)
+                        .padding(.vertical, Spacing.snug)
                     if tier.id != summary.tiers.last?.id {
-                        HairlineDivider()
+                        HairlineDivider(inset: 16)
                     }
                 }
             }
-            Text(footnote)
-                .typeMeta()
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -35,12 +32,6 @@ struct RouterCostCard: View {
         let cost = summary.tiers.reduce(0) { $0 + $1.costUsd }
         let turnsText = "\(InsightsFormat.compact(Double(turns))) \(turns == 1 ? "turn" : "turns")"
         return "\(InsightsFormat.routerCost(cost, estimated: anyEstimated)) · \(turnsText)"
-    }
-
-    private var footnote: String {
-        var text = "Medians from sending a message. Turn time leaves out waits on an approval."
-        if anyEstimated { text += " ≈ Cursor turns are estimated from the transcript." }
-        return text
     }
 
     /// Where the turns went: one segment per tier, the token-flow bar's shape.
@@ -79,16 +70,18 @@ private struct RouterTierBlock: View {
         )
     }
 
-    private var countsText: String {
+    private var usageText: String {
         var parts = [
             "\(InsightsFormat.compact(Double(tier.chats))) \(tier.chats == 1 ? "chat" : "chats")",
             "\(InsightsFormat.compact(Double(tier.turns))) \(tier.turns == 1 ? "turn" : "turns")",
         ]
-        if let perTurnText { parts.append("\(perTurnText) a turn") }
+        if let perTurnText { parts.append("\(perTurnText) per turn") }
+        if tier.unpricedTurns > 0 {
+            parts.append("\(InsightsFormat.compact(Double(tier.unpricedTurns))) unpriced")
+        }
         return parts.joined(separator: " · ")
     }
 
-    /// `Opus 5.5 ×30 · Sonnet 5 ×12 · 2 unpriced`, the desktop's mix line.
     private var mixText: String {
         var models = tier.models.map { model in
             let label = ProviderCatalog.bundled.model(provider: model.provider, modelId: model.modelId)?
@@ -103,35 +96,30 @@ private struct RouterTierBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.snug) {
-            VStack(alignment: .leading, spacing: Spacing.hair) {
-                HStack(alignment: .firstTextBaseline, spacing: Spacing.snug) {
-                    Circle()
-                        .fill(InsightsPalette.tier(tier.tier))
-                        .frame(width: 8, height: 8)
-                    Text(name)
-                        .typeStyle(.callout, weight: .semibold, ink: Theme.ink)
-                    Spacer(minLength: Spacing.snug)
-                    Text(costText)
-                        .typeStyle(.callout, weight: .semibold, monospacedDigit: true, ink: Theme.ink)
-                        .lineLimit(1)
-                }
-                Text(countsText)
-                    .typeMeta()
-                    .monospacedDigit()
-                    .padding(.leading, 16)
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.snug) {
+                Circle()
+                    .fill(InsightsPalette.tier(tier.tier))
+                    .frame(width: 8, height: 8)
+                Text(name)
+                    .typeStyle(.callout, weight: .semibold, ink: Theme.ink)
+                Spacer(minLength: Spacing.snug)
+                Text(costText)
+                    .typeStyle(.callout, weight: .semibold, monospacedDigit: true, ink: Theme.ink)
+                    .lineLimit(1)
             }
+            Text(usageText)
+                .typeMeta()
+                .monospacedDigit()
+                .foregroundStyle(Theme.muted)
+                .padding(.leading, 16)
             HStack(spacing: 0) {
                 stat(InsightsFormat.seconds(tier.medianTurnSeconds), label: "Turn time")
-                stat(InsightsFormat.seconds(tier.medianFirstAnswerSeconds), label: "First answer")
+                stat(InsightsFormat.seconds(tier.medianFirstAnswerSeconds), label: "First activity")
                 stat(InsightsFormat.compact(Double(tier.escalations)), label: "Escalated")
             }
             .padding(.vertical, Spacing.snug)
+            .padding(.horizontal, Spacing.tight)
             .background(Theme.ground, in: .rect(cornerRadius: Radius.control, style: .continuous))
-            if !mixText.isEmpty {
-                Text(mixText)
-                    .typeMeta()
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
@@ -145,6 +133,7 @@ private struct RouterTierBlock: View {
                 .minimumScaleFactor(0.7)
             Text(label)
                 .typeMeta()
+                .foregroundStyle(Theme.muted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
@@ -155,9 +144,9 @@ private struct RouterTierBlock: View {
         [
             "\(name) tier",
             "cost \(costText)",
-            countsText,
+            usageText,
             "median turn time \(InsightsFormat.seconds(tier.medianTurnSeconds))",
-            "median first answer \(InsightsFormat.seconds(tier.medianFirstAnswerSeconds))",
+            "median first activity \(InsightsFormat.seconds(tier.medianFirstAnswerSeconds))",
             "\(tier.escalations) escalated",
             mixText,
         ]

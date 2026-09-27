@@ -97,6 +97,23 @@ describe("useSessionCommands", () => {
     expect(archiveMock).not.toHaveBeenCalled();
   });
 
+  it.each(["queue", "steer"] as const)("omits Auto model echoes from a %s send", async (delivery) => {
+    const { result } = renderHook(() =>
+      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: true })
+    );
+    await act(async () => {
+      await result.current.sendSessionInput("session-1", "continue", {
+        provider: "codex", label: "GPT-6 Astra", modelId: "gpt-6-astra",
+        reasoningEffort: "high", autoTier: "balanced"
+      }, "auto", undefined, undefined, delivery);
+    });
+    const sent = (delivery === "steer" ? steerInputMock : sendInputMock).mock.calls[0]?.[0];
+    expect(sent).toMatchObject({ sessionId: "session-1", input: "continue", fastMode: false });
+    for (const field of ["provider", "modelId", "modelLabel", "reasoningEffort"]) {
+      expect(sent).not.toHaveProperty(field);
+    }
+  });
+
   it("archives the workspace onEarlyStop returns after a successful stop", async () => {
     onEarlyStop.mockReturnValue("workspace-1");
     const { result } = renderHook(() =>

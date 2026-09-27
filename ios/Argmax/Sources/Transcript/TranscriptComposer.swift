@@ -11,6 +11,7 @@ struct TranscriptComposer: View {
 
     @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var store: DashboardStore
+    @EnvironmentObject private var navigator: ChatNavigator
     @Environment(\.accentTint) private var accent
     @Environment(\.openURL) private var openURL
 
@@ -55,12 +56,20 @@ struct TranscriptComposer: View {
     var body: some View {
         if let composer = transcript.composer {
             // One column, one width: the gutter is applied here so the PR
-            // pill, the queued lane and the card all share the card's edges.
-            // The pill sits on top, above the queue, so a stack of queued
-            // follow-ups grows down toward the card and leaves it in place.
+            // pill, multitasks, the queued lane and the card all share the
+            // card's edges. Multitasks sit above queued follow-ups so side
+            // work stays in view like the desktop checks lane.
             VStack(alignment: .leading, spacing: Spacing.snug) {
                 if let pullRequest {
                     pullRequestPill(pullRequest, sessionID: composer.sessionId)
+                }
+                if !composerMultitasks.isEmpty {
+                    TranscriptComposerMultitaskSection(
+                        multitasks: composerMultitasks,
+                        client: store.client,
+                        onLoad: { try await transcript.loadMultitaskDetail(childSessionID: $0) },
+                        onOpenFullChat: { navigator.awaitingSessionID = $0 }
+                    )
                 }
                 if !composer.queued.isEmpty {
                     queue(composer)
@@ -88,6 +97,13 @@ struct TranscriptComposer: View {
     }
 
     // MARK: - The card
+
+    private var composerMultitasks: [TranscriptMultitask] {
+        TranscriptComposerMultitasks.visible(
+            TranscriptComposerMultitasks.notices(from: transcript.items),
+            sessions: store.snapshot.sessions
+        )
+    }
 
     /// The live workspace, so an OPEN → MERGED dashboard delta repaints the
     /// pill while this chat stays on screen.

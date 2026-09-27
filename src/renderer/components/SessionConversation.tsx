@@ -37,7 +37,7 @@ import type {
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
+import { isAutoTier, modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
 import { orderedOpenFilePaths } from "../lib/openFileContext.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
@@ -955,6 +955,17 @@ export function SessionConversation({
         sentAtMs: Date.now()
       });
       try {
+        // An Auto selection describes the displayed route, not a user pin.
+        // Keep that distinction across the async send so a stale dashboard
+        // cannot overwrite a newer route or a pin from another window.
+        const deliveryModel: ModelPickerSelection =
+          session && targetSessionId === session.id &&
+          isAutoTier(session.autoTier) &&
+          model.provider === session.provider &&
+          model.modelId === session.modelId &&
+          (model.reasoningEffort ?? null) === (session.reasoningEffort ?? null)
+            ? { ...model, autoTier: session.autoTier }
+            : model;
         const mentionedNames = new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []);
         const references =
           (model.provider === "claude" ||
@@ -968,15 +979,15 @@ export function SessionConversation({
           : [];
         if (references.length > 0) {
           if (delivery === "steer") {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references, delivery);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references, delivery);
           } else {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references);
           }
         } else {
           if (delivery === "steer") {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments, undefined, delivery);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, undefined, delivery);
           } else {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments);
           }
         }
       } catch (error) {
@@ -987,7 +998,8 @@ export function SessionConversation({
         throw error;
       }
     },
-    [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId, toolCalls, agentCodenames]
+    [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId,
+      session?.autoTier, session?.modelId, session?.reasoningEffort, toolCalls, agentCodenames]
   );
   const isTurnStarting = turnStartBaseline !== null;
   // Whether the session reached a live state after the send. A follow-up sent

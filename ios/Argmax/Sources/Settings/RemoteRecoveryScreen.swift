@@ -42,7 +42,7 @@ struct RemoteRecoveryScreen: View {
             .screenGutter()
         }
         .background(Theme.ground.ignoresSafeArea())
-        .safeAreaInset(edge: .top) { ScreenHeader(title: "Unconfirmed actions", onBack: { dismiss() }) }
+        .screenHeaderBar { ScreenHeader(title: "Unconfirmed actions", onBack: { dismiss() }) }
         .task { await reload() }
     }
 

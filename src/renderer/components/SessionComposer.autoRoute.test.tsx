@@ -62,7 +62,7 @@ describe("SessionComposer Auto chip", () => {
     fireEvent.keyDown(promptInput, { key: "Enter" });
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ provider: "claude", modelId: "claude-fable-5-1", reasoningEffort: "high" });
+    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ provider: "claude", modelId: "claude-fable-5-1", reasoningEffort: "high", autoTier: "balanced" });
   });
 
   it("keeps the user's own pick when the chat is re-routed", async () => {
@@ -83,5 +83,6 @@ describe("SessionComposer Auto chip", () => {
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
     expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ modelId: "claude-sonnet-5" });
+    expect(onSendSessionInput.mock.calls[0]?.[2]).not.toHaveProperty("autoTier");
   });
 });

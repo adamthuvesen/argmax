@@ -18,8 +18,10 @@ struct NativeTranscriptView: View {
 
     private var allRows: [MobileTranscriptRow] {
         MobileTranscriptRow.rows(transcript.items.filter { item in
-            if case .question = item { return false }
-            return true
+            switch item {
+            case .question, .multitask: return false
+            default: return true
+            }
         }, detail: appearance.chatDetail, latestTurnIsLive: sessionIsWorking)
     }
 

@@ -2363,6 +2363,15 @@ export type RouterCostSummary = {
  * window is left out.
  */
 tiers: RouterTierCost[] }
+export type RouterDecisionSummary = { provider: ProviderId; modelId: string; reasoningEffort: string | null; kind: string | null; difficulty: string | null; decision: string; reason: string;
+/**
+ * Number of admitted route windows with this decision.
+ */
+count: number;
+/**
+ * Answered turns in those windows, including continuations.
+ */
+turns: number }
 export type RouterModelCost = { provider: ProviderId; modelId: string; turns: number; costUsd: number;
 /**
  * True when the cost is a transcript estimate (Cursor).
@@ -2391,6 +2400,10 @@ unpricedTurns: number;
  * Most turns first.
  */
 models: RouterModelCost[];
+/**
+ * Route decisions behind the counted turns, most decisions first.
+ */
+decisions: RouterDecisionSummary[];
 /**
  * Median seconds from send to the end of a turn, less any time an
  * approval waited on the user. `None` until a turn has finished.

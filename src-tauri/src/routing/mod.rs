@@ -3,6 +3,7 @@
 // classifier yields a recorded fallback, so a launch is never blocked on it.
 
 pub mod api_key;
+pub mod context;
 pub mod cost;
 pub mod jev;
 pub mod project_check;
@@ -256,6 +257,11 @@ mod tests {
             difficulty_confidence,
             level_probabilities: None,
             correction: None,
+            follow_up_scope: None,
+            scope_confidence: None,
+            simpler_task: None,
+            resume_route: None,
+            resume_confidence: None,
         }
     }
 

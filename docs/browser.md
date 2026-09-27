@@ -10,6 +10,8 @@ Web links in rendered file previews use the same browser preference as chat link
 
 Each chat remembers the panel's visibility and view arrangement across navigation and restarts. Browser can occupy either half of a split review panel. Returning to a chat with Browser visible restores it and claims the native surface again. Focusing the other half leaves Browser visible and keeps its ownership.
 
+The first agent tab opened or activated while its chat is mounted opens the right sidebar on Browser. This reveal is remembered per session across navigation and restarts. Later agent opens and activations update the browser request without switching the selected sidebar view, changing split focus, or reopening a closed sidebar. Agent activity in a chat that is not mounted does not reveal it later.
+
 Tab strips are per scope. Each chat has its own tabs, order, and active tab. The rail's Browser page has a separate app-wide strip. The launcher review panel has a third. `localStorage` key `argmax.browser.tabs` stores those snapshots. A snapshot from before this split migrates onto the Browser page so chats start empty. Native webviews share one process-wide pool, with each visible scope showing its own active tab.
 
 Links from chat open in the system browser by default; Settings → General → "Web links from chat" can route them to the in-app browser (⌘-click toggles the alternate target). Both the page and the review-panel tab are shown only where the desktop bridge provides `window.argmax.browser` — the mobile remote has none, so they are hidden there.
@@ -94,7 +96,7 @@ Native child webviews render on top of DOM elements. [BrowserPanel.tsx](../src/r
 
 [registry.rs](../src-tauri/src/browser/registry.rs) holds `{ tabId, ownerSessionId, url, title, loading, group }` for every live child webview, in `AppState`. It is the source of truth, because an agent can open a tab with no pane on screen to ask. Every change pushes the whole list as `browser:tabs`, and `applyBrowserTabs` in the renderer folds it into the matching strip: a tab a session opened lands in that session's strip, and a user tab stays in the scope that already listed it. Tabs the app reports are marked live in this run, since their webview already exists. A tab the registry has reported before and then stops reporting has been closed. A tab the registry has *never* reported is left alone — that is either a URL restored from a previous run or a local tab whose `browser:open` is still in flight.
 
-`ownerSessionId` is set for tabs a session opened and null for the user's own. `group` is a label a session put on a set of related tabs, and only an owned tab can carry one — so the label *replaces* the "agent" badge rather than crowding beside it, since the chip already says the tab is not the user's. Grouping is a per-tab attribute, not a position: `applyBrowserTabs` folds it in without touching the strip's order, which is why there is no reorder verb. The strip's order is the user's — theirs to drag, and never the registry's to adopt, which would move tabs under their cursor. An agent addresses tabs by id, so it has nothing to say about where they sit. An owned tab shows that badge in the strip, and `browser:agent-open` (`{ sessionId, tabId, url }`) asks the pane showing that session to enter Browser mode on it — the same addressed-request shape the terminal's ⌘J uses, because the pane may not be mounted. Nobody answering is a valid outcome: the tab is still in the strip.
+`ownerSessionId` is set for tabs a session opened and null for the user's own. `group` is a label a session put on a set of related tabs, and only an owned tab can carry one — so the label *replaces* the "agent" badge rather than crowding beside it, since the chip already says the tab is not the user's. Grouping is a per-tab attribute, not a position: `applyBrowserTabs` folds it in without touching the strip's order, which is why there is no reorder verb. The strip's order is the user's — theirs to drag, and never the registry's to adopt, which would move tabs under their cursor. An agent addresses tabs by id, so it has nothing to say about where they sit. An owned tab shows that badge in the strip, and `browser:agent-open` (`{ sessionId, tabId, url }`) asks the pane showing that session to select that tab, revealing Browser only on the first such request — the same addressed-request shape the terminal's ⌘J uses, because the pane may not be mounted. Nobody answering is a valid outcome: the tab is still in the strip.
 
 ## Carrying a Tab
 
@@ -174,7 +176,7 @@ A screenshot taken through a tool starts at about 720 device pixels wide on Reti
 
 - **Request (panel):** `browser:open`, `browser:navigate`, `browser:back`, `browser:forward`, `browser:reload`, `browser:stop`, `browser:set-bounds`, `browser:close`, `browser:fill-credentials`, `browser:evaluate`.
 - **Request (agent):** `browser:list-tabs`, `browser:open-for-session`, `browser:snapshot`, `browser:find`, `browser:get-text`, `browser:extract`, `browser:act`, and `browser:screenshot` (which also takes a `ref` to crop to one element). These take `{ tabId?, sessionId? }`.
-- **Push:** `browser:state` (`{ tabId, url, title, loading }`), `browser:tabs` (the whole registry), `browser:agent-open` (`{ sessionId, tabId, url }`), `browser:new-tab` (popups routed via `argmax-newtab:` scheme), and `browser:page-command` (key shortcuts and mouse thumb-button history clicks passed from webview).
+- **Push:** `browser:state` (`{ tabId, url, title, loading }`), `browser:tabs` (the whole registry), `browser:agent-open` (`{ sessionId, tabId, url }`), `browser:new-tab` (popups routed via `argmax-newtab:` scheme), and `browser:page-command` (key shortcuts and focus passed from webview).
 
 All of them are in `REMOTE_UNSUPPORTED_CHANNELS`: they manipulate the desktop app's native child webviews.
 
@@ -202,6 +204,11 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 - `⌥←` / `⌥→` with a tab focused: move that tab one slot, the keyboard's way to reorder.
 - `⌘W`: Closes the active browser tab in the focused panel. The menu command tries the browser first, then the review panel's file tabs, then the focused pane — `requestCloseActiveBrowserTab()` reports whether the focused browser consumed it.
 - Mouse thumb buttons: back (button 3) / forward (button 4), both over the browser chrome and inside a page.
+
+Inside a page, thumb-button release navigates that webview's history directly.
+It does not depend on a mounted BrowserPanel receiving a page command. The
+handler prevents the default action so Wry's macOS mouse-event fallback cannot
+navigate a second time. Page-load callbacks keep the tab URL and title current.
 
 ## Find in Page
 

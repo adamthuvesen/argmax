@@ -118,6 +118,12 @@ struct SettingsScreen: View {
                         detail: "The fox in the Chats header, on a new chat, and on an empty screen.",
                         isOn: $appearance.mascot
                     )
+                    HairlineDivider(inset: Spacing.row)
+                    SettingToggle(
+                        label: "Show arcs",
+                        detail: "Show active and paused arcs above your chats.",
+                        isOn: $appearance.showArcs
+                    )
                 }
 
                 SettingGroup("Dictation") {

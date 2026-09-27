@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { showErrorToast } from "../state/toast.js";
 
 /**
  * Which tools a new chat's `argmax` MCP server carries.
@@ -38,8 +39,9 @@ export function useAgentToolsSettings(): {
     const api = window.argmax?.settings;
     if (!api) return;
     setBrowserToolsState(enabled);
-    void api.setBrowserTools({ enabled }).catch(() => {
+    void api.setBrowserTools({ enabled }).catch((error: unknown) => {
       setBrowserToolsState(!enabled);
+      showErrorToast(error instanceof Error ? error.message : "Could not save browser tools setting.");
     });
   }, []);
 

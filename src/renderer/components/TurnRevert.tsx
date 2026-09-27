@@ -1,6 +1,7 @@
 import { useState, type JSX } from "react";
 import { Undo2 } from "lucide-react";
 import type { RewindPreview } from "../../shared/types.js";
+import { showErrorToast } from "../state/toast.js";
 
 /**
  * "Revert to here" on a finished turn: restores the checkout to the
@@ -27,17 +28,14 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
 }): JSX.Element {
   const [preview, setPreview] = useState<RewindPreview | null>(null);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const run = async (action: () => Promise<void>): Promise<void> => {
     if (pending) return;
     setPending(true);
-    setError(null);
     try {
       await action();
     } catch (failure) {
-      setPreview(null);
-      setError(failure instanceof Error ? failure.message : "Could not revert this turn.");
+      showErrorToast(failure instanceof Error ? failure.message : "Could not revert this turn.");
     } finally {
       setPending(false);
     }
@@ -58,10 +56,11 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
         disabled={disabled || pending}
         onClick={() => void run(async () => {
           if (unavailableReason) {
-            setError(unavailableReason);
+            showErrorToast(unavailableReason);
             return;
           }
           if (!checkpointId) {
+            showErrorToast("No checkpoint was saved before this turn.");
             return;
           }
           setPreview(await window.argmax!.checkpoints.previewRewind({ workspaceId, checkpointId }));
@@ -69,19 +68,15 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
       >
         <Undo2 size={13} aria-hidden />
       </button>
-      {(preview || error) && (
+      {preview && (
         <div className="turn-revert-confirm" role="region" aria-label="Revert to here">
-          {error ? (
-            <p className="turn-revert-error" role="alert">{error}</p>
-          ) : (
-            <p className="turn-revert-summary">
-              {paths === 0
-                ? "No working files change. Staging is restored."
-                : `Restores ${paths} ${paths === 1 ? "file" : "files"} to before this turn. The conversation stays.`}
-            </p>
-          )}
+          <p className="turn-revert-summary">
+            {paths === 0
+              ? "No working files change. Staging is restored."
+              : `Restores ${paths} ${paths === 1 ? "file" : "files"} to before this turn. The conversation stays.`}
+          </p>
           <div className="turn-revert-actions">
-            <button type="button" className="turn-revert-button" disabled={pending} onClick={() => { setPreview(null); setError(null); }}>
+            <button type="button" className="turn-revert-button" disabled={pending} onClick={() => setPreview(null)}>
               Cancel
             </button>
             {preview && (

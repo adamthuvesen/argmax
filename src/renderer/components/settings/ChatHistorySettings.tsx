@@ -1,5 +1,6 @@
 import { useRef, useState, type JSX } from "react";
 import type { ChatCleanupPreview } from "../../../shared/types.js";
+import { showErrorToast } from "../../state/toast.js";
 import { SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
 
 const LAST_CLEANUP_KEY = "argmax.chatHistory.lastCleanup";
@@ -15,25 +16,23 @@ export function ChatHistorySettings(): JSX.Element {
       return null;
     }
   });
-  const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
 
   async function reviewCleanup(): Promise<void> {
     if (!window.argmax) {
-      setError("Open the Argmax app to manage chat history.");
+      showErrorToast("Open the Argmax app to manage chat history.");
       return;
     }
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setStatus(null);
-    setError(null);
     try {
       const result = await window.argmax.settings.previewChatCleanup();
       setPreview(result.chatCount > 0 ? result : null);
       if (result.chatCount === 0) setStatus("No inactive chats older than 7 days to delete.");
     } catch (cause) {
-      setError(`Could not check chat history: ${String(cause)}`);
+      showErrorToast(`Could not check chat history: ${String(cause)}`);
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -42,13 +41,12 @@ export function ChatHistorySettings(): JSX.Element {
 
   async function deleteChats(): Promise<void> {
     if (!window.argmax) {
-      setError("Open the Argmax app to manage chat history.");
+      showErrorToast("Open the Argmax app to manage chat history.");
       return;
     }
     if (!preview || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
-    setError(null);
     try {
       const result = await window.argmax.settings.deleteOldChats({ cleanupId: preview.cleanupId });
       const skipped = result.skippedRecentCount + result.skippedRunningCount;
@@ -65,7 +63,7 @@ export function ChatHistorySettings(): JSX.Element {
       setPreview(null);
     } catch (cause) {
       setPreview(null);
-      setError(`Chat cleanup did not finish: ${String(cause)}`);
+      showErrorToast(`Chat cleanup did not finish: ${String(cause)}`);
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -104,7 +102,6 @@ export function ChatHistorySettings(): JSX.Element {
           {status}
         </SettingNote>
       ) : null}
-      {error ? <SettingNote role="alert" tone="warn">{error}</SettingNote> : null}
     </SettingGroup>
   );
 }

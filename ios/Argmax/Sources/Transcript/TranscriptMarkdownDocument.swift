@@ -99,7 +99,35 @@ struct TranscriptMarkdownDocument: Sendable {
             }
             previousIdentity = identity
         }
-        blocks = parsed
+        blocks = parsed.map { block in
+            if case .paragraph(let text) = block, let heading = Self.boldOnlyLine(text) {
+                return .heading(level: 3, heading)
+            }
+            return block
+        }
+    }
+
+    /// A paragraph that is nothing but one bold run is the agent's section
+    /// heading written without `###`; at body size it read as one more bold
+    /// lead-in. It becomes an `h3` when the bold ends the line: a bold that
+    /// ends in a colon is a lead-in ("**Trends:**") whose sentence is still
+    /// arriving, and a bold longer than a title is emphasis on a paragraph.
+    /// Mirrors `isBoldOnlyLine` in the Mac's StreamingMarkdown.tsx.
+    private static func boldOnlyLine(_ paragraph: AttributedString) -> AttributedString? {
+        let text = String(paragraph.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= 80, !text.hasSuffix(":") else { return nil }
+        for run in paragraph.runs {
+            let runText = String(paragraph[run.range].characters)
+            if runText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
+            guard run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true else { return nil }
+        }
+        var heading = paragraph
+        for run in Array(heading.runs) {
+            var intent = run.inlinePresentationIntent
+            intent?.remove(.stronglyEmphasized)
+            heading[run.range].inlinePresentationIntent = intent
+        }
+        return heading
     }
 
     private enum BlockShape {

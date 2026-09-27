@@ -62,6 +62,17 @@
   font-variant-numeric: tabular-nums;
 }
 
+.todo-card-head-complete {
+  display: grid;
+  flex: 0 0 16px;
+  color: var(--sage);
+}
+
+.todo-card-head-complete svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* The current step, carried by the headline only while the list is folded
    away. It clips rather than wrapping: a second line would make the collapsed
    card taller than the row it replaced. */

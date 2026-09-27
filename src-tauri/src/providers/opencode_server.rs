@@ -4,6 +4,8 @@
 //! request it cannot answer itself. The headless server exposes the same event
 //! stream plus a real permission response endpoint, so Argmax can preserve the
 //! existing JSON normalizer while answering the exact provider-owned gate.
+//! The `question` tool blocks the same way: `question.asked` becomes a
+//! question card, and the card's answer goes back to `/question/{id}/reply`.
 
 #[cfg(test)]
 use super::AgentMode;
@@ -22,6 +24,7 @@ use crate::{
     approvals::service::ApprovalService,
     error::{ArgmaxError, ArgmaxResult},
     persistence::time::now_iso,
+    questions::service::{typed_answer_text, QuestionService},
     session_control::SessionLaunchProcessConfig,
 };
 use serde_json::{json, Map, Value};
@@ -62,6 +65,7 @@ pub async fn launch_turn(
     input: &ProviderLaunchInput,
     config: Option<&SessionLaunchProcessConfig>,
     approvals: Arc<ApprovalService>,
+    questions: Arc<QuestionService>,
     emit: EventCallback,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
     let port = available_loopback_port()?;
@@ -176,6 +180,7 @@ pub async fn launch_turn(
             input,
             native_session_id,
             approvals,
+            questions,
             emit,
             child,
             launch_scratch,
@@ -348,6 +353,7 @@ async fn run_turn(
     input: ProviderLaunchInput,
     native_session_id: String,
     approvals: Arc<ApprovalService>,
+    questions: Arc<QuestionService>,
     emit: EventCallback,
     mut child: tokio::process::Child,
     launch_scratch: mcp_injection::LaunchScratch,
@@ -362,7 +368,9 @@ async fn run_turn(
     let mut tracked_sessions = HashSet::from([native_session_id.clone()]);
     let mut seen_requests = HashSet::new();
     let mut active_requests = HashSet::new();
-    let mut permission_tasks: JoinSet<(String, ArgmaxResult<()>)> = JoinSet::new();
+    // Permission and question requests each hold an HTTP reply open until
+    // the user answers, so both run beside the event loop.
+    let mut request_tasks: JoinSet<(String, ArgmaxResult<()>)> = JoinSet::new();
     let mut stream_started = false;
     let mut exit_code = 0;
     let mut was_cancelled = false;
@@ -384,7 +392,7 @@ async fn run_turn(
                 }
                 idle_recheck_at = tokio::time::Instant::now() + STEER_IDLE_RECHECK;
             }
-            outcome = permission_tasks.join_next(), if !permission_tasks.is_empty() => {
+            outcome = request_tasks.join_next(), if !request_tasks.is_empty() => {
                 match outcome {
                     Some(Ok((request_id, Ok(())))) => { active_requests.remove(&request_id); }
                     Some(Ok((request_id, Err(error)))) => {
@@ -394,7 +402,7 @@ async fn run_turn(
                         break;
                     }
                     Some(Err(_)) => {
-                        emit_runtime(&emit, &input, ProviderRuntimeEventType::Error, ProviderOutputStream::System, "OpenCode's permission response task stopped unexpectedly".to_string(), Some(1));
+                        emit_runtime(&emit, &input, ProviderRuntimeEventType::Error, ProviderOutputStream::System, "OpenCode's permission or question response task stopped unexpectedly".to_string(), Some(1));
                         exit_code = 1;
                         break;
                     }
@@ -407,7 +415,7 @@ async fn run_turn(
                         if steering.observe(&event, &native_session_id) {
                             deferred_idle_at = None;
                         }
-                        if let Some(session_id) = untracked_permission_session(&event, &tracked_sessions) {
+                        if let Some(session_id) = untracked_request_session(&event, &tracked_sessions) {
                             match session_lineage(
                                 http,
                                 endpoint,
@@ -442,12 +450,35 @@ async fn run_turn(
                                 let argmax_session_id = input.session_id.clone();
                                 let invocation_id = invocation_id.clone();
                                 let request_id = request.id.clone();
-                                permission_tasks.spawn(async move {
+                                request_tasks.spawn(async move {
                                     let result = answer_permission(
                                         &http,
                                         &endpoint,
                                         &directory,
                                         &approval_service,
+                                        &argmax_session_id,
+                                        &invocation_id,
+                                        &request,
+                                    ).await;
+                                    (request_id, result)
+                                });
+                            }
+                        }
+                        EventAction::Question(request) => {
+                            if seen_requests.insert(request.id.clone()) {
+                                let http = http.clone();
+                                let endpoint = endpoint.to_string();
+                                let directory = directory.clone();
+                                let questions = Arc::clone(&questions);
+                                let argmax_session_id = input.session_id.clone();
+                                let invocation_id = invocation_id.clone();
+                                let request_id = request.id.clone();
+                                request_tasks.spawn(async move {
+                                    let result = answer_question(
+                                        &http,
+                                        &endpoint,
+                                        &directory,
+                                        &questions,
                                         &argmax_session_id,
                                         &invocation_id,
                                         &request,
@@ -513,7 +544,9 @@ async fn run_turn(
             None,
         );
     }
-    permission_tasks.abort_all();
+    // A question left waiting is closed by the session's exit cleanup
+    // (`cancel_session_pending`); only permissions need their ids here.
+    request_tasks.abort_all();
     for request_id in active_requests {
         let _ = approvals.cancel_native_request(&input.session_id, &invocation_id, &request_id);
     }
@@ -603,19 +636,124 @@ async fn reply_permission(
     })?
 }
 
-fn untracked_permission_session(
-    event: &Value,
-    tracked_sessions: &HashSet<String>,
-) -> Option<String> {
-    (event.get("type").and_then(Value::as_str) == Some("permission.asked"))
-        .then(|| {
-            event
-                .pointer("/properties/sessionID")
-                .and_then(Value::as_str)
+async fn answer_question(
+    http: &ureq::Agent,
+    endpoint: &str,
+    directory: &str,
+    questions: &QuestionService,
+    argmax_session_id: &str,
+    invocation_id: &str,
+    request: &QuestionRequest,
+) -> ArgmaxResult<()> {
+    validate_provider_id(&request.id, "question")?;
+    let result = questions
+        .request_native(
+            argmax_session_id,
+            invocation_id,
+            &request.id,
+            &request.params,
+        )
+        .await;
+    let answers = match result {
+        Ok(response) => question_answers(&request.params, &response),
+        // Too many questions or options for the card. Answer every question
+        // with the reason, as Cursor's path does, so the turn goes on in prose
+        // rather than failing.
+        Err(ArgmaxError::ServiceError { sub_code, message })
+            if sub_code == "QUESTION_REQUEST_INVALID" =>
+        {
+            let reason =
+                format!("Argmax could not show this question ({message}). Ask in prose instead.");
+            let count = request
+                .params
+                .get("questions")
+                .and_then(Value::as_array)
+                .map_or(1, Vec::len);
+            Some(vec![vec![reason]; count])
+        }
+        Err(error) => {
+            // The tool is blocked on this request. Rejecting it ends OpenCode's
+            // run instead of leaving it waiting on a card that never appeared.
+            let _ = reply_question(http, endpoint, directory, &request.id, None).await;
+            return Err(error);
+        }
+    };
+    reply_question(http, endpoint, directory, &request.id, answers).await
+}
+
+/// The service answers `{answers: {q1: {answers: [...]}}}` keyed by the ids
+/// `question_request` assigned; OpenCode wants one label list per question, in
+/// order. `None` is a dismissal, which OpenCode takes as a rejection.
+fn question_answers(params: &Value, response: &Value) -> Option<Vec<Vec<String>>> {
+    let answers = response.get("answers").and_then(Value::as_object)?;
+    if answers.is_empty() {
+        return None;
+    }
+    params
+        .get("questions")
+        .and_then(Value::as_array)?
+        .iter()
+        .map(|question| {
+            let id = question.get("id").and_then(Value::as_str)?;
+            answers
+                .get(id)?
+                .get("answers")
+                .and_then(Value::as_array)?
+                .iter()
+                .map(|answer| {
+                    answer
+                        .as_str()
+                        .map(|text| typed_answer_text(text).to_string())
+                })
+                .collect()
         })
-        .flatten()
-        .filter(|session_id| !tracked_sessions.contains(*session_id))
-        .map(str::to_string)
+        .collect()
+}
+
+async fn reply_question(
+    http: &ureq::Agent,
+    endpoint: &str,
+    directory: &str,
+    request_id: &str,
+    answers: Option<Vec<Vec<String>>>,
+) -> ArgmaxResult<()> {
+    let http = http.clone();
+    let url = match answers {
+        Some(_) => format!("{endpoint}/question/{request_id}/reply"),
+        None => format!("{endpoint}/question/{request_id}/reject"),
+    };
+    let directory = directory.to_string();
+    tokio::task::spawn_blocking(move || {
+        let request = http
+            .post(&url)
+            .query("directory", &directory)
+            .set("Content-Type", "application/json");
+        match answers {
+            Some(answers) => request.send_string(&json!({ "answers": answers }).to_string()),
+            None => request.send_string("{}"),
+        }
+        .map_err(|error| request_error("answer the OpenCode question", &error))?;
+        Ok(())
+    })
+    .await
+    .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode question response stopped"))?
+}
+
+/// A permission or question from a session this turn does not track yet, such
+/// as a child the stream reported before its `session.created`.
+fn untracked_request_session(event: &Value, tracked_sessions: &HashSet<String>) -> Option<String> {
+    matches!(
+        event.get("type").and_then(Value::as_str),
+        Some("permission.asked" | "question.asked")
+    )
+    .then(|| {
+        event
+            .pointer("/properties/sessionID")
+            .and_then(Value::as_str)
+    })
+    .flatten()
+    .filter(|session_id| !tracked_sessions.contains(*session_id))
+    .map(str::to_string)
 }
 
 async fn session_lineage(
@@ -813,10 +951,19 @@ struct PermissionRequest {
     cwd: String,
 }
 
+/// An OpenCode `question.asked` request, carried in the question service's
+/// request shape.
+#[derive(Debug, PartialEq)]
+struct QuestionRequest {
+    id: String,
+    params: Value,
+}
+
 #[derive(Debug, PartialEq)]
 enum EventAction {
     Output(Value),
     Permission(PermissionRequest),
+    Question(QuestionRequest),
     Error(Value),
     Complete,
     Ignore,
@@ -928,8 +1075,59 @@ fn classify_event(
                 cwd,
             })
         }
+        Some("question.asked") => {
+            let Some(properties) = properties else {
+                return EventAction::Ignore;
+            };
+            let native_session_id = properties.get("sessionID").and_then(Value::as_str);
+            if !native_session_id.is_some_and(|id| tracked_sessions.contains(id)) {
+                return EventAction::Ignore;
+            }
+            question_request(properties)
+                .map(EventAction::Question)
+                .unwrap_or(EventAction::Ignore)
+        }
         _ => EventAction::Ignore,
     }
+}
+
+/// Translate OpenCode's question into the request the question service
+/// validates. OpenCode's questions have no ids, so position names them, and
+/// its `custom` (default true) is the card's free-text "Other" choice.
+fn question_request(properties: &Map<String, Value>) -> Option<QuestionRequest> {
+    let id = properties.get("id").and_then(Value::as_str)?;
+    let session_id = properties.get("sessionID").and_then(Value::as_str)?;
+    let questions = properties
+        .get("questions")
+        .and_then(Value::as_array)?
+        .iter()
+        .enumerate()
+        .map(|(index, question)| {
+            json!({
+                "id": format!("q{}", index + 1),
+                "header": question.get("header").cloned().unwrap_or(Value::Null),
+                "question": question.get("question").cloned().unwrap_or(Value::Null),
+                "options": question.get("options").cloned().unwrap_or(Value::Null),
+                "multiSelect": question.get("multiple").and_then(Value::as_bool).unwrap_or(false),
+                "isOther": question.get("custom").and_then(Value::as_bool).unwrap_or(true),
+            })
+        })
+        .collect::<Vec<_>>();
+    Some(QuestionRequest {
+        id: id.to_string(),
+        params: json!({
+            "provider": "opencode",
+            "isBlocking": true,
+            "itemId": id,
+            "threadId": session_id,
+            "turnId": properties
+                .get("tool")
+                .and_then(|tool| tool.get("messageID"))
+                .and_then(Value::as_str)
+                .unwrap_or(id),
+            "questions": questions,
+        }),
+    })
 }
 
 fn run_envelope(kind: &str, session_id: &str, key: &str, value: &Value) -> Value {
@@ -1701,6 +1899,101 @@ mod tests {
         );
     }
 
+    #[test]
+    fn question_asked_becomes_a_blocking_card_request_and_answers_return_in_order() {
+        let mut sessions = HashSet::from(["ses_root".to_string()]);
+        // Captured from `opencode serve` 1.18.32.
+        let asked = json!({
+            "type": "question.asked",
+            "properties": {
+                "id": "que_1", "sessionID": "ses_root",
+                "questions": [
+                    {
+                        "question": "Which color do you prefer?", "header": "Color preference",
+                        "options": [
+                            {"label": "Red", "description": "Choose red"},
+                            {"label": "Blue", "description": "Choose blue"}
+                        ],
+                        "multiple": false
+                    },
+                    {
+                        "question": "Plan complete. Switch agents?", "header": "Build Agent",
+                        "custom": false,
+                        "options": [{"label": "Yes", "description": "Switch"}]
+                    }
+                ],
+                "tool": { "messageID": "msg_1", "callID": "call_1" }
+            }
+        });
+        let EventAction::Question(request) = classify_event(&asked, &mut sessions, "ses_root")
+        else {
+            panic!("question.asked was not classified as a question");
+        };
+        assert_eq!(request.id, "que_1");
+        assert_eq!(
+            request.params,
+            json!({
+                "provider": "opencode", "isBlocking": true,
+                "itemId": "que_1", "threadId": "ses_root", "turnId": "msg_1",
+                "questions": [
+                    {
+                        "id": "q1", "header": "Color preference",
+                        "question": "Which color do you prefer?",
+                        "options": [
+                            {"label": "Red", "description": "Choose red"},
+                            {"label": "Blue", "description": "Choose blue"}
+                        ],
+                        "multiSelect": false, "isOther": true
+                    },
+                    {
+                        "id": "q2", "header": "Build Agent",
+                        "question": "Plan complete. Switch agents?",
+                        "options": [{"label": "Yes", "description": "Switch"}],
+                        "multiSelect": false, "isOther": false
+                    }
+                ]
+            })
+        );
+
+        let answered = json!({"answers": {
+            "q2": {"answers": ["Yes"]},
+            "q1": {"answers": ["Blue", "Red"]}
+        }});
+
+        let typed = json!({"answers": {
+            "q1": {"answers": ["user_note: teal"]},
+            "q2": {"answers": ["No"]}
+        }});
+        assert_eq!(
+            question_answers(&request.params, &typed),
+            Some(vec![vec!["teal".to_string()], vec!["No".to_string()]])
+        );
+        assert_eq!(
+            question_answers(&request.params, &answered),
+            Some(vec![
+                vec!["Blue".to_string(), "Red".to_string()],
+                vec!["Yes".to_string()],
+            ])
+        );
+        assert_eq!(
+            question_answers(&request.params, &json!({"answers": {}})),
+            None
+        );
+
+        let foreign = json!({
+            "type": "question.asked",
+            "properties": { "id": "que_2", "sessionID": "ses_other", "questions": [] }
+        });
+        assert_eq!(
+            untracked_request_session(&foreign, &sessions).as_deref(),
+            Some("ses_other")
+        );
+        assert_eq!(
+            classify_event(&foreign, &mut sessions, "ses_root"),
+            EventAction::Ignore
+        );
+    }
+
     #[derive(Clone, Default)]
     struct FakeState {
         requests: Arc<Mutex<Vec<(String, Value)>>>,
@@ -1913,7 +2206,7 @@ mod tests {
             }
         });
 
-        let resumed_id = untracked_permission_session(&resumed_permission, &sessions).unwrap();
+        let resumed_id = untracked_request_session(&resumed_permission, &sessions).unwrap();
         let lineage = session_lineage(&http, &endpoint, "/workspace", &resumed_id, &sessions)
             .await
             .unwrap()
@@ -1932,7 +2225,7 @@ mod tests {
                 "id": "per_other", "sessionID": "ses_other", "permission": "bash"
             }
         });
-        let unrelated_id = untracked_permission_session(&unrelated_permission, &sessions).unwrap();
+        let unrelated_id = untracked_request_session(&unrelated_permission, &sessions).unwrap();
         assert_eq!(
             session_lineage(&http, &endpoint, "/workspace", &unrelated_id, &sessions,)
                 .await

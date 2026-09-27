@@ -1,5 +1,6 @@
 import { createContext, useCallback, useState } from "react";
 
+export const SIDEBAR_ARCS_KEY = "argmax.sidebar.arcs.visible";
 export const SIDEBAR_PRIORITY_KEY = "argmax.sidebar.priority.visible";
 export const SIDEBAR_COLLAPSED_KEY = "argmax.sidebar.collapsed";
 export const SIDEBAR_TRANSLUCENT_KEY = "argmax.sidebar.translucent";
@@ -24,6 +25,7 @@ export const GOAL_ENABLED_KEY = "argmax.goal.enabled";
 export const TURN_REVERT_ENABLED_KEY = "argmax.turnRevert.enabled";
 export const GOAL_MAX_TURNS_KEY = "argmax.goal.maxTurns";
 export const FOLLOW_UP_DELIVERY_KEY = "argmax.followUp.delivery";
+export const ESCAPE_STOPS_CHAT_KEY = "argmax.escapeStopsChat";
 export const DEVELOPER_TOOLS_KEY = "argmax.developerTools.enabled";
 
 /** What Send does while an agent is still working. */
@@ -63,7 +65,7 @@ export const PrMilestoneCelebrationContext = createContext(false);
  */
 export const DeveloperToolsContext = createContext(import.meta.env.DEV);
 
-function readBooleanPreference(key: string, fallback: boolean): boolean {
+export function readBooleanPreference(key: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
   const raw = window.localStorage.getItem(key);
   return raw === null ? fallback : raw === "true";

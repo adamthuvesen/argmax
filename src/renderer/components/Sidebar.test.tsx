@@ -2175,6 +2175,27 @@ describe("Sidebar — Arcs section", () => {
     expect(overlaysSnapshot().selectedArcId).toBe("arc-1");
   });
 
+  it("hides arcs without hiding their member chats", () => {
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={arcSnapshot} showArcs={false} />);
+    expect(screen.queryByText("Arcs")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pricing rollout" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New arc" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
+    expect(screen.getByRole("button", { name: /^Ship the pricing page/ })).toBeInTheDocument();
+
+    rerender(<Sidebar {...baseProps} snapshot={arcSnapshot} showArcs />);
+    expect(screen.getByRole("button", { name: "Pricing rollout" })).toBeInTheDocument();
+  });
+
+  it("omits empty section headings and keeps arc creation available", () => {
+    render(<Sidebar {...baseProps} showPriority snapshot={{ ...arcSnapshot, arcs: [], workspaces: [], sessions: [] }} />);
+    for (const label of ["Arcs", "Pinned", "Priority"]) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "New arc" }));
+    expect(screen.getByRole("dialog", { name: "New arc" })).toBeInTheDocument();
+  });
+
   it("marks the selected arc row as current", () => {
     render(
       <Sidebar {...baseProps} snapshot={arcSnapshot} selectedArcId="arc-1" onOpenArc={showArcPage} />

@@ -1,0 +1,317 @@
+<title>Argmax Prose Rhythm</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..900&display=swap">
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --panel: #ecebe6;
+    --line: #dcdad3;
+    --ink: #1f1e1a;
+    --ink-strong: #141310;
+    --ink-dim: #4a4843;
+    --muted: #7d7a72;
+    --accent: #c4672a;
+    --chip: #e4e2dc;
+    --chip-on: #1f1e1a;
+    --chip-on-ink: #f6f5f2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0f0f0e;
+      --panel: #171716;
+      --line: #2a2a28;
+      --ink: #ebe9e4;
+      --ink-strong: #f5f3ed;
+      --ink-dim: #cfccc4;
+      --muted: #8b8880;
+      --accent: #d9905a;
+      --chip: #23232180;
+      --chip-on: #ebe9e4;
+      --chip-on-ink: #0f0f0e;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0f0f0e;
+    --panel: #171716;
+    --line: #2a2a28;
+    --ink: #ebe9e4;
+    --ink-strong: #f5f3ed;
+    --ink-dim: #cfccc4;
+    --muted: #8b8880;
+    --accent: #d9905a;
+    --chip: #23232180;
+    --chip-on: #ebe9e4;
+    --chip-on-ink: #0f0f0e;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Geist", ui-sans-serif, -apple-system, system-ui, sans-serif;
+    font-size: 14px;
+    padding-inline: 16px;
+    padding-block: 0 48px;
+  }
+  .app { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 1fr 300px; gap: 40px; }
+  @media (max-width: 860px) { .app { grid-template-columns: 1fr; } .side { position: static !important; } }
+
+  header { grid-column: 1 / -1; padding-block: 28px 8px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
+  header h1 { font-size: 15px; font-weight: 560; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .theme { margin-left: auto; display: flex; gap: 6px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; margin-bottom: 18px; }
+  .chip {
+    font: inherit; font-size: 12.5px; font-weight: 500; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--chip); color: var(--ink); cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--chip-on); color: var(--chip-on-ink); border-color: transparent; }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .side { position: sticky; top: 16px; align-self: start; display: grid; gap: 14px; }
+  .side h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 2px; }
+  .note { color: var(--ink-dim); font-size: 13px; line-height: 1.5; margin: 0; }
+  .ctl { display: grid; grid-template-columns: 1fr 52px; gap: 2px 10px; align-items: center; font-size: 12.5px; }
+  .ctl label { color: var(--ink-dim); }
+  .ctl output { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .ctl input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 0 0 6px; }
+  .btn { font: inherit; font-size: 12.5px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  pre.out { margin: 0; font-size: 11px; line-height: 1.45; white-space: pre-wrap; color: var(--ink-dim); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 260px; overflow: auto; }
+
+  /* ---- the sample transcript, driven entirely by --p-* tokens ---- */
+  .stage { background: var(--bg); padding: 20px 8px 40px; }
+  .meta { font-size: 12.5px; color: var(--muted); margin-bottom: 18px; display: flex; gap: 10px; align-items: center; }
+  .meta::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+  .md {
+    max-width: calc(var(--p-measure) * 1px);
+    font-size: calc(var(--p-size) * 1px);
+    line-height: var(--p-lh);
+    font-weight: var(--p-weight);
+    color: var(--p-ink, var(--ink));
+    letter-spacing: calc(var(--p-track) * 1em);
+  }
+  .md > :first-child { margin-top: 0 !important; }
+  .md p { margin: 0 0 calc(var(--p-gap) * 1em); }
+  .md p:has(+ ul) { margin-bottom: calc(var(--p-leadin) * 1em); }
+  .md strong { font-weight: var(--p-strong); color: var(--ink-strong); }
+  .md em { font-style: italic; color: var(--ink-dim); }
+  .md h3 {
+    font-size: calc(var(--p-h3) * 1px);
+    font-weight: var(--p-h3w);
+    line-height: 1.3;
+    letter-spacing: calc(var(--p-h3track) * 1em);
+    color: var(--ink-strong);
+    margin: calc(var(--p-h3above) * 1em) 0 calc(var(--p-h3below) * 1em);
+    text-wrap: balance;
+  }
+  .md h3::before {
+    content: "";
+    display: var(--p-h3rule, none);
+    width: 22px; height: 2px; background: var(--accent);
+    margin-bottom: 10px; border-radius: 2px;
+  }
+  .md ul { margin: 0 0 calc(var(--p-gap) * 1em); padding-left: 1.5em; }
+  .md li { line-height: var(--p-lilh); padding-left: 2px; }
+  .md li + li { margin-top: calc(var(--p-ligap) * 1px); }
+  .md li::marker { color: color-mix(in oklab, var(--accent) 60%, var(--muted)); }
+  .md li > strong:first-child { color: var(--ink-strong); font-weight: var(--p-listrong, var(--p-strong)); }
+  .md .lead strong { font-weight: var(--p-h3w); }
+  .md .lead { margin-top: calc(var(--p-h3above) * 0.7em); }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Chat prose rhythm</h1>
+    <p>Same answer, C and five variations. Pick a preset, then drag the sliders.</p>
+    <div class="theme" role="group" aria-label="Theme">
+      <button class="chip" type="button" data-set="light" aria-pressed="false">Light</button>
+      <button class="chip" type="button" data-set="dark" aria-pressed="false">Dark</button>
+      <button class="chip" type="button" data-set="" aria-pressed="false">System</button>
+    </div>
+  </header>
+
+  <div class="chips" id="chips" role="group" aria-label="Presets"></div>
+
+  <div class="stage">
+    <div class="meta">04:57 PM &nbsp; Worked for 27s · 7 steps ›</div>
+    <div class="md" id="md">
+      <p>I searched in the Argmax browser (DuckDuckGo) and read two critics' lists in full: Entertainment Weekly (July 6) and Empire (July 20). Both are "so far" lists from mid-year, so anything released after July isn't included. The search results also included "so far" lists from Rotten Tomatoes, Time Out, Variety, /Film and IMDb, but I only read their snippets.</p>
+      <h3>On both lists</h3>
+      <ul>
+        <li><strong>Project Hail Mary</strong>: Phil Lord and Christopher Miller's version of Andy Weir's novel. Ryan Gosling plays a science teacher on a mission to save Earth who befriends an alien called Rocky. It's a sci-fi comedy with real heart, and Empire ranks it #2.</li>
+        <li><strong>Obsession</strong>: a horror film by Curry Barker, a director who came up on YouTube. A young man wishes his crush would love him more than anyone else, and it goes badly wrong. It's low-to-mid budget and became a hit through word of mouth. Inde Navarrette's performance is getting a lot of praise, and EW already calls it an early Oscar contender. Empire ranks it #3.</li>
+        <li><strong>28 Years Later: The Bone Temple</strong>: Nia DaCosta's sequel to Danny Boyle's 2025 zombie film. It's darker than the first, with standout turns from Ralph Fiennes and Jack O'Connell. Despite its January release, both lists count it among the year's best horror films.</li>
+        <li><strong>The Invite</strong>: Olivia Wilde directs and stars alongside Seth Rogen, Penélope Cruz and Edward Norton. Two couples, one apartment, and an invitation to an orgy. It's a sex comedy that turns into a tender look at long-term relationships.</li>
+      </ul>
+      <p class="lead"><strong>Empire's #1: The Odyssey</strong> Christopher Nolan's follow-up to Oppenheimer, starring Matt Damon as Odysseus and shot for IMAX. Empire calls it "gods-tier cinema," and it gets the most buzz across the search results.</p>
+      <h3>Other picks</h3>
+      <ul>
+        <li><strong>Empire only:</strong> <em>The Secret Agent</em> (a Brazilian political thriller with Wagner Moura), <em>Sirāt</em> (a grief road movie set at a desert rave), <em>Nirvanna The Band The Show The Movie</em>, Soderbergh's <em>The Christophers</em> (Ian McKellen and Michaela Coel) and Linklater's <em>Nouvelle Vague</em>.</li>
+        <li><strong>EW only:</strong> <em>Send Help</em> (Sam Raimi's gory desert-island thriller with Rachel McAdams), <em>Toy Story 5</em> (the franchise's biggest opening ever), Zendaya and Robert Pattinson in A24's <em>The Drama</em>, Baz Luhrmann's Elvis concert documentary <em>EPiC</em>, the road-trip drama <em>Omaha</em>, and <em>The Sheep Detectives</em> (a family murder mystery with Hugh Jackman).</li>
+      </ul>
+      <p><strong>Trends:</strong> horror has been the big story of the year (EW notes that <em>Sinners</em> won Best Picture). Original mid-budget films are also doing well alongside the blockbusters.</p>
+      <p>If you tell me what you're in the mood for, I can narrow this to one pick. Rotten Tomatoes also keeps a list ranked by critic score that I could pull up.</p>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div>
+      <h2 id="preset-name">Preset</h2>
+      <p class="note" id="preset-note"></p>
+    </div>
+    <div>
+      <h2>Body</h2>
+      <div class="ctl" id="ctls"></div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <button class="btn" id="copy">Copy as CSS</button>
+      <button class="btn" id="reset">Reset preset</button>
+    </div>
+    <pre class="out" id="out" hidden></pre>
+  </aside>
+</div>
+
+<script>
+  // Tokens: [key, label, min, max, step]
+  const CTLS = [
+    ["size", "Body size (px)", 12, 19, 0.5],
+    ["lh", "Body line-height", 1.35, 1.9, 0.01],
+    ["weight", "Body weight", 300, 500, 10],
+    ["track", "Body tracking (em)", -0.02, 0.02, 0.001],
+    ["gap", "Paragraph gap (em)", 0.4, 2, 0.05],
+    ["leadin", "Lead-in to list gap (em)", 0, 1, 0.05],
+    ["measure", "Measure (px)", 480, 900, 10],
+    ["strong", "Bold weight", 450, 750, 10],
+    ["h3", "Heading size (px)", 12, 24, 0.5],
+    ["h3w", "Heading weight", 450, 800, 10],
+    ["h3track", "Heading tracking (em)", -0.03, 0.03, 0.001],
+    ["h3above", "Space above heading (em)", 0.5, 3, 0.05],
+    ["h3below", "Space below heading (em)", 0, 1.2, 0.05],
+    ["lilh", "Bullet line-height", 1.3, 1.9, 0.01],
+    ["ligap", "Gap between bullets (px)", 0, 20, 1],
+  ];
+
+  const PRESETS = {
+    "Current": {
+      note: "What ships today, scaled to a 15px body. Heading is one size step up at 600, bold is 550 at body size, paragraph gap 15px under a 1.74 leading. Kept as the baseline.",
+      v: { size: 15, lh: 1.74, weight: 390, track: 0, gap: 1.0, leadin: 0.45, measure: 780, strong: 550, h3: 16, h3w: 600, h3track: -0.004, h3above: 1.45, h3below: 0.4, lilh: 1.6, ligap: 9 },
+    },
+    "C · 20px": {
+      note: "The one you liked. Body 380, bold 620 in brighter ink, heading 20px at 660. Each step is far enough from its neighbour to register at a glance.",
+      v: { size: 15, lh: 1.6, weight: 380, track: 0.002, gap: 1.2, leadin: 0.4, measure: 700, strong: 620, h3: 20, h3w: 660, h3track: -0.016, h3above: 1.4, h3below: 0.4, lilh: 1.55, ligap: 7 },
+    },
+    "C1 · 18px": {
+      note: "Same ladder, heading down to 18px. Still a clear size step over the body, but it no longer competes with the meta line above the answer.",
+      v: { size: 15, lh: 1.6, weight: 380, track: 0.002, gap: 1.2, leadin: 0.4, measure: 700, strong: 620, h3: 18, h3w: 660, h3track: -0.014, h3above: 1.4, h3below: 0.4, lilh: 1.55, ligap: 7 },
+    },
+    "C2 · 17px heavy": {
+      note: "Heading at 17px but 690 weight, tighter above. Size does less, weight does more, so the heading reads as a label for the block rather than a title.",
+      v: { size: 15, lh: 1.6, weight: 380, track: 0.002, gap: 1.2, leadin: 0.4, measure: 700, strong: 620, h3: 17, h3w: 690, h3track: -0.012, h3above: 1.3, h3below: 0.4, lilh: 1.55, ligap: 7 },
+    },
+    "C3 · 18px, softer bold": {
+      note: "18px heading with bold eased to 590 and a slightly more open 1.65 body leading. Calmer inside bullets, where a run of 620 lead-ins was starting to shout.",
+      v: { size: 15, lh: 1.65, weight: 380, track: 0.002, gap: 1.2, leadin: 0.4, measure: 700, strong: 590, h3: 18, h3w: 660, h3track: -0.014, h3above: 1.4, h3below: 0.45, lilh: 1.58, ligap: 7 },
+    },
+    "C4 · 17px, accent rule": {
+      note: "17px heading at 660 with a short accent rule above it. The rule marks the section break so the heading itself can stay modest.",
+      v: { size: 15, lh: 1.6, weight: 380, track: 0.002, gap: 1.2, leadin: 0.4, measure: 700, strong: 620, h3: 17, h3w: 660, h3track: -0.012, h3above: 1.35, h3below: 0.4, lilh: 1.55, ligap: 7 },
+      extra: { "--p-h3rule": "block" },
+    },
+    "C5 · 16.5px, tight bullets": {
+      note: "Smallest heading of the set at 700 weight, bullets pulled to a 5px gap, paragraph gap widened to 1.3 lines. Groups read as groups and the page gets shorter.",
+      v: { size: 15, lh: 1.58, weight: 380, track: 0.002, gap: 1.3, leadin: 0.35, measure: 700, strong: 600, h3: 16.5, h3w: 700, h3track: -0.01, h3above: 1.4, h3below: 0.35, lilh: 1.52, ligap: 5 },
+    },
+  };
+
+  const md = document.getElementById("md");
+  const chips = document.getElementById("chips");
+  const ctls = document.getElementById("ctls");
+  const out = document.getElementById("out");
+  let current = "Current";
+  const state = {};
+
+  function apply() {
+    for (const [k] of CTLS) md.style.setProperty("--p-" + k, state[k]);
+    for (const k of ["--p-h3rule", "--p-listrong"]) md.style.removeProperty(k);
+    const extra = PRESETS[current].extra || {};
+    for (const k in extra) md.style.setProperty(k, extra[k]);
+    for (const [k] of CTLS) {
+      const o = document.getElementById("out-" + k);
+      if (o) o.value = state[k];
+      const r = document.getElementById("rng-" + k);
+      if (r && +r.value !== state[k]) r.value = state[k];
+    }
+  }
+
+  function load(name) {
+    current = name;
+    Object.assign(state, PRESETS[name].v);
+    document.getElementById("preset-name").textContent = name;
+    document.getElementById("preset-note").textContent = PRESETS[name].note;
+    for (const b of chips.children) b.setAttribute("aria-pressed", b.textContent === name);
+    apply();
+    try { localStorage.setItem("prose-preset", name); } catch {}
+  }
+
+  for (const name in PRESETS) {
+    const b = document.createElement("button");
+    b.className = "chip"; b.textContent = name; b.setAttribute("aria-pressed", "false");
+    b.addEventListener("click", () => load(name));
+    chips.appendChild(b);
+  }
+
+  for (const [k, label, min, max, step] of CTLS) {
+    const l = document.createElement("label"); l.textContent = label; l.htmlFor = "rng-" + k;
+    const o = document.createElement("output"); o.id = "out-" + k;
+    const r = document.createElement("input"); r.type = "range"; r.id = "rng-" + k; r.min = min; r.max = max; r.step = step;
+    r.addEventListener("input", () => { state[k] = +r.value; apply(); });
+    ctls.append(l, o, r);
+  }
+
+  document.getElementById("reset").addEventListener("click", () => load(current));
+  document.getElementById("copy").addEventListener("click", async () => {
+    const s = state;
+    const css = `/* ${current} */
+.markdown {
+  font-size: ${s.size}px;             /* --text-base */
+  line-height: ${s.lh};
+  font-weight: ${s.weight};           /* --weight-prose */
+  letter-spacing: ${s.track}em;
+  --markdown-prose-width: ${s.measure}px;
+}
+.markdown p { margin: 0 0 ${s.gap}em; }
+.markdown p:has(+ ul), .markdown p:has(+ ol) { margin-bottom: ${s.leadin}em; }
+.markdown strong { font-weight: ${s.strong}; }
+.markdown h3 {
+  font-size: ${s.h3}px;
+  font-weight: ${s.h3w};
+  letter-spacing: ${s.h3track}em;
+  line-height: 1.3;
+  margin: ${s.h3above}em 0 ${s.h3below}em;
+}
+.markdown li { line-height: ${s.lilh}; }
+.markdown li + li { margin-top: ${s.ligap}px; }`;
+    out.textContent = css; out.hidden = false;
+    try { await navigator.clipboard.writeText(css); } catch {}
+  });
+
+  const themeBtns = document.querySelectorAll(".theme .chip");
+  function setTheme(t) {
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    for (const b of themeBtns) b.setAttribute("aria-pressed", b.dataset.set === t);
+    try { localStorage.setItem("prose-theme", t); } catch {}
+  }
+  for (const b of themeBtns) b.addEventListener("click", () => setTheme(b.dataset.set));
+  let savedTheme = "";
+  try { savedTheme = localStorage.getItem("prose-theme") || ""; } catch {}
+  setTheme(savedTheme);
+
+  let saved = null;
+  try { saved = localStorage.getItem("prose-preset"); } catch {}
+  load(saved && PRESETS[saved] ? saved : "C · 20px");
+</script>

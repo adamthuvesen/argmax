@@ -46,7 +46,8 @@
         "google calendar",
         "gcal",
         "calendar"
-      ]
+      ],
+      "monochromeKey": "google-calendar-mono"
     },
     {
       "key": "snowflake",
@@ -67,14 +68,16 @@
       "title": "Linear",
       "aliases": [
         "linear"
-      ]
+      ],
+      "monochromeKey": "linear-mono"
     },
     {
       "key": "datadog",
       "title": "Datadog",
       "aliases": [
         "datadog"
-      ]
+      ],
+      "monochromeKey": "datadog-mono"
     },
     {
       "key": "github",
@@ -95,28 +98,32 @@
       "title": "Hex",
       "aliases": [
         "hex"
-      ]
+      ],
+      "monochromeKey": "hex-mono"
     },
     {
       "key": "executor",
       "title": "Executor",
       "aliases": [
         "executor"
-      ]
+      ],
+      "monochromeKey": "executor-mono"
     },
     {
       "key": "engram",
       "title": "Engram",
       "aliases": [
         "engram"
-      ]
+      ],
+      "monochromeKey": "engram-mono"
     },
     {
       "key": "shunt",
       "title": "Shunt",
       "aliases": [
         "shunt"
-      ]
+      ],
+      "monochromeKey": "shunt-mono"
     },
     {
       "key": "trace",
@@ -124,7 +131,8 @@
       "aliases": [
         "trace",
         "trace hq"
-      ]
+      ],
+      "monochromeKey": "trace-mono"
     }
   ],
   "mcpServersWithoutIcons": [

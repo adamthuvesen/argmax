@@ -33,6 +33,7 @@ import { WorkingNest } from "./WorkingNest.js";
 import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 import { GithubIcon } from "./GithubIcon.js";
+import { showErrorToast } from "../state/toast.js";
 
 /** Avatars shown before the stack folds into a +N chip. Matches the reference
  *  density: four or five colored marks read as a team, more read as noise. */
@@ -117,7 +118,7 @@ export function WorkspaceCard({
       .then((result) => {
         openWebUrl(result.url, { flip });
       })
-      .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
+      .catch((error: unknown) => showErrorToast(errorMessage(error)))
       .finally(() => setIsPrPending(false));
   };
 
@@ -127,7 +128,7 @@ export function WorkspaceCard({
     setStatus(null);
     void window.argmax.prs
       .setPrimary({ sessionId: session.id, prNumber })
-      .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
+      .catch((error: unknown) => showErrorToast(errorMessage(error)))
       .finally(() => setIsPrPending(false));
   };
 
@@ -137,7 +138,7 @@ export function WorkspaceCard({
     setStatus(null);
     void window.argmax.prs
       .dismiss({ sessionId: session.id, prNumber })
-      .catch((error: unknown) => setStatus({ kind: "error", message: errorMessage(error) }))
+      .catch((error: unknown) => showErrorToast(errorMessage(error)))
       .finally(() => setIsPrPending(false));
   };
 

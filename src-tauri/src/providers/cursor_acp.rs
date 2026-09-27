@@ -35,8 +35,12 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use tokio::sync::watch;
 
-use super::acp::{AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest};
+use super::acp::{
+    AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest,
+    AcpQuestionHandler, AcpQuestionRequest,
+};
 use super::environment::build_provider_environment;
+use super::normalizer::todo::is_todo_tool;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
@@ -49,6 +53,7 @@ use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
+use crate::questions::service::{typed_answer_text, QuestionService};
 use crate::session_control::SessionLaunchProcessConfig;
 #[cfg(test)]
 use crate::session_control::SESSION_LAUNCH_TOKEN_ENV;
@@ -322,6 +327,7 @@ struct CursorPermissionContext {
     cwd: String,
     permission_mode: PermissionMode,
     approvals: Option<Arc<ApprovalService>>,
+    questions: Option<Arc<QuestionService>>,
 }
 
 impl CursorAcpSessions {
@@ -339,6 +345,7 @@ impl CursorAcpSessions {
         input: &ProviderLaunchInput,
         session_launch: Option<&SessionLaunchProcessConfig>,
         approvals: Option<Arc<ApprovalService>>,
+        questions: Option<Arc<QuestionService>>,
         on_event: EventCallback,
     ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
         let provider_environment =
@@ -446,6 +453,7 @@ impl CursorAcpSessions {
                     cwd: input.workspace_path.to_string_lossy().into_owned(),
                     permission_mode: input.permission_mode,
                     approvals,
+                    questions,
                 },
             );
 
@@ -535,6 +543,7 @@ impl CursorAcpSessions {
             process_cwd,
             provider_environment,
             Some(cursor_permission_handler(Arc::clone(&permission_contexts))),
+            Some(cursor_question_handler(Arc::clone(&permission_contexts))),
         )?;
         *slot.booting.lock_or_recover("booting ACP client") = Some(Arc::clone(&client));
         let workspace = Arc::new(AcpWorkspace {
@@ -733,6 +742,195 @@ fn cursor_permission_handler(contexts: PermissionContexts) -> AcpPermissionHandl
             }
         })
     })
+}
+
+/// Cursor's question tool, answered through the same blocking question dock
+/// Codex's `request_user_input` uses. Cursor waits on the JSON-RPC response,
+/// so the turn stays open until the user answers or dismisses the card.
+///
+/// Every failure answers `skipped` or `cancelled` rather than an error: an
+/// error sends Cursor down its `session/request_permission` fallback, which
+/// Argmax declines anyway, and a `skipped` reason reaches the model as the
+/// tool's result so it can ask in prose instead.
+fn cursor_question_handler(contexts: PermissionContexts) -> AcpQuestionHandler {
+    Arc::new(move |request: AcpQuestionRequest| {
+        let context = {
+            let contexts = contexts.lock_or_recover("cursor ACP permission contexts");
+            match request.session_id.as_deref() {
+                Some(session_id) => contexts
+                    .get_key_value(session_id)
+                    .map(|(id, context)| (id.clone(), context.clone())),
+                // No tool call named the session. With one turn running on
+                // this process it can only be that one; with several, guessing
+                // could put the question in the wrong chat.
+                None if contexts.len() == 1 => contexts
+                    .iter()
+                    .next()
+                    .map(|(id, context)| (id.clone(), context.clone())),
+                None => None,
+            }
+        };
+        Box::pin(async move {
+            let Some((acp_session_id, context)) = context else {
+                return cursor_question_skipped(
+                    "Argmax could not tell which chat this question belongs to. Ask in prose instead.",
+                );
+            };
+            let Some(questions) = context.questions else {
+                return cursor_question_skipped(
+                    "Argmax cannot show questions here. Ask in prose instead.",
+                );
+            };
+            let request_id = request.request_id.to_string();
+            let params = question_service_params(
+                &request.params,
+                &acp_session_id,
+                &context.invocation_id,
+                &request_id,
+            );
+            match questions
+                .request_native(
+                    &context.argmax_session_id,
+                    &context.invocation_id,
+                    &request_id,
+                    &params,
+                )
+                .await
+            {
+                Ok(response) => cursor_question_outcome(&request.params, &response),
+                Err(ArgmaxError::ServiceError { sub_code, message })
+                    if sub_code == "QUESTION_REQUEST_INVALID" =>
+                {
+                    cursor_question_skipped(&format!(
+                        "Argmax could not show this question ({message}). Ask in prose instead."
+                    ))
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "cursor question ended without an answer");
+                    json!({ "outcome": { "outcome": "cancelled" } })
+                }
+            }
+        })
+    })
+}
+
+/// Cursor's `{toolCallId, title?, questions: [{id, prompt, options: [{id,
+/// label}], allowMultiple}]}` in the shape the question service reads.
+/// Cursor's CLI heads an untitled set "Clarifying Questions", so the card does
+/// too. Its questions take no free-form answer.
+fn question_service_params(
+    params: &Value,
+    acp_session_id: &str,
+    invocation_id: &str,
+    request_id: &str,
+) -> Value {
+    let header = params
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .unwrap_or("Clarifying Questions");
+    let questions: Vec<Value> = params
+        .get("questions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .map(|question| {
+            let options: Vec<Value> = question
+                .get("options")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+                .iter()
+                .map(|option| json!({ "label": option.get("label") }))
+                .collect();
+            json!({
+                "id": question.get("id"),
+                "header": header,
+                "question": question.get("prompt"),
+                "options": options,
+                "multiSelect": question.get("allowMultiple").and_then(Value::as_bool).unwrap_or(false),
+            })
+        })
+        .collect();
+    let item_id = params
+        .get("toolCallId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map_or_else(|| format!("cursor-ask-{request_id}"), str::to_string);
+    json!({
+        "provider": "cursor",
+        "isBlocking": true,
+        "itemId": item_id,
+        "threadId": acp_session_id,
+        "turnId": invocation_id,
+        "questions": questions,
+    })
+}
+
+/// The question service answers with the labels the user picked, keyed by
+/// question id; Cursor wants the option ids. A dismissal arrives as no answers.
+fn cursor_question_outcome(params: &Value, response: &Value) -> Value {
+    let picked = response
+        .get("answers")
+        .and_then(Value::as_object)
+        .filter(|answers| !answers.is_empty());
+    let Some(picked) = picked else {
+        return cursor_question_skipped("The user dismissed the question.");
+    };
+    let mut answers = Vec::new();
+    let mut unlisted = Vec::new();
+    for question in params
+        .get("questions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+    {
+        let Some(question_id) = question.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let options = question
+            .get("options")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let mut selected = Vec::new();
+        for label in picked
+            .get(question_id)
+            .and_then(|answer| answer.get("answers"))
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(Value::as_str)
+        {
+            match options
+                .iter()
+                .find(|option| option.get("label").and_then(Value::as_str) == Some(label))
+                .and_then(|option| option.get("id"))
+            {
+                Some(option_id) => selected.push(option_id.clone()),
+                None => unlisted.push(typed_answer_text(label).to_string()),
+            }
+        }
+        if !selected.is_empty() {
+            answers.push(json!({ "questionId": question_id, "selectedOptionIds": selected }));
+        }
+    }
+    // Cursor's answer carries option ids only. Text that is not one of the
+    // options still reaches the model, as the reason the questions were skipped.
+    if !unlisted.is_empty() {
+        return cursor_question_skipped(&format!(
+            "The user answered in their own words: {}",
+            unlisted.join("; ")
+        ));
+    }
+    json!({ "outcome": { "outcome": "answered", "answers": answers } })
+}
+
+fn cursor_question_skipped(reason: &str) -> Value {
+    json!({ "outcome": { "outcome": "skipped", "reason": reason } })
 }
 
 fn cursor_permission_command(params: &Value) -> String {
@@ -976,7 +1174,7 @@ impl TurnTranslation {
                     },
                 );
                 let mut lines = Vec::new();
-                if named {
+                if named && !self.waits_for_completion(call_id) {
                     lines.extend(self.started_line(call_id));
                 }
                 // Some agents emit tool_call already terminal; close it out.
@@ -990,7 +1188,8 @@ impl TurnTranslation {
                 let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
                     return Vec::new();
                 };
-                let named = self.adopt_identity(call_id, update);
+                let named =
+                    self.adopt_identity(call_id, update) && !self.waits_for_completion(call_id);
                 let terminal = is_terminal_status(update);
                 // A bare `status: in_progress` says nothing about what the
                 // tool is. Drawing the row from it would freeze the empty
@@ -1007,8 +1206,20 @@ impl TurnTranslation {
                 }
                 lines
             }
+            "plan" => plan_line(update).into_iter().collect(),
             _ => Vec::new(),
         }
+    }
+
+    /// A todo call's row is drawn at completion. Cursor opens `updateTodos`
+    /// as `{"_toolName":"updateTodos"}` and then streams the list into
+    /// `rawInput` one item per update (`[alpha]`, `[alpha, beta]`, …), so a row
+    /// drawn from the first named update would publish a one-item list, and
+    /// one drawn from the opening line would publish none.
+    fn waits_for_completion(&self, call_id: &str) -> bool {
+        self.tools
+            .get(call_id)
+            .is_some_and(|info| is_todo_tool(&info.key))
     }
 
     /// Take whatever a `tool_call_update` says about what the tool is, and
@@ -1086,6 +1297,22 @@ impl TurnTranslation {
             "tool_call": { info.key: Value::Object(body) },
         })]
     }
+}
+
+/// ACP's `plan` update: the whole list as `{content, priority, status}`
+/// entries. Cursor sends one only from its CreatePlan tool, and a plan without
+/// todos arrives as one `high`-priority entry holding the plan's name — Cursor
+/// marks real todos `medium` — which is a title, not a list, so it is dropped.
+fn plan_line(update: &Value) -> Option<Value> {
+    let entries = update.get("entries")?.as_array()?;
+    let names_the_plan_only = matches!(
+        entries.as_slice(),
+        [only] if only.get("priority").and_then(Value::as_str) == Some("high")
+    );
+    if entries.is_empty() || names_the_plan_only {
+        return None;
+    }
+    Some(json!({ "type": "plan", "entries": entries }))
 }
 
 fn content_text(update: &Value) -> Option<String> {
@@ -1317,6 +1544,7 @@ impl ProviderRuntimeHandle for AcpTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::persistence::events::PersistTimelineEventInput;
     use crate::providers::normalizer::{
         normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
     };
@@ -1785,12 +2013,187 @@ mod tests {
             "available_commands_update",
             "current_mode_update",
             "session_info_update",
-            "plan",
         ] {
             assert!(translation
                 .translate(&update(json!({ "sessionUpdate": kind })))
                 .is_empty());
         }
+    }
+
+    fn normalize_lines(lines: Vec<Value>) -> Vec<PersistTimelineEventInput> {
+        let mut context = NormalizerSessionContext::default();
+        lines
+            .into_iter()
+            .flat_map(|line| {
+                let output = ProviderOutputEvent {
+                    session_id: "argmax-session".to_string(),
+                    stream: ProviderOutputStream::Stdout,
+                    message: with_acp_session_id(line, "acp-1").to_string(),
+                    created_at: "2026-09-25T12:00:00.000Z".to_string(),
+                };
+                normalize_provider_event(ProviderId::Cursor, &output, &mut context).events
+            })
+            .collect()
+    }
+
+    fn todo_items(events: &[PersistTimelineEventInput]) -> Vec<Value> {
+        let todos: Vec<_> = events
+            .iter()
+            .filter(|event| event.r#type == "todo.updated")
+            .collect();
+        assert_eq!(todos.len(), 1, "exactly one todo.updated");
+        todos[0].payload["items"].as_array().unwrap().clone()
+    }
+
+    /// Captured from cursor-agent 2026.09.23 over ACP: the list streams into
+    /// `rawInput` one item per update after a nameless-but-named opening.
+    #[test]
+    fn an_acp_todo_call_publishes_its_whole_list_once() {
+        let mut translation = TurnTranslation::default();
+        let todo = |id: &str, status: &str| json!({ "id": id, "content": id, "status": status });
+        let mut lines = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call", "toolCallId": "tool_t", "title": "Update TODOs",
+            "kind": "other", "status": "pending", "rawInput": { "_toolName": "updateTodos" },
+        })));
+        assert!(lines.is_empty(), "the opening line carries no list");
+        for todos in [
+            json!([todo("alpha", "TODO_STATUS_COMPLETED")]),
+            json!([
+                todo("alpha", "TODO_STATUS_COMPLETED"),
+                todo("beta", "TODO_STATUS_IN_PROGRESS")
+            ]),
+        ] {
+            lines.extend(translation.translate(&update(json!({
+                "sessionUpdate": "tool_call_update", "toolCallId": "tool_t",
+                "rawInput": { "_toolName": "updateTodos", "todos": todos, "merge": true },
+            }))));
+        }
+        lines.extend(translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update", "toolCallId": "tool_t", "status": "in_progress",
+        }))));
+        assert!(lines.is_empty(), "no row until the call completes");
+        lines.extend(translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update", "toolCallId": "tool_t", "status": "completed",
+        }))));
+        assert_eq!(lines.len(), 2);
+
+        let events = normalize_lines(lines);
+        let todos: Vec<_> = events
+            .iter()
+            .filter(|event| event.r#type == "todo.updated")
+            .collect();
+        assert_eq!(todos.len(), 1);
+        assert_eq!(todos[0].payload["mode"], "merge");
+        assert_eq!(
+            todos[0].payload["items"],
+            json!([
+                { "id": "alpha", "text": "alpha", "status": "done" },
+                { "id": "beta", "text": "beta", "status": "active" },
+            ])
+        );
+    }
+
+    #[test]
+    fn a_plan_update_is_a_todo_snapshot() {
+        let mut translation = TurnTranslation::default();
+        let lines = translation.translate(&update(json!({
+            "sessionUpdate": "plan",
+            "entries": [
+                { "content": "Add the migration", "priority": "medium", "status": "completed" },
+                { "content": "Wire the handler", "priority": "medium", "status": "in_progress" },
+            ],
+        })));
+        let events = normalize_lines(lines);
+        assert_eq!(
+            todo_items(&events),
+            vec![
+                json!({ "id": null, "text": "Add the migration", "status": "done" }),
+                json!({ "id": null, "text": "Wire the handler", "status": "active" }),
+            ]
+        );
+        assert_eq!(events[0].payload["mode"], "snapshot");
+    }
+
+    /// Captured live: a CreatePlan without todos sends its own name as the
+    /// only entry, at the `high` priority Cursor gives nothing else.
+    #[test]
+    fn a_plan_that_only_names_itself_publishes_nothing() {
+        let mut translation = TurnTranslation::default();
+        for entries in [
+            json!([{ "content": "Color preference probe", "priority": "high", "status": "pending" }]),
+            json!([]),
+        ] {
+            assert!(translation
+                .translate(&update(
+                    json!({ "sessionUpdate": "plan", "entries": entries })
+                ))
+                .is_empty());
+        }
+    }
+
+    fn ask_params() -> Value {
+        json!({
+            "toolCallId": "tool_ask",
+            "questions": [{
+                "id": "color",
+                "prompt": "Which color?",
+                "options": [{ "id": "r", "label": "Red" }, { "id": "b", "label": "Blue" }],
+                "allowMultiple": false,
+            }],
+        })
+    }
+
+    #[test]
+    fn a_cursor_question_becomes_a_blocking_question_card() {
+        let params = question_service_params(&ask_params(), "acp-1", "invocation-1", "0");
+        assert_eq!(
+            params,
+            json!({
+                "provider": "cursor",
+                "isBlocking": true,
+                "itemId": "tool_ask",
+                "threadId": "acp-1",
+                "turnId": "invocation-1",
+                "questions": [{
+                    "id": "color",
+                    "header": "Clarifying Questions",
+                    "question": "Which color?",
+                    "options": [{ "label": "Red" }, { "label": "Blue" }],
+                    "multiSelect": false,
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn answers_map_back_to_cursors_option_ids() {
+        let answered = cursor_question_outcome(
+            &ask_params(),
+            &json!({ "answers": { "color": { "answers": ["Blue"] } } }),
+        );
+        assert_eq!(
+            answered,
+            json!({ "outcome": { "outcome": "answered", "answers": [
+                { "questionId": "color", "selectedOptionIds": ["b"] }
+            ] } })
+        );
+
+        let dismissed = cursor_question_outcome(&ask_params(), &json!({ "answers": {} }));
+        assert_eq!(dismissed["outcome"]["outcome"], "skipped");
+
+        let typed = cursor_question_outcome(
+            &ask_params(),
+            &json!({ "answers": { "color": { "answers": ["user_note: teal"] } } }),
+        );
+        assert_eq!(typed["outcome"]["outcome"], "skipped");
+        assert!(typed["outcome"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("teal"));
+        assert!(!typed["outcome"]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("user_note"));
     }
 
     #[test]

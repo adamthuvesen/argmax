@@ -4,6 +4,7 @@ import {
   Cloud,
   Folder,
   FolderGit2,
+  FolderTree,
   GitBranch,
   MessageCircle,
   MoreHorizontal,
@@ -43,12 +44,14 @@ import {
 } from "../../shared/cloudProviders.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { errorMessage } from "../../shared/error.js";
+import { showErrorToast } from "../state/toast.js";
 import {
   appendReferencesToPrompt,
   imageAttachmentReference
 } from "../lib/composerAttachments.js";
 import { clearDraft, launcherDraftKey, readDraft } from "../lib/composerDrafts.js";
 import { parseGoalCommand } from "../lib/goalCommand.js";
+import type { PaletteSurfaceContext, PaletteSurfaceLive } from "../lib/paletteSearch.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -66,7 +69,6 @@ import {
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
-import { isTypingTarget } from "../lib/typingTarget.js";
 import type { FontSize } from "../lib/fonts.js";
 import {
   persistLaunchProjectId,
@@ -199,7 +201,7 @@ export function LaunchSurface({
   resetSignal?: number;
   rightPanelToggleSignal?: number;
   registerPaletteFileContext?: (
-    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+    context: PaletteSurfaceContext | null
   ) => void;
   sideChatMode?: boolean;
   /** Workspaces from the dashboard snapshot — used to resolve the checkout
@@ -263,7 +265,6 @@ export function LaunchSurface({
     draftKey,
     workspacePath: activeProject?.repoPath ?? null,
     setInput: setPrompt,
-    setStatus,
     carriedOnRetarget: promptCarriedOnRetarget,
     persist: !isSubmitting
   });
@@ -343,6 +344,34 @@ export function LaunchSurface({
     void ensureCheckoutWorkspace();
   }, [activeProject, ensureCheckoutWorkspace, reviewState.isPanelOpen]);
 
+  // ⌘G, shared with the palette row that names it.
+  const toggleFilesPane = useCallback((): void => {
+    if (reviewIsPanelOpen && reviewModes.includes("files")) {
+      reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
+    } else {
+      reviewOpenPanelInFilesMode();
+    }
+  }, [reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode]);
+
+  // What the palette reads about this launcher when it opens, rebuilt each
+  // render so the read is current without re-registering.
+  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
+  paletteLiveRef.current = (): PaletteSurfaceLive => ({
+    filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
+    changedPaths: reviewState.files.map((file) => file.path),
+    actions: [{
+      id: "pane:toggle-files",
+      label: "Toggle files",
+      subtitle: "Browse this checkout",
+      group: "Actions",
+      icon: FolderTree,
+      shortcut: "⌘G",
+      keywords: ["file tree", "explorer"],
+      run: toggleFilesPane
+    }]
+  });
+  const readPaletteLive = useCallback((): PaletteSurfaceLive => paletteLiveRef.current(), []);
+
   // Register this surface's file source + pick handler with App so the
   // command palette can surface project files in its Files group. Cleared
   // on unmount or when no project is selected.
@@ -354,10 +383,11 @@ export function LaunchSurface({
     }
     registerPaletteFileContext({
       source: { kind: "project", id: activeProject.id },
-      onPick: reviewOpenInFilesView
+      onPick: reviewOpenInFilesView,
+      readLive: readPaletteLive
     });
     return () => registerPaletteFileContext(null);
-  }, [activeProject, registerPaletteFileContext, reviewOpenInFilesView]);
+  }, [activeProject, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
   const toggleReviewPanel = useCallback((): void => {
     if (reviewIsPanelOpen) {
       reviewClosePanel();
@@ -379,16 +409,12 @@ export function LaunchSurface({
       }
       if (key === "g") {
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewModes.includes("files")) {
-          reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
-        } else {
-          reviewOpenPanelInFilesMode();
-        }
+        toggleFilesPane();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [activeProject, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode, toggleReviewPanel]);
+  }, [activeProject, toggleFilesPane, toggleReviewPanel]);
 
   // ⌘⇧M, ⌘⇧E and ⌘⇧R open the model, effort and folder pickers and ⌘⇧I
   // toggles the browser. Only the focused launcher answers, and the folder
@@ -463,7 +489,15 @@ export function LaunchSurface({
     if (!activeProject || !reviewIsPanelOpen) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
-      if (isTypingTarget(event.target)) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) return;
       event.preventDefault();
       reviewClosePanel();
     };
@@ -577,7 +611,7 @@ export function LaunchSurface({
       setBranchPickerOpen(true);
     } catch (error) {
       setBranchPickerOpen(false);
-      setStatus(errorMessage(error) || "Could not load branches.");
+      showErrorToast(errorMessage(error) || "Could not load branches.");
     }
   }, [activeProject]);
 
@@ -591,7 +625,7 @@ export function LaunchSurface({
       const updated = await window.argmax.projects.switchBranch(activeProject.id, branch);
       onBranchSwitch(updated);
     } catch (error) {
-      setStatus(errorMessage(error) || "Could not switch branch.");
+      showErrorToast(errorMessage(error) || "Could not switch branch.");
       if (isFocusedRef.current) promptInputRef.current?.focus();
     }
   }, [activeProject, onBranchSwitch]);
@@ -943,7 +977,7 @@ export function LaunchSurface({
       setPrompt("");
       clearAttachments();
     } catch (error) {
-      setStatus(errorMessage(error) || "Could not start agent.");
+      showErrorToast(errorMessage(error) || "Could not start agent.");
     } finally {
       setIsSubmitting(false);
     }

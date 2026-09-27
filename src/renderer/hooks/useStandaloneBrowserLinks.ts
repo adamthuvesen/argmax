@@ -3,6 +3,7 @@ import { activateBrowserTab, getBrowserRequest, subscribeBrowserRequest } from "
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
+import { showErrorToast } from "../state/toast.js";
 
 /**
  * Standalone pages (Usage, Settings, Schedule) replace the chat grid, so no
@@ -36,7 +37,9 @@ export function useStandaloneBrowserLinks(options: {
       return;
     }
     if (window.argmax) {
-      void window.argmax.system.openPath({ path: url }).catch(() => undefined);
+      void window.argmax.system.openPath({ path: url }).catch((error: unknown) => {
+        showErrorToast(error instanceof Error ? error.message : "Could not open the link.");
+      });
     }
   }, [active, onOpenInAppBrowser, pendingBrowserRequest]);
 }

@@ -5,18 +5,17 @@ import { baseSession, renderConversation, workspace } from "../../test/sessionCo
 describe("SessionConversation — header", () => {
   afterEach(cleanup);
 
-  it("reads as a path: the repository, then this chat's title", () => {
+  it("keeps chat actions without repeating the repository and chat title", () => {
     renderConversation(baseSession());
 
-    expect(screen.getByRole("heading", { name: "Argmax" })).toBeTruthy();
-    expect(screen.getByTitle("Build dashboard")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Argmax" })).toBeNull();
+    expect(screen.queryByTitle("Build dashboard")).toBeNull();
   });
 
-  it("shows the repository alone until the chat has a title", () => {
+  it("keeps the in-pane title hidden when the chat has no title yet", () => {
     renderConversation(baseSession(), [], { workspace: { ...workspace, taskLabel: "  " } });
 
-    expect(screen.getByRole("heading", { name: "Argmax" })).toBeTruthy();
-    // No title, so no path separator either — the strip is just the repo.
-    expect(screen.queryByText("/")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Argmax" })).toBeNull();
   });
 });

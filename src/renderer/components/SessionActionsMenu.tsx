@@ -26,7 +26,7 @@ import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { GitActionsMenu } from "./GitActionsMenu.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
-import type { ComposerStatus } from "./SessionComposer.js";
+import { showErrorToast } from "../state/toast.js";
 
 export function SessionActionsMenu({
   defaultIde = null,
@@ -42,7 +42,6 @@ export function SessionActionsMenu({
   onToggleLog,
   onToggleWorkspaceCard,
   session,
-  setStatus,
   workspace
 }: {
   defaultIde?: IdeId | null;
@@ -69,7 +68,6 @@ export function SessionActionsMenu({
   onOpenCommitDialog?: () => void;
   onToggleLog: () => void;
   session: SessionSummary | null;
-  setStatus?: (status: ComposerStatus | null) => void;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -95,16 +93,13 @@ export function SessionActionsMenu({
       .listForSession({ sessionId: session.id })
       .catch((error) => {
         if (cancelled) return;
-        setStatus?.({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not load pull requests."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not load pull requests.");
       });
     void refreshSessionPrs(session.id)?.catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [session?.id, setStatus]);
+  }, [session?.id]);
 
   // One item for the pinned default when detected. Without one, listing every
   // GUI IDE *is* the "Ask each time" setting — guessing a favorite here would
@@ -123,12 +118,9 @@ export function SessionActionsMenu({
     const fetcher = window.argmax.prs.refresh ?? window.argmax.prs.listForSession;
     void fetcher({ sessionId: session.id })
       .catch((error) => {
-        setStatus?.({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not refresh pull requests."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not refresh pull requests.");
       });
-  }, [session?.id, setStatus]);
+  }, [session?.id]);
 
   return (
     <>
@@ -265,10 +257,7 @@ export function SessionActionsMenu({
                     onClick={() => {
                       closeActions();
                       void window.argmax?.windows.openSession({ sessionId: session.id }).catch((error: unknown) => {
-                        setStatus?.({
-                          kind: "error",
-                          message: error instanceof Error ? error.message : "Couldn't open a new window."
-                        });
+                        showErrorToast(error instanceof Error ? error.message : "Couldn't open a new window.");
                       });
                     }}
                   >

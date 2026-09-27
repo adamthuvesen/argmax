@@ -10,11 +10,13 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
+import { FileDiff, FolderTree, GitCommitVertical, Globe } from "lucide-react";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 import type { MultitaskChild } from "../lib/multitask.js";
+import type { PaletteItem, PaletteSurfaceContext, PaletteSurfaceLive } from "../lib/paletteSearch.js";
 import type {
   AgentMode,
   AgentReference,
@@ -41,8 +43,14 @@ import { resolveOpenablePath } from "../lib/openableFile.js";
 import { showErrorToast } from "../state/toast.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
-import { isTypingTarget } from "../lib/typingTarget.js";
-import { readBoundedNumberPreference, type FollowUpDelivery, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
+import {
+  ESCAPE_STOPS_CHAT_KEY,
+  readBooleanPreference,
+  readBoundedNumberPreference,
+  type FollowUpDelivery,
+  type ThinkingDisplay,
+  type ToolCallsDisplay
+} from "../lib/uiPreferences.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
 import { useAgentTabs } from "../hooks/useAgentTabs.js";
@@ -94,6 +102,15 @@ const SESSION_RIGHT_PANEL_MAX = 2000;
  *  from handing the dock a third of the screen. */
 const SESSION_RIGHT_PANEL_AUTO_WIDTH = `clamp(${SESSION_RIGHT_PANEL_MIN}px, 33.3%, 560px)`;
 const SESSION_LOG_PANEL_MIN = 300;
+
+function isEditorEscapeTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(".xterm, .cm-editor") !== null;
+}
+
+function hasActiveDialog(): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
+    .some((dialog) => dialog.getAttribute("aria-hidden") !== "true");
+}
 
 /** Null when the user has never dragged the handle, which leaves the dock on
  *  `SESSION_RIGHT_PANEL_AUTO_WIDTH` instead of freezing it at a stored width. */
@@ -272,7 +289,7 @@ export function SessionPane({
       review-pane file-pick handler with the command palette so its Files
       group routes to this pane's review panel. */
   registerPaletteFileContext?: (
-    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+    context: PaletteSurfaceContext | null
   ) => void;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
@@ -334,6 +351,7 @@ export function SessionPane({
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
+  const escapeTerminationPendingRef = useRef<object | null>(null);
   // Null while the dock is on its automatic share of the pane; a pixel width
   // once the user has dragged the handle.
   const [pinnedPanelWidth, setPinnedPanelWidth] = useState<number | null>(readPinnedPanelWidth);
@@ -561,7 +579,7 @@ export function SessionPane({
       if (opts?.preferIde && workspaceId && window.argmax) {
         void window.argmax.workspaces
           .openInIde({ workspaceId, ide: "default" })
-          .catch(() => undefined);
+          .catch((error: unknown) => showErrorToast(error instanceof Error ? error.message : "Could not open the editor."));
         return;
       }
       if (!workspaceId || !window.argmax) return;
@@ -577,7 +595,9 @@ export function SessionPane({
         // Files outside this workspace cannot use its guarded preview. An
         // absolute path can still open in its system-associated application.
         if (path.startsWith("/")) {
-          void window.argmax?.system.openPath({ path }).catch(() => undefined);
+          void window.argmax?.system.openPath({ path }).catch((error: unknown) => {
+            showErrorToast(error instanceof Error ? error.message : "Could not open the file.");
+          });
           return;
         }
         showErrorToast(`Could not find a single ${path} in this workspace.`);
@@ -587,6 +607,81 @@ export function SessionPane({
   );
   const lastRightPanelToggleSignal = useRef(rightPanelToggleSignal);
   const lastDebugLogToggleSignal = useRef(debugLogToggleSignal);
+
+  // ⌘G and ⌘⇧I, shared with the palette rows that name them.
+  const toggleFilesPane = useCallback((): void => {
+    if (reviewIsPanelOpen && reviewModes.includes("files")) {
+      reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
+    } else {
+      reviewOpenPanelInFilesMode();
+    }
+  }, [reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenPanelInFilesMode]);
+  const toggleBrowserPane = useCallback((): void => {
+    if (reviewIsPanelOpen && reviewModes.includes("browser")) {
+      reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
+    } else {
+      reviewOpenBrowser();
+    }
+  }, [reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser]);
+
+  // What the palette reads about this pane when it opens. Rebuilt as a
+  // closure each render so the read is current without re-registering.
+  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
+  paletteLiveRef.current = (): PaletteSurfaceLive => {
+    const changedCount = reviewState.files.length;
+    const actions: PaletteItem[] = [
+      {
+        id: "pane:toggle-files",
+        label: "Toggle files",
+        subtitle: "Browse this checkout",
+        group: "Actions",
+        icon: FolderTree,
+        shortcut: "⌘G",
+        keywords: ["file tree", "explorer"],
+        run: toggleFilesPane
+      },
+      ...(onOpenChanges
+        ? []
+        : [{
+            id: "pane:toggle-changes",
+            label: "Toggle changes",
+            subtitle: "This chat's diff",
+            group: "Actions" as const,
+            icon: FileDiff,
+            keywords: ["diff", "review", "git status"],
+            run: reviewState.toggleChangesPanel
+          }]),
+      ...(window.argmax?.browser
+        ? [{
+            id: "pane:toggle-browser",
+            label: "Toggle browser panel",
+            subtitle: "A browser beside the chat",
+            group: "Actions" as const,
+            icon: Globe,
+            shortcut: "⌘⇧I",
+            keywords: ["web", "preview", "localhost"],
+            run: toggleBrowserPane
+          }]
+        : []),
+      ...(changedCount > 0
+        ? [{
+            id: "pane:commit",
+            label: "Commit changes",
+            subtitle: `${changedCount} changed ${changedCount === 1 ? "file" : "files"}`,
+            group: "Actions" as const,
+            icon: GitCommitVertical,
+            keywords: ["git", "stage", "save"],
+            run: handleOpenCommitDialog
+          }]
+        : [])
+    ];
+    return {
+      filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
+      changedPaths: reviewState.files.map((file) => file.path),
+      actions
+    };
+  };
+  const readPaletteLive = useCallback((): PaletteSurfaceLive => paletteLiveRef.current(), []);
 
   // Register this pane's file source + pick handler with the command
   // palette when focused. Only the focused pane registers so multiple
@@ -598,10 +693,11 @@ export function SessionPane({
     }
     registerPaletteFileContext({
       source: { kind: "workspace", id: workspace.id },
-      onPick: reviewOpenInFilesView
+      onPick: reviewOpenInFilesView,
+      readLive: readPaletteLive
     });
     return () => registerPaletteFileContext(null);
-  }, [isFocused, workspace, registerPaletteFileContext, reviewOpenInFilesView]);
+  }, [isFocused, workspace, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
 
   useEffect(() => {
     if (rightPanelToggleSignal === lastRightPanelToggleSignal.current) return;
@@ -619,20 +715,48 @@ export function SessionPane({
   }, [debugLogToggleSignal, isFocused, toggleLog]);
 
   useEffect(() => {
+    escapeTerminationPendingRef.current = null;
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        if (
+          event.defaultPrevented ||
+          event.isComposing ||
+          event.repeat ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.shiftKey ||
+          isEditorEscapeTarget(event.target) ||
+          hasActiveDialog()
+        ) return;
         if (isLogOpen) {
-          if (isTypingTarget(event.target)) return;
           event.preventDefault();
           setIsLogOpen(false);
           return;
         }
         if (reviewIsPanelOpen) {
-          if (isTypingTarget(event.target)) return;
           event.preventDefault();
           reviewClosePanel();
+          return;
         }
+        if (
+          session?.state !== "running" ||
+          !readBooleanPreference(ESCAPE_STOPS_CHAT_KEY, false) ||
+          escapeTerminationPendingRef.current !== null
+        ) return;
+        event.preventDefault();
+        const terminationRequest = {};
+        escapeTerminationPendingRef.current = terminationRequest;
+        const clearPending = (): void => {
+          if (escapeTerminationPendingRef.current === terminationRequest) {
+            escapeTerminationPendingRef.current = null;
+          }
+        };
+        void onTerminateSession(session.id).then(clearPending, clearPending);
         return;
       }
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
@@ -642,11 +766,7 @@ export function SessionPane({
       if (event.shiftKey) {
         if (key !== "i" || !window.argmax?.browser) return;
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewModes.includes("browser")) {
-          reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
-        } else {
-          reviewOpenBrowser();
-        }
+        toggleBrowserPane();
         return;
       }
       if (key === "b") {
@@ -656,25 +776,21 @@ export function SessionPane({
       }
       if (key === "g") {
         event.preventDefault();
-        if (reviewIsPanelOpen && reviewModes.includes("files")) {
-          reviewClosePane(reviewModes[0] === "files" ? 0 : 1);
-        } else {
-          reviewOpenPanelInFilesMode();
-        }
+        toggleFilesPane();
       }
     };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     isFocused,
     isLogOpen,
+    onTerminateSession,
     reviewClosePanel,
     reviewIsPanelOpen,
-    reviewModes,
-    reviewClosePane,
-    reviewOpenBrowser,
-    reviewOpenPanelInFilesMode,
-    reviewTogglePanel
+    reviewTogglePanel,
+    session,
+    toggleBrowserPane,
+    toggleFilesPane
   ]);
 
   // Until the backfill below lands, the transcript is whatever was left over
@@ -683,26 +799,49 @@ export function SessionPane({
   // restore window (entrance motion, typed reveal) from this rather than from
   // mount, so a slow backfill can't arrive looking like new activity.
   const [eventsBackfilled, setEventsBackfilled] = useState(false);
+  const [historyLoadFailed, setHistoryLoadFailed] = useState(false);
+  const [historyRetryKey, setHistoryRetryKey] = useState(0);
+  const retryHistoryLoad = useCallback(() => {
+    setHistoryLoadFailed(false);
+    setHistoryRetryKey((key) => key + 1);
+  }, []);
   // Backfill timeline events for this pane on mount and whenever the session
   // changes. Each pane backfills independently of the focused-pane selection,
   // so non-focused panes still stream live messages. `loadSessionEvents` is
   // sessionId-keyed and uses a cursor map, so concurrent callers are safe.
   useEffect(() => {
     if (!sessionId || !onLoadSessionEvents) {
+      setHistoryLoadFailed(false);
       setEventsBackfilled(true);
       return;
     }
     setEventsBackfilled(false);
+    setHistoryLoadFailed(false);
     let cancelled = false;
-    // Settle on failure too: a pane stuck mid-restore would never animate or
-    // type again, which is a worse failure than the one being fixed.
-    void onLoadSessionEvents(sessionId).finally(() => {
-      if (!cancelled) setEventsBackfilled(true);
-    });
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const load = (attempt: number): void => {
+      void Promise.resolve()
+        .then(() => onLoadSessionEvents(sessionId))
+        .then(
+          () => {
+            if (!cancelled) setEventsBackfilled(true);
+          },
+          () => {
+            if (cancelled) return;
+            if (attempt < 3) {
+              retryTimer = setTimeout(() => load(attempt + 1), attempt * 300);
+            } else {
+              setHistoryLoadFailed(true);
+            }
+          }
+        );
+    };
+    load(1);
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [sessionId, onLoadSessionEvents]);
+  }, [sessionId, onLoadSessionEvents, historyRetryKey]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -804,6 +943,8 @@ export function SessionPane({
           defaultFollowUpDelivery={defaultFollowUpDelivery}
           events={visibleEvents}
           eventsBackfilled={eventsBackfilled}
+          historyLoadFailed={historyLoadFailed}
+          onRetryHistoryLoad={retryHistoryLoad}
           fastModeEnabled={fastModeEnabled}
           isLogOpen={isLogOpen}
           onClose={onClose}
@@ -831,6 +972,7 @@ export function SessionPane({
           onOpenChanges={onOpenChanges}
           onOpenAgent={handleOpenAgent}
           onOpenMultitask={handleOpenMultitask}
+          onLoadSessionEvents={onLoadSessionEvents}
           multitasks={multitasks}
           onToggleLog={toggleLog}
           isTerminalOpen={terminalOpen}

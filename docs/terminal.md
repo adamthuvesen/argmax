@@ -91,4 +91,6 @@ The request carries a target state rather than "toggle" on purpose: a pane mount
 
 [TerminalTabsPanel.tsx](../src/renderer/components/TerminalTabsPanel.tsx) wears the panel's own tab grammar — the `.file-tabs` strip that Files and Agents use, plus a trailing `+` and a `.review-status-bar` footer naming the working directory and the active shell. Inactive tabs stay mounted (`display: none`) so switching is instant. Closing the last tab rests on an empty state with a "New terminal" button rather than yanking the reader out of the mode.
 
+Terminal tabs use fully rounded corners and the mode switcher's flat `--row-selected` fill, without a ring or shadow in either theme.
+
 The terminal surface sits on `--bg`, a shade below the panel, so a shell reads as a window onto the machine rather than as more chrome. Background intensity also updates the xterm canvas through `--terminal-surface`. Level 7 keeps the original terminal palette. Other levels scale its background with the page, and the runtime observes `data-background-intensity` so open terminals update immediately.

@@ -10,7 +10,6 @@ import {
   releaseBrowserSurface,
   subscribeBrowserOwner
 } from "../lib/browserPanel.js";
-import { isTypingTarget } from "../lib/typingTarget.js";
 import { BrowserPanel } from "./BrowserPanel.js";
 
 /**
@@ -51,7 +50,15 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
-      if (isTypingTarget(event.target)) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) return;
       if (document.querySelector('[role="dialog"]')) return;
       event.preventDefault();
       onClose();

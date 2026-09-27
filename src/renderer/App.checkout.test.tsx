@@ -27,7 +27,7 @@ describe("App workspace follow", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     const updatedWorkspace: DashboardSnapshot["workspaces"][number] = {
       ...snapshot.workspaces[0],

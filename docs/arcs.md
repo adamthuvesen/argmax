@@ -10,6 +10,8 @@ The Arc page opens with the name, a meta line led by the state, and the brief's 
 
 A brief is required. When the chosen folder already has a `BRIEF.md`, leave the brief empty and the file is used (`ARC_BRIEF_EXISTS` otherwise; `ARC_BRIEF_REQUIRED` when there is neither). Pointing an Arc at an existing folder is how a folder kept elsewhere, such as an hq mission, becomes its shared context.
 
+The **Show arcs** toggle in **Settings → Appearance** controls the desktop sidebar section and is on by default. When there are no arcs, the sidebar offers **New arc** without an empty Arcs heading. Pinned and Priority headings also disappear when their sections are empty.
+
 ## How it works
 
 | Piece | Where |
@@ -42,6 +44,8 @@ A brief is required. When the chosen folder already has a `BRIEF.md`, leave the 
 **Triggers.** A member's PR that starts failing, starts passing, or merges sends one message to the coordinator. While the Arc is live and that message was delivered, the ordinary check-failure follow-up stands down for that PR. Scheduled tasks can target the Arc's coordinator. A paused Arc silences both. See [ADR 0011](adr/0011-arc-events-replace-check-failure-follow-ups.md).
 
 ## On the phone
+
+On iPhone, **Settings → Appearance → Show arcs** controls the Arcs section, is on by default, and is saved on the phone independently of the desktop setting. Hiding the section leaves its chats in the normal chat list. Empty Arcs, Pinned, and Priority sections have no heading.
 
 The iPhone app lists live arcs (active, then paused, most recently touched first) in an **Arcs** section above Pinned. Done arcs stay on the Mac. A chat that belongs to an arc wears a small arc glyph on its second line. The Arc screen ([ios/Argmax/Sources/Arcs](../ios/Argmax/Sources/Arcs)) opens the coordinator and the members working now, shows the stats, the brief, and the timeline with Show earlier, and its ⋯ menu pauses, resumes, or marks the arc done. It reads `arc:get` and `arc:timeline`, which are in `remoteReadChannels.json`. The screen refetches when the dashboard's arc row or any arc session's state moves, the same keys the desktop page follows, so nothing polls. Creating an arc, starting from a chat, starting a new coordinator, renaming, editing the brief, reopening a done arc, and triggers are desktop-only.
 

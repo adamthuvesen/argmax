@@ -287,9 +287,13 @@
 
 .toast {
   position: fixed;
-  top: 16px;
+  bottom: 16px;
   right: 16px;
-  z-index: 110;
+  z-index: 1200;
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   display: flex;
   gap: var(--space-3);
   align-items: center;
@@ -326,6 +330,7 @@
 }
 
 .toast button {
+  flex-shrink: 0;
   border: 0;
   background: transparent;
   cursor: pointer;

@@ -6,6 +6,7 @@ import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../sha
 import { SessionConversation } from "./SessionConversation.js";
 import { THINKING_WORDS } from "../lib/thinkingWords.js";
 import { clearRendererLog, rendererLogSnapshot } from "../lib/rendererLogRing.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import {
   baseSession,
@@ -22,6 +23,7 @@ describe("SessionConversation — streaming & composer", () => {
   afterEach(() => {
     vi.useRealTimers();
     cleanup();
+    resetToastForTests();
   });
   it("hangs the restore flag on the scroller so a reopened transcript does not replay its entrance animations", async () => {
     // The class and the attribute are the CSS contract itself
@@ -2357,12 +2359,12 @@ describe("SessionConversation — streaming & composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
     expect(screen.getByText("and now the tests")).toBeInTheDocument();
 
-    // Send failures are errors now: the composer status line carries
-    // role="alert" for them, not role="status".
+    // The failed action uses the shared toast and leaves the draft in place.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(screen.getByRole("alert")).toHaveTextContent("Workspace archive is in progress");
+    expect(toastSnapshot()?.message).toBe("Workspace archive is in progress");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     // A send that failed inside the 600ms floor never opened a beat, so there
     // is nothing to take down — and nothing to take down later either.
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
@@ -2622,7 +2624,8 @@ describe("SessionConversation — streaming & composer", () => {
       screen.getByRole("button", { name: "Steer queued follow-up: Keep the tool running" })
     );
 
-    await waitFor(() => expect(screen.getByText("turn already completed")).toBeInTheDocument());
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("turn already completed"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Queued follow-up: Keep the tool running")).toBeInTheDocument();
   });
 

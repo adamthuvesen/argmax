@@ -271,11 +271,6 @@ export function FilePreview({
           onKeepMine={state.dismissExternalChange}
         />
       ) : null}
-      {state.saveError ? (
-        <p className="file-preview-save-error" role="alert">
-          {state.saveError}
-        </p>
-      ) : null}
       {showImage && assetPath ? (
         <ImageFilePreview
           absolutePath={assetPath}

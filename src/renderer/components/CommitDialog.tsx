@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { useMotionPresence } from "../hooks/useMotionPresence.js";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import type { ChangedFileSummary, GitCommitResult } from "../../shared/types.js";
+import { showErrorToast } from "../state/toast.js";
 
 interface Feedback {
-  kind: "success" | "error";
   message: string;
 }
 
@@ -96,7 +96,7 @@ export function CommitDialog({
 
   const allSelected = allPaths.length > 0 && selected.size === allPaths.length;
   const submitDisabled =
-    submitting || feedback?.kind === "success" || selected.size === 0 || message.trim().length === 0 || allPaths.length === 0;
+    submitting || feedback !== null || selected.size === 0 || message.trim().length === 0 || allPaths.length === 0;
 
   const togglePath = (path: string): void => {
     setSelected((current) => {
@@ -130,7 +130,6 @@ export function CommitDialog({
       onCommitted?.(result);
       if (result.indexCleanupWarning || result.postCommitWarning) {
         setFeedback({
-          kind: "success",
           message: result.indexCleanupWarning
             ? `Committed, but the Git index needs repair: ${result.indexCleanupWarning}`
             : `Committed, but post-commit verification needs attention: ${result.postCommitWarning}`
@@ -140,10 +139,7 @@ export function CommitDialog({
       onClose();
     } catch (error) {
       if (requestGeneration.current !== request || !isOpenRef.current) return;
-      setFeedback({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Could not commit."
-      });
+      showErrorToast(error instanceof Error ? error.message : "Could not commit.");
     } finally {
       // Only one request can run, even across controlled close/reopen. Its
       // settlement must release the new dialog's busy state without applying
@@ -243,15 +239,11 @@ export function CommitDialog({
 
         {feedback ? (
           <p
-            className={`commit-dialog-feedback commit-dialog-feedback--${feedback.kind}`}
-            role={feedback.kind === "error" ? "alert" : "status"}
-            aria-live={feedback.kind === "error" ? "assertive" : "polite"}
+            className="commit-dialog-feedback commit-dialog-feedback--success"
+            role="status"
+            aria-live="polite"
           >
-            {feedback.kind === "success" ? (
-              <CheckCircle2 size={14} aria-hidden="true" />
-            ) : (
-              <AlertCircle size={14} aria-hidden="true" />
-            )}
+            <CheckCircle2 size={14} aria-hidden="true" />
             <span>{feedback.message}</span>
           </p>
         ) : null}

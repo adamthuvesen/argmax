@@ -17,7 +17,9 @@
   color: var(--text-soft);
   text-align: left;
   border: 0;
-  border-radius: var(--radius-md);
+  /* A two-line row is ~52px tall; --radius-md read as a square tile at that
+     height. --radius-lg rounds it like the composer and the panel cards. */
+  border-radius: var(--radius-lg);
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);
@@ -51,7 +53,8 @@
   background: var(--row-hover);
 }
 
-.session-row[data-active="true"] {
+.session-row[data-active="true"],
+.session-link[aria-current="page"] {
   background: var(--row-selected);
 }
 
@@ -61,7 +64,8 @@
 }
 
 .session-row[data-active="true"] .session-link,
-.session-link.active {
+.session-link.active,
+.session-link[aria-current="page"] {
   color: var(--text);
   font-weight: calc(400 + var(--font-weight-offset));
 }
@@ -72,7 +76,7 @@
 .session-link:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--ink);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
 }
 
 .session-link span {
@@ -245,7 +249,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   transition: background var(--duration-fast) var(--ease);
   /* Off-screen rows skip layout + paint — a no-JS, no-dependency windowing for
      long session lists. Rows stay in the DOM, so keyboard nav and the sidebar's
@@ -738,11 +742,12 @@
   display: grid;
   container-type: inline-size;
   place-items: center;
-  /* The launcher rides the chat-width setting so a chat opened from it keeps
-     the measure it was launched at — but only upward. Levels 1 and 2 narrow
-     the transcript for reading; the launcher is a single input row and gets
-     cramped, so it floors at level 3's measure and widens with 4 and 5. */
-  --launcher-measure: max(780px, var(--chat-content-width, 780px));
+  /* One measure, level 3's, whatever the chat-width setting says. The setting
+     sizes a transcript for reading; the launcher is a single input row, and
+     riding the setting made it run wide across the pane at 4 and 5 and
+     cramped it at 1 and 2. It still narrows with the pane (`min(100%, …)`
+     on the shell below). */
+  --launcher-measure: 780px;
   /* Held even when the pane is narrower than the measure. The shell then
      narrows instead of the gutter, so widths 4 and 5 stay inset on a small
      window instead of running out to the chrome. While the pane is wider than

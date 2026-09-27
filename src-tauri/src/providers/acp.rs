@@ -12,6 +12,8 @@
 //! from calling undeclared capabilities). `session/request_permission` is
 //! delegated to the provider runtime so it can apply the launch's permission
 //! mode and, when required, wait for Argmax's native approval broker.
+//! Cursor's `cursor/ask_question` extension is delegated the same way when the
+//! runtime installs a question handler; without one it is method-not-found.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -55,11 +57,31 @@ pub type AcpPermissionFuture = Pin<Box<dyn Future<Output = AcpPermissionDecision
 pub type AcpPermissionHandler =
     Arc<dyn Fn(AcpPermissionRequest) -> AcpPermissionFuture + Send + Sync>;
 
+/// Cursor's question tool, as an ACP extension request. Its params are
+/// `{toolCallId, title?, questions: [{id, prompt, options: [{id, label}],
+/// allowMultiple}]}` and carry no session id.
+pub const CURSOR_ASK_QUESTION: &str = "cursor/ask_question";
+
+pub struct AcpQuestionRequest {
+    pub request_id: Value,
+    /// The session whose `tool_call` opened `params.toolCallId`, when one did.
+    pub session_id: Option<String>,
+    pub params: Value,
+}
+
+/// Resolves to the JSON-RPC `result` sent back to the agent.
+pub type AcpQuestionFuture = Pin<Box<dyn Future<Output = Value> + Send>>;
+pub type AcpQuestionHandler = Arc<dyn Fn(AcpQuestionRequest) -> AcpQuestionFuture + Send + Sync>;
+
 pub struct AcpClient {
     writer_tx: mpsc::UnboundedSender<String>,
     pending: PendingMap,
     subscribers: UpdateSubscribers,
     permission_handler: Option<AcpPermissionHandler>,
+    question_handler: Option<AcpQuestionHandler>,
+    /// Which session opened each running tool call. An extension request
+    /// names only its tool call, so this is how it finds its chat.
+    tool_call_sessions: Mutex<HashMap<String, String>>,
     next_id: AtomicU64,
     next_subscription: AtomicU64,
     dead: Arc<AtomicBool>,
@@ -75,6 +97,7 @@ impl AcpClient {
         cwd: &std::path::Path,
         environment: impl IntoIterator<Item = (String, String)>,
         permission_handler: Option<AcpPermissionHandler>,
+        question_handler: Option<AcpQuestionHandler>,
     ) -> ArgmaxResult<Arc<Self>> {
         let mut command = tokio::process::Command::new(binary_path);
         command
@@ -114,6 +137,8 @@ impl AcpClient {
             pending: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             permission_handler,
+            question_handler,
+            tool_call_sessions: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(0),
             next_subscription: AtomicU64::new(0),
             dead: Arc::new(AtomicBool::new(false)),
@@ -208,6 +233,7 @@ impl AcpClient {
                 let Some(session_id) = params.get("sessionId").and_then(Value::as_str) else {
                     return;
                 };
+                self.track_tool_call(session_id, params.get("update"));
                 let subscribers = self.subscribers.lock_or_recover("acp subscribers");
                 if let Some((_, sender)) = subscribers.get(session_id) {
                     let _ = sender.send(params.clone());
@@ -228,7 +254,57 @@ impl AcpClient {
         }
     }
 
+    /// Record which session opened a tool call, and forget it once the call
+    /// settles. Cursor sends the opening `tool_call` before the extension
+    /// request it raises, and both travel down this one ordered stream.
+    fn track_tool_call(&self, session_id: &str, update: Option<&Value>) {
+        let Some(update) = update else {
+            return;
+        };
+        let Some(call_id) = update.get("toolCallId").and_then(Value::as_str) else {
+            return;
+        };
+        let mut sessions = self
+            .tool_call_sessions
+            .lock_or_recover("acp tool call sessions");
+        match update.get("sessionUpdate").and_then(Value::as_str) {
+            Some("tool_call") => {
+                sessions.insert(call_id.to_string(), session_id.to_string());
+            }
+            Some("tool_call_update")
+                if matches!(
+                    update.get("status").and_then(Value::as_str),
+                    Some("completed" | "failed" | "cancelled" | "canceled" | "interrupted")
+                ) =>
+            {
+                sessions.remove(call_id);
+            }
+            _ => {}
+        }
+    }
+
     async fn answer_agent_request(&self, id: Value, method: &str, params: Value) {
+        if let (CURSOR_ASK_QUESTION, Some(handler)) = (method, self.question_handler.as_ref()) {
+            let session_id = params
+                .get("toolCallId")
+                .and_then(Value::as_str)
+                .and_then(|call_id| {
+                    self.tool_call_sessions
+                        .lock_or_recover("acp tool call sessions")
+                        .get(call_id)
+                        .cloned()
+                });
+            let result = handler(AcpQuestionRequest {
+                request_id: id.clone(),
+                session_id,
+                params,
+            })
+            .await;
+            let _ = self
+                .writer_tx
+                .send(json!({ "jsonrpc": "2.0", "id": id, "result": result }).to_string());
+            return;
+        }
         if method != "session/request_permission" {
             tracing::warn!(method, "unexpected ACP agent request rejected");
             let _ = self.writer_tx.send(
@@ -251,8 +327,8 @@ impl AcpClient {
             && params.get("toolCall").is_some_and(Value::is_object)
             && !options.is_empty();
         // Cursor delivers its question tool down this method when the client
-        // does not implement `cursor/ask_question`, which this one does not:
-        // every answer arrives as an `allow_once` option beside a
+        // answers `cursor/ask_question` with method-not-found, as a client
+        // without a question handler does: every answer arrives as an `allow_once` option beside a
         // `__ask_question_skip__` reject. Two buttons cannot carry a
         // multiple-choice question — "Approve" would select the first answer
         // and report it to the model as the user's, which is the one thing an
@@ -316,6 +392,9 @@ impl AcpClient {
         // Dropping the senders closes every subscriber channel, so in-flight
         // turn tasks observe the death as end-of-stream.
         self.subscribers.lock_or_recover("acp subscribers").clear();
+        self.tool_call_sessions
+            .lock_or_recover("acp tool call sessions")
+            .clear();
     }
 
     pub fn is_dead(&self) -> bool {
@@ -342,6 +421,10 @@ impl AcpClient {
             .is_some_and(|(current, _)| *current == token)
         {
             subscribers.remove(acp_session_id);
+            // A cancelled turn never settles its open calls.
+            self.tool_call_sessions
+                .lock_or_recover("acp tool call sessions")
+                .retain(|_, session_id| session_id != acp_session_id);
         }
     }
 
@@ -446,12 +529,21 @@ mod tests {
     fn test_client_with_permission_handler(
         permission_handler: Option<AcpPermissionHandler>,
     ) -> (Arc<AcpClient>, mpsc::UnboundedReceiver<String>) {
+        test_client_with_handlers(permission_handler, None)
+    }
+
+    fn test_client_with_handlers(
+        permission_handler: Option<AcpPermissionHandler>,
+        question_handler: Option<AcpQuestionHandler>,
+    ) -> (Arc<AcpClient>, mpsc::UnboundedReceiver<String>) {
         let (writer_tx, writer_rx) = mpsc::unbounded_channel::<String>();
         let client = Arc::new(AcpClient {
             writer_tx,
             pending: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             permission_handler,
+            question_handler,
+            tool_call_sessions: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(0),
             next_subscription: AtomicU64::new(0),
             dead: Arc::new(AtomicBool::new(false)),
@@ -592,6 +684,46 @@ mod tests {
         let sent: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
         assert_eq!(sent["id"], "ask-1");
         assert_eq!(sent["result"]["outcome"]["outcome"], "cancelled");
+    }
+
+    /// Cursor's params name only the tool call, so the session comes from the
+    /// `tool_call` update that opened it.
+    #[tokio::test]
+    async fn a_cursor_question_reaches_its_handler_with_the_session_that_opened_it() {
+        let (seen_tx, mut seen_rx) = mpsc::unbounded_channel();
+        let handler: AcpQuestionHandler = Arc::new(move |request: AcpQuestionRequest| {
+            let _ = seen_tx.send(request.session_id.clone());
+            Box::pin(async { json!({ "outcome": { "outcome": "cancelled" } }) })
+        });
+        let (client, mut writer_rx) = test_client_with_handlers(None, Some(handler));
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1",
+                "update": {"sessionUpdate": "tool_call", "toolCallId": "tool_ask", "kind": "think"}}})
+            .to_string(),
+        );
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "id": 0, "method": "cursor/ask_question",
+                "params": {"toolCallId": "tool_ask", "questions": []}})
+            .to_string(),
+        );
+        let sent: Value = serde_json::from_str(&writer_rx.recv().await.unwrap()).unwrap();
+        assert_eq!(sent["id"], 0);
+        assert_eq!(sent["result"]["outcome"]["outcome"], "cancelled");
+        assert_eq!(seen_rx.recv().await.unwrap().as_deref(), Some("s1"));
+
+        // A settled call is forgotten, so a stale id resolves to no session.
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "s1",
+                "update": {"sessionUpdate": "tool_call_update", "toolCallId": "tool_ask", "status": "completed"}}})
+            .to_string(),
+        );
+        client.handle_line(
+            &json!({"jsonrpc": "2.0", "id": 1, "method": "cursor/ask_question",
+                "params": {"toolCallId": "tool_ask", "questions": []}})
+            .to_string(),
+        );
+        let _ = writer_rx.recv().await.unwrap();
+        assert_eq!(seen_rx.recv().await.unwrap(), None);
     }
 
     #[tokio::test]

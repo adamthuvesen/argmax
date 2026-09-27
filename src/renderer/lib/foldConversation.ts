@@ -20,6 +20,7 @@ import {
   type ToolCall
 } from "./toolCalls.js";
 import { foldTurnToolItems, type TurnToolItem } from "./turnToolItems.js";
+import { foldTodoEvents, type TodoList } from "./todoList.js";
 
 export type RenderItem =
   | { kind: "user-message"; event: TimelineEvent }
@@ -34,7 +35,9 @@ export type RenderItem =
       steerEvents: TimelineEvent[];
       toolItems: TurnToolItem[];
       assistantTimestamps: number[];
-      /** Multitasks dispatched during this turn, collected above the composer. */
+      /** Plan as it stood at the end of this turn, if it was updated here. */
+      todo?: TodoList;
+      /** Multitasks dispatched during this turn, grouped inline at the first launch. */
       multitasks: MultitaskNotice[];
     };
 
@@ -100,9 +103,11 @@ export function foldRenderItems(
         toolItems: TurnToolItem[];
         multitasks: MultitaskNotice[];
         firstId: string | null;
+        touchedTodo?: boolean;
       }
     | null = null;
   let activeTurnId: string | null = null;
+  const todoEvents: TimelineEvent[] = [];
   // A subagent's child rows belong to the launch that spawned them, not to
   // whatever turn they land in. A backgrounded subagent keeps emitting rows
   // after the user's follow-up has already opened the next turn, and there they
@@ -137,7 +142,7 @@ export function foldRenderItems(
   };
   // A multitask notice stays associated with the turn it was dispatched from.
   // It is not a seam, so dispatching one mid-turn never splits that turn's
-  // block in two. SessionConversation lifts the visible row above the composer.
+  // block in two. SessionConversationTurn renders their group inline.
   //
   // The dispatch and the finish are two rows about one multitask, and they can
   // be a whole turn apart. The second one updates the row the first one
@@ -195,8 +200,10 @@ export function foldRenderItems(
       pending.assistantEvents.length > 0 ||
       pending.steerEvents.length > 0 ||
       pending.toolItems.length > 0 ||
+      pending.touchedTodo ||
       pending.multitasks.length > 0
     ) {
+      const todo = pending.touchedTodo ? foldTodoEvents(todoEvents) : null;
       out.push({
         kind: "turn",
         id: pending.firstId ?? `turn-${out.length}`,
@@ -204,6 +211,7 @@ export function foldRenderItems(
         steerEvents: pending.steerEvents,
         toolItems: foldTurnToolItems(pending.toolItems),
         assistantTimestamps: pending.assistantEvents.map((e) => Date.parse(e.createdAt)),
+        ...(todo ? { todo } : {}),
         multitasks: pending.multitasks
       });
     }
@@ -324,7 +332,12 @@ export function foldRenderItems(
       };
     }
     if (item.kind === "message") {
-      pending.assistantEvents.push(item.event);
+      if (item.event.type === "todo.updated") {
+        todoEvents.push(item.event);
+        pending.touchedTodo = true;
+      } else {
+        pending.assistantEvents.push(item.event);
+      }
       if (!pending.firstId) pending.firstId = `turn-${item.event.id}`;
     } else if (item.kind === "tool") {
       pending.toolItems.push({ kind: "tool", tool: item.tool });

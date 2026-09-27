@@ -10,14 +10,14 @@ export default defineConfig({
     outDir: "dist/renderer",
     emptyOutDir: true,
     // The eager-graph budgets are enforced in CI by `npm run check:bundle`
-    // (scripts/check-bundle.mjs: 1.75 MiB for the desktop entry, 1.60 MiB for
-    // mobile). This warning limit is deliberately looser — it flags a single
+    // (scripts/check-bundle.mjs: 1.78 MiB for the desktop entry, 1.61 MiB for
+    // mobile). This warning limit is deliberately looser. It flags a single
     // oversized chunk locally; the script is what holds the real budget.
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
       input: {
-        index: resolve(__dirname, "index.html"),
-        mobile: resolve(__dirname, "mobile.html")
+        index: resolve(import.meta.dirname, "index.html"),
+        mobile: resolve(import.meta.dirname, "mobile.html")
       },
       output: {
         // Split a few specific heavyweight vendor packages into named chunks

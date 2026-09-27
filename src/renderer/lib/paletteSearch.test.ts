@@ -22,6 +22,21 @@ describe("searchPaletteItems", () => {
     expect(highlightSegments(row.meta, hit.subtitleRanges).filter((part) => part.matched).map((part) => part.text)).toEqual(["Argmax"]);
   });
 
+  it("matches a word the user has only started typing", () => {
+    const rows = [item("usage", "Open usage"), item("terminal", "Toggle terminal")];
+    expect(searchPaletteItems(rows, "us").map((hit) => hit.item.id)).toEqual(["usage"]);
+    expect(searchPaletteItems(rows, "term").map((hit) => hit.item.id)).toEqual(["terminal"]);
+  });
+
+  it("matches unshown keywords a tier under the label, without highlighting them", () => {
+    const terminal = { ...item("terminal", "Toggle terminal"), keywords: ["shell", "console"] };
+    const shellChat = item("chat", "Shell script cleanup");
+    const hits = searchPaletteItems([shellChat, terminal], "shell");
+    expect(hits.map((hit) => hit.item.id)).toEqual(["chat", "terminal"]);
+    expect(hits[1].labelRanges).toBeNull();
+    expect(searchPaletteItems([terminal], "toggle shell").map((hit) => hit.item.id)).toEqual(["terminal"]);
+  });
+
   it("keeps exact matches first even beyond the fuzzy ranking threshold", () => {
     const rows = Array.from({ length: 1100 }, (_, index) => item(String(index), `Search result ${index}`));
     rows.push(item("exact", "Search"));
@@ -96,6 +111,15 @@ describe("searchPaletteItems", () => {
 describe("searchFilePaths", () => {
   it("prefers a filename match to a directory match", () => {
     expect(searchFilePaths(["app/docs/README.md", "src/App.tsx", "app/server.ts"], "app")[0]).toBe("src/App.tsx");
+  });
+
+  it("lets changed files lead ties and an empty query, never a better match", () => {
+    const paths = ["src/app.ts", "lib/app.ts", "src/appendix.ts"];
+    const changed = new Set(["lib/app.ts", "src/appendix.ts"]);
+    expect(searchFilePaths(paths, "app.ts", 50, changed)[0]).toBe("lib/app.ts");
+    expect(searchFilePaths(paths, "", 50, changed)).toEqual(["lib/app.ts", "src/appendix.ts", "src/app.ts"]);
+    expect(searchFilePaths(["src/app.ts", "src/appendix.ts"], "app.ts", 50, new Set(["src/appendix.ts"]))[0])
+      .toBe("src/app.ts");
   });
 
   it("keeps exact filenames first in large result sets", () => {

@@ -64,6 +64,7 @@ import {
   type UserBubbleTint
 } from "../lib/userBubbleTint.js";
 import type { ToastMessage } from "../lib/withToast.js";
+import { dismissToast, showToast as publishToast, useToast } from "../state/toast.js";
 import {
   REMOTE_CONNECTION_LOST_MESSAGE,
   subscribeRemoteConnection,
@@ -322,14 +323,17 @@ export function MobileApp(): JSX.Element {
   const [composerHidden, setComposerHidden] = useState(false);
   const shellRef = useRef<HTMLDivElement>(null);
   useVisualViewportInsets(shellRef);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const sharedToast = useToast();
   // Backgrounding the phone kills the socket on every app switch, so requests
   // caught mid-flight fail with the connection-lost message as a matter of
   // routine. The "Reconnecting…" banner is the honest signal; the toast is not.
   const showToast = useCallback((next: ToastMessage) => {
     if (next.kind === "error" && next.message === REMOTE_CONNECTION_LOST_MESSAGE) return;
-    setToast(next);
+    publishToast(next);
   }, []);
+  const toast = sharedToast?.kind === "error" && sharedToast.message === REMOTE_CONNECTION_LOST_MESSAGE
+    ? null
+    : sharedToast;
   const [theme, setTheme] = useState<ResolvedTheme>(() => resolveTheme(readStoredTheme()));
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
   const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
@@ -441,7 +445,8 @@ export function MobileApp(): JSX.Element {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 5000);
+    const dismissAfterMs = toast.kind === "error" ? 10_000 : 4_000;
+    const timer = window.setTimeout(dismissToast, dismissAfterMs);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -785,8 +790,8 @@ export function MobileApp(): JSX.Element {
   // Chats this one dispatched. The phone has no dock to host them, so they
   // open in the overlay beside the subagents rather than replacing the chat.
   const multitasksByParent = useMemo(
-    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces),
-    [snapshot.sessions, snapshot.workspaces]
+    () => multitasksByParentSession(snapshot.sessions, snapshot.workspaces, snapshot.approvals),
+    [snapshot.sessions, snapshot.workspaces, snapshot.approvals]
   );
   // Park the list under a session or the new-chat screen instead of unmounting
   // it: tearing the scroller down was sending every back-to-list gesture to
@@ -1490,11 +1495,12 @@ export function MobileApp(): JSX.Element {
         </BottomSheet>
       ) : null}
       {toast ? (
-        <div className={`mobile-toast mobile-toast-${toast.kind}`} role="status">
+        <div className={`toast toast-${toast.kind} mobile-toast`} role="status">
           <span className="toast-text">
             {toast.message}
             {toast.detail ? <span className="toast-detail">{toast.detail}</span> : null}
           </span>
+          <button type="button" onClick={dismissToast} aria-label="Dismiss">×</button>
         </div>
       ) : null}
     </div>

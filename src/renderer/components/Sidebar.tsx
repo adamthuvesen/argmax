@@ -212,6 +212,7 @@ export function Sidebar({
   onClearPriority,
   onSetWorkspaceIcon,
   onSyncNowWorkspace,
+  showArcs = true,
   showPriority,
   selectedProjectId,
   selectedWorkspaceId: currentWorkspaceId,
@@ -255,6 +256,7 @@ export function Sidebar({
   ) => void;
   /** Right-click "Sync now" on an imported row — runs one session-sync sweep. */
   onSyncNowWorkspace?: () => void;
+  showArcs?: boolean;
   /** Whether the Priority section renders at all (settings toggle). */
   showPriority: boolean;
   selectedProjectId: string | null;
@@ -271,7 +273,7 @@ export function Sidebar({
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
 }): JSX.Element {
-  const { collapsed } = useSidebarChrome();
+  const { peeking } = useSidebarChrome();
   const grid = usePaneGrid();
   const { fullLauncherOpen } = useLauncherSurface();
   const [newArcDialogOpen, setNewArcDialogOpen] = useState(false);
@@ -1179,7 +1181,7 @@ export function Sidebar({
     <aside
       className="sidebar"
       data-loading={loadState === "loading" ? "true" : undefined}
-      onMouseLeave={collapsed ? endSidebarPeek : undefined}
+      onMouseLeave={peeking ? endSidebarPeek : undefined}
     >
       <div className="window-controls" data-window-drag />
       <nav className="rail-nav" aria-label="Primary">
@@ -1260,7 +1262,16 @@ export function Sidebar({
         ) : null}
         {/* Arcs sit above everything else: a body of work spanning several
             projects doesn't belong nested under any one of them. */}
-        {arcsSection}
+        {showArcs ? (arcs.length > 0 ? arcsSection : (
+          <button
+            className="rail-nav-item"
+            type="button"
+            onClick={() => setNewArcDialogOpen(true)}
+          >
+            <span className="rail-nav-glyph" aria-hidden="true"><Plus size={14} /></span>
+            <span className="rail-nav-label">New arc</span>
+          </button>
+        )) : null}
         {/* Pinned sits at the very top, above Priority: a pin is a standing
             user choice, while Priority is transient triage. */}
         {pinnedWorkspaces.length > 0 ? (

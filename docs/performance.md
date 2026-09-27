@@ -45,10 +45,11 @@ Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_t
 
 `npm run check:bundle` (scripts/check-bundle.mjs) caps the cold-start module
 graph — the entry chunk plus every `<link rel="modulepreload">` Vite emits —
-at 1.76 MiB desktop / 1.61 MiB mobile. The desktop allowance includes a small
+at 1.78 MiB desktop / 1.61 MiB mobile. The desktop allowance includes a small
 startup tradeoff for navigation readiness. Measured 2026-09-09 from the existing
 build: 1.70 MiB desktop and 1.57 MiB mobile. Desktop rose 0.05 MiB to cover
-todo cards, goals, and the rest of this stack.
+todo cards, goals, and the rest of that stack, then again for the chat timeline
+and multitask card, which render with the conversation.
 
 KaTeX (~0.5 MB JS plus fonts/CSS) is the largest single dependency and stays
 out of that graph: the chat surface renders without math plugins and only

@@ -2,7 +2,6 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { PaletteScope } from "../components/CommandPalette.js";
 import type { SettingsNavigationTarget } from "../components/SettingsPanel.js";
 import { DEFAULT_SETTINGS_GROUP, type SettingsGroupId } from "../components/settings/settingsMeta.js";
-import { isTypingTarget } from "../lib/typingTarget.js";
 import { hideFullLauncher } from "./launcherSurface.js";
 
 // What is stacked over the shell: a full-screen page, the command palette, or
@@ -178,15 +177,23 @@ export function useOverlays(): OverlaysSnapshot {
 }
 
 /**
- * Esc closes the topmost overlay, one per press. The typing-target guard keeps
- * Esc inside a textarea / contenteditable / role=textbox in the input, where it
- * cancels an inline edit instead of dismissing chrome.
+ * Esc closes the topmost overlay, one per press. Controls that consume Escape
+ * for their own interaction prevent the event before it reaches this document
+ * listener, which keeps an autocomplete or menu ahead of app-level chrome.
  */
 export function useOverlayEscape(): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
-      if (isTypingTarget(event.target)) return;
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey
+      ) return;
       if (dismissTopOverlay()) event.preventDefault();
     };
     document.addEventListener("keydown", onKeyDown);

@@ -9,7 +9,8 @@ release/
 .DS_Store
 argmax-icons.local.json
 NOTES.local.md
-.claude/
+.claude/*
+!.claude/skills
 maestro/
 COMPETITIVE_ANALYSIS.md
 
@@ -27,6 +28,7 @@ src-tauri/gen/
 tmp.txt
 *.tmp
 scratch/
+.verify/
 
 # Workspace worktrees, when a project points its worktree location inside the repo
 .argmax/

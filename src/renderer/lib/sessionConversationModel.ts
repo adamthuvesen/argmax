@@ -27,6 +27,7 @@ function isPayloadTruncationMarker(event: TimelineEvent): boolean {
 function isConversationVisible(event: TimelineEvent): boolean {
   const canonical = decodeTimelineEvent(event);
   const isVisibleKind =
+    event.type === "todo.updated" ||
     canonical.kind === "message" ||
     canonical.kind === "error" ||
     canonical.kind === "multitask" ||

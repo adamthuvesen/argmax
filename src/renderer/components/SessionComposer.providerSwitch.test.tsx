@@ -6,6 +6,7 @@ import {
   rerenderConversation
 } from "../../test/sessionConversationTestHarness.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
+import { readDraft } from "../lib/composerDrafts.js";
 
 /** Open the idle session's picker and choose a model by its label. */
 function pickModel(label: string): void {
@@ -80,9 +81,27 @@ describe("SessionComposer provider switch confirmation", () => {
     expect(seed.model.provider).toBe("claude");
     expect(seed.model.label).toBe("Sonnet 5");
     expect(seed.prompt).toBe("Try the other agent on this");
+    expect(seed.attachments).toEqual([]);
     // The draft moved rather than being copied: it must not still be offered here.
     expect(screen.getByRole("textbox", { name: "Chat prompt" })).toHaveValue("");
     expect(screen.getByRole("button", { name: "Chat model" }).textContent).not.toContain("Sonnet 5");
+  });
+
+  it("moves an attachment-only draft to the new chat", () => {
+    const attachment = { filePath: "/attachments/shot.png", mimeType: "image/png", sizeBytes: 4 };
+    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
+      "session-a": { text: "", attachments: [attachment] }
+    }));
+    const onNewSession = vi.fn();
+    renderConversation(baseSession({ state: "complete", provider: "codex" }), [], { onNewSession });
+
+    expect(screen.getByLabelText("Attached images")).toBeInTheDocument();
+    pickModel("Sonnet 5");
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+
+    expect(onNewSession).toHaveBeenCalledWith(expect.objectContaining({ prompt: "", attachments: [attachment] }));
+    expect(screen.queryByLabelText("Attached images")).toBeNull();
+    expect(readDraft("session-a")).toEqual({ text: "", attachments: [] });
   });
 
   // `session.provider` stays on the old provider until the backend relaunches

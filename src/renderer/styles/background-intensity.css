@@ -1,29 +1,50 @@
-/* Level 7 owns no rule, so the default setting and an absent attribute retain
-   every shipped literal in tokens.css. Other rungs move the neutral surfaces
-   together while preserving the offsets that distinguish app chrome, live
-   composers, nested panels, code, and picker rows. Lines and scrollbars move
-   with them so their contrast remains proportional. */
-:root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
-  --bg: color-mix(in oklab, #fcfcfb, var(--background-bg-target) var(--background-pull));
-  --sidebar: color-mix(in oklab, #fbfbf9, var(--background-sidebar-target) var(--background-pull));
-  --panel: color-mix(in oklab, #ffffff, var(--background-panel-target) var(--background-pull));
-  --review-panel: color-mix(in oklab, #fbfbf9, var(--background-review-panel-target) var(--background-pull));
-  --review-sidebar: color-mix(in oklab, #fafaf7, var(--background-review-sidebar-target) var(--background-pull));
-  --panel-soft: color-mix(in oklab, #fafafa, var(--background-panel-soft-target) var(--background-pull));
-  --composer-surface: color-mix(in oklab, #ffffff, var(--background-composer-target) var(--background-pull));
-  --panel-sunken: color-mix(in oklab, #eef0f1, var(--background-sunken-target) var(--background-pull));
-  --code-surface: color-mix(in oklab, #f4f6f7, var(--background-code-target) var(--background-pull));
-  --terminal-surface: color-mix(in oklab, #fbfbfa, var(--background-terminal-target) var(--background-pull));
-  --tool-block-surface: color-mix(in oklab, #f5f6f7, var(--background-tool-target) var(--background-pull));
-  --line: color-mix(in oklab, #d9dde0, var(--background-line-target) var(--background-pull));
-  --line-soft: color-mix(in oklab, #e4e7e8, var(--background-line-soft-target) var(--background-pull));
-  --line-strong: color-mix(in oklab, #c6ccd0, var(--background-line-strong-target) var(--background-pull));
-  --scrollbar-thumb: color-mix(in oklab, #dce1e4, var(--background-scrollbar-target) var(--background-pull));
-  --scrollbar-thumb-hover: color-mix(in oklab, #cfd5d8, var(--background-scrollbar-hover-target) var(--background-pull));
-  --overlay-panel: color-mix(in oklab, #ffffff, var(--background-overlay-target) var(--background-pull));
-  --overlay-panel-raised: color-mix(in oklab, #eef0f1, var(--background-overlay-raised-target) var(--background-pull));
+/* Light mode runs from slightly cream paper at level 1 to pure white at
+   level 10 in nine equal oklab steps. Surfaces mix between their own two
+   endpoints, so every rung moves them by the same share and the offsets
+   between chrome, panels, and recessed surfaces shrink evenly toward white.
+   The queued composer tray keeps a small text tint so it remains distinct at
+   the white endpoint. The cream end is the shipped palette moved 40% toward
+   heavy paper stock (Anthropic's ivory, #f0eee6, is the tint); lines and
+   scrollbars stay grey at the white end so borders still separate surfaces
+   there. An absent
+   attribute keeps the shipped literals in tokens.css. */
+:root:not([data-theme="dark"]):is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="7"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
+  --bg: color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness));
+  --sidebar: color-mix(in oklab, #f1f0e9, #ffffff var(--background-whiteness));
+  --panel: color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness));
+  --review-panel: color-mix(in oklab, #f1f0e9, #ffffff var(--background-whiteness));
+  --review-sidebar: color-mix(in oklab, #efeee6, #ffffff var(--background-whiteness));
+  --panel-soft: color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness));
+  --composer-surface: color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness));
+  --panel-sunken: color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness));
+  --code-surface: color-mix(in oklab, #edeeeb, #ffffff var(--background-whiteness));
+  --terminal-surface: color-mix(in oklab, #f2f1eb, #ffffff var(--background-whiteness));
+  --tool-block-surface: color-mix(in oklab, #eeeeeb, #ffffff var(--background-whiteness));
+  --line: color-mix(in oklab, #d4d6d4, #ebeeef var(--background-whiteness));
+  --line-soft: color-mix(in oklab, #dee0dd, #f4f5f6 var(--background-whiteness));
+  --line-strong: color-mix(in oklab, #c0c5c4, #dadfe2 var(--background-whiteness));
+  --scrollbar-thumb: color-mix(in oklab, #d3d6d5, #e6eaec var(--background-whiteness));
+  --scrollbar-thumb-hover: color-mix(in oklab, #c6cac9, #dadfe2 var(--background-whiteness));
+  --overlay-panel: color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness));
+  --overlay-panel-raised: color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness));
 }
 
+:root:not([data-theme="dark"])[data-background-intensity="1"] { --background-whiteness: 0%; }
+:root:not([data-theme="dark"])[data-background-intensity="2"] { --background-whiteness: 11%; }
+:root:not([data-theme="dark"])[data-background-intensity="3"] { --background-whiteness: 22%; }
+:root:not([data-theme="dark"])[data-background-intensity="4"] { --background-whiteness: 33%; }
+:root:not([data-theme="dark"])[data-background-intensity="5"] { --background-whiteness: 44%; }
+:root:not([data-theme="dark"])[data-background-intensity="6"] { --background-whiteness: 56%; }
+:root:not([data-theme="dark"])[data-background-intensity="7"] { --background-whiteness: 67%; }
+:root:not([data-theme="dark"])[data-background-intensity="8"] { --background-whiteness: 78%; }
+:root:not([data-theme="dark"])[data-background-intensity="9"] { --background-whiteness: 89%; }
+:root:not([data-theme="dark"])[data-background-intensity="10"] { --background-whiteness: 100%; }
+
+/* Dark mode: level 7 owns no rule, so the default retains every shipped
+   literal in tokens.css. Other rungs move the neutral surfaces together while
+   preserving the offsets that distinguish app chrome, live composers, nested
+   panels, code, and picker rows. Lines and scrollbars move with them so their
+   contrast remains proportional. */
 :root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
   --bg: color-mix(in oklab, #141414, var(--background-bg-target) var(--background-pull));
   --sidebar: color-mix(in oklab, #171717, var(--background-sidebar-target) var(--background-pull));
@@ -45,35 +66,6 @@
   --overlay-panel-raised: color-mix(in oklab, #292926, var(--background-overlay-raised-target) var(--background-pull));
 }
 
-/* Light mode's low end is heavier paper stock, not dimmer paper. Softening a
-   neutral grey reads as a screen losing its backlight, because a theme named
-   paper has no business turning into #e3e3e3. Each target is therefore the
-   former grey translated in oklab by 1.5x the tint of Anthropic's ivory
-   (#f0eee6) against white. A single shared translation is what keeps the
-   tuning intact: lightness is untouched, so the offsets between chrome,
-   panels, and recessed surfaces survive, and the recessed ones stay a touch
-   cooler than the panels around them the way a shadow on cream does. */
-:root:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"]) {
-  --background-bg-target: #e6e3d7;
-  --background-sidebar-target: #e2dfd1;
-  --background-panel-target: #f0ede1;
-  --background-review-panel-target: #e2dfd1;
-  --background-review-sidebar-target: #dfdcce;
-  --background-panel-soft-target: #edeade;
-  --background-composer-target: #f0ede1;
-  --background-sunken-target: #dcdcd3;
-  --background-code-target: #e2e2d8;
-  --background-terminal-target: #e4e1d5;
-  --background-tool-target: #e3e2d8;
-  --background-line-target: #ccccc3;
-  --background-line-soft-target: #d5d5cc;
-  --background-line-strong-target: #b8bab2;
-  --background-scrollbar-target: #c5c6be;
-  --background-scrollbar-hover-target: #b8bab2;
-  --background-overlay-target: #f0ede1;
-  --background-overlay-raised-target: #dcdcd3;
-}
-
 :root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"]) {
   --background-bg-target: #2c2c2c;
   --background-sidebar-target: #2f2f2f;
@@ -93,39 +85,6 @@
   --background-scrollbar-hover-target: #8a857b;
   --background-overlay-target: #2f2f2e;
   --background-overlay-raised-target: #41413f;
-}
-
-/* Light mode's high end has almost no headroom above the shipped palette —
-   the page is already #fcfcfb and its panels are already white — so aiming
-   the whole set at white moved every surface by one or two units of 255 and
-   levels 7 through 10 were the same screen. Up the ladder is therefore a
-   flattening rather than a lightening: the recessed surfaces (sunken, code,
-   tool blocks, the review sidebar) and the lines between them climb toward
-   the panels, so the grey boxes fade out of the page in three visible steps.
-   They stop a few units short of white at level 10 rather than reaching it,
-   which is what keeps a code block a block. */
-:root:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
-  --background-bg-target: #ffffff;
-  /* The sidebars climb nearly in step with the page so the near-flat boundary
-     of the default survives the climb. Aiming them at white instead would
-     merge them into the page at level 10 and delete the boundary. */
-  --background-sidebar-target: #fefefc;
-  --background-panel-target: #ffffff;
-  --background-review-panel-target: #fefefc;
-  --background-review-sidebar-target: #fcfcf9;
-  --background-panel-soft-target: #ffffff;
-  --background-composer-target: #ffffff;
-  --background-sunken-target: #fafbfb;
-  --background-code-target: #fcfcfd;
-  --background-terminal-target: #ffffff;
-  --background-tool-target: #fcfdfd;
-  --background-line-target: #ebeeef;
-  --background-line-soft-target: #f4f5f6;
-  --background-line-strong-target: #dadfe2;
-  --background-scrollbar-target: #e6eaec;
-  --background-scrollbar-hover-target: #dadfe2;
-  --background-overlay-target: #ffffff;
-  --background-overlay-raised-target: #fafbfb;
 }
 
 /* Dark mode's high end stops at a very dark gray rather than black. Black is
@@ -153,16 +112,6 @@
   --background-overlay-raised-target: #1f1f1c;
 }
 
-:root[data-background-intensity="1"] { --background-pull: 100%; }
-:root[data-background-intensity="2"] { --background-pull: 83%; }
-:root[data-background-intensity="3"] { --background-pull: 67%; }
-:root[data-background-intensity="4"] { --background-pull: 50%; }
-:root[data-background-intensity="5"] { --background-pull: 33%; }
-:root[data-background-intensity="6"] { --background-pull: 17%; }
-:root[data-background-intensity="8"] { --background-pull: 33%; }
-:root[data-background-intensity="9"] { --background-pull: 67%; }
-:root[data-background-intensity="10"] { --background-pull: 100%; }
-
 /* Dark mode's useful low end starts at the former level 4. Spread that
    smaller interval across six rungs for finer control near shipped charcoal. */
 :root[data-theme="dark"][data-background-intensity="1"] { --background-pull: 50%; }
@@ -171,3 +120,6 @@
 :root[data-theme="dark"][data-background-intensity="4"] { --background-pull: 25%; }
 :root[data-theme="dark"][data-background-intensity="5"] { --background-pull: 17%; }
 :root[data-theme="dark"][data-background-intensity="6"] { --background-pull: 8%; }
+:root[data-theme="dark"][data-background-intensity="8"] { --background-pull: 33%; }
+:root[data-theme="dark"][data-background-intensity="9"] { --background-pull: 67%; }
+:root[data-theme="dark"][data-background-intensity="10"] { --background-pull: 100%; }

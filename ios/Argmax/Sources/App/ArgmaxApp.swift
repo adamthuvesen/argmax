@@ -46,6 +46,8 @@ struct ArgmaxApp: App {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-argmax-unpaired")
             || ProcessInfo.processInfo.arguments.contains("-argmax-transcript-scenario")
+            || ProcessInfo.processInfo.arguments.contains("-argmax-transcript-header-scenario")
+            || ProcessInfo.processInfo.arguments.contains("-argmax-new-chat-scenario")
         #else
         return false
         #endif
@@ -78,6 +80,10 @@ struct ArgmaxApp: App {
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-argmax-transcript-scenario") {
                     TranscriptScenario()
+                } else if ProcessInfo.processInfo.arguments.contains("-argmax-transcript-header-scenario") {
+                    TranscriptHeaderScenario(appearance: appearance)
+                } else if ProcessInfo.processInfo.arguments.contains("-argmax-new-chat-scenario") {
+                    NewChatScenario(appearance: appearance)
                 } else {
                     pairedContent
                 }
@@ -125,3 +131,40 @@ struct ArgmaxApp: App {
         paired = nil
     }
 }
+
+#if DEBUG
+/// Deterministic launcher content for UI tests. The preview bridge has no
+/// host, while the sheet still uses its real choices and persisted mode.
+private struct NewChatScenario: View {
+    private let appearance: Appearance
+    private let store: DashboardStore
+    private let client: BridgeClient
+    private let branchFromWorkspaceID: String?
+    private let dark: Bool
+
+    @MainActor
+    init(appearance: Appearance) {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-scenario-reset-launch-mode") {
+            UserDefaults.standard.removeObject(forKey: "argmax.launch.isCode")
+        }
+        self.appearance = appearance
+        store = previewStore()
+        client = previewClient()
+        branchFromWorkspaceID = arguments.contains("-scenario-new-chat-here") ? previewWorkspace.id : nil
+        dark = arguments.contains("-scenario-dark")
+    }
+
+    var body: some View {
+        NavigationStack {
+            NewChatSheet(
+                store: store,
+                client: client,
+                branchFromWorkspaceID: branchFromWorkspaceID
+            ) { _, _ in }
+        }
+        .appearance(appearance)
+        .preferredColorScheme(dark ? .dark : .light)
+    }
+}
+#endif

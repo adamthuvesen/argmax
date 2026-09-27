@@ -183,7 +183,7 @@ final class TranscriptToolIconTests: XCTestCase {
         )
         XCTAssertEqual(
             TranscriptToolIcon.source(for: "mcp__linear__list_issues"),
-            .asset(name: "Integrations/linear", monochrome: nil, title: "Linear")
+            .asset(name: "Integrations/linear", monochrome: "Integrations/linear-mono", title: "Linear")
         )
     }
 

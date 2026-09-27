@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { CommandPalette, type MessageHit, type PaletteCommand } from "./CommandPalette.js";
 import type { WorkspaceContentSearchResult } from "../../shared/types.js";
+import { recordPaletteUse } from "../lib/paletteUsage.js";
 
 const COMMANDS: PaletteCommand[] = Array.from({ length: 12 }, (_, i) => ({
   id: `cmd-${i}`,
@@ -67,7 +68,7 @@ describe("CommandPalette", () => {
     render(<CommandPalette open commands={[
       { id: "first", label: "Open settings", group: "Actions", run: vi.fn() },
       { id: "second", label: "Open usage", group: "Actions", run }
-    ]} onClose={vi.fn()} fileSource={{ kind: "workspace", id: "a" }}
+    ]} onClose={vi.fn()} fileSource={{ kind: "workspace", id: "a" }} filesVisible
       onFilePick={vi.fn()} loadFiles={() => new Promise((resolve) => { finishFiles = resolve; })} />);
     const input = screen.getByRole("searchbox", { name: "Command palette query" });
     fireEvent.change(input, { target: { value: "Open" } });
@@ -156,6 +157,7 @@ describe("CommandPalette", () => {
         commands={COMMANDS}
         onClose={onClose}
         fileSource={{ kind: "workspace", id: "workspace-1" }}
+        filesVisible
         loadFiles={loadFiles}
         onFilePick={onFilePick}
       />
@@ -169,6 +171,85 @@ describe("CommandPalette", () => {
 
     expect(onFilePick).toHaveBeenCalledWith("src/renderer/NeedlePanel.tsx");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps files out of All until the files panel is open or the query names a path", async () => {
+    const loadFiles = vi.fn().mockResolvedValue(["src/renderer/NeedlePanel.tsx"]);
+    const props = {
+      commands: COMMANDS,
+      onClose: vi.fn(),
+      fileSource: { kind: "workspace" as const, id: "a" },
+      loadFiles,
+      onFilePick: vi.fn()
+    };
+    const { rerender } = render(<CommandPalette open {...props} />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "needle" } });
+    expect(loadFiles).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "renderer/needle" } });
+    expect(await screen.findByText("NeedlePanel.tsx")).toBeInTheDocument();
+
+    rerender(<CommandPalette open {...props} filesVisible />);
+    fireEvent.change(input, { target: { value: "needle" } });
+    expect(await screen.findByText("NeedlePanel.tsx")).toBeInTheDocument();
+  });
+
+  it("learns which row the user picks for what they typed", () => {
+    const commands: PaletteCommand[] = [
+      { id: "settings", label: "Open settings", group: "Actions", run: vi.fn() },
+      { id: "usage", label: "Open usage", group: "Actions", run: vi.fn() }
+    ];
+    const { rerender } = render(<CommandPalette open commands={commands} onClose={vi.fn()} />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "op" } });
+    expect(screen.getAllByRole("option")[0]).toHaveTextContent("Open settings");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    rerender(<CommandPalette open={false} commands={commands} onClose={vi.fn()} />);
+    rerender(<CommandPalette open commands={commands} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Command palette query" }), {
+      target: { value: "o" }
+    });
+    expect(screen.getAllByRole("option")[0]).toHaveTextContent("Open usage");
+  });
+
+  it("leads the empty All palette with timely rows, then habits, listing each once", () => {
+    recordPaletteUse("usage", "");
+    render(<CommandPalette open commands={[
+      { id: "settings", label: "Open settings", group: "Actions", run: vi.fn() },
+      { id: "usage", label: "Open usage", group: "Actions", run: vi.fn() },
+      { id: "approve", label: "Approve in Fix CI", group: "Actions", suggest: true, run: vi.fn() },
+      { id: "chat", label: "Refactor watcher", group: "Sessions", run: vi.fn() }
+    ]} onClose={vi.fn()} />);
+    const options = screen.getAllByRole("option").map((option) => option.textContent);
+    expect(screen.getAllByRole("presentation")[0]).toHaveTextContent("Suggested");
+    expect(options.slice(0, 2)).toEqual(["Approve in Fix CI", "Open usage"]);
+    expect(options.filter((text) => text === "Open usage")).toHaveLength(1);
+    expect(options[2]).toBe("Refactor watcher");
+  });
+
+  it("jumps to a filter from a typed prefix and Backspace comes back to All", () => {
+    render(<CommandPalette open commands={[
+      { id: "act", label: "New chat", group: "Actions", run: vi.fn() },
+      { id: "sess", label: "New chat bug", group: "Sessions", run: vi.fn() }
+    ]} onClose={vi.fn()} />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: ">" } });
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Actions");
+    expect(input).toHaveValue("");
+    fireEvent.keyDown(input, { key: "Backspace" });
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("All");
+  });
+
+  it("starts the query over when a row reopens the palette on another filter", () => {
+    const { rerender } = render(<CommandPalette open commands={COMMANDS} onClose={vi.fn()} />);
+    const input = screen.getByRole("searchbox", { name: "Command palette query" });
+    fireEvent.change(input, { target: { value: "go to file" } });
+    rerender(<CommandPalette open commands={COMMANDS} onClose={vi.fn()} initialScope="files" />);
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Files");
+    expect(input).toHaveValue("");
   });
 
   it("opens on the All filter by default and on Files when asked", () => {

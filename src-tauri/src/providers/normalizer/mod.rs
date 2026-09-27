@@ -45,6 +45,7 @@ use self::{
         is_lifecycle_event as is_cursor_lifecycle_event,
         native_agent_lifecycle_events as normalize_cursor_native_agent_lifecycle_events,
         normalize_assistant_text as normalize_cursor_assistant_text,
+        normalize_plan_update as normalize_cursor_plan_update,
         normalize_result_success as normalize_cursor_result_success,
         normalize_thinking_delta as normalize_cursor_thinking_delta,
         normalize_todo_call as normalize_cursor_todo_call,
@@ -670,6 +671,10 @@ fn normalize_json_payload(
     }
 
     if provider == ProviderId::Cursor {
+        if let Some(todo) = normalize_cursor_plan_update(event, &payload, provider_type.as_deref())
+        {
+            return normalized(vec![todo], usages, provider_conversation_id);
+        }
         if let Some(tool_event) =
             normalize_cursor_tool_call(event, &payload, provider_type.as_deref())
         {

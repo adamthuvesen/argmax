@@ -150,8 +150,8 @@ export function useSessionCommands({
         prompt,
         ...(pendingMessageId ? { pendingMessageId } : {})
       });
-      // A multitask is named in as many places as a session is — the row above
-      // the composer, the dock tab, the workspace card, the finish notice —
+      // A multitask is named in as many places as a session is: the inline row,
+      // the dock tab, the workspace card, and the finish notice,
       // and all of them read the workspace's label. So it gets the same short
       // title a launched chat does instead of the first line of the prompt.
       // Best-effort and never awaited: the dispatch is already done.
@@ -221,17 +221,11 @@ export function useSessionCommands({
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to clear a chat.");
       }
-      const ok = await withToast(
-        () => window.argmax!.session.clear({ sessionId }),
-        setToast,
-        "Could not clear the conversation."
-      );
-      if (!ok) {
-        throw new Error("Could not clear the conversation.");
-      }
+      // Let the composer report the original failure once, with its reason.
+      await window.argmax.session.clear({ sessionId });
       await Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
     },
-    [refreshDashboardStatus, loadSessionEvents, setToast]
+    [refreshDashboardStatus, loadSessionEvents]
   );
 
   return {

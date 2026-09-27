@@ -63,6 +63,21 @@ describe("useReviewState — browser mode", () => {
     expect(result.current.mode).not.toBe("browser");
   });
 
+  it("does not spend the first reveal in a window that cannot host Browser", () => {
+    window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: "chat-1" } } };
+    const detached = renderPanel(false, "session-a");
+    act(() => requestAgentBrowserOpen("session-a", "agent-1", "https://example.com"));
+    expect(detached.result.current.isPanelOpen).toBe(false);
+    expect(window.localStorage.getItem("argmax.browser.agentRevealed.session-a")).toBeNull();
+    detached.unmount();
+
+    delete window.__TAURI_INTERNALS__;
+    const main = renderPanel(false, "session-a");
+    act(() => requestAgentBrowserOpen("session-a", "agent-2", "https://example.com/next"));
+    expect(main.result.current.isPanelOpen).toBe(true);
+    expect(main.result.current.mode).toBe("browser");
+  });
+
   it("restores Browser with the current tab URL instead of the start page", () => {
     const first = renderPanel(true, "session-a");
     act(() => first.result.current.openBrowser());
@@ -93,6 +108,47 @@ describe("useReviewState — browser mode", () => {
     // Focus does not enter into it: the pane showing the session does.
     expect(other.result.current.mode).toBe("changes");
     expect(launcher.result.current.mode).toBe("changes");
+  });
+
+  it("reveals once per session and preserves later sidebar choices across remounts", () => {
+    const panel = renderPanel(false, "session-a");
+    act(() => requestAgentBrowserOpen("session-a", "agent-1", "https://example.com"));
+    expect(panel.result.current.isPanelOpen).toBe(true);
+    expect(panel.result.current.mode).toBe("browser");
+
+    act(() => panel.result.current.setMode("files"));
+    act(() => requestAgentBrowserOpen("session-a", "agent-2", "https://example.com/next"));
+    expect(panel.result.current.mode).toBe("files");
+    expect(panel.result.current.browserRequest?.tabId).toBe("agent-2");
+
+    act(() => panel.result.current.openBrowser());
+    expect(panel.result.current.browserRequest?.tabId).toBe("agent-2");
+    act(() => panel.result.current.setMode("files"));
+
+    act(() => panel.result.current.closePanel());
+    panel.unmount();
+    const restored = renderPanel(false, "session-a");
+    act(() => requestAgentBrowserOpen("session-a", "agent-3", "https://example.com/last"));
+    expect(restored.result.current.isPanelOpen).toBe(false);
+    expect(restored.result.current.mode).toBe("files");
+
+    const other = renderPanel(false, "session-b");
+    act(() => requestAgentBrowserOpen("session-b", "agent-4", "https://example.com"));
+    expect(other.result.current.isPanelOpen).toBe(true);
+    expect(other.result.current.mode).toBe("browser");
+  });
+
+  it("keeps split focus on Agents while later agent tabs update Browser", () => {
+    const panel = renderPanel(false, "session-a");
+    act(() => requestAgentBrowserOpen("session-a", "agent-1", "https://example.com"));
+    act(() => panel.result.current.splitMode("agents", "bottom"));
+    const layout = panel.result.current.layout;
+
+    act(() => requestAgentBrowserOpen("session-a", "agent-2", "https://example.com/next"));
+    expect(panel.result.current.layout).toEqual(layout);
+    expect(panel.result.current.mode).toBe("agents");
+    expect(panel.result.current.browserOwner).toBe(true);
+    expect(panel.result.current.browserRequest?.tabId).toBe("agent-2");
   });
 
   it("does not replay an agent tab opened before the pane mounted", () => {

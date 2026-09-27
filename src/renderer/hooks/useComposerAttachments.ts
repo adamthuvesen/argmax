@@ -6,7 +6,8 @@ import {
   type ChangeEvent,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
-  type RefObject
+  type RefObject,
+  type SetStateAction
 } from "react";
 import {
   appendReferencesToPrompt,
@@ -24,6 +25,7 @@ import {
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
 import { shouldPreferHtmlFlavor } from "../lib/clipboardMarkdown.js";
 import type { ComposerAttachment } from "../../shared/types.js";
+import { showErrorToast } from "../state/toast.js";
 
 function createAttachmentPreviewUrl(blob: Blob): string | null {
   return typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
@@ -60,8 +62,8 @@ interface ComposerAttachmentsApi {
   openFilePicker: () => void;
   /** Drop all pending attachments. Call after a successful submit. */
   clearAttachments: () => void;
-  /** Put a failed submit's attachments back after this draft was retargeted. */
-  restoreAttachments: (attachments: ComposerAttachment[]) => void;
+  /** Restore or merge attachments into the active draft. */
+  restoreAttachments: (attachments: SetStateAction<ComposerAttachment[]>) => void;
 }
 
 interface ComposerAttachmentsDeps {
@@ -74,8 +76,6 @@ interface ComposerAttachmentsDeps {
   workspacePath: string | null | undefined;
   /** Append `@-mentions` to the live composer text. */
   setInput: (updater: (prev: string) => string) => void;
-  /** Surface an error to the composer status line. */
-  setStatus: (status: string | null) => void;
   /**
    * Third element of `useComposerDraft`: true for the render in which typed
    * text followed the composer onto a new draft key. Images are part of that
@@ -107,7 +107,7 @@ interface ComposerAttachmentsDeps {
  * screenshot never has to be taken twice.
  */
 export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerAttachmentsApi {
-  const { draftKey, workspacePath, setInput, setStatus, carriedOnRetarget = false, persist = true } = deps;
+  const { draftKey, workspacePath, setInput, carriedOnRetarget = false, persist = true } = deps;
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
     () => readDraft(draftKey ?? null).attachments
   );
@@ -217,7 +217,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       if (!draftKey || blobs.length === 0) return;
       const api = window.argmax;
       if (!api) {
-        setStatus("Open Argmax on your Mac to attach images.");
+        showErrorToast("Open Argmax on your Mac to attach images.");
         return;
       }
       const generation = listGeneration.current;
@@ -250,10 +250,10 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
           rememberPreviewUrl(saved.filePath, processed);
         }
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : "Could not attach image.");
+        showErrorToast(error instanceof Error ? error.message : "Could not attach image.");
       }
     },
-    [draftKey, rememberPreviewUrl, setStatus]
+    [draftKey, rememberPreviewUrl]
   );
 
   const removePendingAttachment = useCallback((filePath: string): void => {
@@ -302,10 +302,10 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       if (withPath.length > 0) attachFiles(withPath);
       if (imageBlobs.length > 0) void attachImageBlobs(imageBlobs);
       if (withPath.length === 0 && imageBlobs.length === 0) {
-        setStatus("Only files with a disk path or images can be attached.");
+        showErrorToast("Only files with a disk path or images can be attached.");
       }
     },
-    [attachFiles, attachImageBlobs, setStatus]
+    [attachFiles, attachImageBlobs]
   );
 
   const onComposerDrop = useCallback(
@@ -318,14 +318,14 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         event.preventDefault();
         const types = listDragTypes(event.dataTransfer);
         if (types.includes("Files") || types.some((type) => isImageDragType(type))) {
-          setStatus("Could not read the dropped file.");
+          showErrorToast("Could not read the dropped file.");
         }
         return;
       }
       event.preventDefault();
       splitAndAttach(files);
     },
-    [setStatus, splitAndAttach]
+    [splitAndAttach]
   );
 
   const onComposerPaste = useCallback(
@@ -401,7 +401,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     setPendingAttachments([]);
   }, [clearPreviewUrls]);
 
-  const restoreAttachments = useCallback((attachments: ComposerAttachment[]): void => {
+  const restoreAttachments = useCallback((attachments: SetStateAction<ComposerAttachment[]>): void => {
     setPendingAttachments(attachments);
   }, []);
 

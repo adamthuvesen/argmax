@@ -101,7 +101,7 @@
 }
 
 .session-input-toolbar .composer-footer-chip--changes[aria-pressed="true"] {
-  background: var(--panel-soft);
+  background: var(--composer-chip);
   color: var(--text);
 }
 

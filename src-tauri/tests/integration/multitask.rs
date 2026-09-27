@@ -28,7 +28,7 @@ use argmax_lib::{
         workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
     },
     providers::{
-        flush_queue::PendingMessage,
+        flush_queue::{DashboardDelta, PendingMessage},
         normalizer::ProviderOutputStream,
         runtime::{
             BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
@@ -169,6 +169,7 @@ struct Fixture {
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
     launcher: Arc<ScriptedLauncher>,
+    deltas: Arc<Mutex<Vec<DashboardDelta>>>,
     repo_path: String,
     _repo: crate::support::git_repo::SeededGitRepo,
 }
@@ -233,14 +234,20 @@ fn fixture() -> Fixture {
         .expect("session");
     }
     let launcher = Arc::new(ScriptedLauncher::default());
-    let providers =
-        ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+    let deltas = Arc::new(Mutex::new(Vec::new()));
+    let published = Arc::clone(&deltas);
+    let providers = ProviderSessionService::with_launcher(
+        Arc::clone(&database),
+        launcher.clone(),
+        move |delta| published.lock().expect("deltas poisoned").push(delta),
+    );
     let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
     Fixture {
         database,
         workspaces,
         providers,
         launcher,
+        deltas,
         repo_path,
         _repo: repo,
     }
@@ -434,6 +441,18 @@ async fn a_multitask_runs_in_the_parents_checkout_without_touching_its_turn() {
     assert!(parent_events
         .iter()
         .any(|(kind, message)| kind == LAUNCHED_EVENT && message.contains("Fix the README typo")));
+    // An open phone chat only rereads history when the host publishes a
+    // change for that session. Persisting the notice alone needs a reopen.
+    let deltas = fixture.deltas.lock().expect("deltas poisoned");
+    assert!(deltas.iter().any(|delta| {
+        delta.dashboard_changed
+            && delta.events.iter().any(|event| {
+                event.session_id == "session-parent"
+                    && event.r#type == LAUNCHED_EVENT
+                    && event.payload["childSessionId"].as_str() == Some(child_id.as_str())
+            })
+    }));
+    drop(deltas);
 
     // The shared checkout is the dangerous part, so the prompt says so.
     let prompt = fixture.launcher.prompt_for(&child_id);

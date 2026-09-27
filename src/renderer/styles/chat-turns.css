@@ -79,13 +79,6 @@
   color: var(--chip-ink);
 }
 
-.turn-revert-error {
-  margin: 0;
-  min-width: 0;
-  color: var(--rose);
-  overflow-wrap: anywhere;
-}
-
 .turn-revert-actions {
   display: inline-flex;
   gap: var(--space-1_5);
@@ -244,13 +237,6 @@
 
 .turn-block-header[data-brief] {
   gap: var(--space-3);
-}
-
-.turn-block-tools {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1_5);
-  margin: 0;
 }
 
 /* Thinking → answered transition. The first visible child of a freshly
@@ -466,17 +452,23 @@
   font-weight: inherit;
 }
 
-/* Headings paint --prose-ink-strong on their own element, so the container's
-   `color: inherit` above never reaches them. Reasoning is secondary text; a
-   bright heading inside it would outrank the answer's own prose. Keep the
-   weight and spacing so the structure still reads. */
-.thought-block-body .markdown :where(h1, h2, h3),
-.thought-block-body .markdown ol > li:only-child {
+/* Reasoning uses the answer Markdown renderer, including its heading sizes and
+   bold-only-line promotion. Keep headings readable as section labels without
+   letting a thought become a large title in the transcript. */
+.thought-block-body .markdown :is(h1, h2, h3, h4, h5, h6) {
   color: inherit;
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  line-height: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  margin: 0 0 0.4em;
+  padding: 0;
+  border: 0;
 }
 
-.thought-block-body .markdown h1 {
-  border-bottom-color: var(--line-soft);
+.thought-block-body .markdown ol > li:only-child {
+  color: inherit;
 }
 
 /* The stable word carries personality while the shared WorkingNest carries
@@ -1649,7 +1641,7 @@ button.tool-call-row-button {
 
 .turn-changes-title {
   color: var(--muted-strong);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
 }
 
 .turn-changes-review {
@@ -1743,7 +1735,7 @@ button.tool-call-row-button {
   /* The name is what the row is for, so it sits on chrome ink rather than the
      muted step the directory beside it takes. */
   color: var(--text-soft);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1781,65 +1773,4 @@ button.tool-call-row-button {
 .turn-changes-del {
   color: var(--diff-del-gutter-fg);
   text-align: right;
-}
-
-/* A multitask above the composer keeps the subagent launch-row shape. The row
-   borrows `.agent-launch-*` wholesale, the reading wave on a running row's
-   words included. The mark is the emblem its dock tab already uses — or the
-   Split glyph, until the chat it dispatched has an id to hash. */
-.multitask-row-mark {
-  display: inline-grid;
-  place-items: center;
-  color: var(--muted);
-  animation: working-nest-enter var(--motion-fast) var(--ease-out);
-}
-
-.agent-launch-row[data-status="error"] .multitask-row-mark {
-  color: var(--rose);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .multitask-row-mark {
-    animation: none;
-  }
-}
-
-/* The finished multitask's first line of answer, riding the status line so the
-   row stays two lines tall whether or not an answer landed. Always quiet, even
-   on a failed row where the status word beside it is rose: the status is the
-   thing to read, this is the detail. */
-.multitask-row-answer {
-  color: var(--muted);
-  opacity: 0.85;
-}
-
-/* Stop is the one action worth having without opening the multitask, but it is
-   not what the row is for: it appears on hover, and whenever it is tabbed to.
-   Dismiss takes the same seat once the row has settled and stop is gone. */
-.multitask-row-stop {
-  display: grid;
-  flex: 0 0 auto;
-  /* At the row's right edge, clear of the label: the row is for reading, and
-     this is the one thing you can do to it from here. */
-  margin-left: auto;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  opacity: 0;
-  cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
-}
-
-.multitask-row:hover .multitask-row-stop,
-.multitask-row-stop:focus-visible {
-  opacity: 1;
-}
-
-.multitask-row-stop:hover {
-  color: var(--text);
 }

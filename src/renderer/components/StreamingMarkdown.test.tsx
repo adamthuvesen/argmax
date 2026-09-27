@@ -63,6 +63,19 @@ describe("<StreamingMarkdown />", () => {
     expect(pre.scrollLeft).toBe(120);
   });
 
+  it("promotes a bold-only line to a heading and leaves bold lead-ins alone", () => {
+    render(
+      <StreamingMarkdown
+        text={"**On both lists**\n\n**Trends:** horror is the story.\n\n**Trends:**\n\n**Empire's #1**\nNolan's follow-up."}
+        streaming={false}
+        workspace={workspace}
+      />
+    );
+    expect(screen.getByRole("heading", { level: 3, name: "On both lists" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Trends/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /Empire/ })).toBeNull();
+  });
+
   it("uses the latest file callback without replacing the link", () => {
     const text = "Open [the app](src/renderer/App.tsx).";
     const previous = vi.fn();
@@ -223,6 +236,25 @@ describe("<StreamingMarkdown />", () => {
       vi.advanceTimersByTime(FRESH_RUN_FADE_MS + 100);
     });
     expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it("lands a finished block without waiting for a frame that never comes", () => {
+    // An occluded window stops animation frames without hiding the document.
+    vi.useFakeTimers();
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const text = "word ".repeat(60).trim();
+    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = container.querySelector(".markdown");
+    expect(markdown?.textContent).toBe("");
+
+    rerender(<StreamingMarkdown text={text} streaming={false} />);
+    expect(markdown?.textContent).toBe("");
+
+    act(() => {
+      vi.advanceTimersByTime(2_100);
+    });
+    expect(markdown?.textContent).toBe(text);
   });
 
   it("keeps a quarter second of arrived text in hand while delivery keeps up", () => {

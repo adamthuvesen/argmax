@@ -665,15 +665,9 @@
   margin-bottom: -10px;
   padding-bottom: var(--space-2_5);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  background: color-mix(in oklab, var(--composer-surface) 58%, var(--panel-sunken));
+  /* A sheet tucked behind the composer. The goal strip wears this class too. */
+  background: var(--composer-tray);
   overflow: hidden;
-}
-
-/* On paper the 58% mix nearly matches the white card; the tab takes the full
-   sunken tone plus a touch of ink so it reads as a separate layer, a step
-   past the composer chips. The goal strip wears this class too. */
-:root:not([data-theme="dark"]) .composer-queued-lane {
-  background: color-mix(in oklab, var(--text) 3%, var(--panel-sunken));
 }
 
 .composer-queued-chip {
@@ -1093,8 +1087,31 @@
   background: var(--row-selected);
 }
 
-.slash-menu-option.is-selected .picker-lead {
-  color: var(--muted-strong);
+.slash-menu {
+  max-height: min(400px, 55dvh);
+  padding: 6px;
+  scroll-padding-block: 6px;
+  background: var(--composer-surface);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-2);
+}
+
+.slash-menu-option {
+  min-height: 36px;
+  gap: 10px;
+  border-radius: var(--radius-xl);
+  color: var(--text-soft);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-ui);
+}
+
+.slash-menu-option[aria-selected="true"] {
+  background: color-mix(in oklab, var(--composer-surface) 90%, var(--text));
+  color: var(--text);
+}
+
+.slash-menu-option .picker-lead {
+  color: inherit;
 }
 
 .slash-menu-label,
@@ -1103,37 +1120,45 @@
   font-weight: var(--weight-medium);
 }
 
-/* The hint yields when the row runs out of room; the skill or command name
-   stays intact. Short hints hug the panel edge; long ones fill the gap and
-   clip with an ellipsis. */
+.slash-menu-label {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: var(--weight-ui);
+}
+
+/* Descriptions follow their labels so each row reads as one phrase. Both
+   can truncate in a narrow pane while the source keeps its trailing column. */
 .slash-menu-hint {
   flex: 1 1 auto;
   min-width: 0;
-  text-align: right;
+  text-align: left;
   color: var(--muted-strong);
-  font-size: var(--text-xs);
+  font-size: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .slash-menu-badge {
   flex: 0 0 auto;
+  min-width: 0;
+  max-width: 25%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-inline-start: var(--space-1);
-  color: var(--muted);
-  font-size: var(--text-2xs);
+  color: var(--muted-strong);
+  font-size: inherit;
 }
 
-/* Section heading between the commands and the skills below them; the same
-   voice as the group headers in the anchored pickers, and indented onto the
-   label column (10px inset + 16px lead + 8px gap). */
+/* A quiet sentence-case heading aligns with the row icons. */
 .slash-menu-section {
-  padding: var(--space-2_5) var(--space-3) var(--space-1) 34px;
-  color: var(--muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-  line-height: 1.2;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  padding: 14px var(--space-3) 6px var(--space-2_5);
+  color: var(--muted-strong);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-ui);
+  line-height: 1.4;
 }
 
 /* A file row is its name, then the folder it sits in, muted and right beside

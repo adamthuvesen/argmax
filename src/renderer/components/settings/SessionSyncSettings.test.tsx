@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, SyncStatus } from "../../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { SessionSyncSettings } from "./SessionSyncSettings.js";
 
 function status(overrides: Partial<SyncStatus> = {}): SyncStatus {
@@ -21,6 +22,7 @@ const syncStub = {
 };
 
 beforeEach(() => {
+  resetToastForTests();
   syncStub.getStatus.mockClear();
   syncStub.setConfig.mockClear();
   syncStub.getStatus.mockResolvedValue(status());
@@ -100,6 +102,6 @@ describe("SessionSyncSettings", () => {
     render(<SessionSyncSettings />);
     fireEvent.click(await screen.findByRole("checkbox", { name: "Claude Code" }));
     await waitFor(() => expect(syncStub.setConfig).toHaveBeenCalled());
-    expect(await screen.findByRole("alert")).toHaveTextContent("permission denied");
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("permission denied"));
   });
 });

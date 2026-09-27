@@ -898,6 +898,19 @@ describe("BrowserPanel", () => {
     expect(browserStub.setBounds).toHaveBeenLastCalledWith(
       expect.objectContaining({ visible: true, tabId })
     );
+
+    act(() => {
+      // A responsive fold leaves the persisted collapse preference off.
+      toggleSidebarCollapsed();
+      setSidebarPeek(true);
+    });
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: false, tabId })
+    );
+    act(() => setSidebarPeek(false));
+    expect(browserStub.setBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ visible: true, tabId })
+    );
     expect(browserStub.open).toHaveBeenCalledTimes(1);
   });
 
@@ -1271,9 +1284,11 @@ describe("BrowserPanel", () => {
     const tabId = activeTabId();
     const toolbarTarget = screen.getByRole("textbox", { name: "Address" });
 
+    fireEvent.mouseDown(toolbarTarget, { button: 3 });
     fireEvent.mouseUp(toolbarTarget, { button: 3 });
     expect(browserStub.back).toHaveBeenCalledWith(tabId);
 
+    fireEvent.mouseDown(toolbarTarget, { button: 4 });
     fireEvent.mouseUp(toolbarTarget, { button: 4 });
     expect(browserStub.forward).toHaveBeenCalledWith(tabId);
   });

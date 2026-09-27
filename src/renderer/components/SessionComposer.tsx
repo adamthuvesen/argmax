@@ -95,26 +95,25 @@ import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 import type { FontSize } from "../lib/fonts.js";
 import type { FollowUpDelivery } from "../lib/uiPreferences.js";
+import { showErrorToast } from "../state/toast.js";
+import { errorMessage } from "../../shared/error.js";
 
 const PROMPT_MAX_HEIGHT_PX = 168;
 const NO_SENT_PROMPTS: readonly string[] = [];
 
 /**
- * Feedback line floating above the composer. Pane-local actions surface their
- * outcome here — a global toast can't say which pane it belongs to on a
- * multi-pane grid. Errors persist until the next action; info auto-clears.
+ * Feedback line floating above the composer for draft guidance and information.
  */
 export interface ComposerStatus {
   kind: "error" | "info";
   message: string;
 }
 
-/** What the provider-switch dialog hands the launcher when the user takes the
- *  recommended path: the model they picked, and the follow-up they had
- *  half-written for the old agent. */
+/** The model and complete draft moved from a chat to the new-session launcher. */
 export interface NewSessionSeed {
   model: ModelPickerSelection;
   prompt: string;
+  attachments: ComposerAttachment[];
 }
 
 interface ComposerChangeSummary {
@@ -309,10 +308,7 @@ export function SessionComposer({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
-    persist: persistCurrentDraft,
-    // The attachments hook only ever reports failures (string status contract,
-    // shared with LaunchSurface); lift them into the error kind here.
-    setStatus: (message) => setStatus(message === null ? null : { kind: "error", message })
+    persist: persistCurrentDraft
   });
 
   useEffect(() => {
@@ -369,7 +365,9 @@ export function SessionComposer({
         label: "Clear",
         hint: "Start a fresh conversation here",
         icon: Eraser,
-        run: () => void onClearSession(session.id).catch(() => undefined)
+        run: () => void onClearSession(session.id).catch((error: unknown) => {
+          showErrorToast(errorMessage(error) || "Could not clear the chat.");
+        })
       });
       commands.push({
         name: "mcp",
@@ -434,7 +432,9 @@ export function SessionComposer({
         hint: "Open the worktree folder",
         icon: FolderOpen,
         run: () => {
-          void window.argmax?.system.openPath({ path: workspace.path }).catch(() => undefined);
+          void window.argmax?.system.openPath({ path: workspace.path }).catch((error: unknown) => {
+            showErrorToast(error instanceof Error ? error.message : "Could not open the worktree folder.");
+          });
         }
       });
     }
@@ -703,10 +703,7 @@ export function SessionComposer({
         clearAttachments();
         onClearAnnotations?.();
       } catch (error) {
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not clear the conversation."
-        });
+        showErrorToast(errorMessage(error) || "Could not clear the conversation.");
       } finally {
         setSendingSessionId((current) => (current === session.id ? null : current));
       }
@@ -735,10 +732,7 @@ export function SessionComposer({
         setInput("");
         clearDraft(session.id);
       } catch (error) {
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not set the goal."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not set the goal.");
       } finally {
         setSendingSessionId((current) => (current === session.id ? null : current));
       }
@@ -757,10 +751,7 @@ export function SessionComposer({
         setInput("");
         clearDraft(session.id);
       } catch (error) {
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not start the multitask."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not start the multitask.");
       } finally {
         setSendingSessionId((current) => (current === session.id ? null : current));
       }
@@ -790,11 +781,8 @@ export function SessionComposer({
       if (sessionIdRef.current === session.id) {
         setInput(draftInput);
         restoreAttachments(attachmentsToSend);
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not send input."
-        });
       }
+      showErrorToast(error instanceof Error ? error.message : "Could not send input.");
     } finally {
       setSendingSessionId((current) => (current === session.id ? null : current));
     }
@@ -856,7 +844,7 @@ export function SessionComposer({
             const cancel = (): void => {
               if (!session || !onCancelQueuedMessage) return;
               void onCancelQueuedMessage(session.id, entry.id).catch((error: unknown) => {
-                setStatus({ kind: "error", message: error instanceof Error ? error.message : "Could not cancel this follow-up." });
+                showErrorToast(error instanceof Error ? error.message : "Could not cancel this follow-up.");
               });
             };
             const sendQueuedNow = async (
@@ -868,11 +856,7 @@ export function SessionComposer({
               try {
                 await onSendQueuedMessageNow(session.id, entry.id, delivery);
               } catch (error) {
-                setStatus({
-                  kind: "error",
-                  message:
-                    error instanceof Error ? error.message : "Could not send queued follow-up."
-                });
+                showErrorToast(error instanceof Error ? error.message : "Could not send queued follow-up.");
               } finally {
                 setSendingQueuedMessageId(null);
               }
@@ -888,11 +872,7 @@ export function SessionComposer({
               try {
                 await onMultitask(session.id, content, session.provider, id);
               } catch (error) {
-                setStatus({
-                  kind: "error",
-                  message:
-                    error instanceof Error ? error.message : "Could not start the multitask."
-                });
+                showErrorToast(error instanceof Error ? error.message : "Could not start the multitask.");
               } finally {
                 setSendingQueuedMessageId(null);
               }
@@ -908,13 +888,9 @@ export function SessionComposer({
               try {
                 await onCancelQueuedMessage(session.id, id);
               } catch (error) {
-                setStatus({
-                  kind: "error",
-                  message:
-                    error instanceof Error
-                      ? error.message
-                      : "Could not take the queued follow-up back."
-                });
+                showErrorToast(error instanceof Error
+                  ? error.message
+                  : "Could not take the queued follow-up back.");
                 return;
               } finally {
                 setSendingQueuedMessageId(null);
@@ -923,8 +899,24 @@ export function SessionComposer({
               // message would have been delivered before it, so it goes above
               // it, and the caret lands at the end of the restored text — the
               // part the user came here to change.
-              caretAfterInput.current = content.length;
-              setInput((draft) => (draft.trim() === "" ? content : `${content}\n\n${draft}`));
+              const attachments = entry.attachments ?? [];
+              const references = attachments.map((attachment) => imageAttachmentReference(attachment.filePath)).join(" ");
+              const referenceStart = references ? content.lastIndexOf(references) : -1;
+              const referenceEnd = referenceStart + references.length;
+              const hasGeneratedReferences = referenceStart >= 0 &&
+                (referenceStart === 0 || /\s/.test(content[referenceStart - 1] ?? "")) &&
+                (referenceEnd === content.length || /\s/.test(content[referenceEnd] ?? ""));
+              const restoredContent = hasGeneratedReferences
+                ? `${content.slice(0, content[referenceStart - 1] === " " ? referenceStart - 1 : referenceStart)}${content.slice(referenceEnd)}`.trim()
+                : content;
+              caretAfterInput.current = restoredContent.length;
+              setInput((draft) =>
+                restoredContent === "" ? draft : draft.trim() === "" ? restoredContent : `${restoredContent}\n\n${draft}`
+              );
+              restoreAttachments((current) => {
+                const paths = new Set(current.map((attachment) => attachment.filePath));
+                return [...current, ...attachments.filter((attachment) => !paths.has(attachment.filePath))];
+              });
             };
             return (
               <div
@@ -1423,8 +1415,14 @@ export function SessionComposer({
                   // The draft moves to the launcher rather than being copied:
                   // leaving it here too would offer the same text twice, in two
                   // composers that send to different agents.
-                  onStartNewSession({ model: pendingProviderSwitch.model, prompt: input });
+                  onStartNewSession({
+                    model: pendingProviderSwitch.model,
+                    prompt: input,
+                    attachments: pendingAttachments
+                  });
+                  clearDraft(session.id);
                   setInput("");
+                  clearAttachments();
                   setPendingProviderSwitch(null);
                 }
               : undefined

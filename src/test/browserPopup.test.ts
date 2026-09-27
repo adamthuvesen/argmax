@@ -38,3 +38,59 @@ it("leaves popup links and keyboard shortcuts native even after the opener is se
   expect(preventDefault).not.toHaveBeenCalled();
   expect(closest).not.toHaveBeenCalled();
 });
+
+it.each([
+  [3, "back"],
+  [4, "forward"]
+] as const)("navigates history once when mouse button %i is released", (button, direction) => {
+  expect(script).toBeDefined();
+  const listeners = new Map<string, (event: { button: number; preventDefault: () => void }) => void>();
+  const history = { back: vi.fn(), forward: vi.fn() };
+  const window = {
+    open: vi.fn(),
+    location: { href: "https://example.com/current" },
+    history,
+    addEventListener: vi.fn(
+      (type: string, listener: (event: { button: number; preventDefault: () => void }) => void) => {
+        listeners.set(type, listener);
+      }
+    )
+  };
+  runInNewContext(script!, { URL, encodeURIComponent, window, document: { addEventListener: vi.fn() } });
+  const preventDefault = vi.fn();
+
+  listeners.get("mousedown")?.({ button, preventDefault });
+  expect(history[direction]).not.toHaveBeenCalled();
+  listeners.get("mouseup")?.({ button, preventDefault });
+
+  expect(history[direction]).toHaveBeenCalledOnce();
+  expect(preventDefault).toHaveBeenCalledTimes(2);
+  expect(window.location.href).toBe("https://example.com/current");
+});
+
+it("ignores ordinary mouse buttons for history navigation", () => {
+  expect(script).toBeDefined();
+  const listeners = new Map<string, (event: { button: number; preventDefault: () => void }) => void>();
+  const history = { back: vi.fn(), forward: vi.fn() };
+  const window = {
+    open: vi.fn(),
+    location: { href: "https://example.com/current" },
+    history,
+    addEventListener: vi.fn(
+      (type: string, listener: (event: { button: number; preventDefault: () => void }) => void) => {
+        listeners.set(type, listener);
+      }
+    )
+  };
+  runInNewContext(script!, { URL, encodeURIComponent, window, document: { addEventListener: vi.fn() } });
+  const preventDefault = vi.fn();
+
+  for (const button of [0, 1, 2]) {
+    listeners.get("mousedown")?.({ button, preventDefault });
+    listeners.get("mouseup")?.({ button, preventDefault });
+  }
+
+  expect(history.back).not.toHaveBeenCalled();
+  expect(history.forward).not.toHaveBeenCalled();
+  expect(preventDefault).not.toHaveBeenCalled();
+});

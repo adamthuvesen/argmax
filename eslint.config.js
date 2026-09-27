@@ -21,6 +21,9 @@ export default tseslint.config(
       "eslint.config.js",
       "scripts/*.cjs",
       "scripts/**/*.mjs",
+      // Project verification helpers use plain Node, like scripts/.
+      ".agents/skills/verify-argmax/*.mjs",
+      ".verify/**",
       // Design-concept render scripts, plain Node with no tsconfig behind them.
       "docs/design/**/*.mjs",
       // Mockup pages vite serves straight from the repo; they import the real

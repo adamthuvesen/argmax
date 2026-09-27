@@ -382,3 +382,41 @@ describe("multitask rows", () => {
     expect(turn.multitasks.map((notice) => notice.taskLabel)).toEqual(["Fix typo"]);
   });
 });
+
+describe("plans within conversation turns", () => {
+  const update = (id: string, at: string, status: string): TimelineEvent =>
+    event(id, "todo.updated", at, "plan", {
+      mode: id === "plan-1" ? "snapshot" : "merge",
+      items: [{ id: "step", ...(id === "plan-1" ? { text: "Ship the fix" } : {}), status }]
+    });
+
+  it("keeps a follow-up's early plan in its own turn, including a plan-only turn", () => {
+    const events = [
+      event("u1", "user.message", "2026-05-12T15:00:00.000Z"),
+      update("plan-1", "2026-05-12T15:00:01.000Z", "pending"),
+      event("a1", "message.completed", "2026-05-12T15:00:02.000Z"),
+      event("u2", "user.message", "2026-05-12T15:00:03.000Z"),
+      update("plan-2", "2026-05-12T15:00:04.000Z", "active")
+    ];
+    const fold = (input: TimelineEvent[]) => foldRenderItems(foldConversationItems(input, []), null)
+      .filter((item) => item.kind === "turn");
+    const turns = fold(events);
+    expect(turns.map((item) => item.id)).toEqual(["turn-u1", "turn-u2"]);
+    expect(turns[0].todo?.items[0].status).toBe("pending");
+    expect(turns[1].todo?.active?.text).toBe("Ship the fix");
+    expect(turns[1].assistantEvents).toEqual([]);
+    expect(fold([...events, event("a2", "message.completed", "2026-05-12T15:00:05.000Z")])
+      .map((item) => item.todo)).toEqual(turns.map((item) => item.todo));
+  });
+
+  it("does not add a plan to a turn that never updated it", () => {
+    const turns = foldRenderItems(foldConversationItems([
+      event("u1", "user.message", "2026-05-12T15:00:00.000Z"),
+      update("plan-1", "2026-05-12T15:00:01.000Z", "done"),
+      event("u2", "user.message", "2026-05-12T15:00:02.000Z"),
+      event("a2", "message.completed", "2026-05-12T15:00:03.000Z")
+    ], []), null).filter((item) => item.kind === "turn");
+    expect(turns[0].todo?.doneCount).toBe(1);
+    expect(turns[1].todo).toBeUndefined();
+  });
+});

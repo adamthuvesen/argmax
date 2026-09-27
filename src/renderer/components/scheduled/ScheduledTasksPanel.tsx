@@ -37,6 +37,7 @@ import {
 import { LoadingLine } from "../LoadingLine.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
 import { uuidV4 } from "../../lib/uuid.js";
+import { showErrorToast } from "../../state/toast.js";
 
 /** Matches `SCHEDULER_TICK` in routines/scheduler.rs. The panel waits out one
  *  full tick past a due time before re-reading, so the refresh lands after the
@@ -148,7 +149,6 @@ export function ScheduledTasksPanel({
   const [arcsError, setArcsError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -156,7 +156,7 @@ export function ScheduledTasksPanel({
   // A timer reload and an action's reload can overlap; only the latest one
   // may commit, or an older list lands over the fresher one.
   const reloadSeq = useRef(0);
-  const reload = useCallback(async (): Promise<void> => {
+  const reload = useCallback(async (explicit = false): Promise<void> => {
     if (!window.argmax) {
       setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
       return;
@@ -169,7 +169,9 @@ export function ScheduledTasksPanel({
       setLoadError(null);
     } catch (error) {
       if (seq !== reloadSeq.current) return;
-      setLoadError(errorMessage(error, "Could not load scheduled tasks."));
+      const message = errorMessage(error, "Could not load scheduled tasks.");
+      if (explicit) showErrorToast(message);
+      else setLoadError(message);
     }
   }, []);
 
@@ -239,7 +241,6 @@ export function ScheduledTasksPanel({
    *  sits beside a fresh failure. */
   const beginAction = useCallback(() => {
     setStatus(null);
-    setActionError(null);
   }, []);
 
   const startNew = useCallback(() => {
@@ -297,12 +298,11 @@ export function ScheduledTasksPanel({
         runOnceAt: schedule.runOnceAt,
         enabled: draft.enabled
       });
-      setActionError(null);
       setStatus(draft.routineId ? "Task updated." : "Task created.");
       setDraft(null);
-      await reload();
+      await reload(true);
     } catch (error) {
-      setSaveError(errorMessage(error, "Could not save the task."));
+      showErrorToast(errorMessage(error, "Could not save the task."));
     } finally {
       setBusy(false);
     }
@@ -314,9 +314,9 @@ export function ScheduledTasksPanel({
       beginAction();
       try {
         await window.argmax.routines.setEnabled(routine.id, !routine.enabled);
-        await reload();
+        await reload(true);
       } catch (error) {
-        setActionError(errorMessage(error, "Could not update the task."));
+        showErrorToast(errorMessage(error, "Could not update the task."));
       }
     },
     [beginAction, reload]
@@ -330,9 +330,9 @@ export function ScheduledTasksPanel({
       try {
         await window.argmax.routines.runNow(routine.id);
         setStatus(`Started “${routine.name}”. The chat is in the sidebar.`);
-        await reload();
+        await reload(true);
       } catch (error) {
-        setActionError(errorMessage(error, "Could not run the task."));
+        showErrorToast(errorMessage(error, "Could not run the task."));
       } finally {
         setBusy(false);
       }
@@ -352,9 +352,9 @@ export function ScheduledTasksPanel({
         if (!confirmed) return;
         await api.routines.delete(id);
         setStatus("Task deleted.");
-        await reload();
+        await reload(true);
       } catch (error) {
-        setActionError(errorMessage(error, "Could not delete the task."));
+        showErrorToast(errorMessage(error, "Could not delete the task."));
       } finally {
         setBusy(false);
       }
@@ -369,9 +369,9 @@ export function ScheduledTasksPanel({
       try {
         await window.argmax.routines.resetSession(routine.id);
         setStatus(`“${routine.name}” will start a fresh chat on its next run.`);
-        await reload();
+        await reload(true);
       } catch (error) {
-        setActionError(errorMessage(error, "Could not reset the shared chat."));
+        showErrorToast(errorMessage(error, "Could not reset the shared chat."));
       }
     },
     [beginAction, reload]
@@ -424,12 +424,6 @@ export function ScheduledTasksPanel({
               {status}
             </p>
           ) : null}
-          {actionError ? (
-            <p className="sched-alert" role="alert">
-              {actionError}
-            </p>
-          ) : null}
-
           {loadError ? (
             <p className="sched-alert" role="alert">
               {loadError}

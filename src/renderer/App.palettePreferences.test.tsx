@@ -13,9 +13,10 @@ import {
   DESKTOP_NOTIFICATIONS_KEY,
   FAST_MODE_KEY,
   KEEP_AWAKE_KEY,
+  SIDEBAR_ARCS_KEY,
   TURN_CHANGES_EXPANDED_KEY
 } from "./lib/uiPreferences.js";
-import { openSettings, setNotificationsEnabledStub, setupAppTestMocks } from "../test/appTestHarness.js";
+import { closeSettings, openSettings, setNotificationsEnabledStub, setupAppTestMocks } from "../test/appTestHarness.js";
 
 beforeEach(setupAppTestMocks);
 afterEach(cleanup);
@@ -126,7 +127,7 @@ it("uses next-action labels and persists the boolean Actions", async () => {
   const booleanActions = [
     { query: "keep computer awake", key: KEEP_AWAKE_KEY, value: "true", label: "Enable keep computer awake" },
     { query: "fast mode", key: FAST_MODE_KEY, value: "true", label: "Enable fast mode" },
-    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "false", label: "Collapse changed files" },
+    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "true", label: "Expand changed files" },
     { query: "context indicator", key: COMPOSER_CONTEXT_INDICATOR_KEY, value: "true", label: "Show context indicator" }
   ];
   for (const action of booleanActions) {
@@ -141,7 +142,7 @@ it("uses next-action labels and persists the boolean Actions", async () => {
   const reverseBooleanActions = [
     { query: "keep computer awake", key: KEEP_AWAKE_KEY, value: "false", label: "Disable keep computer awake" },
     { query: "fast mode", key: FAST_MODE_KEY, value: "false", label: "Disable fast mode" },
-    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "true", label: "Expand changed files" },
+    { query: "changed files", key: TURN_CHANGES_EXPANDED_KEY, value: "false", label: "Collapse changed files" },
     { query: "context indicator", key: COMPOSER_CONTEXT_INDICATOR_KEY, value: "false", label: "Hide context indicator" }
   ];
   for (const action of reverseBooleanActions) {
@@ -155,4 +156,27 @@ it("uses next-action labels and persists the boolean Actions", async () => {
 
   expect(window.argmax?.system.setKeepAwake).toHaveBeenCalledWith(true);
   expect(window.argmax?.system.setKeepAwake).toHaveBeenCalledWith(false);
+});
+
+it("persists the Arcs setting and updates the sidebar immediately", async () => {
+  const first = render(<App />);
+  await screen.findByRole("button", { name: "Build dashboard" });
+  expect(screen.getByRole("button", { name: "New arc" })).toBeInTheDocument();
+  await openSettings("Appearance");
+  const toggle = await screen.findByRole("checkbox", { name: "Show arcs" });
+  expect(toggle).toBeChecked();
+  fireEvent.click(toggle);
+  expect(window.localStorage.getItem(SIDEBAR_ARCS_KEY)).toBe("false");
+  await closeSettings();
+  expect(screen.queryByRole("button", { name: "New arc" })).toBeNull();
+  first.unmount();
+
+  render(<App />);
+  await screen.findByRole("button", { name: "Build dashboard" });
+  await openSettings("Appearance");
+  const restored = await screen.findByRole("checkbox", { name: "Show arcs" });
+  expect(restored).not.toBeChecked();
+  fireEvent.click(restored);
+  await closeSettings();
+  expect(screen.getByRole("button", { name: "New arc" })).toBeInTheDocument();
 });

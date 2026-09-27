@@ -191,7 +191,6 @@ export function NewSessionScreen({
   // can launch, so it is the mode rather than one of the options.
   const sideChat = sideChatChosen || projects.length === 0;
   const [launching, setLaunching] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const screenRef = useRef<HTMLDivElement | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
@@ -222,12 +221,6 @@ export function NewSessionScreen({
     persist: !launching
   });
 
-  useEffect(() => {
-    if (initialSeed?.prompt && initialSeed.prompt.trim() !== "") {
-      setPrompt(initialSeed.prompt);
-    }
-  }, [initialSeed?.prompt, setPrompt]);
-
   useAutoGrowTextArea(promptRef, prompt, PROMPT_MAX_HEIGHT_PX);
   const {
     pendingAttachments,
@@ -241,15 +234,21 @@ export function NewSessionScreen({
     onComposerPaste,
     onAttachmentInputChange,
     openFilePicker,
-    clearAttachments
+    clearAttachments,
+    restoreAttachments
   } = useComposerAttachments({
     draftKey,
     workspacePath: sideChat ? null : project?.repoPath ?? null,
     setInput: setPrompt,
-    setStatus,
     carriedOnRetarget: promptCarriedOnRetarget,
     persist: !launching
   });
+
+  useEffect(() => {
+    if (!initialSeed || (initialSeed.prompt.trim() === "" && initialSeed.attachments.length === 0)) return;
+    setPrompt(initialSeed.prompt);
+    restoreAttachments(initialSeed.attachments);
+  }, [initialSeed, restoreAttachments, setPrompt]);
 
   // Same default as the desktop launcher: seeded model if present, then
   // the stored global preference, then the factory pick (Claude Opus 5).
@@ -266,11 +265,10 @@ export function NewSessionScreen({
   const launch = useCallback(async (): Promise<void> => {
     if (!window.argmax || launching) return;
     const trimmed = prompt.trim();
-    if (trimmed.length === 0) return;
+    if (trimmed.length === 0 && pendingAttachments.length === 0) return;
     const refs = pendingAttachments.map((attachment) => imageAttachmentReference(attachment.filePath));
     const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(trimmed, refs) : trimmed;
     setLaunching(true);
-    setStatus(null);
     if (draftKey) clearDraft(draftKey);
     // Null exactly when this launch is a side chat, which is what makes the
     // repo-less branch below the one TypeScript keeps the project out of.
@@ -472,16 +470,11 @@ export function NewSessionScreen({
               type="submit"
               className="session-send-button"
               aria-label="Start chat"
-              disabled={launching || prompt.trim().length === 0}
+              disabled={launching || (prompt.trim().length === 0 && pendingAttachments.length === 0)}
             >
               <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
             </button>
           </div>
-          {status ? (
-            <div className="mobile-new-status" role="alert">
-              {status}
-            </div>
-          ) : null}
         </form>
       </div>
 

@@ -11,7 +11,7 @@ struct TranscriptScreen: View {
     @EnvironmentObject private var store: DashboardStore
     @EnvironmentObject private var push: PushDelegate
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accentTint) private var accent
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var forking = false
     @State private var screenID = UUID()
     @State private var draft = ""
@@ -128,65 +128,74 @@ struct TranscriptScreen: View {
 
     private var header: some View {
         VStack(spacing: 0) {
-            ScreenHeader(title: title, subtitle: subtitle, onBack: { dismiss() }) {
-                HStack(spacing: Spacing.tight) {
-                    changesButton
-                    menu
+            HStack(spacing: Spacing.row) {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .typeSymbol(.body, weight: .medium)
+                        .frame(width: 44, height: 44)
+                        .background(headerButtonBackground)
+                        .contentShape(.circle)
                 }
+                .buttonStyle(PressDim())
+                .accessibilityLabel("Back")
+                VStack(spacing: 2) {
+                    Text(title)
+                        .typeSubtitle(weight: .semibold)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("transcript-title")
+                        .accessibilityAddTraits(.isHeader)
+                    Text(subtitle)
+                        .typeStyle(.footnote)
+                        .foregroundStyle(Theme.mutedStrong)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityIdentifier("transcript-subtitle")
+                }
+                .frame(maxWidth: .infinity)
+                menu
             }
-            if let draftFailure { Text(draftFailure).typeMeta().foregroundStyle(Theme.rose) }
+            .foregroundStyle(Theme.ink)
+            .frame(minHeight: Spacing.headerHeight)
+            .screenGutter()
+            .padding(.bottom, Spacing.snug)
+            if let draftFailure {
+                Text(draftFailure).typeMeta().foregroundStyle(Theme.rose).screenGutter()
+            }
         }
-        .background(Theme.ground)
+        .background {
+            if reduceTransparency {
+                Theme.ground.ignoresSafeArea(edges: .top)
+            } else {
+                // Keep the content visible under the header and status bar.
+                // The blur fades beyond the controls instead of ending at a
+                // hard horizontal edge above the first visible message.
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .mask {
+                        LinearGradient(
+                            stops: [.init(color: .black, location: 0),
+                                    .init(color: .black, location: 0.65),
+                                    .init(color: .clear, location: 1)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+                    .padding(.bottom, -24)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("transcript-header")
     }
 
-    /// Changes, one tap from the transcript, carrying its own count.
-    ///
-    /// A side chat runs in an app-owned scratch directory with one empty
-    /// commit, so this would open a permanently empty diff and an empty tree.
-    /// A file reference tapped in the transcript still opens the review
-    /// screen there — only the standing entry point is dropped.
-    @ViewBuilder
-    private var changesButton: some View {
-        if row.workspace.kind == .git {
-            Button {
-                openReview(filePath: nil)
-            } label: {
-                GitBranchGlyph()
-                    .stroke(
-                        Theme.muted,
-                        style: StrokeStyle(lineWidth: 17 / 12, lineCap: .round, lineJoin: .round)
-                    )
-                    .frame(width: 17, height: 17)
-                    .frame(width: 32, height: 32)
-                    .overlay(alignment: .topTrailing) { changedBadge }
-                    .contentShape(.rect)
+    private var headerButtonBackground: some View {
+        Circle()
+            .fill(Theme.ground.opacity(reduceTransparency ? 1 : 0.92))
+            .overlay {
+                Circle().strokeBorder(Theme.line.opacity(0.35), lineWidth: 0.5)
             }
-            .buttonStyle(PressDim())
-            .accessibilityLabel(
-                changedFiles > 0
-                    ? "Files and changes, \(changedFiles) changed"
-                    : "Files and changes"
-            )
-        }
-    }
-
-    /// The count the desktop's own button carries. Drawn only when there is
-    /// one: a standing "0" is a number the eye has to dismiss on every glance.
-    @ViewBuilder
-    private var changedBadge: some View {
-        if changedFiles > 0 {
-            Text(verbatim: changedFiles > 99 ? "99+" : "\(changedFiles)")
-                // A badge numeral, below every text style: caption2 is the
-                // nearest step, so it scales with the smallest type.
-                .typeSize(10, relativeTo: .caption2, weight: .semibold)
-                .monospacedDigit()
-                .foregroundStyle(Theme.ground)
-                .padding(.horizontal, 4)
-                .frame(minWidth: 15, minHeight: 15)
-                .background(accent.color, in: .capsule)
-                .offset(x: 3, y: -1)
-                .accessibilityHidden(true)
-        }
+            .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
     }
 
     /// The live count, not the one this screen was pushed with: an agent
@@ -211,27 +220,18 @@ struct TranscriptScreen: View {
         return row.workspace.taskLabel
     }
 
-    /// Project and current session state, with the opening row as fallback.
+    /// Location stays stable while the agent starts and stops. Connection
+    /// trouble still takes precedence so a saved transcript is not mistaken
+    /// for a live connection to the Mac.
     private var subtitle: String {
         // Refresh status must not change the transcript's safe-area height.
         if case .reconnecting = store.connection { return "Reconnecting to your Mac…" }
         if transcript.showingCachedContent { return "Saved on this iPhone · Waiting for your Mac" }
-        let state = stateLabel(transcript.session?.state ?? row.session.state)
-        guard let project = row.projectName, !project.isEmpty else { return state }
-        return "\(project) · \(state)"
-    }
-
-    private func stateLabel(_ state: SessionState) -> String {
-        switch state {
-        case .created: return "Starting"
-        case .running: return "Running"
-        case .waiting: return "Waiting on you"
-        case .blocked: return "Blocked"
-        case .complete: return "Idle"
-        case .failed: return "Failed"
-        case .cancelled: return "Stopped"
-        case .unknown(let raw): return raw.capitalized
-        }
+        let workspace = store.snapshot.workspaces.first { $0.id == row.workspace.id } ?? row.workspace
+        guard workspace.kind == .git else { return "Chat" }
+        let project = store.snapshot.projects.first { $0.id == workspace.projectId }?.name ?? row.projectName
+        return [project, workspace.branch.isEmpty ? nil : workspace.branch]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -243,6 +243,15 @@ struct TranscriptScreen: View {
         // through, the same as the chat row's context menu.
         Menu {
             Group {
+                // Scratch chats have no standing review entry. File links
+                // in their transcript can still open individual files.
+                if row.workspace.kind == .git {
+                    Button(
+                        changedFiles > 0 ? "Files and changes (\(changedFiles))" : "Files and changes",
+                        systemImage: "arrow.triangle.branch"
+                    ) { openReview(filePath: nil) }
+                    Divider()
+                }
                 Button("Fork chat", systemImage: "arrow.triangle.pull") { fork() }
                     .disabled(!isForkable || forking)
                 Button("New chat here", systemImage: "plus.bubble") {
@@ -259,9 +268,10 @@ struct TranscriptScreen: View {
         } label: {
             Image(systemName: "ellipsis")
                 .typeSymbol(.body, weight: .semibold)
-                .foregroundStyle(Theme.muted)
-                .frame(width: 32, height: 32)
-                .contentShape(.rect)
+                .foregroundStyle(Theme.ink)
+                .frame(width: 44, height: 44)
+                .background(headerButtonBackground)
+                .contentShape(.circle)
         }
         .accessibilityLabel("Chat actions")
     }

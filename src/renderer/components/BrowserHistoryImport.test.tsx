@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi } from "../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import {
   BROWSER_HISTORY_KEY,
   setBrowserHistoryStorageForTests,
@@ -12,6 +13,7 @@ const chromeProfiles = vi.fn();
 const importChromeHistory = vi.fn();
 
 beforeEach(() => {
+  resetToastForTests();
   chromeProfiles.mockReset();
   importChromeHistory.mockReset();
   let entries: BrowserHistoryEntry[] | undefined;
@@ -90,7 +92,7 @@ describe("BrowserHistoryImport", () => {
     rejectImport?.(new Error("History database is locked"));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Import failed: History database is locked");
+      expect(toastSnapshot()?.message).toContain("Import failed: History database is locked");
     });
     expect(screen.getByRole("button", { name: "Import history" })).toBeEnabled();
   });

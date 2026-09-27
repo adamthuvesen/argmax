@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { foldTodoEvents, todoListsByTurn } from "./todoList.js";
+import { foldTodoEvents } from "./todoList.js";
 import type { TimelineEvent } from "../../shared/types.js";
 
 let clock = 0;
@@ -133,51 +133,5 @@ describe("foldTodoEvents", () => {
     const first = todoEvent("snapshot", [{ id: "1", text: "One", status: "pending" }]);
     const second = todoEvent("merge", [{ id: "1", status: "done" }]);
     expect(foldTodoEvents([first, second])?.updatedAt).toBe(second.createdAt);
-  });
-});
-
-describe("todoListsByTurn", () => {
-  const at = (createdAt: string, event: TimelineEvent): TimelineEvent => ({
-    ...event,
-    createdAt
-  });
-
-  it("gives each turn the plan as it stood when that turn ended", () => {
-    const events = [
-      at(
-        "2026-03-01T00:00:01.000Z",
-        todoEvent("snapshot", [
-          { id: "1", text: "One", status: "pending" },
-          { id: "2", text: "Two", status: "pending" }
-        ])
-      ),
-      at("2026-03-01T00:00:02.000Z", todoEvent("merge", [{ id: "1", status: "done" }])),
-      at("2026-03-01T00:00:04.000Z", todoEvent("merge", [{ id: "2", status: "active" }]))
-    ];
-    const byTurn = todoListsByTurn(events, [
-      { id: "turn-1", from: "2026-03-01T00:00:00.000Z", to: "2026-03-01T00:00:03.000Z" },
-      { id: "turn-2", from: "2026-03-01T00:00:03.000Z", to: null }
-    ]);
-    // The first turn ended with one item done and nothing running.
-    expect(byTurn.get("turn-1")?.doneCount).toBe(1);
-    expect(byTurn.get("turn-1")?.active).toBeNull();
-    // The second turn's card carries the first turn's progress forward.
-    expect(byTurn.get("turn-2")?.doneCount).toBe(1);
-    expect(byTurn.get("turn-2")?.active?.text).toBe("Two");
-  });
-
-  it("gives no card to a turn that never touched the plan", () => {
-    const events = [
-      at(
-        "2026-03-01T00:00:01.000Z",
-        todoEvent("snapshot", [{ id: "1", text: "One", status: "pending" }])
-      )
-    ];
-    const byTurn = todoListsByTurn(events, [
-      { id: "turn-1", from: "2026-03-01T00:00:00.000Z", to: "2026-03-01T00:00:09.000Z" },
-      { id: "turn-2", from: "2026-03-01T00:00:09.000Z", to: null }
-    ]);
-    expect(byTurn.has("turn-1")).toBe(true);
-    expect(byTurn.has("turn-2")).toBe(false);
   });
 });

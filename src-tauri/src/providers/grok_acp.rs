@@ -250,6 +250,7 @@ impl GrokAcpSessions {
             &input.workspace_path,
             build_provider_environment([("NO_COLOR".to_string(), "1".to_string())]),
             Some(grok_permission_handler(Arc::clone(&permission_contexts))),
+            None,
         )?;
         let workspace = Arc::new(GrokWorkspace {
             client,

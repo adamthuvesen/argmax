@@ -1,8 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import { BROWSER_PAGE_OPEN_KEY } from "./lib/uiPreferences.js";
-import { setupAppTestMocks } from "../test/appTestHarness.js";
+import { setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
+import type { BrowserAgentOpenEvent } from "../shared/types.js";
+import { resetBrowserTabsForTests } from "./lib/browserPanel.js";
 
 async function renderApp(): Promise<void> {
   render(<App />);
@@ -15,6 +17,7 @@ describe("App browser page", () => {
   });
 
   beforeEach(() => {
+    resetBrowserTabsForTests();
     setupAppTestMocks();
   });
 
@@ -52,7 +55,7 @@ describe("App browser page", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     fireEvent.mouseDown(within(palette).getByRole("option", { name: /Build dashboard/ }));
 
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
     expect(window.localStorage.getItem(BROWSER_PAGE_OPEN_KEY)).toBe("false");
   });
@@ -77,7 +80,7 @@ describe("App browser page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Browser" })).not.toHaveAttribute("aria-current");
     expect(window.localStorage.getItem(BROWSER_PAGE_OPEN_KEY)).toBe("false");
@@ -95,7 +98,7 @@ describe("App browser page", () => {
   it("still opens Browser in a chat's review panel", async () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     const review = await screen.findByRole("complementary", { name: "Review panel" });
@@ -104,5 +107,32 @@ describe("App browser page", () => {
     expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
     expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
+  });
+
+  it("reveals a closed sidebar on the first agent browser event and then leaves Files selected", async () => {
+    let emitAgentOpen: ((event: BrowserAgentOpenEvent) => void) | undefined;
+    window.argmax!.browser.onAgentOpen = (listener) => {
+      emitAgentOpen = listener;
+      return () => undefined;
+    };
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("region", { name: "Conversation" });
+    expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
+    expect(emitAgentOpen).toBeDefined();
+
+    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-1", url: "https://example.com" }));
+    const review = await screen.findByRole("complementary", { name: "Review panel" });
+    expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
+    expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
+
+    fireEvent.click(within(review).getByRole("tab", { name: "Files" }));
+    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-2", url: "https://example.com/next" }));
+    expect(within(review).getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
+    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-3", url: "https://example.com/last" }));
+    expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
   });
 });

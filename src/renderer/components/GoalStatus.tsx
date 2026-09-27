@@ -2,6 +2,7 @@ import "../styles/goals.css";
 import { useCallback, useEffect, useState, type JSX } from "react";
 import { Target, X } from "lucide-react";
 import type { Goal, SessionSummary } from "../../shared/types.js";
+import { showErrorToast } from "../state/toast.js";
 
 /** Sentence for the state the goal settled in. */
 const OUTCOME_LABELS: Record<string, string> = {
@@ -26,7 +27,6 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<void> => {
     const api = window.argmax?.goals;
@@ -64,13 +64,12 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
   const clear = async (): Promise<void> => {
     if (pending) return;
     setPending(true);
-    setError(null);
     try {
       if (active) await window.argmax!.goals.clear({ sessionId: session.id });
       setDismissed(goal.id);
       setGoal(null);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not clear the goal.");
+      showErrorToast(failure instanceof Error ? failure.message : "Could not clear the goal.");
     } finally {
       setPending(false);
     }
@@ -101,7 +100,6 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
           <X size={14} aria-hidden="true" />
         </button>
       </div>
-      {error && <p className="goal-status-error" role="alert">{error}</p>}
     </section>
   );
 }

@@ -13,6 +13,38 @@ interface DismissOptions {
   trapFocus?: boolean;
 }
 
+interface EscapeDismissal {
+  ref: RefObject<HTMLElement | null>;
+  extraRef?: RefObject<HTMLElement | null>;
+  order: number;
+}
+
+const escapeDismissals: EscapeDismissal[] = [];
+let escapeDismissalOrder = 0;
+
+function dismissalElements(dismissal: EscapeDismissal): HTMLElement[] {
+  return [dismissal.ref.current, dismissal.extraRef?.current].filter(
+    (element): element is HTMLElement => element !== null && element !== undefined
+  );
+}
+
+function containsDismissal(outer: EscapeDismissal, inner: EscapeDismissal): boolean {
+  const outerElements = dismissalElements(outer);
+  const innerElements = dismissalElements(inner);
+  return outerElements.some((outerElement) =>
+    innerElements.some((innerElement) => outerElement !== innerElement && outerElement.contains(innerElement))
+  );
+}
+
+function topEscapeDismissal(): EscapeDismissal | undefined {
+  return escapeDismissals.reduce<EscapeDismissal | undefined>((top, candidate) => {
+    if (!top) return candidate;
+    if (containsDismissal(top, candidate)) return candidate;
+    if (containsDismissal(candidate, top)) return top;
+    return candidate.order > top.order ? candidate : top;
+  }, undefined);
+}
+
 export function useDismissOnOutsideOrEscape(
   ref: RefObject<HTMLElement | null>,
   active: boolean,
@@ -29,6 +61,12 @@ export function useDismissOnOutsideOrEscape(
 
   useEffect(() => {
     if (!active) return;
+    const dismissal: EscapeDismissal = {
+      ref,
+      extraRef,
+      order: ++escapeDismissalOrder
+    };
+    escapeDismissals.push(dismissal);
     const handleMouseDown = (event: MouseEvent): void => {
       const target = event.target as Node;
       const insideMain = ref.current?.contains(target) ?? false;
@@ -38,7 +76,18 @@ export function useDismissOnOutsideOrEscape(
       }
     };
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !event.isComposing &&
+        !event.repeat &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey
+      ) {
+        if (topEscapeDismissal() !== dismissal) return;
+        event.preventDefault();
         event.stopPropagation();
         closeRef.current();
         return;
@@ -73,6 +122,8 @@ export function useDismissOnOutsideOrEscape(
     document.addEventListener("mousedown", handleMouseDown, { capture: true });
     document.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => {
+      const dismissalIndex = escapeDismissals.indexOf(dismissal);
+      if (dismissalIndex !== -1) escapeDismissals.splice(dismissalIndex, 1);
       document.removeEventListener("mousedown", handleMouseDown, { capture: true });
       document.removeEventListener("keydown", handleKeyDown, { capture: true });
     };

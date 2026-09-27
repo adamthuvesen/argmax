@@ -18,6 +18,7 @@ import {
   type Question,
   type QuestionAnswers
 } from "../lib/questions.js";
+import { showErrorToast } from "../state/toast.js";
 
 type QuestionDockProps = {
   questions: Question[];
@@ -107,24 +108,40 @@ function QuestionDockInner({
   const submit = useCallback((): void => {
     if (sending || !answered) return;
     setSending(true);
+    const failed = (): void => {
+      setSending(false);
+      showErrorToast("Answer was not sent. Try again.");
+    };
     // Optimistic: the panel disappears with the turn it answers, so a failed
     // send has to hand the question back rather than leave a dead slab.
-    void Promise.resolve(
-      onAnswer(
-        formatAnswer(questions, selected, otherText),
-        structuredAnswers(questions, selected, otherText)
-      )
-    ).then((ok) => {
-      if (ok === false) setSending(false);
-    });
+    try {
+      void Promise.resolve(
+        onAnswer(
+          formatAnswer(questions, selected, otherText),
+          structuredAnswers(questions, selected, otherText)
+        )
+      ).then((ok) => {
+        if (ok === false) failed();
+      }, failed);
+    } catch {
+      failed();
+    }
   }, [answered, onAnswer, otherText, questions, selected, sending]);
 
   const dismiss = useCallback((): void => {
     if (sending) return;
     setSending(true);
-    void Promise.resolve(onDismiss()).then((ok) => {
-      if (ok === false) setSending(false);
-    });
+    const failed = (): void => {
+      setSending(false);
+      showErrorToast("Question is still open. Try again.");
+    };
+    try {
+      void Promise.resolve(onDismiss()).then((ok) => {
+        if (ok === false) failed();
+      }, failed);
+    } catch {
+      failed();
+    }
   }, [onDismiss, sending]);
 
   const pick = useCallback(

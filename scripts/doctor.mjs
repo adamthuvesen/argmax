@@ -82,7 +82,8 @@ async function browserCapability() {
     try {
       const result = await runCommand(
         browser,
-        ["--headless=new", "--no-first-run", `--user-data-dir=${profile}`, "--dump-dom", "data:text/html,argmax-doctor"],
+        // Disposable profiles must not prompt for the user's macOS keychain.
+        ["--headless=new", "--no-first-run", "--use-mock-keychain", `--user-data-dir=${profile}`, "--dump-dom", "data:text/html,argmax-doctor"],
         { timeoutMs: 20_000 }
       );
       return {
@@ -147,11 +148,11 @@ async function macosPermissions() {
   return {
     screenRecording: {
       status: values.screen === "true" ? "granted" : "missing",
-      remediation: values.screen === "true" ? null : "Grant Screen Recording to the app that runs Codex, then restart it."
+      remediation: values.screen === "true" ? null : "Grant Screen Recording to the app that hosts the agent, then restart it."
     },
     accessibility: {
       status: values.accessibility === "true" ? "granted" : "missing",
-      remediation: values.accessibility === "true" ? null : "Grant Accessibility to the app that runs Codex, then restart it."
+      remediation: values.accessibility === "true" ? null : "Grant Accessibility to the app that hosts the agent, then restart it."
     }
   };
 }

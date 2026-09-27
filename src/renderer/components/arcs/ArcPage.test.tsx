@@ -9,6 +9,7 @@ import type {
   ProjectSummary,
   Routine
 } from "../../../shared/types.js";
+import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { ArcPage } from "./ArcPage.js";
 
 const PROJECT: ProjectSummary = {
@@ -261,6 +262,7 @@ function routine(overrides: Partial<Routine> = {}): Routine {
 }
 
 beforeEach(() => {
+  resetToastForTests();
   arcsStub.get.mockReset();
   arcsStub.update.mockReset();
   arcsStub.setState.mockReset();
@@ -323,6 +325,20 @@ describe("ArcPage", () => {
       name: null,
       brief: "Ship the new pricing tiers, then deprecate the old ones."
     });
+  });
+
+  it("toasts a failed brief save and keeps the draft available", async () => {
+    arcsStub.update.mockRejectedValue(new Error("BRIEF_WRITE_FAILED"));
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Edit brief" }));
+    const textarea = await screen.findByPlaceholderText("What this arc is for, and what done looks like.");
+    fireEvent.change(textarea, { target: { value: "Keep this draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("BRIEF_WRITE_FAILED"));
+    expect(textarea).toHaveValue("Keep this draft");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("pauses an active arc", async () => {
@@ -452,6 +468,19 @@ describe("ArcPage", () => {
       limit: 60
     });
     expect(screen.queryByRole("button", { name: "Show earlier" })).not.toBeInTheDocument();
+  });
+
+  it("toasts a failed earlier-page load and keeps the cursor available for retry", async () => {
+    arcsStub.timeline
+      .mockResolvedValueOnce({ events: [timelineEvent({ id: "new" })], nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 } })
+      .mockRejectedValueOnce(new Error("TIMELINE_UNAVAILABLE"));
+    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show earlier" }));
+
+    await waitFor(() => expect(toastSnapshot()?.message).toContain("TIMELINE_UNAVAILABLE"));
+    expect(screen.getByRole("button", { name: "Show earlier" })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("keeps an unsaved brief and stays rendered when the dashboard refreshes", async () => {

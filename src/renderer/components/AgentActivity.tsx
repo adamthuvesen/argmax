@@ -514,6 +514,7 @@ function AgentActivityRun({
           createdAt: group.createdAt,
           sortAt: group.lastActivityAt,
           node,
+          activity: group.thinking,
           ...(compactActivity && group.thinking
             ? {
                 activityMember: {

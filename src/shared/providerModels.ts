@@ -122,7 +122,8 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
     "opencode-go/kimi-k3": ["max"],
     "opencode-go/qwen3.8-flash": ["high", "max"],
     "opencode-go/deepseek-v4-pro": ["high", "max"],
-    "opencode-go/deepseek-v4-flash": ["low", "high", "max"]
+    "opencode-go/deepseek-v4-flash": ["low", "high", "max"],
+    "opencode-go/deepseek-v4.1-flash": ["low", "high", "max"]
   };
   if (provider === "opencode" && modelId in opencodeVariants) return opencodeVariants[modelId];
   // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
@@ -224,12 +225,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       contextWindow: 1_000_000
     },
     {
-      label: "Grok 4.6 (Cursor)",
-      modelId: "cursor-grok-4.6-medium",
-      supportsReasoningEffort: true,
-      contextWindow: 1_000_000
-    },
-    {
       label: "Gemini 3.8 Flash (Cursor)",
       modelId: "gemini-3.8-flash-medium",
       supportsReasoningEffort: true,
@@ -257,8 +252,6 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // in reasoningEffortsForModel and the Rust adapter in sync with these.
   opencode: [
     { label: "Big Pickle", modelId: "opencode/big-pickle", contextWindow: 200_000 },
-    { label: "Nemotron 3.5 Lightning Free", modelId: "opencode/nemotron-3.5-lightning-free", contextWindow: 262_144 },
-    { label: "Nemotron 3 Ultra Free", modelId: "opencode/nemotron-3-ultra-free", contextWindow: 1_000_000 },
     {
       label: "Muse Spark 1.3 Free",
       modelId: "opencode/muse-spark-1.3-contributor-free",
@@ -271,16 +264,14 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Qwen3.8 Max", modelId: "opencode-go/qwen3.8-max", contextWindow: 1_000_000 },
     { label: "Qwen3.8 Flash", modelId: "opencode-go/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "DeepSeek V4 Pro", modelId: "opencode-go/deepseek-v4-pro", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "DeepSeek V4 Flash", modelId: "opencode-go/deepseek-v4-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
+    { label: "DeepSeek V4.1 Flash", modelId: "opencode-go/deepseek-v4.1-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
   ],
-  // The models `grok models` lists. All take --reasoning-effort up to xhigh
-  // (the CLI rejects max/ultra). Fast is a separate advertised SKU on 4.7
-  // only (`grok-4.7-build-fast`); 4.6 and 4.5 have no fast counterpart.
-  // 500K window per xAI's published model card.
+  // The picker offers Grok 4.7. It takes --reasoning-effort up to xhigh (the
+  // CLI rejects max/ultra). Fast is the advertised SKU `grok-4.7-build-fast`.
+  // 500K window per xAI's published model card. 4.6 and 4.5 stay priced for
+  // sessions already launched on them.
   grok: [
-    { label: "Grok 4.7", modelId: "grok-4.7", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 500_000 },
-    { label: "Grok 4.6", modelId: "grok-4.6", supportsReasoningEffort: true, contextWindow: 500_000 },
-    { label: "Grok 4.5", modelId: "grok-4.5", supportsReasoningEffort: true, contextWindow: 500_000 }
+    { label: "Grok 4.7", modelId: "grok-4.7", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 500_000 }
   ]
 };
 
@@ -295,9 +286,8 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   codex: "gpt-6-luna",
   cursor: "composer-2.5",
   opencode: "opencode/big-pickle",
-  // 4.5 is the pricier SKU. 4.7 matches 4.6's Grok Build rate; titles stay on
-  // 4.6 so a helper call does not ride the new default.
-  grok: "grok-4.6"
+  // Same Grok Build rate as the chat model. 4.5 costs twice as much.
+  grok: "grok-4.7"
 };
 
 /**
@@ -405,7 +395,8 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "opencode-go/qwen3.8-max":                   { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
   "opencode-go/qwen3.8-flash":                 { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
   "opencode-go/deepseek-v4-pro":               { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
-  "opencode-go/deepseek-v4-flash":             { input: 0.22,  output: 0.66,   cacheRead: 0.007, cacheWrite: 0 },
+  // OpenCode's catalog reports the off-peak rate. Peak pricing is not modeled.
+  "opencode-go/deepseek-v4.1-flash":           { input: 0.15,  output: 0.6,    cacheRead: 0.003, cacheWrite: 0 },
 
   // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
   // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
@@ -421,6 +412,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
+  "opencode-go/deepseek-v4-flash": { input: 0.22, output: 0.66, cacheRead: 0.007, cacheWrite: 0 },
   "claude-fable-5":       { input: 10,   output: 50,   cacheRead: 1,     cacheWrite: 12.5 },
   "claude-opus-4-8":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-7":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },

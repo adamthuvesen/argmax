@@ -47,6 +47,7 @@ use crate::persistence::sessions::{
 };
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::persistence::Database;
+use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
 use crate::sessions::state::SessionState;
@@ -174,7 +175,7 @@ pub async fn dispatch(
         },
         Arc::clone(&database),
         workspaces,
-        providers,
+        Arc::clone(&providers),
         &parent_workspace.project_id,
     )
     .await
@@ -195,7 +196,7 @@ pub async fn dispatch(
         0,
         LAUNCH_KIND_MULTITASK,
     )?;
-    persist_timeline_event(
+    let event = persist_timeline_event(
         &connection,
         &PersistTimelineEventInput {
             id: Uuid::new_v4().to_string(),
@@ -212,6 +213,14 @@ pub async fn dispatch(
             created_at: None,
         },
     )?;
+    drop(connection);
+    // The launch publishes the child before its lineage and the parent's
+    // notice exist. Notify both readers after those writes are committed.
+    providers.publish(DashboardDelta {
+        events: vec![event],
+        dashboard_changed: true,
+        ..DashboardDelta::default()
+    });
 
     Ok(MultitaskLaunched {
         session_id: outcome.session_id,

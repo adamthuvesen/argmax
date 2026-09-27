@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { showErrorToast } from "../state/toast.js";
 
 const DEFAULT_FLASH_MS = 1500;
 
@@ -103,6 +104,7 @@ export function useCopyToClipboard(
         timer.current = setTimeout(() => setFlash("idle"), flashMs);
       };
       const copied = await copyTextToClipboard(text);
+      if (!copied) showErrorToast("Could not copy to clipboard.");
       settle(copied ? "copied" : "failed");
       return copied;
     },

@@ -127,6 +127,8 @@ Run `doctor` from the same host that will run verification. It reports the
 capabilities available to that process. OS permission checks it cannot prove
 remain unverified. Whole-window screenshots and native OS interaction may need
 Screen Recording or Accessibility permissions for that host.
+The doctor and browser screenshots use Chromium's mock keychain so disposable
+profiles do not open macOS keychain prompts.
 
 | Rung | Proves | Cost |
 |---|---|---|
@@ -170,7 +172,7 @@ the full UI renders in any browser with no Rust backend.
 ```bash
 node scripts/ui-screenshot.mjs --out scratch/shot.png --theme dark
 node scripts/ui-screenshot.mjs --mobile --width 390 --height 844
-node scripts/ui-screenshot.mjs --eval 'document.querySelector("[aria-label=\"Settings\"]").click()'
+node scripts/ui-screenshot.mjs --eval 'document.querySelector("[aria-label=\"Customize\"]").click()'
 ```
 
 The script serves the renderer with vite, opens it in headless Chrome over

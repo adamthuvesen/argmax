@@ -34,10 +34,12 @@ struct TranscriptMarkdown: View {
         // re-wrapping in a different font a few times a second. Plain text
         // is only for a row that has never had a document.
         let document = TranscriptMarkdownCache.shared.cached(key) ?? prepared?.document
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             if let document {
-                ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
+                let blocks = document.blocks
+                ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                     blockView(block, math: document.math)
+                        .padding(.top, index == 0 ? 0 : Self.gap(before: block, after: blocks[index - 1]))
                 }
             } else {
                 Text(text).typeStyle(proseStyle)
@@ -65,15 +67,15 @@ struct TranscriptMarkdown: View {
     private func blockView(_ block: TranscriptMarkdownBlock, math: [String: TranscriptMath]) -> some View {
         switch block {
         case .paragraph(let text):
-            TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing)
+            TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing, strongStyle: proseStyle)
                 .typeStyle(proseStyle)
                 .foregroundStyle(proseInk)
         case .heading(let level, let text):
             TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing)
                 .typeStyle(isThinking ? .footnote : foldedNarration ? proseStyle : headingStyle(level),
-                           weight: isThinking ? nil : .semibold)
+                           weight: isThinking ? nil : .bold)
                 .foregroundStyle(proseInk)
-                .padding(.top, level == 1 ? 6 : 2)
+                .padding(.top, level == 1 ? 10 : 6)
                 .accessibilityAddTraits(.isHeader)
         case .listItem(let ordinal, let depth, let text):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -82,7 +84,7 @@ struct TranscriptMarkdown: View {
                     .foregroundStyle(Theme.muted)
                     .frame(minWidth: 15, alignment: .trailing)
                     .accessibilityHidden(true)
-                TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing)
+                TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing, strongStyle: proseStyle)
                     .typeStyle(proseStyle)
                     .foregroundStyle(proseInk)
             }
@@ -90,7 +92,7 @@ struct TranscriptMarkdown: View {
         case .quote(let text):
             HStack(alignment: .top, spacing: 10) {
                 Capsule().fill(Theme.line).frame(width: 3)
-                TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing)
+                TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing, strongStyle: proseStyle)
                     .typeStyle(proseStyle)
                     .foregroundStyle(Theme.muted)
             }
@@ -108,12 +110,25 @@ struct TranscriptMarkdown: View {
         }
     }
 
-    /// Headings are all semibold, so only the step changes with the level.
+    /// The gap above a block. Two list rows sit closer than any other pair
+    /// so a list has a tighter texture than the paragraphs around it and
+    /// reads as one group; one shared VStack spacing made four bullets look
+    /// like four paragraphs (docs/design/prose-rhythm, P1).
+    private static func gap(before block: TranscriptMarkdownBlock, after previous: TranscriptMarkdownBlock) -> CGFloat {
+        if case .listItem = block, case .listItem = previous { return 7 }
+        return 13
+    }
+
+    /// Headings are all bold, so only the step changes with the level. An
+    /// `h3` sits a step over the body (title3, 20pt on 17), mirroring the
+    /// Mac's `--text-md-plus` over `--text-base`: at body size a heading was
+    /// only its weight away from a bold lead-in and the two read as one
+    /// (docs/design/prose-rhythm).
     private func headingStyle(_ level: Int) -> Font.TextStyle {
         switch level {
-        case 1: return .title3
-        case 2: return .headline
-        default: return .body
+        case 1: return .title
+        case 2: return .title2
+        default: return .title3
         }
     }
 
@@ -147,12 +162,17 @@ extension EnvironmentValues {
 }
 
 struct TranscriptInlineMarkdown: View {
+    @Environment(\.typeScale) private var scale
     let text: AttributedString
     let math: [String: TranscriptMath]
     let lineSpacing: CGFloat
+    /// The style the text is set in, for drawing its bold runs semibold. Nil
+    /// leaves bold on the trait, for text that is already semibold (headings).
+    var strongStyle: Font.TextStyle? = nil
 
     var body: some View {
-        let pieces = TranscriptMarkdownDocument.inlinePieces(text, math: math)
+        let styled = strongStyle.map { text.semiboldStrongRuns(scale.font($0, weight: .semibold)) } ?? text
+        let pieces = TranscriptMarkdownDocument.inlinePieces(styled, math: math)
         if pieces.count == 1, case .text(let attributed) = pieces[0] {
             Text(attributed)
                 .lineSpacing(lineSpacing)
@@ -171,5 +191,26 @@ struct TranscriptInlineMarkdown: View {
                 }
             }
         }
+    }
+}
+
+extension AttributedString {
+    /// `**bold**` in `font`, the semibold cut, as the Mac sets bold a step
+    /// under its headings. The bold trait reaches Geist Bold (700), the
+    /// headings' own cut. Bold italic and bold code keep the trait:
+    /// only the 700 cut has a sheared italic, and code runs are mono.
+    func semiboldStrongRuns(_ font: Font) -> AttributedString {
+        var styled = self
+        for run in Array(styled.runs) {
+            guard var intent = run.inlinePresentationIntent,
+                  intent.contains(.stronglyEmphasized),
+                  !intent.contains(.emphasized),
+                  !intent.contains(.code)
+            else { continue }
+            intent.remove(.stronglyEmphasized)
+            styled[run.range].inlinePresentationIntent = intent
+            styled[run.range].font = font
+        }
+        return styled
     }
 }

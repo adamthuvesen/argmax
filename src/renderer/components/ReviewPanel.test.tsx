@@ -19,6 +19,7 @@ import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { addTerminalTab, resetTerminalTabsForTests } from "../lib/terminalTabs.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function reviewStub(): ReviewState {
   return baseReviewStub({
@@ -69,6 +70,19 @@ describe("ReviewPanel changes layout", () => {
 
   afterEach(() => {
     cleanup();
+    resetToastForTests();
+  });
+
+  it("reports a failed review action in the shared toast", async () => {
+    const review = reviewStub();
+    review.changesScope = "uncommitted";
+    review.updateFileIndex = vi.fn().mockRejectedValue(new Error("index locked"));
+    render(<ReviewPanel review={review} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Stage src/a.ts" }));
+
+    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "index locked" }));
+    expect(screen.queryByText("index locked")).not.toBeInTheDocument();
   });
 
   it("renders changed files as a tree beside the selected file diff", () => {

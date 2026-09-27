@@ -82,6 +82,11 @@ pub async fn launch_turn(
             "tools.update_plan.enabled=true",
             "-c",
             "tools.experimental_request_user_input.enabled=true",
+            // Codex 0.156 searches a cached index by default; live search reads
+            // the page as it is now, which is what a question about a release,
+            // an outage, or current docs needs.
+            "-c",
+            r#"web_search="live""#,
         ])
         .current_dir(&input.workspace_path)
         .env_clear()

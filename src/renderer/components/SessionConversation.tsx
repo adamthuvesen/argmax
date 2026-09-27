@@ -1,5 +1,6 @@
 import { usePrMilestone } from "../hooks/usePrMilestone.js";
 import { TurnExhale } from "./TurnExhale.js";
+import { showErrorToast } from "../state/toast.js";
 import {
   GitBranch,
   MessageSquarePlus,
@@ -63,15 +64,13 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { CompactionNotice } from "./CompactionNotice.js";
-import { multitaskRowStatus, type MultitaskChild } from "../lib/multitask.js";
-import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismissals.js";
+import { multitaskDisplayStatus, type MultitaskChild } from "../lib/multitask.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
 import { ProviderSwitchNotice } from "./ProviderSwitchNotice.js";
 import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
 import { ShowEarlier } from "./ShowEarlier.js";
 import { SessionNote } from "./SessionNote.js";
 import { foldConversationItems, foldRenderItems, type RenderItem } from "../lib/foldConversation.js";
-import { todoListsByTurn } from "../lib/todoList.js";
 import {
   collectAskUserQuestionState,
   hasOutstandingCardAsk as sessionHasOutstandingCardAsk,
@@ -99,7 +98,8 @@ import { WorkingNest } from "./WorkingNest.js";
 import { ActivityBeatContext } from "../lib/activityBeat.js";
 import { WorkspaceCard } from "./WorkspaceCard.js";
 import { ThinkingLabel } from "./ThinkingLabel.js";
-import { MultitaskRow } from "./MultitaskRow.js";
+import { MultitaskGroup, type MultitaskLive } from "./MultitaskGroup.js";
+import { dismissMultitask, readDismissedMultitasks } from "../lib/multitaskDismissals.js";
 import { recordChatCue, type ChatCueReason } from "../lib/chatCueLog.js";
 import { uuidV4 } from "../lib/uuid.js";
 import { parseUserMessageAttachments, sendAfterTerminate } from "./sessionConversationHelpers.js";
@@ -197,6 +197,8 @@ export function SessionConversation({
   defaultFollowUpDelivery = "queue",
   events,
   eventsBackfilled = true,
+  historyLoadFailed = false,
+  onRetryHistoryLoad,
   fastModeEnabled = false,
   isFocused = true,
   isLogOpen,
@@ -237,6 +239,7 @@ export function SessionConversation({
   onOpenChanges,
   onOpenAgent,
   onOpenMultitask,
+  onLoadSessionEvents,
   multitasks,
   onExpandToFullChat,
   project,
@@ -260,6 +263,8 @@ export function SessionConversation({
       the transcript is whatever was left over from the last time the session
       was open, and restoring it must not read as new activity. */
   eventsBackfilled?: boolean;
+  historyLoadFailed?: boolean;
+  onRetryHistoryLoad?: () => void;
   fastModeEnabled?: boolean;
   isFocused?: boolean;
   isLogOpen: boolean;
@@ -357,6 +362,9 @@ export function SessionConversation({
   onOpenAgent?: (tool: ToolCall) => void;
   /** Opens a multitask's chat in this pane's dock, beside the subagents. */
   onOpenMultitask?: (sessionId: string) => void;
+  /** Fills a multitask's transcript on demand, so its row can quote the
+   *  question it is stopped on. */
+  onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   /** Multitasks dispatched from this session. Their rows read state from the
    *  session row rather than from the timeline, which only knows what was
    *  written. */
@@ -537,33 +545,49 @@ export function SessionConversation({
   // separators are control characters no label can contain.
   const multitaskLiveKey = (multitasks ?? [])
     .map((child) =>
-      [child.session.id, child.session.state, child.workspace?.taskLabel ?? ""].join("\u0000")
+      [
+        child.session.id,
+        child.session.state,
+        child.workspace?.taskLabel ?? "",
+        child.session.attention,
+        child.pendingApproval?.command ?? "",
+        child.session.startedAt ?? ""
+      ].join("\u0000")
     )
     .join("\u0001");
   const multitaskLive = useMemo(
     () =>
-      new Map(
+      new Map<string, MultitaskLive>(
         multitaskLiveKey
           .split("\u0001")
           .filter((entry) => entry.length > 0)
           .map((entry) => {
-            const [id, state, taskLabel] = entry.split("\u0000");
-            return [id, { state, taskLabel }] as const;
+            const [id, state, taskLabel, attention, approvalCommand, startedAt] = entry.split("\u0000");
+            return [
+              id,
+              {
+                state,
+                taskLabel,
+                attention: attention as SessionSummary["attention"],
+                approvalCommand: approvalCommand || null,
+                startedAt: startedAt || null
+              }
+            ] as const;
           })
       ),
     [multitaskLiveKey]
   );
+  const stopMultitask = useCallback((sessionId: string): void => {
+    void onTerminateSession(sessionId);
+  }, [onTerminateSession]);
   const askSideChat = useMemo(() => {
     if (!onOpenSideChat) return undefined;
     return (selection: ChatSelection): void => {
       void onOpenSideChat(buildSideChatSeed(selection.text, conversationEvents)).catch((error) => {
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not open a chat."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not open a chat.");
       });
     };
-  }, [conversationEvents, onOpenSideChat, setStatus]);
+  }, [conversationEvents, onOpenSideChat]);
   const askDetails = useMemo(() => {
     if (!onOpenDetails) return undefined;
     return (selection: ChatSelection): void => {
@@ -572,13 +596,10 @@ export function SessionConversation({
         // button attach that excerpt to this composer instead.
         attachToChat: () => addAnnotation(selection)
       }).catch((error) => {
-        setStatus({
-          kind: "error",
-          message: error instanceof Error ? error.message : "Could not open the details popup."
-        });
+        showErrorToast(error instanceof Error ? error.message : "Could not open the details popup.");
       });
     };
-  }, [addAnnotation, conversationEvents, onOpenDetails, setStatus]);
+  }, [addAnnotation, conversationEvents, onOpenDetails]);
   // Hide the raw-stdout fallback as soon as ANY renderable content exists —
   // a streamed message OR a tool call. Otherwise the agent's first beat (often
   // a tool_use before any text) flashes the raw provider JSONL through the
@@ -683,12 +704,6 @@ export function SessionConversation({
     (): RenderItem[] => foldRenderItems(conversationItems, session),
     [conversationItems, session]
   );
-  // Multitask events keep their launch-turn association in the fold so a
-  // later finish still merges into the right notice. The visible row lives
-  // above the composer, where it remains in view after the parent turn ends.
-  const [dismissedMultitasks, setDismissedMultitasks] = useState(readDismissedMultitasks);
-  // A dismissed row stays gone unless its chat is running again: answering it
-  // from the dock tab is new work, and new work belongs in the lane.
   const { checkpointIds, refresh: refreshCheckpoints } = useTurnCheckpoints(
     revertEnabled ? workspace?.id : undefined,
     session?.state
@@ -708,6 +723,13 @@ export function SessionConversation({
     return reasons;
   }, [events, revertEnabled]);
 
+  // Multitask events keep their launch-turn association in the fold so a
+  // later finish still merges into the right notice. The visible rows live in
+  // a card above the composer, where they stay in view after the parent turn
+  // ends and the dispatch point has scrolled away.
+  const [dismissedMultitasks, setDismissedMultitasks] = useState(readDismissedMultitasks);
+  // A dismissed row stays gone unless its chat wants something again: answered
+  // from the dock tab it is new work, and new work belongs in the card.
   const composerMultitaskNotices = useMemo(
     () =>
       renderItems
@@ -715,12 +737,15 @@ export function SessionConversation({
         .filter((notice) => {
           const childId = notice.childSessionId;
           if (!childId || !dismissedMultitasks.has(childId)) return true;
-          return (
-            multitaskRowStatus(multitaskLive.get(childId)?.state ?? notice.state) === "running"
-          );
+          const live = multitaskLive.get(childId);
+          const status = multitaskDisplayStatus(live?.state ?? notice.state, live?.attention);
+          return status === "running" || status === "needs-you";
         }),
     [renderItems, dismissedMultitasks, multitaskLive]
   );
+  const dismissMultitaskRow = useCallback((sessionId: string): void => {
+    setDismissedMultitasks((current) => dismissMultitask(current, sessionId));
+  }, []);
   const transcriptRenderItems = useMemo(
     () =>
       renderItems.filter(
@@ -728,6 +753,7 @@ export function SessionConversation({
           item.kind !== "turn" ||
           item.assistantEvents.length > 0 ||
           item.steerEvents.length > 0 ||
+          item.todo !== undefined ||
           item.toolItems.length > 0
       ),
     [renderItems]
@@ -749,27 +775,6 @@ export function SessionConversation({
     }
     return -1;
   }, [latestConversationIndex, transcriptRenderItems]);
-  // The plan is folded once for the session and sliced by turn, so scrolling
-  // back shows the plan as it stood then rather than as it stands now.
-  const todoByTurn = useMemo(() => {
-    const starts = transcriptRenderItems
-      .filter((item): item is Extract<RenderItem, { kind: "turn" }> => item.kind === "turn")
-      .map((item) => ({
-        id: item.id,
-        // A turn owns the updates from its first content until the next turn's.
-        // The oldest turn reaches back to the start so a plan published before
-        // any renderable content still lands somewhere.
-        startedAt: item.assistantEvents[0]?.createdAt ?? item.toolItems[0]?.tool.createdAt ?? ""
-      }));
-    return todoListsByTurn(
-      liveEvents,
-      starts.map((turn, index) => ({
-        id: turn.id,
-        from: index === 0 ? "" : turn.startedAt,
-        to: starts[index + 1]?.startedAt ?? null
-      }))
-    );
-  }, [transcriptRenderItems, liveEvents]);
   const [visibleCount, setVisibleCount] = useState(CONVERSATION_WINDOW);
   // A different session starts from the bottom again.
   useEffect(() => setVisibleCount(CONVERSATION_WINDOW), [sessionId]);
@@ -1375,12 +1380,8 @@ export function SessionConversation({
   const showEarlierItems = (): void => {
     setVisibleCount((current) => current + CONVERSATION_WINDOW_STEP);
   };
-  const repositoryName =
+  const floatingHeading =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
-  // The repo alone doesn't say which chat you're in once several run against
-  // the same checkout, so the strip reads as a path: repo, then this session's
-  // title. Floating panels pass their own `headingLabel` and keep one label.
-  const sessionTitle = headingLabel ? null : workspace?.taskLabel.trim() || null;
 
   // Depend on session.id rather than the session object: the parent rebuilds
   // SessionSummary references on every dashboard delta, which would otherwise
@@ -1449,11 +1450,11 @@ export function SessionConversation({
   const answerLiveQuestion = useCallback(
     async (answerText: string, answers: QuestionAnswers): Promise<boolean> => {
       if (!session || !liveQuestion) return Promise.resolve(false);
+      setStatus(null);
       shouldRefocusInput.current = true;
       if (blockingQuestionRequest) {
         const resolveQuestion = window.argmax?.questions.resolve;
         if (!resolveQuestion) {
-          setStatus({ kind: "error", message: "Could not answer the question because Argmax is unavailable." });
           return false;
         }
         try {
@@ -1464,11 +1465,7 @@ export function SessionConversation({
           });
           setDismissedQuestionId(liveQuestion.tool.id);
           return true;
-        } catch (error) {
-          setStatus({
-            kind: "error",
-            message: error instanceof Error ? error.message : "Could not answer the question."
-          });
+        } catch {
           return false;
         }
       }
@@ -1477,20 +1474,20 @@ export function SessionConversation({
         session.state === "running",
         onTerminateSession,
         () => sendSessionInput(session.id, answerText, selectedModel, "auto"),
-        (message) => setStatus({ kind: "error", message })
+        () => undefined
       );
     },
     [blockingQuestionRequest, liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
   );
   const dismissLiveQuestion = useCallback(async (): Promise<boolean> => {
     if (!liveQuestion) return false;
+    setStatus(null);
     if (!blockingQuestionRequest || !session) {
       setDismissedQuestionId(liveQuestion.tool.id);
       return true;
     }
     const resolveQuestion = window.argmax?.questions.resolve;
     if (!resolveQuestion) {
-      setStatus({ kind: "error", message: "Could not dismiss the question because Argmax is unavailable." });
       return false;
     }
     try {
@@ -1502,11 +1499,7 @@ export function SessionConversation({
       });
       setDismissedQuestionId(liveQuestion.tool.id);
       return true;
-    } catch (error) {
-      setStatus({
-        kind: "error",
-        message: error instanceof Error ? error.message : "Could not dismiss the question."
-      });
+    } catch {
       return false;
     }
   }, [blockingQuestionRequest, liveQuestion, session, setStatus]);
@@ -1539,24 +1532,16 @@ export function SessionConversation({
       data-workspace-card={workspaceCardMounted ? "true" : undefined}
     >
       <div className="section-heading" data-window-drag={floating ? undefined : true}>
-        <div className="session-title" data-titled={sessionTitle ? "true" : undefined}>
-          {workspace && workspace.kind !== "git" ? (
-            <MessagesSquare size={13} aria-hidden="true" className="session-title-icon" />
-          ) : (
-            <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
-          )}
-          <h2>{repositoryName}</h2>
-          {sessionTitle ? (
-            <>
-              <span className="session-title-separator" aria-hidden="true">
-                /
-              </span>
-              <span className="session-title-task" title={sessionTitle}>
-                {sessionTitle}
-              </span>
-            </>
-          ) : null}
-        </div>
+        {floating ? (
+          <div className="session-title">
+            {workspace && workspace.kind !== "git" ? (
+              <MessagesSquare size={13} aria-hidden="true" className="session-title-icon" />
+            ) : (
+              <GitBranch size={13} aria-hidden="true" className="session-title-icon" />
+            )}
+            <h2>{floatingHeading}</h2>
+          </div>
+        ) : null}
         <div className="conversation-header-actions">
           {floating && onAttachToChat ? (
             <button
@@ -1597,7 +1582,6 @@ export function SessionConversation({
                   : undefined
               }
               session={session}
-              setStatus={setStatus}
               workspace={workspace}
             />
           )}
@@ -1614,6 +1598,12 @@ export function SessionConversation({
           ) : null}
         </div>
       </div>
+      {historyLoadFailed ? (
+        <div className="conversation-history-retry loading-line" role="status" aria-label="Chat history unavailable">
+          <span>Chat history could not load.</span>
+          <button type="button" className="empty-state-retry" onClick={onRetryHistoryLoad}>Retry</button>
+        </div>
+      ) : null}
       {/* Wrapper for the scroll edges: `.scroll-fade` sits on this box,
           outside the scroller, so the sticky scroll-to-latest button
           inside the list never fades with the content passing under it. */}
@@ -1626,9 +1616,9 @@ export function SessionConversation({
         className="conversation-scroll scroll-fade"
         ref={conversationScrollRef}
         data-restoring={restoringTranscript ? "true" : undefined}
-        data-loading={eventsBackfilled ? undefined : "true"}
+        data-loading={eventsBackfilled || historyLoadFailed ? undefined : "true"}
       >
-        {eventsBackfilled ? null : (
+        {eventsBackfilled || historyLoadFailed ? null : (
           <div className="conversation-loading loading-line" role="status" aria-label="Loading chat">
             <WorkingNest active size={16} />
           </div>
@@ -1713,7 +1703,7 @@ export function SessionConversation({
                     defaultTurnChangesExpanded={defaultTurnChangesExpanded}
                     follow={conversationFollow}
                     restoringTranscript={restoringTranscript}
-                    todo={todoByTurn.get(item.id) ?? null}
+                    todo={item.todo ?? null}
                     onOpenDiff={onOpenDiff ?? review.openFile}
                     onOpenReview={onOpenChanges ?? review.openChangesPanel}
                   />
@@ -1762,33 +1752,17 @@ export function SessionConversation({
           checks={checks ?? []}
           onRunCheck={onRunCheck}
         />
+        {composerMultitaskNotices.length > 0 ? (
+          <MultitaskGroup
+            notices={composerMultitaskNotices}
+            live={multitaskLive}
+            onOpen={onOpenMultitask ?? onOpenSession}
+            onStop={stopMultitask}
+            onDismiss={dismissMultitaskRow}
+            onLoadSessionEvents={onLoadSessionEvents}
+          />
+        ) : null}
       </div>
-      {composerMultitaskNotices.length > 0 ? (
-        <section className="multitask-composer-lane" aria-label="Multitasks">
-          {composerMultitaskNotices.map((notice) => {
-            const childId = notice.childSessionId;
-            const live = childId ? multitaskLive.get(childId) : undefined;
-            return (
-              <MultitaskRow
-                key={`multitask-${childId ?? notice.createdAt}`}
-                notice={notice}
-                liveState={live?.state ?? null}
-                liveLabel={live?.taskLabel || null}
-                {...(live && (onOpenMultitask ?? onOpenSession)
-                  ? { onOpen: onOpenMultitask ?? onOpenSession }
-                  : {})}
-                onStop={(sessionId) => void onTerminateSession(sessionId)}
-                {...(childId
-                  ? {
-                      onDismiss: () =>
-                        setDismissedMultitasks((current) => dismissMultitask(current, childId))
-                    }
-                  : {})}
-              />
-            );
-          })}
-        </section>
-      ) : null}
       {goalInComposer || !goalStatus ? null : (
         <div
           className="session-composer-stack"

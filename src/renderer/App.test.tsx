@@ -4,6 +4,7 @@ import { App } from "./App.js";
 import { persistLaunchModel } from "./lib/launchModelPreference.js";
 import { SESSION_ICON_COLORS, SESSION_ICON_NAMES } from "./lib/sessionIcons.js";
 import { attachmentProtocolUrl } from "../shared/attachmentProtocol.js";
+import { ESCAPE_STOPS_CHAT_KEY } from "./lib/uiPreferences.js";
 import type { ArgmaxApi, DashboardSnapshot } from "../shared/types.js";
 import {
   archiveWorkspace,
@@ -83,6 +84,34 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-6 Sol");
   });
 
+  it("moves a provider-switch screenshot to the launcher without mixing in its old draft", async () => {
+    const screenshot = { filePath: "/attachments/current.png", mimeType: "image/png", sizeBytes: 4 };
+    const unrelated = { filePath: "/attachments/old-launcher.png", mimeType: "image/png", sizeBytes: 4 };
+    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
+      "session-1": { text: "", attachments: [screenshot] },
+      "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] }
+    }));
+    mockDashboardSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByLabelText("Chat prompt");
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).getByRole("button", { name: "New chat" }));
+
+    expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
+    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(screenshot.filePath)]);
+    fireEvent.click(screen.getByTitle("Start agent"));
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "@/attachments/current.png",
+      attachments: [screenshot]
+    })));
+  });
+
   it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
     // The collapse toggle only governs project groups, so seed a finished
     // session: a running one would float into Working and out of the group.
@@ -115,7 +144,7 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(dashboardList).toHaveBeenCalledTimes(1);
 
     act(() => {
@@ -140,7 +169,7 @@ describe("App", () => {
   it("preserves the user's model selection across dashboard deltas for the same session", async () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     const modelButton = await screen.findByRole("button", { name: "Chat model" });
     const initialLabel = modelButton.textContent ?? "";
@@ -594,7 +623,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByText(/thread\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/turn\.started/)).not.toBeInTheDocument();
     expect(screen.queryByText(/"tools"/)).not.toBeInTheDocument();
@@ -667,7 +696,7 @@ describe("App", () => {
     expect(launchProvider.mock.invocationCallOrder[0] ?? 0).toBeLessThan(
       autotitleWorkspace.mock.invocationCallOrder[0] ?? 0
     );
-    expect(await screen.findByRole("heading", { name: "Argmax" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
   });
 
   it("assigns a random icon and color before launching when enabled", async () => {
@@ -729,7 +758,7 @@ describe("App", () => {
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalled());
     // The app moves to the new session, taking the launcher with it.
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
     unmount();
 
     render(<App />);
@@ -744,13 +773,14 @@ describe("App", () => {
       target: { value: "Implement PTY launch" }
     });
     fireEvent.click(screen.getByTitle("Start agent"));
-    await screen.findByRole("heading", { name: "Argmax" });
+    await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.keyDown(document, { key: "n", metaKey: true });
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
   });
 
-  it("returns to the new chat composer view with prompt and repo persisted when stopped within 10s of launch", async () => {
+  it.each(["button", "Escape"])("returns to the launcher and archives a chat stopped after two seconds using %s", async (stopAction) => {
+    window.localStorage.setItem(ESCAPE_STOPS_CHAT_KEY, "true");
     const freshWorkspace = {
       ...snapshot.workspaces[0],
       id: "workspace-new",
@@ -762,7 +792,7 @@ describe("App", () => {
       id: "session-new",
       workspaceId: "workspace-new",
       prompt: "Fix login auth bug in wrong repo",
-      startedAt: new Date().toISOString(),
+      startedAt: new Date(Date.now() - 2_000).toISOString(),
       state: "running" as const
     };
     launchProvider.mockResolvedValue(freshSession);
@@ -778,7 +808,11 @@ describe("App", () => {
     const stopButton = await screen.findByRole("button", { name: "Stop chat" });
     expect(stopButton).toBeInTheDocument();
 
-    fireEvent.click(stopButton);
+    if (stopAction === "Escape") {
+      fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
+    } else {
+      fireEvent.click(stopButton);
+    }
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
     await waitFor(() =>
@@ -1294,6 +1328,20 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
 
+
+  it.each([
+    new Error("The conversation is still running."),
+    { message: "The conversation is still running.", code: "SESSION_RUNNING" }
+  ])("shows the backend reason when clearing a chat fails: %j", async (failure) => {
+    window.argmax!.session.clear = vi.fn().mockRejectedValueOnce(failure);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    const input = screen.getByRole("textbox", { name: "Chat prompt" });
+    fireEvent.change(input, { target: { value: "/clear" } });
+    fireEvent.mouseDown(await screen.findByRole("option", { name: /^Clear/ }));
+    expect(await screen.findByText("The conversation is still running.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 
   it("auto-dismisses info toasts after the 4s window", async () => {
     pickProjectFolder.mockResolvedValueOnce({ cancelled: false, project: primaryProject() });

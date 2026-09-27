@@ -4,6 +4,7 @@ import { BoundedMap } from "../../shared/boundedSet.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
+import { showErrorToast } from "../state/toast.js";
 import type {
   AsyncState,
   ReviewPanelMode,
@@ -597,11 +598,13 @@ export function useFilePreview(args: {
           workspaceTabLifetimes.current.get(filePath) !== tabLifetime ||
           workspaceSaveTokens.current.get(filePath) !== token
         ) return "aborted";
+        const message = errorMessage(error) || "Could not save file.";
         updateTab(filePath, (current) => ({
           ...current,
           saveState: "error",
-          saveError: errorMessage(error) || "Could not save file."
+          saveError: message
         }));
+        showErrorToast(message);
         return "error";
       }
     },
@@ -652,10 +655,9 @@ export function useFilePreview(args: {
       forceCloseTab(filePath);
       return;
     }
-    // A write error keeps the prompt open with the tab's saveError in it —
-    // dismissing would read as a silent success while the close never ran. A
-    // stale file hands the conflict to the on-disk banner instead: the prompt
-    // would only compete with it.
+    // A write error keeps the prompt open so a failed save cannot read as a
+    // successful close. A stale file hands the conflict to the on-disk banner
+    // instead, since the prompt would only compete with it.
     if (outcome !== "error") setDirtyClosePath(null);
   }, [forceCloseTab, saveFilePath, dirtyClosePath]);
 

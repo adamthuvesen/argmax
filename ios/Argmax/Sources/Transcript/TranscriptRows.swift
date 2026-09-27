@@ -653,6 +653,7 @@ struct TranscriptTodoRow: View {
                         .typeSymbol(.caption2, weight: .semibold)
                         .foregroundStyle(Theme.muted.opacity(expanded ? 0.55 : 0.28))
                         .rotationEffect(.degrees(expanded ? 90 : 0))
+                        .padding(.trailing, Spacing.tight)
                         .accessibilityHidden(true)
                     Text("Plan")
                         .typeSubtitle()

@@ -45,7 +45,6 @@
 .browser-history-import-description,
 .browser-history-import-loading,
 .browser-history-import-empty,
-.browser-history-import-error,
 .browser-history-import-success p,
 .browser-history-import-profiles-error p {
   margin: 0;
@@ -114,7 +113,6 @@
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
-.browser-history-import-error,
 .browser-history-import-profiles-error p {
   color: var(--rose);
   font-size: var(--text-sm);

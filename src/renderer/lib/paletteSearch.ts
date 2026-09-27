@@ -8,7 +8,9 @@ export type PaletteGroup =
   | "Files"
   | "Messages"
   | "Contents"
-  | "Settings";
+  | "Settings"
+  /** Display-only: the empty palette's picks for right now. No item lives here. */
+  | "Suggested";
 
 export interface PaletteItem {
   id: string;
@@ -32,7 +34,41 @@ export interface PaletteItem {
    * smaller text) the user repeats while watching the app behind the dialog.
    */
   keepOpen?: boolean;
+  /**
+   * Words a user might type for this row that its label does not say —
+   * "shell" for Toggle terminal. Matched, never shown.
+   */
+  keywords?: string[];
+  /** Display form of the row's keyboard shortcut (`⌘J`), drawn at the right edge. */
+  shortcut?: string;
+  /**
+   * Timely rather than habitual: a chat waiting on the user, Stop while a turn
+   * runs. Leads the empty palette's Suggested group and edges ahead on ties.
+   */
+  suggest?: boolean;
   run: () => void;
+}
+
+/**
+ * What the focused chat or launcher tells the palette about itself: whose
+ * files to list, where a picked file opens, and its live state.
+ */
+export interface PaletteSurfaceContext {
+  source: { kind: "workspace" | "project"; id: string };
+  onPick: (path: string) => void;
+  /**
+   * Read when the palette opens. A getter rather than values, so panel state
+   * changing under a chat never re-registers the surface or re-renders App.
+   */
+  readLive: () => PaletteSurfaceLive;
+}
+
+export interface PaletteSurfaceLive {
+  /** The files or changes view is showing in the right sidebar. */
+  filesVisible: boolean;
+  changedPaths: string[];
+  /** Rows only this surface can run: its panel toggles, commit. */
+  actions: PaletteItem[];
 }
 
 export interface PaletteHit {
@@ -58,8 +94,9 @@ export function searchMatchRank(text: string, rawQuery: string): number {
 
 // Single-error typo tolerance (one substitution/transposition/insertion/deletion
 // per term), strict left boundary so "dash" matches "dashboard" but not the
-// "dash" inside "redashed". Inserts allowed on the right so partial prefixes
-// keep matching.
+// "dash" inside "redashed". No right boundary: with one, uFuzzy's ranking pass
+// silently drops every hit whose term stops mid-word, so "us", "sett" and
+// "term" found nothing until the whole word was typed.
 const fuzzy = new uFuzzy({
   intraMode: 1,
   intraIns: 1,
@@ -67,7 +104,7 @@ const fuzzy = new uFuzzy({
   intraTrn: 1,
   intraDel: 1,
   interLft: 2,
-  interRgt: 1
+  interRgt: 0
 });
 
 // File-path matcher: same left-boundary strictness so "src" matches
@@ -86,11 +123,22 @@ const filePathFuzzy = new uFuzzy({
 
 const EMPTY_RANGES: number[] = [];
 
-export function searchFilePaths(paths: string[], rawQuery: string, limit = 50): string[] {
+/**
+ * `preferred` paths (the checkout's changed files) lead an empty query and win
+ * ties against equally good matches, without outranking a better one.
+ */
+export function searchFilePaths(
+  paths: string[],
+  rawQuery: string,
+  limit = 50,
+  preferred?: ReadonlySet<string>
+): string[] {
   if (paths.length === 0) return [];
   const query = rawQuery.trim();
+  const preference = (path: string): number => (preferred?.has(path) ? 0.5 : 0);
   if (!query) {
-    return paths.slice(0, limit);
+    if (!preferred?.size) return paths.slice(0, limit);
+    return [...paths].sort((left, right) => preference(right) - preference(left)).slice(0, limit);
   }
   const [idxs, info, order] = filePathFuzzy.search(paths, query, 1, 1000);
   if (!idxs) return [];
@@ -102,8 +150,8 @@ export function searchFilePaths(paths: string[], rawQuery: string, limit = 50): 
     const nameRank = searchMatchRank(name, query);
     return {
       path,
-      rank: pathQuery ? searchMatchRank(path, query)
-        : nameRank < 5 ? nameRank : 6 + searchMatchRank(path, query)
+      rank: (pathQuery ? searchMatchRank(path, query)
+        : nameRank < 5 ? nameRank : 6 + searchMatchRank(path, query)) - preference(path)
     };
   }).sort((left, right) => left.rank - right.rank).slice(0, limit).map(({ path }) => path);
 }
@@ -119,6 +167,14 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
   const labelHits = rankBy(items, labels, query, "label");
 
   const matched = new Set(labelHits.map((hit) => hit.item.id));
+  // Keywords are synonyms for the label, so they rank one tier under it and
+  // above anything that only matched the subtitle.
+  const keyworded = items.filter((item) => item.keywords?.length && !matched.has(item.id));
+  const keywordHits =
+    keyworded.length > 0
+      ? rankBy(keyworded, keyworded.map(keywordText), query, "keywords")
+      : [];
+  for (const hit of keywordHits) matched.add(hit.item.id);
   const remaining = items.filter((item) => secondaryText(item) && !matched.has(item.id));
   const subtitleHits =
     remaining.length > 0
@@ -126,11 +182,13 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
       : [];
 
   for (const hit of subtitleHits) matched.add(hit.item.id);
-  const combinedItems = items.filter((item) => secondaryText(item) && !matched.has(item.id));
+  const combinedItems = items.filter((item) =>
+    (secondaryText(item) || item.keywords?.length) && !matched.has(item.id));
   const combinedHits = rankBy(combinedItems,
-    combinedItems.map((item) => `${item.label} ${secondaryText(item)}`), query, "label");
+    combinedItems.map((item) => `${item.label} ${secondaryText(item)} ${keywordText(item)}`), query, "label");
   for (const hit of combinedHits) {
     const offset = hit.item.label.length + 1;
+    const secondaryEnd = secondaryText(hit.item).length;
     const ranges = hit.labelRanges ?? [];
     hit.labelRanges = [];
     hit.subtitleRanges = [];
@@ -138,12 +196,19 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
       const start = ranges[index];
       const end = ranges[index + 1];
       if (start < offset - 1) hit.labelRanges.push(start, Math.min(end, offset - 1));
-      if (end > offset) hit.subtitleRanges.push(Math.max(0, start - offset), end - offset);
+      // Anything past the secondary text landed in the (unshown) keywords.
+      if (end > offset && start - offset < secondaryEnd) {
+        hit.subtitleRanges.push(Math.max(0, start - offset), Math.min(end - offset, secondaryEnd));
+      }
     }
     hit.matchRank = 6 + (hit.matchRank ?? 5);
   }
-  return [...labelHits, ...subtitleHits, ...combinedHits]
+  return [...labelHits, ...keywordHits, ...subtitleHits, ...combinedHits]
     .sort((left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5));
+}
+
+function keywordText(item: PaletteItem): string {
+  return item.keywords?.join(" ") ?? "";
 }
 
 /** The row's one piece of secondary text, wherever it renders. */
@@ -155,8 +220,10 @@ function rankBy(
   items: PaletteItem[],
   haystack: string[],
   needle: string,
-  field: "label" | "subtitle"
+  field: "label" | "keywords" | "subtitle"
 ): PaletteHit[] {
+  // Tier offset per field. Keyword hits get no ranges: nothing on screen matched.
+  const offset = field === "subtitle" ? 6 : field === "keywords" ? 1 : 0;
   // outOfOrder=1 lets "settings open" match "Open Settings". infoThresh=1000
   // keeps the info pass cheap on large haystacks.
   const [idxs, info, order] = fuzzy.search(haystack, needle, 1, 1000);
@@ -173,7 +240,7 @@ function rankBy(
         item: items[idx],
         labelRanges: field === "label" ? ranges : null,
         subtitleRanges: field === "subtitle" ? ranges : null,
-        matchRank: searchMatchRank(haystack[idx], needle) + (field === "subtitle" ? 6 : 0)
+        matchRank: searchMatchRank(haystack[idx], needle) + offset
       };
     }).sort((left, right) => left.matchRank - right.matchRank);
   }
@@ -184,7 +251,7 @@ function rankBy(
     const ranges = info.ranges[infoIdx] ?? EMPTY_RANGES;
     hits.push({
       item: items[itemIdx],
-      matchRank: searchMatchRank(haystack[itemIdx], needle) + (field === "subtitle" ? 6 : 0),
+      matchRank: searchMatchRank(haystack[itemIdx], needle) + offset,
       labelRanges: field === "label" ? ranges : null,
       subtitleRanges: field === "subtitle" ? ranges : null
     });

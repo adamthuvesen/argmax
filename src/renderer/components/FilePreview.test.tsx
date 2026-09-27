@@ -178,7 +178,7 @@ describe("FilePreview", () => {
     expect(screen.queryByLabelText("Editor for src/index.ts")).not.toBeInTheDocument();
   });
 
-  it("surfaces saveError as an alert", () => {
+  it("does not duplicate a save failure inside the file preview", () => {
     render(
       <FilePreview
         state={makeState({
@@ -186,7 +186,8 @@ describe("FilePreview", () => {
         })}
       />
     );
-    expect(screen.getByRole("alert")).toHaveTextContent("disk full");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("disk full")).not.toBeInTheDocument();
   });
 
   it("rewrites a relative README image into an argmax-asset:// URL", () => {

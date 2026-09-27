@@ -19,6 +19,8 @@ function publish(next: ToastMessage | null): void {
 }
 
 export function showToast(message: ToastMessage): void {
+  // A routine confirmation must not erase an error before it can be read.
+  if (toast?.kind === "error" && message.kind === "info") return;
   publish(message);
 }
 
@@ -27,7 +29,7 @@ export function showErrorToast(message: string): void {
 }
 
 export function showInfoToast(message: string): void {
-  publish({ kind: "info", message });
+  showToast({ kind: "info", message });
 }
 
 export function dismissToast(): void {

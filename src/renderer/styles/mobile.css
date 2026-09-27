@@ -548,19 +548,6 @@ html:has(.mobile-shell[data-embed]) body,
   height: 40px;
 }
 
-/* Stop and Dismiss on a multitask row wait for a hover a thumb never produces,
-   so on the phone they were 20px squares at 0 opacity — invisible, and still
-   the topmost thing under a thumb aiming at the row's right end, which is how
-   a tap meant to open the multitask dismissed it instead. Stand them open and
-   grow the hit area the same way the queued follow-up's actions do; the glyph
-   inside keeps its size, and the row is 54px tall, so 40px fits without
-   changing its height. */
-.mobile-shell .multitask-row-stop {
-  width: 40px;
-  height: 40px;
-  opacity: 1;
-}
-
 /* The composer's compact layout is container-query driven, and its container
    root on desktop is the multigrid cell — absent here. Without a container
    ancestor the ≤720px rules never match and the phone gets the full desktop
@@ -1133,12 +1120,6 @@ html:has(.mobile-shell[data-embed]) body,
   color: var(--muted);
 }
 
-.mobile-new-status {
-  padding-top: var(--space-1);
-  color: var(--rose);
-  font-size: var(--text-xs);
-}
-
 /* ---- Shared chrome ---- */
 
 .mobile-empty {
@@ -1170,24 +1151,10 @@ html:has(.mobile-shell[data-embed]) body,
 }
 
 .mobile-toast {
-  position: fixed;
-  left: 16px;
-  right: 16px;
   /* Fixed elements measure the layout viewport, so a raised keyboard would
      bury the toast; the inset lifts it clear of one. */
   bottom: calc(16px + env(safe-area-inset-bottom) + var(--mobile-keyboard-inset, 0px));
   padding: 12px 14px;
-  border-radius: var(--radius-xl);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  color: var(--text);
-  font-size: var(--text-base);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
-  z-index: 3;
-}
-
-.mobile-toast-error {
-  border-color: var(--rose);
 }
 
 /* ---- Files & changes screen ---- */
@@ -1398,7 +1365,7 @@ html:has(.mobile-shell[data-embed]) body,
 /* Delegated work, raised over the transcript.
    ------------------------------------------
    A bottom sheet: it comes up off the screen's own bottom edge and covers the
-   parent's composer and multitask lane, the way every other sheet on the
+   parent's composer and transcript, the way every other sheet on the
    phone does. It used to stop above them — measuring their height and holding
    that much clear — which left the parent's composer live under a second one
    and made the peek the only sheet here that never reached the edge. The

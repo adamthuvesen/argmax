@@ -53,12 +53,9 @@
   --composer-surface: var(--panel);
   --panel-sunken: #eef0f1;
   /* Greige selection fill — sidebar rows, panel tabs, neutral bubbles, active
-     file tabs, and the review mode sliding indicator. Same weight as the old
-     cool gray mix, with the blue cast traded for a hint of paper warmth.
-     Sits between #f1f0ee, which blended into the paper sidebar, and #eaeae8,
-     which read as a heavy gray block; held near neutral, as a warmer #ebe9e5
-     read as beige. */
-  --row-selected: #eeeeec;
+     file tabs, and the review mode sliding indicator. A small lift keeps it
+     distinct on the paper sidebar without reading as a gray block. */
+  --row-selected: #f1f1ef;
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
@@ -77,11 +74,14 @@
   --line-strong: #c6ccd0;
   --scrollbar-thumb: #dce1e4;
   --scrollbar-thumb-hover: #cfd5d8;
-  /* Hairline around the two composer cards and the multitask lane above them.
+  /* Hairline around the two composer cards.
      On paper those cards are white on a near-white --bg, so the quiet lift
      alone left their edges to guesswork; this draws them. Dark switches it off
      — see the dark block. */
   --composer-edge: var(--line);
+  /* The queued follow-up tab tucked behind the composer. A small share of
+     text ink keeps it a distinct gray even when the page reaches pure white. */
+  --composer-tray: color-mix(in oklab, var(--composer-surface) 95%, var(--text));
 
   /* The fill every control on a composer's chip floor wears — the model pill,
      the project and branch chips, the glyph buttons, the behavior toggles at
@@ -156,8 +156,10 @@
      to --weight-prose so messages stay a touch more present than chrome. Dark
      mode lowers both, because light-on-dark strokes bloom.
 
-     --weight-medium is the emphasis step for labels, titles and bold prose.
-     It sits under a true 500 so emphasis reads as a step, not a jump. */
+     --weight-medium is the emphasis step for labels and titles. It sits
+     under a true 500 so emphasis reads as a step, not a jump. Bold inside
+     rendered prose needs a larger step to show in a paragraph; see
+     `.markdown strong` in chat-conversation.css. */
   --font-weight-offset: 0;
   --weight-ui: calc(400 + var(--font-weight-offset));
   --weight-prose: calc(400 + var(--font-weight-offset));
@@ -558,6 +560,10 @@
   /* No edge on charcoal: --composer-surface already sits a step above --panel,
      and a line drawn on top of that lift reads as a double border. */
   --composer-edge: transparent;
+  /* Three-quarters of the way from the sunken tone to the card: the earlier
+     58% mix sat five points off the charcoal --bg and read as a smear under
+     the composer rather than a layer behind it. */
+  --composer-tray: color-mix(in oklab, var(--composer-surface) 78%, var(--panel-sunken));
   --composer-chip-ink: 5%;
 
   /* Ink pulled back off paper-white: #f4f2ec bloomed on dark charcoal and read
@@ -586,7 +592,7 @@
   --prose-ink-strong: color-mix(in oklab, #f5f3ed, var(--ink-toward) var(--ink-pull));
 
   --weight-ui: calc(380 + var(--font-weight-offset));
-  --weight-prose: calc(390 + var(--font-weight-offset));
+  --weight-prose: calc(380 + var(--font-weight-offset));
 
   --sage: #6dab86;
   --sage-soft: rgba(109, 171, 134, 0.14);

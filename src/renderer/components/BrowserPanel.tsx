@@ -259,8 +259,7 @@ export function BrowserPanel({
   /** The peeked sidebar must receive clicks above native content. Dialogs
    *  scoped to other panes only hide the webview when their boxes overlap. */
   const overlaysSurface = useCallback((bounds: BrowserBounds): boolean => {
-    const { collapsed, peeking } = sidebarChromeSnapshot();
-    if (collapsed && peeking) return true;
+    if (sidebarChromeSnapshot().peeking) return true;
     const right = bounds.x + bounds.width;
     const bottom = bounds.y + bounds.height;
     if (bounds.width <= 0 || bounds.height <= 0) return false;
@@ -671,22 +670,45 @@ export function BrowserPanel({
   }, [addTab, browser, closeTab, goBack, goForward, openFind, reportError, scopeId]);
 
   // Mouse thumb buttons over the pane chrome (toolbar, tab strip). Clicks
-  // landing on the page itself go to the native webview instead and come back
-  // as browser:page-command events.
+  // landing on the page itself go to the native webview, whose initialization
+  // script navigates that page's history directly.
   useEffect(() => {
     if (!browser) return;
-    const onMouseUp = (event: MouseEvent): void => {
+    let pressedButton: number | null = null;
+    const onMouseDown = (event: MouseEvent): void => {
       if (event.button !== 3 && event.button !== 4) return;
       const panel = panelRef.current;
       if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
+      event.preventDefault();
+      pressedButton = event.button;
+    };
+    const onMouseUp = (event: MouseEvent): void => {
+      if (event.button !== 3 && event.button !== 4) return;
+      const ownsGesture = pressedButton === event.button;
+      pressedButton = null;
+      const panel = panelRef.current;
+      if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
+      event.preventDefault();
+      if (!ownsGesture) return;
       const active = getActiveBrowserTabId(scopeId);
       if (!active) return;
-      event.preventDefault();
       if (event.button === 3) goBack(active);
       else goForward(active);
     };
+    const onAuxClick = (event: MouseEvent): void => {
+      if (event.button !== 3 && event.button !== 4) return;
+      const panel = panelRef.current;
+      if (!panel || !(event.target instanceof Node) || !panel.contains(event.target)) return;
+      event.preventDefault();
+    };
+    document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("mouseup", onMouseUp, true);
-    return () => document.removeEventListener("mouseup", onMouseUp, true);
+    document.addEventListener("auxclick", onAuxClick, true);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown, true);
+      document.removeEventListener("mouseup", onMouseUp, true);
+      document.removeEventListener("auxclick", onAuxClick, true);
+    };
   }, [browser, goBack, goForward, scopeId]);
 
   // Menu ⌘W with the pane open: App routes it here to close the active tab.

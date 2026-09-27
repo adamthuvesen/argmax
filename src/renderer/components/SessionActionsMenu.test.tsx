@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
+import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function installArgmax(
   listForSession: ReturnType<typeof vi.fn>,
@@ -114,7 +115,28 @@ describe("SessionActionsMenu", () => {
 
   afterEach(() => {
     cleanup();
+    resetToastForTests();
     delete (window as { argmax?: unknown }).argmax;
+  });
+
+  it("reports a failed push in the shared toast", async () => {
+    vi.spyOn(window.argmax!.git, "push").mockRejectedValue(new Error("remote refused"));
+    render(
+      <SessionActionsMenu
+        isLogOpen={false}
+        onBrowseFiles={vi.fn()}
+        onToggleLog={vi.fn()}
+        session={session()}
+        workspace={workspace()}
+      />
+    );
+
+    await openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
+
+    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "remote refused" }));
+    expect(screen.queryByText("remote refused")).not.toBeInTheDocument();
   });
 
   it("hides actions until opened and routes main menu clicks", async () => {

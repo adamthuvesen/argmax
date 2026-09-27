@@ -2,12 +2,13 @@ import { Fragment, useState, type JSX } from "react";
 import type { ApprovalRequest, TimelineEvent } from "../../shared/types.js";
 import { errorMessage } from "../../shared/error.js";
 import { approvalAction } from "../lib/approvalAction.js";
+import { showErrorToast } from "../state/toast.js";
 
 type ApprovalResolution = "approved" | "rejected";
 type ResolutionState =
   | { phase: "submitting"; resolution: ApprovalResolution }
   | { phase: "submitted"; resolution: ApprovalResolution }
-  | { phase: "failed"; message: string };
+  | { phase: "failed" };
 
 /** The timeline line Argmax writes for every native request
  *  (approvals/service.rs). It reads as a reason but names none, so the row
@@ -96,12 +97,10 @@ export function ApprovalSurface({
       }));
     } catch (error) {
       const detail = errorMessage(error);
+      showErrorToast(`Could not send your response. ${detail || "The provider did not accept the response. Try again."}`);
       setResolutionById((current) => ({
         ...current,
-        [approval.id]: {
-          phase: "failed",
-          message: detail || "The provider did not accept the response. Try again."
-        }
+        [approval.id]: { phase: "failed" }
       }));
     }
   };
@@ -138,11 +137,6 @@ export function ApprovalSurface({
                 </dl>
               ) : null}
               {reason ? <p className="approval-reason">{reason}</p> : null}
-              {resolution?.phase === "failed" ? (
-                <p className="approval-error" role="alert">
-                  Could not send your response. {resolution.message}
-                </p>
-              ) : null}
             </div>
 
             <div className="approval-actions">

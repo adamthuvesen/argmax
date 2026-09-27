@@ -30,6 +30,17 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(appearance.chatDetail, .compact)
         XCTAssertEqual(appearance.fontScale, .standard)
         XCTAssertEqual(appearance.activityIconColorMode, .color)
+        XCTAssertTrue(appearance.showArcs)
+    }
+
+    func testArcsShipVisibleAndStayHiddenOnceTurnedOff() {
+        let first = Appearance(store: store)
+        XCTAssertTrue(first.showArcs)
+
+        first.showArcs = false
+
+        XCTAssertEqual(store.object(forKey: "argmax.phone.arcs.visible") as? Bool, false)
+        XCTAssertFalse(Appearance(store: store).showArcs)
     }
 
     func testChatDetailSurvivesARelaunch() {

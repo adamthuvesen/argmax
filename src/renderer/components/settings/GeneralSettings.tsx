@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react";
+import { showErrorToast } from "../../state/toast.js";
 import { useState, type JSX } from "react";
 import type { DetectedIde, IdeId } from "../../../shared/types.js";
 import {
@@ -8,7 +9,11 @@ import {
   type LinkTarget
 } from "../../lib/linkTarget.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
-import type { FollowUpDelivery } from "../../lib/uiPreferences.js";
+import {
+  ESCAPE_STOPS_CHAT_KEY,
+  useBooleanUiPreference,
+  type FollowUpDelivery
+} from "../../lib/uiPreferences.js";
 import {
   SegmentedControl,
   SettingGroup,
@@ -52,6 +57,10 @@ export function GeneralSettings({
   // Read at click time by the chat's link handler, so localStorage is the
   // source of truth and no App-level state is needed.
   const [linkTarget, setLinkTarget] = useState<LinkTarget>(readStoredLinkTarget);
+  const [escapeStopsChat, setEscapeStopsChat] = useBooleanUiPreference(
+    ESCAPE_STOPS_CHAT_KEY,
+    false
+  );
   const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
 
@@ -63,7 +72,7 @@ export function GeneralSettings({
 
   const handleTestNotification = async (): Promise<void> => {
     if (!window.argmax?.system?.testNotification) {
-      setTestNotificationStatus("Test notifications need the desktop app.");
+      showErrorToast("Test notifications need the desktop app.");
       return;
     }
     setIsTestingNotification(true);
@@ -74,9 +83,7 @@ export function GeneralSettings({
         "Test notification sent. No banner? Check System Settings > Notifications > Argmax."
       );
     } catch (error) {
-      setTestNotificationStatus(
-        error instanceof Error ? error.message : "Failed to send notification"
-      );
+      showErrorToast(error instanceof Error ? error.message : "Failed to send notification");
     } finally {
       setIsTestingNotification(false);
     }
@@ -125,6 +132,17 @@ export function GeneralSettings({
               ariaLabel="Random icon for new chats"
               checked={randomSessionIconEnabled}
               onChange={onRandomSessionIconEnabledChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Escape stops a running chat"
+          description="Close open menus and panels first, then stop the focused chat."
+          control={
+            <Toggle
+              ariaLabel="Escape stops a running chat"
+              checked={escapeStopsChat}
+              onChange={setEscapeStopsChat}
             />
           }
         />

@@ -7,7 +7,9 @@ import {
   dashboardDeltaListener,
   dashboardList,
   dashboardListSnapshot,
+  focusSessionListener,
   launchProvider,
+  menuCommandListener,
   setupAppTestMocks,
   snapshot
 } from "../test/appTestHarness.js";
@@ -15,6 +17,21 @@ import {
 describe("App launch navigation", () => {
   beforeEach(() => setupAppTestMocks());
   afterEach(() => cleanup());
+
+  it("opens the notified chat from Settings after its dashboard row arrives", async () => {
+    render(<App />);
+    await screen.findByLabelText("Task prompt");
+    act(() => menuCommandListener?.("open-settings"));
+    await screen.findByRole("heading", { name: "Notifications" });
+
+    const workspace = { ...snapshot.workspaces[0], id: "notified-workspace", taskLabel: "Notified chat" };
+    const session = { ...snapshot.sessions[0], id: "notified-session", workspaceId: workspace.id };
+    act(() => focusSessionListener?.(session.id));
+    act(() => dashboardDeltaListener?.({ workspaces: [workspace], sessions: [session] }));
+
+    expect(await screen.findByRole("region", { name: "Notified chat" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument();
+  });
 
   describe.each([false, true])("dashboard push during launch: %s", (pushDuringLaunch) => {
     it.each([false, true])("keeps the launched chat open after a stale read, hidden grid: %s", async (withHiddenGrid) => {

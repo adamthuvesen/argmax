@@ -1,0 +1,324 @@
+/* Chats running alongside this one stay above the composer. A single rule
+   anchors the group, with the timeline's mark column continuing below it.
+   The height cap keeps side work from taking the viewport from the chat. */
+.multitask-card {
+  min-width: 0;
+  max-height: min(240px, 34vh);
+  padding: 0 0 var(--space-1_5);
+  border-top: 1px solid var(--line);
+  font-family: var(--font-ui);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  /* No scrollbar-width here: WebKit drops the app's ::-webkit-scrollbar
+     thumb for any scroller that sets it and draws the dark system bar. */
+}
+
+.multitask-card[data-expanded="false"] {
+  padding-bottom: 0;
+}
+
+/* The head names the group and counts what is in it, so the group still says
+   something folded. One quiet control: the chevron at the far end. */
+.multitask-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: var(--space-3) 0 var(--space-1_5);
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.multitask-card[data-expanded="false"] .multitask-card-head {
+  padding-bottom: var(--space-2_5);
+}
+
+.multitask-card-head:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 46%, transparent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.multitask-card-title {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  font-weight: var(--weight-medium);
+}
+
+.multitask-card-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.multitask-card-chevron {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--muted);
+  opacity: 0.55;
+  transition: transform var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
+}
+
+.multitask-card-head:hover .multitask-card-chevron {
+  opacity: 1;
+}
+
+.multitask-card[data-expanded="false"] .multitask-card-chevron {
+  transform: rotate(-90deg);
+}
+
+.multitask-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* One row per chat: the mark, the title, the state, and a reserved seat for
+   the one action. The row is the click target and says so on hover with a
+   soft fill that leaves the resting group open. */
+.multitask-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  /* Rounds the hover fill like the sidebar's chat rows. */
+  border-radius: var(--radius-lg);
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.multitask-row:hover {
+  background: color-mix(in oklab, var(--text) 4%, transparent);
+}
+
+.multitask-row-open {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: var(--activity-mark-size) minmax(0, 1fr) auto;
+  /* Everything hangs from the title's first line: the mark and the state
+     word share its box, so a row that grows a second line for its ask keeps
+     them beside the title rather than drifting to the row's middle. The
+     padding, not a min-height, sets the 36px of a one-line row. */
+  align-items: start;
+  column-gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-2) 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.multitask-row-open:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 46%, transparent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/* The mark sits on the title's first line, so a row that grows a second line
+   for its ask keeps the mark beside the title, not floating mid-row. */
+/* Center every state glyph on the timeline's shared mark column. */
+.multitask-mark {
+  display: grid;
+  place-items: center;
+  width: var(--activity-mark-size);
+  height: calc(var(--text-sm) * 1.5);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.multitask-mark svg {
+  width: 12px;
+  height: 12px;
+}
+
+.multitask-mark-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.multitask-row-body,
+.multitask-row-title-line,
+.multitask-row-title {
+  min-width: 0;
+}
+
+.multitask-row-body {
+  display: grid;
+  gap: 1px;
+}
+
+.multitask-row-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/* One step under the transcript: this is chrome the chat keeps, like the
+   checks card beside it, not content. */
+.multitask-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.multitask-row-isolated {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1_5);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--text) 6%, transparent);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+/* What a stopped chat is waiting on, under its title: the question it asked,
+   or the command its approval wants to run. */
+.multitask-row-ask {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1_5);
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.multitask-row-ask-lead {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.multitask-row-ask-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multitask-row-ask[data-kind="approval"] .multitask-row-ask-text {
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+}
+
+/* The state in a word, at the end of the line, in the mark's colour. */
+.multitask-row-state {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  /* On the title's line box, so the smaller word centres on the title's
+     line. Tabular so a running count ticks in place. */
+  line-height: calc(var(--text-sm) * 1.5);
+  font-variant-numeric: tabular-nums;
+}
+
+.multitask-row[data-status="running"] .multitask-mark,
+.multitask-row[data-status="running"] .multitask-row-state {
+  color: var(--sage);
+}
+
+.multitask-row[data-status="done"] .multitask-mark {
+  color: var(--sage);
+}
+
+.multitask-row[data-status="done"] .multitask-row-title,
+.multitask-row[data-status="stopped"] .multitask-row-title {
+  color: var(--muted);
+}
+
+.multitask-row[data-status="needs-you"] .multitask-mark,
+.multitask-row[data-status="needs-you"] .multitask-row-state {
+  color: var(--amber);
+}
+
+.multitask-row[data-status="failed"] .multitask-mark,
+.multitask-row[data-status="failed"] .multitask-row-state {
+  color: var(--rose);
+}
+
+.multitask-row[data-status="stopped"] .multitask-mark {
+  color: var(--muted);
+}
+
+/* The seat is always there, so the action appearing moves nothing. */
+.multitask-row-seat {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 32px;
+  padding-right: 2px;
+}
+
+.multitask-row-action {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.multitask-row:hover .multitask-row-action,
+.multitask-row-action:focus-visible {
+  opacity: 1;
+}
+
+.multitask-row-action:hover {
+  color: var(--text);
+}
+
+.multitask-row-action:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent) 46%, transparent);
+  outline-offset: 1px;
+}
+
+@media (hover: none) {
+  .multitask-row-action {
+    width: 40px;
+    height: 40px;
+    opacity: 1;
+  }
+
+  .multitask-row-seat {
+    width: 44px;
+  }
+
+  .multitask-row-open {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multitask-row,
+  .multitask-card-chevron,
+  .multitask-row-action {
+    transition: none;
+  }
+}

@@ -114,8 +114,8 @@ const catalogue = integrations.map((entry) => {
   if (!icon) throw new Error(`serverIconFor has no artwork for ${entry.aliases[0]}`);
   // Tinting a layered drawing by alpha flattens it to its own silhouette, so a
   // mark that names its tones gets a second image set carrying the monochrome
-  // ramp as alpha. The rest are a single path already, or survive flattening.
-  const monochromeKey = icon.layers.every((layer) => layer.tone) ? `${entry.key}-mono` : null;
+  // ramp as alpha. Badges export their dedicated bare glyph instead.
+  const monochromeKey = icon.monochrome || icon.layers.every((layer) => layer.tone) ? `${entry.key}-mono` : null;
   return { ...entry, title: icon.title, icon, monochromeKey };
 });
 
@@ -152,8 +152,8 @@ for (const { key, icon, monochromeKey } of catalogue) {
     // The ramp reads away from the row, so each appearance carries its own.
     await writeImageSet(
       monochromeKey,
-      svg(icon, "#1F1D18", SERVER_ICON_TONE_DEPTH.light),
-      svg(icon, "#1F1D18", SERVER_ICON_TONE_DEPTH.dark)
+      svg({ ...icon, ...icon.monochrome }, "#1F1D18", icon.monochrome ? undefined : SERVER_ICON_TONE_DEPTH.light),
+      icon.monochrome ? undefined : svg(icon, "#1F1D18", SERVER_ICON_TONE_DEPTH.dark)
     );
   }
 }

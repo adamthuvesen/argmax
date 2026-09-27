@@ -12,6 +12,7 @@ import {
 import type { FontSize } from "../lib/fonts.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
+import type { PaletteSurfaceContext } from "../lib/paletteSearch.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type {
   AgentMode,
@@ -145,7 +146,7 @@ interface SessionMultiGridProps {
       source + pick handler are wired into the command palette's Files
       group. */
   registerPaletteFileContext?: (
-    context: { source: { kind: "workspace" | "project"; id: string }; onPick: (path: string) => void } | null
+    context: PaletteSurfaceContext | null
   ) => void;
 }
 

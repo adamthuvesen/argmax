@@ -88,6 +88,9 @@ final class Appearance: ObservableObject {
     /// Transcript activity is native-only, so its icon treatment is a local
     /// phone preference rather than a web appearance key.
     static let activityIconColorModeKey = "argmax.phone.activityIconColorMode"
+    /// Whether live arcs get their own section above the chat list. Kept on
+    /// this phone, independently of the desktop's matching preference.
+    static let showArcsKey = "argmax.phone.arcs.visible"
 
     @Published var theme: ThemeChoice {
         didSet { store.set(theme.rawValue, forKey: Self.themeKey) }
@@ -154,6 +157,10 @@ final class Appearance: ObservableObject {
         didSet { store.set(activityIconColorMode.rawValue, forKey: Self.activityIconColorModeKey) }
     }
 
+    @Published var showArcs: Bool {
+        didSet { store.set(showArcs, forKey: Self.showArcsKey) }
+    }
+
     /// The value the page keys its stylesheet off (`data-user-bubble`).
     var bubbleTint: String { accentBubbles ? "accent" : "neutral" }
 
@@ -180,6 +187,7 @@ final class Appearance: ObservableObject {
         activityIconColorMode = ActivityIconColorMode(
             rawValue: store.string(forKey: Self.activityIconColorModeKey) ?? ""
         ) ?? .color
+        showArcs = store.object(forKey: Self.showArcsKey) as? Bool ?? true
     }
 }
 

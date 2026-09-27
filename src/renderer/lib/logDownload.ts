@@ -2,9 +2,9 @@ import type { BackendLogEntry } from "../../shared/types.js";
 
 // Renderer-only download path (P8.04): logs are already in memory from IPC;
 // Blob + anchor avoids a main-process save dialog for a diagnostics export.
-export function saveLogsFile(entries: ReadonlyArray<BackendLogEntry>, setStatus: (status: string | null) => void): void {
+export function saveLogsFile(entries: ReadonlyArray<BackendLogEntry>, setStatus: (status: string | null) => void, onError: (message: string) => void): void {
   if (entries.length === 0) {
-    setStatus("No log entries to save.");
+    onError("No log entries to save.");
     return;
   }
   try {
@@ -21,6 +21,6 @@ export function saveLogsFile(entries: ReadonlyArray<BackendLogEntry>, setStatus:
     URL.revokeObjectURL(url);
     setStatus(`Saved ${entries.length} log entries.`);
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Could not save log file.");
+    onError(error instanceof Error ? error.message : "Could not save log file.");
   }
 }

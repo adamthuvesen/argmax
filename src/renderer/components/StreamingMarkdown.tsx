@@ -289,7 +289,23 @@ function useSmoothStreamingText(
     if (!revealing) return;
     const motion = motionRef.current;
     motion.lastFrame = null;
-    return subscribeToRevealFrames((now) => {
+    const subscribedAt = performance.now();
+    // Frames are not guaranteed. An occluded window or a throttled webview
+    // stops them without setting document.hidden, and a block that ended its
+    // stream in that state sat at its last painted prefix (often nothing)
+    // until a scroll forced a frame. A timer runs beside the loop and lands
+    // whatever is left once no frame has come for the resync gap.
+    const watchdog = window.setInterval(() => {
+      const since = performance.now() - (motion.lastFrame ?? subscribedAt);
+      if (since <= REVEAL_RESYNC_GAP_MS) return;
+      const target = textRef.current.length;
+      motion.position = target;
+      motion.speed = 0;
+      setReveal((state) =>
+        state.visible === target && !state.finishing ? state : { visible: target, finishing: false }
+      );
+    }, REVEAL_RESYNC_GAP_MS);
+    const unsubscribe = subscribeToRevealFrames((now) => {
       const current = textRef.current;
       const target = current.length;
       const lastFrame = motion.lastFrame;
@@ -319,6 +335,10 @@ function useSmoothStreamingText(
         return visible === state.visible && finishing === state.finishing ? state : { visible, finishing };
       });
     });
+    return () => {
+      unsubscribe();
+      window.clearInterval(watchdog);
+    };
   }, [revealing]);
 
   if (!revealing || reveal.visible >= text.length) {
@@ -380,7 +400,43 @@ const MarkdownContext = createContext<MarkdownContextValue>({});
 
 // React Markdown treats these functions as component types. Keep them stable
 // across dashboard updates so code scrollers and image state survive.
+/* The hast shape the `p` component needs: enough to see whether a paragraph
+   is one `<strong>` and nothing else. */
+type InlineNode = { type: string; tagName?: string; value?: string; children?: InlineNode[] };
+
+function inlineText(node: InlineNode): string {
+  if (node.type === "text") return node.value ?? "";
+  return (node.children ?? []).map(inlineText).join("");
+}
+
+/* A paragraph that is nothing but one bold run is the agent's section
+   heading written without `###`, which reads at body size as one more bold
+   lead-in. It takes the `h3` treatment when the bold ends the line: a bold
+   ending in a colon is a lead-in ("**Trends:**") whose sentence is still
+   arriving in a stream, and a bold longer than a title is emphasis on a
+   whole paragraph, not a heading. */
+function isBoldOnlyLine(node: InlineNode): boolean {
+  const inline = (node.children ?? []).filter(
+    (child) => !(child.type === "text" && (child.value ?? "").trim() === "")
+  );
+  if (inline.length !== 1) return false;
+  const [only] = inline;
+  if (only.type !== "element" || only.tagName !== "strong") return false;
+  const text = inlineText(only).trim();
+  return text.length > 0 && text.length <= 80 && !text.endsWith(":");
+}
+
 const markdownComponents: Components = {
+  p: function MarkdownParagraph({ node, children, ...rest }) {
+    if (node && isBoldOnlyLine(node)) {
+      return (
+        <h3 className="markdown-bold-heading" {...rest}>
+          {children}
+        </h3>
+      );
+    }
+    return <p {...rest}>{children}</p>;
+  },
   code: function MarkdownCode({ className, children, ...rest }) {
     const { workspace, onOpenFile } = useContext(MarkdownContext);
     const hasLanguage = typeof className === "string" && className.includes("language-");

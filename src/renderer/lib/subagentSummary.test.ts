@@ -26,7 +26,8 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 function multitask(state: string, taskLabel = "Fix the changelog date"): MultitaskChild {
   return {
     session: { id: `child-${state}`, state } as SessionSummary,
-    workspace: { taskLabel } as WorkspaceSummary
+    workspace: { taskLabel } as WorkspaceSummary,
+    pendingApproval: null
   };
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import XCTest
 @testable import Argmax
 
@@ -15,6 +16,27 @@ final class TranscriptMarkdownTests: XCTestCase {
         let targets = Set(paragraph.runs.compactMap { $0.link?.relativeString })
         XCTAssertTrue(targets.contains("/Users/adam/project/src/file.swift"))
         XCTAssertTrue(targets.contains("/Users/adam/project/docs/guide.md"))
+    }
+
+    func testBoldOnlyLineBecomesHeadingAndLeadInsStayParagraphs() throws {
+        let document = TranscriptMarkdownDocument(markdown: """
+        **On both lists**
+
+        **Trends:** horror is the story.
+
+        **Trends:**
+
+        **Empire's #1**
+        Nolan's follow-up.
+        """)
+        XCTAssertEqual(document.blocks.count, 4)
+        guard case .heading(let level, let heading) = document.blocks[0] else { return XCTFail("expected heading") }
+        XCTAssertEqual(level, 3)
+        XCTAssertEqual(String(heading.characters), "On both lists")
+        XCTAssertFalse(heading.runs.contains { $0.inlinePresentationIntent?.contains(.stronglyEmphasized) == true })
+        for block in document.blocks.dropFirst() {
+            guard case .paragraph = block else { return XCTFail("expected paragraph, got \(block)") }
+        }
     }
 
     func testThinkingRemovesBoldWithoutChangingAnswerMarkdown() {
@@ -248,5 +270,19 @@ final class TranscriptMarkdownTests: XCTestCase {
             TranscriptMarkdownDocument.localPath(from: try XCTUnwrap(URL(string: "file:///tmp/App.swift:42#L7"))),
             "/tmp/App.swift"
         )
+    }
+
+    /// Bold is drawn in the semibold cut, a step under the Bold (700) the
+    /// trait would reach. Bold italic keeps the trait: only 700 has an italic.
+    func testBoldRunsTakeTheSemiboldCutExceptBoldItalic() throws {
+        let parsed = try AttributedString(markdown: "**bold** and ***both***")
+        let styled = parsed.semiboldStrongRuns(TypeScale(typeface: .geist).font(.body, weight: .semibold))
+        let runs = Array(styled.runs)
+        let bold = try XCTUnwrap(runs.first { String(styled[$0.range].characters) == "bold" })
+        XCTAssertNotNil(bold.font)
+        XCTAssertFalse(bold.inlinePresentationIntent?.contains(.stronglyEmphasized) ?? false)
+        let both = try XCTUnwrap(runs.first { String(styled[$0.range].characters) == "both" })
+        XCTAssertNil(both.font)
+        XCTAssertTrue(both.inlinePresentationIntent?.contains([.stronglyEmphasized, .emphasized]) ?? false)
     }
 }

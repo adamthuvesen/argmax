@@ -1,7 +1,8 @@
 /**
  * How strongly the app background follows the active theme, from 1 (softest)
- * to 10 (near black in dark mode and pure white in light mode). Level 7 is
- * the background palette Argmax ships.
+ * to 10 (near black in dark mode and pure white in light mode). Light mode
+ * climbs from slightly cream paper to white in even steps; in dark mode
+ * level 7 is the palette Argmax ships.
  */
 export type BackgroundIntensity = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
@@ -18,7 +19,7 @@ export const BACKGROUND_INTENSITY_HINTS: Readonly<Record<BackgroundIntensity, st
   4: "Quiet.",
   5: "A step under default.",
   6: "Just under default.",
-  7: "The background Argmax ships.",
+  7: "Default.",
   8: "A step stronger.",
   9: "Strong.",
   10: "Near black in dark mode, pure white in light mode."

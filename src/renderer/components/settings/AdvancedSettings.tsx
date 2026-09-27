@@ -6,6 +6,7 @@ import { ISSUES_URL, REPO_URL } from "../../../shared/appLinks.js";
 import { formatBytes } from "../../lib/formatBytes.js";
 import { saveLogsFile } from "../../lib/logDownload.js";
 import { savePerformanceCapture } from "../../lib/performanceDownload.js";
+import { showErrorToast } from "../../state/toast.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { ProjectKnowledgePanel } from "../ProjectKnowledgePanel.js";
 import { WebLink } from "../WebLink.js";
@@ -80,7 +81,7 @@ export function AdvancedSettings({
       setPerformanceStatus(status);
       setDiagnosticsStatus("Performance recording started. Samples stay in memory only.");
     } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not start performance recording.");
+      showErrorToast(error instanceof Error ? error.message : "Could not start performance recording.");
     }
   };
 
@@ -98,7 +99,7 @@ export function AdvancedSettings({
       });
       setDiagnosticsStatus(`Performance recording stopped with ${capture.samples.length} samples.`);
     } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not stop performance recording.");
+      showErrorToast(error instanceof Error ? error.message : "Could not stop performance recording.");
     }
   };
 
@@ -106,9 +107,9 @@ export function AdvancedSettings({
     try {
       const api = window.argmax;
       if (!api) throw new Error("Argmax runtime is unavailable.");
-      savePerformanceCapture(await api.system.performanceCapture(), setDiagnosticsStatus);
+      savePerformanceCapture(await api.system.performanceCapture(), setDiagnosticsStatus, showErrorToast);
     } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not load performance capture.");
+      showErrorToast(error instanceof Error ? error.message : "Could not load performance capture.");
     }
   };
 
@@ -198,7 +199,7 @@ export function AdvancedSettings({
             <button
               type="button"
               className="settings-button"
-              onClick={() => saveLogsFile(diagnostics?.recentLogs ?? [], setDiagnosticsStatus)}
+              onClick={() => saveLogsFile(diagnostics?.recentLogs ?? [], setDiagnosticsStatus, showErrorToast)}
               disabled={!diagnostics || diagnostics.recentLogs.length === 0}
               aria-label="Save log file"
             >

@@ -140,8 +140,8 @@ export function AgentsSettings({
 
       <SettingGroup id="settings-permissions" label="Permissions">
         {defaultAgentSaveError ? (
-          <div role="alert">
-            <SettingNote tone="warn">{defaultAgentSaveError}</SettingNote>
+          <div role="status">
+            <SettingNote tone="warn">Default settings are not saved.</SettingNote>
             <button type="button" className="settings-button" onClick={onRetryDefaultAgentSave}>Retry saving defaults</button>
           </div>
         ) : isSavingDefaultAgent ? (

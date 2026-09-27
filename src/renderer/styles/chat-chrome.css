@@ -127,6 +127,11 @@
   box-shadow: inset 0 0 0 1px var(--composer-edge),
     0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
   transition: box-shadow var(--duration-base) var(--ease);
+  /* Chip labels and icons are controls, not prose. Opt textarea/input back in
+     so a drag across the toolbar does not sweep up model or branch names with
+     the prompt — same idea as .sidebar / .session-rename-input. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .composer-drop-overlay {
@@ -225,6 +230,8 @@
   resize: none;
   overflow-x: hidden;
   overflow-y: hidden;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .composer-input textarea {

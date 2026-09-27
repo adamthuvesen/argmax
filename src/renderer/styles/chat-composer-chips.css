@@ -930,6 +930,8 @@
   line-height: 1.55;
   resize: none;
   overflow-y: hidden;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .session-input-field > textarea {

@@ -71,6 +71,9 @@
   --composer-chip-hover-solid: var(--composer-chip-hover);
   --composer-tray-solid: var(--composer-tray);
   --overlay-panel-solid: var(--overlay-panel);
+  --line-solid: var(--line);
+  --line-soft-solid: var(--line-soft);
+  --line-strong-solid: var(--line-strong);
 }
 
 :root[data-window-translucent="true"] .app-shell {
@@ -89,6 +92,11 @@
   --composer-chip: color-mix(in srgb, var(--composer-chip-solid) calc(100% - var(--window-composer-translucency)), transparent);
   --composer-chip-hover: color-mix(in srgb, var(--composer-chip-hover-solid) calc(100% - var(--window-composer-translucency)), transparent);
   --composer-tray: color-mix(in srgb, var(--composer-tray-solid) calc(100% - var(--window-composer-translucency)), transparent);
+  /* Hairlines stay opaque while grounds thin, so a 1px border stacks as a dark
+     band over glass (sidebar footer, panel strips). Thin the shipped strokes. */
+  --line: color-mix(in oklab, var(--line-solid) 52%, transparent);
+  --line-soft: color-mix(in oklab, var(--line-soft-solid) 44%, transparent);
+  --line-strong: color-mix(in oklab, var(--line-strong-solid) 58%, transparent);
 }
 
 /* Dark wells lift instead of sinking. `--panel-sunken` is the darkest colour
@@ -99,6 +107,10 @@
    token. */
 :root[data-window-translucent="true"][data-theme="dark"] .app-shell {
   --panel-sunken: color-mix(in srgb, var(--text) 7%, transparent);
+  /* Charcoal strokes read black over vibrancy; ink hairlines match the lifted wells. */
+  --line: color-mix(in oklab, var(--text) 11%, transparent);
+  --line-soft: color-mix(in oklab, var(--text) 7%, transparent);
+  --line-strong: color-mix(in oklab, var(--text) 15%, transparent);
 }
 
 /* The turn's changes card sinks half a step toward `--code-surface`, which
@@ -204,6 +216,15 @@
 :root[data-window-translucent="true"] .terminal-tab-bodies,
 :root[data-window-translucent="true"] .terminal-surface {
   background: transparent;
+}
+
+/* A subagent's emblem masks the thread spine with `--thread-surface`, which is
+   the thinned ground itself, so the mark stacked a second film and read as a
+   dark tile. The spine's segments already stop short of the mark, so the mask
+   can go. A backgrounded launch keeps its tinted nest (chat-timeline.css). */
+:root[data-window-translucent="true"] .turn-body-item[data-activity] .agent-launch-mark {
+  background: transparent;
+  box-shadow: none;
 }
 
 /* The paper highlights go: over the backdrop they read as a lighter patch at

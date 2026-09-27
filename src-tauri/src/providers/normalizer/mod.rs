@@ -188,6 +188,11 @@ pub struct NormalizerSessionContext {
     /// so `step_finish` billing resolves against the pricing table.
     pub opencode_current_model: Option<String>,
     pub cursor_assistant_text: Option<String>,
+    /// Byte offset into `cursor_assistant_text` where the text after the
+    /// turn's latest tool call begins. Cursor's assistant text is cumulative
+    /// across the whole turn, so the completion synthesized at `result` takes
+    /// only this last stretch, as every other provider's final message does.
+    pub cursor_answer_start: usize,
     /// Set when Cursor emits `result/success` or we synthesize a turn-ending
     /// `message.completed` on process exit.
     pub cursor_turn_completed_emitted: bool,
@@ -678,6 +683,10 @@ fn normalize_json_payload(
         if let Some(tool_event) =
             normalize_cursor_tool_call(event, &payload, provider_type.as_deref())
         {
+            context.cursor_answer_start = context
+                .cursor_assistant_text
+                .as_ref()
+                .map_or(0, String::len);
             let mut cursor_events = vec![tool_event];
             cursor_events.extend(normalize_cursor_todo_call(
                 event,

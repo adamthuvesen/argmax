@@ -108,6 +108,24 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(result.map((e) => e.id)).toEqual(["e1", "e3", "e4"]);
   });
 
+  it("judges a token-streamed pre-tool run as a whole, never one token at a time", () => {
+    // Cursor's completion repeats the turn's narration. Its first token alone
+    // prefixes that text, so a per-token check dropped "Pull" and left "ing up…".
+    const tokens = (ids: string[], parts: string[], at: string): TimelineEvent[] =>
+      parts.map((part, index) => ({ ...event(ids[index] ?? "", "message.delta", at), message: part }));
+    const events: TimelineEvent[] = [
+      event("u", "user.message", "2026-05-12T15:00:00.000Z"),
+      ...tokens(["n1", "n2", "n3"], ["Pull", "ing", " up."], "2026-05-12T15:00:01.000Z"),
+      event("tool", "command.started", "2026-05-12T15:00:02.000Z"),
+      ...tokens(["a1", "a2"], ["\nDone", " here."], "2026-05-12T15:00:03.000Z"),
+      { ...event("done", "message.completed", "2026-05-12T15:00:04.000Z"), message: "Pulling up.\nDone here." }
+    ];
+    expect(pruneSupersededDeltas(events).map((e) => e.id)).toEqual(["u", "tool", "done"]);
+
+    const kept = events.map((e) => (e.id === "done" ? { ...e, message: "Something else." } : e));
+    expect(pruneSupersededDeltas(kept).map((e) => e.id)).toEqual(["u", "n1", "n2", "n3", "tool", "done"]);
+  });
+
   it("does not split a parent answer at a subagent tool boundary", () => {
     const events: TimelineEvent[] = [
       event("user", "user.message", "2026-05-12T15:00:00.000Z"),

@@ -1,11 +1,6 @@
 import type { DashboardDelta, DashboardSnapshot, PendingMessage, TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
-import {
-  advanceTurnBoundary,
-  isSubAgentProseEcho,
-  isSupersededAnswerDelta,
-  type TurnBoundary
-} from "./turnBoundaries.js";
+import { isSubAgentProseEcho, supersededAnswerDeltaIds } from "./turnBoundaries.js";
 
 export const emptySnapshot: DashboardSnapshot = {
   projects: [],
@@ -38,40 +33,13 @@ export function pruneSupersededDeltas(events: TimelineEvent[]): TimelineEvent[] 
   const isDescending = !!first && !!last && isAfter(first, last);
   const ascending = isDescending ? [...events].reverse() : events;
 
-  // Single right-to-left sweep: for each session, track the next turn-boundary
-  // event after this position. nextBoundary reflects the closest boundary at
-  // j > i because those rows were processed in earlier iterations.
-  const nextBoundary = new Map<string, TurnBoundary>();
-  const supersededIndices = new Set<number>();
-  for (let i = ascending.length - 1; i >= 0; i--) {
-    const e = ascending[i];
-    if (!e) continue;
-    // Child-agent rows are invisible to the chat view model's sweep
-    // (buildConversationEvents filters them out), so they are neither prune
-    // candidates nor turn boundaries here — a hidden child completion must
-    // not prune the parent's still-streaming answer.
-    if (isSubAgentProseEcho(e)) continue;
-    const canonical = decodeTimelineEvent(e);
-    if (canonical.kind === "message" && canonical.phase === "delta") {
-      if (isSupersededAnswerDelta(e, nextBoundary.get(e.sessionId))) {
-        supersededIndices.add(i);
-      }
-      continue;
-    }
-    const boundary = advanceTurnBoundary(nextBoundary.get(e.sessionId), e);
-    if (boundary !== undefined) {
-      nextBoundary.set(e.sessionId, boundary);
-    }
-  }
-
-  if (supersededIndices.size === 0) return events;
-  const kept: TimelineEvent[] = [];
-  for (let i = 0; i < ascending.length; i++) {
-    if (!supersededIndices.has(i)) {
-      const e = ascending[i];
-      if (e) kept.push(e);
-    }
-  }
+  // Child-agent rows are invisible to the chat view model's sweep
+  // (buildConversationEvents filters them out), so they are neither prune
+  // candidates nor turn boundaries here — a hidden child completion must not
+  // prune the parent's still-streaming answer.
+  const superseded = supersededAnswerDeltaIds(ascending, isSubAgentProseEcho);
+  if (superseded.size === 0) return events;
+  const kept = ascending.filter((e) => !superseded.has(e.id));
   return isDescending ? kept.reverse() : kept;
 }
 

@@ -27,25 +27,28 @@ export function isSubAgentProseEcho(event: TimelineEvent): boolean {
  *     boundary. Subagent tools can interleave while the parent streams one
  *     message, so they do not separate parent narration from its completion.
  *   - `command.started` downgrades "completed" → "tool": a tool ran between
- *     the delta and the completion, so the delta may be real pre-tool narration
- *     (Cursor emits this). Keep it unless the later completed text already
- *     starts with that delta, which means the delta is just an early prefix of
- *     the same final message.
+ *     the deltas and the completion, so they may be real pre-tool narration
+ *     (Cursor emits this). Keep them unless the later completed text already
+ *     starts with them, which means they are just an early prefix of the same
+ *     final message. That is judged on the whole run of answer deltas under
+ *     the boundary, never one token at a time: Cursor's completion repeats the
+ *     turn's narration, so its first token alone ("Pull") matched and was
+ *     dropped while the rest of the word ("ing up…") stayed on screen.
  *   - `user.message` → "user": the next turn started without this one ever
  *     completing — keep the delta.
  *
  * The two sweeps feed different event sets (the merge sees everything, the
- * view model only conversation-visible events plus tool boundaries), but the
- * boundary classification and the superseded predicate must stay identical or
- * chat rendering and snapshot pruning drift apart.
+ * view model only conversation-visible events plus tool boundaries), but both
+ * run `supersededAnswerDeltaIds` so chat rendering and snapshot pruning never
+ * drift apart.
  */
-export type TurnBoundary =
+type TurnBoundary =
   | { kind: "completed"; completedText: string }
   | { kind: "tool"; completedText: string | null }
   | { kind: "user" };
 
 /** Fold one event (scanning right-to-left) into the session's next-boundary state. */
-export function advanceTurnBoundary(
+function advanceTurnBoundary(
   previous: TurnBoundary | undefined,
   event: TimelineEvent
 ): TurnBoundary | undefined {
@@ -73,30 +76,60 @@ export function advanceTurnBoundary(
   return previous;
 }
 
-function isCompletedPrefixDuplicate(event: TimelineEvent, completedText: string | null): boolean {
-  if (completedText === null) return false;
-  const delta = event.message.trim();
-  if (delta.length < 3) return false;
-  return completedText.trim().startsWith(delta);
+function isCompletedPrefixDuplicate(runText: string, completedText: string): boolean {
+  const run = runText.trim();
+  if (run.length < 3) return false;
+  return completedText.trim().startsWith(run);
 }
 
 /**
- * A non-thinking answer delta whose next boundary is a completion is a
- * duplicate of the final answer. If a tool appears between the delta and the
- * completion, only prune when the completed answer already starts with that
- * delta. Thinking deltas are never superseded — they are the only record of
- * the model's reasoning step and stay visible after the final answer arrives.
+ * Ids of the answer deltas the turn's final answer supersedes. `ascending` is
+ * swept right-to-left; `skip` drops rows that are neither prune candidates nor
+ * boundaries. Deltas under a "completed" boundary go at once. Deltas under a
+ * "tool" boundary collect into a run that is settled as a whole when the
+ * boundary changes: the run goes only if the completed text starts with it.
+ * Thinking deltas are never superseded — they are the only record of the
+ * model's reasoning step and stay visible after the final answer arrives.
  */
-export function isSupersededAnswerDelta(
-  event: TimelineEvent,
-  nextBoundary: TurnBoundary | undefined
-): boolean {
-  const canonical = decodeTimelineEvent(event);
-  return (
-    canonical.kind === "message" &&
-    canonical.phase === "delta" &&
-    canonical.content === "answer" &&
-    (nextBoundary?.kind === "completed" ||
-      (nextBoundary?.kind === "tool" && isCompletedPrefixDuplicate(event, nextBoundary.completedText)))
-  );
+export function supersededAnswerDeltaIds(
+  ascending: readonly TimelineEvent[],
+  skip: (event: TimelineEvent) => boolean = () => false
+): Set<string> {
+  const nextBoundary = new Map<string, TurnBoundary>();
+  const runs = new Map<string, { completedText: string; ids: string[]; fragments: string[] }>();
+  const superseded = new Set<string>();
+  const settleRun = (sessionId: string): void => {
+    const run = runs.get(sessionId);
+    if (!run) return;
+    runs.delete(sessionId);
+    // Collected right-to-left, so the fragments read backwards.
+    if (isCompletedPrefixDuplicate(run.fragments.reverse().join(""), run.completedText)) {
+      for (const id of run.ids) superseded.add(id);
+    }
+  };
+  for (let index = ascending.length - 1; index >= 0; index -= 1) {
+    const event = ascending[index];
+    if (!event || skip(event)) continue;
+    const canonical = decodeTimelineEvent(event);
+    if (canonical.kind === "message" && canonical.phase === "delta") {
+      if (canonical.content !== "answer") continue;
+      const boundary = nextBoundary.get(event.sessionId);
+      if (boundary?.kind === "completed") {
+        superseded.add(event.id);
+      } else if (boundary?.kind === "tool" && boundary.completedText !== null) {
+        const run = runs.get(event.sessionId) ?? { completedText: boundary.completedText, ids: [], fragments: [] };
+        run.ids.push(event.id);
+        run.fragments.push(event.message);
+        runs.set(event.sessionId, run);
+      }
+      continue;
+    }
+    const previous = nextBoundary.get(event.sessionId);
+    const boundary = advanceTurnBoundary(previous, event);
+    if (boundary === previous) continue;
+    settleRun(event.sessionId);
+    if (boundary !== undefined) nextBoundary.set(event.sessionId, boundary);
+  }
+  for (const sessionId of [...runs.keys()]) settleRun(sessionId);
+  return superseded;
 }

@@ -225,12 +225,13 @@ struct TranscriptComposer: View {
     /// where a choice is actually being made.
     @ViewBuilder
     private func modelEffortControl(_ composer: NativeComposerState, model: ModelSelection) -> some View {
+        let chipLabel = routedChipLabel(composer, model: model) ?? model.label
         ComposerChipButton { picking = .model } content: {
-            Text(model.label)
+            Text(chipLabel)
                 .typeStyle(.footnote)
                 .foregroundStyle(Theme.ink)
         }
-        .accessibilityLabel("Model, \(model.label)")
+        .accessibilityLabel("Model, \(chipLabel)")
         if supportsEffort(composer) {
             ComposerChipButton { picking = .effort } content: {
                 Text(catalog.label(for: effortBinding(composer).wrappedValue))
@@ -362,6 +363,14 @@ struct TranscriptComposer: View {
     }
 
     // MARK: - Model & effort
+
+    /// A routed chat names its tier and the model the router chose, "Standard
+    /// → Opus 5.5", as the desktop chip does. Picking a model pins the chat:
+    /// the host clears the tier on that follow-up, and the chip reads plainly.
+    private func routedChipLabel(_ composer: NativeComposerState, model: ModelSelection) -> String? {
+        guard modelOverride == nil, let tier = composer.autoTier else { return nil }
+        return "\(tier.shortLabel) → \(model.label)"
+    }
 
     private func activeModel(for composer: NativeComposerState) -> ModelSelection {
         modelOverride ?? ModelSelection(

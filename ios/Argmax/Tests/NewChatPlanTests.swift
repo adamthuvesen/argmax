@@ -75,9 +75,10 @@ final class NewChatPlanTests: XCTestCase {
 
     // MARK: - The launch payload
 
-    /// The eleven keys `NewSessionScreen` sends, and nothing else: the host's
-    /// `ProvidersLaunchInput` is `deny_unknown_fields`, so an extra key is a
-    /// rejected launch rather than an ignored one.
+    /// The eleven keys `NewSessionScreen` sends for a hand-picked model, and
+    /// nothing else: the host's `ProvidersLaunchInput` is
+    /// `deny_unknown_fields`, so an extra key is a rejected launch rather than
+    /// an ignored one. `autoTier` stays off the wire until a Router pick.
     func testTheLaunchPayloadMatchesTheWebLaunchersOwn() throws {
         let plan = try XCTUnwrap(plan(.worktree, project: project))
         let data = try JSONEncoder().encode(plan.launchInput(workspaceID: "w-1"))
@@ -101,6 +102,26 @@ final class NewChatPlanTests: XCTestCase {
         XCTAssertEqual(body["cols"] as? Int, 120)
         XCTAssertEqual(body["rows"] as? Int, 32)
         XCTAssertTrue(body["attachments"] is NSNull, "the sheet takes none, and the key still goes out")
+    }
+
+    func testARouterPickLaunchesWithItsTier() throws {
+        let plan = try XCTUnwrap(
+            NewChatPlan(
+                mode: .sideChat,
+                project: nil,
+                baseRef: nil,
+                model: AutoTier.balanced.selection,
+                titleModelId: "claude-haiku-4-5",
+                prompt: "Tidy the chat list"
+            )
+        )
+        let data = try JSONEncoder().encode(plan.launchInput(workspaceID: "w-1"))
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+        XCTAssertEqual(body["autoTier"] as? String, "balanced")
+        XCTAssertEqual(body["provider"] as? String, "claude", "the fallback the router overwrites")
+        XCTAssertEqual(AutoTier(pickerValue: AutoTier.balanced.pickerValue), .balanced)
+        XCTAssertNil(AutoTier(pickerValue: "claude/claude-opus-5-5"))
     }
 
     /// A launch carrying picked images names each file in the prompt and

@@ -89,6 +89,9 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "session:suggest-follow-up",
     "settings:agent-tools",
     "settings:set-browser-tools",
+    "settings:routing",
+    "settings:set-routing-key",
+    "settings:clear-routing-key",
     "settings:preview-chat-cleanup",
     "settings:delete-old-chats",
     "review:list-changed-files",
@@ -208,6 +211,7 @@ pub const REGISTERED_CHANNELS: &[&str] = &[
     "routines:reset-session",
     "usage:summary",
     "usage:remaining",
+    "usage:router-cost",
     "activity:summary",
 ];
 
@@ -314,6 +318,9 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         session::session_multitask,
         session::session_clear,
         session::session_suggest_follow_up,
+        settings::settings_routing,
+        settings::settings_set_routing_key,
+        settings::settings_clear_routing_key,
         settings::settings_agent_tools,
         settings::settings_set_browser_tools,
         settings::settings_preview_chat_cleanup,
@@ -435,6 +442,7 @@ pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
         routines::routines_reset_session,
         usage::usage_summary,
         usage::usage_remaining,
+        usage::usage_router_cost,
         activity::activity_summary
     ])
 }

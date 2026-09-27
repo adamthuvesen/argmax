@@ -105,7 +105,7 @@ export function useAppGridSelection({
         return true;
       }
       const workspace = workspacesById.get(cell.workspaceId);
-      return sessionsById.has(cell.sessionId) && workspace !== undefined && workspace.state !== "archived";
+      return sessionsById.has(cell.sessionId) && workspace !== undefined;
     });
   }, [pendingSelectionRef, projectsById, sessionsById, workspacesById]);
 
@@ -144,7 +144,7 @@ export function useAppGridSelection({
   const openWorkspaceChat = useCallback(
     (workspaceId: string, modifiers: WorkspaceClickModifiers = { ctrlOrMeta: false, alt: false }): void => {
       const workspace = workspacesById.get(workspaceId);
-      if (!workspace || workspace.state === "archived") return;
+      if (!workspace) return;
       const sessionForWorkspace = chatSessionFor(snapshot.sessions, workspaceId);
       if (!sessionForWorkspace) {
         showErrorToast("This chat isn't loaded — try refreshing the dashboard.");

@@ -1,0 +1,29 @@
+/* Router — what each Auto tier cost in the window. The table is the
+   breakdown's, bled to the card edge the same way. */
+
+.usage-router {
+  gap: var(--space-4);
+  overflow: hidden;
+}
+
+.usage-router-caption {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted-strong);
+  max-width: 62ch;
+}
+
+.usage-router-tier {
+  display: block;
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+/* The model mix wraps under the tier name rather than widening the column. */
+.usage-router-mix {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  white-space: normal;
+}

@@ -334,30 +334,32 @@ describe("MODEL_PRICING coverage", () => {
 });
 
 describe("Grok Build pricing", () => {
-  // These three token mixes and costs are verbatim from
-  // `grok --output-format json` runs (grok 1.0.13). The table is only correct
-  // if it reproduces what the CLI itself billed — Grok Build charges its own
-  // `*-build` SKU rate, not xAI's published API price.
-  it("reproduces the cost the CLI reported, to the cent fraction", () => {
+  // Token mixes and costs are verbatim from ACP turns' `_meta.usage` (grok
+  // 1.0.41, 2026-09-27), with `input` net of the cached reads Grok counts in it.
+  // The table is only correct if it reproduces what Grok itself billed — Grok
+  // Build charges its own `*-build` SKU rate, not xAI's published API price.
+  it("reproduces the cost Grok reported, to the cent fraction", () => {
     const cases: Array<[string, UsageCounts, number]> = [
-      ["grok-4.6", { input: 14_740, output: 41, cacheRead: 5_760, cacheWrite: 0 }, 0.00554302],
-      ["grok-4.6", { input: 20_377, output: 4_442, cacheRead: 128, cacheWrite: 0 }, 0.0114699],
-      ["grok-4.6", { input: 14_838, output: 70, cacheRead: 26_240, cacheWrite: 0 }, 0.00734672],
-      ["grok-4.5", { input: 20_377, output: 362, cacheRead: 128, cacheWrite: 0 }, 0.014607896]
+      ["grok-4.7", { input: 23_625, output: 24, cacheRead: 1_152, cacheWrite: 0 }, 0.0163098],
+      ["grok-4.7", { input: 59_723, output: 6_033, cacheRead: 201_344, cacheWrite: 0 }, 0.08714744],
+      ["grok-4.6", { input: 22_348, output: 146, cacheRead: 1_920, cacheWrite: 0 }, 0.01582088],
+      ["grok-4.6", { input: 248, output: 19, cacheRead: 24_192, cacheWrite: 0 }, 0.00432004],
+      ["grok-4.5", { input: 24_140, output: 28, cacheRead: 128, cacheWrite: 0 }, 0.016485376],
+      ["grok-4.5", { input: 130, output: 16, cacheRead: 24_192, cacheWrite: 0 }, 0.002588624],
+      ["grok-4.7-build-fast", { input: 25_303, output: 32, cacheRead: 0, cacheWrite: 0 }, 0.03454264],
+      ["grok-4.7-build-fast", { input: 320, output: 19, cacheRead: 25_216, cacheWrite: 0 }, 0.00908616]
     ];
     for (const [modelId, usage, reported] of cases) {
       expect(costOf(usage, modelId), modelId).toBeCloseTo(reported, 9);
     }
   });
 
-  // 4.5 is twice the 4.6/4.7 SKU rate. The picker, the default, and title
-  // calls stay on 4.7 at the cheaper rate.
-  it("keeps the cheaper SKU rate on the default and title models", () => {
+  // The picker, the default, and title calls stay on 4.7, billed at the 4.6 rate.
+  it("keeps the default and title models on 4.7", () => {
     expect(PROVIDER_MODELS.grok.map((model) => model.modelId)).toEqual(["grok-4.7"]);
     expect(PROVIDER_MODEL_DEFAULTS.grok.modelId).toBe("grok-4.7");
     expect(PROVIDER_TITLE_MODEL.grok).toBe("grok-4.7");
     expect(MODEL_PRICING["grok-4.7"]).toEqual(MODEL_PRICING["grok-4.6"]);
-    expect(MODEL_PRICING["grok-4.7"].input).toBeLessThan(MODEL_PRICING["grok-4.5"].input);
   });
 
   it("prices Grok 4.7 Fast at twice the standard 4.7 SKU rate", () => {
@@ -366,12 +368,21 @@ describe("Grok Build pricing", () => {
     expect(MODEL_PRICING["grok-4.7-build-fast"].cacheRead).toBe(MODEL_PRICING["grok-4.7"].cacheRead * 2);
   });
 
-  it("offers Fast only on Grok 4.7 among Grok Build and Cursor models", () => {
-    expect(PROVIDER_MODELS.grok.filter((model) => model.supportsFastMode).map((model) => model.modelId)).toEqual([
-      "grok-4.7"
+  it("offers Fast only where the provider has it", () => {
+    const fast = (provider: keyof typeof PROVIDER_MODELS) =>
+      PROVIDER_MODELS[provider].filter((model) => model.supportsFastMode).map((model) => model.modelId);
+    expect(fast("grok")).toEqual(["grok-4.7"]);
+    // Turning Fast on for any other Claude model switches the chat to Opus.
+    expect(fast("claude")).toEqual(["claude-opus-5-5"]);
+    // Cursor's ACP `fast` option: absent on Gemini 3.8 Flash, and Auto has none.
+    expect(fast("cursor")).toEqual([
+      "composer-2.5",
+      "grok-4.7-medium",
+      "gpt-5.6-sol-medium",
+      "gpt-5.6-terra-medium",
+      "gpt-5.6-luna-medium",
+      "claude-opus-5-5-medium"
     ]);
-    expect(PROVIDER_MODELS.cursor.every((model) => !model.supportsFastMode)).toBe(true);
-    expect(PROVIDER_MODELS.claude.every((model) => !model.supportsFastMode)).toBe(true);
   });
 });
 

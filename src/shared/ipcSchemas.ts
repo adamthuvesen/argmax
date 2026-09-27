@@ -47,6 +47,9 @@ export const IPC_CHANNELS = [
   "session:suggest-follow-up",
   "settings:agent-tools",
   "settings:set-browser-tools",
+  "settings:routing",
+  "settings:set-routing-key",
+  "settings:clear-routing-key",
   "settings:preview-chat-cleanup",
   "settings:delete-old-chats",
   "review:list-changed-files",
@@ -166,6 +169,7 @@ export const IPC_CHANNELS = [
   "routines:reset-session",
   "usage:summary",
   "usage:remaining",
+  "usage:router-cost",
   "activity:summary",
 ] as const;
 

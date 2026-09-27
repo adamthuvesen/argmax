@@ -50,6 +50,8 @@ pub enum SessionControlAction {
     SourcesAdd(SourcesAddAction),
     TerminalSpawn(TerminalSpawnAction),
     TerminalRead(TerminalReadAction),
+    TerminalWrite(TerminalWriteAction),
+    TerminalClose(TerminalCloseAction),
     Projects(ProjectsAction),
     ScheduleFollowup(ScheduleFollowupAction),
     ScheduleList(ScheduleListAction),
@@ -171,6 +173,26 @@ pub struct TerminalReadAction {
     pub session: Option<String>,
     #[serde(default)]
     pub max_chars: Option<u32>,
+}
+
+/// Type into a live terminal. `text` is sent verbatim; `submit` (default
+/// true) presses Enter after it. Control bytes pass through, so "\u0003"
+/// interrupts a running process.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalWriteAction {
+    pub terminal_id: String,
+    pub text: String,
+    #[serde(default)]
+    pub submit: Option<bool>,
+}
+
+/// Terminate a terminal's process group: SIGTERM, then SIGKILL after a grace
+/// period. Its captured output stays readable.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalCloseAction {
+    pub terminal_id: String,
 }
 
 /// No arguments: every registered project, whether or not it has open chats.
@@ -406,6 +428,8 @@ pub enum SessionControlResult {
     SourceAdded(SourceAddedOutcome),
     TerminalStarted(TerminalStarted),
     TerminalOutput(TerminalOutput),
+    TerminalWritten(TerminalWritten),
+    TerminalClosed(TerminalClosed),
     Projects(ProjectListOutcome),
     Followup(ScheduledFollowup),
     Schedules(ScheduleListOutcome),
@@ -599,6 +623,23 @@ pub struct TerminalOutput {
     pub output: Option<String>,
     /// True when older output was dropped to fit the budget.
     pub truncated: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalWritten {
+    pub terminal_id: String,
+    pub bytes: usize,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalClosed {
+    pub terminal_id: String,
+    /// False when the shell had already exited before the call.
+    pub was_running: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1125,6 +1166,14 @@ mod tests {
                 terminal_id: Some("t1".to_string()),
                 session: None,
                 max_chars: None,
+            }),
+            SessionControlAction::TerminalWrite(TerminalWriteAction {
+                terminal_id: "t1".to_string(),
+                text: "\u{3}".to_string(),
+                submit: Some(false),
+            }),
+            SessionControlAction::TerminalClose(TerminalCloseAction {
+                terminal_id: "t1".to_string(),
             }),
             SessionControlAction::Projects(ProjectsAction {}),
             SessionControlAction::ScheduleFollowup(ScheduleFollowupAction {

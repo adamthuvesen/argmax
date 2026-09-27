@@ -146,7 +146,7 @@ describe("SessionConversation — streaming & composer", () => {
     }
   );
 
-  it("does not reset the model picker when the session prop reference changes but id stays the same", () => {
+  it("keeps the user's own pick when the session prop changes but id stays the same", () => {
     const v1 = baseSession({
       modelLabel: "GPT-5.6 Terra",
       modelId: "gpt-5.6-terra",
@@ -154,14 +154,15 @@ describe("SessionConversation — streaming & composer", () => {
     });
     const { rerender } = renderConversation(v1);
 
-    const picker = screen.getByRole("button", { name: "Chat model" });
-    expect(picker.textContent).toContain("GPT-5.6 Terra");
-    // Effort rides in its own chip beside the model, not in the model label.
-    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).toContain("Medium");
+    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6 Sol" })
+    );
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6 Sol");
 
-    // Parent rebuilds the SessionSummary object on every dashboard delta.
-    // A new object reference with the same id (and even a freshly-emitted
-    // server-side model swap) must NOT clobber the user's local pick.
+    // Parent rebuilds the SessionSummary object on every dashboard delta. A new
+    // object reference with the same id, even one carrying a server-side model
+    // swap, must NOT clobber a pick the user made for this chat.
     const v2 = baseSession({
       modelLabel: "Haiku 4.5",
       modelId: "claude-haiku-4-5",
@@ -183,9 +184,8 @@ describe("SessionConversation — streaming & composer", () => {
       />
     );
 
-    const pickerAfter = screen.getByRole("button", { name: "Chat model" });
-    expect(pickerAfter.textContent).toContain("GPT-5.6 Terra");
-    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).toContain("Medium");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6 Sol");
+    window.localStorage.removeItem("argmax.sessionModel.session-a");
   });
 
   it("does reset the model picker when session.id changes (different session selected)", () => {

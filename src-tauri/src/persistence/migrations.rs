@@ -238,6 +238,28 @@ pub static ARC_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_ma
     ] as &'static [&'static str],
 };
 
+// v56: Auto routing. `sessions.auto_tier` marks a chat the router drives and
+// `auto_route` carries its latest routing reason for the model chip;
+// `turn_routes` keeps every decision for the routing report.
+pub static AUTO_ROUTING_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at", "auto_route",
+        "auto_tier", "cache_read_tokens", "cache_write_tokens", "completed_at",
+        "context_tokens", "context_window", "cost_usd", "id", "imported",
+        "input_tokens", "last_activity_at", "last_model_id", "launch_depth",
+        "launch_kind", "launched_by_session_id", "model_id", "model_label",
+        "output_tokens", "permission_mode", "pr_branch_at_start",
+        "pr_branch_last_active", "prompt", "provider", "provider_conversation_id",
+        "reasoning_effort", "resume_fork", "started_at", "state", "wait_reported_at",
+        "workspace_id",
+    ] as &'static [&'static str],
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "tier",
+    ] as &'static [&'static str],
+};
+
 pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "gh_pull_requests" => &[
         "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
@@ -1032,6 +1054,22 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 56,
+        name: "auto_routing",
+        up: AUTO_ROUTING,
+        affected_tables: &["sessions", "turn_routes"],
+        expected_columns: &AUTO_ROUTING_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 57,
+        name: "turn_routes_pinned_decision",
+        up: TURN_ROUTES_PINNED_DECISION,
+        affected_tables: &["turn_routes"],
+        expected_columns: &AUTO_ROUTING_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
 ];
 
 // GitHub state belongs to a project and PR number. Session links keep the
@@ -1425,6 +1463,68 @@ DROP INDEX IF EXISTS idx_raw_outputs_session_created;
 // seeded under the old name.
 const RENAME_SCRATCH_PROJECT_TO_CHAT: &str = r#"
 UPDATE projects SET name = 'Chat' WHERE id = 'scratch-side-chats' AND name = 'Side chats';
+"#;
+
+// Auto routing (docs/routing.md). One `turn_routes` row per decision: the
+// launch route, and later re-routes, escalations, kept routes and fallbacks.
+const AUTO_ROUTING: &str = r#"
+ALTER TABLE sessions ADD COLUMN auto_tier TEXT CHECK (auto_tier IN ('cost', 'balanced', 'intelligence'));
+ALTER TABLE sessions ADD COLUMN auto_route TEXT;
+CREATE TABLE turn_routes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback')),
+  reason TEXT NOT NULL
+);
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
+"#;
+
+// A hand-picked model ends Auto routing for a chat; a 'pinned' row marks that
+// moment so the Router cost card can close the previous route's window. It is
+// neither a turn nor a switch. SQLite cannot widen v56's `decision` CHECK in
+// place, so this rebuilds `turn_routes` through an explicit column list, the
+// idiom v52's `ROUTINE_ARC_TARGET` uses. Row ids carry over, so rows keep
+// their order.
+const TURN_ROUTES_PINNED_DECISION: &str = r#"
+CREATE TABLE turn_routes_canonical (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL
+    CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback', 'pinned')),
+  reason TEXT NOT NULL
+);
+
+INSERT INTO turn_routes_canonical (
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort, kind,
+  difficulty, kind_confidence, difficulty_confidence, decision, reason
+)
+SELECT
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort, kind,
+  difficulty, kind_confidence, difficulty_confidence, decision, reason
+FROM turn_routes;
+
+DROP TABLE turn_routes;
+ALTER TABLE turn_routes_canonical RENAME TO turn_routes;
+
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
 "#;
 
 // The disposal an agent asked for while its own turn was still running.
@@ -2546,7 +2646,9 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &ARC_COLUMNS, "sessions").expect("sessions");
+        for table in ["sessions", "turn_routes"] {
+            verify_table_columns(&connection, &AUTO_ROUTING_COLUMNS, table).expect(table);
+        }
         verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
             .expect("routines");
         for table in ["arcs", "arc_events"] {
@@ -2684,6 +2786,8 @@ mod tests {
                     55,
                     compute_migration_checksum(RENAME_SCRATCH_PROJECT_TO_CHAT)
                 ),
+                (56, compute_migration_checksum(AUTO_ROUTING)),
+                (57, compute_migration_checksum(TURN_ROUTES_PINNED_DECISION)),
             ]
         );
 

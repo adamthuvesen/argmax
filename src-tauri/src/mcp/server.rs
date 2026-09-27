@@ -142,6 +142,8 @@ mod tests {
             "sources_add",
             "terminal_spawn",
             "terminal_read",
+            "terminal_write",
+            "terminal_close",
             "project_list",
             "arc_status",
             "schedule_followup",

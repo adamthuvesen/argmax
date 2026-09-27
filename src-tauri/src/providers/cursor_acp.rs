@@ -49,7 +49,7 @@ use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
 #[cfg(test)]
 use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -562,7 +562,14 @@ impl CursorAcpSessions {
                 json!({
                     "protocolVersion": 1,
                     "clientCapabilities": {
-                        "fs": { "readTextFile": false, "writeTextFile": false }
+                        "fs": { "readTextFile": false, "writeTextFile": false },
+                        // Without it Cursor lists one preset variant per model
+                        // (`composer-2.5[fast=true]`) and rejects every other, so
+                        // the chat's effort and Fast never reached the model. With
+                        // it the model is a bare id, and effort, Fast and Auto's
+                        // target are separate config options (see
+                        // `cursor_option_changes`).
+                        "_meta": { "parameterizedModelPicker": true }
                     },
                     "clientInfo": { "name": "argmax", "version": env!("CARGO_PKG_VERSION") },
                 }),
@@ -630,13 +637,9 @@ fn remember_available_models(workspace: &AcpWorkspace, response: &Value) {
         .lock_or_recover("acp available models") = models.clone();
 }
 
-/// Select the advertised configuration of the family the user asked for.
-/// Cursor's ACP ids carry configuration in brackets
-/// (`grok-4.6[effort=high,fast=true]`), but it advertises exactly one variant
-/// per family, that variant does not follow the parameters saved in
-/// `cli-config.json`, and `session/set_model` rejects any id it did not list.
-/// The bracketed values are therefore Cursor's to pick, not ours to require:
-/// insisting on them rejected most of the catalog, the default model included.
+/// Put the session on the chat's model, then its effort, Fast setting and
+/// Auto target. Selecting the model answers with that model's own config
+/// options, so only the options it has, set to values it offers, are sent.
 async fn ensure_cursor_model(
     client: &AcpClient,
     session_id: &str,
@@ -656,13 +659,100 @@ async fn ensure_cursor_model(
                 ),
             )
         })?;
-    client
+    let selected = client
         .request(
-            "session/set_model",
-            json!({ "sessionId": session_id, "modelId": listed }),
+            "session/set_config_option",
+            json!({ "sessionId": session_id, "configId": "model", "value": listed }),
         )
         .await?;
+    let options = selected
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    for (config_id, value) in cursor_option_changes(options, input) {
+        client
+            .request(
+                "session/set_config_option",
+                json!({ "sessionId": session_id, "configId": config_id, "value": value }),
+            )
+            .await?;
+    }
     Ok(())
+}
+
+/// The config options that differ from what the chat asked for. Cursor names
+/// effort per model (`effort`, `reasoning_effort`, `reasoning`) but files every
+/// one under the `thought_level` category, next to Claude's on/off `thinking`
+/// switch, which is left alone. A chat with no effort keeps Cursor's default.
+fn cursor_option_changes(options: &[Value], input: &ProviderLaunchInput) -> Vec<(String, String)> {
+    let mut changes = Vec::new();
+    for option in options {
+        let (Some(id), Some(current)) = (
+            option.get("id").and_then(Value::as_str),
+            option.get("currentValue").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let values: Vec<&str> = option
+            .get("options")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.get("value").and_then(Value::as_str))
+            .collect();
+        let is_effort = option.get("category").and_then(Value::as_str) == Some("thought_level")
+            && values.contains(&"high");
+        let wanted = match id {
+            "fast" => Some(if input.fast_mode { "true" } else { "false" }),
+            "optimize_for" => input
+                .model_id
+                .strip_prefix("auto-smart[optimize_for=")
+                .and_then(|rest| rest.strip_suffix(']')),
+            _ if is_effort => input
+                .reasoning_effort
+                .and_then(|effort| cursor_effort_value(effort, &values)),
+            _ => None,
+        };
+        if let Some(wanted) = wanted.filter(|wanted| *wanted != current && values.contains(wanted))
+        {
+            changes.push((id.to_string(), wanted.to_string()));
+        }
+    }
+    changes
+}
+
+/// The offered level nearest the chat's effort: the same level, else the
+/// strongest one below it, else the weakest offered. Cursor spells Extra High
+/// `xhigh` on newer models and `extra-high` on older ones, and has no Ultra.
+fn cursor_effort_value<'a>(effort: ReasoningEffort, offered: &[&'a str]) -> Option<&'a str> {
+    fn rank(value: &str) -> Option<u8> {
+        match value {
+            "low" => Some(1),
+            "medium" => Some(2),
+            "high" => Some(3),
+            "xhigh" | "extra-high" => Some(4),
+            "max" => Some(5),
+            _ => None,
+        }
+    }
+    let wanted = match effort {
+        ReasoningEffort::Low => 1,
+        ReasoningEffort::Medium => 2,
+        ReasoningEffort::High => 3,
+        ReasoningEffort::Xhigh => 4,
+        ReasoningEffort::Max | ReasoningEffort::Ultra => 5,
+    };
+    let ranked: Vec<(u8, &str)> = offered
+        .iter()
+        .filter_map(|value| rank(value).map(|rank| (rank, *value)))
+        .collect();
+    ranked
+        .iter()
+        .filter(|(rank, _)| *rank <= wanted)
+        .max_by_key(|(rank, _)| *rank)
+        .or_else(|| ranked.iter().min_by_key(|(rank, _)| *rank))
+        .map(|(_, value)| *value)
 }
 
 fn cursor_model_matches(advertised: &str, input: &ProviderLaunchInput) -> bool {
@@ -2328,8 +2418,8 @@ mod tests {
     #[test]
     fn model_matching_ignores_the_configuration_cursor_advertises() {
         let mut input = launch_input("gpt-5.6-sol-medium");
-        // Whatever effort and serving speed Cursor names for the family, that
-        // is the only variant it will accept, so all of these have to match.
+        // A family matches whatever configuration its id carries: bare ids
+        // today, bracketed presets from a client that lacks the capability.
         for advertised in [
             "gpt-5.6-sol[context=272k,reasoning=high,fast=false]",
             "gpt-5.6-sol[context=272k,reasoning=medium,fast=true]",
@@ -2373,5 +2463,136 @@ mod tests {
             "auto-smart[optimize_for=balanced]",
             &input
         ));
+    }
+
+    /// `configOptions` as Cursor answers selecting a model with the
+    /// `parameterizedModelPicker` capability (cursor-agent 2026.09.26).
+    fn options(model: &str) -> Vec<Value> {
+        let select = |id: &str, category: &str, current: &str, values: &[&str]| {
+            json!({
+                "id": id,
+                "category": category,
+                "currentValue": current,
+                "options": values.iter().map(|value| json!({ "value": value })).collect::<Vec<_>>(),
+            })
+        };
+        let mut options = vec![select("mode", "mode", "agent", &["agent", "plan", "ask"])];
+        match model {
+            "composer-2.5" => {
+                options.push(select("fast", "model_config", "false", &["false", "true"]))
+            }
+            "claude-opus-5-5" => options.extend([
+                select("context", "model_config", "300k", &["300k", "1m"]),
+                select(
+                    "effort",
+                    "thought_level",
+                    "medium",
+                    &["low", "medium", "high", "xhigh", "max"],
+                ),
+                select("fast", "model_config", "false", &["false", "true"]),
+            ]),
+            "claude-fable-5-1" => options.extend([
+                select("thinking", "thought_level", "true", &["false", "true"]),
+                select(
+                    "effort",
+                    "thought_level",
+                    "high",
+                    &["low", "medium", "high", "xhigh", "max"],
+                ),
+            ]),
+            "grok-4.7" => options.extend([
+                select(
+                    "reasoning_effort",
+                    "thought_level",
+                    "high",
+                    &["low", "medium", "high", "xhigh"],
+                ),
+                select("fast", "model_config", "false", &["false", "true"]),
+            ]),
+            "auto-smart" => options.push(select(
+                "optimize_for",
+                "model_config",
+                "balanced",
+                &["intelligence", "balanced", "cost"],
+            )),
+            _ => unreachable!(),
+        }
+        options
+    }
+
+    fn changes(model: &str, input: &ProviderLaunchInput) -> Vec<(String, String)> {
+        cursor_option_changes(&options(model), input)
+    }
+
+    #[test]
+    fn fast_follows_the_chats_fast_mode() {
+        let mut input = launch_input("composer-2.5");
+        assert!(changes("composer-2.5", &input).is_empty());
+        input.fast_mode = true;
+        assert_eq!(
+            changes("composer-2.5", &input),
+            [("fast".into(), "true".into())]
+        );
+    }
+
+    #[test]
+    fn effort_lands_on_the_models_own_thought_level_option() {
+        let mut input = launch_input("claude-opus-5-5-medium");
+        input.reasoning_effort = Some(ReasoningEffort::Low);
+        assert_eq!(
+            changes("claude-opus-5-5", &input),
+            [("effort".into(), "low".into())]
+        );
+
+        input.model_id = "grok-4.7-medium".into();
+        input.reasoning_effort = Some(ReasoningEffort::Max);
+        assert_eq!(
+            changes("grok-4.7", &input),
+            [("reasoning_effort".into(), "xhigh".into())],
+            "an effort above the model's range clamps to its strongest level"
+        );
+
+        // Fable's on/off `thinking` switch shares the category and is left alone.
+        input.reasoning_effort = Some(ReasoningEffort::Xhigh);
+        assert_eq!(
+            changes("claude-fable-5-1", &input),
+            [("effort".into(), "xhigh".into())]
+        );
+
+        // No effort chosen keeps Cursor's default.
+        input.reasoning_effort = None;
+        assert!(changes("claude-opus-5-5", &input).is_empty());
+    }
+
+    #[test]
+    fn auto_targets_the_catalog_entrys_optimize_for() {
+        let input = launch_input("auto-smart[optimize_for=cost]");
+        assert_eq!(
+            changes("auto-smart", &input),
+            [("optimize_for".into(), "cost".into())]
+        );
+    }
+
+    #[test]
+    fn effort_names_cover_both_extra_high_spellings() {
+        assert_eq!(
+            cursor_effort_value(ReasoningEffort::Xhigh, &["low", "high", "extra-high"]),
+            Some("extra-high")
+        );
+        assert_eq!(
+            cursor_effort_value(ReasoningEffort::Medium, &["low", "high", "max"]),
+            Some("low")
+        );
+        assert_eq!(
+            cursor_effort_value(ReasoningEffort::Low, &["high", "max"]),
+            Some("high")
+        );
+        assert_eq!(
+            cursor_effort_value(
+                ReasoningEffort::Ultra,
+                &["none", "low", "medium", "high", "xhigh", "max"]
+            ),
+            Some("max")
+        );
     }
 }

@@ -117,6 +117,23 @@ Migration v49 adds `gh_pull_requests` for canonical GitHub state and
 preserved and legacy associations begin unverified. See [gh.md](gh.md) for
 selection, repair, and automation rules.
 
+## Auto routing
+
+Migration v56 adds `sessions.auto_tier` (`cost` / `balanced` /
+`intelligence`, NULL for a chat whose model the user picked) and
+`sessions.auto_route`, the latest routing reason the model chip shows. Both are
+denormalized so dashboard reads need no join. `turn_routes` keeps one row per
+routing decision — `launch`, `reroute`, `escalate`, `kept` or `fallback` — with
+the routed provider, model and effort, Jev's kind and difficulty and their
+confidence, and the reason. A `kept` row leaves the session columns alone.
+Picking a model by hand clears both session columns; the rows stay for the
+routing report. Migration v57 rebuilds `turn_routes` to allow a sixth decision,
+`pinned`: written when that hand pick ends routing, with the chat's tier and
+the model the user picked. A `pinned` row is neither a turn nor a switch; it
+only closes the previous row's window. Follow-up routes are recorded once the
+send is admitted, so a send Stop cancelled leaves no row. See
+[routing.md](routing.md).
+
 ## Repositories
 
 `data_migrations` (v46) records one-time upgrades that depend on local paths.

@@ -312,15 +312,17 @@ function SidebarSessionRowInner({
         ? guiIdes[0].id
         : null;
 
-  const ideDisabled = !hasPath || !hasIdes || effectiveDefault === null;
+  const ideDisabled = workspace.state === "archived" || !hasPath || !hasIdes || effectiveDefault === null;
   // Surfaced on the (disabled) menu item so the user learns why it's inert.
-  const disabledReason = !hasPath
-    ? "Worktree not ready yet"
-    : !hasIdes
-      ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
-      : effectiveDefault === null
-        ? "Set a default IDE in Settings → Handoff"
-        : null;
+  const disabledReason = workspace.state === "archived"
+    ? "This chat is archived"
+    : !hasPath
+      ? "Worktree not ready yet"
+      : !hasIdes
+        ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
+        : effectiveDefault === null
+          ? "Set a default IDE in Settings → Handoff"
+          : null;
   const defaultIdeLabel =
     effectiveDefault != null
       ? (detectedIdes.find((entry) => entry.id === effectiveDefault)?.label ?? effectiveDefault)

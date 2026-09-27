@@ -8,11 +8,65 @@ import {
   type ProviderModelSelection,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
-import type { DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
+import type { AutoTier, DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
 
 /** A {@link ProviderModelSelection} plus its provider, for the composer picker
- *  that spans providers (an idle session can switch agent). */
-export type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId };
+ *  that spans providers (an idle session can switch agent). `autoTier` marks
+ *  an Auto row: the router picks provider, model and effort at launch, and the
+ *  rest of the selection is only the fallback it overwrites. */
+export type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId; autoTier?: AutoTier };
+
+/** Picker order: the strongest tier first. */
+export const AUTO_TIERS: readonly AutoTier[] = ["intelligence", "balanced", "cost"];
+
+/** The tier alone, for chips and rows under the Router header, where the
+ *  "Router" prefix would only make them longer. */
+export const AUTO_TIER_SHORT_LABELS: Record<AutoTier, string> = {
+  cost: "Speed",
+  balanced: "Balance",
+  intelligence: "Frontier"
+};
+
+const AUTO_TIER_LABELS: Record<AutoTier, string> = {
+  cost: "Router Speed",
+  balanced: "Router Balance",
+  intelligence: "Router Frontier"
+};
+
+export const AUTO_TIER_DESCRIPTIONS: Record<AutoTier, string> = {
+  cost: "Fast, cheap models; Opus for reviews and heavy work",
+  balanced: "Opus for real work, cheap models for light tasks",
+  intelligence: "Frontier models, deeper reasoning"
+};
+
+/** Picker row and recency key for an Auto row, apart from every `provider:modelId`. */
+export function autoTierKey(autoTier: AutoTier): string {
+  return `auto:${autoTier}`;
+}
+
+export function isAutoTier(value: unknown): value is AutoTier {
+  return AUTO_TIERS.includes(value as AutoTier);
+}
+
+/** An Auto picker row. Provider, model and effort are the backend's fallback
+ *  (Opus 5.5 at medium), so every consumer that reads them keeps working. */
+export function autoTierSelection(autoTier: AutoTier): ModelPickerSelection {
+  return {
+    provider: "claude",
+    label: AUTO_TIER_LABELS[autoTier],
+    modelId: "claude-opus-5-5",
+    reasoningEffort: "medium",
+    autoTier
+  };
+}
+
+/** The chat chip for a routed session: "Balance → Opus 5.5". The effort
+ *  chip beside it names the effort. Null when the chat is pinned. */
+export function autoSessionChipLabel(session: SessionSummary): string | null {
+  if (!isAutoTier(session.autoTier)) return null;
+  const model = modelLabelFor(session.provider, session.modelId) ?? session.modelLabel;
+  return `${AUTO_TIER_SHORT_LABELS[session.autoTier]} → ${model}`;
+}
 
 /** A picker row: a {@link ModelPickerSelection} plus whether the model exposes
  *  an editable reasoning effort (fast models don't). */

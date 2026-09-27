@@ -37,6 +37,8 @@ enum ModelRecency {
             .compactMap { byValue[$0] }
             .map { option -> PickerOption<String> in
                 var row = option
+                // Out from under the Router heading, "Speed" alone says nothing.
+                if let tier = AutoTier(pickerValue: row.value) { row.label = tier.label }
                 row.group = "Recent"
                 row.groupGlyph = nil
                 row.groupDetail = nil

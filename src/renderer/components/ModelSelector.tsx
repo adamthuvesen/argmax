@@ -29,6 +29,11 @@ import {
 import { touchIdRecency } from "../lib/recencyList.js";
 import {
   allModelOptions,
+  AUTO_TIER_DESCRIPTIONS,
+  AUTO_TIER_SHORT_LABELS,
+  AUTO_TIERS,
+  autoTierKey,
+  autoTierSelection,
   effortLabel,
   factoryLaunchModel,
   modelSupportsFastMode,
@@ -47,6 +52,9 @@ const PROVIDER_GROUP_LABEL: Record<ProviderId, string> = {
 
 /** The header the recently used rows sit under, above the provider groups. */
 const RECENT_GROUP_LABEL = "Recent";
+
+/** The header the Auto rows sit under, above every provider group. */
+const AUTO_GROUP_LABEL = "Router";
 
 /** A catalog label that names its provider ("Grok 4.7 (Cursor)") repeats the
  *  group header it sits under; the row drops the suffix, the chip keeps it. */
@@ -112,6 +120,10 @@ type ChipModelOption<T> = {
   disabled?: boolean;
   /** Small advisory suffix ("not installed" / "needs login"). */
   annotation?: string;
+  /** Hover text for an enabled row (what an Auto tier does). */
+  description?: string;
+  /** Label under the Recent header, where no group header gives context. */
+  recentLabel?: string;
 };
 
 const MAX_RECENT_MODELS = 3;
@@ -135,6 +147,7 @@ function orderOptionsByRecency<T>(options: Array<ChipModelOption<T>>): Array<Chi
     return {
       ...option,
       key: `${option.key}:recent`,
+      label: option.recentLabel ?? option.label,
       group: RECENT_GROUP_LABEL,
       groupProvider: undefined
     };
@@ -144,6 +157,8 @@ function orderOptionsByRecency<T>(options: Array<ChipModelOption<T>>): Array<Chi
 
 export function ModelSelector({
   ariaLabel,
+  chipLabel,
+  chipTitle,
   fastModeEnabled = false,
   onFastModeEnabledChange,
   onChange,
@@ -156,6 +171,8 @@ export function ModelSelector({
   value
 }: {
   ariaLabel: string;
+  chipLabel?: string;
+  chipTitle?: string;
   fastModeEnabled?: boolean;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onChange: (model: ProviderModelSelection) => void;
@@ -186,6 +203,8 @@ export function ModelSelector({
   return (
     <ChipModelPicker
       ariaLabel={ariaLabel}
+      chipLabel={chipLabel}
+      chipTitle={chipTitle}
       fastModeEnabled={fastModeEnabled}
       isSelected={(model) => model.modelId === value.modelId}
       onChange={onChange}
@@ -210,7 +229,10 @@ export function LaunchModelSelector({
   ariaLabel,
   anchorClassName,
   align,
+  autoRouting = false,
   availability,
+  chipLabel,
+  chipTitle,
   fastModeEnabled = false,
   inputId,
   onOpenChange,
@@ -227,7 +249,13 @@ export function LaunchModelSelector({
   ariaLabel: string;
   anchorClassName?: string;
   align?: "start" | "end";
+  /** Lead with the Auto rows. Only new-chat pickers pass it, and only while
+   *  a routing key is saved. */
+  autoRouting?: boolean;
   availability?: ProviderAvailability;
+  /** Chip text in place of the selection's label (a routed chat's chip). */
+  chipLabel?: string;
+  chipTitle?: string;
   fastModeEnabled?: boolean;
   inputId?: string;
   onOpenChange?: (open: boolean) => void;
@@ -247,7 +275,25 @@ export function LaunchModelSelector({
   onEffortOpenChange?: (open: boolean) => void;
   value: ModelPickerSelection;
 }): JSX.Element {
-  const options: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map((model) => ({
+  const autoOptions: Array<ChipModelOption<ModelPickerSelection>> = autoRouting
+    ? AUTO_TIERS.map((autoTier) => {
+        const selection = autoTierSelection(autoTier);
+        return {
+          key: autoTierKey(autoTier),
+          // Under the Router header the prefix is noise, as a provider name is
+          // under its own header; Recent keeps the full label.
+          label: AUTO_TIER_SHORT_LABELS[autoTier],
+          fullLabel: selection.label,
+          recentLabel: selection.label,
+          group: AUTO_GROUP_LABEL,
+          description: AUTO_TIER_DESCRIPTIONS[autoTier],
+          // The router picks the effort, so an Auto row never shows one.
+          supportsReasoningEffort: false,
+          value: selection
+        };
+      })
+    : [];
+  const catalogOptions: Array<ChipModelOption<ModelPickerSelection>> = allModelOptions.map((model) => ({
     key: providerModelKey(model),
     label: rowLabel(model.label, model.provider),
     fullLabel: model.label,
@@ -263,15 +309,24 @@ export function LaunchModelSelector({
       ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {})
     }
   }));
+  const options = [...autoOptions, ...catalogOptions];
 
   return (
     <ChipModelPicker
       ariaLabel={ariaLabel}
       anchorClassName={anchorClassName}
       align={align}
+      chipLabel={chipLabel ?? (value.autoTier ? AUTO_TIER_SHORT_LABELS[value.autoTier] : undefined)}
+      chipTitle={chipTitle}
       fastModeEnabled={fastModeEnabled}
       inputId={inputId}
-      isSelected={(model) => model.provider === value.provider && model.modelId === value.modelId}
+      // An Auto row shares its fallback model with the catalog's Opus row,
+      // so the tier has to match too.
+      isSelected={(model) =>
+        model.autoTier === value.autoTier &&
+        model.provider === value.provider &&
+        model.modelId === value.modelId
+      }
       onChange={onChange}
       onFastModeEnabledChange={onFastModeEnabledChange}
       onOpenChange={onOpenChange}
@@ -280,10 +335,10 @@ export function LaunchModelSelector({
       portaled={portaled}
       options={options}
       reasoningEffortsForValue={(model) => reasoningEffortsForModel(model.provider, model.modelId)}
-      withEffortSlider={withEffortSlider}
+      withEffortSlider={withEffortSlider && !value.autoTier}
       effortOpen={effortOpen}
       onEffortOpenChange={onEffortOpenChange}
-      supportsFastModeForValue={modelSupportsFastMode}
+      supportsFastModeForValue={(model) => !model.autoTier && modelSupportsFastMode(model)}
       value={value}
     />
   );
@@ -575,6 +630,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   ariaLabel,
   anchorClassName,
   align = "start",
+  chipLabel,
+  chipTitle,
   fastModeEnabled,
   inputId,
   isSelected,
@@ -598,6 +655,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   /** Which edge the flyout lines up with. Settings hangs its chip off the
    *  right margin, so the menu has to grow leftward from there. */
   align?: "start" | "end";
+  chipLabel?: string;
+  chipTitle?: string;
   fastModeEnabled: boolean;
   inputId?: string;
   isSelected: (value: T) => boolean;
@@ -652,7 +711,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     edgePadding: openBelow ? PICKER_MENU_EDGE_PADDING_PX : undefined,
     maxHeight: openBelow ? PICKER_MENU_MAX_HEIGHT_PX : undefined
   });
-  // The Speed submenu hangs off its own row, so it tracks that row instead of
+  // The Fast mode submenu hangs off its own row, so it tracks that row instead of
   // being nudged into place with margins measured against the list.
   const speedMenu = useAnchoredPopover({
     open: fastModeMenuOpen,
@@ -668,9 +727,8 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     portaled ? flyout.popoverRef : undefined
   );
   const selectedSupportsFastMode = supportsFastModeForValue(value);
-  // Fast mode is surfaced as a submenu the UI labels "Speed" (Standard / Fast);
-  // picking "Fast" flips fastModeEnabled. The code below uses the fast-mode name
-  // throughout — "Speed" stays only in the visible copy.
+  // Fast mode is a submenu (Off / On) at the foot of the list. It is not called
+  // "Speed" there: that is the name of a Router tier higher up the same list.
   const canChangeFastMode = Boolean(onFastModeEnabledChange) && selectedSupportsFastMode;
   const effectiveFastModeEnabled = fastModeEnabled && selectedSupportsFastMode;
 
@@ -730,7 +788,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
       onClick={(event) => {
         // Clicking inert popover chrome (group labels, padding) dismisses,
         // mirroring the other composer pickers. Buttons handle their own
-        // clicks — model rows and the Speed trigger close/open themselves.
+        // clicks — model rows and the Fast mode trigger close/open themselves.
         if (event.target instanceof Element && !event.target.closest("button")) {
           setOpen(false);
         }
@@ -784,7 +842,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                     option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
                   }
                   disabled={option.disabled}
-                  title={option.disabled ? `${option.label} — provider CLI not installed` : undefined}
+                  title={option.disabled ? `${option.label} — provider CLI not installed` : option.description}
                   onClick={() => selectModel(option)}
                 >
                   <PickerLead selected={selected} />
@@ -820,7 +878,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                 onClick={() => setFastModeMenuOpen((menuOpen) => !menuOpen)}
               >
                 <PickerLead />
-                <span className="model-picker-name">Speed</span>
+                <span className="model-picker-name">Fast mode</span>
                 <ChevronRight size={14} aria-hidden="true" className="model-picker-submenu-caret" />
               </button>
             </li>
@@ -831,12 +889,12 @@ function ChipModelPicker<T extends ProviderModelSelection>({
         <ul
           className="project-picker-popover model-speed-popover"
           role="listbox"
-          aria-label="Speed"
+          aria-label="Fast mode"
           ref={speedMenu.setPopover}
           style={speedMenu.floatingStyles}
         >
           <li className="project-picker-group-label" role="presentation">
-            Speed
+            Fast mode
           </li>
           <li role="option" aria-selected={!fastModeEnabled}>
             <button
@@ -846,7 +904,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
               onClick={() => setFastMode(false)}
             >
               <PickerLead selected={!fastModeEnabled} />
-              <span>Standard</span>
+              <span>Off</span>
             </button>
           </li>
           <li role="option" aria-selected={fastModeEnabled}>
@@ -858,7 +916,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
               onClick={() => setFastMode(true)}
             >
               <PickerLead selected={fastModeEnabled} />
-              <span>Fast</span>
+              <span>On</span>
             </button>
           </li>
         </ul>
@@ -879,13 +937,15 @@ function ChipModelPicker<T extends ProviderModelSelection>({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={effectiveFastModeEnabled ? `${value.label} · Fast speed` : value.label}
+        title={
+          chipTitle ?? (effectiveFastModeEnabled ? `${value.label} · Fast speed` : value.label)
+        }
         onClick={() => setOpen((o) => !o)}
       >
         {effectiveFastModeEnabled ? (
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : null}
-        <span className="model-picker-label">{value.label}</span>
+        <span className="model-picker-label">{chipLabel ?? value.label}</span>
         {/* In a composer the pill around model + effort is the affordance, the
             way the phone draws it — no caret on either half. Settings has no
             pill and no effort chip, so the model chip carries the caret. */}
@@ -916,12 +976,14 @@ function ChipModelPicker<T extends ProviderModelSelection>({
 
 export function CombinedModelSelector({
   ariaLabel,
+  autoRouting = false,
   availability,
   inputId,
   onChange,
   value
 }: {
   ariaLabel: string;
+  autoRouting?: boolean;
   availability?: ProviderAvailability;
   inputId?: string;
   onChange: (model: ModelPickerSelection) => void;
@@ -932,20 +994,23 @@ export function CombinedModelSelector({
   );
   const selectedReasoningEffort = value.reasoningEffort ?? matched?.reasoningEffort;
   const fallback = factoryLaunchModel();
-  const selectedValue: ModelPickerSelection = matched
-    ? {
-        provider: matched.provider,
-        label: matched.label,
-        modelId: matched.modelId,
-        ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {})
-      }
-    : fallback;
+  const selectedValue: ModelPickerSelection = value.autoTier
+    ? value
+    : matched
+      ? {
+          provider: matched.provider,
+          label: matched.label,
+          modelId: matched.modelId,
+          ...(selectedReasoningEffort ? { reasoningEffort: selectedReasoningEffort } : {})
+        }
+      : fallback;
 
   return (
     <LaunchModelSelector
       ariaLabel={ariaLabel}
       anchorClassName="settings-model-picker"
       align="end"
+      autoRouting={autoRouting}
       availability={availability}
       inputId={inputId}
       value={selectedValue}

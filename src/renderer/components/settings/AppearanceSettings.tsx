@@ -85,6 +85,8 @@ export function AppearanceSettings({
   onUserBubbleTintChange,
   sidebarArcsVisible,
   onSidebarArcsVisibleChange,
+  sidebarArchivedVisible,
+  onSidebarArchivedVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
   sidebarTranslucent,
@@ -134,6 +136,8 @@ export function AppearanceSettings({
   onUserBubbleTintChange: (tint: UserBubbleTint) => void;
   sidebarArcsVisible: boolean;
   onSidebarArcsVisibleChange: (v: boolean) => void;
+  sidebarArchivedVisible: boolean;
+  onSidebarArchivedVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   sidebarTranslucent: boolean;
@@ -411,6 +415,17 @@ export function AppearanceSettings({
               ariaLabel="Show arcs"
               checked={sidebarArcsVisible}
               onChange={onSidebarArcsVisibleChange}
+            />
+          }
+        />
+        <SettingRow
+          label="Show archived chats"
+          description="Show a collapsed Archived section at the bottom of the chat sidebar."
+          control={
+            <Toggle
+              ariaLabel="Show archived chats"
+              checked={sidebarArchivedVisible}
+              onChange={onSidebarArchivedVisibleChange}
             />
           }
         />

@@ -197,6 +197,13 @@ pub struct SessionSummary {
     /// part of one. Null for an ordinary chat.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arc_id: Option<String>,
+    /// The Auto tier (`cost` / `balanced` / `intelligence`) when the router
+    /// picks this chat's model. Cleared when the user picks a model by hand.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_tier: Option<String>,
+    /// Why the router picked the current model, e.g. `coding · standard`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_route: Option<String>,
 }
 
 /// How far a session sits from a human-started one, and how many sessions it
@@ -909,5 +916,7 @@ fn session_row_to_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
         launched_by_session_id: row.get("launched_by_session_id")?,
         launch_kind: row.get("launch_kind")?,
         arc_id: row.get("arc_id")?,
+        auto_tier: row.get("auto_tier")?,
+        auto_route: row.get("auto_route")?,
     })
 }

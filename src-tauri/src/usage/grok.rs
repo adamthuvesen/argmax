@@ -71,10 +71,7 @@ fn turn_records(
     };
     let prompt_id = string_value(update.get("prompt_id"));
 
-    let mut per_model = model_entries(usage);
-    allocate_cost(&mut per_model, usage);
-
-    per_model
+    billed_models(usage)
         .into_iter()
         .filter(|entry| !entry.tokens.is_empty())
         .map(|entry| UsageRecord {
@@ -91,12 +88,21 @@ fn turn_records(
         .collect()
 }
 
-struct ModelEntry {
-    model_id: String,
-    tokens: UsageRecordTokens,
+pub(crate) struct ModelEntry {
+    pub(crate) model_id: String,
+    pub(crate) tokens: UsageRecordTokens,
     /// Tokens this entry billed, the basis for its share of an aggregate cost.
     billed_tokens: i64,
-    cost_usd: Option<f64>,
+    pub(crate) cost_usd: Option<f64>,
+}
+
+/// One turn's `usage` split per billed model, each carrying its share of what
+/// Grok charged. The live ACP turn reports the same map on its `session/prompt`
+/// response (see providers/grok_acp.rs).
+pub(crate) fn billed_models(usage: &Map<String, Value>) -> Vec<ModelEntry> {
+    let mut entries = model_entries(usage);
+    allocate_cost(&mut entries, usage);
+    entries
 }
 
 /// One entry per model named in `modelUsage`, or a single unnamed entry

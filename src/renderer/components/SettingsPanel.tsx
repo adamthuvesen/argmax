@@ -6,7 +6,8 @@ import type {
   DiagnosticsReport,
   DiscoveredProvider,
   IdeId,
-  ProjectSummary
+  ProjectSummary,
+  RoutingSettings
 } from "../../shared/types.js";
 import type { FontFamilyId, FontSize } from "../lib/fonts.js";
 import type { InkStrength } from "../lib/inkStrength.js";
@@ -46,10 +47,14 @@ export function SettingsPanel({
   defaultEffort,
   onDefaultEffortChange,
   onDefaultModelChange,
+  routing,
+  onRoutingChange,
   chatVerbosity,
   onChatVerbosityChange,
   sidebarArcsVisible,
   onSidebarArcsVisibleChange,
+  sidebarArchivedVisible,
+  onSidebarArchivedVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
   sidebarTranslucent,
@@ -127,10 +132,15 @@ export function SettingsPanel({
   defaultEffort: ReasoningEffort;
   onDefaultEffortChange: (effort: ReasoningEffort) => void;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
+  /** Null until the first read answers. */
+  routing: RoutingSettings | null;
+  onRoutingChange: (routing: RoutingSettings) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   sidebarArcsVisible: boolean;
   onSidebarArcsVisibleChange: (v: boolean) => void;
+  sidebarArchivedVisible: boolean;
+  onSidebarArchivedVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
   sidebarTranslucent: boolean;
@@ -383,6 +393,8 @@ export function SettingsPanel({
             onUserBubbleTintChange={onUserBubbleTintChange}
             sidebarArcsVisible={sidebarArcsVisible}
             onSidebarArcsVisibleChange={onSidebarArcsVisibleChange}
+            sidebarArchivedVisible={sidebarArchivedVisible}
+            onSidebarArchivedVisibleChange={onSidebarArchivedVisibleChange}
             sidebarPriorityVisible={sidebarPriorityVisible}
             onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
             sidebarTranslucent={sidebarTranslucent}
@@ -409,6 +421,8 @@ export function SettingsPanel({
               defaultEffort={defaultEffort}
               onDefaultEffortChange={onDefaultEffortChange}
               onDefaultModelChange={onDefaultModelChange}
+              routing={routing}
+              onRoutingChange={onRoutingChange}
               chatVerbosity={chatVerbosity}
               onChatVerbosityChange={onChatVerbosityChange}
               fastModeEnabled={fastModeEnabled}

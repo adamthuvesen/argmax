@@ -81,7 +81,7 @@ import { parseGoalCommand } from "../lib/goalCommand.js";
 import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
-import type { ModelPickerSelection } from "../lib/models.js";
+import { autoSessionChipLabel, type ModelPickerSelection } from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
@@ -320,6 +320,15 @@ export function SessionComposer({
   // the draft has the caret and only the focused pane answers it.
   const hasSession = Boolean(session);
   const supportsEffort = selectedModel.reasoningEffort != null;
+  // A routed chat names its tier and the model the router chose. Picking a
+  // different model pins the chat, so the chip reads plainly from then on.
+  const autoChipLabel =
+    session &&
+    selectedModel.provider === session.provider &&
+    selectedModel.modelId === session.modelId
+      ? (autoSessionChipLabel(session) ?? undefined)
+      : undefined;
+  const autoChipTitle = autoChipLabel ? (session?.autoRoute ?? undefined) : undefined;
   useEffect(() => {
     if (!isFocused || !hasSession) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -1178,6 +1187,8 @@ export function SessionComposer({
               // keep the picker locked to the session's current provider.
               <ModelSelector
                 provider={session.provider}
+                chipLabel={autoChipLabel}
+                chipTitle={autoChipTitle}
                 value={selectedModel}
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
                 fastModeEnabled={fastModeEnabled}
@@ -1196,6 +1207,8 @@ export function SessionComposer({
               // provider goes through the confirmation below first.
               <LaunchModelSelector
                 value={selectedModel}
+                chipLabel={autoChipLabel}
+                chipTitle={autoChipTitle}
                 availability={providerAvailability}
                 onChange={(model) => {
                   // `session.provider` only catches up when the backend

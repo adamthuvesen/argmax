@@ -131,6 +131,8 @@ pub fn send_session_control(
         (SessionControlAction::SourcesAdd(_), SessionControlResult::SourceAdded(_)) => true,
         (SessionControlAction::TerminalSpawn(_), SessionControlResult::TerminalStarted(_)) => true,
         (SessionControlAction::TerminalRead(_), SessionControlResult::TerminalOutput(_)) => true,
+        (SessionControlAction::TerminalWrite(_), SessionControlResult::TerminalWritten(_)) => true,
+        (SessionControlAction::TerminalClose(_), SessionControlResult::TerminalClosed(_)) => true,
         (SessionControlAction::Projects(_), SessionControlResult::Projects(_)) => true,
         (SessionControlAction::ScheduleFollowup(_), SessionControlResult::Followup(_)) => true,
         (SessionControlAction::ScheduleList(_), SessionControlResult::Schedules(_)) => true,

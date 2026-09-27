@@ -488,6 +488,7 @@ fn build_launch_input() -> ProvidersLaunchInput {
         goal_max_turns: None,
         arc_id: None,
         arc_is_coordinator_launch: false,
+        auto_tier: None,
     }
 }
 

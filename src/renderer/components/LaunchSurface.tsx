@@ -138,6 +138,7 @@ function isOptionButtonTarget(target: EventTarget | null): boolean {
 }
 
 export function LaunchSurface({
+  autoRouting = false,
   claimsBrowserRequests = false,
   isFocused = true,
   fastModeEnabled = false,
@@ -162,6 +163,8 @@ export function LaunchSurface({
   workspaces = [],
   onCheckoutWorkspaceCreated
 }: {
+  /** Offer the Auto rows in the model picker (a routing key is saved). */
+  autoRouting?: boolean;
   /** True when this launcher is the only surface on screen, so chat links and
    *  the actions menu have nowhere else to open the browser. False for a
    *  launcher cell sharing the grid with session panes. */
@@ -218,11 +221,12 @@ export function LaunchSurface({
   // `project` so chat mode disables them without unmounting the surface.
   const chatMode = sideChatMode && onLaunchSideChat !== undefined;
   const [cloudSelected, setCloudSelected] = useState(false);
-  const cloudProvider = isHostedCloudProvider(model.provider) ? model.provider : null;
+  // An Auto pick's provider is only the router's fallback, not a cloud target.
+  const cloudProvider = !model.autoTier && isHostedCloudProvider(model.provider) ? model.provider : null;
   const cloudMode = cloudSelected && !chatMode && cloudProvider !== null;
   useEffect(() => {
-    if (chatMode || !isHostedCloudProvider(model.provider)) setCloudSelected(false);
-  }, [chatMode, model.provider]);
+    if (chatMode || model.autoTier || !isHostedCloudProvider(model.provider)) setCloudSelected(false);
+  }, [chatMode, model.autoTier, model.provider]);
   const [cloudDraft, setCloudDraft] = useState<{
     projectId: string;
     provider: HostedCloudProvider;
@@ -420,7 +424,7 @@ export function LaunchSurface({
   // toggles the browser. Only the focused launcher answers, and the folder
   // picker exists only on the task launcher: a side chat has no project to
   // switch.
-  const supportsEffort = model.reasoningEffort != null;
+  const supportsEffort = model.reasoningEffort != null && !model.autoTier;
   useEffect(() => {
     if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -1175,6 +1179,7 @@ export function LaunchSurface({
               </span>
             ) : <LaunchModelSelector
               ariaLabel="Switch model"
+              autoRouting={autoRouting}
               availability={providerAvailability}
               fastModeEnabled={fastModeEnabled}
               open={modelPickerOpen}
@@ -1381,12 +1386,12 @@ export function LaunchSurface({
                 disabled={isSubmitting}
                 title={cloudMode
                   ? "Switch to Local"
-                  : isHostedCloudProvider(model.provider)
-                    ? `Switch to Cloud · ${cloudProviderName(model.provider)}`
-                    : `${PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`}
+                  : cloudProvider
+                    ? `Switch to Cloud · ${cloudProviderName(cloudProvider)}`
+                    : `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`}
                 onClick={() => {
-                  if (!cloudMode && !isHostedCloudProvider(model.provider)) {
-                    setStatus(`${PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`);
+                  if (!cloudMode && !cloudProvider) {
+                    setStatus(`${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`);
                     return;
                   }
                   closeContextPickers();

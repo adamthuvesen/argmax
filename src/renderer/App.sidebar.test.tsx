@@ -15,6 +15,8 @@ import {
   loadDiff,
   menuCommandListener,
   mockDashboardSnapshot,
+  openSettings,
+  closeSettings,
   primaryProject,
   secondProject,
   readProjectFile,
@@ -33,6 +35,7 @@ import {
   workspaceRow,
   sessionRow
 } from "../test/appTestHarness.js";
+import { SIDEBAR_ARCHIVED_KEY } from "./lib/uiPreferences.js";
 
 describe("App sidebar", () => {
   const initialViewportWidth = window.innerWidth;
@@ -45,6 +48,51 @@ describe("App sidebar", () => {
 
   beforeEach(() => {
     setupAppTestMocks();
+  });
+
+  it("opens an archived chat as a read-only conversation", async () => {
+    const archivedSnapshot = {
+      ...snapshot,
+      workspaces: [{ ...snapshot.workspaces[0], state: "archived" as const }],
+      sessions: [{ ...snapshot.sessions[0], state: "complete" as const }]
+    };
+    mockDashboardSnapshot(archivedSnapshot);
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(archivedSnapshot));
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show Archived chats" }));
+    fireEvent.click(screen.getByRole("button", { name: /Build dashboard Argmax/ }));
+
+    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Chat prompt")).toBeDisabled();
+    expect(sendProviderInput).not.toHaveBeenCalled();
+  });
+
+  it("persists the setting that hides the Archived sidebar section", async () => {
+    const archivedSnapshot = {
+      ...snapshot,
+      workspaces: [{ ...snapshot.workspaces[0], state: "archived" as const }],
+      sessions: [{ ...snapshot.sessions[0], state: "complete" as const }]
+    };
+    mockDashboardSnapshot(archivedSnapshot);
+    workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(archivedSnapshot));
+    const app = render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Show Archived chats" })).toBeInTheDocument();
+    await openSettings("Appearance");
+    const toggle = await screen.findByRole("checkbox", { name: "Show archived chats" });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    expect(window.localStorage.getItem(SIDEBAR_ARCHIVED_KEY)).toBe("false");
+    await closeSettings();
+    expect(screen.queryByRole("button", { name: "Show Archived chats" })).toBeNull();
+
+    act(() => {
+      app.unmount();
+      render(<App />);
+    });
+    await openSettings("Appearance");
+    expect(await screen.findByRole("checkbox", { name: "Show archived chats" })).not.toBeChecked();
   });
 
   it("expands the hosting date group when a workspace appears without being selected", async () => {

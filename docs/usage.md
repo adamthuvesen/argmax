@@ -67,6 +67,61 @@ model the table does not know is counted in tokens and marked *unpriced*,
 never shown as $0. Grok Build and OpenCode keep their own dollar figure in
 their logs; those win over the table and are marked *provider reported*.
 
+## Router cost
+
+Below the remaining card, a **Router** card shows what each Auto tier cost in
+the page's window: Frontier, Balance, Speed, each with chats, turns, total
+cost, cost per turn, median turn time and time to first answer, escalations,
+and the model mix. It appears only when a
+chat was routed in the window. The read is `usage:router-cost`
+([routing/cost.rs](../src-tauri/src/routing/cost.rs)).
+
+- **One window per `turn_routes` row.** Every routed turn records a row, `kept`
+  included. A row's window runs from its `created_at` to the chat's next row
+  (open-ended for the last), and its turns are charged to the tier on its own
+  row, so a chat that escalated splits across tiers. A window's turns are the
+  `session.completed` / `session.cancelled` events inside it, at least one, so
+  goal continuations, which record no row, count in the window before them.
+  Rows from the window's start (the same start as the page's range) are
+  counted.
+- **A pin ends the chat's Router spend.** When the user picks another model,
+  provider, or effort, the chat leaves Auto and records a `pinned` row
+  ([routing.md](routing.md)). That row closes the window before it and is
+  never a turn itself, so later work is not charged to a tier.
+- **Claude, Codex, Grok, OpenCode** are priced from the `usage_events` inside
+  the turn's window, by the ledger's rule: Grok and OpenCode's own dollar
+  figure wins, then the list-price table.
+- **Times are medians per tier.** Turn time runs from the send to the turn's
+  `session.completed` / `session.cancelled`, less any time an approval waited
+  on the user; first answer runs from the send to the first text, reasoning,
+  or tool call. A window's first turn starts at its route row; a later one (a
+  goal continuation) at its own `user.message`, so a message sent mid-turn
+  starts nothing. Running and unanswered turns have no time. Medians, because
+  one long agentic turn would carry an average. Both are wall clock: the only
+  figure every provider has, and the one the user waits through.
+- **Each row is priced by its own provider.** A Cursor chat that escalated to
+  Claude prices its Claude rows from usage and only its Cursor rows as below.
+- **Cursor is estimated.** ACP reports no tokens, so each Cursor turn is
+  rebuilt from the transcript: text length / 4 as tokens; a model call at every
+  `command.started`, `agent.started`, and `message.completed`; each call
+  cache-reads a 20k-token base (a one-shot `cursor-agent -p` measured ~18.8k on
+  2026-09-27) plus the conversation so far, takes what arrived since the last
+  call as input, and outputs its own event. Against real Claude sessions with
+  recorded usage, this shape gave a median estimate/actual of about 1.0 for
+  cache reads, with the middle half of chats between 0.75x and 2x. It is priced
+  at Cursor's published list rates ([cursor.com/docs/models](https://cursor.com/docs/models),
+  fetched 2026-09-27), kept in that module rather than the ledger's table, and
+  every amount that contains it is shown with "≈".
+- **Unanswered turns are left out.** A turn with no reply, reasoning, tool
+  call, or usage in its window (cancelled or failed before the model answered)
+  cost nothing and is not counted anywhere: not in chats, turns, or the model
+  mix. A tier left with no turns disappears, and so does the card. A turn still
+  waiting on its first reply joins once that reply lands.
+- **Unknown turns are unpriced.** An answered turn with no usage recorded (cut
+  off before its usage landed), or on a model neither table knows, is counted
+  in turns and listed as unpriced, never $0, and left out of the per-turn
+  figure.
+
 ## Sources
 
 | Provider | Files | Usage record |

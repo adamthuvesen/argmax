@@ -153,6 +153,19 @@ fn ensure_permission_mode_supported(
     Ok(())
 }
 
+/// Time since an ISO timestamp this app wrote; zero for one it cannot parse,
+/// which makes the caller treat the cache as warm (the conservative reading).
+fn elapsed_since(at: &str) -> std::time::Duration {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .ok()
+        .and_then(|at| {
+            (chrono::Utc::now() - at.with_timezone(&chrono::Utc))
+                .to_std()
+                .ok()
+        })
+        .unwrap_or_default()
+}
+
 fn has_steering_context_headroom(session: &SessionSummary) -> bool {
     if session.provider != ProviderId::Codex.as_str() {
         return true;
@@ -1382,6 +1395,103 @@ impl ProviderSessionService {
         .await
     }
 
+    /// Decides Auto routing for an idle follow-up; `apply_auto_follow_up`
+    /// applies it once the send is admitted. `None` for a chat the router does
+    /// not drive. A chat the user pinned by picking another model stops being
+    /// routed. Otherwise Jev classifies the message (only when `classify`) and
+    /// the break-even rule decides (routing/reroute.rs). A classifier failure
+    /// or a missing key leaves the follow-up on its model.
+    async fn route_follow_up(
+        &self,
+        input: &ProvidersSendInput,
+        message: &str,
+        classify: bool,
+    ) -> ArgmaxResult<Option<AutoFollowUp>> {
+        let session_id = input.session_id.as_str();
+        let session = find_session_by_id(&self.database.read_connection(), session_id)?;
+        let Some(tier) = session
+            .auto_tier
+            .as_deref()
+            .and_then(crate::routing::parse_tier)
+        else {
+            return Ok(None);
+        };
+        let current_provider = parse_provider(&session.provider)?;
+        let current_effort = session
+            .reasoning_effort
+            .as_deref()
+            .and_then(parse_reasoning_effort);
+        // A follow-up with no model (an agent's message, a script) carries no
+        // override, so the router may still act on it.
+        let pinned = input
+            .model_id
+            .as_ref()
+            .is_some_and(|model_id| model_id.as_str() != session.model_id)
+            || input
+                .provider
+                .is_some_and(|provider| provider != current_provider)
+            || input
+                .reasoning_effort
+                .is_some_and(|effort| Some(effort) != current_effort);
+        if pinned {
+            // Not a turn and not a switch: the row only closes the last
+            // route's window for the Router cost card.
+            return Ok(Some(AutoFollowUp::Pinned(crate::routing::RouteDecision {
+                tier,
+                provider: input.provider.unwrap_or(current_provider),
+                model_id: input
+                    .model_id
+                    .as_ref()
+                    .map_or_else(|| session.model_id.clone(), |id| id.as_str().to_string()),
+                model_label: input.model_label.as_ref().map_or_else(
+                    || session.model_label.clone(),
+                    |label| label.as_str().to_string(),
+                ),
+                effort: input.reasoning_effort.or(current_effort),
+                kind: None,
+                difficulty: None,
+                kind_confidence: None,
+                difficulty_confidence: None,
+                decision: crate::routing::RouteDecisionKind::Pinned,
+                reason: "user picked a model".to_string(),
+            })));
+        }
+        if !classify {
+            return Ok(Some(AutoFollowUp::Routed(None)));
+        }
+        // With the key removed from Settings the chat simply stops re-routing.
+        let Some(api_key) = crate::routing::api_key::stored_key() else {
+            return Ok(Some(AutoFollowUp::Routed(None)));
+        };
+        let classification = match crate::routing::jev::classify(message, &api_key, true).await {
+            Ok(classification) => classification,
+            Err(error) => {
+                tracing::warn!(target: "argmax::routing", session_id, "follow-up not routed: {error}");
+                return Ok(Some(AutoFollowUp::Routed(None)));
+            }
+        };
+        let (last_turn, last_switch) = {
+            let connection = self.database.read_connection();
+            (
+                crate::persistence::turn_routes::last_turn_usage(&connection, session_id)?,
+                crate::persistence::turn_routes::last_switch_at(&connection, session_id)?,
+            )
+        };
+        let state = crate::routing::reroute::FollowUpState {
+            tier,
+            provider: current_provider,
+            model_id: session.model_id.clone(),
+            effort: current_effort,
+            idle: elapsed_since(&session.last_activity_at),
+            context_tokens: session.context_tokens.max(0) as u64,
+            last_turn,
+            since_last_switch: last_switch.as_deref().map(elapsed_since),
+        };
+        Ok(Some(AutoFollowUp::Routed(Some(
+            crate::routing::reroute::follow_up_route(&state, &classification),
+        ))))
+    }
+
     async fn send_input_scoped(
         self: &Arc<Self>,
         input: ProvidersSendInput,
@@ -1482,6 +1592,20 @@ impl ProviderSessionService {
             gate.reached.notify_one();
             gate.release.notified().await;
         }
+        // Auto chats may move to another model or effort for this turn. Jev is
+        // a network call, so it runs before the checkout lock, and only for a
+        // send headed for a relaunch: one with a live or starting provider is
+        // steered or queued, and a queued row is routed when it drains.
+        let auto_follow_up = if goal_turn.is_none()
+            && !self
+                .handles
+                .lock_or_recover("handles")
+                .contains_key(&session_id)
+        {
+            Some(self.route_follow_up(&input, &message, true).await?)
+        } else {
+            None
+        };
         // Stop may have completed while this send was between its initial
         // session read and checkout admission. Reject that generation before
         // touching a checkout that the cancelled send no longer owns.
@@ -1620,6 +1744,15 @@ impl ProviderSessionService {
         }
         drop(send_generation_guard);
 
+        // The provider went away after routing was skipped for it: settle the
+        // pin without classifying, so the user's pick still ends Auto.
+        let auto_follow_up = match auto_follow_up {
+            Some(auto_follow_up) => auto_follow_up,
+            None if goal_turn.is_none() => self.route_follow_up(&input, &message, false).await?,
+            None => None,
+        };
+        let mut input = input;
+        let auto_route = apply_auto_follow_up(&mut input, auto_follow_up)?;
         let send_generation_guard = self.lock_send_generation(&session_id, send_generation)?;
         let (provider, launch_input, pending_results) = {
             let connection = self.database.connection();
@@ -1694,6 +1827,14 @@ impl ProviderSessionService {
                             .map(|effort| effort.as_str().to_string()),
                     },
                 )?;
+            }
+            // Recorded only now that the send is admitted, so a send Stop
+            // cancelled leaves no route behind for the chip or the hysteresis.
+            if let Some(route) = &auto_route {
+                crate::persistence::turn_routes::record_route(&connection, &session_id, route)?;
+                if route.decision == crate::routing::RouteDecisionKind::Pinned {
+                    crate::persistence::turn_routes::clear_auto_tier(&connection, &session_id)?;
+                }
             }
             if session.agent_mode.as_deref() != Some(agent_mode.as_str()) {
                 session = update_session_agent_mode(
@@ -3041,17 +3182,29 @@ impl ProviderSessionService {
         } else {
             ("error".to_string(), event.message)
         };
-        let timeline_event = persist_timeline_event(
-            &connection,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: event.session_id.clone(),
-                r#type: timeline_type,
-                message: timeline_message,
-                payload: json!({ "exitCode": event.exit_code }),
-                created_at: Some(event.created_at),
-            },
-        )?;
+        // Cursor and OpenCode already recorded this turn's completion from
+        // their own output; a second `session.completed` from the exit would
+        // count the turn twice.
+        let already_completed = succeeded
+            && crate::persistence::events::turn_completion_recorded(
+                &connection,
+                &event.session_id,
+            )?;
+        let timeline_events = if already_completed {
+            Vec::new()
+        } else {
+            vec![persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: Uuid::new_v4().to_string(),
+                    session_id: event.session_id.clone(),
+                    r#type: timeline_type,
+                    message: timeline_message,
+                    payload: json!({ "exitCode": event.exit_code }),
+                    created_at: Some(event.created_at),
+                },
+            )?]
+        };
         self.handles
             .lock_or_recover("handles")
             .remove(&event.session_id);
@@ -3065,7 +3218,7 @@ impl ProviderSessionService {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace],
             sessions: vec![session],
-            events: vec![timeline_event],
+            events: timeline_events,
             raw_outputs: vec![raw_output],
             ..DashboardDelta::default()
         };
@@ -3787,14 +3940,28 @@ impl ProviderSessionService {
                 return Ok(None);
             }
         }
-        let switches_provider = match input.provider {
-            Some(requested) => {
-                find_session_by_id(&connection, session_id)?.provider != requested.as_str()
-            }
-            None => false,
-        };
+        let session = find_session_by_id(&connection, session_id)?;
+        let switches_provider = input
+            .provider
+            .is_some_and(|requested| session.provider != requested.as_str());
+        // Only a model or effort the user actually picked is kept. A send that
+        // merely echoes the chat's current model would, once drained after the
+        // router (or a goal) moved the chat, read as a pin to the old model.
+        let picks_model = input
+            .model_id
+            .as_ref()
+            .is_some_and(|model_id| model_id.as_str() != session.model_id)
+            || input.reasoning_effort.is_some_and(|effort| {
+                Some(effort)
+                    != session
+                        .reasoning_effort
+                        .as_deref()
+                        .and_then(parse_reasoning_effort)
+            });
         let (model_label, model_id, reasoning_effort, fast_mode) = if switches_provider {
             (None, None, None, false)
+        } else if !picks_model {
+            (None, None, None, input.fast_mode)
         } else {
             (
                 input
@@ -4751,6 +4918,53 @@ fn delta_has_subagent_control_event(delta: &DashboardDelta) -> bool {
     })
 }
 
+/// An Auto chat's routing for one follow-up, decided before the checkout lock
+/// and applied once the send is admitted.
+enum AutoFollowUp {
+    /// The user picked another model: routing ends, and a 'pinned' row
+    /// closes the last route's window.
+    Pinned(crate::routing::RouteDecision),
+    /// The router's decision, or `None` when there was nothing to classify
+    /// with (no key, a classifier failure).
+    Routed(Option<crate::routing::RouteDecision>),
+}
+
+/// Rewrites a routed follow-up and returns the route to record. Fast mode is
+/// off for every follow-up the router still drives, as for an Auto launch
+/// (routing::route_launch): the grid's cells never ask for it.
+fn apply_auto_follow_up(
+    input: &mut ProvidersSendInput,
+    auto_follow_up: Option<AutoFollowUp>,
+) -> ArgmaxResult<Option<crate::routing::RouteDecision>> {
+    let route = match auto_follow_up {
+        None => return Ok(None),
+        Some(AutoFollowUp::Pinned(route)) => return Ok(Some(route)),
+        Some(AutoFollowUp::Routed(route)) => {
+            input.fast_mode = false;
+            route
+        }
+    };
+    let Some(route) = route else {
+        return Ok(None);
+    };
+    if matches!(
+        route.decision,
+        crate::routing::RouteDecisionKind::Reroute | crate::routing::RouteDecisionKind::Escalate
+    ) {
+        // An escalation off the top of a cheap ladder changes provider; the
+        // provider-switch path then rebuilds context from the visible
+        // transcript. The same provider is no switch there.
+        input.provider = Some(route.provider);
+        input.model_label = Some(
+            NonEmptyString::try_from(route.model_label.clone()).map_err(ArgmaxError::invalid)?,
+        );
+        input.model_id =
+            Some(NonEmptyString::try_from(route.model_id.clone()).map_err(ArgmaxError::invalid)?);
+        input.reasoning_effort = route.effort;
+    }
+    Ok(Some(route))
+}
+
 fn pending_message_to_send_input(
     session_id: String,
     message: PendingMessage,
@@ -5280,6 +5494,45 @@ mod tests {
         );
         std::fs::write(metadata.join("HEAD"), "0123456789abcdef\n").unwrap();
         assert_eq!(checkout_head_branch(&linked), None);
+    }
+
+    /// A queued row that only echoes the chat's model must drain without one:
+    /// by then the router may have moved the chat, and a stale model would
+    /// read as the user pinning the old one.
+    #[test]
+    fn a_queued_follow_up_keeps_only_a_model_the_user_picked() {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        let enqueue = |model_id: &str, effort: Option<&str>| {
+            let input = serde_json::from_value(json!({
+                "sessionId": "session-1", "input": "next", "fastMode": false,
+                "modelLabel": "Some model", "modelId": model_id, "reasoningEffort": effort
+            }))
+            .unwrap();
+            service
+                .enqueue_pending_message("session-1", "next", AgentMode::Auto, &input, None)
+                .unwrap()
+                .expect("queued")
+        };
+        let echo = enqueue("claude-sonnet-5", None);
+        assert_eq!(
+            (echo.model_id, echo.model_label, echo.reasoning_effort),
+            (None, None, None)
+        );
+        let picked = enqueue("claude-opus-5-5", None);
+        assert_eq!(picked.model_id.as_deref(), Some("claude-opus-5-5"));
+        let effort = enqueue("claude-sonnet-5", Some("high"));
+        assert_eq!(
+            (
+                effort.model_id.as_deref(),
+                effort.reasoning_effort.as_deref()
+            ),
+            (Some("claude-sonnet-5"), Some("high"))
+        );
     }
 
     #[test]

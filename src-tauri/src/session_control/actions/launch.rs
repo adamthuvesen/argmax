@@ -234,6 +234,7 @@ pub(crate) async fn launch_with_spec(
             goal_max_turns: None,
             arc_id: spec.arc_id,
             arc_is_coordinator_launch: spec.arc_is_coordinator_launch,
+            auto_tier: None,
         })
         .await;
     let session = match launch_result {
@@ -325,12 +326,29 @@ pub(super) async fn launch_session(
     if let Some(arc) = &parent_arc {
         check_arc_launch_budget(arc, &database)?;
     }
-    let provider = action.provider.unwrap_or(parent.provider);
+    // `model: "auto"` / `"auto:<tier>"` hands provider, model and effort to
+    // the router; an explicit `reasoning` still wins over the routed effort.
+    let auto_route = match auto_tier_from_model(action.model.as_deref())? {
+        Some(tier) => {
+            let api_key = crate::routing::require_api_key().map_err(argmax_protocol_error)?;
+            Some(crate::routing::resolve_route(&action.prompt, tier, &api_key).await)
+        }
+        None => None,
+    };
+    let provider = auto_route
+        .as_ref()
+        .map(|route| route.provider)
+        .unwrap_or(action.provider.unwrap_or(parent.provider));
     // A model id names a model the CLI accepts; Rust has no label catalog
     // (labels live in `src/shared/providerModels.ts`), so an explicit id is
     // its own sidebar label — the same fallback session sync uses.
-    let (model_label, model_id, reasoning_effort) =
-        match (action.model, provider == parent.provider) {
+    let (model_label, model_id, reasoning_effort) = match &auto_route {
+        Some(route) => (
+            route.model_label.clone(),
+            route.model_id.clone(),
+            route.effort,
+        ),
+        None => match (action.model, provider == parent.provider) {
             (Some(model), _) => (model.clone(), model, provider_effort(provider, &parent)),
             (None, true) => (
                 parent.model_label.clone(),
@@ -345,7 +363,8 @@ pub(super) async fn launch_session(
                     parse_reasoning_effort(defaults.reasoning_effort),
                 )
             }
-        };
+        },
+    };
     // The sidebar label the new session is about to get, read here as well so
     // a check-in wake can name the work rather than quote its whole prompt.
     let label = action
@@ -378,7 +397,8 @@ pub(super) async fn launch_session(
             // so `reasoning` means the same thing whether or not `model` was
             // named alongside it.
             reasoning_effort: action.reasoning.or(reasoning_effort),
-            fast_mode: parent.fast_mode,
+            // A routed launch never runs Fast: the grid's cells never ask for it.
+            fast_mode: parent.fast_mode && auto_route.is_none(),
             permission_mode: action.permission_mode.unwrap_or(parent.permission_mode),
             agent_mode: parent.agent_mode,
             task_label: action.task_label,
@@ -391,6 +411,11 @@ pub(super) async fn launch_session(
         &parent_project_id,
     )
     .await?;
+    if let Some(route) = &auto_route {
+        let connection = database.connection();
+        crate::persistence::turn_routes::record_route(&connection, &outcome.session_id, route)
+            .map_err(argmax_protocol_error)?;
+    }
     {
         let connection = database.connection();
         record_session_launch(
@@ -423,6 +448,26 @@ pub(super) async fn launch_session(
             branch: outcome.branch,
         },
     )))
+}
+
+fn auto_tier_from_model(
+    model: Option<&str>,
+) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+    let Some(model) = model else {
+        return Ok(None);
+    };
+    if model == "auto" {
+        return Ok(Some(crate::routing::table::AutoTier::Balanced));
+    }
+    let Some(tier) = model.strip_prefix("auto:") else {
+        return Ok(None);
+    };
+    crate::routing::parse_tier(tier).map(Some).ok_or_else(|| {
+        protocol_error(
+            "INVALID_INPUT",
+            format!("Unknown Auto tier `{tier}`. Use auto, auto:cost, auto:balanced or auto:intelligence."),
+        )
+    })
 }
 
 /// A check-in may land no sooner than the next minute and no further out than
@@ -524,4 +569,31 @@ fn provider_effort(
 
 fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
     serde_json::from_value(serde_json::json!(value?)).ok()
+}
+
+#[cfg(test)]
+mod auto_model_tests {
+    use super::auto_tier_from_model;
+    use crate::routing::table::AutoTier;
+
+    #[test]
+    fn auto_model_names_pick_a_tier_and_reject_unknown_ones() {
+        assert_eq!(auto_tier_from_model(None).ok(), Some(None));
+        assert_eq!(auto_tier_from_model(Some("gpt-6-sol")).ok(), Some(None));
+        assert_eq!(
+            auto_tier_from_model(Some("auto")).ok(),
+            Some(Some(AutoTier::Balanced))
+        );
+        assert_eq!(
+            auto_tier_from_model(Some("auto:cost")).ok(),
+            Some(Some(AutoTier::Cost))
+        );
+        let error = auto_tier_from_model(Some("auto:fast")).expect_err("unknown tier");
+        assert_eq!(error.code, "INVALID_INPUT");
+        assert!(
+            error.message.contains("auto:intelligence"),
+            "{}",
+            error.message
+        );
+    }
 }

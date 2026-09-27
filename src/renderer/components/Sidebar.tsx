@@ -114,6 +114,7 @@ const PINNED_GROUP_KEY = "pinned";
 const ARCS_GROUP_KEY = "arcs";
 const PRIORITY_GROUP_KEY = "priority";
 const SIDE_CHATS_GROUP_KEY = "side-chats";
+const ARCHIVED_GROUP_KEY = "archived";
 const OLDER_GROUP_KEY = "older";
 
 // Active and paused sort together, ahead of done; ties break by most recently
@@ -213,6 +214,7 @@ export function Sidebar({
   onSetWorkspaceIcon,
   onSyncNowWorkspace,
   showArcs = true,
+  showArchived = true,
   showPriority,
   selectedProjectId,
   selectedWorkspaceId: currentWorkspaceId,
@@ -257,6 +259,7 @@ export function Sidebar({
   /** Right-click "Sync now" on an imported row — runs one session-sync sweep. */
   onSyncNowWorkspace?: () => void;
   showArcs?: boolean;
+  showArchived?: boolean;
   /** Whether the Priority section renders at all (settings toggle). */
   showPriority: boolean;
   selectedProjectId: string | null;
@@ -336,6 +339,7 @@ export function Sidebar({
       ? loadCollapsedDateGroupIds()
       : new Set(BOOT_COLLAPSED_GROUP_KEYS)
   );
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   useEffect(() => {
     if (!readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)) {
       markBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY);
@@ -676,6 +680,17 @@ export function Sidebar({
     [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
 
+  const archivedWorkspaces = useMemo(
+    () =>
+      sidebarWorkspaces
+        .filter(
+          (workspace) =>
+            workspace.state === "archived" && workspaceIdsWithSessions.has(workspace.id)
+        )
+        .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt)),
+    [sidebarWorkspaces, workspaceIdsWithSessions]
+  );
+
   // Functional updates throughout: several of these can run in one commit (two
   // forked workspaces landing in one delta), and a `new Set(state)` built from
   // the render closure would drop every write but the last. Persistence lives
@@ -716,6 +731,10 @@ export function Sidebar({
   );
 
   const toggleDateGroupVisibility = useCallback((key: string): void => {
+    if (key === ARCHIVED_GROUP_KEY) {
+      setArchivedExpanded((expanded) => !expanded);
+      return;
+    }
     setCollapsedDateGroups((current) => {
       const next = new Set(current);
       if (next.has(key)) {
@@ -968,6 +987,7 @@ export function Sidebar({
   const leadDateGroupKey = viewMode === "sessions" ? dateGroups[0]?.key ?? null : null;
   const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
   const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
+  const archivedCollapsed = !archivedExpanded;
   const sidebarActions = (
     <div className="rail-actions" onClick={(event) => event.stopPropagation()}>
       <div className="project-picker-anchor rail-sort-anchor" ref={sortMenuAnchorRef}>
@@ -1640,6 +1660,48 @@ export function Sidebar({
           );
         })}
         {sideChatsSection}
+        {showArchived && archivedWorkspaces.length > 0 ? (
+          <div
+            className="project-group session-date-group"
+            data-collapsed={archivedCollapsed ? "true" : undefined}
+          >
+            <div
+              className="project-row session-date-row"
+              onClick={() => toggleDateGroupVisibility(ARCHIVED_GROUP_KEY)}
+            >
+              <span className="project-name session-date-label">
+                <span className="project-name-text">Archived</span>
+                {renderCollapseButton(ARCHIVED_GROUP_KEY, "Archived", archivedCollapsed)}
+              </span>
+              <span aria-hidden="true" />
+            </div>
+            {archivedCollapsed ? null : archivedWorkspaces.map((workspace) => (
+              <div key={workspace.id} className="session-row-wrap">
+                <SidebarSessionRow
+                  workspace={workspace}
+                  isWorking={false}
+                  hasUnreadResponse={false}
+                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
+                  subtitle={projectNameById.get(workspace.projectId) ?? null}
+                  importedProvider={importedProviderByWorkspace.get(workspace.id)}
+                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
+                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
+                  isSelected={selectedWorkspaceId === workspace.id}
+                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                  canDragToGrid={false}
+                  onOpenWorkspaceChat={onOpenWorkspaceChat}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onOpenInIde={onOpenInIde}
+                  onOpenInWindow={onOpenInWindow}
+                  onRename={onRenameWorkspace}
+                  onSetIcon={onSetWorkspaceIcon}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
         </div>
       </div>
 

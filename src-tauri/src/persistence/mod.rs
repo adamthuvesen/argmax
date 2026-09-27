@@ -23,6 +23,7 @@ pub mod session_messages;
 pub mod sessions;
 pub mod synced;
 pub mod time;
+pub mod turn_routes;
 pub mod usage;
 pub mod usage_scan;
 pub mod workspaces;

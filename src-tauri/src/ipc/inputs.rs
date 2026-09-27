@@ -26,6 +26,7 @@ macro_rules! empty_input {
 
 empty_input!(HealthPingInput);
 empty_input!(UsageRemainingInput);
+empty_input!(SettingsRoutingInput);
 empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);
@@ -53,6 +54,12 @@ pub struct DeleteOldChatsInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetBrowserToolsInput {
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetRoutingKeyInput {
+    pub api_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -645,6 +652,11 @@ pub struct ProvidersLaunchInput {
     /// coordinator launching itself.
     #[serde(default)]
     pub arc_is_coordinator_launch: bool,
+    /// Let the router pick provider, model and effort from the prompt. The
+    /// provider/model/effort fields above are then only the fallback the
+    /// router overwrites. See docs/routing.md.
+    #[serde(default)]
+    pub auto_tier: Option<crate::routing::table::AutoTier>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -1430,4 +1442,10 @@ pub struct UsageSummaryInput {
     /// offer the others. Cursor keeps no local usage log and is rejected.
     #[serde(default)]
     pub provider: Option<crate::ipc::validation::ProviderId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UsageRouterCostInput {
+    pub window: crate::usage::UsageWindow,
 }

@@ -108,7 +108,8 @@ struct NewChatPlan: Sendable {
             modelLabel: model.label,
             modelId: model.modelId,
             reasoningEffort: model.reasoningEffort?.rawValue,
-            attachments: attachments
+            attachments: attachments,
+            autoTier: model.autoTier?.rawValue
         )
     }
 

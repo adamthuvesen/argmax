@@ -756,6 +756,7 @@ fn race_launch_input(workspace_id: &str, arc_id: &str) -> ProvidersLaunchInput {
         goal_max_turns: None,
         arc_id: Some(arc_id.to_string()),
         arc_is_coordinator_launch: false,
+        auto_tier: None,
     }
 }
 

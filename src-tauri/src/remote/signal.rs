@@ -286,6 +286,8 @@ pub(crate) mod fixtures {
             launched_by_session_id: None,
             launch_kind: crate::persistence::sessions::LAUNCH_KIND_AGENT.to_string(),
             arc_id: None,
+            auto_tier: None,
+            auto_route: None,
         }
     }
 }

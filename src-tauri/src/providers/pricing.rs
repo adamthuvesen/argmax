@@ -74,19 +74,21 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "opencode-go/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.0 },
     // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
     // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
-    // price. 4.6 rates were solved from the CLI's own `total_cost_usd` across
-    // runs with varied token mixes and reproduce it exactly; grok-4.6 lands at
-    // 0.17x the published API rate and grok-4.5 at 0.34x. 4.7 is served at the
-    // 4.6 SKU rate; 4.7 Fast is twice that. Cache writes are never billed separately
-    // (cache_creation_input_tokens is always 0). Re-derive if xAI reprices.
-    "grok-4.7" => ModelPricing { input: 0.34, output: 1.02, cache_read: 0.085, cache_write: 0.0 },
-    "grok-4.6" => ModelPricing { input: 0.34, output: 1.02, cache_read: 0.085, cache_write: 0.0 },
+    // price (4.7 lists at $2 / $6; its SKU is 0.34x that). Every rate was solved
+    // from the `costUsdTicks` Grok reported on 2026-09-27 (grok 1.0.41) and
+    // reproduces it to the tick. 4.7 and 4.6 share a rate, doubled since
+    // 2026-09-01; 4.5 matches them except on cache reads; 4.7 Fast is twice 4.7.
+    // Cache writes are never billed separately (cache_creation_input_tokens is
+    // always 0). Recorded turns carry Grok's own cost, so this table prices only
+    // what arrives without one. Re-derive if xAI reprices.
+    "grok-4.7" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.17, cache_write: 0.0 },
+    "grok-4.6" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.17, cache_write: 0.0 },
     "grok-4.5" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.102, cache_write: 0.0 },
     // The same SKUs as the CLI's `modelUsage` map spells them in its session
     // logs, so the usage ledger can price cache savings for Grok turns.
-    "grok-4.7-build" => ModelPricing { input: 0.34, output: 1.02, cache_read: 0.085, cache_write: 0.0 },
-    "grok-4.7-build-fast" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.17, cache_write: 0.0 },
-    "grok-4.6-build" => ModelPricing { input: 0.34, output: 1.02, cache_read: 0.085, cache_write: 0.0 },
+    "grok-4.7-build" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.17, cache_write: 0.0 },
+    "grok-4.7-build-fast" => ModelPricing { input: 1.36, output: 4.08, cache_read: 0.34, cache_write: 0.0 },
+    "grok-4.6-build" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.17, cache_write: 0.0 },
     "grok-4.5-build" => ModelPricing { input: 0.68, output: 2.04, cache_read: 0.102, cache_write: 0.0 },
 };
 

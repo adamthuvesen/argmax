@@ -319,7 +319,8 @@ final class TranscriptStore: ObservableObject {
             prompt: row.prompt,
             state: row.state,
             attention: row.attention,
-            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort
+            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort,
+            autoTier: row.autoTier
         ), title: workspace?.taskLabel, pendingMessages: nil)
     }
 
@@ -535,6 +536,7 @@ final class TranscriptStore: ObservableObject {
             modelLabel: catalogModel?.label ?? row.modelLabel,
             effort: row.reasoningEffort,
             efforts: catalogModel?.reasoningEfforts.map(\.rawValue) ?? [],
+            autoTier: row.autoTier.flatMap(AutoTier.init(rawValue:)),
             queued: messages.map { entry in
                 NativeQueuedMessage(
                     id: entry.id,

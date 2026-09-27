@@ -21,6 +21,7 @@ struct NativeComposerState: Hashable, Sendable {
     var modelLabel: String
     var effort: String?
     var efforts: [String]
+    var autoTier: AutoTier? = nil
     var queued: [NativeQueuedMessage]
     var running: Bool
 }

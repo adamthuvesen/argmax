@@ -1026,7 +1026,21 @@ fn extract_usage_from_payload(
     context: &mut NormalizerSessionContext,
 ) -> Option<NormalizedUsage> {
     match provider {
-        ProviderId::Claude | ProviderId::Grok => extract_claude_usage(payload, provider_type),
+        ProviderId::Claude => extract_claude_usage(payload, provider_type),
+        ProviderId::Grok => {
+            let mut usage = extract_claude_usage(payload, provider_type)?;
+            // An ACP turn's usage line (grok_acp.rs::usage_lines) carries what
+            // Grok charged, which outranks the rate table. It totals every
+            // model call in the turn, so it says nothing about context size.
+            let reported = object_value(payload.get("message"))
+                .and_then(|message| message.get("cost_usd"))
+                .and_then(Value::as_f64);
+            if let Some(cost_usd) = reported {
+                usage.cost_usd = cost_usd;
+                usage.context_tokens = None;
+            }
+            Some(usage)
+        }
         ProviderId::Codex => extract_codex_usage(payload, provider_type, context),
         ProviderId::Cursor => extract_cursor_usage(payload, provider_type, context),
         ProviderId::Opencode => extract_opencode_usage(payload, provider_type, context),
@@ -1304,10 +1318,11 @@ mod tests {
         assert_eq!(usage.tokens.input, 14838);
         assert_eq!(usage.tokens.output, 70);
         assert_eq!(usage.tokens.cache_read, 26240);
-        // Matches the CLI's own total_cost_usd for this exact turn.
+        // The 4.6 table rate. The CLI reported half this ($0.00734672) on
+        // 2026-09-01, before xAI doubled the SKU.
         assert!(
-            (usage.cost_usd - 0.007_346_72).abs() < 1e-9,
-            "priced {}, CLI reported 0.00734672",
+            (usage.cost_usd - 0.014_693_44).abs() < 1e-9,
+            "priced {}, expected 0.01469344",
             usage.cost_usd
         );
     }

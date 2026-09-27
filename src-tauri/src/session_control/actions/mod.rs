@@ -31,7 +31,8 @@ use self::{
     },
     wait::wait_for_sessions,
     workspace_tools::{
-        read_terminal, run_checks, spawn_terminal, workspace_diff, workspace_status,
+        close_terminal, read_terminal, run_checks, spawn_terminal, workspace_diff,
+        workspace_status, write_terminal,
     },
 };
 use super::{
@@ -139,6 +140,8 @@ pub(super) async fn handle_session_control(
         SessionControlAction::TerminalRead(action) => {
             read_terminal(action, parent, database, app.as_ref())
         }
+        SessionControlAction::TerminalWrite(action) => write_terminal(action, app.as_ref()),
+        SessionControlAction::TerminalClose(action) => close_terminal(action, app.as_ref()).await,
         SessionControlAction::Projects(_) => list_projects_action(database),
         SessionControlAction::ScheduleFollowup(action) => {
             schedule_followup(action, parent, database)

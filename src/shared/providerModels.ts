@@ -187,18 +187,17 @@ export function effortForModel(
 // different row. Models without `supportsReasoningEffort` are fast/no-effort and
 // hide the effort control.
 //
-// NOTE: Cursor's `modelId`s keep their `-medium` alias as a stable base — the
-// Cursor CLI selects reasoning effort through the model id (e.g. gpt-5.6-sol-high,
-// claude-opus-5-thinking-xhigh), so the Rust cursor adapter folds the chosen
-// effort into the launched `--model` variant. Keep the picker's id stable;
-// effort rides in `reasoningEffort`.
+// NOTE: Cursor's `modelId`s keep their `-medium` alias as a stable base. Effort
+// and Fast ride in `reasoningEffort` / fast mode: chats set them as ACP config
+// options (cursor_acp.rs), the one-shot CLI folds them into the `--model`
+// variant (adapters.rs). Keep the picker's id stable.
 export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
-  // Claude documents Fast for Opus 4.6 only, outside this catalog.
-  // Do not enable it for other models: the CLI can switch models to honor it.
-  // https://code.claude.com/docs/en/fast-mode
+  // Claude Code offers Fast on Opus 5.5 (and Opus 5 / 4.8, outside this
+  // catalog), at twice the price. Do not enable it for other models: turning it
+  // on switches the chat to Opus. https://code.claude.com/docs/en/fast-mode
   claude: [
     { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "Opus 5.5", modelId: "claude-opus-5-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "Opus 5.5", modelId: "claude-opus-5-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
     { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
@@ -217,11 +216,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
     { label: "Auto Balance (Cursor)", modelId: "auto-smart[optimize_for=balanced]" },
     { label: "Auto Intelligence (Cursor)", modelId: "auto-smart[optimize_for=intelligence]" },
-    { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
+    { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", supportsFastMode: true, contextWindow: 1_000_000 },
     {
       label: "Grok 4.7 (Cursor)",
       modelId: "grok-4.7-medium",
       supportsReasoningEffort: true,
+      supportsFastMode: true,
       contextWindow: 1_000_000
     },
     {
@@ -230,13 +230,14 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsReasoningEffort: true,
       contextWindow: 1_000_000
     },
-    { label: "GPT-5.6 Sol (Cursor)", modelId: "gpt-5.6-sol-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "GPT-5.6 Terra (Cursor)", modelId: "gpt-5.6-terra-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "GPT-5.6 Luna (Cursor)", modelId: "gpt-5.6-luna-medium", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "GPT-5.6 Sol (Cursor)", modelId: "gpt-5.6-sol-medium", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
+    { label: "GPT-5.6 Terra (Cursor)", modelId: "gpt-5.6-terra-medium", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
+    { label: "GPT-5.6 Luna (Cursor)", modelId: "gpt-5.6-luna-medium", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
     {
       label: "Claude Opus 5.5 (Cursor)",
       modelId: "claude-opus-5-5-medium",
       supportsReasoningEffort: true,
+      supportsFastMode: true,
       contextWindow: 1_000_000
     }
   ],
@@ -286,7 +287,7 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   codex: "gpt-6-luna",
   cursor: "composer-2.5",
   opencode: "opencode/big-pickle",
-  // Same Grok Build rate as the chat model. 4.5 costs twice as much.
+  // Same Grok Build rate as the chat model.
   grok: "grok-4.7"
 };
 
@@ -400,14 +401,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
   // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
-  // price. 4.6 rates were solved from the CLI's own `total_cost_usd` across
-  // runs with varied token mixes and reproduce it exactly. 4.7 is served at
-  // that same SKU rate (xAI: same price as 4.6); 4.7 Fast is twice that. Cache
-  // writes are never billed separately. Keep in sync with the Rust pricing
-  // mirror.
-  "grok-4.7":                              { input: 0.34,  output: 1.02,   cacheRead: 0.085, cacheWrite: 0 },
-  "grok-4.7-build-fast":                   { input: 0.68,  output: 2.04,   cacheRead: 0.17,  cacheWrite: 0 },
-  "grok-4.6":                              { input: 0.34,  output: 1.02,   cacheRead: 0.085, cacheWrite: 0 },
+  // price (4.7 lists at $2 / $6; its SKU is 0.34x that). Every rate was solved
+  // from the `costUsdTicks` Grok reported on 2026-09-27 (grok 1.0.41) and
+  // reproduces it to the tick. 4.7 and 4.6 share a rate, doubled since
+  // 2026-09-01; 4.5 matches them except on cache reads; 4.7 Fast is twice 4.7.
+  // Cache writes are never billed separately. Keep in sync with the Rust
+  // pricing mirror.
+  "grok-4.7":                              { input: 0.68,  output: 2.04,   cacheRead: 0.17,  cacheWrite: 0 },
+  "grok-4.7-build-fast":                   { input: 1.36,  output: 4.08,   cacheRead: 0.34,  cacheWrite: 0 },
+  "grok-4.6":                              { input: 0.68,  output: 2.04,   cacheRead: 0.17,  cacheWrite: 0 },
   "grok-4.5":                              { input: 0.68,  output: 2.04,   cacheRead: 0.102, cacheWrite: 0 }
 };
 

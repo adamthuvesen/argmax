@@ -6,7 +6,13 @@ export type SettingsGroupId =
   | "integrations"
   | "advanced";
 
-type SettingsSectionMeta = { id: string; label: string };
+type SettingsSectionMeta = {
+  id: string;
+  label: string;
+  /** Row labels inside the section, so a search for "Fast mode" lands on
+   *  Defaults. Keep in step with the panel when a row is added or renamed. */
+  settings?: ReadonlyArray<string>;
+};
 
 type SettingsGroupMeta = {
   id: SettingsGroupId;
@@ -22,38 +28,120 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     id: "general",
     label: "General",
     sections: [
-      { id: "settings-startup", label: "Startup" },
-      { id: "settings-notifications", label: "Notifications" },
-      { id: "settings-power", label: "Power" },
-      { id: "settings-handoff", label: "Handoff" }
+      {
+        id: "settings-startup",
+        label: "Startup",
+        settings: [
+          "New chat",
+          "Follow-up while agent works",
+          "Random icon for new chats",
+          "Escape stops a running chat"
+        ]
+      },
+      {
+        id: "settings-notifications",
+        label: "Notifications",
+        settings: [
+          "Notify when agent finishes",
+          "Test notification"
+        ]
+      },
+      { id: "settings-power", label: "Power", settings: ["Keep computer awake"] },
+      { id: "settings-handoff", label: "Handoff", settings: ["Default IDE", "Web links from chat"] }
     ]
   },
   {
     id: "appearance",
     label: "Appearance",
     sections: [
-      { id: "settings-theme", label: "Theme" },
-      { id: "settings-typography", label: "Typography" },
-      { id: "settings-layout", label: "Layout" }
+      {
+        id: "settings-theme",
+        label: "Theme",
+        settings: [
+          "Browser theme",
+          "Background intensity",
+          "Accent",
+          "Activity icons",
+          "Activity mark",
+          "Running row underline",
+          "Your message bubbles"
+        ]
+      },
+      {
+        id: "settings-typography",
+        label: "Typography",
+        settings: [
+          "Font family",
+          "App font size",
+          "Agent window font size",
+          "Font heaviness",
+          "Ink strength"
+        ]
+      },
+      {
+        id: "settings-layout",
+        label: "Layout",
+        settings: [
+          "Chat width",
+          "Files panel side",
+          "Show arcs",
+          "Show archived chats",
+          "Priority section in sidebar",
+          "Translucent sidebar",
+          "Sidebar translucency",
+          "Workspace card in agent view",
+          "Fox mascot",
+          "Context indicator in composer",
+          "Celebrate PR milestones"
+        ]
+      }
     ]
   },
   {
     id: "agents",
     label: "Agents",
     sections: [
-      { id: "settings-agent-defaults", label: "Defaults" },
-      { id: "settings-permissions", label: "Permissions" },
-      { id: "settings-tools", label: "Tools" },
-      { id: "settings-conversation", label: "Conversation" },
-      { id: "settings-providers", label: "Providers" },
-      { id: "settings-session-sync", label: "Chat sync" }
+      {
+        id: "settings-agent-defaults",
+        label: "Defaults",
+        settings: [
+          "Default model",
+          "Default effort",
+          "Fast mode"
+        ]
+      },
+      { id: "settings-auto-routing", label: "Model router", settings: ["Jev API key"] },
+      { id: "settings-permissions", label: "Permissions", settings: ["Tool permissions"] },
+      { id: "settings-tools", label: "Tools", settings: ["Browser tools"] },
+      {
+        id: "settings-conversation",
+        label: "Conversation",
+        settings: [
+          "Chat detail & verbosity",
+          "Changed files expanded",
+          "Goals",
+          "Turns a goal may spend",
+          "Revert to a turn"
+        ]
+      },
+      { id: "settings-providers", label: "Providers", settings: ["Refresh provider discovery"] },
+      { id: "settings-session-sync", label: "Chat sync", settings: ["How far back"] }
     ]
   },
   {
     id: "projects",
     label: "Projects",
     sections: [
-      { id: "settings-project-config", label: "Project settings" },
+      {
+        id: "settings-project-config",
+        label: "Project settings",
+        settings: [
+          "Worktree location",
+          "Setup command",
+          "Check commands",
+          "Archive a workspace when its PR merges"
+        ]
+      },
       { id: "settings-project-sources", label: "Project sources" }
     ]
   },
@@ -61,9 +149,22 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     id: "integrations",
     label: "Integrations",
     sections: [
-      { id: "settings-engram", label: "Engram" },
-      { id: "settings-mcp", label: "Connections" },
-      { id: "settings-remote", label: "Remote access" }
+      { id: "settings-engram", label: "Engram", settings: ["Install Engram", "Engram agent"] },
+      { id: "settings-mcp", label: "Connections", settings: ["Connection provider"] },
+      {
+        id: "settings-remote",
+        label: "Remote access",
+        settings: [
+          "Phone remote",
+          "Pairing QR code",
+          "Pairing link",
+          "Tailscale proxy",
+          "Port",
+          "ntfy topic",
+          "APNs key file",
+          "Paired phones"
+        ]
+      }
     ]
   },
   {
@@ -71,10 +172,22 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
     label: "Advanced",
     dividerBefore: true,
     sections: [
-      { id: "settings-chat-history", label: "Chat history" },
+      { id: "settings-chat-history", label: "Chat history", settings: ["Delete chats older than 7 days"] },
       { id: "settings-knowledge", label: "Project knowledge" },
-      { id: "settings-diagnostics", label: "Diagnostics" },
-      { id: "settings-about", label: "About" }
+      {
+        id: "settings-diagnostics",
+        label: "Diagnostics",
+        settings: [
+          "Copy diagnostics",
+          "Reveal database file",
+          "Compact database",
+          "Archived workspaces",
+          "Save log file",
+          "Performance",
+          "Developer tools"
+        ]
+      },
+      { id: "settings-about", label: "About", settings: ["Version", "Source and issues"] }
     ]
   }
 ];

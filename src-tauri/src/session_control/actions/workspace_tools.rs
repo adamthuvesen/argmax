@@ -15,9 +15,10 @@ use super::super::{
     argmax_protocol_error,
     protocol::{
         ChangedFile, CheckOutcome, ChecksOutcome, ChecksRunAction, SessionControlError,
-        SessionControlResponse, SessionControlResult, TerminalOutput, TerminalReadAction,
-        TerminalSpawnAction, TerminalStarted, TerminalSummary, WorkspaceDiffAction,
-        WorkspaceDiffOutcome, WorkspaceStatusAction, WorkspaceStatusOutcome,
+        SessionControlResponse, SessionControlResult, TerminalCloseAction, TerminalClosed,
+        TerminalOutput, TerminalReadAction, TerminalSpawnAction, TerminalStarted, TerminalSummary,
+        TerminalWriteAction, TerminalWritten, WorkspaceDiffAction, WorkspaceDiffOutcome,
+        WorkspaceStatusAction, WorkspaceStatusOutcome,
     },
     protocol_error,
     registry::ParentLaunchSettings,
@@ -405,6 +406,74 @@ pub(super) fn read_terminal(
             truncated,
         }),
     ))
+}
+
+pub(super) fn write_terminal(
+    action: TerminalWriteAction,
+    app: Option<&tauri::AppHandle>,
+) -> Result<SessionControlResponse, SessionControlError> {
+    let terminals = live_terminals(app)?;
+    let mut data = action.text;
+    if action.submit.unwrap_or(true) {
+        data.push('\n');
+    }
+    if data.is_empty() {
+        return Err(protocol_error(
+            "TERMINAL_WRITE_EMPTY",
+            "Nothing to send: text is empty and submit is false.",
+        ));
+    }
+    // `write` treats a gone shell as a no-op for the renderer's sake; an
+    // agent writing to a dead shell should hear about it instead.
+    let delivered = terminals
+        .write(&action.terminal_id, data.as_bytes())
+        .map_err(argmax_protocol_error)?;
+    if !delivered {
+        return Err(terminal_not_live(&terminals, &action.terminal_id));
+    }
+    Ok(SessionControlResponse::new(
+        SessionControlResult::TerminalWritten(TerminalWritten {
+            terminal_id: action.terminal_id,
+            bytes: data.len(),
+        }),
+    ))
+}
+
+pub(super) async fn close_terminal(
+    action: TerminalCloseAction,
+    app: Option<&tauri::AppHandle>,
+) -> Result<SessionControlResponse, SessionControlError> {
+    let terminals = live_terminals(app)?;
+    let was_running = terminals.is_live(&action.terminal_id);
+    if !was_running && terminals.read_terminal(&action.terminal_id, 0).is_none() {
+        return Err(terminal_not_live(&terminals, &action.terminal_id));
+    }
+    if was_running {
+        terminals.terminate(&action.terminal_id).await;
+    }
+    let exit_code = terminals
+        .read_terminal(&action.terminal_id, 0)
+        .and_then(|(summary, _, _)| summary.exit_code);
+    Ok(SessionControlResponse::new(
+        SessionControlResult::TerminalClosed(TerminalClosed {
+            terminal_id: action.terminal_id,
+            was_running,
+            exit_code,
+        }),
+    ))
+}
+
+fn terminal_not_live(terminals: &TerminalService, terminal_id: &str) -> SessionControlError {
+    match terminals.read_terminal(terminal_id, 0) {
+        Some(_) => protocol_error(
+            "TERMINAL_EXITED",
+            format!("Terminal {terminal_id} has already exited; read it with terminal_read."),
+        ),
+        None => protocol_error(
+            "TERMINAL_NOT_FOUND",
+            format!("No terminal {terminal_id} has run in this Argmax session."),
+        ),
+    }
 }
 
 fn terminal_summary(record: TerminalRecordSummary) -> TerminalSummary {

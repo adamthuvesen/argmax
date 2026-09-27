@@ -152,10 +152,13 @@ struct LaunchSessionInput: Encodable, Sendable {
     var rows = 32
     /// Images the launcher picked, stored on the Mac before this call.
     var attachments: [ComposerAttachment] = []
+    /// A Router pick: the Mac routes the launch and overwrites the model
+    /// fields above. Nil for a model picked by hand.
+    var autoTier: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case workspaceId, provider, prompt, modelLabel, modelId, reasoningEffort
-        case fastMode, agentMode, cols, rows, attachments
+        case fastMode, agentMode, cols, rows, attachments, autoTier
     }
 
     func encode(to encoder: Encoder) throws {
@@ -177,7 +180,17 @@ struct LaunchSessionInput: Encodable, Sendable {
         } else {
             try container.encode(attachments, forKey: .attachments)
         }
+        // Only on a Router pick, unlike the web launcher's null: the input
+        // denies unknown fields, and a Mac built before routing would refuse
+        // every launch that named the key.
+        try container.encodeIfPresent(autoTier, forKey: .autoTier)
     }
+}
+
+/// `settings:routing`: whether a Jev key is saved on the Mac, which is what
+/// puts the Router rows in the model picker. The key itself is desktop-only.
+struct RoutingSettings: Decodable, Sendable {
+    var enabled: Bool
 }
 
 /// `WorkspacesAutotitleInput` — a second, toolless CLI call that renames the
@@ -479,6 +492,12 @@ extension BridgeClient {
     /// a screen-opens read, never a poll. See Insights/PlanLimits.swift.
     func planLimits() async throws -> PlanLimits {
         try await request("usage:remaining", as: PlanLimits.self)
+    }
+
+    /// Not in the read list, so it carries an operation id, as the web
+    /// launcher's call does.
+    func routingSettings() async throws -> RoutingSettings {
+        try await request("settings:routing", as: RoutingSettings.self)
     }
 
     /// The Usage page ledger: totals, per-provider cards, daily series, token

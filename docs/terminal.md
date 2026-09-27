@@ -21,7 +21,11 @@ command inline, in the order the webview sent its messages, while an `async` one
 spawns a task per call. When it was `async`, two keystrokes in flight raced and a
 `\r` that won made the shell run a fragment: `open .` typed quickly executed as
 `en`. A write that fails against a live PTY is reported to the next caller, since
-by then the failing write is on the terminal's own thread. The remote bridge
+by then the failing write is on the terminal's own thread. A write to a shell
+that is gone (unknown id, or reaped while its last output still drains) is a
+no-op for the renderer, since keystrokes can land between the exit and the tab
+noticing; `TerminalService::write` returns whether the bytes were queued so the
+agent's `terminal_write` can fail instead. The remote bridge
 dispatches each request on its own task, so a bridge client that wants ordered
 input has to await one write before sending the next.
 
@@ -57,7 +61,9 @@ starting another shell. The event is emitted before Argmax types the command;
 the renderer buffers output until xterm mounts, so a short-lived command still
 appears in the tab. `terminal_read` lists the
 terminals known for a workspace or returns one terminal's captured output,
-running state, and exit code. The service keeps the newest 128 KiB of output
+running state, and exit code. `terminal_write` types into a live terminal
+(control bytes such as Ctrl-C included) and `terminal_close` terminates one
+through the same path as the tab's close. The service keeps the newest 128 KiB of output
 per terminal in memory. It trims finished records oldest first toward a
 64-record cap. Live records are never evicted.
 

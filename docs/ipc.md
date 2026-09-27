@@ -73,6 +73,8 @@ completed replies.
 
 `usage:remaining` takes no fields and returns live remaining usage per provider login: plan kind (`subscription` / `enterprise` / `api_key` / `unavailable` / `error`), optional plan label, remaining-percent windows with reset times, and a per-row message. One provider failing does not fail the channel. See [usage.md](usage.md).
 
+`usage:router-cost` takes `{ window: "24h" | "7d" | "30d" }` and returns what each Auto tier cost in that window — chats, turns, escalations, reroutes, measured and estimated (Cursor) dollars, unpriced turns, and the model mix — or `null` when no chat was routed in it. Dispatched over the remote bridge like `usage:summary`. See [usage.md](usage.md#router-cost).
+
 `activity:summary` takes `{ window: "24h" | "7d" | "30d" | "12m" | "year", projectId?, timeZone }` and returns the Activity page in one shape: totals, the previous-window comparison, per-repository rows, the chart series, a year-long heatmap, streaks, cadence, and the pull requests and reviews from `gh`. A `projectId` narrows everything but the repository rows and the heatmap. `timeZone` must be an IANA name — every bucket is cut on it, so an unresolvable name is rejected rather than silently read as UTC. The commit ledger is swept inline once it has completed before; the GitHub half is a cache the call refreshes in the background when stale and never waits on. Dispatched over the remote bridge like `usage:summary`. See [activity.md](activity.md).
 
 Scheduled tasks ("routines") expose `routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, and `routines:run-now`.

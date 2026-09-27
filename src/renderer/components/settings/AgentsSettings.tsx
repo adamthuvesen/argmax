@@ -1,7 +1,7 @@
 import { AlertTriangle, ChartNoAxesColumn, ExternalLink, RefreshCcw } from "lucide-react";
 import { useMemo, type JSX } from "react";
 import { PROVIDER_DISPLAY_NAMES, REASONING_EFFORTS, type ReasoningEffort } from "../../../shared/providerModels.js";
-import type { DiscoveredProvider, ProviderId } from "../../../shared/types.js";
+import type { DiscoveredProvider, ProviderId, RoutingSettings } from "../../../shared/types.js";
 import { effortLabel, type ModelPickerSelection } from "../../lib/models.js";
 import type { PermissionMode, ProviderPermissionModes } from "../../lib/permissionMode.js";
 import { PROVIDER_INSTALL_HINTS } from "../../lib/providerInstallHints.js";
@@ -14,6 +14,7 @@ import {
 } from "../../lib/uiPreferences.js";
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { WorkingNest } from "../WorkingNest.js";
+import { AutoRoutingSettings } from "./AutoRoutingSettings.js";
 import {
   SettingGroup,
   SettingNote,
@@ -26,6 +27,8 @@ import {
 export function AgentsSettings({
   defaultModel,
   onDefaultModelChange,
+  routing,
+  onRoutingChange,
   defaultEffort,
   onDefaultEffortChange,
   chatVerbosity,
@@ -55,6 +58,8 @@ export function AgentsSettings({
 }: {
   defaultModel: ModelPickerSelection;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
+  routing: RoutingSettings | null;
+  onRoutingChange: (routing: RoutingSettings) => void;
   defaultEffort: ReasoningEffort;
   onDefaultEffortChange: (effort: ReasoningEffort) => void;
   chatVerbosity: ChatVerbosity;
@@ -104,6 +109,7 @@ export function AgentsSettings({
           control={
             <CombinedModelSelector
               ariaLabel="Default model"
+              autoRouting={routing?.enabled === true}
               availability={providerAvailability}
               inputId="settings-default-model"
               value={defaultModel}
@@ -137,6 +143,8 @@ export function AgentsSettings({
           }
         />
       </SettingGroup>
+
+      <AutoRoutingSettings routing={routing} onRoutingChange={onRoutingChange} />
 
       <SettingGroup id="settings-permissions" label="Permissions">
         {defaultAgentSaveError ? (

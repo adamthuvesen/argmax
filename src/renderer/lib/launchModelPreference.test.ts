@@ -10,7 +10,7 @@ import {
   readStoredDefaultEffort,
   readStoredLaunchModel
 } from "./launchModelPreference.js";
-import { allModelOptions } from "./models.js";
+import { allModelOptions, autoTierSelection } from "./models.js";
 
 afterEach(() => {
   window.localStorage.clear();
@@ -29,6 +29,17 @@ describe("launch model preference", () => {
       modelId: option.modelId,
       reasoningEffort: "high"
     });
+  });
+
+  it("round-trips an Auto pick with its tier, leaving the default effort alone", () => {
+    persistDefaultEffort("high");
+
+    persistLaunchModel(autoTierSelection("intelligence"));
+
+    expect(readStoredLaunchModel()).toEqual(autoTierSelection("intelligence"));
+    expect(readStoredLaunchModel()?.label).toBe("Router Frontier");
+    expect(readStoredDefaultEffort()).toBe("high");
+    expect(readLaunchModelRecency()).toEqual(["auto:intelligence"]);
   });
 
   it("returns null for a model that left the catalog", () => {

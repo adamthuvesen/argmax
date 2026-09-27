@@ -12,6 +12,7 @@ import type {
   ArcTimelinePage,
   ArgmaxApi,
   AgentToolsSettings,
+  RoutingSettings,
   ChatCleanupPreview,
   DeleteOldChatsResult,
   AttachmentSaveImageInput,
@@ -85,7 +86,9 @@ import type {
   ReviewComparison,
   Routine,
   RoutineUpsertInput,
+  RouterCostSummary,
   UsageRemaining,
+  UsageRouterCostInput,
   UsageSummary,
   UsageSummaryInput,
   RunCheckInput,
@@ -482,6 +485,9 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     settings: {
       agentTools: () => invokeCommand<AgentToolsSettings>("settings:agent-tools"),
+      routing: () => invokeCommand<RoutingSettings>("settings:routing"),
+      setRoutingKey: (input) => invokeCommand<RoutingSettings>("settings:set-routing-key", input),
+      clearRoutingKey: () => invokeCommand<RoutingSettings>("settings:clear-routing-key"),
       setBrowserTools: (input) =>
         invokeCommand<AgentToolsSettings>("settings:set-browser-tools", input),
       previewChatCleanup: () => invokeCommand<ChatCleanupPreview>("settings:preview-chat-cleanup"),
@@ -544,7 +550,9 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     usage: {
       summary: (input: UsageSummaryInput) => invokeCommand<UsageSummary>("usage:summary", input),
-      remaining: () => invokeCommand<UsageRemaining>("usage:remaining")
+      remaining: () => invokeCommand<UsageRemaining>("usage:remaining"),
+      routerCost: (input: UsageRouterCostInput) =>
+        invokeCommand<RouterCostSummary | null>("usage:router-cost", input)
     },
     activity: {
       summary: (input: ActivitySummaryInput) => invokeCommand<ActivitySummary>("activity:summary", input)

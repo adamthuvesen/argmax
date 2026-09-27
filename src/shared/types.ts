@@ -5,6 +5,8 @@ export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
 export type DatabaseStats = Bindings.DatabaseStats;
 export type AgentToolsSettings = Bindings.AgentToolsSettings;
+export type RoutingSettings = Bindings.RoutingSettings;
+export type AutoTier = Bindings.AutoTier;
 export type ChatCleanupPreview = Bindings.ChatCleanupPreview;
 export type DeleteOldChatsInput = Bindings.DeleteOldChatsInput;
 export type DeleteOldChatsResult = Bindings.DeleteOldChatsResult;
@@ -65,6 +67,10 @@ export type UsageSummary = Bindings.UsageSummary;
 export type UsageSummaryInput = Bindings.UsageSummaryInput;
 export type UsageRemaining = Bindings.UsageRemaining;
 export type UsageRemainingInput = Bindings.UsageRemainingInput;
+export type UsageRouterCostInput = Bindings.UsageRouterCostInput;
+export type RouterCostSummary = Bindings.RouterCostSummary;
+export type RouterTierCost = Bindings.RouterTierCost;
+export type RouterModelCost = Bindings.RouterModelCost;
 export type UsageProviderRemaining = Bindings.UsageProviderRemaining;
 export type UsageLimitWindow = Bindings.UsageLimitWindow;
 export type UsagePlanKind = Bindings.UsagePlanKind;
@@ -637,6 +643,9 @@ export interface ArgmaxApi {
   };
   settings: {
     agentTools: () => Promise<AgentToolsSettings>;
+    routing: () => Promise<RoutingSettings>;
+    setRoutingKey: (input: { apiKey: string }) => Promise<RoutingSettings>;
+    clearRoutingKey: () => Promise<RoutingSettings>;
     setBrowserTools: (input: { enabled: boolean }) => Promise<AgentToolsSettings>;
     previewChatCleanup: () => Promise<ChatCleanupPreview>;
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
@@ -704,6 +713,8 @@ export interface ArgmaxApi {
   usage: {
     summary: (input: UsageSummaryInput) => Promise<UsageSummary>;
     remaining: () => Promise<UsageRemaining>;
+    /** What each Auto tier cost in the window; null when nothing was routed. */
+    routerCost: (input: UsageRouterCostInput) => Promise<RouterCostSummary | null>;
   };
   activity: {
     summary: (input: ActivitySummaryInput) => Promise<ActivitySummary>;

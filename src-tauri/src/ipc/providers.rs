@@ -47,8 +47,17 @@ pub(crate) async fn providers_launch_impl(
     mut input: ProvidersLaunchInput,
     default_agent: &crate::default_agent::DefaultAgent,
 ) -> ArgmaxResult<SessionSummary> {
+    // Route before the permission default: that default is per provider.
+    let route = crate::routing::route_launch(&mut input).await?;
     apply_launch_permission_default(&mut input, default_agent);
-    live_providers(state)?.launch(input).await
+    let session = live_providers(state)?.launch(input).await?;
+    match route {
+        Some(route) => {
+            let database = super::live_database(state)?;
+            crate::routing::record_launch_route(&database, session, &route)
+        }
+        None => Ok(session),
+    }
 }
 
 fn apply_launch_permission_default(

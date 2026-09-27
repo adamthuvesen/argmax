@@ -1005,6 +1005,33 @@ pub fn has_provider_permission_event(
     Ok(exists != 0)
 }
 
+/// Whether the current turn (everything since the latest user message) already
+/// has a `session.completed`. Cursor and OpenCode report the end of a turn in
+/// their own output, which the normalizer records, before the process exits;
+/// the exit path checks this so the turn is not completed twice.
+pub fn turn_completion_recorded(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    let exists = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM events
+                WHERE session_id = ?1
+                  AND type = 'session.completed'
+                  AND created_at >= COALESCE((
+                    SELECT created_at FROM events
+                    WHERE session_id = ?1 AND type = 'user.message'
+                    ORDER BY created_at DESC LIMIT 1
+                  ), '')
+            )
+            "#,
+            [session_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(exists != 0)
+}
+
 /// A Cursor trace import persists a synthetic `traceNoOutput` completion in
 /// the sequence slot the tool's real result will occupy once the child
 /// transcript catches up. The real completion then arrives under the same

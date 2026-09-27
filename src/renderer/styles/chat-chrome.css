@@ -1482,6 +1482,14 @@ body > .picker-popover-portaled.settings-picker-popover {
   flex-shrink: 1;
 }
 
+/* Below its 600px container query the toolbar becomes a grid with a fixed
+   attach column; with no attach button here that empty track pushed the model
+   chip off the left edge. Only takes effect while the toolbar is a grid. */
+.details-popup .session-input .session-input-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "model details send";
+}
+
 /* Header "Add to chat" — attaches the explained excerpt to the originating
    composer, Codex-style. Quiet labeled chip beside the close button. */
 .details-attach-chat {

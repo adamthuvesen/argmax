@@ -126,6 +126,8 @@ export let setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPrior
  *  to put the Usage page into a specific state. */
 export let usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
 export let usageRemaining: AppTestMockFn<ArgmaxApi["usage"]["remaining"]>;
+/** Null by default: no chat was routed, so the Router card stays hidden. */
+export let usageRouterCost: AppTestMockFn<ArgmaxApi["usage"]["routerCost"]>;
 export let activitySummary: AppTestMockFn<ArgmaxApi["activity"]["summary"]>;
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 export let focusSessionListener: ((sessionId: string) => void) | null = null;
@@ -399,6 +401,7 @@ export function setupAppTestMocks(): void {
   usageRemaining = vi
     .fn<ArgmaxApi["usage"]["remaining"]>()
     .mockResolvedValue(usageRemainingFixture());
+  usageRouterCost = vi.fn<ArgmaxApi["usage"]["routerCost"]>().mockResolvedValue(null);
   activitySummary = vi
     .fn<ArgmaxApi["activity"]["summary"]>()
     .mockImplementation((input) => Promise.resolve(demoActivitySummary(input)));
@@ -443,7 +446,8 @@ export function setupAppTestMocks(): void {
     },
     usage: {
       summary: usageSummary,
-      remaining: usageRemaining
+      remaining: usageRemaining,
+      routerCost: usageRouterCost
     },
     activity: {
       summary: activitySummary
@@ -596,6 +600,9 @@ export function setupAppTestMocks(): void {
     },
     settings: {
       agentTools: agentToolsStub,
+      routing: () => Promise.resolve({ enabled: false }),
+      setRoutingKey: () => Promise.reject(new Error("Routing key not stubbed")),
+      clearRoutingKey: () => Promise.resolve({ enabled: false }),
       setBrowserTools: setBrowserToolsStub,
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))

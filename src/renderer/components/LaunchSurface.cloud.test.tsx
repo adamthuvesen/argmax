@@ -1,13 +1,15 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { primaryProject, setupAppTestMocks } from "../../test/appTestHarness.js";
-import type { ModelPickerSelection } from "../lib/models.js";
+import { autoTierSelection, type ModelPickerSelection } from "../lib/models.js";
 import { LaunchSurface } from "./LaunchSurface.js";
 
-function renderLauncher(model: ModelPickerSelection = { provider: "claude", modelId: "claude-fable-5-1", label: "Fable 5.1", reasoningEffort: "medium" }) {
-  const project = primaryProject();
-  const launchLocal = vi.fn().mockResolvedValue(undefined);
-  render(<LaunchSurface
+function launcherElement(
+  model: ModelPickerSelection,
+  project: ReturnType<typeof primaryProject>,
+  launchLocal: () => Promise<void>
+) {
+  return <LaunchSurface
     model={model}
     onAddProject={vi.fn()}
     onBranchSwitch={vi.fn()}
@@ -16,8 +18,18 @@ function renderLauncher(model: ModelPickerSelection = { provider: "claude", mode
     onSelectProject={vi.fn()}
     project={project}
     projects={[project]}
-  />);
-  return { project, launchLocal };
+  />;
+}
+
+function renderLauncher(model: ModelPickerSelection = { provider: "claude", modelId: "claude-fable-5-1", label: "Fable 5.1", reasoningEffort: "medium" }) {
+  const project = primaryProject();
+  const launchLocal = vi.fn().mockResolvedValue(undefined);
+  const { rerender } = render(launcherElement(model, project, launchLocal));
+  return {
+    project,
+    launchLocal,
+    rerenderWith: (next: ModelPickerSelection) => rerender(launcherElement(next, project, launchLocal))
+  };
 }
 
 describe("cloud launch from the composer", () => {
@@ -136,4 +148,16 @@ describe("cloud launch from the composer", () => {
     expect(prompt).toHaveValue("/goal fix everything");
   });
 
+
+  it("drops Cloud when a Router row is picked, so returning to the model starts local", () => {
+    const opus: ModelPickerSelection = { provider: "claude", modelId: "claude-opus-5-5", label: "Opus 5.5", reasoningEffort: "medium" };
+    const { rerenderWith } = renderLauncher(opus);
+    fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
+    expect(screen.getByRole("button", { name: "Run location: Cloud" })).toBeInTheDocument();
+
+    rerenderWith(autoTierSelection("balanced"));
+    rerenderWith(opus);
+
+    expect(screen.getByRole("button", { name: "Run location: Local" })).toBeInTheDocument();
+  });
 });

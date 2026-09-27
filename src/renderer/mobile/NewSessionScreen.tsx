@@ -252,9 +252,30 @@ export function NewSessionScreen({
 
   // Same default as the desktop launcher: seeded model if present, then
   // the stored global preference, then the factory pick (Claude Opus 5).
-  const [model, setModel] = useState<ModelPickerSelection>(
+  const [chosenModel, setModel] = useState<ModelPickerSelection>(
     () => initialSeed?.model ?? readStoredLaunchModel() ?? factoryLaunchModel()
   );
+  // Auto rows need a saved Jev key. Null until the Mac answers, so a stored
+  // Auto pick isn't swapped out while it loads; once it is known to be off,
+  // the normal default stands in.
+  const [autoRouting, setAutoRouting] = useState<boolean | null>(null);
+  useEffect(() => {
+    const api = window.argmax?.settings;
+    if (!api?.routing) return;
+    let cancelled = false;
+    void api
+      .routing()
+      .then((settings) => {
+        if (!cancelled) setAutoRouting(settings.enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setAutoRouting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const model = chosenModel.autoTier && autoRouting === false ? factoryLaunchModel() : chosenModel;
 
   const chooseWorkspaceMode = useCallback((mode: WorkspaceMode): void => {
     setWorkspaceMode(mode);
@@ -301,7 +322,8 @@ export function NewSessionScreen({
           agentMode: "auto",
           cols: 120,
           rows: 32,
-          attachments: pendingAttachments.length > 0 ? pendingAttachments : null
+          attachments: pendingAttachments.length > 0 ? pendingAttachments : null,
+          autoTier: model.autoTier ?? null
         });
       } catch (error) {
         // No session started, so the workspace (and its worktree) would sit
@@ -443,6 +465,7 @@ export function NewSessionScreen({
             <div className="composer-chips-group composer-chips-model">
               <LaunchModelSelector
                 ariaLabel="Chat model"
+                autoRouting={autoRouting === true}
                 open={openSheet === "model"}
                 onOpenChange={(open) => onOpenSheetChange(open ? "model" : null)}
                 effortOpen={openSheet === "model-effort"}

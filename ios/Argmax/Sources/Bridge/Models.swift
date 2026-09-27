@@ -271,6 +271,9 @@ struct SessionSummary: Codable, Hashable, Sendable, Identifiable {
     var reasoningEffort: String?
     /// The Arc this chat belongs to, as its coordinator or a member.
     var arcId: String? = nil
+    /// The Router tier while the router picks this chat's model; absent once
+    /// a model is picked by hand.
+    var autoTier: String? = nil
 }
 
 /// The four slices of `DashboardSnapshot` the phone keeps.

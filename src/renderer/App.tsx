@@ -18,6 +18,7 @@ import type {
   IdeId,
   MenuCommand,
   ProjectSummary,
+  RoutingSettings,
   SessionSummary,
   WorkspaceContentSearchResult,
   WorkspaceSummary
@@ -99,6 +100,7 @@ import {
   closePane,
   focusPane,
   openWorkspacePane,
+  prunePaneGrid,
   revertPaneToLauncher,
   restorePaneGrid,
   setLauncherPaneProject,
@@ -122,7 +124,14 @@ import {
   readStoredLaunchModel
 } from "./lib/launchModelPreference.js";
 import { persistLaunchProjectId, useLaunchProjectId } from "./lib/launchProjectPreference.js";
-import { factoryLaunchModel, modelPickerSelectionFromSession, modelSupportsFastMode, type ModelPickerSelection } from "./lib/models.js";
+import {
+  autoTierSelection,
+  factoryLaunchModel,
+  isAutoTier,
+  modelPickerSelectionFromSession,
+  modelSupportsFastMode,
+  type ModelPickerSelection
+} from "./lib/models.js";
 import { listFilesFor } from "./lib/listFiles.js";
 import {
   PROVIDER_PERMISSION_MODES_KEY,
@@ -160,6 +169,7 @@ import {
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_ARCS_KEY,
+  SIDEBAR_ARCHIVED_KEY,
   SIDEBAR_PRIORITY_KEY,
   SIDEBAR_TRANSLUCENT_KEY,
   SIDEBAR_TRANSLUCENCY_DEFAULT,
@@ -199,8 +209,37 @@ const DEFAULT_AGENT_SAVE_ERROR = "Default settings could not be saved. Scheduled
 
 export function App(): JSX.Element {
   const [defaultEffort, setDefaultEffort] = useState<ReasoningEffort>(() => readStoredDefaultEffort());
-  const [launchModel, setLaunchModel] = useState<ModelPickerSelection>(
+  const [storedLaunchModel, setLaunchModel] = useState<ModelPickerSelection>(
     () => readStoredLaunchModel() ?? factoryLaunchModel(readStoredDefaultEffort())
+  );
+  // Auto routing is on exactly when a Jev key is saved. Null until the first
+  // read answers, so a stored Auto pick isn't swapped out while it loads.
+  const [routing, setRouting] = useState<RoutingSettings | null>(null);
+  useEffect(() => {
+    const api = window.argmax?.settings;
+    if (!api?.routing) return;
+    let cancelled = false;
+    void api
+      .routing()
+      .then((settings) => {
+        if (!cancelled) setRouting(settings);
+      })
+      .catch(() => {
+        if (!cancelled) setRouting({ enabled: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const autoRoutingEnabled = routing?.enabled === true;
+  // A stored Auto pick without a saved key would fail every launch, so the
+  // launcher falls back to the normal default until a key is back.
+  const launchModel = useMemo(
+    () =>
+      storedLaunchModel.autoTier && routing?.enabled === false
+        ? factoryLaunchModel(defaultEffort)
+        : storedLaunchModel,
+    [defaultEffort, routing, storedLaunchModel]
   );
   const {
     standalonePage,
@@ -242,6 +281,7 @@ export function App(): JSX.Element {
     [chatVerbosity]
   );
   const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, true);
+  const [sidebarArchivedVisible, setSidebarArchivedVisible] = useBooleanUiPreference(SIDEBAR_ARCHIVED_KEY, true);
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [sidebarTranslucent, setSidebarTranslucent] = useBooleanUiPreference(SIDEBAR_TRANSLUCENT_KEY, false);
   const [sidebarTranslucency, setSidebarTranslucency] = useBoundedNumberPreference(
@@ -329,6 +369,7 @@ export function App(): JSX.Element {
     persistDefaultEffort(effort);
     setDefaultEffort(effort);
     setLaunchModel((current) => {
+      if (current.autoTier) return current;
       const resolved = effortForModel(current.provider, current.modelId, effort);
       if (!current.reasoningEffort || !resolved || resolved === current.reasoningEffort) return current;
       return { ...current, reasoningEffort: resolved };
@@ -380,9 +421,19 @@ export function App(): JSX.Element {
   const [isSavingDefaultAgent, setIsSavingDefaultAgent] = useState(false);
   const [defaultAgentSaveAttempt, setDefaultAgentSaveAttempt] = useState(0);
   const defaultAgentSaveQueue = useRef<Promise<void>>(Promise.resolve());
+  // Autonomous chats (check-failure follow-ups, routines) launch unrouted, so a
+  // Router pick in the launcher must not become their model. They keep the last
+  // pinned launcher model; when this run hasn't seen one, the file on disk
+  // already holds it, and only a permission change is worth a write.
+  const lastPinnedLaunchModel = useRef<ModelPickerSelection | null>(null);
+  const initialPermissionModes = useRef(permissionModes);
   // Serialize saves so a slow earlier write cannot replace the latest choice.
   useEffect(() => {
     if (isRemoteBridge() || !window.argmax?.system?.setDefaultAgent) return;
+    if (!launchModel.autoTier) lastPinnedLaunchModel.current = launchModel;
+    const pinnedModel = lastPinnedLaunchModel.current;
+    if (!pinnedModel && permissionModes === initialPermissionModes.current) return;
+    const agentModel = pinnedModel ?? factoryLaunchModel(defaultEffort);
     const api = window.argmax.system;
     let cancelled = false;
     setIsSavingDefaultAgent(true);
@@ -391,10 +442,10 @@ export function App(): JSX.Element {
       if (cancelled) return;
       try {
         await api.setDefaultAgent({
-          provider: launchModel.provider,
-          modelLabel: launchModel.label,
-          modelId: launchModel.modelId,
-          reasoningEffort: launchModel.reasoningEffort ?? null,
+          provider: agentModel.provider,
+          modelLabel: agentModel.label,
+          modelId: agentModel.modelId,
+          reasoningEffort: agentModel.reasoningEffort ?? null,
           permissionModes
         });
         if (!cancelled && toastSnapshot()?.message === DEFAULT_AGENT_SAVE_ERROR) dismissToast();
@@ -408,7 +459,7 @@ export function App(): JSX.Element {
       }
     });
     return () => { cancelled = true; };
-  }, [launchModel, permissionModes, defaultAgentSaveAttempt]);
+  }, [launchModel, permissionModes, defaultAgentSaveAttempt, defaultEffort]);
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
   const [reviewPanelSide, setReviewPanelSide] = useState<ReviewPanelSide>(() => readStoredReviewPanelSide());
@@ -844,8 +895,7 @@ export function App(): JSX.Element {
       setSelectedWorkspaceId(null);
       setSelectedSessionId(null);
     }
-    // The grid-reconcile effect drops cells whose session/workspace vanished
-    // from the snapshot — no manual prune here.
+    prunePaneGrid((cell) => cell.kind === "launcher" || cell.workspaceId !== workspaceId);
   }, [selectedWorkspaceId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot, workspacesById]);
 
   const handleOpenInIde = useCallback(
@@ -1222,7 +1272,13 @@ export function App(): JSX.Element {
         setSelectedProjectId(projectId);
       }
       setLauncherSideChatMode(isSideChat);
-      handleLaunchModelChange(modelPickerSelectionFromSession(session));
+      // A routed chat hands back the Router tier it was launched on, not the
+      // model the router picked for it.
+      handleLaunchModelChange(
+        isAutoTier(session.autoTier)
+          ? autoTierSelection(session.autoTier)
+          : modelPickerSelectionFromSession(session)
+      );
       requestLauncherReset();
 
       if (newSessionMode === "full" || grid.rows.length === 0) {
@@ -1333,7 +1389,7 @@ export function App(): JSX.Element {
       return destination.grid.rows.every((row) => row.every((cell) => {
         if (cell.kind === "launcher") return projectsById.has(cell.projectId);
         const workspace = workspacesById.get(cell.workspaceId);
-        return sessionsById.has(cell.sessionId) && workspace !== undefined && workspace.state !== "archived";
+        return sessionsById.has(cell.sessionId) && workspace !== undefined;
       }));
     },
     [projectsById, realProjects.length, sessionsById, snapshot.arcs, workspacesById]
@@ -1543,12 +1599,15 @@ export function App(): JSX.Element {
           modelLabel: model.label,
           modelId: model.modelId,
           reasoningEffort: model.reasoningEffort ?? null,
-          fastMode: fastModeEnabled && modelSupportsFastMode(model),
+          fastMode: !model.autoTier && fastModeEnabled && modelSupportsFastMode(model),
           agentMode: options.agentMode,
-          permissionMode: permissionModes[model.provider],
+          // A Router pick's provider is a stand-in; the Mac picks the routed
+          // provider's mode from the default agent once it has routed.
+          permissionMode: model.autoTier ? null : permissionModes[model.provider],
           cols: 120,
           rows: 32,
           attachments: options.attachments?.length ? options.attachments : null,
+          autoTier: model.autoTier ?? null,
           ...(options.goalCondition ? { goalCondition: options.goalCondition, goalMaxTurns } : {})
         });
       } catch (error) {
@@ -1767,12 +1826,13 @@ export function App(): JSX.Element {
           modelLabel: launchModel.label,
           modelId: launchModel.modelId,
           reasoningEffort: launchModel.reasoningEffort ?? null,
-          fastMode: fastModeEnabled && modelSupportsFastMode(launchModel),
+          fastMode: !launchModel.autoTier && fastModeEnabled && modelSupportsFastMode(launchModel),
           agentMode: "auto",
-          permissionMode: permissionModes[launchModel.provider],
+          permissionMode: launchModel.autoTier ? null : permissionModes[launchModel.provider],
           cols: 120,
           rows: 32,
-          attachments: null
+          attachments: null,
+          autoTier: launchModel.autoTier ?? null
         })
         .catch((error: unknown) => {
           // The claimed id is now exempt from the sweep for this app run, so
@@ -2119,6 +2179,7 @@ export function App(): JSX.Element {
         onLaunchSideChat={(prompt, model, agentMode, attachments, goalCondition) =>
           launchSideChat(prompt, { model, agentMode, attachments, goalCondition })}
         model={launchModel}
+        autoRouting={autoRoutingEnabled}
         onModelChange={handleLaunchModelChange}
         onSelectProject={
           options.embedded
@@ -2150,6 +2211,7 @@ export function App(): JSX.Element {
       launcherResetSignal,
       launcherSideChatMode,
       launchModel,
+      autoRoutingEnabled,
       launchSideChat,
       launchTask,
       launcherProject,
@@ -2374,6 +2436,7 @@ export function App(): JSX.Element {
           onSetWorkspaceIcon={onSetWorkspaceIconRow}
           onSyncNowWorkspace={onSyncNowWorkspaceRow}
           showArcs={sidebarArcsVisible}
+          showArchived={sidebarArchivedVisible}
           showPriority={sidebarPriorityVisible}
           onOpenLauncher={onOpenLauncherRow}
           onAddProject={onAddProjectRow}
@@ -2429,12 +2492,16 @@ export function App(): JSX.Element {
                 onGroupChange={(group) => showSettings(group)}
                 defaultModel={launchModel}
                 onDefaultModelChange={handleLaunchModelChange}
+                routing={routing}
+                onRoutingChange={setRouting}
                 defaultEffort={defaultEffort}
                 onDefaultEffortChange={handleDefaultEffortChange}
                 chatVerbosity={chatVerbosity}
                 onChatVerbosityChange={setChatVerbosity}
                 sidebarArcsVisible={sidebarArcsVisible}
                 onSidebarArcsVisibleChange={setSidebarArcsVisible}
+                sidebarArchivedVisible={sidebarArchivedVisible}
+                onSidebarArchivedVisibleChange={setSidebarArchivedVisible}
                 sidebarPriorityVisible={sidebarPriorityVisible}
                 onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
                 sidebarTranslucent={sidebarTranslucent}

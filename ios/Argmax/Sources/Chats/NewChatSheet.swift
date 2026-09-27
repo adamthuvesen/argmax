@@ -28,6 +28,9 @@ struct NewChatSheet: View {
     @State private var mode: NewChatMode
     @State private var baseRef: String?
     @State private var model: ModelSelection
+    /// Router rows need a Jev key saved on the Mac. Off until it says so,
+    /// and off for a Mac built before routing, which refuses the read.
+    @State private var autoRouting = false
     @State private var prompt = ""
     @State private var launching = false
     @State private var failure: String?
@@ -332,7 +335,8 @@ struct NewChatSheet: View {
                 .foregroundStyle(Theme.ink)
         }
         .accessibilityLabel("Model, \(model.label)")
-        if selectedModel?.supportsReasoningEffort == true {
+        // The router picks the effort, so a Router pick has no effort chip.
+        if model.autoTier == nil, selectedModel?.supportsReasoningEffort == true {
             ComposerChipButton { picking = .effort } content: {
                 Text(catalog.label(for: effortBinding.wrappedValue))
                     .typeStyle(.subheadline)
@@ -395,7 +399,10 @@ struct NewChatSheet: View {
             PickerSheet(
                 title: "Model",
                 options: modelOptions,
-                selection: Binding(get: { "\(model.provider)/\(model.modelId)" }, set: chooseModel)
+                selection: Binding(
+                    get: { model.autoTier?.pickerValue ?? "\(model.provider)/\(model.modelId)" },
+                    set: chooseModel
+                )
             )
         case .effort:
             EffortSheet(
@@ -435,7 +442,12 @@ struct NewChatSheet: View {
                 )
             }
         }
-        return ModelRecency.prefixed(catalogRows)
+        // Tier rows only: the router picks provider, model and effort, so
+        // there is no context window to put beside them.
+        let routerRows = autoRouting
+            ? AutoTier.allCases.map { PickerOption(value: $0.pickerValue, label: $0.shortLabel, group: "Router") }
+            : []
+        return ModelRecency.prefixed(routerRows + catalogRows)
     }
 
     /// One line per workspace mode, in the picker's trailing column. Kept
@@ -477,6 +489,11 @@ struct NewChatSheet: View {
     /// Picking a model carries the chosen effort onto whatever ladder the new
     /// model offers, and switching provider comes along with it.
     private func chooseModel(_ id: String) {
+        if let tier = AutoTier(pickerValue: id) {
+            model = tier.selection
+            ModelRecency.touch(id)
+            return
+        }
         let parts = id.split(separator: "/", maxSplits: 1).map(String.init)
         guard parts.count == 2, let target = catalog.model(provider: parts[0], modelId: parts[1]) else { return }
         model = ModelSelection(
@@ -500,6 +517,7 @@ struct NewChatSheet: View {
     private func load() async {
         async let loadedProjects = try? await client.listProjects()
         async let loadedProviders = try? await client.discoverProviders()
+        async let loadedRouting = try? await client.routingSettings()
 
         if let fetched = await loadedProjects {
             projects = fetched.filter { $0.id != scratchProjectID }
@@ -519,6 +537,7 @@ struct NewChatSheet: View {
                 chooseModel("\(preferred)/\(provider.defaultModel.modelId)")
             }
         }
+        autoRouting = await loadedRouting?.enabled ?? false
         await loadBranchesIfNeeded()
     }
 

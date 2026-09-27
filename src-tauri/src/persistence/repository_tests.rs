@@ -39,6 +39,7 @@ use super::workspaces::{
     WorkspaceViewedObservation,
 };
 use crate::error::ArgmaxError;
+use crate::routing::RouteDecision;
 use crate::sessions::state::SessionState;
 
 #[test]
@@ -1667,4 +1668,185 @@ fn session_input() -> PersistSessionInput {
         prompt: "make it excellent".to_owned(),
         state: SessionState::Running,
     }
+}
+
+#[test]
+fn a_route_is_recorded_and_mirrored_onto_the_session_until_pinned() {
+    use super::turn_routes::{clear_auto_tier, record_route};
+    use crate::routing::{
+        fallback_decision,
+        table::{AutoTier, Difficulty, TaskKind},
+        RouteDecisionKind,
+    };
+
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    let mut route = fallback_decision(AutoTier::Balanced, "no key");
+    route.decision = RouteDecisionKind::Launch;
+    route.kind = Some(TaskKind::Review);
+    route.difficulty = Some(Difficulty::Standard);
+    route.reason = "review · standard".to_owned();
+    record_route(&connection, "s1", &route).expect("record launch route");
+
+    let kept = RouteDecision {
+        decision: RouteDecisionKind::Kept,
+        reason: "different provider".to_owned(),
+        ..route.clone()
+    };
+    record_route(&connection, "s1", &kept).expect("record kept route");
+
+    let session = super::sessions::find_session_by_id(&connection, "s1").expect("session");
+    assert_eq!(session.auto_tier.as_deref(), Some("balanced"));
+    assert_eq!(session.auto_route.as_deref(), Some("review · standard"));
+    let rows: Vec<(String, Option<String>, String)> = connection
+        .prepare(
+            "SELECT decision, kind, reason FROM turn_routes WHERE session_id = 's1' ORDER BY id",
+        )
+        .expect("prepare")
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .expect("query")
+        .collect::<Result<_, _>>()
+        .expect("rows");
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "launch".to_owned(),
+                Some("review".to_owned()),
+                "review · standard".to_owned()
+            ),
+            (
+                "kept".to_owned(),
+                Some("review".to_owned()),
+                "different provider".to_owned()
+            ),
+        ]
+    );
+
+    clear_auto_tier(&connection, "s1").expect("pin");
+    let pinned = super::sessions::find_session_by_id(&connection, "s1").expect("session");
+    assert_eq!(pinned.auto_tier, None);
+    assert_eq!(pinned.auto_route, None);
+}
+
+#[test]
+fn a_pinned_row_is_neither_mirrored_nor_a_switch() {
+    use super::turn_routes::{last_switch_at, record_route};
+    use crate::routing::{fallback_decision, table::AutoTier, RouteDecisionKind};
+
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    let mut launch = fallback_decision(AutoTier::Cost, "no key");
+    launch.decision = RouteDecisionKind::Launch;
+    launch.reason = "coding · light".to_owned();
+    record_route(&connection, "s1", &launch).expect("record launch");
+    let pin = RouteDecision {
+        decision: RouteDecisionKind::Pinned,
+        reason: "user picked a model".to_owned(),
+        ..launch
+    };
+    record_route(&connection, "s1", &pin).expect("the CHECK admits a pinned row");
+
+    let session = super::sessions::find_session_by_id(&connection, "s1").expect("session");
+    assert_eq!(session.auto_route.as_deref(), Some("coding · light"));
+    assert_eq!(last_switch_at(&connection, "s1").expect("switch"), None);
+}
+
+#[test]
+fn last_turn_usage_counts_only_rows_since_the_latest_user_message() {
+    use super::turn_routes::last_turn_usage;
+
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+
+    let usage = |id: &str, at: &str, output: i64| {
+        insert_usage_event(
+            &connection,
+            &InsertUsageEventInput {
+                session_id: "s1".to_owned(),
+                event_id: Some(id.to_owned()),
+                model_id: "claude-opus-5-5".to_owned(),
+                tokens: UsageCounts {
+                    input: 1,
+                    output,
+                    cache_read: 100,
+                    cache_write: 10,
+                },
+                cost_usd: 0.0,
+                context_tokens: None,
+                context_window: None,
+                created_at: Some(at.to_owned()),
+            },
+        )
+        .expect("usage");
+    };
+    let user_message = |id: &str, at: &str| {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: "user.message".to_owned(),
+                message: "go".to_owned(),
+                payload: serde_json::json!({}),
+                created_at: Some(at.to_owned()),
+            },
+        )
+        .expect("user message");
+    };
+    user_message("m1", "2026-09-27T10:00:00.000Z");
+    usage("u1", "2026-09-27T10:00:05.000Z", 1000);
+    user_message("m2", "2026-09-27T10:10:00.000Z");
+    usage("u2", "2026-09-27T10:10:05.000Z", 20);
+    usage("u3", "2026-09-27T10:10:09.000Z", 30);
+
+    let last = last_turn_usage(&connection, "s1").expect("last turn");
+    assert_eq!(
+        (last.input, last.output, last.cache_read, last.cache_write),
+        (2, 50, 200, 20)
+    );
+}
+
+#[test]
+fn a_turn_counts_as_completed_only_after_its_own_user_message() {
+    use super::events::turn_completion_recorded;
+
+    let database = Database::open_in_memory().expect("open db");
+    let connection = database.connection();
+    persist_project(&connection, &project_input()).expect("persist project");
+    persist_workspace(&connection, &workspace_input()).expect("persist workspace");
+    persist_session(&connection, &session_input()).expect("persist session");
+    let event = |id: &str, kind: &str, at: &str| {
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: id.to_owned(),
+                session_id: "s1".to_owned(),
+                r#type: kind.to_owned(),
+                message: String::new(),
+                payload: serde_json::json!({}),
+                created_at: Some(at.to_owned()),
+            },
+        )
+        .expect("event");
+    };
+
+    event("m1", "user.message", "2026-09-27T10:00:00.000Z");
+    assert!(!turn_completion_recorded(&connection, "s1").expect("query"));
+    event("c1", "session.completed", "2026-09-27T10:00:09.000Z");
+    assert!(turn_completion_recorded(&connection, "s1").expect("query"));
+    // The next turn starts uncompleted even though an earlier one finished.
+    event("m2", "user.message", "2026-09-27T10:01:00.000Z");
+    assert!(!turn_completion_recorded(&connection, "s1").expect("query"));
 }

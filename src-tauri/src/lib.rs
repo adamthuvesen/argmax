@@ -1,6 +1,6 @@
 // Argmax library crate — Rust/Tauri runtime, services, and IPC handlers.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -36,6 +36,7 @@ pub mod questions;
 pub mod remote;
 pub mod review;
 pub mod routines;
+pub mod routing;
 pub mod session_control;
 pub mod sessions;
 pub mod skills;
@@ -1601,30 +1602,48 @@ pub fn provider_defaults(provider: &str) -> ProviderDefaults {
     }
 }
 
-pub fn export_bindings(path: impl AsRef<Path>) -> Result<(), String> {
-    let path = path.as_ref();
-    ipc::specta_builder()
-        .export(specta_typescript(), path)
-        .map_err(|error| error.to_string())?;
-    // Specta leaves spaces before newlines in documented object fields.
-    // Normalize its output so generated bindings pass the whitespace gate.
-    let generated = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let normalized = generated
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n")
-        + "\n";
-    std::fs::write(path, normalized).map_err(|error| error.to_string())
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindingsExportChange {
+    Unchanged,
+    WouldCreate,
+    WouldUpdate,
 }
 
-pub fn export_ipc_inventory(
-    channels_path: impl AsRef<Path>,
-    schemas_path: impl AsRef<Path>,
-) -> Result<(), String> {
-    let channels = ipc::REGISTERED_CHANNELS.join("\n") + "\n";
-    std::fs::write(channels_path, channels).map_err(|error| error.to_string())?;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindingsExportPlan {
+    pub path: PathBuf,
+    pub change: BindingsExportChange,
+}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindingsExportTargets {
+    pub bindings: PathBuf,
+    pub channels: PathBuf,
+    pub schemas: PathBuf,
+}
+
+impl Default for BindingsExportTargets {
+    fn default() -> Self {
+        Self {
+            bindings: PathBuf::from("src/shared/bindings.d.ts"),
+            channels: PathBuf::from("src-tauri/tests/fixtures/channels.txt"),
+            schemas: PathBuf::from("src/shared/ipcSchemas.ts"),
+        }
+    }
+}
+
+pub fn render_bindings() -> Result<String, String> {
+    let generated = ipc::specta_builder()
+        .export_str(specta_typescript())
+        .map_err(|error| error.to_string())?;
+    Ok(normalize_generated_bindings(&generated))
+}
+
+pub fn render_ipc_channels() -> String {
+    ipc::REGISTERED_CHANNELS.join("\n") + "\n"
+}
+
+pub fn render_ipc_schemas() -> String {
     let mut schemas = String::from(
         "// Generated from `ipc::REGISTERED_CHANNELS` by `export-bindings`.\n\
          // Runtime validation lives in Rust input newtypes and command structs.\n\n\
@@ -1636,7 +1655,66 @@ pub fn export_ipc_inventory(
         schemas.push_str("\",\n");
     }
     schemas.push_str("] as const;\n\nexport type IpcChannel = (typeof IPC_CHANNELS)[number];\n");
-    std::fs::write(schemas_path, schemas).map_err(|error| error.to_string())
+    schemas
+}
+
+pub fn plan_bindings_export(
+    targets: &BindingsExportTargets,
+) -> Result<Vec<BindingsExportPlan>, String> {
+    let rendered = [
+        (targets.bindings.clone(), render_bindings()?),
+        (targets.channels.clone(), render_ipc_channels()),
+        (targets.schemas.clone(), render_ipc_schemas()),
+    ];
+    rendered
+        .into_iter()
+        .map(|(path, content)| {
+            Ok(BindingsExportPlan {
+                change: file_export_change(&path, &content)?,
+                path,
+            })
+        })
+        .collect()
+}
+
+pub fn write_bindings_export(targets: &BindingsExportTargets) -> Result<(), String> {
+    std::fs::write(&targets.bindings, render_bindings()?).map_err(|error| error.to_string())?;
+    std::fs::write(&targets.channels, render_ipc_channels()).map_err(|error| error.to_string())?;
+    std::fs::write(&targets.schemas, render_ipc_schemas()).map_err(|error| error.to_string())
+}
+
+pub fn export_bindings(path: impl AsRef<Path>) -> Result<(), String> {
+    std::fs::write(path, render_bindings()?).map_err(|error| error.to_string())
+}
+
+pub fn export_ipc_inventory(
+    channels_path: impl AsRef<Path>,
+    schemas_path: impl AsRef<Path>,
+) -> Result<(), String> {
+    std::fs::write(channels_path, render_ipc_channels()).map_err(|error| error.to_string())?;
+    std::fs::write(schemas_path, render_ipc_schemas()).map_err(|error| error.to_string())
+}
+
+fn normalize_generated_bindings(generated: &str) -> String {
+    // Specta leaves spaces before newlines in documented object fields.
+    // Normalize its output so generated bindings pass the whitespace gate.
+    generated
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
+fn file_export_change(path: &Path, rendered: &str) -> Result<BindingsExportChange, String> {
+    match std::fs::read_to_string(path) {
+        Ok(existing) if existing == rendered => Ok(BindingsExportChange::Unchanged),
+        Ok(_) => Ok(BindingsExportChange::WouldUpdate),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(BindingsExportChange::WouldCreate)
+        }
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 fn specta_typescript() -> Typescript {
@@ -1948,6 +2026,43 @@ mod tests {
         assert_eq!(
             input.reasoning_effort.map(|effort| effort.as_str()),
             Some("medium")
+        );
+    }
+
+    #[test]
+    fn bindings_export_dry_run_leaves_committed_files_unchanged() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let targets = BindingsExportTargets {
+            bindings: root.join("../src/shared/bindings.d.ts"),
+            channels: root.join("tests/fixtures/channels.txt"),
+            schemas: root.join("../src/shared/ipcSchemas.ts"),
+        };
+        let plan = plan_bindings_export(&targets).expect("plan export");
+        assert!(
+            plan.iter()
+                .all(|entry| entry.change == BindingsExportChange::Unchanged),
+            "expected committed IPC exports to be current: {plan:?}"
+        );
+    }
+
+    #[test]
+    fn bindings_export_dry_run_reports_changes_without_writing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bindings_path = dir.path().join("bindings.d.ts");
+        std::fs::write(&bindings_path, "stale\n").expect("write stale bindings");
+
+        let targets = BindingsExportTargets {
+            bindings: bindings_path.clone(),
+            channels: dir.path().join("channels.txt"),
+            schemas: dir.path().join("ipcSchemas.ts"),
+        };
+        let plan = plan_bindings_export(&targets).expect("plan export");
+        assert_eq!(plan[0].change, BindingsExportChange::WouldUpdate);
+        assert_eq!(plan[1].change, BindingsExportChange::WouldCreate);
+        assert_eq!(plan[2].change, BindingsExportChange::WouldCreate);
+        assert_eq!(
+            std::fs::read_to_string(&bindings_path).expect("read bindings"),
+            "stale\n"
         );
     }
 }

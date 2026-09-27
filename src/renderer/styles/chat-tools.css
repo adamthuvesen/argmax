@@ -50,7 +50,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-code);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--path-ink);
   background: transparent;
   padding: 0;
@@ -137,12 +137,11 @@
      body's own fill show above and below the wash, so a created file read as a
      green slab with dark corners instead of one object. */
   padding: 0;
-  /* Same code size as the review panel's diff, a notch under the inline-code
-     step. Geist Sans and Geist Mono share an x-height (0.53em), so matching the
+  /* Two notches under the inline-code step, one under the review panel's diff. Geist Sans and Geist Mono share an x-height (0.53em), so matching the
      numbers does not match the impression: mono's ascender/descender span is
      1.30em against the sans 1.14em, and its advance is uniformly wider, so a
      block of it at the prose size reads visibly larger than the prose. */
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
 }
 
 .file-change-card-body .diff-hunk {

@@ -99,6 +99,10 @@
 }
 
 .settings-rail-search {
+  /* Above the scroll area's top fade, which starts at this field's bottom
+     edge and would otherwise paint over the lower half of the focus ring. */
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 7px;

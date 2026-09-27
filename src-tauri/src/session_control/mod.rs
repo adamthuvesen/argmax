@@ -30,10 +30,10 @@ pub use protocol::{
     SessionControlError, SessionControlRequest, SessionControlResponse, SessionControlResult,
     SessionList, SessionListEntry, SessionRead, SessionRenamed, SessionStatus, SessionStopped,
     SourceAddedOutcome, SourceReadOutcome, SourceRecord, SourcesAddAction, SourcesListAction,
-    SourcesListOutcome, SourcesReadAction, StatusAction, StopAction, TerminalOutput,
-    TerminalReadAction, TerminalSpawnAction, TerminalStarted, TerminalSummary, WaitAction,
-    WaitOutcome, WaitedSession, WorkspaceDiffAction, WorkspaceDiffOutcome, WorkspaceStatusAction,
-    WorkspaceStatusOutcome,
+    SourcesListOutcome, SourcesReadAction, StatusAction, StopAction, TerminalCloseAction,
+    TerminalClosed, TerminalOutput, TerminalReadAction, TerminalSpawnAction, TerminalStarted,
+    TerminalSummary, TerminalWriteAction, TerminalWritten, WaitAction, WaitOutcome, WaitedSession,
+    WorkspaceDiffAction, WorkspaceDiffOutcome, WorkspaceStatusAction, WorkspaceStatusOutcome,
 };
 pub use registry::{AfterTurn, SessionLaunchProcessConfig, SessionLaunchRegistry};
 pub use server::{SessionLaunchError, SessionLaunchServer};

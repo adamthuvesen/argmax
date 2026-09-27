@@ -18,7 +18,7 @@ use crate::ipc::inputs::*;
 use crate::ipc::{
     activity, approvals, arcs, attachments, checkpoints, checks, cloud, connections, dashboard,
     git_ops, goals, health, learnings, projects, providers, prs, questions, remote, review,
-    session, skills, sources, system, terminal, usage, workspace_files, workspaces,
+    session, settings, skills, sources, system, terminal, usage, workspace_files, workspaces,
 };
 use crate::state::AppState;
 
@@ -48,6 +48,10 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     // reads a chat, it does not configure how chats are launched.
     "settings:agent-tools",
     "settings:set-browser-tools",
+    // The Jev key is entered and removed in desktop Settings only. The phone
+    // may still read whether Auto routing is on (`settings:routing`).
+    "settings:set-routing-key",
+    "settings:clear-routing-key",
     // Remote access as Settings owns it: the status hands out the pairing
     // token and QR, and the config writes take a filesystem path to the APNs
     // auth key. Pairing a phone is not in here — see `remote:*-push-device`
@@ -202,9 +206,17 @@ async fn dispatch_standard(
             let input: ActivitySummaryInput = parse(channel, input)?;
             encode(activity::activity_summary_impl(state, input).await?)
         }
+        "settings:routing" => {
+            let _: SettingsRoutingInput = parse(channel, input)?;
+            encode(settings::settings_routing_impl().await?)
+        }
         "usage:remaining" => {
             let _: UsageRemainingInput = parse(channel, input)?;
             encode(usage::usage_remaining_impl().await?)
+        }
+        "usage:router-cost" => {
+            let input: UsageRouterCostInput = parse(channel, input)?;
+            encode(usage::usage_router_cost_impl(state, input).await?)
         }
         "workspace:status" => {
             let input: WorkspaceStatusInput = parse(channel, input)?;

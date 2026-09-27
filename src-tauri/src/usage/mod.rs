@@ -12,6 +12,7 @@ use crate::ipc::validation::ProviderId;
 pub mod claude;
 pub mod cli;
 pub mod codex;
+pub mod cursor;
 pub mod grok;
 pub mod opencode;
 pub mod records;
@@ -62,14 +63,16 @@ impl UsageTokenTotals {
 
 /// Where a dollar figure came from. `provider_reported` is the CLI's own
 /// accounting (Grok ticks, OpenCode cost); `list_price` is our table applied
-/// to the token counts; `unpriced` means a model the table does not know, so
-/// tokens are counted but no dollars are claimed; `mixed` is a bucket that
-/// combines more than one of those.
+/// to the token counts; `estimated` is a Cursor chat whose tokens were rebuilt
+/// from its transcript and priced at Cursor's rates; `unpriced` means a model
+/// no table knows, so tokens are counted but no dollars are claimed; `mixed`
+/// is a bucket that combines more than one of those.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum UsageCostSource {
     ProviderReported,
     ListPrice,
+    Estimated,
     Unpriced,
     Mixed,
 }
@@ -96,8 +99,9 @@ pub struct UsageScanState {
 #[serde(rename_all = "camelCase")]
 pub struct UsageProviderSummary {
     pub provider: ProviderId,
-    /// `false` when the provider has no local usage source (Cursor). Such a
-    /// row carries zeros and the page says so instead of showing $0.
+    /// `false` when the provider has no usage source. Such a row carries
+    /// zeros and the page says so instead of showing $0. Every provider has
+    /// one today — Cursor's is an estimate — but the page keeps the case.
     pub available: bool,
     pub sessions: i64,
     pub tokens: UsageTokenTotals,
@@ -183,6 +187,10 @@ pub struct UsageSummary {
     pub cost_usd: f64,
     pub cache_savings_usd: f64,
     pub cost_source: UsageCostSource,
+    /// The part of `cost_usd` and `tokens` rebuilt from Cursor transcripts,
+    /// so the page can say how much of the figure is an estimate.
+    pub estimated_cost_usd: f64,
+    pub estimated_tokens: i64,
     /// The window before this one, narrowed the same way, for the "vs the
     /// previous 30 days" comparison. `None` when the ledger cannot cover it.
     pub previous: Option<UsagePreviousPeriod>,
@@ -222,6 +230,8 @@ impl UsageSummary {
             cost_usd: 0.0,
             cache_savings_usd: 0.0,
             cost_source: UsageCostSource::ListPrice,
+            estimated_cost_usd: 0.0,
+            estimated_tokens: 0,
             previous: None,
             providers: Vec::new(),
             series: Vec::new(),

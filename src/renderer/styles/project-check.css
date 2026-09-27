@@ -1,0 +1,87 @@
+/* Project check's dialog body. The shell (overlay, header, footer, buttons)
+   is the cloud task dialog's; this is only the reasons and the project list. */
+
+.project-check-dialog {
+  width: min(480px, 100%);
+}
+
+.project-check-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1_5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-check-reasons li {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--panel-sunken);
+  color: var(--chip-ink);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.project-check-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.project-check-option {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-2_5);
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+
+.project-check-option:hover {
+  background: var(--row-hover);
+}
+
+.project-check-option[data-checked="true"] {
+  border-color: var(--line);
+  background: var(--row-selected);
+}
+
+.project-check-option:focus-within {
+  box-shadow: var(--ring);
+}
+
+.project-check-option input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+
+.project-check-option-name {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+.project-check-option-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-check-option-tag {
+  color: var(--chip-ink);
+  font-size: var(--text-xs);
+}

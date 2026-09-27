@@ -17,6 +17,7 @@ use crate::error::ArgmaxResult;
 use crate::ipc::validation::ProviderId;
 use crate::persistence::usage_scan::{self, HourlyBucket};
 use crate::providers::pricing;
+use crate::usage::cursor::{calls_between, cursor_rates, CursorCall};
 use crate::usage::records::UsageRecordTokens;
 use crate::usage::scanner::{hour_start_secs, provider_from_key, provider_key};
 use crate::usage::{
@@ -25,8 +26,7 @@ use crate::usage::{
     UsageTokenTotals, UsageWindow,
 };
 
-/// Providers in the order the page lists them. Cursor keeps no local usage
-/// source and is reported as unavailable.
+/// Providers in the order the page lists them.
 const PROVIDER_ORDER: [ProviderId; 5] = [
     ProviderId::Claude,
     ProviderId::Codex,
@@ -124,13 +124,22 @@ pub fn build_summary(
     let to_hour = hour_start_secs(now.timestamp_millis()) + 3600;
     let buckets = usage_scan::list_hourly_between(connection, from_hour, to_hour)?;
 
-    let priced: Vec<PricedBucket> = buckets
+    let mut priced: Vec<PricedBucket> = buckets
         .into_iter()
         .filter(|bucket| bucket.hour_utc >= range_start.timestamp())
         .filter_map(|bucket| price_bucket(bucket, &start_secs))
         .collect();
+    // One read covers this window and the one before it: each Cursor chat's
+    // whole conversation is walked, so reading twice would walk it twice.
+    let cursor_calls = calls_between(
+        connection,
+        &rfc3339(previous_range_start(window, range_start)),
+        &rfc3339(now),
+    )?;
+    priced.extend(cursor_buckets(&cursor_calls, range_start, now, &start_secs));
 
     let mut total = Rollup::default();
+    let mut estimated = Rollup::default();
     let mut total_sessions: HashSet<&str> = HashSet::new();
     let mut by_provider: HashMap<ProviderId, (Rollup, HashSet<&str>)> = HashMap::new();
     let mut by_series: Vec<HashMap<ProviderId, (f64, i64)>> = vec![HashMap::new(); starts.len()];
@@ -146,6 +155,9 @@ pub fn build_summary(
         }
         total.add(bucket);
         total_sessions.insert(&bucket.session_id);
+        if bucket.provider == ProviderId::Cursor {
+            estimated.add(bucket);
+        }
         let point = by_series[bucket.bucket_index]
             .entry(bucket.provider)
             .or_default();
@@ -167,7 +179,7 @@ pub fn build_summary(
             let (rollup, sessions) = by_provider.get(provider).cloned().unwrap_or_default();
             UsageProviderSummary {
                 provider: *provider,
-                available: *provider != ProviderId::Cursor,
+                available: true,
                 sessions: sessions.len() as i64,
                 tokens: totals_of(rollup.tokens),
                 cost_usd: rollup.cost_usd,
@@ -184,7 +196,6 @@ pub fn build_summary(
             bucket_start: rfc3339(*start),
             values: PROVIDER_ORDER
                 .iter()
-                .filter(|charted| **charted != ProviderId::Cursor)
                 .filter(|charted| provider.is_none_or(|wanted| wanted == **charted))
                 .map(|charted| {
                     let (cost_usd, tokens) = values.get(charted).copied().unwrap_or((0.0, 0));
@@ -245,7 +256,9 @@ pub fn build_summary(
         cost_usd: total.cost_usd,
         cache_savings_usd: total.cache_savings_usd,
         cost_source: total.cost_source(),
-        previous: previous_period(connection, window, provider, range_start)?,
+        estimated_cost_usd: estimated.cost_usd,
+        estimated_tokens: estimated.tokens.processed(),
+        previous: previous_period(connection, window, provider, range_start, &cursor_calls)?,
         providers,
         series,
         models,
@@ -270,6 +283,7 @@ fn previous_period(
     window: UsageWindow,
     provider: Option<ProviderId>,
     range_start: DateTime<Utc>,
+    cursor_calls: &[CursorCall],
 ) -> ArgmaxResult<Option<UsagePreviousPeriod>> {
     let previous_start = previous_range_start(window, range_start);
     let earliest = usage_scan::earliest_hour(connection, provider.map(provider_key))?;
@@ -281,15 +295,21 @@ fn previous_period(
     let from_hour = hour_start_secs(previous_start.timestamp_millis());
     let to_hour = hour_start_secs(range_start.timestamp_millis()) + 3600;
     let buckets = usage_scan::list_hourly_between(connection, from_hour, to_hour)?;
-    let priced: Vec<PricedBucket> = buckets
+    let mut priced: Vec<PricedBucket> = buckets
         .into_iter()
         .filter(|bucket| {
             bucket.hour_utc >= previous_start.timestamp()
                 && bucket.hour_utc < range_start.timestamp()
         })
         .filter_map(|bucket| price_bucket(bucket, &start_secs))
-        .filter(|bucket| provider.is_none_or(|wanted| wanted == bucket.provider))
         .collect();
+    priced.extend(cursor_buckets(
+        cursor_calls,
+        previous_start,
+        range_start,
+        &start_secs,
+    ));
+    priced.retain(|bucket| provider.is_none_or(|wanted| wanted == bucket.provider));
     if priced.is_empty() {
         return Ok(None);
     }
@@ -343,6 +363,53 @@ fn price_bucket(bucket: HourlyBucket, start_secs: &[i64]) -> Option<PricedBucket
         cache_savings_usd,
         cost_source,
     })
+}
+
+/// Cursor's estimated calls in `from..to`, one priced bucket per call. The
+/// ledger has no Cursor rows: these come from the chats Argmax ran.
+fn cursor_buckets(
+    calls: &[CursorCall],
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    start_secs: &[i64],
+) -> Vec<PricedBucket> {
+    let (from, to) = (rfc3339(from), rfc3339(to));
+    calls
+        .iter()
+        .filter(|CursorCall { call, .. }| call.created_at >= from && call.created_at < to)
+        .filter_map(
+            |CursorCall {
+                 session_id,
+                 model_id,
+                 call,
+             }| {
+                let at = DateTime::parse_from_rfc3339(&call.created_at)
+                    .ok()?
+                    .timestamp();
+                let bucket_index = start_secs.iter().rposition(|start| *start <= at)?;
+                let rates = cursor_rates(model_id);
+                let (cost_usd, cost_source) = match rates {
+                    Some(rate) => (rate.cost(call), UsageCostSource::Estimated),
+                    None => (0.0, UsageCostSource::Unpriced),
+                };
+                Some(PricedBucket {
+                    provider: ProviderId::Cursor,
+                    model_id: model_id.clone(),
+                    session_id: session_id.clone(),
+                    bucket_index,
+                    tokens: UsageRecordTokens {
+                        input_uncached: call.input as i64,
+                        cache_read: call.cache_read as i64,
+                        output: call.output as i64,
+                        ..UsageRecordTokens::default()
+                    },
+                    cost_usd,
+                    cache_savings_usd: rates.map_or(0.0, |rate| rate.cache_savings(call)),
+                    cost_source,
+                })
+            },
+        )
+        .collect()
 }
 
 fn merge_source(current: Option<UsageCostSource>, next: UsageCostSource) -> UsageCostSource {
@@ -526,7 +593,9 @@ mod tests {
         let grok = &summary.providers[2];
         assert_eq!(grok.cost_source, UsageCostSource::ProviderReported);
         let cursor = &summary.providers[4];
-        assert!(!cursor.available);
+        assert!(cursor.available);
+        assert_eq!((cursor.sessions, cursor.cost_usd), (0, 0.0));
+        assert_eq!(summary.estimated_cost_usd, 0.0);
 
         let unpriced = summary
             .models
@@ -772,5 +841,83 @@ mod tests {
         )
         .unwrap();
         assert_eq!(summary.previous, None);
+    }
+
+    #[test]
+    fn cursor_chats_are_estimated_from_their_transcripts() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        // Rows stand alone: no project or workspace behind the chats.
+        connection
+            .execute_batch("PRAGMA foreign_keys = OFF")
+            .unwrap();
+        let chat = |id: &str, model: &str| {
+            connection
+                .execute(
+                    "INSERT INTO sessions (id, workspace_id, provider, model_label, prompt, state,
+                       attention, started_at, last_activity_at, model_id)
+                     VALUES (?1, 'w', 'cursor', '', '', 'idle', 'none',
+                       '2026-09-03T14:00:00.000Z', '2026-09-03T14:00:05.000Z', ?2)",
+                    (id, model),
+                )
+                .unwrap();
+        };
+        let event = |id: &str, session: &str, kind: &str, chars: usize| {
+            connection
+                .execute(
+                    "INSERT INTO events (id, session_id, type, message, payload_json, created_at)
+                     VALUES (?1, ?2, ?3, ?4, '', '2026-09-03T14:00:05.000Z')",
+                    (id, session, kind, "x".repeat(chars)),
+                )
+                .unwrap();
+        };
+        chat("c1", "composer-2.5");
+        event("e1", "c1", "user.message", 400);
+        event("e2", "c1", "message.completed", 80);
+        // Auto bills whichever model it picked: counted, never priced.
+        chat("c2", "auto-smart[optimize_for=cost]");
+        event("e3", "c2", "user.message", 400);
+        event("e4", "c2", "message.completed", 80);
+
+        let now = Utc.with_ymd_and_hms(2026, 9, 3, 14, 25, 0).unwrap();
+        let summary = build_summary(
+            &connection,
+            UsageWindow::Past24h,
+            None,
+            "Europe/Stockholm".into(),
+            scan_state(),
+            now,
+        )
+        .unwrap();
+
+        // One call: 100 tokens fresh, the 20k base read from cache, 20 out.
+        let expected = (100.0 * 0.50 + 20_000.0 * 0.20 + 20.0 * 2.50) / 1_000_000.0;
+        let cursor = &summary.providers[4];
+        assert_eq!(cursor.provider, ProviderId::Cursor);
+        assert_eq!(cursor.sessions, 2);
+        assert!((cursor.cost_usd - expected).abs() < 1e-12);
+        assert_eq!(cursor.cost_source, UsageCostSource::Mixed);
+        assert!((summary.estimated_cost_usd - expected).abs() < 1e-12);
+        assert_eq!(summary.estimated_tokens, 2 * 20_120);
+        assert_eq!(summary.tokens.processed(), summary.estimated_tokens);
+
+        let composer = summary
+            .models
+            .iter()
+            .find(|row| row.model_id == "composer-2.5")
+            .expect("composer row");
+        assert_eq!(composer.cost_source, UsageCostSource::Estimated);
+        let auto = summary
+            .models
+            .iter()
+            .find(|row| row.model_id.starts_with("auto-smart"))
+            .expect("auto row");
+        assert_eq!(auto.cost_source, UsageCostSource::Unpriced);
+        assert_eq!(auto.tokens.processed(), 20_120);
+
+        let charted = summary.series.last().unwrap().values.iter().any(|value| {
+            value.provider == ProviderId::Cursor && (value.cost_usd - expected).abs() < 1e-12
+        });
+        assert!(charted, "Cursor is drawn on the chart");
     }
 }

@@ -24,6 +24,30 @@ async projectsPickFolder(input: ProjectsPickFolderInput) : Promise<Result<Projec
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Project check: whether the prompt reads like work for another project.
+ * Never fails for want of an answer — no key, a Jev error or a short prompt
+ * all come back as `none` (docs/routing.md#project-check).
+ */
+async projectsCheckPrompt(input: ProjectsCheckPromptInput) : Promise<Result<ProjectCheck, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_check_prompt", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Records what the user did with a check's suggestion or switch.
+ */
+async projectsResolveCheck(input: ProjectsResolveCheckInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_resolve_check", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async dashboardList(input: DashboardListInput) : Promise<Result<DashboardListSnapshot, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("dashboard_list", { input }) };
@@ -347,6 +371,14 @@ async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Resul
 async settingsRouting(input: SettingsRoutingInput) : Promise<Result<RoutingSettings, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("settings_routing", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsSetProjectCheck(input: SetProjectCheckInput) : Promise<Result<RoutingSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_project_check", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2047,6 +2079,46 @@ export type PerformanceStatus = { recording: boolean; startedAt: string | null; 
 export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time"
 export type ProcessGroupMetrics = { cpuPercent: number; rssBytes: number; processCount: number }
 export type ProcessTreeMetrics = { total: ProcessGroupMetrics; host: ProcessGroupMetrics; webview: ProcessGroupMetrics; agents: ProcessGroupMetrics }
+export type ProjectCheck = { decision: ProjectCheckDecision;
+/**
+ * Names this check when its outcome is reported; null for `none`.
+ */
+checkId: string | null; suggestedProjectId: string | null;
+/**
+ * A second project Jev gave real weight to, offered in the dialog.
+ */
+runnerUpProjectId: string | null; suggestedProbability: number; currentProbability: number;
+/**
+ * Why, in the words the dialog shows: "Mentions argmax", "Jev 96%".
+ */
+reasons: string[] }
+export type ProjectCheckDecision = "none" | "suggest" | "switch"
+export type ProjectCheckMode = "off" |
+/**
+ * Ask before starting in the project Jev picked.
+ */
+"suggest" |
+/**
+ * Ask, and start there without asking when the evidence is overwhelming.
+ */
+"switch"
+export type ProjectCheckOutcome =
+/**
+ * Started in the suggested project, by the user or by the switch.
+ */
+"accepted" |
+/**
+ * Started where the launcher was aimed after all.
+ */
+"stayed" |
+/**
+ * Undid an automatic switch.
+ */
+"undone" |
+/**
+ * Went back to the composer without launching.
+ */
+"cancelled"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
@@ -2067,12 +2139,27 @@ export type ProjectSource = { id: string; projectId: string; title: string; kind
 export type ProjectSourceAddedBy = "user" | "agent"
 export type ProjectSourceKind = "file" | "url"
 export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
+export type ProjectsCheckPromptInput = {
+/**
+ * The project the launcher is aimed at.
+ */
+projectId: ProjectId; prompt: Prompt;
+/**
+ * The user picked this project by hand for this draft: a check may
+ * suggest another one but never switches away on its own.
+ */
+pickedByHand: boolean }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
 export type ProjectsPickFolderInput = Record<string, never>
 export type ProjectsRefreshBranchInput = { projectId: ProjectId }
 export type ProjectsRegisterInput = { repoPath: RepoPath }
 export type ProjectsRemoveInput = { projectId: ProjectId }
+export type ProjectsResolveCheckInput = { checkId: NonEmptyString; outcome: ProjectCheckOutcome;
+/**
+ * The chat the launch started, when it started one.
+ */
+sessionId: SessionId | null }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
@@ -2350,9 +2437,10 @@ runTarget?: RoutineRunTarget | null;
 arcId?: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
 /**
  * Auto routing is on exactly when a Jev API key is saved. `key_hint` names
- * the saved key by its last four characters.
+ * the saved key by its last four characters. Project check uses the same key,
+ * so its mode travels with it.
  */
-export type RoutingSettings = { enabled: boolean; keyHint?: string | null }
+export type RoutingSettings = { enabled: boolean; keyHint?: string | null; projectCheck: ProjectCheckMode }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }
@@ -2462,6 +2550,7 @@ autoTier?: string | null;
  */
 autoRoute?: string | null }
 export type SetBrowserToolsInput = { enabled: boolean }
+export type SetProjectCheckInput = { mode: ProjectCheckMode }
 export type SetRoutingKeyInput = { apiKey: string }
 export type SettingsRoutingInput = Record<string, never>
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
@@ -2550,11 +2639,12 @@ export type TimelineEvent = { id: string; sessionId: string; type: string; messa
 /**
  * Where a dollar figure came from. `provider_reported` is the CLI's own
  * accounting (Grok ticks, OpenCode cost); `list_price` is our table applied
- * to the token counts; `unpriced` means a model the table does not know, so
- * tokens are counted but no dollars are claimed; `mixed` is a bucket that
- * combines more than one of those.
+ * to the token counts; `estimated` is a Cursor chat whose tokens were rebuilt
+ * from its transcript and priced at Cursor's rates; `unpriced` means a model
+ * no table knows, so tokens are counted but no dollars are claimed; `mixed`
+ * is a bucket that combines more than one of those.
  */
-export type UsageCostSource = "provider_reported" | "list_price" | "unpriced" | "mixed"
+export type UsageCostSource = "provider_reported" | "list_price" | "estimated" | "unpriced" | "mixed"
 export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type UsageDayRow = { bucketStart: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
 export type UsageLimitWindow = { id: string; label: string;
@@ -2582,8 +2672,9 @@ export type UsageProviderRemaining = { provider: ProviderId; kind: UsagePlanKind
 messageUrl: string | null }
 export type UsageProviderSummary = { provider: ProviderId;
 /**
- * `false` when the provider has no local usage source (Cursor). Such a
- * row carries zeros and the page says so instead of showing $0.
+ * `false` when the provider has no usage source. Such a row carries
+ * zeros and the page says so instead of showing $0. Every provider has
+ * one today — Cursor's is an estimate — but the page keeps the case.
  */
 available: boolean; sessions: number; tokens: UsageTokenTotals; costUsd: number;
 /**
@@ -2638,6 +2729,11 @@ rangeStart: string; rangeEnd: string; resolution: UsageResolution; scan: UsageSc
  */
 sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource;
 /**
+ * The part of `cost_usd` and `tokens` rebuilt from Cursor transcripts,
+ * so the page can say how much of the figure is an estimate.
+ */
+estimatedCostUsd: number; estimatedTokens: number;
+/**
  * The window before this one, narrowed the same way, for the "vs the
  * previous 30 days" comparison. `None` when the ledger cannot cover it.
  */
@@ -2650,7 +2746,7 @@ timeZone: NonEmptyString;
 /**
  * Narrow the totals, chart, and breakdowns to one provider. The
  * per-provider rows always cover every provider, so the page can still
- * offer the others. Cursor keeps no local usage log and is rejected.
+ * offer the others.
  */
 provider?: ProviderId | null }
 /**

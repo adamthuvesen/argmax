@@ -52,6 +52,7 @@ pub const REMOTE_UNSUPPORTED_CHANNELS: &[&str] = &[
     // may still read whether Auto routing is on (`settings:routing`).
     "settings:set-routing-key",
     "settings:clear-routing-key",
+    "settings:set-project-check",
     // Remote access as Settings owns it: the status hands out the pairing
     // token and QR, and the config writes take a filesystem path to the APNs
     // auth key. Pairing a phone is not in here — see `remote:*-push-device`
@@ -163,6 +164,14 @@ async fn dispatch_standard(
                     .await?,
             )
         }
+        "projects:check-prompt" => {
+            let input: ProjectsCheckPromptInput = parse(channel, input)?;
+            encode(projects::projects_check_prompt_impl(state, input).await?)
+        }
+        "projects:resolve-check" => {
+            let input: ProjectsResolveCheckInput = parse(channel, input)?;
+            encode(projects::projects_resolve_check_impl(state, input).await?)
+        }
         "projects:remove" => {
             let input: ProjectsRemoveInput = parse(channel, input)?;
             encode(projects::projects_remove_impl(state, input).await?)
@@ -208,7 +217,7 @@ async fn dispatch_standard(
         }
         "settings:routing" => {
             let _: SettingsRoutingInput = parse(channel, input)?;
-            encode(settings::settings_routing_impl().await?)
+            encode(settings::settings_routing_impl(state).await?)
         }
         "usage:remaining" => {
             let _: UsageRemainingInput = parse(channel, input)?;

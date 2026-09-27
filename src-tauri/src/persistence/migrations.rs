@@ -260,6 +260,16 @@ pub static AUTO_ROUTING_COLUMNS: phf::Map<&'static str, &'static [&'static str]>
     ] as &'static [&'static str],
 };
 
+// v58: Project check. One row per suggestion the user answered or switch
+// Argmax made, read back for pair suppression (docs/routing.md).
+pub static PROJECT_CHECKS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_checks" => &[
+        "created_at", "current_probability", "current_project_id", "decision", "id",
+        "outcome", "prompt_hash", "reasons", "resolved_at", "session_id",
+        "suggested_probability", "suggested_project_id",
+    ] as &'static [&'static str],
+};
+
 pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "gh_pull_requests" => &[
         "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
@@ -1069,6 +1079,22 @@ pub static MIGRATIONS: &[Migration] = &[
         affected_tables: &["turn_routes"],
         expected_columns: &AUTO_ROUTING_COLUMNS,
         requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 58,
+        name: "project_checks",
+        up: crate::persistence::project_checks::MIGRATION_SQL,
+        affected_tables: &["project_checks"],
+        expected_columns: &PROJECT_CHECKS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 59,
+        name: "events_session_moved_index",
+        up: EVENTS_SESSION_MOVED_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
     },
 ];
 
@@ -2010,6 +2036,15 @@ CREATE INDEX IF NOT EXISTS idx_events_restart_recovery
   ON events(session_id) WHERE type = 'process_did_not_survive_restart';
 "#;
 
+// Project check reads a project's history without the chats that were later
+// moved elsewhere. Asking that per session walked each session's whole event
+// history (1.8 s for a project with 800 chats); like the restart-recovery
+// index above, this partial index holds only the few move events.
+const EVENTS_SESSION_MOVED_INDEX: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_events_session_moved
+  ON events(session_id) WHERE type = 'session.moved';
+"#;
+
 // Per-row sidebar glyph chosen from the Edit Icon picker. NULL in both columns
 // keeps the row on its live status marker, so existing workspaces are unchanged.
 const WORKSPACE_CUSTOM_ICON: &str = r#"
@@ -2788,6 +2823,11 @@ mod tests {
                 ),
                 (56, compute_migration_checksum(AUTO_ROUTING)),
                 (57, compute_migration_checksum(TURN_ROUTES_PINNED_DECISION)),
+                (
+                    58,
+                    compute_migration_checksum(crate::persistence::project_checks::MIGRATION_SQL)
+                ),
+                (59, compute_migration_checksum(EVENTS_SESSION_MOVED_INDEX)),
             ]
         );
 

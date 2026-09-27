@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type JSX } from "react";
 import type { UsageDayRow, UsageModelRow, UsageSummary } from "../../../shared/types.js";
 import { SegmentedControl } from "../settings/settingsPrimitives.js";
 import {
+  approximately,
   formatBucketTitle,
   formatCount,
   formatMetric,
@@ -10,6 +11,7 @@ import {
   formatUsd
 } from "./usageFormat.js";
 import {
+  isEstimatedProvider,
   isUnpriced,
   processedTokens,
   providerLabel,
@@ -297,6 +299,7 @@ export function UsageBreakdown({
                 const secondary = metric === "cost" ? row.tokens : row.costUsd;
                 const excluded = metric === "cost" && row.unpriced;
                 const share = excluded ? null : shareOfTotal(primary, shareTotal);
+                const estimated = isEstimatedProvider(row.provider);
                 return (
                   <tr key={row.key} className="usage-series" data-provider={row.provider}>
                     <th scope="row">{row.name}</th>
@@ -307,7 +310,7 @@ export function UsageBreakdown({
                           Unpriced
                         </span>
                       ) : (
-                        formatMetric(primary, metric)
+                        approximately(formatMetric(primary, metric), estimated)
                       )}
                     </td>
                     <td className="usage-table-num">
@@ -318,10 +321,10 @@ export function UsageBreakdown({
                     </td>
                     <td className="usage-table-num">
                       {metric === "cost"
-                        ? formatTokens(secondary)
+                        ? approximately(formatTokens(secondary), estimated)
                         : row.unpriced
                           ? "—"
-                          : formatUsd(secondary)}
+                          : approximately(formatUsd(secondary), estimated)}
                     </td>
                   </tr>
                 );

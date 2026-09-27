@@ -18,62 +18,8 @@ use crate::ipc::validation::ProviderId;
 use crate::persistence::sqlite_error;
 use crate::providers::pricing::{cost_of, list_price, UsageCounts};
 use crate::providers::runtime::parse_provider;
+use crate::usage::cursor::{cursor_rates, estimate_calls};
 use crate::usage::{summary::bucket_starts, UsageWindow};
-
-// Cursor's ACP reports no tokens, so a Cursor turn is estimated from its
-// transcript. The shape: every model call re-reads a base prompt plus the
-// whole conversation so far (cache read) and adds what arrived since the last
-// call (input); the call's own event is its output. Checked against real
-// Claude sessions with recorded usage, this estimate had median
-// estimate/actual ≈ 1.0 for cache reads, with the middle half of chats between
-// 0.75x and 2x — which is why every Cursor figure is labelled an estimate.
-
-/// Characters per token for transcript text.
-const CHARS_PER_TOKEN: i64 = 4;
-/// Cursor's system prompt and tools, re-read by every call: a one-shot
-/// `cursor-agent -p` "reply ok" reported 14,868 input + 3,906 cache read
-/// tokens on 2026-09-27.
-const CURSOR_BASE_CONTEXT_TOKENS: u64 = 20_000;
-/// Transcript events that carry model context.
-const CURSOR_CONTEXT_EVENTS: [&str; 6] = [
-    "user.message",
-    "message.completed",
-    "command.started",
-    "command.completed",
-    "agent.started",
-    "agent.completed",
-];
-/// Events that mark one model call; their own text is that call's output.
-const CURSOR_CALL_EVENTS: [&str; 3] = ["command.started", "agent.started", "message.completed"];
-
-/// Cursor's published per-million list rates (https://cursor.com/docs/models,
-/// fetched 2026-09-27). Standard rates only: routed chats never run Fast.
-/// Kept here, not in `providers::pricing`, whose Cursor rows are deliberate
-/// zero placeholders the Usage ledger relies on.
-struct CursorRates {
-    input: f64,
-    cache_read: f64,
-    output: f64,
-}
-
-fn cursor_rates(model_id: &str) -> Option<CursorRates> {
-    match model_id {
-        // Composer has no cache-write rate; writes would bill as input.
-        "composer-2.5" => Some(CursorRates {
-            input: 0.50,
-            cache_read: 0.20,
-            output: 2.50,
-        }),
-        // Opus 5.5 on Cursor. Its $5 cache-write rate goes unused: the
-        // estimate has no cache writes.
-        "claude-opus-5-5-medium" => Some(CursorRates {
-            input: 4.0,
-            cache_read: 0.20,
-            output: 20.0,
-        }),
-        _ => None,
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -604,13 +550,6 @@ fn usage_cost(
     (reported > 0.0).then_some(reported)
 }
 
-#[derive(Default)]
-struct EstimatedTokens {
-    input: u64,
-    cache_read: u64,
-    output: u64,
-}
-
 /// Per route row: `None` when the turn falls before the window, else its
 /// estimated cost (itself `None` for a Cursor model without a known rate).
 fn estimate_cursor_session(
@@ -618,80 +557,27 @@ fn estimate_cursor_session(
     routes: &[RouteRow],
     start: &str,
 ) -> ArgmaxResult<Vec<Option<TurnCost>>> {
-    let mut statement = connection
-        .prepare_cached(
-            r#"
-            SELECT created_at, type, (LENGTH(message) + LENGTH(payload_json)) / ?2
-            FROM events
-            WHERE session_id = ?1 AND type IN (?3, ?4, ?5, ?6, ?7, ?8)
-            ORDER BY created_at, rowid
-            "#,
-        )
-        .map_err(sqlite_error)?;
-    let [a, b, c, d, e, f] = CURSOR_CONTEXT_EVENTS;
-    let events = statement
-        .query_map(
-            (
-                routes[0].session_id.as_str(),
-                CHARS_PER_TOKEN,
-                a,
-                b,
-                c,
-                d,
-                e,
-                f,
-            ),
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?.max(0) as u64,
-                ))
-            },
-        )
-        .map_err(sqlite_error)?;
-
-    let mut tokens: Vec<EstimatedTokens> =
-        routes.iter().map(|_| EstimatedTokens::default()).collect();
-    let mut content = 0_u64;
-    let mut content_at_last_call = 0_u64;
-    for event in events {
-        let (created_at, event_type, event_tokens) = event.map_err(sqlite_error)?;
-        if CURSOR_CALL_EVENTS.contains(&event_type.as_str()) {
-            // The latest route row at or before this call owns it.
-            let owner = routes
-                .iter()
-                .rposition(|route| route.created_at <= created_at)
-                .filter(|&index| routes[index].created_at.as_str() >= start);
-            if let Some(index) = owner {
-                let fresh = content - content_at_last_call;
-                let turn = &mut tokens[index];
-                turn.cache_read += CURSOR_BASE_CONTEXT_TOKENS + content - fresh;
-                turn.input += fresh;
-                turn.output += event_tokens;
-            }
-            // The call's own output reaches the next call as fresh input.
-            content_at_last_call = content;
-        }
-        content += event_tokens;
-    }
-
-    Ok(routes
+    let mut costs: Vec<Option<TurnCost>> = routes
         .iter()
-        .zip(tokens)
-        .map(|(route, turn)| {
-            if route.created_at.as_str() < start {
-                return None;
-            }
-            let million = 1_000_000.0;
-            Some(cursor_rates(&route.model_id).map(|rate| {
-                (turn.input as f64 * rate.input
-                    + turn.cache_read as f64 * rate.cache_read
-                    + turn.output as f64 * rate.output)
-                    / million
-            }))
+        .map(|route| {
+            (route.created_at.as_str() >= start).then(|| cursor_rates(&route.model_id).map(|_| 0.0))
         })
-        .collect())
+        .collect();
+    for call in estimate_calls(connection, &routes[0].session_id)? {
+        // The latest route row at or before this call owns it.
+        let Some(index) = routes
+            .iter()
+            .rposition(|route| route.created_at <= call.created_at)
+        else {
+            continue;
+        };
+        if let (Some(Some(cost)), Some(rate)) =
+            (costs[index].as_mut(), cursor_rates(&routes[index].model_id))
+        {
+            *cost += rate.cost(&call);
+        }
+    }
+    Ok(costs)
 }
 
 #[cfg(test)]

@@ -595,7 +595,7 @@ describe("App settings", () => {
   });
 
   it("launches a Router pick without a permission mode, so the routed provider's applies", async () => {
-    window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd" });
+    window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd", projectCheck: "switch" });
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5", autoTier: "balanced" }));
     render(<App />);
     fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Route this run" } });
@@ -607,7 +607,7 @@ describe("App settings", () => {
   });
 
   it("keeps the pinned default agent model when the launcher switches to a Router row", async () => {
-    window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd" });
+    window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd", projectCheck: "switch" });
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5" }));
     const save = vi.mocked(window.argmax!.system.setDefaultAgent);
     render(<App />);

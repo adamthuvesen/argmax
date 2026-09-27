@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -8,8 +9,8 @@ use chrono::{Duration, Utc};
 use super::super::{
     argmax_protocol_error, invalid_input_error,
     protocol::{
-        LaunchAction, LaunchedSession, SessionControlError, SessionControlResponse,
-        SessionControlResult,
+        LaunchAction, LaunchProjectCheck, LaunchedSession, SessionControlError,
+        SessionControlResponse, SessionControlResult,
     },
     protocol_error,
     registry::ParentLaunchSettings,
@@ -266,6 +267,7 @@ pub(super) async fn launch_session(
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
+    data_dir: Option<PathBuf>,
 ) -> Result<SessionControlResponse, SessionControlError> {
     // Before the workspace, the worktree and the provider process: a bad
     // check-in is worth refusing while nothing has been spent on it.
@@ -377,17 +379,53 @@ pub(super) async fn launch_session(
     // there" rule that keeps the coordinator the only writer.
     let prompt = match &parent_arc {
         Some(arc) => format!("{}\n\n{}", member_preamble(arc), action.prompt),
-        None => action.prompt,
+        None => action.prompt.clone(),
     };
+    // The check reads the task the agent wrote, not the Arc preamble wrapped
+    // around it, and it runs against the project the launch would have used.
+    // An explicit project or path does not skip it: that argument is the aim.
+    // Lookup only. Registering a path here so the check can name it would
+    // leave that project behind when the launch then starts somewhere else.
+    // An unregistered path has no row to be current, so it is not checked;
+    // `launch_with_spec` registers the repository the session actually starts in.
+    let aimed_id = {
+        let connection = database.read_connection();
+        let projects = crate::persistence::projects::list_projects(&connection)
+            .map_err(argmax_protocol_error)?;
+        match super::resolve_project(&projects, action.project.as_deref(), &parent_project_id) {
+            Ok(project) => Some(project.id),
+            Err(_) => None,
+        }
+    };
+    let check = match aimed_id {
+        Some(project_id) => {
+            crate::routing::project_check::check_agent_launch(
+                Arc::clone(&database),
+                data_dir,
+                project_id,
+                action.prompt.clone(),
+            )
+            .await
+        }
+        None => crate::routing::project_check::AgentLaunchCheck::none(),
+    };
+    let aimed_launch = aim_at_check(
+        action.project.clone(),
+        action.path.clone(),
+        action.branch.clone(),
+        action.worktree,
+        check,
+    )
+    .await;
     let outcome = launch_with_spec(
         LaunchSpec {
             // An agent-launched session is its own piece of work, not a chat
             // running beside this one: it takes the project's checkout, or its
             // own worktree.
             alongside: None,
-            project: action.project,
-            path: action.path,
-            branch: action.branch,
+            project: aimed_launch.project,
+            path: aimed_launch.path,
+            branch: aimed_launch.branch,
             prompt,
             worktree: action.worktree,
             provider,
@@ -427,6 +465,17 @@ pub(super) async fn launch_session(
         )
         .map_err(argmax_protocol_error)?;
     }
+    if let Some(record) = aimed_launch.record {
+        let connection = database.connection();
+        if let Err(error) = crate::persistence::project_checks::record_project_check(
+            &connection,
+            &record,
+            "accepted",
+            Some(&outcome.session_id),
+        ) {
+            tracing::warn!(target: "argmax::routing", "could not record project check: {error}");
+        }
+    }
     drop(launch_budget_turn);
     if let Some(minutes) = check_in_minutes {
         schedule_check_in(
@@ -446,8 +495,87 @@ pub(super) async fn launch_session(
             project_name: outcome.project_name,
             path: outcome.path,
             branch: outcome.branch,
+            project_check: aimed_launch.project_check,
         },
     )))
+}
+
+/// Where a `session_launch` should actually start, after project check.
+struct AimedLaunch {
+    project: Option<String>,
+    path: Option<String>,
+    branch: Option<String>,
+    project_check: Option<LaunchProjectCheck>,
+    record: Option<crate::persistence::project_checks::ProjectCheckRecord>,
+}
+
+async fn aim_at_check(
+    project: Option<String>,
+    path: Option<String>,
+    branch: Option<String>,
+    worktree: bool,
+    check: crate::routing::project_check::AgentLaunchCheck,
+) -> AimedLaunch {
+    use crate::routing::project_check::ProjectCheckDecision;
+
+    let report = |decision: &str| LaunchProjectCheck {
+        decision: decision.to_string(),
+        suggested_project_id: check.suggested_project_id.clone().unwrap_or_default(),
+        suggested_project_name: check.suggested_project_name.clone().unwrap_or_default(),
+        reasons: check.reasons.clone(),
+    };
+    match check.decision {
+        ProjectCheckDecision::Switch => {
+            let project_id = check
+                .suggested_project_id
+                .clone()
+                .expect("a switch names the project");
+            let repo_path = check
+                .suggested_repo_path
+                .clone()
+                .expect("a switch names the checkout");
+            // A branch or checkout of the repository the caller aimed at does
+            // not exist on the one the prompt belongs to. Keep `path` only
+            // when it is already a checkout of the project being switched to,
+            // and never carry `branch`: a ref from the other repo would fail
+            // the launch we just moved.
+            let path = if worktree {
+                None
+            } else if let Some(path) = path.as_deref() {
+                checkout_of_project(&repo_path, path).await
+            } else {
+                None
+            };
+            AimedLaunch {
+                project: Some(project_id),
+                path,
+                branch: None,
+                project_check: Some(report("switch")),
+                record: check.record,
+            }
+        }
+        ProjectCheckDecision::Suggest => AimedLaunch {
+            project,
+            path,
+            branch,
+            project_check: Some(report("suggest")),
+            record: None,
+        },
+        ProjectCheckDecision::None => AimedLaunch {
+            project,
+            path,
+            branch,
+            project_check: None,
+            record: None,
+        },
+    }
+}
+
+async fn checkout_of_project(repo_path: &str, requested: &str) -> Option<String> {
+    resolve_registered_checkout(repo_path, requested)
+        .await
+        .ok()
+        .map(|(path, _branch)| path)
 }
 
 fn auto_tier_from_model(

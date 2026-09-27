@@ -1,6 +1,8 @@
 health:ping
 projects:list
 projects:pick-folder
+projects:check-prompt
+projects:resolve-check
 dashboard:list
 projects:register
 projects:remove
@@ -44,6 +46,7 @@ session:suggest-follow-up
 settings:agent-tools
 settings:set-browser-tools
 settings:routing
+settings:set-project-check
 settings:set-routing-key
 settings:clear-routing-key
 settings:preview-chat-cleanup

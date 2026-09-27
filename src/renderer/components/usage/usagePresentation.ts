@@ -3,9 +3,8 @@ import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
 
 /**
  * The order providers are introduced in: the two that carry most of the
- * spend first, then the rest, then the one with no local usage source. A
- * provider's colour follows its identity, never its rank, so a window that
- * reorders the rows never repaints them.
+ * spend first, then the rest. A provider's colour follows its identity,
+ * never its rank, so a window that reorders the rows never repaints them.
  */
 export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = [
   "claude",
@@ -77,6 +76,14 @@ export function chartedProviders(
 export function shareOfTotal(value: number, total: number): number | null {
   if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return null;
   return value / total;
+}
+
+/**
+ * Cursor keeps no token log, so every Cursor figure — tokens and dollars — is
+ * rebuilt from the transcripts of the chats Argmax ran.
+ */
+export function isEstimatedProvider(provider: ProviderId | null | undefined): boolean {
+  return provider === "cursor";
 }
 
 /** A model row the pricing table does not know: tokens counted, no dollars claimed. */

@@ -64,6 +64,32 @@ pub struct SetRoutingKeyInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetProjectCheckInput {
+    pub mode: crate::persistence::app_settings::ProjectCheckMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsCheckPromptInput {
+    /// The project the launcher is aimed at.
+    pub project_id: ProjectId,
+    pub prompt: Prompt,
+    /// The user picked this project by hand for this draft: a check may
+    /// suggest another one but never switches away on its own.
+    pub picked_by_hand: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsResolveCheckInput {
+    pub check_id: NonEmptyString,
+    pub outcome: crate::routing::project_check::ProjectCheckOutcome,
+    /// The chat the launch started, when it started one.
+    pub session_id: Option<SessionId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemDebugSnapshotInput {
     /// Highest log `seq` the caller already holds. `None` asks for the whole
     /// ring; the debug panel sends its cursor so each poll ships only new lines.
@@ -1439,7 +1465,7 @@ pub struct UsageSummaryInput {
     pub time_zone: NonEmptyString,
     /// Narrow the totals, chart, and breakdowns to one provider. The
     /// per-provider rows always cover every provider, so the page can still
-    /// offer the others. Cursor keeps no local usage log and is rejected.
+    /// offer the others.
     #[serde(default)]
     pub provider: Option<crate::ipc::validation::ProviderId>,
 }

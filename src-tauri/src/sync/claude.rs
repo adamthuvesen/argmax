@@ -32,6 +32,39 @@ pub fn transcript_root(home: &Path) -> PathBuf {
     home.join(".claude").join("projects")
 }
 
+/// The folder Claude Code keeps one checkout's transcripts in, by the slug
+/// rule above. A miss only means no history is found for that checkout.
+pub fn transcript_dir(home: &Path, cwd: &str) -> PathBuf {
+    let slug: String = cwd
+        .chars()
+        .map(|character| {
+            if matches!(character, '/' | '.' | ' ') {
+                '-'
+            } else {
+                character
+            }
+        })
+        .collect();
+    transcript_root(home).join(slug)
+}
+
+/// The first prompt a person typed in a transcript, with Argmax's own
+/// preamble removed. Project check reads the user's history through it.
+pub fn opening_prompt(path: &Path) -> Option<String> {
+    let body = read_head(path, METADATA_LINE_BUDGET)?;
+    body.lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|value| {
+            value.get("type").and_then(Value::as_str) == Some("user") && !is_sidechain(value)
+        })
+        .find_map(|value| match value.as_object().map(transcript_user_row) {
+            Some(TranscriptUserRow::Prompt(text)) => non_empty(
+                crate::providers::mcp_injection::strip_instruction(text.trim()),
+            ),
+            _ => None,
+        })
+}
+
 /// Every transcript modified at or after `cutoff_ms`, paired with the
 /// metadata needed to decide whether to import it.
 pub fn discover(home: &Path, cutoff_ms: i64) -> Vec<DiscoveredSession> {

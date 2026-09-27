@@ -271,6 +271,10 @@ struct InsightsScreen: View {
             InsightsCard(title: "Remaining on your plans", trailing: nil) {
                 PlanLimitsSection(store: limits)
             }
+            // Below the plans, as on the desktop; only once a chat was routed.
+            if let router = store.routerCost, !router.tiers.isEmpty {
+                RouterCostCard(summary: router)
+            }
             UsageDailyChart(usage: store.usage, mode: store.usageMode).equatable()
             UsageTokenFlow(summary: summary)
             UsageBreakdown(store: store)

@@ -10,9 +10,8 @@ use tauri::State;
 use super::{
     inputs::{UsageRemainingInput, UsageRouterCostInput, UsageSummaryInput},
     live_database, read_off_main,
-    validation::ProviderId,
 };
-use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use crate::error::ArgmaxResult;
 use crate::routing::cost::{router_cost, RouterCostSummary};
 use crate::state::AppState;
 use crate::usage::remaining::{fetch_remaining, LiveRemainingSource, UsageRemaining};
@@ -35,13 +34,6 @@ pub async fn usage_summary_impl(
     let database = live_database(state)?;
     let window = input.window;
     let provider = input.provider;
-    if provider == Some(ProviderId::Cursor) {
-        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
-            vec!["provider".into()],
-            "USAGE_PROVIDER_UNAVAILABLE",
-            "Cursor keeps no local usage log, so there is nothing to narrow to",
-        )));
-    }
     let time_zone = input.time_zone.into_string();
     let Some(scanner) = state.usage_scanner.get().cloned() else {
         return Ok(UsageSummary::before_first_scan(window, provider, time_zone));

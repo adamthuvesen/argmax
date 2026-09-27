@@ -16,7 +16,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | Tool | Arguments | Returns |
 |---|---|---|
 | `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
-| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?`, `checkInMinutes?` | `{sessionId, workspaceId, projectId, projectName, path, branch}`. `checkInMinutes` (1 to 1440, else `CHECK_IN_OUT_OF_RANGE`) schedules a `same_session` wake for the caller, routine id `check-in:<sessionId>`, that Argmax deletes when the launched session's completion notice is built, so it fires only while the session is still running. |
+| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?`, `checkInMinutes?` | `{sessionId, workspaceId, projectId, projectName, path, branch, projectCheck?}`. `projectId`, `projectName`, and `path` are the checkout the session started in. `projectCheck` (`decision` of `suggest` or `switch`, `suggestedProjectId`, `suggestedProjectName`, `reasons`) is present when project check had an opinion; a `switch` means those checkout fields are the suggested project, not the one the caller passed. `checkInMinutes` (1 to 1440, else `CHECK_IN_OUT_OF_RANGE`) schedules a `same_session` wake for the caller, routine id `check-in:<sessionId>`, that Argmax deletes when the launched session's completion notice is built, so it fires only while the session is still running. |
 | `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn and could not be steered |
 | `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, attention, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
 | `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |
@@ -84,7 +84,11 @@ creates a new isolated worktree instead. The two are mutually exclusive.
 forks from that ref instead of the project's current branch; with `path`, the
 named checkout must already be on that branch. Launch never switches another
 checkout's branch. The result includes the path and branch the session landed
-on.
+on. Project check runs on this launch the same way it does from the launcher
+([routing.md](routing.md#project-check)). A switch starts the session in the
+other project, drops `branch`, and keeps `path` only when that checkout belongs
+to the project it switched to. The result's checkout fields are where it
+started, and `projectCheck` says when another project was suggested or chosen.
 
 ### Arcs
 

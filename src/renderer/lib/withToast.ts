@@ -5,6 +5,10 @@ export interface ToastMessage {
   message: string;
   /** What the backend said, shown under the message in a quieter line. */
   detail?: string;
+  /** One button beside the message, e.g. Undo. Running it dismisses the toast. */
+  action?: { label: string; run: () => void };
+  /** Overrides the default auto-dismiss delay. */
+  durationMs?: number;
 }
 
 /**

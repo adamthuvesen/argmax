@@ -40,6 +40,10 @@ An ephemeral scratch workspace behind the "More details" explainer. One at a tim
 **Scratch project**:
 The hidden singleton project (`scratch-side-chats`) that owns every scratch and popup workspace. It exists to satisfy the foreign key, not to represent a repository — exclude it from repo pickers and per-project grouping.
 
+**Project check**:
+Jev's read, before a launch, of whether the prompt belongs in the project it is aimed at. From the launcher it suggests another project, or on overwhelming evidence switches to it with an Undo. An agent launch is checked the same way and switches only at that bar, without a dialog.
+_Avoid_: Repo check, repo detection
+
 **Base ref**:
 The git ref an isolated workspace forked from, and the merge-base used for a branch-comparison review. Falls back to the project's default branch.
 

@@ -45,6 +45,9 @@ final class InsightsStore: ObservableObject {
     }
 
     @Published private(set) var usage: UsageSummary?
+    /// The Router card: rides along with `usage` for the same window, and is
+    /// nil when nothing was routed or the Mac predates `usage:router-cost`.
+    @Published private(set) var routerCost: RouterCostSummary?
     @Published private(set) var activity: ActivitySummary?
     @Published private(set) var usageLoading = false
     @Published private(set) var activityLoading = false
@@ -84,6 +87,7 @@ final class InsightsStore: ObservableObject {
             if self.usage == nil, self.usageWindow == "30d", self.providerFilter == nil,
                let value = cached.0, value.timeZone == self.timeZone {
                 self.usage = value.summary
+                self.routerCost = value.routerCost
                 self.usageReadAt = value.readAt
                 self.loadedUsageWindow = "30d"
             }
@@ -170,12 +174,17 @@ final class InsightsStore: ObservableObject {
             let zone = timeZone
             let startedAt = Date()
             do {
+                // Side by side: the Router read is a small SQLite query and
+                // must not add its round trip to the ledger's.
+                async let router = fetchRouterCost(window: window)
                 let summary = try await fetchUsage(window: window, provider: provider, timeZone: zone)
+                let routerSummary = await router
                 let ms = Int(Date().timeIntervalSince(startedAt) * 1000)
                 Self.log.debug("usage:summary window=\(window) provider=\(provider ?? "all") in \(ms)ms")
                 // A newer load already won; a stale answer never paints.
                 if window == usageWindow, provider == providerFilter {
                     usage = summary
+                    routerCost = routerSummary
                     usageReadAt = Date()
                     loadedUsageWindow = window
                     loadedUsageProvider = provider
@@ -187,7 +196,8 @@ final class InsightsStore: ObservableObject {
                     if provider == nil {
                         let scope = client.cacheNamespace
                         Task {
-                            await DeviceCache.shared.write(CachedUsage(summary: summary, readAt: Date(), timeZone: zone),
+                            await DeviceCache.shared.write(CachedUsage(summary: summary, routerCost: routerSummary,
+                                                                       readAt: Date(), timeZone: zone),
                                 scope: scope, key: "insights-usage-\(window)")
                         }
                     }
@@ -253,6 +263,20 @@ final class InsightsStore: ObservableObject {
         }.value
     }
 
+    /// Nil rather than thrown: the card is secondary, so a failed read (or
+    /// an older Mac without the channel) hides it and keeps the page up.
+    private func fetchRouterCost(window: String) async -> RouterCostSummary? {
+        let client = client
+        do {
+            return try await Task.detached(priority: .userInitiated) {
+                try await client.routerCost(RouterCostInput(window: window))
+            }.value
+        } catch {
+            Self.log.debug("usage:router-cost window=\(window) failed: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     private func fetchActivity(window: String, timeZone: String) async throws -> ActivitySummary {
         let client = client
         return try await Task.detached(priority: .userInitiated) {
@@ -266,6 +290,8 @@ final class InsightsStore: ObservableObject {
 
     private struct CachedUsage: Codable, Sendable {
         let summary: UsageSummary
+        /// Optional, so a cache written before the Router card still decodes.
+        let routerCost: RouterCostSummary?
         let readAt: Date
         let timeZone: String
     }

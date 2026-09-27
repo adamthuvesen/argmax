@@ -397,3 +397,51 @@ struct ActivitySummary: Codable, Hashable, Sendable {
         try scan.encode(scanPhase, forKey: .phase)
     }
 }
+
+// MARK: - Router output
+
+/// `UsageRouterCostInput`. The window is the Usage page's; the Router card
+/// ignores the provider picker, as it does on the desktop.
+struct RouterCostInput: Encodable, Sendable {
+    var window: String
+}
+
+/// `RouterModelCost` — one model a tier routed to, most turns first.
+struct RouterModelCost: Codable, Hashable, Sendable {
+    var provider: String
+    var modelId: String
+    var turns: Int
+    var costUsd: Double
+    /// A Cursor transcript estimate.
+    var estimated: Bool
+}
+
+/// `RouterTierCost` — one Auto tier's turns, spend, and median times.
+/// `tier` stays a `String` like the other wire enums here.
+struct RouterTierCost: Codable, Hashable, Sendable, Identifiable {
+    var tier: String
+    var chats: Int
+    var turns: Int
+    var escalations: Int
+    var reroutes: Int
+    var measuredCostUsd: Double
+    var estimatedCostUsd: Double
+    /// Answered turns no price covers: counted, never $0.
+    var unpricedTurns: Int
+    var models: [RouterModelCost]
+    /// Send to end of turn, less approval waits. Nil until a turn finished.
+    var medianTurnSeconds: Double?
+    /// Send to the model's first text, reasoning, or tool call.
+    var medianFirstAnswerSeconds: Double?
+
+    var id: String { tier }
+    var costUsd: Double { measuredCostUsd + estimatedCostUsd }
+    var isEstimated: Bool { estimatedCostUsd > 0 }
+    var pricedTurns: Int { turns - unpricedTurns }
+}
+
+/// `RouterCostSummary` — Frontier, Balance, Speed in that order; a tier with
+/// no turns in the window is left out.
+struct RouterCostSummary: Codable, Hashable, Sendable {
+    var tiers: [RouterTierCost]
+}

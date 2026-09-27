@@ -96,10 +96,33 @@ pub async fn classify(
     api_key: &str,
     ask_correction: bool,
 ) -> ArgmaxResult<Classification> {
+    parse_response(&post(&request_body(prompt, ask_correction), api_key, JEV_TIMEOUT).await?)
+}
+
+/// One Choice question over caller-described options: Jev's probability for
+/// each option key. Project check asks which project a prompt belongs to; its
+/// options are long, so it brings its own timeout.
+pub async fn classify_choice(
+    text: &str,
+    instructions: &str,
+    criteria: &[(String, String)],
+    api_key: &str,
+    timeout: Duration,
+) -> ArgmaxResult<HashMap<String, f64>> {
+    let body = post(
+        &choice_request_body(text, instructions, criteria),
+        api_key,
+        timeout,
+    )
+    .await?;
+    parse_choice(&body)
+}
+
+async fn post(body: &Value, api_key: &str, timeout: Duration) -> ArgmaxResult<Value> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder()
-        .connect_timeout(JEV_TIMEOUT)
-        .timeout(JEV_TIMEOUT)
+        .connect_timeout(timeout)
+        .timeout(timeout)
         .redirect(Policy::none())
         .retry(reqwest::retry::never())
         .user_agent("argmax")
@@ -108,7 +131,7 @@ pub async fn classify(
     let response = client
         .post(JEV_URL)
         .bearer_auth(api_key)
-        .json(&request_body(prompt, ask_correction))
+        .json(body)
         .send()
         .await
         .map_err(|error| jev_error(format!("request failed: {error}")))?;
@@ -122,11 +145,36 @@ pub async fn classify(
     if !status.is_success() {
         return Err(jev_error(format!("returned HTTP {status}")));
     }
-    let body: Value = response
+    response
         .json()
         .await
-        .map_err(|error| jev_error(format!("unreadable response: {error}")))?;
-    parse_response(&body)
+        .map_err(|error| jev_error(format!("unreadable response: {error}")))
+}
+
+fn choice_request_body(text: &str, instructions: &str, criteria: &[(String, String)]) -> Value {
+    let state: String = text.chars().take(MAX_STATE_CHARS).collect();
+    let criteria: serde_json::Map<String, Value> = criteria
+        .iter()
+        .map(|(key, description)| (key.clone(), Value::from(description.as_str())))
+        .collect();
+    json!({
+        "model": JEV_MODEL,
+        "state": state,
+        "questions": {
+            "choice": { "type": "choice", "instructions": instructions, "criteria": criteria },
+        },
+    })
+}
+
+fn parse_choice(body: &Value) -> ArgmaxResult<HashMap<String, f64>> {
+    let parsed: Answers = serde_json::from_value(body.clone())
+        .map_err(|error| jev_error(format!("unexpected response shape: {error}")))?;
+    parsed
+        .answers
+        .get("choice")
+        .and_then(|answer| answer.probabilities.clone())
+        .filter(|probabilities| !probabilities.is_empty())
+        .ok_or_else(|| jev_error("choice answer has no probabilities"))
 }
 
 fn request_body(prompt: &str, ask_correction: bool) -> Value {
@@ -251,6 +299,18 @@ mod tests {
     fn rejects_an_unknown_kind_loudly() {
         let error = parse_response(&live_shaped_response("poetry", 1.0)).expect_err("rejects");
         assert!(error.to_string().contains("unknown kind"), "{error}");
+    }
+
+    #[test]
+    fn reads_choice_probabilities_by_option_key() {
+        let body = json!({
+            "answers": { "choice": { "type": "choice", "choice": "dbt-transform", "confidence": 1.0,
+                                     "probabilities": { "dbt-transform": 0.97, "none": 0.02, "argmax": 0.01 } } }
+        });
+        let probabilities = parse_choice(&body).expect("parses");
+        assert_eq!(probabilities.get("dbt-transform"), Some(&0.97));
+        assert_eq!(probabilities.len(), 3);
+        assert!(parse_choice(&json!({ "answers": { "choice": { "choice": "x" } } })).is_err());
     }
 
     #[test]

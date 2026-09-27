@@ -1,8 +1,8 @@
 import { useId, type JSX } from "react";
 import type { ProviderId, UsageCostSource, UsageSummary } from "../../../shared/types.js";
-import { formatCount, formatDeltaRatio, formatMetric, formatPricingDate } from "./usageFormat.js";
+import { approximately, formatCount, formatDeltaRatio, formatMetric, formatPricingDate } from "./usageFormat.js";
 import { peakBucket, perBucketAverage, type UsageDelta } from "./usageInsights.js";
-import { processedTokens, providerLabel, type UsageMetric } from "./usagePresentation.js";
+import { isEstimatedProvider, processedTokens, providerLabel, type UsageMetric } from "./usagePresentation.js";
 
 /** Where the headline number comes from, said plainly under it. */
 function provenance(costSource: UsageCostSource, metric: UsageMetric): string {
@@ -10,6 +10,8 @@ function provenance(costSource: UsageCostSource, metric: UsageMetric): string {
   switch (costSource) {
     case "provider_reported":
       return "reported by the provider CLIs";
+    case "estimated":
+      return "estimated from Cursor chat transcripts";
     case "unpriced":
       return "no list price for these models";
     case "mixed":
@@ -66,6 +68,10 @@ export function UsageHero({
   const total = metric === "cost" ? summary.costUsd : processedTokens(summary.tokens);
   const sessions = formatCount(summary.sessions);
   const narrowed: ProviderId | null = summary.provider ?? null;
+  const allEstimated = isEstimatedProvider(narrowed);
+  // Only said when the estimate is a part of the figure; a Cursor-only
+  // figure already reads ≈ and says where it comes from.
+  const estimatedPart = metric === "cost" ? summary.estimatedCostUsd : summary.estimatedTokens;
   // Either clause is dropped rather than faked when the window is too young
   // to support it, so the line can be one clause, two, or absent.
   const average = perBucketAverage(summary, metric);
@@ -85,7 +91,7 @@ export function UsageHero({
         </p>
         <div className="usage-hero-headline">
           <p className="usage-hero-figure" aria-labelledby={eyebrowId}>
-            {formatMetric(total, metric)}
+            {approximately(formatMetric(total, metric), allEstimated)}
           </p>
           {delta ? <UsageDeltaChip delta={delta} /> : null}
         </div>
@@ -113,8 +119,16 @@ export function UsageHero({
             <span className="usage-dot-sep" aria-hidden="true">
               ·{" "}
             </span>
-            {provenance(summary.costSource, metric)}
+            {allEstimated ? "estimated from Cursor chat transcripts" : provenance(summary.costSource, metric)}
           </span>
+          {!allEstimated && estimatedPart > 0 ? (
+            <span className="usage-hero-clause">
+              <span className="usage-dot-sep" aria-hidden="true">
+                ·{" "}
+              </span>
+              {`≈${formatMetric(estimatedPart, metric)} estimated for Cursor`}
+            </span>
+          ) : null}
           {narrowed ? (
             <button type="button" className="usage-hero-show-all" onClick={onShowAll}>
               Show all

@@ -35,7 +35,7 @@ import { usePersistedSetting } from "./hooks/usePersistedSetting.js";
 import { useMotionPresence } from "./hooks/useMotionPresence.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
-import { LaunchSurface } from "./components/LaunchSurface.js";
+import { LaunchSurface, type LaunchedChat } from "./components/LaunchSurface.js";
 import { PerfOverlay } from "./components/PerfOverlay.js";
 import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
@@ -228,7 +228,7 @@ export function App(): JSX.Element {
         if (!cancelled) setRouting(settings);
       })
       .catch(() => {
-        if (!cancelled) setRouting({ enabled: false });
+        if (!cancelled) setRouting({ enabled: false, projectCheck: "off" });
       });
     return () => {
       cancelled = true;
@@ -711,7 +711,7 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     if (!toast) return;
-    const dismissAfterMs = toast.kind === "error" ? 10_000 : 4_000;
+    const dismissAfterMs = toast.durationMs ?? (toast.kind === "error" ? 10_000 : 4_000);
     const t = setTimeout(() => dismissToast(), dismissAfterMs);
     return () => clearTimeout(t);
   }, [toast]);
@@ -1586,7 +1586,7 @@ export function App(): JSX.Element {
         attachments?: ComposerAttachment[] | undefined;
         goalCondition?: string | undefined;
       }
-    ): Promise<void> => {
+    ): Promise<LaunchedChat> => {
       const api = window.argmax;
       if (!api) throw new Error("Open Argmax on your Mac to launch local agents.");
       let workspace = created;
@@ -1647,6 +1647,7 @@ export function App(): JSX.Element {
           prompt
         })
         .catch(() => undefined);
+      return cell;
     },
     [
       fastModeEnabled,
@@ -1668,7 +1669,7 @@ export function App(): JSX.Element {
       workspaceMode: WorkspaceMode,
       attachments?: ComposerAttachment[],
       goalCondition?: string
-    ): Promise<void> => {
+    ): Promise<LaunchedChat> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to launch local agents.");
       }
@@ -1703,7 +1704,7 @@ export function App(): JSX.Element {
             })
           : await api.workspaces.createCurrent({ projectId, taskLabel });
 
-      await startSessionInWorkspace(workspace, prompt, model, { agentMode, attachments, goalCondition });
+      return startSessionInWorkspace(workspace, prompt, model, { agentMode, attachments, goalCondition });
     },
     [selectedProject, snapshot.projects, startSessionInWorkspace]
   );
@@ -2185,7 +2186,8 @@ export function App(): JSX.Element {
         onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
         goalEnabled={goalEnabled}
-        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition) => launchTask(prompt, model, agentMode, project?.id, workspaceMode, attachments, goalCondition)}
+        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition, projectId) =>
+          launchTask(prompt, model, agentMode, projectId ?? project?.id, workspaceMode, attachments, goalCondition)}
         onLaunchSideChat={(prompt, model, agentMode, attachments, goalCondition) =>
           launchSideChat(prompt, { model, agentMode, attachments, goalCondition })}
         model={launchModel}
@@ -2396,6 +2398,18 @@ export function App(): JSX.Element {
             {paintedToast.message}
             {paintedToast.detail ? <span className="toast-detail">{paintedToast.detail}</span> : null}
           </span>
+          {paintedToast.action ? (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                dismissToast();
+                paintedToast.action?.run();
+              }}
+            >
+              {paintedToast.action.label}
+            </button>
+          ) : null}
           <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
             ×
           </button>

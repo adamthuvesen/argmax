@@ -210,9 +210,13 @@
 
 /* ---- 3. Frosted chrome ----
    Content scrolls under these, and a thin film alone would leave two layers
-   of text overlapping. The sidebar is here for its collapsed peek overlay,
-   which floats over the workspace. Per-line diff gutters are left out on
-   purpose: a backdrop filter on every line is too costly for what it buys. */
+   of text overlapping. The sidebar is here only while collapsed, for its peek
+   overlay that floats over the workspace. Docked, nothing of the page lies
+   under it, and the filter would only re-blur the window's vibrancy: WebKit
+   re-samples that every frame of a window drag, and the blur reaching past the
+   sidebar's edge flashes a dark band along the separator. Per-line diff
+   gutters are left out on purpose: a backdrop filter on every line is too
+   costly for what it buys. */
 :root[data-window-translucent="true"] :is(
     .sidebar,
     .workspace-card,

@@ -80,7 +80,10 @@ pub(super) async fn handle_session_control(
     let counting_database = Arc::clone(&database);
     let mut response = match request.action {
         SessionControlAction::Launch(action) => {
-            launch_session(action, parent, database, workspaces, providers).await
+            let data_dir = app
+                .as_ref()
+                .and_then(|handle| crate::util::data_dir::app_data_dir(handle).ok());
+            launch_session(action, parent, database, workspaces, providers, data_dir).await
         }
         SessionControlAction::Move(action) => {
             schedule_session_move(action, parent, database, workspaces, providers, registry).await

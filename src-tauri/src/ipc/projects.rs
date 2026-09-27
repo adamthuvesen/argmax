@@ -17,6 +17,7 @@ use crate::persistence::projects::{
     update_project_branch, update_project_settings, PersistProjectInput, ProjectRemote,
     ProjectSettings, ProjectSummary,
 };
+use crate::routing::project_check::ProjectCheck;
 use crate::state::AppState;
 
 #[tauri::command(rename = "projects:list")]
@@ -31,6 +32,59 @@ pub async fn projects_list(
 pub(crate) async fn projects_list_impl(state: &AppState) -> ArgmaxResult<Vec<ProjectSummary>> {
     let database = live_database(state)?;
     read_off_main(move || list_projects(&database.read_connection())).await
+}
+
+/// Project check: whether the prompt reads like work for another project.
+/// Never fails for want of an answer — no key, a Jev error or a short prompt
+/// all come back as `none` (docs/routing.md#project-check).
+#[tauri::command(rename = "projects:check-prompt")]
+#[specta::specta]
+pub async fn projects_check_prompt(
+    state: State<'_, AppState>,
+    input: ProjectsCheckPromptInput,
+) -> ArgmaxResult<ProjectCheck> {
+    projects_check_prompt_impl(&state, input).await
+}
+
+pub(crate) async fn projects_check_prompt_impl(
+    state: &AppState,
+    input: ProjectsCheckPromptInput,
+) -> ArgmaxResult<ProjectCheck> {
+    let database = live_database(state)?;
+    crate::routing::project_check::check_prompt(
+        database,
+        state.app_data_dir.get().cloned(),
+        input.project_id.into_string(),
+        input.prompt.into_string(),
+        input.picked_by_hand,
+    )
+    .await
+}
+
+/// Records what the user did with a check's suggestion or switch.
+#[tauri::command(rename = "projects:resolve-check")]
+#[specta::specta]
+pub async fn projects_resolve_check(
+    state: State<'_, AppState>,
+    input: ProjectsResolveCheckInput,
+) -> ArgmaxResult<()> {
+    projects_resolve_check_impl(&state, input).await
+}
+
+pub(crate) async fn projects_resolve_check_impl(
+    state: &AppState,
+    input: ProjectsResolveCheckInput,
+) -> ArgmaxResult<()> {
+    let database = live_database(state)?;
+    read_off_main(move || {
+        crate::routing::project_check::resolve_check(
+            &database,
+            input.check_id.as_str(),
+            input.outcome,
+            input.session_id.as_ref().map(|id| id.as_str()),
+        )
+    })
+    .await
 }
 
 #[tauri::command(rename = "projects:pick-folder")]

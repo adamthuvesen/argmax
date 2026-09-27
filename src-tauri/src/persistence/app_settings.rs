@@ -12,6 +12,8 @@
 //! The store is the `ui_state` key/value table.
 
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::error::ArgmaxResult;
 
@@ -19,6 +21,19 @@ use super::{sqlite_error, time::now_iso};
 
 /// Whether an agent's `argmax` MCP server carries the browser tools.
 const BROWSER_TOOLS_KEY: &str = "agent.browser_tools.enabled";
+
+/// What Project check may do when a launch looks aimed at the wrong project.
+const PROJECT_CHECK_KEY: &str = "launch.project_check.mode";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum ProjectCheckMode {
+    Off,
+    /// Ask before starting in the project Jev picked.
+    Suggest,
+    /// Ask, and start there without asking when the evidence is overwhelming.
+    Switch,
+}
 
 /// Reads a boolean setting, treating anything unset or unreadable as `default`.
 ///
@@ -60,6 +75,34 @@ pub fn set_browser_tools_enabled(connection: &Connection, enabled: bool) -> Argm
     set_boolean_setting(connection, BROWSER_TOOLS_KEY, enabled)
 }
 
+/// On with automatic switching unless the user chose otherwise. It only runs
+/// once a Jev key is saved, which is its own opt-in.
+pub fn project_check_mode(connection: &Connection) -> ProjectCheckMode {
+    connection
+        .prepare_cached("SELECT value_json FROM ui_state WHERE key = ?")
+        .and_then(|mut statement| {
+            statement
+                .query_row(params![PROJECT_CHECK_KEY], |row| row.get::<_, String>(0))
+                .optional()
+        })
+        .unwrap_or(None)
+        .and_then(|value| serde_json::from_str(&value).ok())
+        .unwrap_or(ProjectCheckMode::Switch)
+}
+
+pub fn set_project_check_mode(connection: &Connection, mode: ProjectCheckMode) -> ArgmaxResult<()> {
+    let value = serde_json::to_string(&mode).map_err(super::json_error)?;
+    connection
+        .prepare_cached(
+            "INSERT INTO ui_state (key, value_json, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
+        )
+        .map_err(sqlite_error)?
+        .execute(params![PROJECT_CHECK_KEY, value, now_iso()])
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,5 +134,17 @@ mod tests {
             .expect("seed");
 
         assert!(browser_tools_enabled(&connection));
+    }
+
+    #[test]
+    fn project_check_switches_until_the_user_picks_a_mode() {
+        let database = Database::open_in_memory().expect("database");
+        let connection = database.connection();
+
+        assert_eq!(project_check_mode(&connection), ProjectCheckMode::Switch);
+        set_project_check_mode(&connection, ProjectCheckMode::Off).expect("write");
+        assert_eq!(project_check_mode(&connection), ProjectCheckMode::Off);
+        set_project_check_mode(&connection, ProjectCheckMode::Suggest).expect("write");
+        assert_eq!(project_check_mode(&connection), ProjectCheckMode::Suggest);
     }
 }

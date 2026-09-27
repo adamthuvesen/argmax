@@ -1,7 +1,17 @@
 import { useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
-import type { RoutingSettings } from "../../../shared/types.js";
-import { SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
+import type { ProjectCheckMode, RoutingSettings } from "../../../shared/types.js";
+import { SegmentedControl, SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
+
+const PROJECT_CHECK_OPTIONS: ReadonlyArray<{ value: ProjectCheckMode; label: string }> = [
+  { value: "off", label: "Off" },
+  { value: "suggest", label: "Suggest" },
+  { value: "switch", label: "Suggest & switch" }
+];
+
+function isProjectCheckMode(value: string): value is ProjectCheckMode {
+  return PROJECT_CHECK_OPTIONS.some((option) => option.value === value);
+}
 
 /**
  * Auto routing is on exactly when a Jev API key is saved, so the key is the
@@ -44,6 +54,17 @@ export function AutoRoutingSettings({
       onRoutingChange(await api.clearRoutingKey());
     } catch (removeError) {
       setError(errorMessage(removeError));
+    }
+  };
+
+  const setProjectCheck = async (mode: ProjectCheckMode): Promise<void> => {
+    const api = window.argmax?.settings;
+    if (!api) return;
+    setError(null);
+    try {
+      onRoutingChange(await api.setProjectCheck({ mode }));
+    } catch (saveError) {
+      setError(errorMessage(saveError));
     }
   };
 
@@ -95,6 +116,23 @@ export function AutoRoutingSettings({
           />
         </form>
       )}
+      {routing?.enabled ? (
+        <SettingRow
+          label="Project check"
+          description="Before a new chat starts, Jev reads the prompt and checks it belongs in the project you picked. Suggest asks first; Suggest & switch also moves a chat on its own when the prompt names the other project or one of its files."
+          control={
+            <SegmentedControl
+              ariaLabel="Project check"
+              name="project-check-mode"
+              value={routing.projectCheck}
+              onChange={(value) => {
+                if (isProjectCheckMode(value)) void setProjectCheck(value);
+              }}
+              options={PROJECT_CHECK_OPTIONS}
+            />
+          }
+        />
+      ) : null}
       {error ? (
         <SettingNote tone="warn" role="alert">
           {error}

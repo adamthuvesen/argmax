@@ -415,7 +415,10 @@ visible and steerable after your turn — a separate repository investigation, a
 Keep bounded research, review, and implementation in this chat using your provider's native \
 subagents. A new session starts cold, so put everything it needs in `prompt`. It is a top-level \
 sidebar session, not a subagent: the user sees it, it spends real tokens, and it outlives your \
-turn. Capped at two levels deep and ten launches per session."
+turn. Capped at two levels deep and ten launches per session. Project check may start the session \
+in a different project when the prompt clearly belongs there: `projectId`, `projectName`, and \
+`path` are where it actually started, and `projectCheck` is set when another project was suggested \
+or chosen. Trust those fields over the project you passed."
     )]
     async fn session_launch(
         &self,

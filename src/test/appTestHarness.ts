@@ -476,7 +476,17 @@ export function setupAppTestMocks(): void {
       updateSettings: () => Promise.resolve(primaryProject()),
       listBranches,
       refreshBranch: () => Promise.resolve(primaryProject()),
-      switchBranch: () => Promise.resolve(primaryProject())
+      switchBranch: () => Promise.resolve(primaryProject()),
+      checkPrompt: () => Promise.resolve({
+        decision: "none",
+        checkId: null,
+        suggestedProjectId: null,
+        runnerUpProjectId: null,
+        suggestedProbability: 0,
+        currentProbability: 0,
+        reasons: []
+      }),
+      resolveCheck: () => Promise.resolve()
     },
     workspaces: {
       createIsolated: createIsolatedWorkspace,
@@ -600,9 +610,10 @@ export function setupAppTestMocks(): void {
     },
     settings: {
       agentTools: agentToolsStub,
-      routing: () => Promise.resolve({ enabled: false }),
+      routing: () => Promise.resolve({ enabled: false, projectCheck: "switch" }),
       setRoutingKey: () => Promise.reject(new Error("Routing key not stubbed")),
-      clearRoutingKey: () => Promise.resolve({ enabled: false }),
+      clearRoutingKey: () => Promise.resolve({ enabled: false, projectCheck: "switch" }),
+      setProjectCheck: ({ mode }) => Promise.resolve({ enabled: false, projectCheck: mode }),
       setBrowserTools: setBrowserToolsStub,
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))

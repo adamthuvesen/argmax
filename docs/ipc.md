@@ -63,13 +63,15 @@ observed, so a newer reply remains unread. Updated workspace rows carry
 `lastViewedAt` through `dashboard:delta` so desktop and mobile agree on unread
 completed replies.
 
+`projects:check-prompt` takes `{ projectId, prompt, pickedByHand }` and returns Project check's verdict: `decision` (`none` / `suggest` / `switch`), a `checkId`, the suggested and runner-up project ids, both probabilities, and the reasons to show. It never fails for want of an answer — no key, a Jev error or a short prompt come back as `none`. `projects:resolve-check` takes `{ checkId, outcome, sessionId }` for a check this process handed out. `settings:set-project-check` takes `{ mode: "off" | "suggest" | "switch" }` and returns `RoutingSettings`, which carries the mode as `projectCheck`. See [routing.md](routing.md#project-check).
+
 `settings:preview-chat-cleanup` returns a fixed seven-day cutoff, a confirmation id, and the number of eligible chats. `settings:delete-old-chats` accepts that id and applies only the previewed candidate set. The deletion transaction rechecks activity and active work, and reports chats skipped because they changed after the preview.
 
 `system:open-file-in` takes `{ path, cwd, app }` and reveals the path in Finder (`app: "finder"`) or opens it in VS Code, Cursor, Windsurf, or Zed. The path must resolve inside `cwd`. Terminal apps are not accepted, because `open -a Terminal <file>` runs the file as a script. The Files view's right-click menu uses it, and the remote bridge does not support it.
 
 `connections:list` takes a provider and optional workspace id. It returns the MCP servers, plugins, and provider connectors available at that scope, plus the strongest authentication result the provider exposes. The handler runs provider health checks with a timeout and returns **Unknown** when a CLI does not report token validity.
 
-`usage:summary` takes `{ window: "24h" | "7d" | "30d", timeZone, provider? }` and returns the Usage page in one shape: totals, per-provider rows, the chart series, and the model and day breakdowns, plus the scan's progress. A `provider` narrows everything but the per-provider rows to that provider; Cursor keeps no local usage log and is rejected. A ledger that has completed before is swept inline so the answer is current; the first cold sweep runs in the background and the page polls. See [usage.md](usage.md).
+`usage:summary` takes `{ window: "24h" | "7d" | "30d", timeZone, provider? }` and returns the Usage page in one shape: totals, per-provider rows, the chart series, and the model and day breakdowns, plus the scan's progress. A `provider` narrows everything but the per-provider rows to that provider; Cursor's figures are estimated from the chats Argmax ran. A ledger that has completed before is swept inline so the answer is current; the first cold sweep runs in the background and the page polls. See [usage.md](usage.md).
 
 `usage:remaining` takes no fields and returns live remaining usage per provider login: plan kind (`subscription` / `enterprise` / `api_key` / `unavailable` / `error`), optional plan label, remaining-percent windows with reset times, and a per-row message. One provider failing does not fail the channel. See [usage.md](usage.md).
 

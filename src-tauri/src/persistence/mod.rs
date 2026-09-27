@@ -16,6 +16,7 @@ pub mod goals;
 pub mod learnings;
 pub mod migrations;
 pub mod pending_messages;
+pub mod project_checks;
 pub mod project_sources;
 pub mod projects;
 pub mod routines;

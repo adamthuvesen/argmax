@@ -206,6 +206,10 @@ The Usage page carries the desktop's remaining read:
   Claude's endpoint is rate-limited. The ledger
   above it on the desktop, spend per provider, is not here: it is a page, and
   it reads no better for being squeezed into a group.
+- `Sources/Insights/RouterViews.swift` — the desktop's Router card below it:
+  what each Auto tier cost, with median turn and first-answer times
+  ([docs/usage.md](../../docs/usage.md#router-cost)). One block per tier in
+  place of the desktop's eight-column table.
 
 Chat and arc rows place a compact glyph beside the title, with the subtitle
 aligned beneath the title, matching the desktop sidebar.

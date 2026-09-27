@@ -12,6 +12,7 @@ import type {
   ArcTimelinePage,
   ArgmaxApi,
   AgentToolsSettings,
+  ProjectCheck,
   RoutingSettings,
   ChatCleanupPreview,
   DeleteOldChatsResult,
@@ -334,7 +335,9 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       refreshBranch: (projectId: string) =>
         invokeCommand<ProjectSummary>("projects:refresh-branch", { projectId }),
       switchBranch: (projectId: string, branch: string) =>
-        invokeCommand<ProjectSummary>("projects:switch-branch", { projectId, branch })
+        invokeCommand<ProjectSummary>("projects:switch-branch", { projectId, branch }),
+      checkPrompt: (input) => invokeCommand<ProjectCheck>("projects:check-prompt", input),
+      resolveCheck: (input) => invokeCommand<void>("projects:resolve-check", input)
     },
     workspaces: {
       createIsolated: (input) => invokeCommand<WorkspaceSummary>("workspaces:create-isolated", input),
@@ -488,6 +491,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       routing: () => invokeCommand<RoutingSettings>("settings:routing"),
       setRoutingKey: (input) => invokeCommand<RoutingSettings>("settings:set-routing-key", input),
       clearRoutingKey: () => invokeCommand<RoutingSettings>("settings:clear-routing-key"),
+      setProjectCheck: (input) => invokeCommand<RoutingSettings>("settings:set-project-check", input),
       setBrowserTools: (input) =>
         invokeCommand<AgentToolsSettings>("settings:set-browser-tools", input),
       previewChatCleanup: () => invokeCommand<ChatCleanupPreview>("settings:preview-chat-cleanup"),

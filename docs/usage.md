@@ -5,6 +5,8 @@ over the last 24 hours, 7 days, or 30 days: a summary band (the total, then one
 tile per provider), a full-width chart, a token-flow band, and a breakdown by
 model or day. It reads every provider transcript on disk, not only the sessions
 Argmax launched, so it is the same number a terminal-only user would get.
+Cursor is the exception: it keeps no token log, so its figures are estimated
+from the chats Argmax ran (see [Cursor estimate](#cursor-estimate)).
 
 The iPhone model breakdown shows the top 12 models in descending order of the
 selected metric (tokens or cost). Its bars use that same metric.
@@ -43,7 +45,8 @@ picker, and the Cost/Tokens switch. Choosing a provider narrows the total,
 chart, token flow, and breakdown to it; so does pressing that provider's tile
 in the band, and the two stay in step. "All providers" in the picker, a
 second press on the tile, or "Show all" beside the total widens back out. A
-provider with no local usage source (Cursor) is listed but cannot be chosen.
+provider with no usage source would be listed but could not be chosen; since
+Cursor gained its estimate every provider has one.
 The tiles themselves never narrow, so their shares stay shares of the whole
 window while one provider is in focus. Providers are told apart by colour
 alone: one series colour per provider, on the tile dot, the picker row, the
@@ -66,6 +69,9 @@ table (`PRICING_AS_OF` in [usage/mod.rs](../src-tauri/src/usage/mod.rs)). A
 model the table does not know is counted in tokens and marked *unpriced*,
 never shown as $0. Grok Build and OpenCode keep their own dollar figure in
 their logs; those win over the table and are marked *provider reported*.
+Cursor's figures, tokens and dollars alike, are estimates and read "≈"; when
+they are part of a larger total, the hero says how much ("≈$12.40 estimated
+for Cursor", from `UsageSummary::estimated_cost_usd` / `estimated_tokens`).
 
 ## Router cost
 
@@ -75,6 +81,14 @@ cost, cost per turn, median turn time and time to first answer, escalations,
 and the model mix. It appears only when a
 chat was routed in the window. The read is `usage:router-cost`
 ([routing/cost.rs](../src-tauri/src/routing/cost.rs)).
+
+The iPhone Usage tab shows the same card under its remaining card
+([RouterViews.swift](../ios/Argmax/Sources/Insights/RouterViews.swift)). The
+table is too wide for a phone, so a bar splits the turns across tiers, and
+each tier is a block: cost beside its name, chats, turns and cost per turn
+under it, then turn time, first answer and escalations in a stat strip. The
+phone fetches it beside `usage:summary`, caches it with that summary, and
+hides the card when the read fails or the Mac predates the channel.
 
 - **One window per `turn_routes` row.** Every routed turn records a row, `kept`
   included. A row's window runs from its `created_at` to the chat's next row
@@ -101,17 +115,9 @@ chat was routed in the window. The read is `usage:router-cost`
   figure every provider has, and the one the user waits through.
 - **Each row is priced by its own provider.** A Cursor chat that escalated to
   Claude prices its Claude rows from usage and only its Cursor rows as below.
-- **Cursor is estimated.** ACP reports no tokens, so each Cursor turn is
-  rebuilt from the transcript: text length / 4 as tokens; a model call at every
-  `command.started`, `agent.started`, and `message.completed`; each call
-  cache-reads a 20k-token base (a one-shot `cursor-agent -p` measured ~18.8k on
-  2026-09-27) plus the conversation so far, takes what arrived since the last
-  call as input, and outputs its own event. Against real Claude sessions with
-  recorded usage, this shape gave a median estimate/actual of about 1.0 for
-  cache reads, with the middle half of chats between 0.75x and 2x. It is priced
-  at Cursor's published list rates ([cursor.com/docs/models](https://cursor.com/docs/models),
-  fetched 2026-09-27), kept in that module rather than the ledger's table, and
-  every amount that contains it is shown with "≈".
+- **Cursor is estimated** the way the Usage page estimates it (see
+  [Cursor estimate](#cursor-estimate)), each call charged to the latest route
+  row at or before it, and every amount that contains it is shown with "≈".
 - **Unanswered turns are left out.** A turn with no reply, reasoning, tool
   call, or usage in its window (cancelled or failed before the model answered)
   cost nothing and is not counted anywhere: not in chats, turns, or the model
@@ -122,6 +128,57 @@ chat was routed in the window. The read is `usage:router-cost`
   in turns and listed as unpriced, never $0, and left out of the per-turn
   figure.
 
+## Cursor estimate
+
+ACP reports no tokens and `cursor-agent` stores none on disk (its
+`~/.cursor/chats` stores hold message blobs, no counts or per-call model), so
+[usage/cursor.rs](../src-tauri/src/usage/cursor.rs) rebuilds each Cursor chat
+Argmax ran from its own `events` rows. The Usage page and the Router card share
+it.
+
+- **Tokens are text length / 4.** A model call happens at every
+  `command.started`, `agent.started`, and `message.completed`. Each call
+  cache-reads a 20k-token base (a one-shot `cursor-agent -p` measured ~18.8k on
+  2026-09-27) plus the conversation so far, takes what arrived since the last
+  call as input, and outputs its own event. A `/clear` (`session.cleared`)
+  empties the conversation.
+- **The conversation is what the model saw, not what was logged.** Cursor's
+  event payload repeats a command's output four times (`stdout` and
+  `interleavedOutput`, under `result` and again under `raw`); the copies under
+  `raw` and `interleavedOutput` are dropped. One event adds at most 10k tokens:
+  Cursor writes output past 40 KB (`fileOutputThresholdBytes`) to a file and
+  shows the model a preview. A conversation past 1M tokens, the window of every
+  Cursor model Argmax offers, is compacted, so it starts over.
+- **How close it is.** Run over Claude and Codex chats with recorded usage
+  (144 and 142 chats since 2026-09-10), the summed cache reads came to 1.6x
+  and 0.7x of the real ones, with per-chat medians of 0.64 and 0.96. Before the
+  dedupe, cap, and window, the sums were 3.0x and 1.8x: long chats, which carry
+  most of the tokens, ran far past what any model can hold. On the live
+  database, the change took Cursor's 30 days from ≈$244 to ≈$110.
+- **Prices are Cursor's published list rates** ([cursor.com/docs/models](https://cursor.com/docs/models),
+  fetched 2026-09-27), Standard not Fast, kept in that module rather than the
+  ledger's table, matched by model family so an effort alias
+  (`grok-4.7-medium`) prices as its family. Cursor's Auto
+  (`auto-smart[...]`) bills whatever model it routed each request to, so it
+  has no rate: its tokens are counted and marked *unpriced*.
+- **Which chats.** A chat counts when it is on Cursor now or has a Cursor
+  Router row. Each call takes its provider and model from the chat's latest
+  Router row at or before it; without one, from the chat's provider switches,
+  priced at the chat's current model. A chat that left Cursor by a plain
+  provider switch, with no Router row, is not counted: finding one means
+  walking every recent chat's whole event history (~350 ms warm over 30 days),
+  and it was 1 of 128 Cursor chats in the 30 days before 2026-09-27. A Cursor
+  model changed mid-chat is priced at the current one, since the switch is not
+  recorded.
+- **Terminal use is not counted.** Only chats Argmax ran have a transcript
+  here, so Cursor's tile covers Argmax chats, not all Cursor use.
+- **Cost.** The read runs on every `usage:summary`, over the whole
+  conversation of each Cursor chat active in this window or the one before it
+  (earlier turns are context), once for both. On a copy of the 4 GB live
+  database (release build, 2026-09-27), the 30-day summary took 0.26 s warm, of
+  which the ledger was ~20 ms; the first, cold read of 60 days of Cursor chats
+  took ~1.1 s. Moving the estimate into the incremental ledger would remove it.
+
 ## Sources
 
 | Provider | Files | Usage record |
@@ -130,7 +187,7 @@ chat was routed in the window. The read is `usage:router-cost`
 | Codex | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and `~/.codex/archived_sessions/rollout-*.jsonl` | `event_msg` / `token_count` → `info.last_token_usage` |
 | Grok Build | `~/.grok/sessions/<cwd>/<session>/updates.jsonl` | `turn_completed` → `usage` and `usage.modelUsage` |
 | OpenCode | `~/.local/share/opencode/opencode.db` (`message.data`, read-only) | `tokens` and `cost` on assistant rows |
-| Cursor | none | Cursor keeps no local token log; the page says so |
+| Cursor | Argmax's own `events` rows for the chats it ran | none: estimated, see [Cursor estimate](#cursor-estimate) |
 
 Remaining usage is a second, live read. It does not go through `usage_hourly`.
 Verification mode disables its network, Keychain, and Codex app-server reads.

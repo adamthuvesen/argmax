@@ -5,6 +5,7 @@
 pub mod api_key;
 pub mod cost;
 pub mod jev;
+pub mod project_check;
 pub mod reroute;
 pub mod table;
 

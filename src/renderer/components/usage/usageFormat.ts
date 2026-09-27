@@ -73,6 +73,11 @@ export function formatMetric(value: number, metric: "cost" | "tokens"): string {
   return metric === "cost" ? formatUsd(value) : formatTokens(value);
 }
 
+/** A figure rebuilt from a transcript rather than billed reads "≈$1.20". */
+export function approximately(text: string, estimated: boolean): string {
+  return estimated ? `≈${text}` : text;
+}
+
 /**
  * `Intl` throws on a time zone it does not recognise, and the zone reaches us
  * from the backend rather than from a literal. Falling back to the host zone

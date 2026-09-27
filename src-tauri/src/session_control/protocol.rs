@@ -818,6 +818,19 @@ pub struct GoalOutcome {
     pub max_turns: Option<u32>,
 }
 
+/// Project check's read of an agent launch. Absent when the check had nothing
+/// to say. `decision` is `suggest` (started where the caller aimed) or
+/// `switch` (started in the suggested project). The session fields on
+/// [`LaunchedSession`] are the checkout it actually started in either way.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LaunchProjectCheck {
+    pub decision: String,
+    pub suggested_project_id: String,
+    pub suggested_project_name: String,
+    pub reasons: Vec<String>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LaunchedSession {
@@ -827,6 +840,8 @@ pub struct LaunchedSession {
     pub project_name: String,
     pub path: String,
     pub branch: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_check: Option<LaunchProjectCheck>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

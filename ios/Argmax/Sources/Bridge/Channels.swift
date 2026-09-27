@@ -508,6 +508,13 @@ extension BridgeClient {
         try await request("usage:summary", input: input, as: UsageSummary.self)
     }
 
+    /// What each Router tier cost in the window: turns, spend, and median
+    /// turn and first-answer times. `null` from a host with no routing
+    /// history; a read, never a poll.
+    func routerCost(_ input: RouterCostInput) async throws -> RouterCostSummary? {
+        try await request("usage:router-cost", input: input, as: RouterCostSummary?.self)
+    }
+
     /// The Activity page ledger: totals, repos, daily series, 365-day
     /// heatmap, streaks, cadence, PRs, and reviews for one window. Always
     /// fetched unfiltered; the project filter applies client-side so the

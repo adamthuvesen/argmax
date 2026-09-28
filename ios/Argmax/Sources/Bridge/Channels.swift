@@ -241,12 +241,11 @@ struct SaveAttachmentImageResult: Decodable, Sendable {
 struct SendInputInput: Encodable, Sendable {
     var sessionId: String
     var input: String
-    /// Carries the picked provider unconditionally, the way the composer
-    /// does; the host only acts on it when it differs from the session's
-    /// current provider, and only on an idle follow-up.
-    var provider: String
-    var modelLabel: String
-    var modelId: String
+    /// Omitted, with the model fields, when a routed chat is sent untouched.
+    /// The host treats a present model as a pin and clears Auto.
+    var provider: String?
+    var modelLabel: String?
+    var modelId: String?
     var reasoningEffort: String?
     /// Auto, the only mode left. Still on the wire, because a Mac built
     /// before Plan was removed reads the field.
@@ -262,10 +261,12 @@ struct SendInputInput: Encodable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(sessionId, forKey: .sessionId)
         try container.encode(input, forKey: .input)
-        try container.encode(provider, forKey: .provider)
-        try container.encode(modelLabel, forKey: .modelLabel)
-        try container.encode(modelId, forKey: .modelId)
-        try container.encodeAlways(reasoningEffort, forKey: .reasoningEffort)
+        if let provider { try container.encode(provider, forKey: .provider) }
+        if let modelLabel { try container.encode(modelLabel, forKey: .modelLabel) }
+        if let modelId {
+            try container.encode(modelId, forKey: .modelId)
+            try container.encodeAlways(reasoningEffort, forKey: .reasoningEffort)
+        }
         // Off, same as `LaunchSessionInput`: fast mode is a Codex-only
         // control the phone does not surface.
         try container.encode(false, forKey: .fastMode)

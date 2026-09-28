@@ -1015,11 +1015,16 @@ pub struct SystemSetKeepAwakeInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetDefaultAgentInput {
-    pub provider: ProviderId,
+    /// Absent, together with the model fields, when the caller is updating
+    /// permission modes and the model already on disk should stay.
+    #[serde(default)]
+    pub provider: Option<ProviderId>,
     pub permission_mode: Option<PermissionMode>,
     pub permission_modes: Option<HashMap<ProviderId, PermissionMode>>,
-    pub model_label: NonEmptyString,
-    pub model_id: NonEmptyString,
+    #[serde(default)]
+    pub model_label: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
     /// Absent for a fast model that has no effort control at all.
     pub reasoning_effort: Option<ReasoningEffort>,
 }

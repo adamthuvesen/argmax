@@ -338,12 +338,16 @@ export function LaunchSurface({
       return;
     }
     providerSteeringDone.current = true;
+    // An Auto row's provider is the router's transport placeholder, not a
+    // model the user picked. Steering it onto a manual model would pin the
+    // launcher off Router whenever Claude is the one CLI that is missing.
+    if (model.autoTier) return;
     const current = discoveredProviders.find((entry) => entry.provider === model.provider);
     if (current?.installed && current.authenticated !== false) return;
     const preferred = preferredLaunchModel(discoveredProviders);
     if (preferred.provider === model.provider && preferred.modelId === model.modelId) return;
     onModelChange(preferred);
-  }, [surfaceReady, discoveredProviders, model.provider, model.modelId, onModelChange]);
+  }, [surfaceReady, discoveredProviders, model.autoTier, model.provider, model.modelId, onModelChange]);
 
   // Changes + Files panel against the selected project's main checkout. Lets
   // the user inspect and edit files before starting a session. Cmd/Ctrl+B

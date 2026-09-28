@@ -505,22 +505,31 @@ const loggedUnknownModels = new BoundedSet<string>(100);
  * Returns USD cost for the given usage. Unknown model ids resolve to 0 and
  * log once via logger.warn — never throw, never block streaming.
  */
-export function costOf(usage: UsageCounts, modelId: string): number {
+/** List price for a known model, or null when the catalog has no rate.
+ *  A known free model is `0`, which is a price. Unknown is not. */
+export function listedCost(usage: UsageCounts, modelId: string): number | null {
   const key = normalizeModelId(modelId);
   const price = MODEL_PRICING[key] ?? STORED_MODEL_PRICING_ALIASES[key];
-  if (!price) {
+  if (!price) return null;
+  const million = 1_000_000;
+  return (
+    (usage.input * price.input) / million +
+    (usage.output * price.output) / million +
+    (usage.cacheRead * price.cacheRead) / million +
+    (usage.cacheWrite * price.cacheWrite) / million
+  );
+}
+
+export function costOf(usage: UsageCounts, modelId: string): number {
+  const cost = listedCost(usage, modelId);
+  if (cost === null) {
+    const key = normalizeModelId(modelId);
     if (loggedUnknownModels.add(key)) {
       logger.warn("pricing", "unknown model id", { modelId, normalized: key });
     }
     return 0;
   }
-  const M = 1_000_000;
-  return (
-    (usage.input * price.input) / M +
-    (usage.output * price.output) / M +
-    (usage.cacheRead * price.cacheRead) / M +
-    (usage.cacheWrite * price.cacheWrite) / M
-  );
+  return cost;
 }
 
 /** Test-only hook to reset the unknown-model log dedupe. */

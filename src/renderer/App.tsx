@@ -438,8 +438,11 @@ export function App(): JSX.Element {
     if (isRemoteBridge() || !window.argmax?.system?.setDefaultAgent) return;
     if (!launchModel.autoTier) lastPinnedLaunchModel.current = launchModel;
     const pinnedModel = lastPinnedLaunchModel.current;
-    if (!pinnedModel && permissionModes === initialPermissionModes.current) return;
-    const agentModel = pinnedModel ?? factoryLaunchModel(defaultEffort);
+    const permissionsChanged = permissionModes !== initialPermissionModes.current;
+    // A Router pick must not become the model routines launch on. With no
+    // pinned model seen this run, a permission change updates only the modes
+    // and leaves the model already written to disk.
+    if (!pinnedModel && !permissionsChanged) return;
     const api = window.argmax.system;
     let cancelled = false;
     setIsSavingDefaultAgent(true);
@@ -448,10 +451,14 @@ export function App(): JSX.Element {
       if (cancelled) return;
       try {
         await api.setDefaultAgent({
-          provider: agentModel.provider,
-          modelLabel: agentModel.label,
-          modelId: agentModel.modelId,
-          reasoningEffort: agentModel.reasoningEffort ?? null,
+          ...(pinnedModel
+            ? {
+                provider: pinnedModel.provider,
+                modelLabel: pinnedModel.label,
+                modelId: pinnedModel.modelId,
+                reasoningEffort: pinnedModel.reasoningEffort ?? null
+              }
+            : {}),
           permissionModes
         });
         if (!cancelled && toastSnapshot()?.message === DEFAULT_AGENT_SAVE_ERROR) dismissToast();
@@ -465,7 +472,7 @@ export function App(): JSX.Element {
       }
     });
     return () => { cancelled = true; };
-  }, [launchModel, permissionModes, defaultAgentSaveAttempt, defaultEffort]);
+  }, [launchModel, permissionModes, defaultAgentSaveAttempt]);
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
   const [reviewPanelSide, setReviewPanelSide] = useState<ReviewPanelSide>(() => readStoredReviewPanelSide());

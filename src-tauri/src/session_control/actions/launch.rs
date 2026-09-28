@@ -337,7 +337,14 @@ pub(super) async fn launch_session(
     )? {
         Some(tier) => {
             let api_key = crate::routing::require_api_key().map_err(argmax_protocol_error)?;
-            Some(crate::routing::resolve_route(&action.prompt, tier, &api_key).await)
+            let mut route = crate::routing::resolve_route(&action.prompt, tier, &api_key).await;
+            // `reasoning` is the effort the launch will actually run. Record
+            // that, not the classifier's effort, or the route history and a
+            // later resume disagree with the turn.
+            if let Some(effort) = action.reasoning {
+                route.effort = Some(effort);
+            }
+            Some(route)
         }
         None => None,
     };
@@ -435,9 +442,9 @@ pub(super) async fn launch_session(
             provider,
             model_label,
             model_id,
-            // An explicit effort wins over whatever the model choice implied,
-            // so `reasoning` means the same thing whether or not `model` was
-            // named alongside it.
+            // An explicit effort wins over the model default and over the
+            // routed effort. The same override is written onto the route
+            // above, so the recorded row matches the turn.
             reasoning_effort: action.reasoning.or(reasoning_effort),
             // A routed launch never runs Fast: the grid's cells never ask for it.
             fast_mode: parent.fast_mode && auto_route.is_none(),
@@ -448,15 +455,19 @@ pub(super) async fn launch_session(
             arc_is_coordinator_launch: false,
         },
         Arc::clone(&database),
-        workspaces,
+        workspaces.clone(),
         providers,
         &parent_project_id,
     )
     .await?;
     if let Some(route) = &auto_route {
-        let connection = database.connection();
-        crate::persistence::turn_routes::record_route(&connection, &outcome.session_id, route)
-            .map_err(argmax_protocol_error)?;
+        let session = {
+            let connection = database.connection();
+            crate::persistence::turn_routes::record_route(&connection, &outcome.session_id, route)
+                .map_err(argmax_protocol_error)?;
+            find_session_by_id(&connection, &outcome.session_id).map_err(argmax_protocol_error)?
+        };
+        workspaces.publish_session(session);
     }
     {
         let connection = database.connection();

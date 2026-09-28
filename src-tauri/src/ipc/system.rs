@@ -450,15 +450,43 @@ fn persist_default_agent<R: Runtime>(
         .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
     fs::create_dir_all(&app_data)
         .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_DIR", error.to_string()))?;
+    let stored = crate::default_agent::read_default_agent(&app_data);
+    let replacing_model = matches!(
+        (
+            input.provider,
+            input.model_label.as_deref(),
+            input.model_id.as_deref()
+        ),
+        (Some(_), Some(label), Some(id)) if !label.is_empty() && !id.is_empty()
+    );
     let body = serde_json::to_vec(&crate::default_agent::DefaultAgent {
-        permission_mode: input.permission_mode.unwrap_or_default(),
-        permission_modes: input.permission_modes.clone().unwrap_or_default(),
-        provider: input.provider.as_str().to_string(),
-        model_label: input.model_label.as_str().to_string(),
-        model_id: input.model_id.as_str().to_string(),
-        reasoning_effort: input
-            .reasoning_effort
-            .map(|effort| effort.as_str().to_string()),
+        permission_mode: input.permission_mode.unwrap_or(stored.permission_mode),
+        permission_modes: input
+            .permission_modes
+            .clone()
+            .unwrap_or(stored.permission_modes),
+        provider: input
+            .provider
+            .filter(|_| replacing_model)
+            .map(|provider| provider.as_str().to_string())
+            .unwrap_or(stored.provider),
+        model_label: input
+            .model_label
+            .clone()
+            .filter(|_| replacing_model)
+            .unwrap_or(stored.model_label),
+        model_id: input
+            .model_id
+            .clone()
+            .filter(|_| replacing_model)
+            .unwrap_or(stored.model_id),
+        reasoning_effort: if replacing_model {
+            input
+                .reasoning_effort
+                .map(|effort| effort.as_str().to_string())
+        } else {
+            stored.reasoning_effort
+        },
     })
     .map_err(|error| ArgmaxError::service("DEFAULT_AGENT_SERIALIZE", error.to_string()))?;
     // Autonomous launches must see either the old settings or the complete

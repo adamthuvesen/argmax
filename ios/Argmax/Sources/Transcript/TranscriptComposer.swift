@@ -527,14 +527,17 @@ struct TranscriptComposer: View {
         focused = false
         Task {
             do {
+                // An untouched Auto send carries no model. Echoing the chip's
+                // model is a pin, and a stale dashboard would pin the old one.
+                let untouchedAuto = modelOverride == nil && composer.autoTier != nil
                 _ = try await store.client.sendInput(
                     SendInputInput(
                         sessionId: composer.sessionId,
                         input: prompt,
-                        provider: model.provider,
-                        modelLabel: model.label,
-                        modelId: model.modelId,
-                        reasoningEffort: model.reasoningEffort?.rawValue,
+                        provider: untouchedAuto ? nil : model.provider,
+                        modelLabel: untouchedAuto ? nil : model.label,
+                        modelId: untouchedAuto ? nil : model.modelId,
+                        reasoningEffort: untouchedAuto ? nil : model.reasoningEffort?.rawValue,
                         attachments: sent
                     )
                 )

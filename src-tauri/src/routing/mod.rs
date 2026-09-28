@@ -105,15 +105,32 @@ pub async fn resolve_route(prompt: &str, tier: AutoTier, api_key: &str) -> Route
     }
 }
 
+/// Provider order when the grid's pick is not installed. Matches the launcher.
+const AVAILABLE_PROVIDER_ORDER: [ProviderId; 5] = [
+    ProviderId::Claude,
+    ProviderId::Codex,
+    ProviderId::Cursor,
+    ProviderId::Grok,
+    ProviderId::Opencode,
+];
+
 /// Rewrites an Auto launch to the routed provider, model and effort. `None`
 /// for an ordinary launch. Fast mode is dropped: the grid's cells never ask
-/// for it.
-pub async fn route_launch(input: &mut ProvidersLaunchInput) -> ArgmaxResult<Option<RouteDecision>> {
+/// for it. `available` is the providers whose CLI is installed and not known
+/// to be logged out. An empty list means discovery learned nothing, so the
+/// grid's pick is left alone.
+pub async fn route_launch(
+    input: &mut ProvidersLaunchInput,
+    available: &[ProviderId],
+) -> ArgmaxResult<Option<RouteDecision>> {
     let Some(tier) = input.auto_tier else {
         return Ok(None);
     };
     let api_key = require_api_key()?;
-    let route = resolve_route(input.prompt.as_str(), tier, &api_key).await;
+    let route = with_available_provider(
+        resolve_route(input.prompt.as_str(), tier, &api_key).await,
+        available,
+    );
     input.provider = route.provider;
     input.model_label =
         NonEmptyString::try_from(route.model_label.clone()).map_err(ArgmaxError::invalid)?;
@@ -122,6 +139,45 @@ pub async fn route_launch(input: &mut ProvidersLaunchInput) -> ArgmaxResult<Opti
     input.reasoning_effort = route.effort;
     input.fast_mode = false;
     Ok(Some(route))
+}
+
+/// Moves a route onto an installed provider when the grid picked one that is
+/// not. The same tier, kind and difficulty stay; only the provider's own
+/// follow-up model changes. An empty `available` is "unknown", not "none".
+pub(crate) fn with_available_provider(
+    mut route: RouteDecision,
+    available: &[ProviderId],
+) -> RouteDecision {
+    if available.is_empty() || available.contains(&route.provider) {
+        return route;
+    }
+    let Some(provider) = AVAILABLE_PROVIDER_ORDER
+        .into_iter()
+        .find(|provider| available.contains(provider))
+    else {
+        return route;
+    };
+    let previous = route.provider;
+    if let Some((kind, difficulty)) = route.kind.zip(route.difficulty) {
+        if let Some(routed) = table::follow_up_target(provider, route.tier, kind, difficulty, false)
+        {
+            route.provider = routed.model.provider;
+            route.model_id = routed.model.model_id.to_string();
+            route.model_label = routed.model.label.to_string();
+            route.effort = routed.effort;
+        }
+    }
+    if route.provider == previous {
+        let defaults = crate::provider_defaults(provider.as_str());
+        route.provider = provider;
+        route.model_id = defaults.model_id.to_string();
+        route.model_label = defaults.model_label.to_string();
+        route.effort = defaults
+            .reasoning_effort
+            .and_then(|value| serde_json::from_value(serde_json::json!(value)).ok());
+    }
+    route.reason = format!("{} ({} unavailable)", route.reason, previous.as_str());
+    route
 }
 
 /// Stores a launch route and returns the session re-read with its Auto fields.
@@ -274,6 +330,22 @@ pub fn parse_tier(value: &str) -> Option<AutoTier> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_uninstalled_grid_pick_moves_to_an_installed_provider() {
+        let route = fallback_decision(AutoTier::Cost, "test");
+        assert_eq!(route.provider, ProviderId::Cursor);
+        let moved = with_available_provider(route, &[ProviderId::Claude]);
+        assert_eq!(moved.provider, ProviderId::Claude);
+        assert!(moved.reason.contains("cursor unavailable"));
+    }
+
+    #[test]
+    fn unknown_availability_keeps_the_grid_pick() {
+        let route = fallback_decision(AutoTier::Cost, "test");
+        let kept = with_available_provider(route.clone(), &[]);
+        assert_eq!(kept, route);
+    }
 
     fn classification(
         kind: TaskKind,

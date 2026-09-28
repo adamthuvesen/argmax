@@ -48,13 +48,28 @@ pub(crate) async fn providers_launch_impl(
     default_agent: &crate::default_agent::DefaultAgent,
 ) -> ArgmaxResult<SessionSummary> {
     // Route before the permission default: that default is per provider.
-    let route = crate::routing::route_launch(&mut input).await?;
+    // Discovery is cached from boot, so this does not re-probe every CLI.
+    let available = state
+        .provider_discovery
+        .discover_all()
+        .await
+        .into_iter()
+        .filter(|report| report.installed && report.authenticated != Some(false))
+        .map(|report| report.provider)
+        .collect::<Vec<_>>();
+    let route = crate::routing::route_launch(&mut input, &available).await?;
     apply_launch_permission_default(&mut input, default_agent);
     let session = live_providers(state)?.launch(input).await?;
     match route {
         Some(route) => {
             let database = super::live_database(state)?;
-            crate::routing::record_launch_route(&database, session, &route)
+            let session = crate::routing::record_launch_route(&database, session, &route)?;
+            // The launch already published a session that predates this write.
+            // Other windows and the phone only saw that first delta.
+            if let Some(workspaces) = state.workspaces.get() {
+                workspaces.publish_session(session.clone());
+            }
+            Ok(session)
         }
         None => Ok(session),
     }

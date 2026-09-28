@@ -679,11 +679,11 @@ export interface ArgmaxApi {
     vacuumDatabase: () => Promise<{ ok: true }>;
     setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
     setDefaultAgent: (input: {
-      provider: ProviderId;
+      provider?: ProviderId;
       permissionMode?: PermissionMode | null;
       permissionModes?: Partial<Record<ProviderId, PermissionMode>>;
-      modelLabel: string;
-      modelId: string;
+      modelLabel?: string;
+      modelId?: string;
       reasoningEffort?: ReasoningEffort | null;
     }) => Promise<{ ok: true }>;
     setNotificationsEnabled: (enabled: boolean) => Promise<{ ok: true }>;

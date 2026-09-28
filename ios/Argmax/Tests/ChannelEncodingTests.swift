@@ -306,6 +306,23 @@ final class ChannelEncodingTests: XCTestCase {
         XCTAssertTrue(body["reasoningEffort"] is NSNull)
     }
 
+    /// A routed chat the user has not pinned omits the model, the way the
+    /// desktop composer does. A present model is a pin.
+    func testSendInputOmitsAnUntouchedAutoModel() throws {
+        let body = try input(
+            "providers:send-input",
+            SendInputInput(
+                sessionId: "s-1",
+                input: "continue",
+                provider: nil,
+                modelLabel: nil,
+                modelId: nil,
+                reasoningEffort: nil
+            )
+        )
+        XCTAssertEqual(Set(body.keys), ["sessionId", "input", "fastMode", "agentMode", "attachments"])
+    }
+
     func testResolveQuestionKeepsProviderQuestionIDs() throws {
         let body = try input(
             "questions:resolve",

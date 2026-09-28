@@ -17,13 +17,16 @@
 // The database is <dataDir>/local-state/argmax.sqlite.
 //
 // A chat's cell is its first route row (a launch, or a fallback when Jev was
-// unreachable); the window selects chats by that row's time. Cost is every
-// usage event those chats billed, whichever model billed it. Cursor has no
-// billing in Argmax, so Cursor usage shows as "unpriced", never $0.
+// unreachable); the window selects chats by that row's time. Cost is the
+// canonical list price of each usage event's tokens. Claude and Codex store
+// `cost_usd` as zero and price later, so summing that column would report
+// those chats as free. A model with no rate, and every Cursor event, is
+// "unpriced" rather than $0.
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { realProfileDataDir } from "./bridge-client.mjs";
 
@@ -91,8 +94,10 @@ ORDER BY r.id`;
 
 const USAGE_SQL = `
 SELECT u.session_id, s.provider, u.model_id,
-       SUM(u.input_tokens + u.output_tokens + u.cache_read_tokens + u.cache_write_tokens) AS tokens,
-       SUM(u.cost_usd) AS cost_usd
+       SUM(u.input_tokens) AS input_tokens,
+       SUM(u.output_tokens) AS output_tokens,
+       SUM(u.cache_read_tokens) AS cache_read_tokens,
+       SUM(u.cache_write_tokens) AS cache_write_tokens
 FROM usage_events u
 JOIN sessions s ON s.id = u.session_id
 WHERE u.session_id IN (
@@ -128,7 +133,7 @@ function countBy(items, keyOf) {
   return [...counts].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }
 
-function buildReport({ days, since, launches, routes: allRoutes, usage, goals }) {
+function buildReport({ days, since, launches, routes: allRoutes, usage, goals, listedCost }) {
   // A `pinned` row marks the user taking a chat off Auto: not a routed turn.
   const routes = allRoutes.filter((route) => route.decision !== "pinned");
   const pins = allRoutes.length - routes.length;
@@ -154,13 +159,25 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals })
     let priced = false;
     for (const row of usageBySession.get(launch.session_id) ?? []) {
       const billed = (cell.billedBy[row.model_id] ??= { costUsd: 0, tokens: 0, unpriced: false });
-      billed.tokens += row.tokens;
-      if (row.provider === "cursor") {
+      const tokens = row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_write_tokens;
+      billed.tokens += tokens;
+      const cost = row.provider === "cursor"
+        ? null
+        : listedCost(
+            {
+              input: row.input_tokens,
+              output: row.output_tokens,
+              cacheRead: row.cache_read_tokens,
+              cacheWrite: row.cache_write_tokens
+            },
+            row.model_id
+          );
+      if (cost === null) {
         billed.unpriced = true;
-        cell.unpricedTokens += row.tokens;
+        cell.unpricedTokens += tokens;
       } else {
-        billed.costUsd += row.cost_usd;
-        cell.costUsd += row.cost_usd;
+        billed.costUsd += cost;
+        cell.costUsd += cost;
         priced = true;
       }
     }
@@ -284,6 +301,21 @@ function renderText(report, databasePath) {
   return out.join("\n");
 }
 
+const { createServer } = await import("vite");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pricingServer = await createServer({
+  configFile: false,
+  root: repoRoot,
+  server: { middlewareMode: true },
+  logLevel: "error"
+});
+let listedCost;
+try {
+  ({ listedCost } = await pricingServer.ssrLoadModule("/src/shared/providerModels.ts"));
+} finally {
+  await pricingServer.close();
+}
+
 const flags = parseArgs(process.argv.slice(2));
 const dataDir = path.resolve(flags["data-dir"] ?? process.env.ARGMAX_DATA_DIR ?? realProfileDataDir());
 const databasePath = path.join(dataDir, "local-state", "argmax.sqlite");
@@ -297,6 +329,7 @@ const report = buildReport({
   launches: query(databasePath, since, LAUNCH_SQL),
   routes: query(databasePath, since, ROUTES_SQL),
   usage: query(databasePath, since, USAGE_SQL),
+  listedCost,
   goals: query(databasePath, since, GOALS_SQL),
 });
 

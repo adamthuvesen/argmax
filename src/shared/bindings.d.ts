@@ -2624,7 +2624,12 @@ export type SystemRendererStallInput = { durationMs: number }
  * The app-wide default agent (Settings → Agents), including per-provider
  * permission modes. The renderer mirrors it here for autonomous launches.
  */
-export type SystemSetDefaultAgentInput = { provider: ProviderId; permissionMode: PermissionMode | null; permissionModes: Partial<{ [key in ProviderId]: PermissionMode }> | null; modelLabel: NonEmptyString; modelId: NonEmptyString;
+export type SystemSetDefaultAgentInput = {
+/**
+ * Absent, together with the model fields, when the caller is updating
+ * permission modes and the model already on disk should stay.
+ */
+provider?: ProviderId | null; permissionMode: PermissionMode | null; permissionModes: Partial<{ [key in ProviderId]: PermissionMode }> | null; modelLabel?: string | null; modelId?: string | null;
 /**
  * Absent for a fast model that has no effort control at all.
  */

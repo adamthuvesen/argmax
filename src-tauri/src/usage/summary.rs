@@ -286,8 +286,20 @@ fn previous_period(
     cursor_calls: &[CursorCall],
 ) -> ArgmaxResult<Option<UsagePreviousPeriod>> {
     let previous_start = previous_range_start(window, range_start);
-    let earliest = usage_scan::earliest_hour(connection, provider.map(provider_key))?;
-    if earliest.is_none_or(|hour| hour > previous_start.timestamp()) {
+    // Cursor has no scanned token ledger. Its calls are the coverage check
+    // when the page is filtered to Cursor; every other filter still asks the
+    // ledger, which is what makes a half-covered window stay silent.
+    let covered = if provider == Some(ProviderId::Cursor) {
+        let from = rfc3339(previous_start);
+        let to = rfc3339(range_start);
+        cursor_calls
+            .iter()
+            .any(|call| call.call.created_at >= from && call.call.created_at < to)
+    } else {
+        usage_scan::earliest_hour(connection, provider.map(provider_key))?
+            .is_some_and(|hour| hour <= previous_start.timestamp())
+    };
+    if !covered {
         return Ok(None);
     }
 
@@ -764,6 +776,46 @@ mod tests {
         )
         .unwrap();
         assert_eq!(codex_only.previous, None);
+    }
+
+    #[test]
+    fn previous_period_for_cursor_uses_its_calls_when_the_ledger_is_empty() {
+        let database = Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        let now = Utc.with_ymd_and_hms(2026, 9, 3, 14, 25, 0).unwrap();
+        let range_start = bucket_starts(UsageWindow::Past24h, now)[0];
+        let previous_start = previous_range_start(UsageWindow::Past24h, range_start);
+        let call = CursorCall {
+            session_id: "cursor-1".into(),
+            model_id: "composer-2.5".into(),
+            call: crate::usage::cursor::EstimatedCall {
+                created_at: rfc3339(previous_start + Duration::hours(1)),
+                input: 1_000_000,
+                cache_read: 0,
+                output: 0,
+            },
+        };
+        let previous = previous_period(
+            &connection,
+            UsageWindow::Past24h,
+            Some(ProviderId::Cursor),
+            range_start,
+            &[call],
+        )
+        .unwrap();
+        let previous = previous.expect("cursor calls cover the previous window");
+        assert!((previous.cost_usd - 0.5).abs() < 1e-9);
+        assert_eq!(previous.sessions, 1);
+
+        let absent = previous_period(
+            &connection,
+            UsageWindow::Past24h,
+            Some(ProviderId::Cursor),
+            range_start,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(absent, None);
     }
 
     #[test]

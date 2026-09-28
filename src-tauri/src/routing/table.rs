@@ -64,6 +64,15 @@ pub const OPUS: RouteModel = RouteModel {
     label: "Opus 5.5",
     efforts: CLAUDE_EFFORTS,
 };
+/// Speed's stand-in for Grok questions and for the heavy cells that would
+/// otherwise be Opus. Weaker than Opus on purpose, so a review or a wrong
+/// answer can still climb.
+pub const SONNET: RouteModel = RouteModel {
+    provider: ProviderId::Claude,
+    model_id: "claude-sonnet-5-5",
+    label: "Sonnet 5.5",
+    efforts: CLAUDE_EFFORTS,
+};
 pub const FABLE: RouteModel = RouteModel {
     provider: ProviderId::Claude,
     model_id: "claude-fable-5-1",
@@ -105,8 +114,9 @@ pub const GROK: RouteModel = RouteModel {
     efforts: &[Low, Medium, High, Xhigh],
 };
 
-pub const ROUTE_MODELS: &[&RouteModel] =
-    &[&OPUS, &FABLE, &SOL, &ASTRA, &COMPOSER, &CURSOR_OPUS, &GROK];
+pub const ROUTE_MODELS: &[&RouteModel] = &[
+    &OPUS, &SONNET, &FABLE, &SOL, &ASTRA, &COMPOSER, &CURSOR_OPUS, &GROK,
+];
 
 impl RouteModel {
     pub fn efforts(&self) -> &'static [ReasoningEffort] {
@@ -194,6 +204,12 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         // (56.0% vs 49.2%); Fable is the step after Opus high on its ladder.
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Research) => &ASTRA,
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Question) => &FABLE,
+        // Speed, measured 2026-09-28: Sonnet 5.5 medium finished the same two
+        // small tasks faster than Opus medium and at about half the price,
+        // and faster than Grok 4.7. Reviews stay on Opus. Balance light
+        // questions stay on Grok through the cheap cell below.
+        (AutoTier::Cost, _, TaskKind::Question) => &SONNET,
+        (AutoTier::Cost, Difficulty::Heavy, TaskKind::Coding | TaskKind::Research) => &SONNET,
         _ => cell(kind, column),
     };
     let (model, effort) = if tier == AutoTier::Balanced && ui && model == &COMPOSER {
@@ -237,7 +253,17 @@ pub fn follow_up_target(
                 && kind == TaskKind::Question
             {
                 &FABLE
+            } else if tier == AutoTier::Cost && kind != TaskKind::Review {
+                // A Speed chat launched on Sonnet stays there. A review is the
+                // harder cell and moves to Opus, matching the launch grid.
+                &SONNET
             } else {
+                if tier == AutoTier::Cost
+                    && kind == TaskKind::Review
+                    && difficulty != Difficulty::Heavy
+                {
+                    effort = Low;
+                }
                 &OPUS
             }
         }
@@ -284,7 +310,7 @@ pub fn follow_up_target(
 /// retained, never assigned a capability based on their price.
 pub(crate) fn capability(model_id: &str) -> Option<usize> {
     match model_id {
-        "composer-2.5" | "grok-4.7" => Some(0),
+        "composer-2.5" | "grok-4.7" | "claude-sonnet-5-5" => Some(0),
         "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6-sol" => Some(1),
         "claude-fable-5-1" | "gpt-6-astra" => Some(2),
         _ => None,
@@ -381,7 +407,7 @@ mod tests {
             (
                 Coding,
                 Heavy,
-                ["Opus 5.5 · medium", "Opus 5.5 · high", "Opus 5.5 · high"],
+                ["Sonnet 5.5 · medium", "Opus 5.5 · high", "Opus 5.5 · high"],
             ),
             (
                 Mechanical,
@@ -431,7 +457,7 @@ mod tests {
             (
                 Research,
                 Heavy,
-                ["Opus 5.5 · medium", "Opus 5.5 · high", "GPT-6 Astra · high"],
+                ["Sonnet 5.5 · medium", "Opus 5.5 · high", "GPT-6 Astra · high"],
             ),
             (
                 Review,
@@ -451,17 +477,17 @@ mod tests {
             (
                 Question,
                 Light,
-                ["Grok 4.7 · low", "Grok 4.7 · low", "Opus 5.5 · medium"],
+                ["Sonnet 5.5 · low", "Grok 4.7 · low", "Opus 5.5 · medium"],
             ),
             (
                 Question,
                 Standard,
-                ["Grok 4.7 · medium", "Opus 5.5 · medium", "Opus 5.5 · high"],
+                ["Sonnet 5.5 · medium", "Opus 5.5 · medium", "Opus 5.5 · high"],
             ),
             (
                 Question,
                 Heavy,
-                ["Opus 5.5 · medium", "Opus 5.5 · high", "Fable 5.1 · high"],
+                ["Sonnet 5.5 · medium", "Opus 5.5 · high", "Fable 5.1 · high"],
             ),
         ];
         for (kind, difficulty, cells) in expected {
@@ -533,6 +559,42 @@ mod tests {
         assert_eq!(
             target(ProviderId::Opencode, TaskKind::Coding, Difficulty::Light),
             None
+        );
+    }
+
+    #[test]
+    fn speed_follow_ups_stay_on_sonnet_until_a_review() {
+        let target = |kind, difficulty| {
+            follow_up_target(ProviderId::Claude, AutoTier::Cost, kind, difficulty, false)
+                .map(cell_text)
+        };
+        assert_eq!(
+            target(TaskKind::Question, Difficulty::Light).as_deref(),
+            Some("Sonnet 5.5 · low")
+        );
+        assert_eq!(
+            target(TaskKind::Coding, Difficulty::Heavy).as_deref(),
+            Some("Sonnet 5.5 · medium")
+        );
+        assert_eq!(
+            target(TaskKind::Review, Difficulty::Standard).as_deref(),
+            Some("Opus 5.5 · low")
+        );
+        assert_eq!(
+            target(TaskKind::Review, Difficulty::Heavy).as_deref(),
+            Some("Opus 5.5 · medium")
+        );
+        assert_eq!(
+            follow_up_target(
+                ProviderId::Claude,
+                AutoTier::Balanced,
+                TaskKind::Question,
+                Difficulty::Light,
+                false
+            )
+            .map(cell_text)
+            .as_deref(),
+            Some("Opus 5.5 · low")
         );
     }
 

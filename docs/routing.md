@@ -126,7 +126,14 @@ Overrides on top of the grid:
   very hard.** Below that it runs at medium, the Standard cell, and a
   follow-up can climb. Frontier keeps high.
 - **Grok's effort follows difficulty** on every tier: Light low, Standard
-  medium, Heavy high.
+  medium, Heavy high. Balance light questions are the cell that still launches
+  Grok. Speed questions launch Sonnet 5.5 instead.
+- **Speed sends its questions, and its heavy coding and research, to Sonnet
+  5.5** at the effort in the table above (low for a light question, medium
+  otherwise). Heavy reviews and the cheap review cell stay on Opus. A Speed
+  follow-up that is already on Claude stays on Sonnet until the next task is
+  a review, which moves to Opus. A reported-wrong answer still climbs the
+  Claude ladder, whose first rung is Opus medium.
 - Frontier · Heavy sends **research to GPT-6 Astra** and **questions to Fable
   5.1**; coding stays on Opus 5.5.
 - Mechanical work never runs above medium; the cheap review cell is Opus 5.5
@@ -200,7 +207,7 @@ The provider targets are:
 
 | Provider | Follow-up policy |
 |---|---|
-| Claude | Opus with supported low, medium, or high effort. Frontier heavy questions target Fable. A retained stronger model can reduce or restore effort in place. |
+| Claude | Opus with supported low, medium, or high effort, except a Speed chat, which stays on Sonnet 5.5 until the next task is a review. Frontier heavy questions target Fable. A retained stronger model can reduce or restore effort in place. |
 | Codex | Sol for coding and mechanical work at any difficulty, and for lighter work of any kind. Astra for heavy review, research and questions, and Frontier standard review or research. A chat launched on Astra for a review moves to Sol for the code that follows when the switch pays. |
 | Cursor | Composer for lighter work, Cursor Opus for review, more demanding work, and Balance UI work (low). Model downgrades stay blocked while pricing is unavailable. |
 | OpenCode | None. The grid never launches OpenCode, so a routed chat never runs there. |

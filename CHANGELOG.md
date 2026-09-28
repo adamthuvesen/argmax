@@ -11,6 +11,10 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 
 ## Unreleased
 
+### Changed
+
+- Router Speed sends questions, and heavy coding and research, to Sonnet 5.5. Reviews stay on Opus. A Speed follow-up stays on Sonnet until the next task is a review.
+
 ### Added
 
 - Cursor can launch Claude Sonnet 5.5 (`claude-sonnet-5-5-medium`), with effort through Max. The CLI has no Fast variant for it.

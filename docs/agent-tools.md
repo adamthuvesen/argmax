@@ -61,7 +61,9 @@ so a launcher can check one child without listing every session.
 `provider-defaults`. Omitted values inherit from the caller. `model: "auto"`
 (or `auto:cost`, `auto:balanced`, `auto:intelligence`) lets the router pick
 provider, model and effort from the prompt; it needs a saved Jev key, and an
-explicit `reasoning` still wins. See [routing.md](routing.md).
+explicit `reasoning` still wins. A caller on Auto that omits both `model` and
+`provider` inherits its Auto tier rather than the model its last turn ran on.
+See [routing.md](routing.md).
 
 `project` accepts a repository Argmax has never opened. A name or id must
 already be registered, but an absolute path is taken at face value: the

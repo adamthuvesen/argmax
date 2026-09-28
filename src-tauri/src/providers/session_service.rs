@@ -1454,28 +1454,35 @@ impl ProviderSessionService {
                 difficulty_confidence: None,
                 decision: crate::routing::RouteDecisionKind::Pinned,
                 reason: "user picked a model".to_string(),
+                signals: None,
             })));
         }
         if !classify {
             return Ok(Some(AutoFollowUp::Routed(None, Box::new(session))));
         }
         let retained = |reason: &str| {
-            Some(AutoFollowUp::Routed(Some(crate::routing::RouteDecision {
-                tier,
-                provider: current_provider,
-                model_id: session.model_id.clone(),
-                model_label: session.model_label.clone(),
-                effort: current_effort,
-                kind: None,
-                difficulty: None,
-                kind_confidence: None,
-                difficulty_confidence: None,
-                decision: crate::routing::RouteDecisionKind::Kept,
-                reason: reason.to_string(),
-            }), Box::new(session.clone())))
+            Some(AutoFollowUp::Routed(
+                Some(crate::routing::RouteDecision {
+                    tier,
+                    provider: current_provider,
+                    model_id: session.model_id.clone(),
+                    model_label: session.model_label.clone(),
+                    effort: current_effort,
+                    kind: None,
+                    difficulty: None,
+                    kind_confidence: None,
+                    difficulty_confidence: None,
+                    decision: crate::routing::RouteDecisionKind::Kept,
+                    reason: reason.to_string(),
+                    signals: None,
+                }),
+                Box::new(session.clone()),
+            ))
         };
         let Some(api_key) = crate::routing::api_key::stored_key() else {
-            return Ok(retained("Routing key unavailable, retaining the current model and effort"));
+            return Ok(retained(
+                "Routing key unavailable, retaining the current model and effort",
+            ));
         };
         // Discovery and bounded transcript reads must not block the async
         // runtime. A context failure is a retained route, never a failed send.
@@ -1493,25 +1500,30 @@ impl ProviderSessionService {
                 current_provider,
                 Some(std::path::Path::new(&workspace.path)),
             )
-        }).await;
+        })
+        .await;
         let context = match context {
             Ok(Ok(context)) => context,
-            _ => return Ok(retained("Follow-up context unavailable, retaining the current model and effort")),
+            _ => {
+                return Ok(retained(
+                    "Follow-up context unavailable, retaining the current model and effort",
+                ))
+            }
         };
-        let classification = match crate::routing::jev::classify_follow_up(&context, &api_key).await {
+        let classification = match crate::routing::jev::classify_follow_up(&context, &api_key).await
+        {
             Ok(classification) => classification,
             Err(error) => {
                 tracing::warn!(target: "argmax::routing", session_id, "follow-up not routed: {error}");
-                return Ok(retained("Follow-up classifier unavailable, retaining the current model and effort"));
+                return Ok(retained(
+                    "Follow-up classifier unavailable, retaining the current model and effort",
+                ));
             }
         };
-        let (last_turn, last_switch) = {
-            let connection = self.database.read_connection();
-            (
-                crate::persistence::turn_routes::last_turn_usage(&connection, session_id)?,
-                crate::persistence::turn_routes::last_switch_at(&connection, session_id)?,
-            )
-        };
+        let last_turn = crate::persistence::turn_routes::last_turn_usage(
+            &self.database.read_connection(),
+            session_id,
+        )?;
         let state = crate::routing::reroute::FollowUpState {
             tier,
             provider: current_provider,
@@ -1524,19 +1536,31 @@ impl ProviderSessionService {
             downgrade_safe: context.downgrade_safe
                 && input.attachments.as_ref().is_none_or(Vec::is_empty)
                 && input.agent_references.as_ref().is_none_or(Vec::is_empty),
-            resume_target: context.routes.iter()
-                .find(|route| Some(route.id.as_str()) == classification.resume_route.as_deref()
-                    && route.provider == current_provider && route.user_task.is_some())
-                .and_then(|route| crate::routing::table::route_model(&route.model_id).map(|model| {
-                    crate::routing::table::RoutedModel {
-                        model,
-                        effort: route.effort.and_then(|effort| crate::routing::table::clamp_effort(effort, model)),
-                    }
-                })),
-            since_last_switch: last_switch.as_deref().map(elapsed_since),
+            resume_target: context
+                .routes
+                .iter()
+                .find(|route| {
+                    Some(route.id.as_str()) == classification.resume_route.as_deref()
+                        && route.provider == current_provider
+                        && route.user_task.is_some()
+                })
+                .and_then(|route| {
+                    crate::routing::table::route_model(&route.model_id).map(|model| {
+                        crate::routing::table::RoutedModel {
+                            model,
+                            effort: route.effort.and_then(|effort| {
+                                crate::routing::table::clamp_effort(effort, model)
+                            }),
+                        }
+                    })
+                }),
+            idle: Some(elapsed_since(&session.last_activity_at)),
         };
         Ok(Some(AutoFollowUp::Routed(
-            Some(crate::routing::reroute::follow_up_route(&state, &classification)),
+            Some(crate::routing::reroute::follow_up_route(
+                &state,
+                &classification,
+            )),
             Box::new(session),
         )))
     }
@@ -5012,7 +5036,11 @@ fn apply_auto_follow_up(
                 input.model_id = None;
                 input.model_label = None;
                 input.reasoning_effort = None;
-                let Some(tier) = session.auto_tier.as_deref().and_then(crate::routing::parse_tier) else {
+                let Some(tier) = session
+                    .auto_tier
+                    .as_deref()
+                    .and_then(crate::routing::parse_tier)
+                else {
                     return Ok(None);
                 };
                 route = Some(crate::routing::RouteDecision {
@@ -5020,10 +5048,18 @@ fn apply_auto_follow_up(
                     provider: parse_provider(&session.provider)?,
                     model_id: session.model_id.clone(),
                     model_label: session.model_label.clone(),
-                    effort: session.reasoning_effort.as_deref().and_then(parse_reasoning_effort),
-                    kind: None, difficulty: None, kind_confidence: None, difficulty_confidence: None,
+                    effort: session
+                        .reasoning_effort
+                        .as_deref()
+                        .and_then(parse_reasoning_effort),
+                    kind: None,
+                    difficulty: None,
+                    kind_confidence: None,
+                    difficulty_confidence: None,
                     decision: crate::routing::RouteDecisionKind::Kept,
-                    reason: "Session changed during classification, retaining its admitted route".to_string(),
+                    reason: "Session changed during classification, retaining its admitted route"
+                        .to_string(),
+                    signals: None,
                 });
             }
             route
@@ -5329,22 +5365,37 @@ mod tests {
     #[tokio::test]
     async fn manual_follow_up_pin_precedes_classification_and_does_not_write_a_route() {
         let database = database_with_running_session();
-        database.connection().execute(
-            "UPDATE sessions SET auto_tier = 'balanced' WHERE id = 'session-1'", [],
-        ).unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE sessions SET auto_tier = 'balanced' WHERE id = 'session-1'",
+                [],
+            )
+            .unwrap();
         let service = ProviderSessionService::with_launcher(
-            Arc::clone(&database), Arc::new(CountingFailureLauncher::default()), |_| {},
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
         );
         let input = serde_json::from_value(json!({
             "sessionId": "session-1", "input": "next", "fastMode": false,
             "modelId": "claude-opus-5-5", "modelLabel": "Opus 5.5", "reasoningEffort": "high"
-        })).unwrap();
+        }))
+        .unwrap();
         let route = service.route_follow_up(&input, "next", true).await.unwrap();
         assert!(matches!(route, Some(AutoFollowUp::Pinned(_))));
-        let count: i64 = database.connection().query_row(
-            "SELECT COUNT(*) FROM turn_routes WHERE session_id = 'session-1'", [], |row| row.get(0),
-        ).unwrap();
-        assert_eq!(count, 0, "route decisions persist only after send admission");
+        let count: i64 = database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM turn_routes WHERE session_id = 'session-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count, 0,
+            "route decisions persist only after send admission"
+        );
     }
 
     #[test]
@@ -5352,27 +5403,39 @@ mod tests {
         let mut input: ProvidersSendInput = serde_json::from_value(json!({
             "sessionId": "session-1", "input": "short question", "fastMode": true,
             "modelId": "gpt-6-astra", "modelLabel": "GPT-6 Astra", "reasoningEffort": "high"
-        })).unwrap();
+        }))
+        .unwrap();
         let route = crate::routing::RouteDecision {
             tier: crate::routing::table::AutoTier::Balanced,
             provider: ProviderId::Codex,
             model_id: "gpt-6-astra".to_string(),
             model_label: "GPT-6 Astra".to_string(),
             effort: Some(ReasoningEffort::Low),
-            kind: None, difficulty: None, kind_confidence: None, difficulty_confidence: None,
+            kind: None,
+            difficulty: None,
+            kind_confidence: None,
+            difficulty_confidence: None,
             decision: crate::routing::RouteDecisionKind::Reroute,
             reason: "Simpler next task".to_string(),
+            signals: None,
         };
         let database = database_with_running_session();
         let session = find_session_by_id(&database.connection(), "session-1").unwrap();
         let recorded = apply_auto_follow_up(
-            &mut input, Some(AutoFollowUp::Routed(Some(route), Box::new(session.clone()))), &session,
-        ).unwrap().unwrap();
+            &mut input,
+            Some(AutoFollowUp::Routed(Some(route), Box::new(session.clone()))),
+            &session,
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(input.provider, Some(ProviderId::Codex));
         assert_eq!(input.model_id.as_ref().unwrap().as_str(), "gpt-6-astra");
         assert_eq!(input.reasoning_effort, Some(ReasoningEffort::Low));
         assert!(!input.fast_mode);
-        assert_eq!(recorded.decision, crate::routing::RouteDecisionKind::Reroute);
+        assert_eq!(
+            recorded.decision,
+            crate::routing::RouteDecisionKind::Reroute
+        );
     }
 
     #[test]
@@ -5385,21 +5448,29 @@ mod tests {
         admitted.model_label = "Fable 5.1".to_string();
         admitted.reasoning_effort = Some("xhigh".to_string());
         let mut route = crate::routing::fallback_decision(
-            crate::routing::table::AutoTier::Balanced, "test classification",
+            crate::routing::table::AutoTier::Balanced,
+            "test classification",
         );
         route.decision = crate::routing::RouteDecisionKind::Reroute;
         for still_auto in [true, false] {
-            if !still_auto { admitted.auto_tier = None; }
+            if !still_auto {
+                admitted.auto_tier = None;
+            }
             let mut input: ProvidersSendInput = serde_json::from_value(json!({
                 "sessionId": "session-1", "input": "next", "fastMode": false,
                 "modelId": observed.model_id, "modelLabel": observed.model_label,
                 "reasoningEffort": "medium"
-            })).unwrap();
+            }))
+            .unwrap();
             let recorded = apply_auto_follow_up(
                 &mut input,
-                Some(AutoFollowUp::Routed(Some(route.clone()), Box::new(observed.clone()))),
+                Some(AutoFollowUp::Routed(
+                    Some(route.clone()),
+                    Box::new(observed.clone()),
+                )),
                 &admitted,
-            ).unwrap();
+            )
+            .unwrap();
             assert!(input.model_id.is_none());
             assert!(input.reasoning_effort.is_none());
             if still_auto {

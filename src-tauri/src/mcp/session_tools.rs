@@ -56,10 +56,11 @@ pub struct SessionLaunchParams {
     /// the provider running this session.
     pub provider: Option<String>,
     /// Model id for that provider, as listed in Argmax's model picker (for
-    /// example claude-opus-5 or gpt-6-sol). Defaults to this session's model.
-    /// `auto`, `auto:cost`, `auto:balanced` or `auto:intelligence` lets the
-    /// router pick provider, model and effort from the prompt; `provider` is
-    /// then ignored.
+    /// example claude-opus-5 or gpt-6-sol). Defaults to this session's model,
+    /// or to its Auto tier when this session runs on Auto and `provider` is
+    /// not given either. `auto`, `auto:cost`, `auto:balanced` or
+    /// `auto:intelligence` lets the router pick provider, model and effort
+    /// from the prompt; `provider` is then ignored.
     pub model: Option<String>,
     /// Give the new session its own git worktree instead of sharing the
     /// project's checkout. Use it when the work would collide with yours.

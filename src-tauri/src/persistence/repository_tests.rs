@@ -1701,7 +1701,8 @@ fn a_route_is_recorded_and_mirrored_onto_the_session_until_pinned() {
 
     let session = super::sessions::find_session_by_id(&connection, "s1").expect("session");
     assert_eq!(session.auto_tier.as_deref(), Some("balanced"));
-    assert_eq!(session.auto_route.as_deref(), Some("review · standard"));
+    // A kept decision explains the retained route, so it refreshes the chip.
+    assert_eq!(session.auto_route.as_deref(), Some("different provider"));
     let rows: Vec<(String, Option<String>, String)> = connection
         .prepare(
             "SELECT decision, kind, reason FROM turn_routes WHERE session_id = 's1' ORDER BY id",
@@ -1734,8 +1735,8 @@ fn a_route_is_recorded_and_mirrored_onto_the_session_until_pinned() {
 }
 
 #[test]
-fn a_pinned_row_is_neither_mirrored_nor_a_switch() {
-    use super::turn_routes::{last_switch_at, record_route};
+fn a_pinned_row_is_not_mirrored_and_signals_are_stored() {
+    use super::turn_routes::record_route;
     use crate::routing::{fallback_decision, table::AutoTier, RouteDecisionKind};
 
     let database = Database::open_in_memory().expect("open db");
@@ -1747,17 +1748,26 @@ fn a_pinned_row_is_neither_mirrored_nor_a_switch() {
     let mut launch = fallback_decision(AutoTier::Cost, "no key");
     launch.decision = RouteDecisionKind::Launch;
     launch.reason = "coding · light".to_owned();
+    launch.signals = Some(r#"{"ui":0.97}"#.to_owned());
     record_route(&connection, "s1", &launch).expect("record launch");
     let pin = RouteDecision {
         decision: RouteDecisionKind::Pinned,
         reason: "user picked a model".to_owned(),
+        signals: None,
         ..launch
     };
     record_route(&connection, "s1", &pin).expect("the CHECK admits a pinned row");
 
     let session = super::sessions::find_session_by_id(&connection, "s1").expect("session");
     assert_eq!(session.auto_route.as_deref(), Some("coding · light"));
-    assert_eq!(last_switch_at(&connection, "s1").expect("switch"), None);
+    let signals: Vec<Option<String>> = connection
+        .prepare("SELECT signals_json FROM turn_routes WHERE session_id = 's1' ORDER BY id")
+        .expect("prepare")
+        .query_map([], |row| row.get(0))
+        .expect("query")
+        .collect::<Result<_, _>>()
+        .expect("collect");
+    assert_eq!(signals, vec![Some(r#"{"ui":0.97}"#.to_owned()), None]);
 }
 
 #[test]

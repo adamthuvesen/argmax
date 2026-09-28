@@ -284,7 +284,7 @@ pub(super) async fn launch_session(
     };
     let launch_budget_lock = launch_budget_lock(budget_key);
     let launch_budget_turn = launch_budget_lock.lock().await;
-    let (parent_project_id, lineage, parent_arc) = {
+    let (parent_project_id, lineage, parent_arc, parent_auto_tier) = {
         let connection = database.connection();
         let parent_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
@@ -299,7 +299,7 @@ pub(super) async fn launch_session(
             }
             None => None,
         };
-        (project_id, lineage, parent_arc)
+        (project_id, lineage, parent_arc, parent_session.auto_tier)
     };
     let depth = lineage.depth + 1;
     if depth > MAX_LAUNCH_DEPTH {
@@ -330,7 +330,11 @@ pub(super) async fn launch_session(
     }
     // `model: "auto"` / `"auto:<tier>"` hands provider, model and effort to
     // the router; an explicit `reasoning` still wins over the routed effort.
-    let auto_route = match auto_tier_from_model(action.model.as_deref())? {
+    let auto_route = match launch_auto_tier(
+        action.model.as_deref(),
+        action.provider.is_some(),
+        parent_auto_tier.as_deref(),
+    )? {
         Some(tier) => {
             let api_key = crate::routing::require_api_key().map_err(argmax_protocol_error)?;
             Some(crate::routing::resolve_route(&action.prompt, tier, &api_key).await)
@@ -598,6 +602,20 @@ fn auto_tier_from_model(
     })
 }
 
+/// The tier a launch routes with: the one `model` names, or, when the caller
+/// named neither a model nor a provider, the parent chat's own. A Router chat
+/// otherwise hands its child whichever concrete model its last turn landed on.
+fn launch_auto_tier(
+    model: Option<&str>,
+    provider_named: bool,
+    parent_auto_tier: Option<&str>,
+) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+    if model.is_some() || provider_named {
+        return auto_tier_from_model(model);
+    }
+    Ok(parent_auto_tier.and_then(crate::routing::parse_tier))
+}
+
 /// A check-in may land no sooner than the next minute and no further out than
 /// a day: past that the launched session has either finished — dropping the
 /// wake — or is stuck in a way a calendar reminder will not rescue.
@@ -701,7 +719,7 @@ fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::Reaso
 
 #[cfg(test)]
 mod auto_model_tests {
-    use super::auto_tier_from_model;
+    use super::{auto_tier_from_model, launch_auto_tier};
     use crate::routing::table::AutoTier;
 
     #[test]
@@ -723,5 +741,24 @@ mod auto_model_tests {
             "{}",
             error.message
         );
+    }
+
+    #[test]
+    fn a_router_chat_launches_through_the_router_unless_told_otherwise() {
+        let parent = Some("intelligence");
+        assert_eq!(
+            launch_auto_tier(None, false, parent).ok(),
+            Some(Some(AutoTier::Intelligence))
+        );
+        assert_eq!(
+            launch_auto_tier(Some("gpt-6-sol"), false, parent).ok(),
+            Some(None)
+        );
+        assert_eq!(launch_auto_tier(None, true, parent).ok(), Some(None));
+        assert_eq!(
+            launch_auto_tier(Some("auto:cost"), false, parent).ok(),
+            Some(Some(AutoTier::Cost))
+        );
+        assert_eq!(launch_auto_tier(None, false, None).ok(), Some(None));
     }
 }

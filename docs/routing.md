@@ -40,7 +40,8 @@ halo. Reopening an older routed chat plays nothing. Design notes are in
 Agents launch a routed chat through `session_launch` with `model: "auto"`
 (Balance) or `"auto:cost" | "auto:balanced" | "auto:intelligence"`; an explicit
 `reasoning` there still overrides the routed effort
-([agent-tools.md](agent-tools.md)).
+([agent-tools.md](agent-tools.md)). A chat already on Auto that omits both
+`model` and `provider` launches on its own tier, so its children route too.
 
 ## Jev, the classifier
 
@@ -55,6 +56,10 @@ typed questions about a text with calibrated probabilities. Argmax sends:
 - a **kind** question (choice: coding, mechanical, research, review, question);
 - a **difficulty** question (score 0 trivial – 4 very hard), folded to
   **Light** (≤ 1), **Standard** (2), **Heavy** (≥ 3);
+- a **UI** question: the probability the task is mainly visual UI or design
+  work (layout, styling, colour, spacing, typography, animation, icons). At
+  0.7 or above the task counts as UI. On 16 real prompts, UI requests scored
+  0.89–0.98, and git, docs, tests and questions scored 0.22 or less;
 - for follow-ups only, a **correction** question: the probability the user is
   unhappy with the previous work (failing, disliked, or to be redone)
 - for follow-ups, the relationship to earlier tasks (continuation, independent
@@ -66,8 +71,10 @@ redirects. A 401/403 is `ROUTING_KEY_INVALID`; any other failure is
 `ROUTING_JEV_FAILED`, which the callers turn into a fallback, never a failed
 launch.
 
-Low confidence is settled before the grid (`settle` in `mod.rs`): kind
-confidence below 0.5 is treated as **coding**, and difficulty confidence below
+Low confidence is settled before the grid (`settle` in `mod.rs`). When kind
+confidence is below 0.5, Jev's top kind is kept if coding trails it by more
+than 0.15 ("Does this look right?" scored review 0.58, coding 0.04);
+otherwise the task is treated as **coding**. Difficulty confidence below
 0.5 rounds difficulty **up** one level, but only when Jev's level probabilities
 put at least half their weight on that higher level or above (moderate+ for
 Light → Standard, hard+ for Standard → Heavy). Confidence alone swings across
@@ -112,6 +119,14 @@ Kind × column picks the model:
 
 Overrides on top of the grid:
 
+- **Balance sends UI work to Opus 5.5 · low** wherever its cell is Composer.
+  Composer's UI tweaks were the Composer chats most often reported wrong. Speed
+  keeps Composer for UI work.
+- **Balance runs heavy work at high only when Jev puts at least 0.6 on hard or
+  very hard.** Below that it runs at medium, the Standard cell, and a
+  follow-up can climb. Frontier keeps high.
+- **Grok's effort follows difficulty** on every tier: Light low, Standard
+  medium, Heavy high.
 - Frontier · Heavy sends **research to GPT-6 Astra** and **questions to Fable
   5.1**; coding stays on Opus 5.5.
 - Mechanical work never runs above medium; the cheap review cell is Opus 5.5
@@ -152,54 +167,74 @@ earlier model and effort, including an escalated effort above high. Restoration
 requires scope and match confidence of at least 0.9 and stays on the same provider. Missing skill context blocks reductions, while ordinary
 requests need no skill body.
 
-Each classified follow-up ends in one decision:
+Each classified follow-up ends in one decision. The evidence for a move is
+Jev's weight on the task's difficulty bucket (the probability it is at least,
+or at most, that hard), not its confidence in the exact 0–4 score. That
+confidence sits near 0.5 even when most of the weight is on one bucket, and
+gating on it blocked almost every upgrade.
+
+| Move | Evidence needed |
+|---|---|
+| Effort up, same model | P(at least the bucket) ≥ 0.6 |
+| Model up | P(at least the bucket) ≥ 0.7 |
+| Effort down, same model | kind confidence, P(at most the bucket) and the simpler-task score all ≥ 0.75 |
+| Model down | the same three ≥ 0.8, and the savings cover the cache rebuild |
 
 - `escalate`: correction probability at least 0.85 moves one rung up the existing
   ladder. At the top, the route is kept.
-- `reroute` upward: kind and difficulty confidence at least 0.7 justify increased
-  capability, including a return to difficult work after a simple interlude.
-  This bypasses the cooldown and economic test.
-- `reroute` downward: complete relevant context plus kind, difficulty, scope,
-  and simpler-task scores at least 0.9 are required. These are policy thresholds,
-  not measured calibration of the new follow-up questions. Effort reduction on
-  the current model is preferred. A five-minute anti-oscillation cooldown applies
-  to continuing work, with a bypass for a confidently independent task or bounded
-  finishing step.
-- `kept`: insufficient evidence, an unsupported target, cooldown, or a model switch
-  that cannot cover a possible cache rebuild. The reason names the limiting gate.
+- `reroute` upward goes straight to the target, including a return to difficult
+  work after a simple interlude. A turn on too weak a model is the expensive
+  mistake.
+- `reroute` downward needs complete relevant context. A model downgrade that
+  pays for itself is taken first. Otherwise effort drops one level on the
+  current model per follow-up, so a misread turn cannot drop a chat to the
+  floor at once. There is no cooldown.
+- `kept`: insufficient evidence, an unsupported target, or a model switch that
+  does not repay its cache rebuild. The reason names the limiting gate and the
+  evidence, for example `Not sure it needs more (55% < 60%)`.
+
+These thresholds are policy, not measured calibration. Every route row stores
+Jev's raw answers (`signals_json`) so they can be tuned from real decisions.
 
 The provider targets are:
 
 | Provider | Follow-up policy |
 |---|---|
 | Claude | Opus with supported low, medium, or high effort. Frontier heavy questions target Fable. A retained stronger model can reduce or restore effort in place. |
-| Codex | Sol for lighter work, Astra for heavy substantive work and Frontier standard review or research. Effort can fall on the current model before considering a cheaper one. |
-| Cursor | Composer for lighter work, Cursor Opus for review and more demanding work. Opus effort can fall in place. Model downgrades stay blocked while pricing is unavailable. |
-| OpenCode | DeepSeek V4.1 Flash, clamped to the routing policy's high or max levels. A simpler task can step down from max to high. |
-| Grok Build | Grok 4.7 at low. Higher efforts have no demonstrated quality benefit in the current routing evidence. A previous higher effort can step down. |
+| Codex | Sol for coding and mechanical work at any difficulty, and for lighter work of any kind. Astra for heavy review, research and questions, and Frontier standard review or research. A chat launched on Astra for a review moves to Sol for the code that follows when the switch pays. |
+| Cursor | Composer for lighter work, Cursor Opus for review, more demanding work, and Balance UI work (low). Model downgrades stay blocked while pricing is unavailable. |
+| OpenCode | None. The grid never launches OpenCode, so a routed chat never runs there. |
+| Grok Build | Grok 4.7 with effort by difficulty: low, medium, high. |
 
 ### Cache and economics
 
-Same-model effort changes are supported task-sizing decisions. Their reasons
-explicitly say the cache effect is unverified and make no savings claim. Claude
-Code documents conditional effort-cache preservation, but Argmax does not yet
-establish every endpoint, billing, and configuration precondition at runtime.
-Codex's experimental effort override is not enabled by this routing change.
-The native transport contracts and limits are in [providers.md](providers.md).
+Same-model effort changes are task-sizing decisions with no cache test. Claude
+Code documents cache-preserving effort changes on Opus 5.5 and Fable 5.1;
+Codex and Cursor make no such guarantee. Codex's experimental effort override
+is not enabled. The native transport contracts and limits are in
+[providers.md](providers.md).
 
-Model downgrades require positive estimated savings for the next turn sufficient
-to pay for a full possible context rebuild. The estimate caps previous input and
-output observations at 256 each for a finishing step, 1,000 input and 500 output
-for Light work, and 4,000 input and 2,000 output otherwise. It credits at most one
-context read and no later turns. These are conservative policy caps, not forecasts
-validated by live measurements. Missing context size, pricing, or usable usage
-observations cannot establish payback. Claude's rebuild estimate allows the
-one-hour write rate.
+A model downgrade must pay for itself (`switch_pays_back` in `reroute.rs`):
 
-Elapsed idle time never proves a switch is free. Cache retention depends on the
-provider and serving path. A miss does not imply deletion, and switching back
-may reuse a surviving prefix without guaranteeing it. The cooldown is a routing
-policy, independent of retention. No automatic cross-provider downgrade occurs.
+- **The rebuild.** The switch re-reads the context uncached on the new model,
+  priced at the cache-write rate over the cache-read rate. Claude's write rate
+  allows the one-hour 2x input rate.
+- **What staying would cost.** Within an hour of the chat's last activity (the
+  longest TTL the providers document), the cache is taken as warm and staying
+  is free. Past it, staying is expected to rebuild too: three quarters of the
+  old model's rebuild is credited against the switch, and a quarter is left
+  for a prefix that survived. A miss does not imply deletion.
+- **The savings.** The price gap over two turns, the observed mean of two
+  follow-ups per routed chat (134 over 65 chats, 2026-09-28). Each turn is
+  capped by the last turn's usage: 256 input and output for a finishing step,
+  1,000 input and 500 output for Light work, 4,000 and 2,000 otherwise, plus
+  one context read.
+
+The switch happens when savings are positive and cover the rebuild minus what
+staying would have cost. With a warm cache, Astra → Sol for heavy coding pays
+on a 168k context, while Fable → Opus for a light question does not. After
+the hour, it does. Missing context size, pricing, or usage cannot establish
+payback, and Cursor is unpriced. No automatic cross-provider downgrade occurs.
 
 Deterministic tests cover policy and native adapter requests. They cannot prove
 inference cache reuse. The live measurement matrix remains unchanged → effort
@@ -218,11 +253,9 @@ not price.
 | Claude | Opus 5.5 · medium → Opus 5.5 · high → Fable 5.1 · high → Fable 5.1 · xhigh |
 | Codex | GPT-6 Sol · medium → Sol · high → GPT-6 Astra · high → Astra · xhigh |
 | Cursor | Composer 2.5 → Claude Opus 5.5 (Cursor) · medium → · high |
-| Grok | Grok 4.7 · low → **Opus 5.5 · high on Claude** |
-| OpenCode | DeepSeek V4.1 Flash · high → · max → **Opus 5.5 · high on Claude** |
+| Grok | Grok 4.7 · low → · medium → · high → **Opus 5.5 · high on Claude** |
 
-The last Grok and OpenCode rungs are the router's only automatic provider
-switch: the send goes through the ordinary provider-switch path, which starts
+The last Grok rung is the router's only automatic provider switch: the send goes through the ordinary provider-switch path, which starts
 Claude fresh with the visible transcript as context. Cursor climbs to Opus
 inside the same Cursor conversation.
 
@@ -259,7 +292,9 @@ v57 widened `turn_routes.decision` to allow `pinned`.
 `turn_routes` has one row per decision: `session_id`, `created_at`, `tier`,
 `provider`, `model_id`, `reasoning_effort`, `kind`, `difficulty`, the two
 confidences, `decision` (`launch`, `reroute`, `escalate`, `kept`, `fallback`,
-`pinned`) and `reason`. Decisions, including `kept`, refresh the session's
+`pinned`) and `reason`. v60 added `signals_json`: every answer Jev gave
+(kind and level probabilities, correction, scope, simpler, resume, UI), NULL
+for a row Jev did not classify. Decisions, including `kept`, refresh the session's
 `auto_tier` / `auto_route` so the chip explains retained routes too. A pin
 clears those fields. Dashboard reads need no join. A
 follow-up's row is written only once the send is admitted, so a send that Stop
@@ -267,8 +302,7 @@ cancelled leaves no route behind. Admission also checks the model, effort,
 provider, tier, activity stamp, and native conversation ID against the
 classification snapshot. A changed session retains its admitted route rather
 than applying stale classification. Echoed Auto selections are removed before
-queueing. The cooldown reads the latest `reroute` or
-`escalate` row as the chat's last switch.
+queueing.
 
 ## Project check
 

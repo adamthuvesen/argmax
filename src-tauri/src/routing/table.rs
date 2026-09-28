@@ -98,15 +98,6 @@ pub const CURSOR_OPUS: RouteModel = RouteModel {
     label: "Claude Opus 5.5 (Cursor)",
     efforts: CLAUDE_EFFORTS,
 };
-/// The CLI also takes `low`, but low measured no faster than high (88 s vs 87 s
-/// over four tasks, 2026-09-27) while its intelligence score is only known at
-/// max, so the router never goes below high.
-pub const DEEPSEEK_FLASH: RouteModel = RouteModel {
-    provider: ProviderId::Opencode,
-    model_id: "opencode-go/deepseek-v4.1-flash",
-    label: "DeepSeek V4.1 Flash",
-    efforts: &[High, Max],
-};
 pub const GROK: RouteModel = RouteModel {
     provider: ProviderId::Grok,
     model_id: "grok-4.7",
@@ -114,16 +105,14 @@ pub const GROK: RouteModel = RouteModel {
     efforts: &[Low, Medium, High, Xhigh],
 };
 
-pub const ROUTE_MODELS: &[&RouteModel] = &[
-    &OPUS,
-    &FABLE,
-    &SOL,
-    &ASTRA,
-    &COMPOSER,
-    &CURSOR_OPUS,
-    &DEEPSEEK_FLASH,
-    &GROK,
-];
+pub const ROUTE_MODELS: &[&RouteModel] =
+    &[&OPUS, &FABLE, &SOL, &ASTRA, &COMPOSER, &CURSOR_OPUS, &GROK];
+
+impl RouteModel {
+    pub fn efforts(&self) -> &'static [ReasoningEffort] {
+        self.efforts
+    }
+}
 
 /// A concrete launch target: model plus the effort it will run at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,7 +160,20 @@ fn column_and_effort(tier: AutoTier, difficulty: Difficulty) -> (Column, Reasoni
     }
 }
 
-pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty) -> RoutedModel {
+/// Grok's effort follows the task's difficulty on every tier, so a launch and
+/// the follow-up policy agree and a Grok chat can climb low → medium → high.
+fn grok_effort(difficulty: Difficulty) -> ReasoningEffort {
+    match difficulty {
+        Difficulty::Light => Low,
+        Difficulty::Standard => Medium,
+        Difficulty::Heavy => High,
+    }
+}
+
+/// `ui` marks visual UI or design work. Balance keeps Composer for everything
+/// else, but sends UI work to Opus 5.5 low: Composer's UI tweaks were the
+/// chats most often reported wrong (3 of 22 escalated, 2026-09-28).
+pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -> RoutedModel {
     let (column, mut effort) = column_and_effort(tier, difficulty);
     // Renames and bulk edits never repay more than medium, on any tier.
     if kind == TaskKind::Mechanical && rank(effort) > rank(Medium) {
@@ -194,6 +196,13 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty) -> RoutedMo
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Question) => &FABLE,
         _ => cell(kind, column),
     };
+    let (model, effort) = if tier == AutoTier::Balanced && ui && model == &COMPOSER {
+        (&OPUS, Low)
+    } else if model == &GROK {
+        (model, grok_effort(difficulty))
+    } else {
+        (model, effort)
+    };
     RoutedModel {
         model,
         effort: clamp_effort(effort, model),
@@ -202,18 +211,24 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty) -> RoutedMo
 
 /// Follow-ups stay within the native conversation's provider. This is a
 /// capability policy, independent of list price and of the launch grid.
+/// `None` for a provider the grid never launches (OpenCode).
 pub fn follow_up_target(
     provider: ProviderId,
     tier: AutoTier,
     kind: TaskKind,
     difficulty: Difficulty,
-) -> RoutedModel {
+    ui: bool,
+) -> Option<RoutedModel> {
     let (_, mut effort) = column_and_effort(tier, difficulty);
     if difficulty == Difficulty::Light && tier != AutoTier::Intelligence {
         effort = Low;
     }
     if kind == TaskKind::Mechanical {
-        effort = if difficulty == Difficulty::Light { Low } else { Medium };
+        effort = if difficulty == Difficulty::Light {
+            Low
+        } else {
+            Medium
+        };
     }
     let model = match provider {
         ProviderId::Claude => {
@@ -226,8 +241,12 @@ pub fn follow_up_target(
                 &OPUS
             }
         }
+        // Astra is for heavy thinking, not heavy editing: coding follow-ups
+        // run on Sol, so a chat launched on Astra for a review does not keep
+        // paying Astra rates for the code that follows it.
         ProviderId::Codex => {
-            if (difficulty == Difficulty::Heavy && kind != TaskKind::Mechanical)
+            if (difficulty == Difficulty::Heavy
+                && !matches!(kind, TaskKind::Coding | TaskKind::Mechanical))
                 || (tier == AutoTier::Intelligence
                     && difficulty == Difficulty::Standard
                     && matches!(kind, TaskKind::Review | TaskKind::Research))
@@ -242,31 +261,30 @@ pub fn follow_up_target(
                 || difficulty == Difficulty::Heavy
                 || (difficulty == Difficulty::Standard && tier != AutoTier::Cost)
                 || tier == AutoTier::Intelligence
+                || (tier == AutoTier::Balanced && ui)
             {
                 &CURSOR_OPUS
             } else {
                 &COMPOSER
             }
         }
-        ProviderId::Opencode => &DEEPSEEK_FLASH,
-        // Higher Grok effort has no demonstrated quality benefit in the
-        // routing evidence. Keep its established low-effort policy.
+        ProviderId::Opencode => return None,
         ProviderId::Grok => {
-            effort = Low;
+            effort = grok_effort(difficulty);
             &GROK
         }
     };
-    RoutedModel {
+    Some(RoutedModel {
         model,
         effort: clamp_effort(effort, model),
-    }
+    })
 }
 
 /// Only compares models in the router's explicit policy. Unknown models are
 /// retained, never assigned a capability based on their price.
 pub(crate) fn capability(model_id: &str) -> Option<usize> {
     match model_id {
-        "composer-2.5" | "opencode-go/deepseek-v4.1-flash" | "grok-4.7" => Some(0),
+        "composer-2.5" | "grok-4.7" => Some(0),
         "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6-sol" => Some(1),
         "claude-fable-5-1" | "gpt-6-astra" => Some(2),
         _ => None,
@@ -433,7 +451,7 @@ mod tests {
             (
                 Question,
                 Light,
-                ["Grok 4.7 · low", "Grok 4.7 · medium", "Opus 5.5 · medium"],
+                ["Grok 4.7 · low", "Grok 4.7 · low", "Opus 5.5 · medium"],
             ),
             (
                 Question,
@@ -448,7 +466,7 @@ mod tests {
         ];
         for (kind, difficulty, cells) in expected {
             let actual = [AutoTier::Cost, AutoTier::Balanced, AutoTier::Intelligence]
-                .map(|tier| cell_text(route(tier, *kind, *difficulty)));
+                .map(|tier| cell_text(route(tier, *kind, *difficulty, false)));
             assert_eq!(
                 &actual.each_ref().map(String::as_str),
                 cells,
@@ -459,11 +477,63 @@ mod tests {
 
     #[test]
     fn clamp_keeps_supported_levels_and_otherwise_steps_down() {
-        assert_eq!(clamp_effort(Medium, &DEEPSEEK_FLASH), Some(High));
-        assert_eq!(clamp_effort(Xhigh, &DEEPSEEK_FLASH), Some(High));
+        assert_eq!(clamp_effort(Xhigh, &GROK), Some(Xhigh));
         assert_eq!(clamp_effort(Ultra, &OPUS), Some(Max));
         assert_eq!(clamp_effort(Max, &GROK), Some(Xhigh));
         assert_eq!(clamp_effort(High, &COMPOSER), None);
+    }
+
+    #[test]
+    fn balance_sends_ui_work_off_composer_to_opus_low() {
+        use Difficulty::{Heavy, Light};
+        use TaskKind::{Coding, Mechanical, Question};
+        let balanced =
+            |kind, difficulty, ui| cell_text(route(AutoTier::Balanced, kind, difficulty, ui));
+        assert_eq!(balanced(Coding, Light, true), "Opus 5.5 · low");
+        assert_eq!(balanced(Mechanical, Heavy, true), "Opus 5.5 · low");
+        assert_eq!(balanced(Coding, Light, false), "Composer 2.5 (Cursor)");
+        // Only Composer cells move, and only on Balance.
+        assert_eq!(balanced(Question, Light, true), "Grok 4.7 · low");
+        assert_eq!(
+            cell_text(route(AutoTier::Cost, Coding, Light, true)),
+            "Composer 2.5 (Cursor)"
+        );
+        let cursor = follow_up_target(ProviderId::Cursor, AutoTier::Balanced, Coding, Light, true);
+        assert_eq!(
+            cursor.map(cell_text).as_deref(),
+            Some("Claude Opus 5.5 (Cursor) · low")
+        );
+    }
+
+    #[test]
+    fn follow_ups_size_grok_effort_and_keep_codex_coding_on_sol() {
+        let target = |provider, kind, difficulty| {
+            follow_up_target(provider, AutoTier::Balanced, kind, difficulty, false).map(cell_text)
+        };
+        assert_eq!(
+            target(ProviderId::Grok, TaskKind::Question, Difficulty::Light).as_deref(),
+            Some("Grok 4.7 · low")
+        );
+        assert_eq!(
+            target(ProviderId::Grok, TaskKind::Coding, Difficulty::Standard).as_deref(),
+            Some("Grok 4.7 · medium")
+        );
+        assert_eq!(
+            target(ProviderId::Grok, TaskKind::Coding, Difficulty::Heavy).as_deref(),
+            Some("Grok 4.7 · high")
+        );
+        assert_eq!(
+            target(ProviderId::Codex, TaskKind::Coding, Difficulty::Heavy).as_deref(),
+            Some("GPT-6 Sol · high")
+        );
+        assert_eq!(
+            target(ProviderId::Codex, TaskKind::Review, Difficulty::Heavy).as_deref(),
+            Some("GPT-6 Astra · high")
+        );
+        assert_eq!(
+            target(ProviderId::Opencode, TaskKind::Coding, Difficulty::Light),
+            None
+        );
     }
 
     #[test]

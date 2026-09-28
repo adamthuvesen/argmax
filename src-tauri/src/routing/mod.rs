@@ -33,6 +33,12 @@ use crate::{
 /// Below this, Jev's pick is a coin toss; treat the task as coding (the kind
 /// whose cells are safest to over-serve) and round difficulty up.
 const MIN_CONFIDENCE: f64 = 0.5;
+/// An unsure kind still keeps Jev's top pick when coding trails it by more
+/// than this: "Does this look right?" scored review 0.58, coding 0.04.
+const CODING_MARGIN: f64 = 0.15;
+/// Balance runs heavy work at high effort only when Jev puts this much weight
+/// on hard or very hard; otherwise medium, and a follow-up can climb.
+const BALANCED_HIGH_EFFORT: f64 = 0.6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
@@ -73,6 +79,9 @@ pub struct RouteDecision {
     pub difficulty_confidence: Option<f64>,
     pub decision: RouteDecisionKind,
     pub reason: String,
+    /// Jev's raw answers as JSON (`Classification::signals_json`), when it
+    /// classified this decision.
+    pub signals: Option<String>,
 }
 
 /// The saved Jev key, or the error an Auto request gets without one: Auto
@@ -127,9 +136,23 @@ pub fn record_launch_route(
 }
 
 pub(crate) fn decide(tier: AutoTier, classification: &Classification) -> RouteDecision {
-    let (kind, difficulty, notes) = settle(classification);
-    let routed = table::route(tier, kind, difficulty);
+    let (kind, difficulty, mut notes) = settle(classification);
+    let grid_difficulty = if tier == AutoTier::Balanced
+        && difficulty == Difficulty::Heavy
+        && classification.probability_at_least_bucket(Difficulty::Heavy) < BALANCED_HIGH_EFFORT
+    {
+        // Balance's standard and heavy cells share a column; only the effort
+        // differs.
+        notes.push("not sure it is hard, medium effort");
+        Difficulty::Standard
+    } else {
+        difficulty
+    };
+    let routed = table::route(tier, kind, grid_difficulty, classification.is_ui());
     let mut reason = format!("{} · {}", kind_label(kind), difficulty_label(difficulty));
+    if classification.is_ui() {
+        reason.push_str(" · UI");
+    }
     if !notes.is_empty() {
         reason.push_str(&format!(" ({})", notes.join("; ")));
     }
@@ -148,11 +171,18 @@ pub(crate) fn decide(tier: AutoTier, classification: &Classification) -> RouteDe
 /// weight.
 pub(crate) fn settle(classification: &Classification) -> (TaskKind, Difficulty, Vec<&'static str>) {
     let mut notes = Vec::new();
-    let kind = if classification.kind_confidence < MIN_CONFIDENCE {
+    let coding_trails = classification
+        .kind_probability(TaskKind::Coding)
+        .zip(classification.kind_probability(classification.kind))
+        .is_some_and(|(coding, top)| top - coding > CODING_MARGIN);
+    let kind = if classification.kind_confidence >= MIN_CONFIDENCE {
+        classification.kind
+    } else if coding_trails {
+        notes.push("unsure of kind, kept the likeliest");
+        classification.kind
+    } else {
         notes.push("unsure of kind, treated as coding");
         TaskKind::Coding
-    } else {
-        classification.kind
     };
     let mut difficulty = classification.difficulty();
     if classification.difficulty_confidence < MIN_CONFIDENCE {
@@ -202,6 +232,7 @@ pub(crate) fn decision_from(
         difficulty_confidence: classification.map(|c| c.difficulty_confidence),
         decision,
         reason,
+        signals: classification.map(Classification::signals_json),
     }
 }
 
@@ -253,6 +284,7 @@ mod tests {
         Classification {
             kind,
             kind_confidence,
+            kind_probabilities: None,
             difficulty_score: score,
             difficulty_confidence,
             level_probabilities: None,
@@ -262,6 +294,7 @@ mod tests {
             simpler_task: None,
             resume_route: None,
             resume_confidence: None,
+            ui: None,
         }
     }
 
@@ -313,12 +346,76 @@ mod tests {
         assert_eq!(decision.reason, "coding · standard");
 
         let leaning_hard = Classification {
-            level_probabilities: Some([0.0, 0.05, 0.4, 0.5, 0.05]),
+            level_probabilities: Some([0.0, 0.0, 0.35, 0.6, 0.05]),
             ..split
         };
         let decision = decide(AutoTier::Balanced, &leaning_hard);
         assert_eq!(decision.difficulty, Some(Difficulty::Heavy));
         assert_eq!(decision.effort, Some(ReasoningEffort::High));
+    }
+
+    #[test]
+    fn unsure_kind_keeps_the_likeliest_when_coding_trails() {
+        let review = Classification {
+            kind_probabilities: Some([0.04, 0.0, 0.16, 0.58, 0.22]),
+            ..classification(TaskKind::Review, 0.48, 2.0, 0.8)
+        };
+        assert_eq!(
+            decide(AutoTier::Balanced, &review).kind,
+            Some(TaskKind::Review)
+        );
+        let close = Classification {
+            kind_probabilities: Some([0.40, 0.48, 0.0, 0.0, 0.12]),
+            ..classification(TaskKind::Mechanical, 0.48, 1.0, 0.8)
+        };
+        assert_eq!(
+            decide(AutoTier::Balanced, &close).kind,
+            Some(TaskKind::Coding)
+        );
+    }
+
+    #[test]
+    fn balance_runs_heavy_work_high_only_when_jev_leans_hard() {
+        let leaning = Classification {
+            level_probabilities: Some([0.0, 0.05, 0.4, 0.45, 0.1]),
+            ..classification(TaskKind::Coding, 1.0, 2.7, 0.45)
+        };
+        let decision = decide(AutoTier::Balanced, &leaning);
+        assert_eq!(decision.difficulty, Some(Difficulty::Heavy));
+        assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
+        assert!(
+            decision.reason.contains("medium effort"),
+            "{}",
+            decision.reason
+        );
+        let hard = Classification {
+            level_probabilities: Some([0.0, 0.0, 0.2, 0.6, 0.2]),
+            ..leaning.clone()
+        };
+        assert_eq!(
+            decide(AutoTier::Balanced, &hard).effort,
+            Some(ReasoningEffort::High)
+        );
+        // Frontier keeps high either way.
+        assert_eq!(
+            decide(AutoTier::Intelligence, &leaning).effort,
+            Some(ReasoningEffort::High)
+        );
+    }
+
+    #[test]
+    fn balanced_ui_work_leaves_composer_and_records_its_signals() {
+        let ui = Classification {
+            ui: Some(0.97),
+            ..classification(TaskKind::Coding, 1.0, 1.0, 0.8)
+        };
+        let decision = decide(AutoTier::Balanced, &ui);
+        assert_eq!(decision.model_id, "claude-opus-5-5");
+        assert_eq!(decision.effort, Some(ReasoningEffort::Low));
+        assert_eq!(decision.reason, "coding · light · UI");
+        let signals: serde_json::Value =
+            serde_json::from_str(decision.signals.as_deref().expect("signals")).unwrap();
+        assert_eq!(signals["ui"], 0.97);
     }
 
     #[test]

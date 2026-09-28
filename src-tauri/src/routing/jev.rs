@@ -11,8 +11,8 @@ use reqwest::redirect::Policy;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::table::{Difficulty, TaskKind};
 use super::context::FollowUpContext;
+use super::table::{Difficulty, TaskKind};
 use crate::error::{ArgmaxError, ArgmaxResult};
 
 const JEV_URL: &str = "https://api.typesafe.ai/v1/systemone";
@@ -67,6 +67,12 @@ const SCOPE_CRITERIA: [(&str, &str); 3] = [
     ("finishing_step", "A bounded final step of earlier work whose remaining scope is explicitly clear."),
 ];
 const SIMPLER_INSTRUCTIONS: &str = "Is the ENTIRE upcoming task clearly simpler and safe for less model capability than the relevant earlier work? Include every step of invoked skills, external reviews, CI feedback, repairs, and repeated checks. Multi-step alone does not make a task hard, but unresolved difficult repairs do. Do not answer yes for ambiguous references, missing or truncated skill instructions, an uncertain continuation, or a return to an earlier hard task after a simple interlude. An independent, clearly easy task can answer yes even if earlier work was hard.";
+/// Measured on 16 real prompts (2026-09-28): colour, contrast, spacing and
+/// separator requests scored 0.89–0.98; git, docs, tests, questions and
+/// renames 0.22 or less; a label-copy tweak 0.60, below the 0.7 cut.
+const UI_INSTRUCTIONS: &str = "Is this request mainly about how software looks: visual UI or design work such as layout, styling, colors, contrast, spacing, typography, animation, icons, theming, or the look and feel of a screen or component? Backend logic, data, tooling, docs, git work and questions about behavior do not count.";
+/// At or above this, the task is UI or design work.
+const UI_THRESHOLD: f64 = 0.7;
 const RESUME_INSTRUCTIONS: &str = "Only when the NEW USER REQUEST clearly continues or returns to the exact earlier user task attached to a labeled route, choose that R label. A similar kind of work is not enough. Prefer none when the link is unclear, the route's user task is unavailable, or the request is independent.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +86,8 @@ pub enum FollowUpScope {
 pub struct Classification {
     pub kind: TaskKind,
     pub kind_confidence: f64,
+    /// Jev's probability for each kind, in `TASK_KINDS` order, when it sent them.
+    pub kind_probabilities: Option<[f64; 5]>,
     /// Expected level on the 0 (trivial) – 4 (very hard) scale.
     pub difficulty_score: f64,
     pub difficulty_confidence: f64,
@@ -95,7 +103,18 @@ pub struct Classification {
     pub simpler_task: Option<f64>,
     pub resume_route: Option<String>,
     pub resume_confidence: Option<f64>,
+    /// Probability the task is mainly visual UI or design work.
+    pub ui: Option<f64>,
 }
+
+/// The order of `Classification::kind_probabilities`.
+pub const TASK_KINDS: [TaskKind; 5] = [
+    TaskKind::Coding,
+    TaskKind::Mechanical,
+    TaskKind::Research,
+    TaskKind::Review,
+    TaskKind::Question,
+];
 
 impl Classification {
     /// Trivial/easy → Light, moderate → Standard, hard/very hard → Heavy.
@@ -111,6 +130,67 @@ impl Classification {
     pub fn probability_at_least(&self, level: usize) -> Option<f64> {
         self.level_probabilities
             .map(|probabilities| probabilities[level.min(4)..].iter().sum())
+    }
+
+    /// How likely the task needs at least `difficulty`: Jev's weight on that
+    /// bucket's lowest level or harder. Jev's confidence in its exact 0–4
+    /// score answers a narrower question and stands in only when it sent no
+    /// level probabilities.
+    pub fn probability_at_least_bucket(&self, difficulty: Difficulty) -> f64 {
+        match difficulty {
+            Difficulty::Light => return 1.0,
+            Difficulty::Standard => self.probability_at_least(2),
+            Difficulty::Heavy => self.probability_at_least(3),
+        }
+        .unwrap_or(self.difficulty_confidence)
+    }
+
+    /// How likely the task needs no more than `difficulty`.
+    pub fn probability_at_most_bucket(&self, difficulty: Difficulty) -> f64 {
+        match difficulty {
+            Difficulty::Light => self.probability_at_least(2),
+            Difficulty::Standard => self.probability_at_least(3),
+            Difficulty::Heavy => return 1.0,
+        }
+        .map_or(self.difficulty_confidence, |harder| 1.0 - harder)
+    }
+
+    pub fn kind_probability(&self, kind: TaskKind) -> Option<f64> {
+        let index = TASK_KINDS.iter().position(|candidate| *candidate == kind)?;
+        self.kind_probabilities
+            .map(|probabilities| probabilities[index])
+    }
+
+    pub fn is_ui(&self) -> bool {
+        self.ui.is_some_and(|ui| ui >= UI_THRESHOLD)
+    }
+
+    /// Every signal Jev answered, stored on the route row so thresholds can
+    /// be tuned from real decisions.
+    pub fn signals_json(&self) -> String {
+        json!({
+            "kind": self.kind_probabilities.map(|probabilities| {
+                TASK_KINDS.iter().zip(probabilities).map(|(kind, probability)| {
+                    (super::kind_label(*kind).to_string(), Value::from(probability))
+                }).collect::<serde_json::Map<String, Value>>()
+            }),
+            "kindConfidence": self.kind_confidence,
+            "difficultyScore": self.difficulty_score,
+            "difficultyConfidence": self.difficulty_confidence,
+            "levels": self.level_probabilities,
+            "correction": self.correction,
+            "scope": self.follow_up_scope.map(|scope| match scope {
+                FollowUpScope::Continuation => "continuation",
+                FollowUpScope::NewTask => "new_task",
+                FollowUpScope::FinishingStep => "finishing_step",
+            }),
+            "scopeConfidence": self.scope_confidence,
+            "simpler": self.simpler_task,
+            "resume": self.resume_route,
+            "resumeConfidence": self.resume_confidence,
+            "ui": self.ui,
+        })
+        .to_string()
     }
 }
 
@@ -216,6 +296,7 @@ fn request_body(prompt: &str, ask_correction: bool) -> Value {
     let mut questions = json!({
         "kind": { "type": "choice", "instructions": KIND_INSTRUCTIONS, "criteria": kinds },
         "difficulty": { "type": "score", "instructions": DIFFICULTY_INSTRUCTIONS, "criteria": DIFFICULTY_CRITERIA },
+        "ui": { "type": "noul", "instructions": UI_INSTRUCTIONS },
     });
     if ask_correction {
         questions["correction"] =
@@ -229,6 +310,9 @@ fn follow_up_request_body(context: &FollowUpContext) -> Value {
     body["questions"]["correction"]["instructions"] = json!("Judge ONLY the NEW USER REQUEST: does it say the previous agent work is failing, wrong, disliked, or needs redoing? Old complaints quoted in visible history or skill instructions are context, not a new correction.");
     body["questions"]["kind"]["instructions"] = json!("Classify the entire next turn described by NEW USER REQUEST, including any invoked skill workflow and likely review, verification, and repair. A ship skill may involve more than a git command.");
     body["questions"]["difficulty"]["instructions"] = json!("How much effort and reasoning will the complete next turn need, including the invoked workflow and relevant unresolved prior work? Judge the new request first. A short finishing step need not inherit every token of a long debugging turn.");
+    body["questions"]["ui"]["instructions"] = json!(format!(
+        "Judge the complete next turn described by NEW USER REQUEST. {UI_INSTRUCTIONS}"
+    ));
     body["questions"]["scope"] = json!({
         "type": "choice", "instructions": SCOPE_INSTRUCTIONS,
         "criteria": SCOPE_CRITERIA.iter().map(|(key, value)| ((*key).to_string(), Value::from(*value))).collect::<serde_json::Map<String, Value>>()
@@ -236,10 +320,19 @@ fn follow_up_request_body(context: &FollowUpContext) -> Value {
     body["questions"]["simpler"] = json!({ "type": "noul", "instructions": SIMPLER_INSTRUCTIONS });
     if !context.routes.is_empty() {
         let mut criteria = serde_json::Map::new();
-        criteria.insert("none".to_string(), Value::from("No clear continuation of one labeled earlier user task."));
+        criteria.insert(
+            "none".to_string(),
+            Value::from("No clear continuation of one labeled earlier user task."),
+        );
         for route in &context.routes {
             if route.user_task.is_some() {
-                criteria.insert(route.id.clone(), Value::from(format!("Continue the exact earlier user task marked {} in the state.", route.id)));
+                criteria.insert(
+                    route.id.clone(),
+                    Value::from(format!(
+                        "Continue the exact earlier user task marked {} in the state.",
+                        route.id
+                    )),
+                );
             }
         }
         if criteria.len() > 1 {
@@ -290,28 +383,71 @@ fn parse_response(body: &Value) -> ArgmaxResult<Classification> {
         .ok_or_else(|| jev_error("difficulty answer has no score"))?;
     Ok(Classification {
         kind,
-        kind_confidence: kind_answer.confidence.and_then(valid_probability).unwrap_or(0.0),
+        kind_confidence: kind_answer
+            .confidence
+            .and_then(valid_probability)
+            .unwrap_or(0.0),
+        kind_probabilities: kind_answer.probabilities.as_ref().map(|by_kind| {
+            TASK_KINDS.map(|kind| {
+                by_kind
+                    .get(super::kind_label(kind))
+                    .copied()
+                    .and_then(valid_probability)
+                    .unwrap_or(0.0)
+            })
+        }),
         difficulty_score,
-        difficulty_confidence: difficulty_answer.confidence.and_then(valid_probability).unwrap_or(0.0),
+        difficulty_confidence: difficulty_answer
+            .confidence
+            .and_then(valid_probability)
+            .unwrap_or(0.0),
         level_probabilities: difficulty_answer.probabilities.as_ref().map(|by_level| {
-            std::array::from_fn(|level| by_level.get(&level.to_string()).copied().and_then(valid_probability).unwrap_or(0.0))
+            std::array::from_fn(|level| {
+                by_level
+                    .get(&level.to_string())
+                    .copied()
+                    .and_then(valid_probability)
+                    .unwrap_or(0.0)
+            })
         }),
         correction: parsed
             .answers
             .get("correction")
             .and_then(|answer| answer.noul.and_then(valid_probability)),
-        follow_up_scope: parsed.answers.get("scope").and_then(|answer| match answer.choice.as_deref() {
-            Some("continuation") => Some(FollowUpScope::Continuation),
-            Some("new_task") => Some(FollowUpScope::NewTask),
-            Some("finishing_step") => Some(FollowUpScope::FinishingStep),
-            _ => None,
+        follow_up_scope: parsed.answers.get("scope").and_then(|answer| {
+            match answer.choice.as_deref() {
+                Some("continuation") => Some(FollowUpScope::Continuation),
+                Some("new_task") => Some(FollowUpScope::NewTask),
+                Some("finishing_step") => Some(FollowUpScope::FinishingStep),
+                _ => None,
+            }
         }),
-        scope_confidence: parsed.answers.get("scope").and_then(|answer| answer.confidence.and_then(valid_probability)),
-        simpler_task: parsed.answers.get("simpler").and_then(|answer| answer.noul.and_then(valid_probability)),
-        resume_route: parsed.answers.get("resume").and_then(|answer| answer.choice.as_deref())
-            .filter(|route| route.starts_with('R') && route.len() > 1 && route[1..].chars().all(|c| c.is_ascii_digit()))
+        scope_confidence: parsed
+            .answers
+            .get("scope")
+            .and_then(|answer| answer.confidence.and_then(valid_probability)),
+        simpler_task: parsed
+            .answers
+            .get("simpler")
+            .and_then(|answer| answer.noul.and_then(valid_probability)),
+        resume_route: parsed
+            .answers
+            .get("resume")
+            .and_then(|answer| answer.choice.as_deref())
+            .filter(|route| {
+                route.starts_with('R')
+                    && route.len() > 1
+                    && route[1..].chars().all(|c| c.is_ascii_digit())
+            })
             .map(str::to_string),
-        resume_confidence: parsed.answers.get("resume").and_then(|answer| answer.confidence.and_then(valid_probability)),
+        resume_confidence: parsed
+            .answers
+            .get("resume")
+            .and_then(|answer| answer.confidence.and_then(valid_probability)),
+        ui: parsed
+            .answers
+            .get("ui")
+            .and_then(|answer| answer.noul.and_then(valid_probability)),
     })
 }
 
@@ -336,7 +472,8 @@ mod tests {
                           "probabilities": { "coding": 0.96, "question": 0.04 } },
                 "difficulty": { "type": "score", "score": score, "confidence": 0.64,
                                 "legend": { "0": "trivial" }, "probabilities": { "0": 0.23 } },
-                "correction": { "type": "noul", "noul": 0.81 }
+                "correction": { "type": "noul", "noul": 0.81 },
+                "ui": { "type": "noul", "noul": 0.93 }
             },
             "usage": { "input_tokens": 382, "output_tokens": 61 }
         })
@@ -351,6 +488,22 @@ mod tests {
         assert_eq!(parsed.correction, Some(0.81));
         assert_eq!(parsed.probability_at_least(0), Some(0.23));
         assert_eq!(parsed.probability_at_least(1), Some(0.0));
+        assert_eq!(parsed.kind_probability(TaskKind::Coding), Some(0.96));
+        assert_eq!(parsed.kind_probability(TaskKind::Review), Some(0.0));
+        assert!(parsed.is_ui());
+    }
+
+    #[test]
+    fn buckets_read_the_level_weights_not_the_score_confidence() {
+        let mut parsed = parse_response(&live_shaped_response("coding", 2.6)).expect("parses");
+        parsed.difficulty_confidence = 0.45;
+        parsed.level_probabilities = Some([0.0, 0.05, 0.3, 0.5, 0.15]);
+        assert!((parsed.probability_at_least_bucket(Difficulty::Heavy) - 0.65).abs() < 1e-9);
+        assert!((parsed.probability_at_least_bucket(Difficulty::Standard) - 0.95).abs() < 1e-9);
+        assert!((parsed.probability_at_most_bucket(Difficulty::Standard) - 0.35).abs() < 1e-9);
+        assert_eq!(parsed.probability_at_most_bucket(Difficulty::Heavy), 1.0);
+        parsed.level_probabilities = None;
+        assert_eq!(parsed.probability_at_least_bucket(Difficulty::Heavy), 0.45);
     }
 
     #[test]
@@ -400,18 +553,24 @@ mod tests {
     #[test]
     fn follow_up_asks_about_entire_scope_and_parses_reduction_evidence() {
         let context = FollowUpContext {
-            state: "NEW USER REQUEST: ship this\nSkill ship: Review CI and repair failures".to_string(),
+            state: "NEW USER REQUEST: ship this\nSkill ship: Review CI and repair failures"
+                .to_string(),
             downgrade_safe: true,
             routes: vec![super::super::context::ContextRoute {
-                id: "R0".to_string(), provider: crate::ipc::validation::ProviderId::Codex,
-                model_id: "gpt-6-astra".to_string(), effort: Some(crate::ipc::validation::ReasoningEffort::Xhigh),
+                id: "R0".to_string(),
+                provider: crate::ipc::validation::ProviderId::Codex,
+                model_id: "gpt-6-astra".to_string(),
+                effort: Some(crate::ipc::validation::ReasoningEffort::Xhigh),
                 user_task: Some("Investigate the hard bug".to_string()),
             }],
         };
         let body = follow_up_request_body(&context);
         assert_eq!(body["questions"]["scope"]["type"], "choice");
         assert_eq!(body["questions"]["simpler"]["type"], "noul");
-        assert_eq!(body["questions"]["resume"]["criteria"]["R0"].as_str(), Some("Continue the exact earlier user task marked R0 in the state."));
+        assert_eq!(
+            body["questions"]["resume"]["criteria"]["R0"].as_str(),
+            Some("Continue the exact earlier user task marked R0 in the state.")
+        );
         assert!(body["state"].as_str().unwrap().contains("Review CI"));
 
         let mut response = live_shaped_response("coding", 3.0);

@@ -18,8 +18,8 @@ pub fn record_route(
             r#"
             INSERT INTO turn_routes (
               session_id, created_at, tier, provider, model_id, reasoning_effort, kind,
-              difficulty, kind_confidence, difficulty_confidence, decision, reason
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              difficulty, kind_confidence, difficulty_confidence, decision, reason, signals_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
         )
         .map_err(sqlite_error)?
@@ -36,6 +36,7 @@ pub fn record_route(
             route.difficulty_confidence,
             route.decision.as_str(),
             route.reason.as_str(),
+            route.signals.as_deref(),
         ))
         .map_err(sqlite_error)?;
     // A kept decision now explains why the same route still fits. A pin ends
@@ -87,17 +88,6 @@ pub fn last_turn_usage(connection: &Connection, session_id: &str) -> ArgmaxResul
                 cache_write: row.get::<_, i64>(3)?.max(0) as u64,
             })
         })
-        .map_err(sqlite_error)
-}
-
-/// When the router last moved this chat to another model or effort.
-pub fn last_switch_at(connection: &Connection, session_id: &str) -> ArgmaxResult<Option<String>> {
-    connection
-        .prepare_cached(
-            "SELECT MAX(created_at) FROM turn_routes WHERE session_id = ? AND decision IN ('reroute', 'escalate')",
-        )
-        .map_err(sqlite_error)?
-        .query_row([session_id], |row| row.get(0))
         .map_err(sqlite_error)
 }
 
@@ -159,14 +149,22 @@ pub fn recent_routing_decisions(
         ORDER BY route.id DESC LIMIT 6
         "#,
     ).map_err(sqlite_error)?;
-    let rows = statement.query_map([session_id], |row| {
-        Ok(RecentRoutingDecision {
-            provider: row.get(0)?, model_id: row.get(1)?, effort: row.get(2)?,
-            kind: row.get(3)?, difficulty: row.get(4)?, decision: row.get(5)?,
-            reason: row.get(6)?, reason_truncated: row.get(7)?,
-            user_task: row.get(8)?, user_task_truncated: row.get(9)?,
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok(RecentRoutingDecision {
+                provider: row.get(0)?,
+                model_id: row.get(1)?,
+                effort: row.get(2)?,
+                kind: row.get(3)?,
+                difficulty: row.get(4)?,
+                decision: row.get(5)?,
+                reason: row.get(6)?,
+                reason_truncated: row.get(7)?,
+                user_task: row.get(8)?,
+                user_task_truncated: row.get(9)?,
+            })
         })
-    }).map_err(sqlite_error)?;
+        .map_err(sqlite_error)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
 }
 
@@ -194,10 +192,15 @@ mod routing_context_tests {
 
         let routes = recent_routing_decisions(&connection, "s").unwrap();
         assert_eq!(routes[0].user_task.as_deref(), Some("Rename the label"));
-        assert_eq!(routes[1].user_task.as_deref(), Some("Investigate the hard bug"));
+        assert_eq!(
+            routes[1].user_task.as_deref(),
+            Some("Investigate the hard bug")
+        );
         assert_eq!(routes[1].effort.as_deref(), Some("high"));
 
         connection.execute("INSERT INTO events VALUES ('s', 'session.cleared', '', '{}', '2026-09-27T12:00:00.000Z')", []).unwrap();
-        assert!(recent_routing_decisions(&connection, "s").unwrap().is_empty());
+        assert!(recent_routing_decisions(&connection, "s")
+            .unwrap()
+            .is_empty());
     }
 }

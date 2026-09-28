@@ -260,6 +260,15 @@ pub static AUTO_ROUTING_COLUMNS: phf::Map<&'static str, &'static [&'static str]>
     ] as &'static [&'static str],
 };
 
+// v60: Jev's raw answers on each route row, for tuning the thresholds.
+pub static TURN_ROUTE_SIGNALS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "signals_json", "tier",
+    ] as &'static [&'static str],
+};
+
 // v58: Project check. One row per suggestion the user answered or switch
 // Argmax made, read back for pair suppression (docs/routing.md).
 pub static PROJECT_CHECKS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -1094,6 +1103,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: EVENTS_SESSION_MOVED_INDEX,
         affected_tables: &[],
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 60,
+        name: "turn_route_signals",
+        up: TURN_ROUTE_SIGNALS,
+        affected_tables: &["turn_routes"],
+        expected_columns: &TURN_ROUTE_SIGNALS_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -2045,6 +2062,13 @@ CREATE INDEX IF NOT EXISTS idx_events_session_moved
   ON events(session_id) WHERE type = 'session.moved';
 "#;
 
+// Every answer Jev gave for a route (kind and level probabilities, correction,
+// scope, simpler, UI) as JSON, so routing thresholds can be tuned from real
+// decisions. NULL for rows Jev did not classify.
+const TURN_ROUTE_SIGNALS: &str = r#"
+ALTER TABLE turn_routes ADD COLUMN signals_json TEXT;
+"#;
+
 // Per-row sidebar glyph chosen from the Edit Icon picker. NULL in both columns
 // keeps the row on its live status marker, so existing workspaces are unchanged.
 const WORKSPACE_CUSTOM_ICON: &str = r#"
@@ -2681,9 +2705,9 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        for table in ["sessions", "turn_routes"] {
-            verify_table_columns(&connection, &AUTO_ROUTING_COLUMNS, table).expect(table);
-        }
+        verify_table_columns(&connection, &AUTO_ROUTING_COLUMNS, "sessions").expect("sessions");
+        verify_table_columns(&connection, &TURN_ROUTE_SIGNALS_COLUMNS, "turn_routes")
+            .expect("turn_routes");
         verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
             .expect("routines");
         for table in ["arcs", "arc_events"] {
@@ -2828,6 +2852,7 @@ mod tests {
                     compute_migration_checksum(crate::persistence::project_checks::MIGRATION_SQL)
                 ),
                 (59, compute_migration_checksum(EVENTS_SESSION_MOVED_INDEX)),
+                (60, compute_migration_checksum(TURN_ROUTE_SIGNALS)),
             ]
         );
 

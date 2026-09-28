@@ -107,10 +107,12 @@ describe("useSessionCommands", () => {
         reasoningEffort: "high", autoTier: "balanced"
       }, "auto", undefined, undefined, delivery);
     });
-    const sent = (delivery === "steer" ? steerInputMock : sendInputMock).mock.calls[0]?.[0];
-    expect(sent).toMatchObject({ sessionId: "session-1", input: "continue", fastMode: false });
+    const mock = delivery === "steer" ? steerInputMock : sendInputMock;
+    expect(mock).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-1", input: "continue", fastMode: false })
+    );
     for (const field of ["provider", "modelId", "modelLabel", "reasoningEffort"]) {
-      expect(sent).not.toHaveProperty(field);
+      expect(mock.mock.calls[0]?.[0]).not.toHaveProperty(field);
     }
   });
 

@@ -123,6 +123,12 @@ struct AcpWorkspace {
     mcp_fingerprint: [u8; 32],
     active_turns: AtomicUsize,
     retired: AtomicBool,
+    /// A shell on this process has already returned output. The next shell
+    /// that completes without one means the persistent cwd is dead.
+    shell_succeeded: AtomicBool,
+    /// Replace this process on the next launch. Its bash cwd is gone, and
+    /// Cursor keeps using it until the process itself is replaced.
+    shell_lost: AtomicBool,
 }
 
 struct AcpWorkspaceLease {
@@ -525,7 +531,12 @@ impl CursorAcpSessions {
         let mcp_fingerprint =
             cursor_mcp_fingerprint_in(home, cursor_data_dir, &input.workspace_path, process_cwd);
         if let Some(existing) = slot.current.lock_or_recover("acp workspace").as_ref() {
-            if !existing.client.is_dead() && existing.mcp_fingerprint == mcp_fingerprint {
+            // A lost shell falls through. Spawning below displaces this
+            // process, and the next shell starts from the workspace again.
+            if !existing.client.is_dead()
+                && !existing.shell_lost.load(Ordering::SeqCst)
+                && existing.mcp_fingerprint == mcp_fingerprint
+            {
                 existing.active_turns.fetch_add(1, Ordering::SeqCst);
                 return Ok(AcpWorkspaceLease {
                     workspace: Arc::clone(existing),
@@ -554,6 +565,8 @@ impl CursorAcpSessions {
             mcp_fingerprint,
             active_turns: AtomicUsize::new(0),
             retired: AtomicBool::new(false),
+            shell_succeeded: AtomicBool::new(false),
+            shell_lost: AtomicBool::new(false),
         });
         let handshake = workspace
             .client
@@ -1051,9 +1064,18 @@ fn spawn_turn(
 
     let session_id = input.session_id.clone();
     let prompt = input.prompt.clone();
+    let workspace = Arc::clone(&workspace_lease.workspace);
     tokio::spawn(async move {
         let _workspace_lease = workspace_lease;
-        run_turn(client, acp_session_id.clone(), session_id, prompt, on_event).await;
+        run_turn(
+            client,
+            acp_session_id.clone(),
+            session_id,
+            prompt,
+            on_event,
+            workspace,
+        )
+        .await;
         let mut contexts = permission_contexts.lock_or_recover("cursor ACP permission contexts");
         if contexts
             .get(&acp_session_id)
@@ -1072,6 +1094,7 @@ async fn run_turn(
     session_id: String,
     prompt: String,
     on_event: EventCallback,
+    workspace: Arc<AcpWorkspace>,
 ) {
     let emit = |r#type: ProviderRuntimeEventType, message: String, exit_code: Option<i32>| {
         on_event(ProviderRuntimeEvent {
@@ -1119,6 +1142,7 @@ async fn run_turn(
                 match update {
                     Some(update) => {
                         for line in translation.translate(&update) {
+                            note_shell_outcome(&workspace, &line);
                             emit_line(line);
                         }
                     }
@@ -1386,6 +1410,59 @@ impl TurnTranslation {
             "call_id": call_id,
             "tool_call": { info.key: Value::Object(body) },
         })]
+    }
+}
+
+/// What one translated tool row says about the warm process's shell.
+enum ShellOutcome {
+    /// Not a settled shell call.
+    Ignore,
+    /// The shell ran and reported a result, so its cwd is still usable.
+    Succeeded,
+    /// A shell that used to return output finished without one.
+    Lost,
+}
+
+/// Cursor's shell keeps cwd, env, and aliases in the warm process. `cd` into
+/// a worktree and then delete that worktree: the next spawn uses the missing
+/// directory, the error is swallowed, and ACP reports the shell `completed`
+/// with no `rawOutput`. The process never picks a new cwd. A rejection or a
+/// permission block has the same shape, so this only counts after a shell on
+/// this process has already returned output — one wasted restart, instead of
+/// a shell that stays dead for the rest of the chat.
+fn shell_outcome(had_output: bool, line: &Value) -> ShellOutcome {
+    if line.get("type").and_then(Value::as_str) != Some("tool_call")
+        || line.get("subtype").and_then(Value::as_str) != Some("completed")
+    {
+        return ShellOutcome::Ignore;
+    }
+    let Some(shell) = line.pointer("/tool_call/shell") else {
+        return ShellOutcome::Ignore;
+    };
+    if !matches!(
+        line.get("status").and_then(Value::as_str),
+        Some("completed" | "failed")
+    ) {
+        return ShellOutcome::Ignore;
+    }
+    if shell.get("result").is_some() {
+        ShellOutcome::Succeeded
+    } else if had_output {
+        ShellOutcome::Lost
+    } else {
+        ShellOutcome::Ignore
+    }
+}
+
+fn note_shell_outcome(workspace: &AcpWorkspace, line: &Value) {
+    match shell_outcome(workspace.shell_succeeded.load(Ordering::SeqCst), line) {
+        ShellOutcome::Ignore => {}
+        ShellOutcome::Succeeded => {
+            workspace.shell_succeeded.store(true, Ordering::SeqCst);
+        }
+        ShellOutcome::Lost => {
+            workspace.shell_lost.store(true, Ordering::SeqCst);
+        }
     }
 }
 
@@ -1723,6 +1800,54 @@ mod tests {
             "echo hi"
         );
         assert_eq!(completed[0]["tool_call"]["shell"]["result"]["output"], "hi");
+        assert!(matches!(
+            shell_outcome(false, &completed[0]),
+            ShellOutcome::Succeeded
+        ));
+    }
+
+    #[test]
+    fn a_shell_that_stops_returning_output_retires_the_warm_process() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "execute",
+            "rawInput": { "command": "echo hi" },
+        })));
+        let silent = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+        })));
+        // The first shell on a process may be a rejection. That has the same
+        // shape and must not throw the process away.
+        assert!(matches!(
+            shell_outcome(false, &silent[0]),
+            ShellOutcome::Ignore
+        ));
+        // Once a shell has returned output, the next one with none means the
+        // persistent cwd is gone.
+        assert!(matches!(
+            shell_outcome(true, &silent[0]),
+            ShellOutcome::Lost
+        ));
+
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-2",
+            "kind": "execute",
+            "rawInput": { "command": "echo more" },
+        })));
+        let cancelled = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-2",
+            "status": "cancelled",
+        })));
+        assert!(matches!(
+            shell_outcome(true, &cancelled[0]),
+            ShellOutcome::Ignore
+        ));
     }
 
     #[test]

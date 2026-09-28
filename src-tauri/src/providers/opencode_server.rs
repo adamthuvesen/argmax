@@ -1779,11 +1779,27 @@ mod tests {
     #[test]
     fn resumed_opencode_prompts_select_each_model_and_variant() {
         for (model, effort, expected_variant) in [
-            ("deepseek-v4.1-flash", super::super::ReasoningEffort::Max, "max"),
-            ("deepseek-v4.1-flash", super::super::ReasoningEffort::High, "high"),
-            ("deepseek-v4.1-flash", super::super::ReasoningEffort::Max, "max"),
+            (
+                "deepseek-v4.1-flash",
+                super::super::ReasoningEffort::Max,
+                "max",
+            ),
+            (
+                "deepseek-v4.1-flash",
+                super::super::ReasoningEffort::High,
+                "high",
+            ),
+            (
+                "deepseek-v4.1-flash",
+                super::super::ReasoningEffort::Max,
+                "max",
+            ),
             ("glm-5.3-flash", super::super::ReasoningEffort::High, "high"),
-            ("deepseek-v4.1-flash", super::super::ReasoningEffort::Max, "max"),
+            (
+                "deepseek-v4.1-flash",
+                super::super::ReasoningEffort::Max,
+                "max",
+            ),
         ] {
             let mut input = input(PermissionMode::ProviderDefaults, AgentMode::Auto);
             input.resume_conversation_id = Some("native-conversation".into());

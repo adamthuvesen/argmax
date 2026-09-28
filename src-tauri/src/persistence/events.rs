@@ -1670,8 +1670,9 @@ pub fn routing_visible_messages(
     connection: &Connection,
     session_id: &str,
 ) -> ArgmaxResult<Vec<RoutingVisibleMessage>> {
-    let mut statement = connection.prepare_cached(
-        r#"
+    let mut statement = connection
+        .prepare_cached(
+            r#"
         SELECT type, substr(message, 1, 601), length(message) > 600 FROM events
         WHERE session_id = ?
           AND type IN ('user.message', 'message.completed')
@@ -1693,10 +1694,16 @@ pub fn routing_visible_messages(
           )
         ORDER BY rowid DESC LIMIT 30
         "#,
-    ).map_err(sqlite_error)?;
-    let rows = statement.query_map([session_id], |row| Ok(RoutingVisibleMessage {
-        event_type: row.get(0)?, text: row.get(1)?, truncated: row.get(2)?,
-    }))
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok(RoutingVisibleMessage {
+                event_type: row.get(0)?,
+                text: row.get(1)?,
+                truncated: row.get(2)?,
+            })
+        })
         .map_err(sqlite_error)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
 }

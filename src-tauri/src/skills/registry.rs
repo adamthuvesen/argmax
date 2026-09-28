@@ -84,7 +84,9 @@ impl SkillRegistry {
         workspace_cwd: Option<&Path>,
     ) -> Vec<SkillSummary> {
         self.discover_skills(provider, workspace_cwd)
-            .into_iter().map(|skill| skill.summary).collect()
+            .into_iter()
+            .map(|skill| skill.summary)
+            .collect()
     }
 
     fn discover_skills(
@@ -134,7 +136,10 @@ impl SkillRegistry {
         names: &[String],
         max_chars: usize,
     ) -> Vec<SkillInstructions> {
-        let mut wanted = names.iter().map(|name| name.to_ascii_lowercase()).collect::<Vec<_>>();
+        let mut wanted = names
+            .iter()
+            .map(|name| name.to_ascii_lowercase())
+            .collect::<Vec<_>>();
         wanted.sort();
         wanted.dedup();
         let mut found = BTreeMap::<String, SkillInstructions>::new();
@@ -143,20 +148,38 @@ impl SkillRegistry {
             if !wanted.contains(&key) || found.contains_key(&key) {
                 continue;
             }
-            if !fs::metadata(&skill.path).ok().is_some_and(|metadata| metadata.len() <= SKILL_FILE_SIZE_CAP_BYTES) {
+            if !fs::metadata(&skill.path)
+                .ok()
+                .is_some_and(|metadata| metadata.len() <= SKILL_FILE_SIZE_CAP_BYTES)
+            {
                 continue;
             }
             let Some(text) = fs::read_to_string(&skill.path).ok() else {
                 continue;
             };
             let (text, complete) = bounded_instructions(&skill.path, &text, max_chars);
-            found.insert(key, SkillInstructions { name: skill.summary.name, text, complete });
+            found.insert(
+                key,
+                SkillInstructions {
+                    name: skill.summary.name,
+                    text,
+                    complete,
+                },
+            );
         }
-        names.iter().map(|name| {
-            found.get(&name.to_ascii_lowercase()).cloned().unwrap_or_else(|| SkillInstructions {
-                name: name.clone(), text: String::new(), complete: false,
+        names
+            .iter()
+            .map(|name| {
+                found
+                    .get(&name.to_ascii_lowercase())
+                    .cloned()
+                    .unwrap_or_else(|| SkillInstructions {
+                        name: name.clone(),
+                        text: String::new(),
+                        complete: false,
+                    })
             })
-        }).collect()
+            .collect()
     }
 
     fn resolve_sources(
@@ -385,7 +408,11 @@ fn load_source(source: &SourceDescriptor) -> Vec<DiscoveredSkill> {
     }
 }
 
-fn load_skill_dir(root: &Path, source: SkillSource, exclude_dot_dirs: bool) -> Vec<DiscoveredSkill> {
+fn load_skill_dir(
+    root: &Path,
+    source: SkillSource,
+    exclude_dot_dirs: bool,
+) -> Vec<DiscoveredSkill> {
     let mut results = Vec::new();
     for entry in read_dir_names(root) {
         if exclude_dot_dirs && entry.starts_with('.') {
@@ -491,9 +518,16 @@ fn bounded_instructions(path: &Path, body: &str, max_chars: usize) -> (String, b
     let mut references = Vec::new();
     let mut missing_reference = false;
     for word in body.split_whitespace() {
-        let candidate = word.rsplit_once("](").map_or(word, |(_, path)| path)
+        let candidate = word
+            .rsplit_once("](")
+            .map_or(word, |(_, path)| path)
             .trim_end_matches(|character: char| matches!(character, ')' | '.' | ',' | ';' | ':'))
-            .trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '.' && character != '/' && character != '-');
+            .trim_matches(|character: char| {
+                !character.is_ascii_alphanumeric()
+                    && character != '.'
+                    && character != '/'
+                    && character != '-'
+            });
         if !candidate.ends_with(".md") {
             continue;
         }
@@ -503,7 +537,10 @@ fn bounded_instructions(path: &Path, body: &str, max_chars: usize) -> (String, b
         }
         let reference = skill_dir.join(candidate);
         if !canonical_dir.as_ref().is_some_and(|root| {
-            reference.canonicalize().ok().is_some_and(|resolved| resolved.starts_with(root))
+            reference
+                .canonicalize()
+                .ok()
+                .is_some_and(|resolved| resolved.starts_with(root))
         }) {
             missing_reference = true;
             continue;
@@ -519,7 +556,11 @@ fn bounded_instructions(path: &Path, body: &str, max_chars: usize) -> (String, b
     }
 
     let mut text = String::new();
-    let body_budget = if references.is_empty() { max_chars } else { max_chars * 3 / 5 };
+    let body_budget = if references.is_empty() {
+        max_chars
+    } else {
+        max_chars * 3 / 5
+    };
     let (body_excerpt, body_complete) = take_chars(body, body_budget);
     text.push_str(&body_excerpt);
     let mut complete = body_complete && !missing_reference;
@@ -537,13 +578,17 @@ fn bounded_instructions(path: &Path, body: &str, max_chars: usize) -> (String, b
             continue;
         };
         let remaining = max_chars.saturating_sub(text.chars().count());
-        let label = format!("\nDirect reference {}:\n", reference.file_name().unwrap_or_default().to_string_lossy());
+        let label = format!(
+            "\nDirect reference {}:\n",
+            reference.file_name().unwrap_or_default().to_string_lossy()
+        );
         if remaining <= label.chars().count() {
             complete = false;
             break;
         }
         text.push_str(&label);
-        let (excerpt, reference_complete) = take_chars(&contents, remaining - label.chars().count());
+        let (excerpt, reference_complete) =
+            take_chars(&contents, remaining - label.chars().count());
         text.push_str(&excerpt);
         complete &= reference_complete;
     }
@@ -875,19 +920,39 @@ mod tests {
         let home = tempdir().unwrap();
         let workspace = tempdir().unwrap();
         let registry = SkillRegistry::new(home.path());
-        write_skill(&home.path().join(".claude/skills"), "Ship", "name: Ship\ndescription: user");
+        write_skill(
+            &home.path().join(".claude/skills"),
+            "Ship",
+            "name: Ship\ndescription: user",
+        );
         let workspace_skills = workspace.path().join(".claude/skills");
-        write_skill(&workspace_skills, "ship", "name: ship\ndescription: workspace");
+        write_skill(
+            &workspace_skills,
+            "ship",
+            "name: ship\ndescription: workspace",
+        );
         let skill_dir = workspace_skills.join("ship");
         fs::create_dir_all(skill_dir.join("references")).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "---\nname: ship\n---\nRun reviews and [babysit](references/babysit.md), then [next](next.md).\n").unwrap();
-        fs::write(skill_dir.join("references/babysit.md"), "Repair CI failures before merging.").unwrap();
+        fs::write(
+            skill_dir.join("references/babysit.md"),
+            "Repair CI failures before merging.",
+        )
+        .unwrap();
         fs::write(skill_dir.join("next.md"), "Confirm the merged result.").unwrap();
 
-        assert_eq!(registry.list_skills(ProviderId::Claude, Some(workspace.path())).len(), 1);
+        assert_eq!(
+            registry
+                .list_skills(ProviderId::Claude, Some(workspace.path()))
+                .len(),
+            1
+        );
 
         let instructions = registry.invoked_instructions(
-            ProviderId::Claude, Some(workspace.path()), &["ship".to_string()], 2_000,
+            ProviderId::Claude,
+            Some(workspace.path()),
+            &["ship".to_string()],
+            2_000,
         );
         assert_eq!(instructions.len(), 1);
         assert!(instructions[0].complete);
@@ -900,10 +965,20 @@ mod tests {
     fn missing_or_clipped_invoked_body_is_explicit() {
         let home = tempdir().unwrap();
         let registry = SkillRegistry::new(home.path());
-        assert!(!registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 100)[0].complete);
-        write_skill(&home.path().join(".claude/skills"), "ship", "name: ship\ndescription: workflow");
+        assert!(
+            !registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 100)[0]
+                .complete
+        );
+        write_skill(
+            &home.path().join(".claude/skills"),
+            "ship",
+            "name: ship\ndescription: workflow",
+        );
         registry.clear_cache();
-        assert!(!registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 5)[0].complete);
+        assert!(
+            !registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 5)[0]
+                .complete
+        );
     }
 
     #[test]
@@ -912,8 +987,13 @@ mod tests {
         let registry = SkillRegistry::new(home.path());
         let skill_dir = home.path().join(".claude/skills/ship");
         fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "---\nname: ship\n---\nRead [next](/outside/next.md).\n").unwrap();
-        let instructions = registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 2_000);
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: ship\n---\nRead [next](/outside/next.md).\n",
+        )
+        .unwrap();
+        let instructions =
+            registry.invoked_instructions(ProviderId::Claude, None, &["ship".to_string()], 2_000);
         assert!(!instructions[0].complete);
     }
 

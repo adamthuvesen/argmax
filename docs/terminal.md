@@ -21,7 +21,11 @@ command inline, in the order the webview sent its messages, while an `async` one
 spawns a task per call. When it was `async`, two keystrokes in flight raced and a
 `\r` that won made the shell run a fragment: `open .` typed quickly executed as
 `en`. A write that fails against a live PTY is reported to the next caller, since
-by then the failing write is on the terminal's own thread. The remote bridge
+by then the failing write is on the terminal's own thread. A write to a shell
+that is gone (unknown id, or reaped while its last output still drains) is a
+no-op for the renderer, since keystrokes can land between the exit and the tab
+noticing; `TerminalService::write` returns whether the bytes were queued so the
+agent's `terminal_write` can fail instead. The remote bridge
 dispatches each request on its own task, so a bridge client that wants ordered
 input has to await one write before sending the next.
 
@@ -57,7 +61,9 @@ starting another shell. The event is emitted before Argmax types the command;
 the renderer buffers output until xterm mounts, so a short-lived command still
 appears in the tab. `terminal_read` lists the
 terminals known for a workspace or returns one terminal's captured output,
-running state, and exit code. The service keeps the newest 128 KiB of output
+running state, and exit code. `terminal_write` types into a live terminal
+(control bytes such as Ctrl-C included) and `terminal_close` terminates one
+through the same path as the tab's close. The service keeps the newest 128 KiB of output
 per terminal in memory. It trims finished records oldest first toward a
 64-record cap. Live records are never evicted.
 
@@ -73,6 +79,7 @@ Terminal state persists across session switches:
 
 - **State stores:** Tab metadata, the active tab, and whether the terminal was on screen live in [src/renderer/lib/terminalTabs.ts](../src/renderer/lib/terminalTabs.ts), keyed by workspace.
 - **xterm runtime:** [src/renderer/lib/terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts) manages lazy xterm instances and PTY event listeners. Each instance attaches to a host `<div>` that reparents when panes mount or unmount.
+- **Fitting:** `tryFit` in [xtermFit.ts](../src/renderer/lib/xtermFit.ts) skips any host without a layout box. The panel stays mounted under `hidden` when another mode shows, and inside `display: none` WebKit reports the host's `100%` height to the fit addon as 100px, so fitting there shrank xterm and the PTY to a few cells. zsh then redrew its prompt wrapped, and the terminal reopened with blank rows above the prompt.
 - **Resource limits:** Scrollback is capped at 5,000 lines. At most 6 workspaces (`MAX_TERMINAL_WORKSPACES`) retain running terminals; exceeding this evicts the least recently used unmounted workspace.
 - **Contrast:** The xterm theme sets `minimumContrastRatio: 4.5` ([terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts)) to ensure prompt readability. ANSI 8 (bright black) stays a mid gray in both themes: shells draw text not yet typed in it (zsh-autosuggestions defaults to `fg=8`), and when it sat near the light foreground a suggestion read as typed text, so Backspace looked dead while the deleted character came back as the suggestion.
 - **Keys:** xterm encodes keys for Linux. `macEditingKeySequence` in [terminalRuntime.ts](../src/renderer/lib/terminalRuntime.ts) sends the macOS chords as Ghostty and iTerm2 do: ⌘⌫ → Ctrl+U, ⌘← / ⌘→ → Ctrl+A / Ctrl+E, ⌥← / ⌥→ → `ESC b` / `ESC f`, ⌥⌦ → `ESC d`. Everything else is xterm's: Backspace is DEL (`stty erase ^?`), ⌥⌫ is `ESC DEL`, and ⌥ with a letter types the layout's character (`@` on a Swedish ⌥2), since `macOptionIsMeta` is off. Delete on a focused tab closes it; Backspace does not, because clicking the tab already showing leaves focus there.

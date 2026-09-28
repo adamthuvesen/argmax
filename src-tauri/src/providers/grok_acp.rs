@@ -31,6 +31,7 @@ use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
 use crate::session_control::SessionLaunchProcessConfig;
+use crate::usage::grok::billed_models;
 use crate::util::sync::LockOrRecover;
 
 const CANCEL_WAIT: Duration = Duration::from_secs(5);
@@ -527,6 +528,11 @@ async fn run_turn(
         }
     }
     client.unsubscribe(&acp_session_id, subscription);
+    if let Ok(response) = &outcome {
+        for line in usage_lines(response, &acp_session_id) {
+            emit_line(line);
+        }
+    }
     match outcome {
         Ok(response) if response.get("stopReason").and_then(Value::as_str) == Some("cancelled") => {
             emit(
@@ -560,6 +566,42 @@ async fn run_turn(
             Some(1),
         ),
     }
+}
+
+/// Grok sends no ACP `usage_update`; the turn's bill rides the `session/prompt`
+/// response instead, as an x.ai `_meta.usage` extension shaped like its session
+/// logs. Each billed model becomes one Claude-shape `assistant` line with no
+/// content, which the shared normalizer records as usage, carrying the cost
+/// Grok charged so a repriced SKU never falls back to the rate table.
+fn usage_lines(response: &Value, session_id: &str) -> Vec<Value> {
+    let Some(usage) = response.pointer("/_meta/usage").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let prompt_id = response
+        .pointer("/_meta/promptId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    billed_models(usage)
+        .into_iter()
+        .filter(|model| !model.tokens.is_empty())
+        .map(|model| {
+            json!({
+                "type": "assistant", "session_id": session_id,
+                "message": {
+                    "id": format!("grok-acp:{prompt_id}:{}", model.model_id),
+                    "model": model.model_id,
+                    "content": [],
+                    "usage": {
+                        "input_tokens": model.tokens.input_uncached,
+                        "output_tokens": model.tokens.output,
+                        "cache_read_input_tokens": model.tokens.cache_read,
+                        "cache_creation_input_tokens": model.tokens.cache_write(),
+                    },
+                    "cost_usd": model.cost_usd,
+                }
+            })
+        })
+        .collect()
 }
 
 #[derive(Default)]
@@ -887,6 +929,85 @@ mod tests {
         assert_eq!(grok_effort(ReasoningEffort::Ultra), "xhigh");
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn resumed_grok_selection_sends_model_and_mode_on_each_turn() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-grok-acp");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+id=1
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> requests.jsonl
+  printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
+  id=$((id + 1))
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+        let client = AcpClient::spawn(
+            server.to_str().unwrap(),
+            &[],
+            temp.path(),
+            Vec::<(String, String)>::new(),
+            None,
+            None,
+        )
+        .unwrap();
+        let response = json!({ "models": { "availableModels": [
+            { "modelId": "grok-4.7" }, { "modelId": "grok-4.6" }
+        ] } });
+        let selections = [
+            ("grok-4.7", ReasoningEffort::High, "high"),
+            ("grok-4.7", ReasoningEffort::Low, "low"),
+            ("grok-4.7", ReasoningEffort::High, "high"),
+            ("grok-4.6", ReasoningEffort::High, "high"),
+            ("grok-4.7", ReasoningEffort::High, "high"),
+        ];
+        for (model, effort, _) in selections {
+            let input = ProviderLaunchInput {
+                provider: ProviderId::Grok,
+                session_id: "s".into(),
+                workspace_path: "/tmp".into(),
+                prompt: "p".into(),
+                model_label: model.into(),
+                model_id: model.into(),
+                reasoning_effort: Some(effort),
+                fast_mode: false,
+                resume_conversation_id: Some("native-conversation".into()),
+                resume_fork: false,
+                permission_mode: PermissionMode::ProviderDefaults,
+                agent_mode: AgentMode::Auto,
+                cols: 80,
+                rows: 24,
+            };
+            assert!(is_acp_eligible(&input));
+            select_grok_model(&client, "native-conversation", &input, &response)
+                .await
+                .unwrap();
+        }
+        client.kill();
+        let requests = fs::read_to_string(temp.path().join("requests.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(requests.len(), 10);
+        for (pair, (model, _, expected_mode)) in requests.chunks_exact(2).zip(selections) {
+            assert_eq!(pair[0]["method"], "session/set_model");
+            assert_eq!(pair[0]["params"]["sessionId"], "native-conversation");
+            assert_eq!(pair[0]["params"]["modelId"], model);
+            assert_eq!(pair[1]["method"], "session/set_mode");
+            assert_eq!(pair[1]["params"]["sessionId"], "native-conversation");
+            assert_eq!(pair[1]["params"]["modeId"], expected_mode);
+        }
+    }
+
     #[test]
     fn eligibility_includes_all_modes_except_forks() {
         let mut input = ProviderLaunchInput {
@@ -1060,6 +1181,69 @@ mod tests {
         assert_eq!(normalized.events.len(), 1);
         assert_eq!(normalized.events[0].r#type, "message.completed");
         assert_eq!(normalized.events[0].message, "Final answer");
+    }
+
+    // Grok 1.0.41's `session/prompt` response, trimmed: the turn's bill is only
+    // here, so dropping it left every Grok ACP chat unpriced.
+    #[test]
+    fn grok_prompt_response_usage_is_recorded_at_the_cost_grok_charged() {
+        use crate::providers::normalizer::{
+            normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
+        };
+
+        let response = json!({"stopReason": "end_turn", "_meta": {
+            "promptId": "p1", "modelId": "grok-4.7",
+            "usage": {"inputTokens": 24777, "outputTokens": 24, "cachedReadTokens": 1152,
+                "cacheCreationTokens": 0, "costUsdTicks": 163098000u64,
+                "modelUsage": {"grok-4.7-build": {"inputTokens": 24777, "outputTokens": 24,
+                    "totalTokens": 24801, "cachedReadTokens": 1152, "cacheCreationTokens": 0,
+                    "costUsdTicks": 163098000u64}}}}});
+        let mut translation = GrokTurnTranslation::default();
+        translation.translate(
+            &json!({"update": {"sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": "ok"}}}),
+            "g1",
+        );
+        let mut context = NormalizerSessionContext::for_provider(ProviderId::Grok, "grok-4.7");
+        let mut normalize = |line: Value| {
+            normalize_provider_event(
+                ProviderId::Grok,
+                &ProviderOutputEvent {
+                    session_id: "argmax-1".to_string(),
+                    stream: ProviderOutputStream::Stdout,
+                    message: format!("{line}\n"),
+                    created_at: "2026-09-27T10:00:00.000Z".to_string(),
+                },
+                &mut context,
+            )
+        };
+
+        let lines = usage_lines(&response, "g1");
+        assert_eq!(lines.len(), 1);
+        let usage_line = normalize(lines[0].clone());
+        assert!(usage_line.events.is_empty());
+        let [usage] = usage_line.usages.as_slice() else {
+            panic!("one usage row, got {:?}", usage_line.usages);
+        };
+        assert_eq!(usage.model_id, "grok-4.7-build");
+        assert_eq!(
+            usage.event_id.as_deref(),
+            Some("grok-acp:p1:grok-4.7-build")
+        );
+        assert_eq!(
+            (
+                usage.tokens.input,
+                usage.tokens.cache_read,
+                usage.tokens.output
+            ),
+            (23625, 1152, 24)
+        );
+        assert!((usage.cost_usd - 0.0163098).abs() < 1e-12);
+        assert_eq!(usage.context_tokens, None);
+
+        let result = normalize(translation.success_result("g1"));
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].message, "ok");
     }
 
     // The shape a real ACP turn takes: two answer bursts with a tool call

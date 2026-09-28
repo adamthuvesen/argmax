@@ -445,6 +445,40 @@ describe("App grid", () => {
     expect(within(restoredLauncher).getByLabelText("Task prompt")).toHaveValue("Implement embedded early stop feature");
   });
 
+  it("hands a routed chat stopped early back to the launcher on its Router tier, not the routed model", async () => {
+    window.localStorage.setItem("argmax.newSessionMode", "embedded");
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("region", { name: "Conversation" });
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+
+    const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
+    fireEvent.change(within(launcher).getByLabelText("Task prompt"), { target: { value: "Rename the helper" } });
+
+    createCurrentWorkspace.mockResolvedValue({ ...snapshot.workspaces[0], id: "workspace-2", taskLabel: "Routed task" });
+    launchProvider.mockResolvedValue({
+      ...snapshot.sessions[0],
+      id: "session-routed",
+      workspaceId: "workspace-2",
+      prompt: "Rename the helper",
+      provider: "grok" as const,
+      modelId: "grok-4.7",
+      autoTier: "balanced",
+      startedAt: new Date().toISOString(),
+      state: "running" as const
+    });
+
+    fireEvent.click(within(launcher).getByTitle("Start agent"));
+    const routedPane = await screen.findByRole("region", { name: "Routed task" });
+    fireEvent.click(within(routedPane).getByRole("button", { name: "Stop chat" }));
+
+    await screen.findByRole("region", { name: "New chat for Argmax" });
+    expect(JSON.parse(window.localStorage.getItem("argmax.launch.model") ?? "null")).toMatchObject({
+      autoTier: "balanced"
+    });
+  });
+
   it("opens an agent activity pane from an agent row without showing child prose in the parent chat", async () => {
     window.localStorage.removeItem(CHAT_VERBOSITY_KEY);
     const promptText = "Find the renderer entry points and note the important files before reporting back. ".repeat(9).trim();

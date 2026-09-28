@@ -9,6 +9,7 @@
 import { themeAppearance } from "./theme.js";
 import { readColorToken } from "./pixelField.js";
 import { DEFAULT_BACKGROUND_INTENSITY } from "./backgroundIntensity.js";
+import { isWindowTranslucent } from "./windowTranslucency.js";
 
 const LIGHT_XTERM_THEME = {
   background: "#fbfbfa",
@@ -129,5 +130,18 @@ export function readActiveXtermTheme(): XtermThemeObject {
     const { r, g, b } = readColorToken("--terminal-surface", document.body);
     background = `rgb(${r}, ${g}, ${b})`;
   }
-  return { ...base, background, cursorAccent: background, cursor: readCaretColor(base.cursor) };
+  // A translucent window keeps the colour and drops the alpha: the CSS surface
+  // behind xterm carries the see-through ground, and xterm's contrast lift
+  // reads only the RGB channels, so it still measures against the right shade.
+  const canvas = isWindowTranslucent() ? withZeroAlpha(background) : background;
+  return { ...base, background: canvas, cursorAccent: background, cursor: readCaretColor(base.cursor) };
+}
+
+function withZeroAlpha(color: string): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(color);
+  if (hex) {
+    const value = Number.parseInt(hex[1], 16);
+    return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, 0)`;
+  }
+  return color.replace(/^rgb\((.*)\)$/, "rgba($1, 0)");
 }

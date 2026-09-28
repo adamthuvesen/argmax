@@ -4,7 +4,14 @@ import {
   REASONING_EFFORTS,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
-import { allModelOptions, providerModelKey, type ModelPickerSelection } from "./models.js";
+import {
+  allModelOptions,
+  autoTierKey,
+  autoTierSelection,
+  isAutoTier,
+  providerModelKey,
+  type ModelPickerSelection
+} from "./models.js";
 import { readIdRecency, touchIdRecency } from "./recencyList.js";
 
 /**
@@ -12,7 +19,8 @@ import { readIdRecency, touchIdRecency } from "./recencyList.js";
  * the composer picker). App-global, not per project. Stored as provider +
  * modelId; the label is rebuilt from the catalog on read so a renamed model
  * never shows a stale label, and a model that left the catalog falls back to
- * the built-in default.
+ * the built-in default. An Auto pick also stores its tier, and restores as
+ * that Auto row; whether routing is on is the caller's check.
  *
  * Reads tolerate missing/corrupt values by returning null.
  */
@@ -53,7 +61,8 @@ export function readStoredLaunchModel(): ModelPickerSelection | null {
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;
-  const { provider, modelId } = parsed as Record<string, unknown>;
+  const { provider, modelId, autoTier } = parsed as Record<string, unknown>;
+  if (isAutoTier(autoTier)) return autoTierSelection(autoTier);
   const option = allModelOptions.find(
     (candidate) => candidate.provider === provider && candidate.modelId === modelId
   );
@@ -69,13 +78,26 @@ export function readStoredLaunchModel(): ModelPickerSelection | null {
   return selection;
 }
 
+/** The stored pick for surfaces that launch without routing (arcs): an Auto
+ *  pick reads as unset there, so they fall back to the normal default. */
+export function readStoredManualLaunchModel(): ModelPickerSelection | null {
+  const stored = readStoredLaunchModel();
+  return stored?.autoTier ? null : stored;
+}
+
 export function persistLaunchModel(model: ModelPickerSelection): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     LAUNCH_MODEL_KEY,
-    JSON.stringify({ provider: model.provider, modelId: model.modelId })
+    JSON.stringify({
+      provider: model.provider,
+      modelId: model.modelId,
+      ...(model.autoTier ? { autoTier: model.autoTier } : {})
+    })
   );
   persistLaunchModelRecency(model);
+  // An Auto row's effort is the router's fallback, not a choice.
+  if (model.autoTier) return;
   // An effort that isn't what this model resolves to under the current default
   // is an explicit choice, so it becomes the new app-wide default. An effort
   // that only differs because the model can't offer the stored one is a
@@ -88,8 +110,10 @@ export function persistLaunchModel(model: ModelPickerSelection): void {
   }
 }
 
-function persistLaunchModelRecency(model: Pick<ModelPickerSelection, "provider" | "modelId">): void {
-  touchIdRecency(LAUNCH_MODEL_RECENCY_KEY, providerModelKey(model));
+function persistLaunchModelRecency(
+  model: Pick<ModelPickerSelection, "provider" | "modelId" | "autoTier">
+): void {
+  touchIdRecency(LAUNCH_MODEL_RECENCY_KEY, model.autoTier ? autoTierKey(model.autoTier) : providerModelKey(model));
 }
 
 export function readLaunchModelRecency(): string[] {

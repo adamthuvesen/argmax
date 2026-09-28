@@ -75,6 +75,8 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
     costUsd: 100,
     cacheSavingsUsd: 4.35,
     costSource: "list_price",
+    estimatedCostUsd: 0,
+    estimatedTokens: 0,
     // A quieter window before this one, so the comparison reads as $100 up
     // 34% on $74.50.
     previous: {

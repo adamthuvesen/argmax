@@ -534,6 +534,165 @@
   border-radius: var(--radius-lg);
 }
 
+/* ---------- Run-at picker (RunAtPicker.tsx) ----------
+   The trigger is the picker trigger with a leading calendar glyph; the popover
+   is the shared picker shell holding a month grid and a time row. */
+.run-at-trigger {
+  justify-content: flex-start;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-at-trigger > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.run-at-trigger > .settings-picker-trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-at-trigger > .settings-picker-trigger-label[data-empty] {
+  color: var(--muted);
+}
+
+/* The shell's height cap is for scrolling lists; a month and its time row
+   are one fixed block, so they never scroll or clip. */
+.project-picker-popover.run-at-popover {
+  width: 272px;
+  max-height: none;
+  padding: var(--space-3);
+  overflow: visible;
+}
+
+.run-at-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-1) var(--space-2);
+}
+
+.run-at-month {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+
+.run-at-nav {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--text-soft);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.run-at-nav:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--row-hover);
+}
+
+.run-at-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.run-at-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.run-at-weekday {
+  padding-bottom: var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  text-align: center;
+  color: var(--muted);
+}
+
+.run-at-day {
+  height: 32px;
+  padding: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.run-at-day:hover:not(:disabled, [aria-pressed="true"]) {
+  background: var(--row-hover);
+}
+
+.run-at-day:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Today is marked by colour alone; a filled cell is only ever the choice. */
+.run-at-day[data-today] {
+  font-weight: var(--weight-medium);
+  color: var(--accent);
+}
+
+.run-at-day[aria-pressed="true"] {
+  font-weight: var(--weight-medium);
+  color: var(--bubble-on-ink);
+  background: var(--accent);
+}
+
+.run-at-day:disabled {
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.run-at-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-soft);
+}
+
+.run-at-time-label {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-soft);
+}
+
+.run-at-time,
+.run-at-done {
+  height: 28px;
+}
+
+.run-at-time {
+  width: auto;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-at-done {
+  padding: 0 var(--space-3);
+}
+
 /* ---------- Form footer ---------- */
 
 .sched-actions {

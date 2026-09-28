@@ -18,6 +18,7 @@ import { tryFit } from "./xtermFit.js";
 import { resolveMonoFontStack, resolveTerminalFontSize } from "./fonts.js";
 import type { TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { readActiveXtermTheme } from "./xtermTheme.js";
+import { WINDOW_TRANSLUCENT_ATTRIBUTE } from "./windowTranslucency.js";
 import { errorMessage } from "../../shared/error.js";
 import { claimAgentTerminalReplay, registerTerminalTabDisposer } from "./terminalTabs.js";
 import "@xterm/xterm/css/xterm.css";
@@ -124,7 +125,7 @@ export function attachTerminalTab(
     }
     // Theme/font may have changed while detached without a repaint.
     syncTerminalAppearance(existing.term);
-    tryFit(existing.fit);
+    tryFit(existing.term, existing.fit);
     return existing;
   }
 
@@ -146,6 +147,8 @@ export function attachTerminalTab(
     cursorInactiveStyle: "outline",
     cursorBlink: true,
     theme: readActiveXtermTheme(),
+    // Needed for the translucent window, where the theme background is clear.
+    allowTransparency: true,
     // Shell prompts often emit truecolor picked for another terminal's
     // background (e.g. a starship palette synced to the OS theme, not ours),
     // so the theme palette alone can't guarantee readable text. Let xterm
@@ -185,18 +188,25 @@ export function attachTerminalTab(
   // not the component, so a detached terminal picks up theme changes too.
   const appearanceObserver = new MutationObserver(() => {
     syncTerminalAppearance(term);
-    tryFit(fit);
+    tryFit(term, fit);
     syncTerminalSize(entry);
   });
   appearanceObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-accent", "data-background-intensity", "data-font", "data-font-size"]
+    attributeFilter: [
+      "data-theme",
+      "data-accent",
+      "data-background-intensity",
+      "data-font",
+      "data-font-size",
+      WINDOW_TRANSLUCENT_ATTRIBUTE
+    ]
   });
   entry.cleanups.push(() => appearanceObserver.disconnect());
 
   // Initial fit before spawn so cols/rows match what the user will see.
   // The component's ResizeObserver retries once the container has dimensions.
-  tryFit(fit);
+  tryFit(term, fit);
   const { cols, rows } = boundedTerminalSize(term);
 
   const pendingData = new Map<string, string[]>();

@@ -126,6 +126,26 @@ enum InsightsFormat {
         }
     }
 
+    /// `4.2s`, `48s`, `1m 12s`, `—` — Router median times: tenths under ten
+    /// seconds, where a first answer usually lands, then the desktop's
+    /// `formatElapsedSeconds` stopwatch shape.
+    static func seconds(_ value: Double?) -> String {
+        guard let value, value.isFinite, value >= 0 else { return "—" }
+        if value < 10 { return String(format: "%.1fs", value) }
+        let total = Int(value)
+        if total < 60 { return "\(total)s" }
+        let minutes = total / 60
+        if minutes < 60 { return "\(minutes)m \(total % 60)s" }
+        return "\(minutes / 60)h \(minutes % 60)m"
+    }
+
+    /// `$3.10`, `≈$0.42`, `<$0.01` — Router spend. `≈` marks a figure built
+    /// on a Cursor transcript estimate; a sub-cent turn is not `$0.00`.
+    static func routerCost(_ usd: Double, estimated: Bool) -> String {
+        let text = usd > 0 && usd < 0.01 ? "<\(usdFull(0.01))" : usdFull(usd)
+        return estimated ? "≈\(text)" : text
+    }
+
     /// `Sep 11` — card subtitles and review dates.
     static func shortDay(_ iso: String?) -> String {
         guard let iso, let date = parse(iso) else { return "—" }
@@ -168,6 +188,17 @@ enum InsightsPalette {
             Theme.dynamic(light: 0x96_54_93, dark: 0xAA_64_B3)
         )
         default: return Theme.muted
+        }
+    }
+
+    /// Router tiers, strongest to fastest: violet, blue, sage. Keyed by the
+    /// wire tier so a tier keeps its hue whichever tiers the window has.
+    static func tier(_ id: String) -> Color {
+        switch AutoTier(rawValue: id) {
+        case .intelligence: return Theme.violet
+        case .balanced: return Color(Theme.activityBlueColor)
+        case .cost: return Theme.sage
+        case nil: return Theme.muted
         }
     }
 

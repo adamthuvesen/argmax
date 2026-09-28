@@ -484,6 +484,15 @@ impl TerminalService {
         summaries
     }
 
+    /// Whether this id's shell is still running. The exit watcher drops the
+    /// entry only after the reader drains, so a reaped entry is already dead.
+    pub fn is_live(&self, terminal_id: &str) -> bool {
+        self.terminals
+            .lock_or_recover("terminals")
+            .get(terminal_id)
+            .is_some_and(|entry| !entry.reaped.load(Ordering::Acquire))
+    }
+
     pub fn has_live_workspace_terminal(&self, workspace_id: &str) -> bool {
         self.terminals
             .lock_or_recover("terminals")
@@ -540,19 +549,23 @@ impl TerminalService {
     /// write itself belongs to the terminal's own thread.
     ///
     /// A write that failed against a live PTY is reported here on the next
-    /// call — a keystroke swallowed by a live PTY is a bug worth seeing. An
-    /// unknown id stays a no-op: `spawn_reader_thread` removes the entry
-    /// before it emits `terminal:exit`, so every keystroke between a shell
-    /// exiting and the renderer disposing its input handler would otherwise
-    /// raise one.
-    pub fn write(&self, terminal_id: &str, data: &[u8]) -> ArgmaxResult<()> {
+    /// call — a keystroke swallowed by a live PTY is a bug worth seeing. A
+    /// write to a shell that is gone (unknown id, reaped, or writer thread
+    /// finished) is `Ok(false)` rather than an error: `spawn_reader_thread`
+    /// removes the entry before it emits `terminal:exit`, so every keystroke
+    /// between a shell exiting and the renderer disposing its input handler
+    /// would otherwise raise one. Agent tools read the `false` and report it.
+    pub fn write(&self, terminal_id: &str, data: &[u8]) -> ArgmaxResult<bool> {
         // Clone the queue handle and drop the map lock before sending, so this
         // never contends with another terminal's output, resize, or terminate.
         let input = {
             let terminals = self.terminals.lock_or_recover("terminals");
-            terminals.get(terminal_id).map(|entry| entry.input.clone())
+            terminals
+                .get(terminal_id)
+                .filter(|entry| !entry.reaped.load(Ordering::Acquire))
+                .map(|entry| entry.input.clone())
         };
-        let Some(input) = input else { return Ok(()) };
+        let Some(input) = input else { return Ok(false) };
         if let Some(error) = input
             .failure
             .lock_or_recover("terminal write failure")
@@ -561,9 +574,8 @@ impl TerminalService {
             return Err(ArgmaxError::service("TERMINAL_WRITE_FAILED", error));
         }
         // A closed queue means the writer thread is gone — the shell exited
-        // between the lookup and the send. Same no-op as an unknown id.
-        let _ = input.sender.send(data.to_vec());
-        Ok(())
+        // between the lookup and the send. Same as an unknown id.
+        Ok(input.sender.send(data.to_vec()).is_ok())
     }
 
     /// Resize the PTY for the live terminal. No-op on unknown ids.
@@ -1192,6 +1204,10 @@ mod tests {
         })
         .await
         .expect("child wait did not set the reaped guard");
+        // The entry is still in the map until the reader drains, but the shell
+        // is dead: an agent's terminal_write must not report success here.
+        assert!(!svc.is_live(&result.terminal_id));
+        assert!(!svc.write(&result.terminal_id, b"late\n").unwrap());
         assert!(
             matches!(exit_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)),
             "exit must wait until the final output callback returns"

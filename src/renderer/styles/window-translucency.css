@@ -1,0 +1,316 @@
+/* Translucent window. Everything the mode does lives in this file.
+
+   The window is transparent and macOS draws its sidebar vibrancy behind the
+   webview (tauri.conf.json `windowEffects`), so wherever the page paints
+   nothing the desktop shows through, blurred by the system.
+   lib/windowTranslucency.ts turns the mode on by setting
+   `data-window-translucent` and `--window-translucency` (the slider, in %) on
+   <html>, beside the theme and accent attributes; without that attribute
+   nothing below applies and the app paints exactly as before.
+
+   The mode works on tokens, not on components. Inside the app shell the
+   surface tokens are rebound to thinned copies of themselves, so every page,
+   panel and card that paints from them goes translucent without knowing about
+   it. Four lists then handle what a token cannot:
+     1. solid islands: menus, dialogs, tooltips and the Browser page keep full paint;
+     2. layers that clear: a full-bleed box painting the same ground as the box
+        under it would double the film, so the inner one goes clear;
+     3. frosted chrome: sticky headers and floating cards over scrolling
+        content blur what passes under them;
+     4. scroll edges: painted scrims become masks.
+   A new surface needs nothing here as long as it paints from a token; a new
+   menu or full-bleed pane needs one line in the matching list. */
+
+/* ---- Levels ----
+   Grounds (page, sidebars, panels) take the slider as it is. Light takes it
+   further: its backdrop is a pale frosted grey, so the film that reads as
+   tinted glass in dark reads as fog on paper.
+   Surfaces raised off a ground (cards, selection, blocks) always sit
+   on that film, so their own film stacks on it: what shows is
+   1 - (1 - ground) * (1 - surface). They take a thinner film than the ground
+   so a card is a step up from the page, not a slab: at 50% on the slider the
+   page is 50% opaque and a card on it about 65%. A 0.6 share once put every
+   card at 85%, and pages made mostly of cards (Usage, Settings, an Arc) read
+   as solid. Composers (launcher and session input) use 0.85× ground instead:
+   they float on clear workspace glass, so the card film was too thin and the
+   field washed out over vibrancy. */
+:root[data-window-translucent="true"] {
+  --window-ground-translucency: var(--window-translucency, 0%);
+  --window-surface-translucency: min(calc(var(--window-ground-translucency) * 1.4), 90%);
+  /* Composers are the live typing surface: they sit over clear workspace glass,
+     not over a thinned panel, so the surface film reads washed out. Keep more
+     of the solid fill than cards do (0.85× ground vs 1.4×). */
+  --window-composer-translucency: min(calc(var(--window-ground-translucency) * 0.85), 80%);
+}
+
+:root[data-window-translucent="true"]:not([data-theme="dark"]) {
+  --window-ground-translucency: calc(var(--window-translucency, 0%) * 1.25);
+}
+
+/* ---- Tokens ----
+   The solid values, resolved on the root so the shell can thin them without
+   a token referring to itself. Anything outside the shell (portaled menus,
+   the command palette, modals) keeps reading the solid tokens.
+   A token derived from these on :root (the composer chips and tray) was
+   resolved there, from the solid values, and inherits as that colour; it has
+   to be listed here too or it stays opaque. */
+:root {
+  --bg-solid: var(--bg);
+  --sidebar-solid: var(--sidebar);
+  --review-panel-solid: var(--review-panel);
+  --review-sidebar-solid: var(--review-sidebar);
+  --panel-solid: var(--panel);
+  --panel-soft-solid: var(--panel-soft);
+  --panel-sunken-solid: var(--panel-sunken);
+  --composer-surface-solid: var(--composer-surface);
+  --row-selected-solid: var(--row-selected);
+  --code-surface-solid: var(--code-surface);
+  --tool-block-surface-solid: var(--tool-block-surface);
+  --user-message-bg-solid: var(--user-message-bg);
+  --composer-chip-solid: var(--composer-chip);
+  --composer-chip-hover-solid: var(--composer-chip-hover);
+  --composer-tray-solid: var(--composer-tray);
+  --overlay-panel-solid: var(--overlay-panel);
+  --line-solid: var(--line);
+  --line-soft-solid: var(--line-soft);
+  --line-strong-solid: var(--line-strong);
+}
+
+:root[data-window-translucent="true"] .app-shell {
+  --bg: color-mix(in srgb, var(--bg-solid) calc(100% - var(--window-ground-translucency)), transparent);
+  --sidebar: color-mix(in srgb, var(--sidebar-solid) calc(100% - var(--window-ground-translucency)), transparent);
+  --review-panel: color-mix(in srgb, var(--review-panel-solid) calc(100% - var(--window-ground-translucency)), transparent);
+  --review-sidebar: color-mix(in srgb, var(--review-sidebar-solid) calc(100% - var(--window-ground-translucency)), transparent);
+  --panel: color-mix(in srgb, var(--panel-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --panel-soft: color-mix(in srgb, var(--panel-soft-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --panel-sunken: color-mix(in srgb, var(--panel-sunken-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --composer-surface: color-mix(in srgb, var(--composer-surface-solid) calc(100% - var(--window-composer-translucency)), transparent);
+  --row-selected: color-mix(in srgb, var(--row-selected-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --code-surface: color-mix(in srgb, var(--code-surface-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --tool-block-surface: color-mix(in srgb, var(--tool-block-surface-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  --user-message-bg: color-mix(in srgb, var(--user-message-bg-solid) calc(100% - var(--window-surface-translucency)), transparent);
+  /* A chip is only a few ink points off the card, and thinning both by alpha
+     scales that step toward zero, so over a bright desktop the pills vanish.
+     An ink wash lifts by the same amount over whatever shows through. */
+  --composer-chip: color-mix(in srgb, var(--text) 7%, transparent);
+  --composer-chip-hover: color-mix(in srgb, var(--text) 11%, transparent);
+  --composer-tray: color-mix(in srgb, var(--composer-tray-solid) calc(100% - var(--window-composer-translucency)), transparent);
+  /* Hairlines stay opaque while grounds thin, so a 1px border stacks as a dark
+     band over glass (sidebar footer, panel strips). Thin the shipped strokes. */
+  --line: color-mix(in oklab, var(--line-solid) 52%, transparent);
+  --line-soft: color-mix(in oklab, var(--line-soft-solid) 44%, transparent);
+  --line-strong: color-mix(in oklab, var(--line-strong-solid) 58%, transparent);
+}
+
+/* Dark wells lift instead of sinking. `--panel-sunken` is the darkest colour
+   in the dark palette, there to cut a well into charcoal; over glass even a
+   thin film of it is a black slot (search fields, inputs, segmented tracks).
+   A light ink film marks the same well the way the row hover does. Paper's
+   sunken grey already sits close to its ground, so light keeps the thinned
+   token. */
+:root[data-window-translucent="true"][data-theme="dark"] .app-shell {
+  --panel-sunken: color-mix(in srgb, var(--text) 7%, transparent);
+  /* Charcoal strokes read black over vibrancy; ink hairlines match the lifted wells. */
+  --line: color-mix(in oklab, var(--text) 11%, transparent);
+  --line-soft: color-mix(in oklab, var(--text) 7%, transparent);
+  --line-strong: color-mix(in oklab, var(--text) 15%, transparent);
+  --composer-chip: color-mix(in srgb, var(--text) 10%, transparent);
+  --composer-chip-hover: color-mix(in srgb, var(--text) 15%, transparent);
+}
+
+/* The turn's changes card sinks half a step toward `--code-surface`, which
+   dark resolves from the solid sunken well, so the rule above never reaches
+   it and the card reads as a black slab under the reply. It lifts the same
+   way, thinner than a field so the row hover still reads as a step. */
+:root[data-window-translucent="true"][data-theme="dark"] .turn-changes {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+/* An accent bubble carries white text; thinned over the pale backdrop it
+   fades toward the text's own colour. Only the neutral bubble thins in light. */
+:root[data-window-translucent="true"]:not([data-theme="dark"]):not([data-user-bubble="neutral"]) .app-shell {
+  --user-message-bg: var(--user-message-bg-solid);
+}
+
+/* ---- 1. Solid islands ----
+   Floating things are read over whatever is behind them, so they keep full
+   paint. (The Browser's address suggestions are a dialog, so they are here.) */
+:root[data-window-translucent="true"] .app-shell :is(
+    [role="menu"],
+    [role="listbox"],
+    [role="dialog"],
+    [role="tooltip"],
+    .slash-menu,
+    .file-preview-popover,
+    .selection-toolbar,
+    .workspace-card-pr-actions-menu
+  ) {
+  --bg: var(--bg-solid);
+  --sidebar: var(--sidebar-solid);
+  --review-panel: var(--review-panel-solid);
+  --review-sidebar: var(--review-sidebar-solid);
+  --panel: var(--panel-solid);
+  --panel-soft: var(--panel-soft-solid);
+  --panel-sunken: var(--panel-sunken-solid);
+  --composer-surface: var(--composer-surface-solid);
+  --row-selected: var(--row-selected-solid);
+  --code-surface: var(--code-surface-solid);
+  --tool-block-surface: var(--tool-block-surface-solid);
+  --composer-chip: var(--composer-chip-solid);
+  --composer-chip-hover: var(--composer-chip-hover-solid);
+  --composer-tray: var(--composer-tray-solid);
+}
+
+/* In dark the solid fill is near black, and the glass behind a menu reads a
+   few steps lighter than the charcoal it replaced, so the island read as a
+   hole. Lift it a little toward the ink: still darker than the glass, no
+   longer black. Most menus portal out of the shell, so this is not scoped to
+   it; the island list above has lower specificity and loses to this. */
+:root[data-window-translucent="true"][data-theme="dark"] :is(
+    [role="menu"],
+    [role="listbox"],
+    [role="dialog"],
+    [role="tooltip"],
+    .project-picker-popover,
+    .command-palette,
+    .slash-menu,
+    .file-preview-popover,
+    .selection-toolbar,
+    .workspace-card-pr-actions-menu
+  ) {
+  --panel: color-mix(in oklab, var(--panel-solid), var(--text) 5%);
+  --overlay-panel: color-mix(in oklab, var(--overlay-panel-solid), var(--text) 5%);
+}
+
+/* The Browser's page is a native webview and cannot go translucent. Its
+   chrome does, and the well it sits in keeps the solid panel paint so the
+   area the page loads into never flashes glass before or around the view. */
+:root[data-window-translucent="true"] .browser-panel-surface {
+  background: var(--review-panel-solid);
+}
+
+/* ---- 2. Layers that clear ----
+   The canvas takes the root element's background (tokens.css paints `--bg` on
+   :root), so the root has to go clear or nothing below it matters. The shell
+   leaves the ground to its columns. Every ground inside the workspace clears,
+   because the workspace already carries one film and a second reads as a
+   darker slab: the review panel, its file-tree column and panes sit on the
+   workspace's glass and are told apart by their hairlines, and the terminal
+   gives up its darker well the same way. The panel's strips (the file and
+   agent tab bar, the status bar, the footer) are drawn by their hairline, so
+   they clear too rather than lay a band across the glass, and so do the
+   Browser's tab strip, toolbar and find bar. The film count under any point is
+   one per column, never more (a probe in the demo that multiplies the
+   background alphas up the ancestor chain is how to check it). */
+:root[data-window-translucent="true"],
+:root[data-window-translucent="true"] body,
+:root[data-window-translucent="true"] .app-shell,
+:root[data-window-translucent="true"] .session-multigrid,
+:root[data-window-translucent="true"] .session-multigrid-cell,
+:root[data-window-translucent="true"] .review-panel,
+:root[data-window-translucent="true"] .review-panel-pane,
+:root[data-window-translucent="true"] .review-list-col,
+:root[data-window-translucent="true"] .file-tabs-shell,
+:root[data-window-translucent="true"] .review-status-bar,
+:root[data-window-translucent="true"] .review-footer,
+:root[data-window-translucent="true"] .browser-panel,
+:root[data-window-translucent="true"] .browser-page,
+:root[data-window-translucent="true"] .browser-tab-strip,
+:root[data-window-translucent="true"] .browser-panel-toolbar,
+:root[data-window-translucent="true"] .browser-find-bar,
+:root[data-window-translucent="true"] .terminal-tab-bodies,
+:root[data-window-translucent="true"] .terminal-surface {
+  background: transparent;
+}
+
+/* A subagent's emblem masks the thread spine with `--thread-surface`, which is
+   the thinned ground itself, so the mark stacked a second film and read as a
+   dark tile. The spine's segments already stop short of the mark, so the mask
+   can go. A backgrounded launch keeps its tinted nest (chat-timeline.css). */
+:root[data-window-translucent="true"] .turn-body-item[data-activity] .agent-launch-mark {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* The paper highlights go: over the backdrop they read as a lighter patch at
+   the top of the pane rather than as light on paper. A background image has
+   to stay, though, even an empty one. With a plain colour WebKit hands the
+   ground to the compositor, and once a page inside is long enough to scroll
+   the scrolling layer is filled with that colour a second time: the film
+   doubles (50% became 75%) and the page goes dark the moment its content
+   outgrows the pane. Computed styles and WKWebView snapshots both still say
+   50%; only a capture of the on-screen window shows it. */
+:root[data-window-translucent="true"] .workspace {
+  background-image: linear-gradient(transparent, transparent);
+}
+
+/* The grid's row hairlines are its `--line` backdrop showing through the 1px
+   gap between cells. With the grid clear, each lower row draws the hairline
+   into the gap above it instead. Column dividers already paint their own. */
+:root[data-window-translucent="true"] .session-multigrid-row + .session-multigrid-row {
+  box-shadow: 0 -1px var(--line);
+}
+
+/* Sticky headers keep only their blur: a tint on top of the workspace's film
+   is a second film and reads as a dark band across the panel or card. */
+:root[data-window-translucent="true"] :is(
+    .file-preview-heading,
+    .workspace-tree-sticky,
+    .usage-table thead th,
+    .debug-table th
+  ) {
+  background: transparent;
+}
+
+/* ---- 3. Frosted chrome ----
+   Content scrolls under these, and a thin film alone would leave two layers
+   of text overlapping. The sidebar is here only while collapsed, for its peek
+   overlay that floats over the workspace. Docked, nothing of the page lies
+   under it, and the filter would only re-blur the window's vibrancy: WebKit
+   re-samples that every frame of a window drag, and the blur reaching past the
+   sidebar's edge flashes a dark band along the separator. Per-line diff
+   gutters are left out on purpose: a backdrop filter on every line is too
+   costly for what it buys. */
+:root[data-window-translucent="true"] :is(
+    .app-shell[data-sidebar-collapsed="true"] .sidebar,
+    .workspace-card,
+    .rail-heading,
+    .workspace-tree-sticky,
+    .file-preview-heading,
+    .usage-table thead th,
+    .debug-table th
+  ) {
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+  backdrop-filter: blur(18px) saturate(1.08);
+}
+
+/* ---- 4. Scroll edges ----
+   A painted scrim over a translucent ground is a dark band, since it stacks
+   the fill on top of itself at each edge. Dissolve the scrolling content
+   through a mask instead, which takes nothing but its own pixels. The sidebar
+   and settings rail mask their `.scroll-fade` wrapper, so sticky rail headings
+   fade with the rows at the very edge. The transcript masks the scroller
+   inside its wrapper: the workspace card and the scroll-to-latest button are
+   the wrapper's children and must not fade. The standalone pages lose their
+   edge fade; it is an overlay with no content of its own to mask. */
+:root[data-window-translucent="true"] .scroll-fade::before,
+:root[data-window-translucent="true"] .scroll-fade::after {
+  display: none;
+}
+
+:root[data-window-translucent="true"] :is(.project-list-scroll, .settings-rail-scroll, .conversation-list) {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--scroll-edge-fade),
+    black calc(100% - var(--scroll-edge-fade)),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--scroll-edge-fade),
+    black calc(100% - var(--scroll-edge-fade)),
+    transparent
+  );
+}

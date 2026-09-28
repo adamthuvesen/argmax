@@ -13,6 +13,7 @@ import {
   Contrast,
   Columns2,
   Files,
+  Layers,
   ListTree,
   Monitor,
   MoonStar,
@@ -93,6 +94,8 @@ export type SettingCommandsInput = {
   onTurnChangesExpandedChange: (expanded: boolean) => void;
   contextIndicatorEnabled: boolean;
   onContextIndicatorEnabledChange: (enabled: boolean) => void;
+  windowTranslucent: boolean;
+  onWindowTranslucentChange: (enabled: boolean) => void;
 };
 
 const THEME_ICON: Record<ThemeMode, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
@@ -356,6 +359,14 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       group: "Actions",
       icon: input.contextIndicatorEnabled ? Moon : MoonStar,
       run: () => input.onContextIndicatorEnabledChange(!input.contextIndicatorEnabled)
+    },
+    {
+      id: `setting:translucent-window:${input.windowTranslucent ? "disable" : "enable"}`,
+      label: `${input.windowTranslucent ? "Disable" : "Enable"} translucent window`,
+      subtitle: "Let the desktop show through the app, blurred by macOS",
+      group: "Actions",
+      icon: Layers,
+      run: () => input.onWindowTranslucentChange(!input.windowTranslucent)
     }
   ];
 

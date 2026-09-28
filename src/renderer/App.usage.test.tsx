@@ -161,7 +161,7 @@ describe("App usage", () => {
     const table = screen.getByRole("table", { name: "Usage by model" });
     expect(within(table).queryByRole("row", { name: /gpt-5\.6-terra/ })).not.toBeInTheDocument();
     expect(within(table).getByRole("row", { name: /claude-opus-5/ })).toBeInTheDocument();
-    // Cursor has nothing to narrow to, so it is not a button.
+    // A provider with no usage source has nothing to narrow to, so it is not a button.
     expect(within(rows).queryByRole("button", { name: /Cursor/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show all" }));
@@ -177,7 +177,7 @@ describe("App usage", () => {
     expect(picker).toHaveTextContent("All providers");
 
     fireEvent.click(picker);
-    // Cursor keeps no local usage, so it is listed but cannot be chosen.
+    // A provider with no usage source is listed but cannot be chosen.
     expect(screen.getByRole("option", { name: "Cursor" })).toHaveAttribute("aria-disabled", "true");
     pickOption("Codex");
 
@@ -248,7 +248,7 @@ describe("App usage", () => {
     expect(sessionsHeader).toHaveAttribute("aria-sort", "ascending");
   });
 
-  it("says Cursor has no local usage source instead of showing it $0", async () => {
+  it("says a provider has no usage source instead of showing it $0", async () => {
     await openUsage();
 
     const rows = await screen.findByRole("list", { name: "Usage by provider" });
@@ -256,6 +256,26 @@ describe("App usage", () => {
     expect(cursor).not.toBeNull();
     expect(within(cursor as HTMLElement).getByText("No local usage data")).toBeInTheDocument();
     expect(within(cursor as HTMLElement).queryByText("$0.00")).not.toBeInTheDocument();
+  });
+
+  it("marks Cursor's figures as estimates and says how much of the total they are", async () => {
+    const base = usageSummaryFixture();
+    usageSummary.mockResolvedValue(
+      usageSummaryFixture({
+        estimatedCostUsd: 2.4,
+        estimatedTokens: 90_000,
+        providers: base.providers.map((row) =>
+          row.provider === "cursor"
+            ? { ...row, available: true, sessions: 3, costUsd: 2.4, costSource: "estimated" }
+            : row
+        )
+      })
+    );
+    await openUsage();
+
+    const rows = await screen.findByRole("list", { name: "Usage by provider" });
+    expect(within(rows).getByRole("button", { name: /Cursor/ })).toHaveTextContent("≈$2.40");
+    expect(within(usagePage()).getByText("≈$2.40 estimated for Cursor")).toBeInTheDocument();
   });
 
   it("shows remaining usage per provider under the local spend", async () => {

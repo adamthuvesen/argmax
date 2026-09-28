@@ -127,6 +127,11 @@
   box-shadow: inset 0 0 0 1px var(--composer-edge),
     0 1px 2px rgba(31, 28, 24, 0.04), 0 8px 24px rgba(31, 28, 24, 0.05);
   transition: box-shadow var(--duration-base) var(--ease);
+  /* Chip labels and icons are controls, not prose. Opt textarea/input back in
+     so a drag across the toolbar does not sweep up model or branch names with
+     the prompt — same idea as .sidebar / .session-rename-input. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .composer-drop-overlay {
@@ -225,6 +230,8 @@
   resize: none;
   overflow-x: hidden;
   overflow-y: hidden;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .composer-input textarea {
@@ -680,6 +687,160 @@ body > .picker-popover-portaled.settings-picker-popover {
 
 .model-picker-cluster--chip:hover {
   background: var(--composer-chip-hover);
+}
+
+/* ---- Router switch ----
+   When the router moves a chat to another model or effort, the words that
+   changed roll (up for a stronger pick, down for a lighter one) and a
+   stronger pick borrows the effort slider's heat: the pill flushes, one halo
+   blooms out from it, brighter the higher the effort, and the new effort lands
+   in the accent before cooling to chip ink. A fresh launch unfolds the
+   router's pick out of the tier name with the flush alone. One shot per
+   switch; every piece takes a negative animation-delay so a chip remounted
+   mid-switch picks the motion up where it is. Durations come inline from
+   routeSwitchPace (lib/routeSwitch.ts), one pace for every switch.
+
+   Smooth over lively: one decelerating curve for every piece, no overshoot,
+   no scale on anything that holds text (a dip of the pill shook the label),
+   and a halo that grows the same few pixels on every side. Transform and
+   opacity, apart from the changed words' width and the effort word's colour.
+   See docs/design/router-switch. */
+.model-picker-cluster--chip {
+  position: relative;
+  isolation: isolate;
+  --route-switch-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.route-switch-flush,
+.route-switch-ring {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.route-switch-flush {
+  --route-flush-peak: 0.14;
+  background: var(--accent);
+  animation: route-switch-flush 1800ms ease-in-out both;
+}
+
+.route-switch-flush[data-heat="high"] {
+  --route-flush-peak: 0.17;
+}
+
+.route-switch-flush:is([data-heat="xhigh"], [data-heat="max"], [data-heat="ultra"]) {
+  --route-flush-peak: 0.22;
+}
+
+.route-switch-ring {
+  --route-halo-peak: 0.55;
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 14px color-mix(in oklab, var(--accent) 60%, transparent);
+  animation: route-switch-ring 1400ms var(--route-switch-ease) both;
+}
+
+.route-switch-ring:is([data-heat="xhigh"], [data-heat="max"], [data-heat="ultra"]) {
+  --route-halo-peak: 0.8;
+}
+
+@keyframes route-switch-flush {
+  0% { opacity: 0; }
+  35% { opacity: var(--route-flush-peak); }
+  100% { opacity: 0; }
+}
+
+/* Wider than tall in proportion, so the halo clears the pill by about the
+   same few pixels all round rather than stretching off its ends. */
+@keyframes route-switch-ring {
+  0% { transform: scale(1); opacity: 0; }
+  20% { opacity: var(--route-halo-peak); }
+  100% { transform: scale(1.03, 1.22); opacity: 0; }
+}
+
+.effort-slider-chip .model-picker-label[data-route-heat] {
+  animation: route-switch-heat-ink 2800ms ease-in-out both;
+}
+
+@keyframes route-switch-heat-ink {
+  0%, 40% { color: var(--accent); }
+}
+
+/* The changed words: the leaving ones lie over the arriving ones, and the
+   box clips both to one line while RollingText eases its width. The two
+   cross over part of the way rather than a full line apart, and the leaving
+   words are gone before the arriving ones settle, so the pair never reads as
+   two lines at once. */
+.rolling-text {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  white-space: pre;
+  /* The chips are buttons, which centre their text: inherited here, the
+     arriving words drifted sideways as the box's width eased around them. */
+  text-align: start;
+}
+
+.rolling-text-out {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.rolling-text-out::before {
+  content: attr(data-text);
+}
+
+.rolling-text-out,
+.rolling-text-in {
+  display: inline-block;
+  animation-duration: 900ms;
+  animation-fill-mode: both;
+  animation-timing-function: var(--route-switch-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.rolling-text[data-direction="up"] > .rolling-text-out { animation-name: rolling-text-out-up; }
+.rolling-text[data-direction="up"] > .rolling-text-in { animation-name: rolling-text-in-up; }
+.rolling-text[data-direction="down"] > .rolling-text-out { animation-name: rolling-text-out-down; }
+.rolling-text[data-direction="down"] > .rolling-text-in { animation-name: rolling-text-in-down; }
+
+@keyframes rolling-text-out-up {
+  0% { transform: translateY(0); opacity: 1; }
+  45% { opacity: 0; }
+  100% { transform: translateY(-60%); opacity: 0; }
+}
+
+@keyframes rolling-text-in-up {
+  0% { transform: translateY(60%); opacity: 0; }
+  15% { opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes rolling-text-out-down {
+  0% { transform: translateY(0); opacity: 1; }
+  45% { opacity: 0; }
+  100% { transform: translateY(60%); opacity: 0; }
+}
+
+@keyframes rolling-text-in-down {
+  0% { transform: translateY(-60%); opacity: 0; }
+  15% { opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-switch-flush,
+  .route-switch-ring {
+    display: none;
+  }
+
+  .effort-slider-chip .model-picker-label[data-route-heat] {
+    animation: none;
+  }
 }
 
 .effort-slider-anchor {
@@ -1480,6 +1641,14 @@ body > .picker-popover-portaled.settings-picker-popover {
    instead of overflowing the toolbar at the popup's minimum width. */
 .details-popup .session-input-toolbar .composer-chips-model {
   flex-shrink: 1;
+}
+
+/* Below its 600px container query the toolbar becomes a grid with a fixed
+   attach column; with no attach button here that empty track pushed the model
+   chip off the left edge. Only takes effect while the toolbar is a grid. */
+.details-popup .session-input .session-input-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "model details send";
 }
 
 /* Header "Add to chat" — attaches the explained excerpt to the originating

@@ -816,6 +816,33 @@ mod tests {
     }
 
     #[test]
+    fn claude_resumed_follow_ups_select_effort_and_model_each_time() {
+        let definition = get_provider_definition(ProviderId::Claude);
+        for (model, effort) in [
+            ("claude-opus-5-5", ReasoningEffort::High),
+            ("claude-opus-5-5", ReasoningEffort::Low),
+            ("claude-opus-5-5", ReasoningEffort::High),
+            ("claude-fable-5-1", ReasoningEffort::High),
+            ("claude-opus-5-5", ReasoningEffort::High),
+        ] {
+            let mut input = launch_input(ProviderId::Claude);
+            input.model_id = model.into();
+            input.reasoning_effort = Some(effort);
+            let args = (definition.structured_resume_args)(&input, "native-conversation", None);
+            assert!(args
+                .windows(2)
+                .any(|pair| pair[0] == "--resume" && pair[1] == "native-conversation"));
+            assert!(args
+                .windows(2)
+                .any(|pair| pair[0] == "--effort" && pair[1] == effort.as_str()));
+            let expected_model = format!("{model}[1m]");
+            assert!(args
+                .windows(2)
+                .any(|pair| pair[0] == "--model" && pair[1] == expected_model));
+        }
+    }
+
+    #[test]
     fn codex_forked_resume_swaps_to_exec_fork() {
         let mut input = launch_input(ProviderId::Codex);
         input.resume_fork = true;

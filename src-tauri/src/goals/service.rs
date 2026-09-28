@@ -21,7 +21,7 @@ use crate::{
     error::{ArgmaxError, ArgmaxResult},
     ipc::{
         inputs::ProvidersSendInput,
-        validation::{Prompt, SessionId},
+        validation::{NonEmptyString, Prompt, SessionId},
     },
     persistence::{
         database::Database,
@@ -40,6 +40,7 @@ use crate::{
         session_service::{self, GoalTurnIdentity, ProviderSessionService, SessionStateChange},
         AgentMode,
     },
+    routing::RouteDecision,
     sessions::state::SessionState,
     util::sync::LockOrRecover,
 };
@@ -235,7 +236,10 @@ impl GoalService {
             // Started before the driver so a provider that refuses the turn
             // fails the caller's `set`, rather than leaving a goal that looks
             // active and never moves.
-            if let Err(error) = self.send_turn(&goal, opening_prompt(&goal.condition)).await {
+            if let Err(error) = self
+                .send_turn(&goal, opening_prompt(&goal.condition), None)
+                .await
+            {
                 self.settle(&goal.id, GoalState::Stopped, Some(&error.to_string()))?;
                 return Err(error);
             }
@@ -319,6 +323,9 @@ impl GoalService {
         let mut states = self.providers.subscribe_session_states();
         let mut idle_turns = 0u32;
         let mut evaluator_failures = 0u32;
+        // Consecutive "not yet" verdicts. In an Auto chat, two in a row move
+        // it one rung up its provider's ladder (docs/routing.md).
+        let mut not_yet_streak = 0u32;
         loop {
             let Some(goal) = self.active_goal(goal_id)? else {
                 return Ok(());
@@ -391,7 +398,7 @@ impl GoalService {
                     self.settle(&goal.id, GoalState::Impossible, reason.as_deref())?;
                     return Ok(());
                 }
-                GoalVerdict::NotYet => {}
+                GoalVerdict::NotYet => not_yet_streak += 1,
             }
 
             idle_turns = if tool_calls == 0 { idle_turns + 1 } else { 0 };
@@ -419,16 +426,66 @@ impl GoalService {
             // too when it settles — queueing would leave the goal's guidance in
             // the composer looking hand-typed, with another copy behind it
             // every time round.
+            let escalation = if not_yet_streak >= 2 {
+                not_yet_streak = 0;
+                self.escalation_for(&goal)?
+            } else {
+                None
+            };
             match self
-                .send_turn(&goal, follow_up_prompt(&goal.condition, reason.as_deref()))
+                .send_turn(
+                    &goal,
+                    follow_up_prompt(&goal.condition, reason.as_deref()),
+                    escalation.as_ref(),
+                )
                 .await
             {
-                Ok(()) => {}
+                // Recorded only once the send went through: a refused send
+                // moved nothing, and a phantom escalation would feed the
+                // router's hysteresis and the model chip.
+                Ok(()) => {
+                    if let Some(route) = &escalation {
+                        crate::persistence::turn_routes::record_route(
+                            &self.database.connection(),
+                            &goal.session_id,
+                            route,
+                        )?;
+                    }
+                }
                 Err(ArgmaxError::ServiceError { ref sub_code, .. })
                     if sub_code == session_service::TURN_IN_FLIGHT => {}
                 Err(error) => return Err(error),
             }
         }
+    }
+
+    /// For an Auto chat, the next rung up its ladder. The caller records it
+    /// once the send is admitted. `None` for a chat the user pinned or one
+    /// already at the top.
+    fn escalation_for(&self, goal: &Goal) -> ArgmaxResult<Option<RouteDecision>> {
+        let connection = self.database.connection();
+        let session = find_session_by_id(&connection, &goal.session_id)?;
+        let Some(tier) = session
+            .auto_tier
+            .as_deref()
+            .and_then(crate::routing::parse_tier)
+        else {
+            return Ok(None);
+        };
+        let effort = session
+            .reasoning_effort
+            .as_deref()
+            .and_then(crate::providers::runtime::parse_reasoning_effort);
+        let Some(route) = crate::routing::reroute::escalate(
+            tier,
+            parse_provider(&session.provider)?,
+            &session.model_id,
+            effort,
+            "escalated: the goal came back not met twice in a row",
+        ) else {
+            return Ok(None);
+        };
+        Ok(Some(route))
     }
 
     async fn judge(&self, goal: &Goal, transcript_tail: &str) -> Option<(GoalVerdict, String)> {
@@ -446,17 +503,39 @@ impl GoalService {
 
     /// Sends the chat its next goal turn. `send_goal_input` carries the goal's
     /// identity so the send is refused if the goal settled in the meantime.
-    async fn send_turn(&self, goal: &Goal, prompt: String) -> ArgmaxResult<()> {
+    async fn send_turn(
+        &self,
+        goal: &Goal,
+        prompt: String,
+        escalation: Option<&RouteDecision>,
+    ) -> ArgmaxResult<()> {
+        let (provider, model_label, model_id, reasoning_effort) = match escalation {
+            Some(route) => (
+                // Set only for the handoff off a cheap ladder; the send path
+                // treats a differing provider as a switch.
+                Some(route.provider),
+                Some(
+                    NonEmptyString::try_from(route.model_label.clone())
+                        .map_err(ArgmaxError::invalid)?,
+                ),
+                Some(
+                    NonEmptyString::try_from(route.model_id.clone())
+                        .map_err(ArgmaxError::invalid)?,
+                ),
+                route.effort,
+            ),
+            None => (None, None, None, None),
+        };
         self.providers
             .send_goal_input(
                 ProvidersSendInput {
                     session_id: SessionId::try_from(goal.session_id.clone())
                         .map_err(ArgmaxError::invalid)?,
                     input: Prompt::try_from(prompt).map_err(ArgmaxError::invalid)?,
-                    provider: None,
-                    model_label: None,
-                    model_id: None,
-                    reasoning_effort: None,
+                    provider,
+                    model_label,
+                    model_id,
+                    reasoning_effort,
                     fast_mode: false,
                     agent_mode: Some(AgentMode::Auto),
                     attachments: None,

@@ -167,7 +167,7 @@ struct SettingsScreen: View {
             .padding(.bottom, Spacing.section)
         }
         .background(Theme.ground.ignoresSafeArea())
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .screenHeaderBar {
             ScreenHeader(title: "Settings", onBack: onBack)
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -336,7 +336,7 @@ struct Segmented<Option: Hashable & Identifiable>: View {
         .animation(.easeOut(duration: 0.15), value: selection)
         // A step *down* from the card it sits in, so the track reads as a
         // groove rather than a second card.
-        .background(Theme.ground, in: .rect(cornerRadius: Radius.control, style: .continuous))
+        .background(Theme.inset, in: .rect(cornerRadius: Radius.control, style: .continuous))
     }
 }
 

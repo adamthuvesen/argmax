@@ -16,10 +16,9 @@ import {
   FAST_MODE_KEY,
   GOAL_ENABLED_KEY,
   PR_MILESTONE_CELEBRATION_KEY,
-  RANDOM_SESSION_ICON_KEY,
-  SIDEBAR_TRANSLUCENT_KEY,
-  SIDEBAR_TRANSLUCENCY_KEY
+  RANDOM_SESSION_ICON_KEY
 } from "./lib/uiPreferences.js";
+import { WINDOW_TRANSLUCENCY_KEY, WINDOW_TRANSLUCENT_KEY } from "./lib/windowTranslucency.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import * as tauriBridge from "./lib/tauriBridge.js";
 import { APP_VERSION, APP_VERSION_LABEL } from "../shared/appVersion.js";
@@ -298,42 +297,43 @@ describe("App settings", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps the sidebar opaque by default and persists its translucent surface settings", async () => {
+  it("keeps the window opaque by default and persists its translucency settings", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
+    const root = document.documentElement;
     const shell = document.querySelector<HTMLElement>(".app-shell");
-    expect(shell).not.toHaveAttribute("data-sidebar-translucent");
+    expect(root).not.toHaveAttribute("data-window-translucent");
 
     await openSettings("Appearance");
-    const toggle = screen.getByRole("checkbox", { name: "Translucent sidebar" });
-    const slider = screen.getByRole("slider", { name: "Sidebar translucency" });
+    const toggle = screen.getByRole("checkbox", { name: "Translucent window" });
+    const slider = screen.getByRole("slider", { name: "Window translucency" });
     expect(toggle).not.toBeChecked();
     expect(slider).toBeDisabled();
     expect(slider).toHaveValue("30");
 
     fireEvent.click(toggle);
-    expect(shell).toHaveAttribute("data-sidebar-translucent", "true");
+    expect(root).toHaveAttribute("data-window-translucent", "true");
     expect(slider).toBeEnabled();
 
     fireEvent.change(slider, { target: { value: "50" } });
     await waitFor(() => {
-      expect(window.localStorage.getItem(SIDEBAR_TRANSLUCENT_KEY)).toBe("true");
-      expect(window.localStorage.getItem(SIDEBAR_TRANSLUCENCY_KEY)).toBe("50");
-      expect(shell?.style.getPropertyValue("--sidebar-translucency")).toBe("50%");
+      expect(window.localStorage.getItem(WINDOW_TRANSLUCENT_KEY)).toBe("true");
+      expect(window.localStorage.getItem(WINDOW_TRANSLUCENCY_KEY)).toBe("50");
+      expect(root.style.getPropertyValue("--window-translucency")).toBe("50%");
     });
 
     await closeSettings();
-    expect(shell).toHaveAttribute("data-sidebar-translucent", "true");
+    expect(root).toHaveAttribute("data-window-translucent", "true");
     // The sidebar stays in the grid: the desktop shows through its column, so
     // the workspace never has to make room for an overlay.
     expect(shell?.style.gridTemplateColumns).toBe("272px minmax(0, 1fr)");
 
     await openSettings("Appearance");
-    fireEvent.click(screen.getByRole("checkbox", { name: "Translucent sidebar" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Translucent window" }));
     await closeSettings();
-    expect(shell).not.toHaveAttribute("data-sidebar-translucent");
-    expect(shell?.style.getPropertyValue("--sidebar-translucency")).toBe("0%");
+    expect(root).not.toHaveAttribute("data-window-translucent");
+    expect(root.style.getPropertyValue("--window-translucency")).toBe("");
   });
 
   it("shows the fox by default and hides every mascot when turned off", async () => {
@@ -594,6 +594,33 @@ describe("App settings", () => {
     await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ provider, permissionMode })));
   });
 
+  it("launches a Router pick without a permission mode, so the routed provider's applies", async () => {
+    window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd", projectCheck: "switch" });
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5", autoTier: "balanced" }));
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Route this run" } });
+    fireEvent.click(screen.getByTitle("Start agent"));
+
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ autoTier: "balanced", permissionMode: null }))
+    );
+  });
+
+  it("keeps the pinned default agent model when the launcher switches to a Router row", async () => {
+    window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd", projectCheck: "switch" });
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5" }));
+    const save = vi.mocked(window.argmax!.system.setDefaultAgent);
+    render(<App />);
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: "claude-sonnet-5" })));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
+    fireEvent.click(within(await screen.findByRole("listbox", { name: "Switch model" })).getByRole("button", { name: "Router Balance" }));
+
+    await waitFor(() => expect(window.localStorage.getItem(LAUNCH_MODEL_KEY)).toContain("balanced"));
+    for (const [input] of save.mock.calls) expect(input.modelLabel).not.toBe("Router Balance");
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" }));
+  });
+
   it("keeps browser preferences local instead of trying to save desktop defaults", async () => {
     const remote = vi.spyOn(tauriBridge, "isRemoteBridge").mockReturnValue(true);
     try {
@@ -643,7 +670,8 @@ describe("App settings", () => {
 
   it.each([
     ["codex", "gpt-6-sol", true],
-    ["claude", "claude-opus-5-5", false]
+    ["claude", "claude-opus-5-5", true],
+    ["claude", "claude-sonnet-5", false]
   ] as const)("settings Fast mode persists and gates the next %s launch", async (provider, modelId, fastMode) => {
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider, modelId }));
     render(<App />);

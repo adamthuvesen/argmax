@@ -5,6 +5,8 @@ export const IPC_CHANNELS = [
   "health:ping",
   "projects:list",
   "projects:pick-folder",
+  "projects:check-prompt",
+  "projects:resolve-check",
   "dashboard:list",
   "projects:register",
   "projects:remove",
@@ -47,6 +49,10 @@ export const IPC_CHANNELS = [
   "session:suggest-follow-up",
   "settings:agent-tools",
   "settings:set-browser-tools",
+  "settings:routing",
+  "settings:set-project-check",
+  "settings:set-routing-key",
+  "settings:clear-routing-key",
   "settings:preview-chat-cleanup",
   "settings:delete-old-chats",
   "review:list-changed-files",
@@ -166,6 +172,7 @@ export const IPC_CHANNELS = [
   "routines:reset-session",
   "usage:summary",
   "usage:remaining",
+  "usage:router-cost",
   "activity:summary",
 ] as const;
 

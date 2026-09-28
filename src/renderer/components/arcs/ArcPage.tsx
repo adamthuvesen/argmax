@@ -14,7 +14,7 @@ import type {
 } from "../../../shared/types.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
-import { readStoredLaunchModel } from "../../lib/launchModelPreference.js";
+import { readStoredManualLaunchModel } from "../../lib/launchModelPreference.js";
 import { describeSchedule } from "../../lib/schedule.js";
 import { isTypingTarget } from "../../lib/typingTarget.js";
 import { formatTimeAgo } from "../../lib/arcTimeline.js";
@@ -55,7 +55,7 @@ function resolveCoordinatorModel(
   if (previous && isProviderId(previous.provider) && previous.modelLabel && previous.modelId) {
     return { provider: previous.provider, label: previous.modelLabel, modelId: previous.modelId };
   }
-  return readStoredLaunchModel() ?? factoryLaunchModel();
+  return readStoredManualLaunchModel() ?? factoryLaunchModel();
 }
 
 /** Browser preview and the demo snapshot carry no bridge, so the page renders

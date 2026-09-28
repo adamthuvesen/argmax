@@ -142,6 +142,8 @@ mod tests {
             "sources_add",
             "terminal_spawn",
             "terminal_read",
+            "terminal_write",
+            "terminal_close",
             "project_list",
             "arc_status",
             "schedule_followup",
@@ -191,5 +193,10 @@ mod tests {
         assert!(properties.contains_key("path"));
         assert!(properties.contains_key("branch"));
         assert!(!properties.contains_key("permission_mode"));
+        let description = launch.description.unwrap_or_default();
+        assert!(
+            description.contains("projectCheck"),
+            "session_launch must tell the caller the result can name a different project"
+        );
     }
 }

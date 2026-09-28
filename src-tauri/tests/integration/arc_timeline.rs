@@ -287,6 +287,7 @@ async fn an_arc_records_its_story_newest_first_and_pages_without_overlap() {
             goal_max_turns: None,
             arc_id: Some(arc.id.clone()),
             arc_is_coordinator_launch: false,
+            auto_tier: None,
         })
         .await
         .expect("member launch");

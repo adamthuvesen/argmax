@@ -16,7 +16,7 @@ import SwiftUI
 
 struct PickerOption<Value: Hashable>: Identifiable {
     let value: Value
-    let label: String
+    var label: String
     /// The trailing column: a model's context window, a project's branch.
     var detail: String?
     /// Branch names and model ids are typed by hand somewhere else.

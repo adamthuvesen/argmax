@@ -242,13 +242,12 @@ extension View {
     }
 
     /// The chip along the composer's floor: one recessed pill, whatever it
-    /// holds. `Theme.ground` inside a `Theme.raised` card is a 4% step — the
-    /// same one that separates the card from the screen — so the chip reads
-    /// as part of the card rather than as a second card on top of it.
+    /// holds. `Theme.inset` inside a `Theme.raised` card is one token step
+    /// under the composer surface so the chip reads inset, not see-through.
     func composerChipSurface() -> some View {
         padding(.horizontal, Spacing.row)
             .padding(.vertical, 7)
-            .background(Capsule(style: .continuous).fill(Theme.ground))
+            .background(Capsule(style: .continuous).fill(Theme.inset))
     }
 
     /// The round chip a single glyph sits in — the plus, the mic. Same fill
@@ -256,7 +255,7 @@ extension View {
     /// controls rather than as icons and a pill.
     func composerGlyphSurface() -> some View {
         frame(width: Spacing.composerControl, height: Spacing.composerControl)
-            .background(Circle().fill(Theme.ground))
+            .background(Circle().fill(Theme.inset))
             .contentShape(.circle)
     }
 }

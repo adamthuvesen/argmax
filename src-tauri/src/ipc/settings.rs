@@ -7,12 +7,18 @@ use tauri::State;
 use uuid::Uuid;
 
 use super::{
-    inputs::{DeleteOldChatsInput, SetBrowserToolsInput},
+    inputs::{
+        DeleteOldChatsInput, SetBrowserToolsInput, SetProjectCheckInput, SetRoutingKeyInput,
+        SettingsRoutingInput,
+    },
     live_database, read_off_main,
 };
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::validation::SessionId;
-use crate::persistence::app_settings::{browser_tools_enabled, set_browser_tools_enabled};
+use crate::persistence::app_settings::{
+    browser_tools_enabled, project_check_mode, set_browser_tools_enabled, set_project_check_mode,
+    ProjectCheckMode,
+};
 use crate::persistence::chat_cleanup::{
     candidate_workspace_ids, delete_old_chats, eligible_session_ids, ChatCleanupPlan,
 };
@@ -42,6 +48,91 @@ pub struct DeleteOldChatsResult {
 #[serde(rename_all = "camelCase")]
 pub struct AgentToolsSettings {
     pub browser_tools: bool,
+}
+
+/// Auto routing is on exactly when a Jev API key is saved. `key_hint` names
+/// the saved key by its last four characters. Project check uses the same key,
+/// so its mode travels with it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutingSettings {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_hint: Option<String>,
+    pub project_check: ProjectCheckMode,
+}
+
+fn routing_settings(state: &AppState, api_key: Option<String>) -> ArgmaxResult<RoutingSettings> {
+    let database = live_database(state)?;
+    let project_check = project_check_mode(&database.read_connection());
+    Ok(RoutingSettings {
+        enabled: api_key.is_some(),
+        key_hint: api_key.as_deref().map(crate::routing::api_key::key_hint),
+        project_check,
+    })
+}
+
+#[tauri::command(rename = "settings:routing")]
+#[specta::specta]
+pub async fn settings_routing(
+    state: State<'_, AppState>,
+    _input: SettingsRoutingInput,
+) -> ArgmaxResult<RoutingSettings> {
+    settings_routing_impl(&state).await
+}
+
+pub(crate) async fn settings_routing_impl(state: &AppState) -> ArgmaxResult<RoutingSettings> {
+    // The first read spawns `security`, so it stays off the main thread.
+    let api_key = read_off_main(|| Ok(crate::routing::api_key::stored_key())).await?;
+    routing_settings(state, api_key)
+}
+
+#[tauri::command(rename = "settings:set-project-check")]
+#[specta::specta]
+pub async fn settings_set_project_check(
+    state: State<'_, AppState>,
+    input: SetProjectCheckInput,
+) -> ArgmaxResult<RoutingSettings> {
+    let database = live_database(&state)?;
+    read_off_main(move || set_project_check_mode(&database.connection(), input.mode)).await?;
+    settings_routing_impl(&state).await
+}
+
+/// Saves a Jev API key after proving it works with one live classification,
+/// so a typo is reported here rather than on the next Auto launch.
+#[tauri::command(rename = "settings:set-routing-key")]
+#[specta::specta]
+pub async fn settings_set_routing_key(
+    state: State<'_, AppState>,
+    input: SetRoutingKeyInput,
+) -> ArgmaxResult<RoutingSettings> {
+    let api_key = crate::routing::api_key::validate_format(&input.api_key)?.to_string();
+    crate::routing::jev::classify("Reply with ok.", &api_key, false)
+        .await
+        .map_err(|error| match error {
+            ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "ROUTING_KEY_INVALID" => {
+                error
+            }
+            other => ArgmaxError::service(
+                "ROUTING_KEY_UNVERIFIED",
+                format!("Could not check the key with Jev, so it was not saved: {other}"),
+            ),
+        })?;
+    let api_key = read_off_main(move || {
+        crate::routing::api_key::store_key(&api_key)?;
+        Ok(api_key)
+    })
+    .await?;
+    routing_settings(&state, Some(api_key))
+}
+
+#[tauri::command(rename = "settings:clear-routing-key")]
+#[specta::specta]
+pub async fn settings_clear_routing_key(
+    state: State<'_, AppState>,
+) -> ArgmaxResult<RoutingSettings> {
+    read_off_main(crate::routing::api_key::clear_key).await?;
+    routing_settings(&state, None)
 }
 
 #[tauri::command(rename = "settings:agent-tools")]

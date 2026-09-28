@@ -49,7 +49,7 @@ use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
 #[cfg(test)]
 use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
 use crate::approvals::service::ApprovalService;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::time::now_iso;
@@ -123,6 +123,12 @@ struct AcpWorkspace {
     mcp_fingerprint: [u8; 32],
     active_turns: AtomicUsize,
     retired: AtomicBool,
+    /// A shell on this process has already returned output. The next shell
+    /// that completes without one means the persistent cwd is dead.
+    shell_succeeded: AtomicBool,
+    /// Replace this process on the next launch. Its bash cwd is gone, and
+    /// Cursor keeps using it until the process itself is replaced.
+    shell_lost: AtomicBool,
 }
 
 struct AcpWorkspaceLease {
@@ -525,7 +531,12 @@ impl CursorAcpSessions {
         let mcp_fingerprint =
             cursor_mcp_fingerprint_in(home, cursor_data_dir, &input.workspace_path, process_cwd);
         if let Some(existing) = slot.current.lock_or_recover("acp workspace").as_ref() {
-            if !existing.client.is_dead() && existing.mcp_fingerprint == mcp_fingerprint {
+            // A lost shell falls through. Spawning below displaces this
+            // process, and the next shell starts from the workspace again.
+            if !existing.client.is_dead()
+                && !existing.shell_lost.load(Ordering::SeqCst)
+                && existing.mcp_fingerprint == mcp_fingerprint
+            {
                 existing.active_turns.fetch_add(1, Ordering::SeqCst);
                 return Ok(AcpWorkspaceLease {
                     workspace: Arc::clone(existing),
@@ -554,6 +565,8 @@ impl CursorAcpSessions {
             mcp_fingerprint,
             active_turns: AtomicUsize::new(0),
             retired: AtomicBool::new(false),
+            shell_succeeded: AtomicBool::new(false),
+            shell_lost: AtomicBool::new(false),
         });
         let handshake = workspace
             .client
@@ -562,7 +575,14 @@ impl CursorAcpSessions {
                 json!({
                     "protocolVersion": 1,
                     "clientCapabilities": {
-                        "fs": { "readTextFile": false, "writeTextFile": false }
+                        "fs": { "readTextFile": false, "writeTextFile": false },
+                        // Without it Cursor lists one preset variant per model
+                        // (`composer-2.5[fast=true]`) and rejects every other, so
+                        // the chat's effort and Fast never reached the model. With
+                        // it the model is a bare id, and effort, Fast and Auto's
+                        // target are separate config options (see
+                        // `cursor_option_changes`).
+                        "_meta": { "parameterizedModelPicker": true }
                     },
                     "clientInfo": { "name": "argmax", "version": env!("CARGO_PKG_VERSION") },
                 }),
@@ -630,13 +650,9 @@ fn remember_available_models(workspace: &AcpWorkspace, response: &Value) {
         .lock_or_recover("acp available models") = models.clone();
 }
 
-/// Select the advertised configuration of the family the user asked for.
-/// Cursor's ACP ids carry configuration in brackets
-/// (`grok-4.6[effort=high,fast=true]`), but it advertises exactly one variant
-/// per family, that variant does not follow the parameters saved in
-/// `cli-config.json`, and `session/set_model` rejects any id it did not list.
-/// The bracketed values are therefore Cursor's to pick, not ours to require:
-/// insisting on them rejected most of the catalog, the default model included.
+/// Put the session on the chat's model, then its effort, Fast setting and
+/// Auto target. Selecting the model answers with that model's own config
+/// options, so only the options it has, set to values it offers, are sent.
 async fn ensure_cursor_model(
     client: &AcpClient,
     session_id: &str,
@@ -656,13 +672,100 @@ async fn ensure_cursor_model(
                 ),
             )
         })?;
-    client
+    let selected = client
         .request(
-            "session/set_model",
-            json!({ "sessionId": session_id, "modelId": listed }),
+            "session/set_config_option",
+            json!({ "sessionId": session_id, "configId": "model", "value": listed }),
         )
         .await?;
+    let options = selected
+        .get("configOptions")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    for (config_id, value) in cursor_option_changes(options, input) {
+        client
+            .request(
+                "session/set_config_option",
+                json!({ "sessionId": session_id, "configId": config_id, "value": value }),
+            )
+            .await?;
+    }
     Ok(())
+}
+
+/// The config options that differ from what the chat asked for. Cursor names
+/// effort per model (`effort`, `reasoning_effort`, `reasoning`) but files every
+/// one under the `thought_level` category, next to Claude's on/off `thinking`
+/// switch, which is left alone. A chat with no effort keeps Cursor's default.
+fn cursor_option_changes(options: &[Value], input: &ProviderLaunchInput) -> Vec<(String, String)> {
+    let mut changes = Vec::new();
+    for option in options {
+        let (Some(id), Some(current)) = (
+            option.get("id").and_then(Value::as_str),
+            option.get("currentValue").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let values: Vec<&str> = option
+            .get("options")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.get("value").and_then(Value::as_str))
+            .collect();
+        let is_effort = option.get("category").and_then(Value::as_str) == Some("thought_level")
+            && values.contains(&"high");
+        let wanted = match id {
+            "fast" => Some(if input.fast_mode { "true" } else { "false" }),
+            "optimize_for" => input
+                .model_id
+                .strip_prefix("auto-smart[optimize_for=")
+                .and_then(|rest| rest.strip_suffix(']')),
+            _ if is_effort => input
+                .reasoning_effort
+                .and_then(|effort| cursor_effort_value(effort, &values)),
+            _ => None,
+        };
+        if let Some(wanted) = wanted.filter(|wanted| *wanted != current && values.contains(wanted))
+        {
+            changes.push((id.to_string(), wanted.to_string()));
+        }
+    }
+    changes
+}
+
+/// The offered level nearest the chat's effort: the same level, else the
+/// strongest one below it, else the weakest offered. Cursor spells Extra High
+/// `xhigh` on newer models and `extra-high` on older ones, and has no Ultra.
+fn cursor_effort_value<'a>(effort: ReasoningEffort, offered: &[&'a str]) -> Option<&'a str> {
+    fn rank(value: &str) -> Option<u8> {
+        match value {
+            "low" => Some(1),
+            "medium" => Some(2),
+            "high" => Some(3),
+            "xhigh" | "extra-high" => Some(4),
+            "max" => Some(5),
+            _ => None,
+        }
+    }
+    let wanted = match effort {
+        ReasoningEffort::Low => 1,
+        ReasoningEffort::Medium => 2,
+        ReasoningEffort::High => 3,
+        ReasoningEffort::Xhigh => 4,
+        ReasoningEffort::Max | ReasoningEffort::Ultra => 5,
+    };
+    let ranked: Vec<(u8, &str)> = offered
+        .iter()
+        .filter_map(|value| rank(value).map(|rank| (rank, *value)))
+        .collect();
+    ranked
+        .iter()
+        .filter(|(rank, _)| *rank <= wanted)
+        .max_by_key(|(rank, _)| *rank)
+        .or_else(|| ranked.iter().min_by_key(|(rank, _)| *rank))
+        .map(|(_, value)| *value)
 }
 
 fn cursor_model_matches(advertised: &str, input: &ProviderLaunchInput) -> bool {
@@ -961,9 +1064,18 @@ fn spawn_turn(
 
     let session_id = input.session_id.clone();
     let prompt = input.prompt.clone();
+    let workspace = Arc::clone(&workspace_lease.workspace);
     tokio::spawn(async move {
         let _workspace_lease = workspace_lease;
-        run_turn(client, acp_session_id.clone(), session_id, prompt, on_event).await;
+        run_turn(
+            client,
+            acp_session_id.clone(),
+            session_id,
+            prompt,
+            on_event,
+            workspace,
+        )
+        .await;
         let mut contexts = permission_contexts.lock_or_recover("cursor ACP permission contexts");
         if contexts
             .get(&acp_session_id)
@@ -982,6 +1094,7 @@ async fn run_turn(
     session_id: String,
     prompt: String,
     on_event: EventCallback,
+    workspace: Arc<AcpWorkspace>,
 ) {
     let emit = |r#type: ProviderRuntimeEventType, message: String, exit_code: Option<i32>| {
         on_event(ProviderRuntimeEvent {
@@ -1029,6 +1142,7 @@ async fn run_turn(
                 match update {
                     Some(update) => {
                         for line in translation.translate(&update) {
+                            note_shell_outcome(&workspace, &line);
                             emit_line(line);
                         }
                     }
@@ -1296,6 +1410,59 @@ impl TurnTranslation {
             "call_id": call_id,
             "tool_call": { info.key: Value::Object(body) },
         })]
+    }
+}
+
+/// What one translated tool row says about the warm process's shell.
+enum ShellOutcome {
+    /// Not a settled shell call.
+    Ignore,
+    /// The shell ran and reported a result, so its cwd is still usable.
+    Succeeded,
+    /// A shell that used to return output finished without one.
+    Lost,
+}
+
+/// Cursor's shell keeps cwd, env, and aliases in the warm process. `cd` into
+/// a worktree and then delete that worktree: the next spawn uses the missing
+/// directory, the error is swallowed, and ACP reports the shell `completed`
+/// with no `rawOutput`. The process never picks a new cwd. A rejection or a
+/// permission block has the same shape, so this only counts after a shell on
+/// this process has already returned output — one wasted restart, instead of
+/// a shell that stays dead for the rest of the chat.
+fn shell_outcome(had_output: bool, line: &Value) -> ShellOutcome {
+    if line.get("type").and_then(Value::as_str) != Some("tool_call")
+        || line.get("subtype").and_then(Value::as_str) != Some("completed")
+    {
+        return ShellOutcome::Ignore;
+    }
+    let Some(shell) = line.pointer("/tool_call/shell") else {
+        return ShellOutcome::Ignore;
+    };
+    if !matches!(
+        line.get("status").and_then(Value::as_str),
+        Some("completed" | "failed")
+    ) {
+        return ShellOutcome::Ignore;
+    }
+    if shell.get("result").is_some() {
+        ShellOutcome::Succeeded
+    } else if had_output {
+        ShellOutcome::Lost
+    } else {
+        ShellOutcome::Ignore
+    }
+}
+
+fn note_shell_outcome(workspace: &AcpWorkspace, line: &Value) {
+    match shell_outcome(workspace.shell_succeeded.load(Ordering::SeqCst), line) {
+        ShellOutcome::Ignore => {}
+        ShellOutcome::Succeeded => {
+            workspace.shell_succeeded.store(true, Ordering::SeqCst);
+        }
+        ShellOutcome::Lost => {
+            workspace.shell_lost.store(true, Ordering::SeqCst);
+        }
     }
 }
 
@@ -1633,6 +1800,54 @@ mod tests {
             "echo hi"
         );
         assert_eq!(completed[0]["tool_call"]["shell"]["result"]["output"], "hi");
+        assert!(matches!(
+            shell_outcome(false, &completed[0]),
+            ShellOutcome::Succeeded
+        ));
+    }
+
+    #[test]
+    fn a_shell_that_stops_returning_output_retires_the_warm_process() {
+        let mut translation = TurnTranslation::default();
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-1",
+            "kind": "execute",
+            "rawInput": { "command": "echo hi" },
+        })));
+        let silent = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-1",
+            "status": "completed",
+        })));
+        // The first shell on a process may be a rejection. That has the same
+        // shape and must not throw the process away.
+        assert!(matches!(
+            shell_outcome(false, &silent[0]),
+            ShellOutcome::Ignore
+        ));
+        // Once a shell has returned output, the next one with none means the
+        // persistent cwd is gone.
+        assert!(matches!(
+            shell_outcome(true, &silent[0]),
+            ShellOutcome::Lost
+        ));
+
+        translation.translate(&update(json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "tool-2",
+            "kind": "execute",
+            "rawInput": { "command": "echo more" },
+        })));
+        let cancelled = translation.translate(&update(json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "tool-2",
+            "status": "cancelled",
+        })));
+        assert!(matches!(
+            shell_outcome(true, &cancelled[0]),
+            ShellOutcome::Ignore
+        ));
     }
 
     #[test]
@@ -2328,8 +2543,8 @@ mod tests {
     #[test]
     fn model_matching_ignores_the_configuration_cursor_advertises() {
         let mut input = launch_input("gpt-5.6-sol-medium");
-        // Whatever effort and serving speed Cursor names for the family, that
-        // is the only variant it will accept, so all of these have to match.
+        // A family matches whatever configuration its id carries: bare ids
+        // today, bracketed presets from a client that lacks the capability.
         for advertised in [
             "gpt-5.6-sol[context=272k,reasoning=high,fast=false]",
             "gpt-5.6-sol[context=272k,reasoning=medium,fast=true]",
@@ -2373,5 +2588,181 @@ mod tests {
             "auto-smart[optimize_for=balanced]",
             &input
         ));
+    }
+
+    /// `configOptions` as Cursor answers selecting a model with the
+    /// `parameterizedModelPicker` capability (cursor-agent 2026.09.26).
+    fn options(model: &str) -> Vec<Value> {
+        let select = |id: &str, category: &str, current: &str, values: &[&str]| {
+            json!({
+                "id": id,
+                "category": category,
+                "currentValue": current,
+                "options": values.iter().map(|value| json!({ "value": value })).collect::<Vec<_>>(),
+            })
+        };
+        let mut options = vec![select("mode", "mode", "agent", &["agent", "plan", "ask"])];
+        match model {
+            "composer-2.5" => {
+                options.push(select("fast", "model_config", "false", &["false", "true"]))
+            }
+            "claude-opus-5-5" => options.extend([
+                select("context", "model_config", "300k", &["300k", "1m"]),
+                select(
+                    "effort",
+                    "thought_level",
+                    "medium",
+                    &["low", "medium", "high", "xhigh", "max"],
+                ),
+                select("fast", "model_config", "false", &["false", "true"]),
+            ]),
+            "claude-fable-5-1" => options.extend([
+                select("thinking", "thought_level", "true", &["false", "true"]),
+                select(
+                    "effort",
+                    "thought_level",
+                    "high",
+                    &["low", "medium", "high", "xhigh", "max"],
+                ),
+            ]),
+            "grok-4.7" => options.extend([
+                select(
+                    "reasoning_effort",
+                    "thought_level",
+                    "high",
+                    &["low", "medium", "high", "xhigh"],
+                ),
+                select("fast", "model_config", "false", &["false", "true"]),
+            ]),
+            "auto-smart" => options.push(select(
+                "optimize_for",
+                "model_config",
+                "balanced",
+                &["intelligence", "balanced", "cost"],
+            )),
+            _ => unreachable!(),
+        }
+        options
+    }
+
+    fn changes(model: &str, input: &ProviderLaunchInput) -> Vec<(String, String)> {
+        cursor_option_changes(&options(model), input)
+    }
+
+    #[test]
+    fn fast_follows_the_chats_fast_mode() {
+        let mut input = launch_input("composer-2.5");
+        assert!(changes("composer-2.5", &input).is_empty());
+        input.fast_mode = true;
+        assert_eq!(
+            changes("composer-2.5", &input),
+            [("fast".into(), "true".into())]
+        );
+    }
+
+    #[test]
+    fn effort_lands_on_the_models_own_thought_level_option() {
+        let mut input = launch_input("claude-opus-5-5-medium");
+        input.reasoning_effort = Some(ReasoningEffort::Low);
+        assert_eq!(
+            changes("claude-opus-5-5", &input),
+            [("effort".into(), "low".into())]
+        );
+
+        input.model_id = "grok-4.7-medium".into();
+        input.reasoning_effort = Some(ReasoningEffort::Max);
+        assert_eq!(
+            changes("grok-4.7", &input),
+            [("reasoning_effort".into(), "xhigh".into())],
+            "an effort above the model's range clamps to its strongest level"
+        );
+
+        // Fable's on/off `thinking` switch shares the category and is left alone.
+        input.reasoning_effort = Some(ReasoningEffort::Xhigh);
+        assert_eq!(
+            changes("claude-fable-5-1", &input),
+            [("effort".into(), "xhigh".into())]
+        );
+
+        // No effort chosen keeps Cursor's default.
+        input.reasoning_effort = None;
+        assert!(changes("claude-opus-5-5", &input).is_empty());
+    }
+
+    #[test]
+    fn resumed_cursor_selection_can_lower_and_restore_effort_and_model() {
+        for (model_id, advertised, effort, expected_option) in [
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::High,
+                ("effort", "high"),
+            ),
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::Low,
+                ("effort", "low"),
+            ),
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::High,
+                ("effort", "high"),
+            ),
+            (
+                "grok-4.7-medium",
+                "grok-4.7",
+                ReasoningEffort::Low,
+                ("reasoning_effort", "low"),
+            ),
+            (
+                "claude-opus-5-5-medium",
+                "claude-opus-5-5",
+                ReasoningEffort::High,
+                ("effort", "high"),
+            ),
+        ] {
+            let mut input = launch_input(model_id);
+            input.resume_conversation_id = Some("native-conversation".into());
+            input.reasoning_effort = Some(effort);
+            assert!(cursor_model_matches(advertised, &input));
+            assert_eq!(
+                changes(advertised, &input),
+                [(expected_option.0.into(), expected_option.1.into())]
+            );
+        }
+    }
+
+    #[test]
+    fn auto_targets_the_catalog_entrys_optimize_for() {
+        let input = launch_input("auto-smart[optimize_for=cost]");
+        assert_eq!(
+            changes("auto-smart", &input),
+            [("optimize_for".into(), "cost".into())]
+        );
+    }
+
+    #[test]
+    fn effort_names_cover_both_extra_high_spellings() {
+        assert_eq!(
+            cursor_effort_value(ReasoningEffort::Xhigh, &["low", "high", "extra-high"]),
+            Some("extra-high")
+        );
+        assert_eq!(
+            cursor_effort_value(ReasoningEffort::Medium, &["low", "high", "max"]),
+            Some("low")
+        );
+        assert_eq!(
+            cursor_effort_value(ReasoningEffort::Low, &["high", "max"]),
+            Some("high")
+        );
+        assert_eq!(
+            cursor_effort_value(
+                ReasoningEffort::Ultra,
+                &["none", "low", "medium", "high", "xhigh", "max"]
+            ),
+            Some("max")
+        );
     }
 }

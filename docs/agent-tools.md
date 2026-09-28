@@ -16,7 +16,7 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | Tool | Arguments | Returns |
 |---|---|---|
 | `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
-| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?`, `checkInMinutes?` | `{sessionId, workspaceId, projectId, projectName, path, branch}`. `checkInMinutes` (1 to 1440, else `CHECK_IN_OUT_OF_RANGE`) schedules a `same_session` wake for the caller, routine id `check-in:<sessionId>`, that Argmax deletes when the launched session's completion notice is built, so it fires only while the session is still running. |
+| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?`, `checkInMinutes?` | `{sessionId, workspaceId, projectId, projectName, path, branch, projectCheck?}`. `projectId`, `projectName`, and `path` are the checkout the session started in. `projectCheck` (`decision` of `suggest` or `switch`, `suggestedProjectId`, `suggestedProjectName`, `reasons`) is present when project check had an opinion; a `switch` means those checkout fields are the suggested project, not the one the caller passed. `checkInMinutes` (1 to 1440, else `CHECK_IN_OUT_OF_RANGE`) schedules a `same_session` wake for the caller, routine id `check-in:<sessionId>`, that Argmax deletes when the launched session's completion notice is built, so it fires only while the session is still running. |
 | `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn and could not be steered |
 | `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, attention, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
 | `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |
@@ -38,6 +38,8 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `sources_add` | `title`, `location`, `guidance` | The registered source and whether it was newly added |
 | `terminal_spawn` | `session?`, `command?` | `{terminalId, sessionId, workspaceId, path, command?}` |
 | `terminal_read` | `terminalId?`, `session?`, `maxChars?` | A terminal tail, or the terminals known for a workspace |
+| `terminal_write` | `terminalId`, `text`, `submit?` | `{terminalId, bytes}` |
+| `terminal_close` | `terminalId` | `{terminalId, wasRunning, exitCode?}` |
 | `project_list` | — | Every registered project, including projects with no open session |
 | `schedule_followup` | `prompt`, `inSeconds?` or `at?`, `name?` | A one-shot scheduled wake for this session |
 | `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, createdBy, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
@@ -56,7 +58,12 @@ so a launcher can check one child without listing every session.
 
 `session_launch.reasoning` accepts `low`, `medium`, `high`, `xhigh`, `max`, or
 `ultra`. `permissionMode` accepts `auto-approve`, `ask-each-time`, or
-`provider-defaults`. Omitted values inherit from the caller.
+`provider-defaults`. Omitted values inherit from the caller. `model: "auto"`
+(or `auto:cost`, `auto:balanced`, `auto:intelligence`) lets the router pick
+provider, model and effort from the prompt; it needs a saved Jev key, and an
+explicit `reasoning` still wins. A caller on Auto that omits both `model` and
+`provider` inherits its Auto tier rather than the model its last turn ran on.
+See [routing.md](routing.md).
 
 `project` accepts a repository Argmax has never opened. A name or id must
 already be registered, but an absolute path is taken at face value: the
@@ -79,7 +86,11 @@ creates a new isolated worktree instead. The two are mutually exclusive.
 forks from that ref instead of the project's current branch; with `path`, the
 named checkout must already be on that branch. Launch never switches another
 checkout's branch. The result includes the path and branch the session landed
-on.
+on. Project check runs on this launch the same way it does from the launcher
+([routing.md](routing.md#project-check)). A switch starts the session in the
+other project, drops `branch`, and keeps `path` only when that checkout belongs
+to the project it switched to. The result's checkout fields are where it
+started, and `projectCheck` says when another project was suggested or chosen.
 
 ### Arcs
 
@@ -205,6 +216,14 @@ captured output in chronological order plus running and exit information.
 Argmax keeps 128 KiB of scrollback per terminal. It trims finished records
 oldest first toward a 64-record cap, but never evicts a live terminal. One read
 defaults to 8,000 characters and is capped at 40,000.
+
+`terminal_write` types into a live terminal: `text` is sent verbatim and
+`submit` (default true) adds Enter, so `"\u0003"` with `submit: false` is
+Ctrl-C. It fails with `TERMINAL_EXITED` or `TERMINAL_NOT_FOUND` rather than
+dropping the bytes, including when the shell has been reaped but its last
+output is still draining. `terminal_close` terminates the terminal's process group
+(SIGTERM, then SIGKILL after 1.5 s), the same path as closing the tab; the
+output stays readable.
 
 ### Projects and scheduled follow-ups
 
@@ -411,7 +430,7 @@ first (`MOVE_ALREADY_PENDING` / `ARCHIVE_ALREADY_PENDING`). While either is
 pending, follow-ups into that chat are refused.
 
 It exists because merged work leaves its checkout behind. An agent that lands a
-pull request — `ship`'s babysit mode is the usual one — can now hand the
+pull request and was explicitly asked to archive its chat can hand the
 disposal to Argmax instead of removing the directory it is standing in:
 `git worktree remove` on your own working directory succeeds and then every
 later command in the turn fails, and a worktree removed behind the app's back

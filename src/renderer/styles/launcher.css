@@ -10,6 +10,10 @@
   gap: 18px;
   padding: 0 var(--space-2_5);
   text-align: center;
+  /* The fox and fixed title are marks, not prose. Without this a drag across
+     the hero selects the heading (and sometimes the sprite) like body copy. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* The fox is the headline. Its viewBox squares off below the sprite, so a

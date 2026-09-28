@@ -32,6 +32,8 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - `arcs` and `sessions.arc_id` (v51) back Arcs — see [Arcs](#arcs) below.
 - `routines.arc_id` and a fourth `run_target`, `arc_coordinator` (v52), point a scheduled task at a live Arc's coordinator instead of a session or a fresh checkout. SQLite cannot widen `run_target`'s existing CHECK (v36's `ROUTINE_RUN_TARGET`) in place, so this rebuilds `routines` through an explicit column list, the same idiom v20 used to converge a draft schema. A second CHECK ties the pair together: `run_target = 'arc_coordinator'` if and only if `arc_id IS NOT NULL`. Existing rows carry no `arc_id` and keep whichever target they already had.
 - v54 drops `idx_raw_outputs_session_created`. Transcript tail and page reads walk `idx_raw_outputs_session_id` in rowid order, and the retention sweep uses `idx_raw_outputs_created_at`; the composite index only served the legacy Cursor resume-id fallback, which is as fast on the single-column index. Dropping an index rewrites no rows; the freed pages return to the filesystem on the next Settings → Vacuum.
+- `project_checks` (v58) logs Project check's answered calls: the current and suggested project, both probabilities, the reasons shown, whether it suggested or switched, and the outcome (`accepted`, `stayed`, `undone`, `cancelled`). Both project references cascade on delete; the session reference is `ON DELETE SET NULL`. See [routing.md](routing.md#project-check).
+- v59 adds `idx_events_session_moved`, a partial index holding only `session.moved` events: Project check leaves a project's moved-away chats out of its history, and asking that per session walked each session's whole event history (1.8 s for a project with 800 chats). It mirrors `idx_events_restart_recovery`.
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
@@ -116,6 +118,23 @@ Migration v49 adds `gh_pull_requests` for canonical GitHub state and
 `session_pr_evidence_scans` tracks historical repair. Existing cached state is
 preserved and legacy associations begin unverified. See [gh.md](gh.md) for
 selection, repair, and automation rules.
+
+## Auto routing
+
+Migration v56 adds `sessions.auto_tier` (`cost` / `balanced` /
+`intelligence`, NULL for a chat whose model the user picked) and
+`sessions.auto_route`, the latest routing reason the model chip shows. Both are
+denormalized so dashboard reads need no join. `turn_routes` keeps one row per
+routing decision — `launch`, `reroute`, `escalate`, `kept` or `fallback` — with
+the routed provider, model and effort, Jev's kind and difficulty and their
+confidence, and the reason. A `kept` row leaves the session columns alone.
+Picking a model by hand clears both session columns; the rows stay for the
+routing report. Migration v57 rebuilds `turn_routes` to allow a sixth decision,
+`pinned`: written when that hand pick ends routing, with the chat's tier and
+the model the user picked. A `pinned` row is neither a turn nor a switch; it
+only closes the previous row's window. Follow-up routes are recorded once the
+send is admitted, so a send Stop cancelled leaves no row. See
+[routing.md](routing.md).
 
 ## Repositories
 

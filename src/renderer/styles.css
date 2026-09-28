@@ -22,6 +22,7 @@
 @import url("./styles/connections.css");
 @import url("./styles/project-sources.css");
 @import url("./styles/overlays.css");
+@import url("./styles/window-translucency.css");
 @import url("./styles/motion.css");
 
 @font-face {

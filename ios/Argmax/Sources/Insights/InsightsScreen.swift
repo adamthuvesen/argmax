@@ -21,7 +21,7 @@ struct InsightsScreen: View {
             pageBody
         }
         .background(Theme.ground.ignoresSafeArea())
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .screenHeaderBar {
             ScreenHeader(
                 title: store.tab == .usage ? "Usage" : "Activity",
                 subtitle: rangeSubtitle,
@@ -270,6 +270,10 @@ struct InsightsScreen: View {
             // beside the spend it belongs to.
             InsightsCard(title: "Remaining on your plans", trailing: nil) {
                 PlanLimitsSection(store: limits)
+            }
+            // Below the plans, as on the desktop; only once a chat was routed.
+            if let router = store.routerCost, !router.tiers.isEmpty {
+                RouterCostCard(summary: router)
             }
             UsageDailyChart(usage: store.usage, mode: store.usageMode).equatable()
             UsageTokenFlow(summary: summary)

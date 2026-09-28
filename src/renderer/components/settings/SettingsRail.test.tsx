@@ -14,3 +14,11 @@ it("finds settings with typos and terms spread across section and group", () => 
   fireEvent.click(screen.getByRole("button", { name: "Typography Appearance" }));
   expect(onOpenSection).toHaveBeenCalledWith("appearance", "settings-typography");
 });
+
+it("finds a setting row inside a section and opens that section", () => {
+  const onOpenSection = vi.fn();
+  render(<SettingsRail active="general" onChange={vi.fn()} onBack={vi.fn()} onOpenSection={onOpenSection} />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search settings" }), { target: { value: "Fast" } });
+  fireEvent.click(screen.getByRole("button", { name: "Fast mode Agents · Defaults" }));
+  expect(onOpenSection).toHaveBeenCalledWith("agents", "settings-agent-defaults");
+});

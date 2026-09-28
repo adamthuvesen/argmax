@@ -1,0 +1,75 @@
+/* Router — what each Auto tier cost in the window. The table is the
+   breakdown's, bled to the card edge the same way. */
+
+.usage-router {
+  gap: var(--space-4);
+  overflow: hidden;
+}
+
+.usage-router-tier {
+  display: block;
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
+/* The model mix wraps under the tier name rather than widening the column. */
+.usage-router-mix {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--muted-strong);
+  white-space: normal;
+}
+
+.usage-router-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.usage-router-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+.usage-router-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 4px;
+}
+
+.usage-table td.usage-router-detail-cell {
+  padding: var(--space-4) var(--space-5);
+  white-space: normal;
+  background: var(--panel-sunken);
+}
+
+.usage-router-detail-caption {
+  margin: 0 0 var(--space-3);
+  max-width: 80ch;
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+}
+
+.usage-router-decisions {
+  table-layout: fixed;
+  min-width: 48rem;
+}
+
+.usage-router-decisions th,
+.usage-router-decisions td {
+  padding-inline: var(--space-3);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.usage-router-decisions th:nth-child(1) { width: 16%; }
+.usage-router-decisions th:nth-child(2) { width: 24%; }
+.usage-router-decisions th:nth-child(3) { width: 40%; }
+.usage-router-decisions th:nth-child(4) { width: 12%; }
+.usage-router-decisions th:nth-child(5) { width: 8%; }

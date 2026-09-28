@@ -1984,6 +1984,64 @@ describe("Sidebar — repo-less chats", () => {
   });
 });
 
+describe("Sidebar — archived chats", () => {
+  const archivedSnapshot: DashboardSnapshot = {
+    ...snapshot,
+    workspaces: [
+      { ...snapshot.workspaces[0], id: "archived-chat", taskLabel: "Old discussion", state: "archived" }
+    ],
+    sessions: [{
+      id: "archived-session",
+      workspaceId: "archived-chat",
+      provider: "codex",
+      modelLabel: "Codex",
+      modelId: "gpt-5.5",
+      permissionMode: "auto-approve",
+      providerConversationId: null,
+      state: "complete",
+      attention: "normal",
+      startedAt: "2026-05-12T15:00:00.000Z",
+      completedAt: "2026-05-12T15:54:00.000Z",
+      lastActivityAt: "2026-05-12T15:54:00.000Z",
+      prompt: "Old discussion",
+      costUsd: 0,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextTokens: 0,
+      imported: false,
+      launchKind: "agent"
+    }]
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  afterEach(() => cleanup());
+
+  it.each(["projects", "sessions"] as const)("hides archived rows by default in %s view and opens them on request", (viewMode) => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify(viewMode));
+    const onOpenWorkspaceChat = vi.fn();
+    render(<Sidebar {...baseProps} snapshot={archivedSnapshot} onOpenWorkspaceChat={onOpenWorkspaceChat} />);
+
+    expect(screen.getByRole("button", { name: "Show Archived chats" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: /Old discussion/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show Archived chats" }));
+    fireEvent.click(screen.getByRole("button", { name: /Old discussion/ }));
+    expect(onOpenWorkspaceChat).toHaveBeenCalledWith("archived-chat", { ctrlOrMeta: false, alt: false });
+    fireEvent.click(screen.getByRole("button", { name: "Hide Archived chats" }));
+    expect(screen.queryByRole("button", { name: /Old discussion/ })).toBeNull();
+  });
+
+  it("removes the Archived section when the setting is off", () => {
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={archivedSnapshot} showArchived={false} />);
+    expect(screen.queryByRole("button", { name: "Show Archived chats" })).toBeNull();
+
+    rerender(<Sidebar {...baseProps} snapshot={archivedSnapshot} showArchived />);
+    expect(screen.getByRole("button", { name: "Show Archived chats" })).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
 describe("Sidebar — unread response mark", () => {
   const earlier = "2026-05-12T15:54:00.000Z";
   const later = "2026-05-12T16:10:00.000Z";

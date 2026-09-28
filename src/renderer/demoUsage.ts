@@ -43,7 +43,8 @@ const DEMO_PROVIDERS: readonly DemoProvider[] = [
   { provider: "claude", base: 41, usdPerMillion: 0.62 },
   { provider: "codex", base: 26, usdPerMillion: 0.44 },
   { provider: "opencode", base: 9.5, usdPerMillion: 0.21 },
-  { provider: "grok", base: 2.6, usdPerMillion: 0.17 }
+  { provider: "grok", base: 2.6, usdPerMillion: 0.17 },
+  { provider: "cursor", base: 5.2, usdPerMillion: 0.26 }
 ];
 
 /** The one day the fixture leans on: a long weekend of migration work. */
@@ -129,7 +130,10 @@ const MODELS: ReadonlyArray<{ provider: ProviderId; modelId: string; weight: num
   { provider: "codex", modelId: "gpt-5.6-terra", weight: 0.81 },
   { provider: "codex", modelId: "codex-auto-review", weight: 0.19, unpriced: true },
   { provider: "opencode", modelId: "opencode-go/qwen3-coder", weight: 1 },
-  { provider: "grok", modelId: "grok-code-fast-1", weight: 1 }
+  { provider: "grok", modelId: "grok-code-fast-1", weight: 1 },
+  { provider: "cursor", modelId: "composer-2.5", weight: 0.72 },
+  // Cursor's Auto bills whichever model it picked, so it has no rate.
+  { provider: "cursor", modelId: "auto-smart[optimize_for=balanced]", weight: 0.28, unpriced: true }
 ];
 
 /**
@@ -178,6 +182,8 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     costUsd: 0,
     cacheSavingsUsd: 0,
     costSource: "list_price",
+    estimatedCostUsd: 0,
+    estimatedTokens: 0,
     // An empty or still-scanning ledger has no earlier window to compare to.
     previous: null,
     providers: [],
@@ -186,18 +192,8 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     days: []
   };
 
-  const cursorRow: UsageProviderSummary = {
-    provider: "cursor",
-    available: false,
-    sessions: 0,
-    tokens: emptyTokens(),
-    costUsd: 0,
-    cacheSavingsUsd: 0,
-    costSource: "unpriced"
-  };
-
   if (mode === "empty") {
-    return { ...base, providers: [cursorRow] };
+    return base;
   }
 
   const rand = mulberry32(0x2026_0903 ^ count);
@@ -241,10 +237,10 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       costUsd: Math.round(carry.cost * 100) / 100,
       // Cache-heavy agent traffic saves on the order of what it spends.
       cacheSavingsUsd: Math.round(carry.cost * 1.25 * 100) / 100,
-      costSource: provider.provider === "codex" ? "mixed" : "list_price"
+      costSource: provider.provider === "codex" || provider.provider === "cursor" ? "mixed" : "list_price"
     };
   });
-  providers.push(cursorRow);
+  const cursor = providers.find((row) => row.provider === "cursor");
 
   const totals = emptyTokens();
   for (const row of providers) addTokens(totals, row.tokens);
@@ -277,7 +273,7 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       // An unpriced model counts tokens and claims no dollars — the case the
       // page has to render without printing a confident $0.
       costUsd: model.unpriced ? 0 : Math.round((row?.costUsd ?? 0) * scale * 100) / 100,
-      costSource: model.unpriced ? "unpriced" : "list_price"
+      costSource: model.unpriced ? "unpriced" : model.provider === "cursor" ? "estimated" : "list_price"
     };
   });
 
@@ -298,6 +294,8 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
       costUsd: narrowed.costUsd,
       cacheSavingsUsd: narrowed.cacheSavingsUsd,
       costSource: narrowed.costSource,
+      estimatedCostUsd: narrowed.provider === "cursor" ? narrowed.costUsd : 0,
+      estimatedTokens: narrowed.provider === "cursor" ? processed(narrowed.tokens) : 0,
       previous: previousByProvider.get(narrowed.provider) ?? null,
       providers,
       series: series.map((point) => ({
@@ -321,6 +319,8 @@ export function demoUsageSummary(input: UsageSummaryInput): UsageSummary {
     costUsd,
     cacheSavingsUsd: Math.round(providers.reduce((sum, row) => sum + row.cacheSavingsUsd, 0) * 100) / 100,
     costSource: "mixed",
+    estimatedCostUsd: cursor?.costUsd ?? 0,
+    estimatedTokens: cursor ? processed(cursor.tokens) : 0,
     previous,
     providers,
     series,

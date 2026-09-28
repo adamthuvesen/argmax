@@ -46,7 +46,7 @@ struct ArcScreen: View {
                 .padding(.bottom, Spacing.section)
         }
         .background(Theme.ground.ignoresSafeArea())
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .screenHeaderBar {
             ScreenHeader(title: title, subtitle: subtitle, onBack: onBack) { stateMenu }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -560,7 +560,6 @@ struct ArcListRow: View {
     /// Sessions in this arc, from the same snapshot the row came from.
     let sessions: [SessionSummary]
     let now: Date
-    let separated: Bool
     let open: () -> Void
 
     @ScaledMetric(relativeTo: .body) private var titleLineHeight: CGFloat = 22
@@ -605,12 +604,6 @@ struct ArcListRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(RowPress())
-        .overlay(alignment: .bottomLeading) {
-            if separated {
-                HairlineDivider(inset: Spacing.gutter)
-                    .padding(.trailing, Spacing.gutter)
-            }
-        }
         .accessibilityLabel("Arc \(arc.name), \(arc.state.label), \(status)")
     }
 

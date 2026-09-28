@@ -403,6 +403,7 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       subtitle: `Settings · ${group.label}`,
       group: "Settings" as const,
       icon: SlidersHorizontal,
+      keywords: section.settings ? [...section.settings] : undefined,
       run: () => {
         closeOverlays();
         onOpenSettingsSection(group.id, section.id);

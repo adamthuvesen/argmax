@@ -26,6 +26,7 @@ macro_rules! empty_input {
 
 empty_input!(HealthPingInput);
 empty_input!(UsageRemainingInput);
+empty_input!(SettingsRoutingInput);
 empty_input!(ProjectsListInput);
 empty_input!(ProjectsPickFolderInput);
 empty_input!(DashboardListInput);
@@ -53,6 +54,38 @@ pub struct DeleteOldChatsInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetBrowserToolsInput {
     pub enabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetRoutingKeyInput {
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetProjectCheckInput {
+    pub mode: crate::persistence::app_settings::ProjectCheckMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsCheckPromptInput {
+    /// The project the launcher is aimed at.
+    pub project_id: ProjectId,
+    pub prompt: Prompt,
+    /// The user picked this project by hand for this draft: a check may
+    /// suggest another one but never switches away on its own.
+    pub picked_by_hand: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsResolveCheckInput {
+    pub check_id: NonEmptyString,
+    pub outcome: crate::routing::project_check::ProjectCheckOutcome,
+    /// The chat the launch started, when it started one.
+    pub session_id: Option<SessionId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -645,6 +678,11 @@ pub struct ProvidersLaunchInput {
     /// coordinator launching itself.
     #[serde(default)]
     pub arc_is_coordinator_launch: bool,
+    /// Let the router pick provider, model and effort from the prompt. The
+    /// provider/model/effort fields above are then only the fallback the
+    /// router overwrites. See docs/routing.md.
+    #[serde(default)]
+    pub auto_tier: Option<crate::routing::table::AutoTier>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -977,11 +1015,16 @@ pub struct SystemSetKeepAwakeInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemSetDefaultAgentInput {
-    pub provider: ProviderId,
+    /// Absent, together with the model fields, when the caller is updating
+    /// permission modes and the model already on disk should stay.
+    #[serde(default)]
+    pub provider: Option<ProviderId>,
     pub permission_mode: Option<PermissionMode>,
     pub permission_modes: Option<HashMap<ProviderId, PermissionMode>>,
-    pub model_label: NonEmptyString,
-    pub model_id: NonEmptyString,
+    #[serde(default)]
+    pub model_label: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
     /// Absent for a fast model that has no effort control at all.
     pub reasoning_effort: Option<ReasoningEffort>,
 }
@@ -1427,7 +1470,13 @@ pub struct UsageSummaryInput {
     pub time_zone: NonEmptyString,
     /// Narrow the totals, chart, and breakdowns to one provider. The
     /// per-provider rows always cover every provider, so the page can still
-    /// offer the others. Cursor keeps no local usage log and is rejected.
+    /// offer the others.
     #[serde(default)]
     pub provider: Option<crate::ipc::validation::ProviderId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UsageRouterCostInput {
+    pub window: crate::usage::UsageWindow,
 }

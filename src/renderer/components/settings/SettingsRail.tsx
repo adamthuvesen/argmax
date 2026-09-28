@@ -3,22 +3,32 @@ import { useMemo, useState, type JSX } from "react";
 import { SETTINGS_GROUPS, type SettingsGroupId } from "./settingsMeta.js";
 import { searchPaletteItems } from "../../lib/paletteSearch.js";
 
-type SectionHit = { group: SettingsGroupId; groupLabel: string; sectionId: string; sectionLabel: string };
+/** One searchable row: a section, or a setting inside it that lands there. */
+type SettingsHit = {
+  group: SettingsGroupId;
+  sectionId: string;
+  label: string;
+  /** Where the hit lives: the group for a section, "Group · Section" for a setting. */
+  location: string;
+};
 
-const ALL_SECTIONS: ReadonlyArray<SectionHit> = SETTINGS_GROUPS.flatMap((group) =>
-  group.sections.map((section) => ({
-    group: group.id,
-    groupLabel: group.label,
-    sectionId: section.id,
-    sectionLabel: section.label
-  }))
+const ALL_HITS: ReadonlyArray<SettingsHit> = SETTINGS_GROUPS.flatMap((group) =>
+  group.sections.flatMap((section) => [
+    { group: group.id, sectionId: section.id, label: section.label, location: group.label },
+    ...(section.settings ?? []).map((setting) => ({
+      group: group.id,
+      sectionId: section.id,
+      label: setting,
+      location: `${group.label} · ${section.label}`
+    }))
+  ])
 );
 
 /**
  * Settings takes over the sidebar column, so this rail replaces the app
  * sidebar for as long as the page is open: a way back, a filter, and the group
- * list. The filter searches section labels — the same registry the command
- * palette lists — so a hit always has somewhere to land.
+ * list. The filter searches section and row labels from the same registry the
+ * command palette lists, and every hit lands on its section.
  */
 export function SettingsRail({
   active,
@@ -35,14 +45,14 @@ export function SettingsRail({
   const trimmed = query.trim().toLowerCase();
   const hits = useMemo(() => {
     if (trimmed === "") return null;
-    const commands = ALL_SECTIONS.map((hit, index) => ({
+    const commands = ALL_HITS.map((hit, index) => ({
       id: String(index),
-      label: hit.sectionLabel,
-      subtitle: hit.groupLabel,
+      label: hit.label,
+      subtitle: hit.location,
       group: "Settings" as const,
       run: () => undefined
     }));
-    return searchPaletteItems(commands, trimmed).map(({ item }) => ALL_SECTIONS[Number(item.id)]);
+    return searchPaletteItems(commands, trimmed).map(({ item }) => ALL_HITS[Number(item.id)]);
   }, [trimmed]);
 
   return (
@@ -72,7 +82,7 @@ export function SettingsRail({
             ) : (
               <ul className="settings-rail-hits" aria-label="Matching settings">
                 {hits.map((hit) => (
-                  <li key={`${hit.group}:${hit.sectionId}`}>
+                  <li key={`${hit.sectionId}:${hit.label}`}>
                     <button
                       type="button"
                       className="settings-rail-hit"
@@ -81,8 +91,8 @@ export function SettingsRail({
                         onOpenSection(hit.group, hit.sectionId);
                       }}
                     >
-                      <span className="settings-rail-hit-label">{hit.sectionLabel}</span>
-                      <span className="settings-rail-hit-group">{hit.groupLabel}</span>
+                      <span className="settings-rail-hit-label">{hit.label}</span>
+                      <span className="settings-rail-hit-group">{hit.location}</span>
                     </button>
                   </li>
                 ))}

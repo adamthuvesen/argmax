@@ -56,9 +56,9 @@ import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { isUserBubbleTint, type UserBubbleTint } from "../../lib/userBubbleTint.js";
 import {
-  SIDEBAR_TRANSLUCENCY_MAX,
-  SIDEBAR_TRANSLUCENCY_MIN
-} from "../../lib/uiPreferences.js";
+  WINDOW_TRANSLUCENCY_MAX,
+  WINDOW_TRANSLUCENCY_MIN
+} from "../../lib/windowTranslucency.js";
 import {
   AccentPicker,
   ActivityMarkPicker,
@@ -85,12 +85,14 @@ export function AppearanceSettings({
   onUserBubbleTintChange,
   sidebarArcsVisible,
   onSidebarArcsVisibleChange,
+  sidebarArchivedVisible,
+  onSidebarArchivedVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
-  sidebarTranslucent,
-  onSidebarTranslucentChange,
-  sidebarTranslucency,
-  onSidebarTranslucencyChange,
+  windowTranslucent,
+  onWindowTranslucentChange,
+  windowTranslucency,
+  onWindowTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   contextIndicatorEnabled,
@@ -134,12 +136,14 @@ export function AppearanceSettings({
   onUserBubbleTintChange: (tint: UserBubbleTint) => void;
   sidebarArcsVisible: boolean;
   onSidebarArcsVisibleChange: (v: boolean) => void;
+  sidebarArchivedVisible: boolean;
+  onSidebarArchivedVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
-  sidebarTranslucent: boolean;
-  onSidebarTranslucentChange: (v: boolean) => void;
-  sidebarTranslucency: number;
-  onSidebarTranslucencyChange: (v: number) => void;
+  windowTranslucent: boolean;
+  onWindowTranslucentChange: (v: boolean) => void;
+  windowTranslucency: number;
+  onWindowTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   contextIndicatorEnabled: boolean;
@@ -415,6 +419,17 @@ export function AppearanceSettings({
           }
         />
         <SettingRow
+          label="Show archived chats"
+          description="Show a collapsed Archived section at the bottom of the chat sidebar."
+          control={
+            <Toggle
+              ariaLabel="Show archived chats"
+              checked={sidebarArchivedVisible}
+              onChange={onSidebarArchivedVisibleChange}
+            />
+          }
+        />
+        <SettingRow
           label="Priority section in sidebar"
           description="Float chats that need approval, are blocked, failed, or are ready for review to the top. Right-click a row to mark it done."
           control={
@@ -426,28 +441,28 @@ export function AppearanceSettings({
           }
         />
         <SettingRow
-          label="Translucent sidebar"
-          description="Let the desktop show through the left sidebar, the way Finder's does."
+          label="Translucent window"
+          description="Let the desktop show through the app's background, blurred the way Finder's sidebar is. Cards, panels and the composer stay solid."
           control={
             <Toggle
-              ariaLabel="Translucent sidebar"
-              checked={sidebarTranslucent}
-              onChange={onSidebarTranslucentChange}
+              ariaLabel="Translucent window"
+              checked={windowTranslucent}
+              onChange={onWindowTranslucentChange}
             />
           }
         />
         <SettingRow
-          label="Sidebar translucency"
-          description="How much of the desktop shows through when the translucent sidebar is on."
+          label="Window translucency"
+          description="How much of the desktop shows through when the translucent window is on."
           control={
             <Slider
-              ariaLabel="Sidebar translucency"
-              min={SIDEBAR_TRANSLUCENCY_MIN}
-              max={SIDEBAR_TRANSLUCENCY_MAX}
-              value={sidebarTranslucency}
-              valueLabel={`${sidebarTranslucency}%`}
-              disabled={!sidebarTranslucent}
-              onChange={onSidebarTranslucencyChange}
+              ariaLabel="Window translucency"
+              min={WINDOW_TRANSLUCENCY_MIN}
+              max={WINDOW_TRANSLUCENCY_MAX}
+              value={windowTranslucency}
+              valueLabel={`${windowTranslucency}%`}
+              disabled={!windowTranslucent}
+              onChange={onWindowTranslucencyChange}
             />
           }
         />

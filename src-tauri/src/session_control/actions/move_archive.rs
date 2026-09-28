@@ -36,8 +36,8 @@ use crate::{
 /// Scheduled rather than immediate for the same reason a move is: archiving
 /// terminates every provider process in the workspace, and the agent asking
 /// for it is one of them. Run inline, the tool call would kill the caller
-/// before it could write its report — and the report is usually the point
-/// (`ship`'s babysit hands one back after it lands a PR).
+/// before it could write its report. The caller still needs to report that
+/// the archive was scheduled, since the checkout may be kept instead.
 ///
 /// Never forced. A dirty checkout comes to rest as `kept` instead, which is
 /// the existing answer to "archive refused because there is work here" and the

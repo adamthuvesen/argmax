@@ -122,7 +122,7 @@ struct TranscriptQuestionDock: View {
                     .foregroundStyle(Theme.ink)
                     .padding(.horizontal, Spacing.row)
                     .frame(minHeight: 48)
-                    .background(Theme.ground, in: .rect(cornerRadius: Radius.control, style: .continuous))
+                    .background(Theme.inset, in: .rect(cornerRadius: Radius.control, style: .continuous))
                     .focused($focusedOtherPage, equals: page)
                     .submitLabel(page == card.questions.count - 1 ? .send : .next)
                     .onSubmit { advanceOrSubmit() }
@@ -249,7 +249,7 @@ struct TranscriptQuestionDock: View {
             .padding(.vertical, Spacing.snug)
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(
-                selected ? accentColor.opacity(0.12) : Theme.ground,
+                selected ? accentColor.opacity(0.12) : Theme.inset,
                 in: .rect(cornerRadius: Radius.control, style: .continuous)
             )
             .contentShape(.rect)

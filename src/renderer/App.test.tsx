@@ -171,12 +171,15 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
-    const modelButton = await screen.findByRole("button", { name: "Chat model" });
-    const initialLabel = modelButton.textContent ?? "";
-    expect(initialLabel).toContain("GPT-5.6 Terra");
+    fireEvent.click(await screen.findByRole("button", { name: "Chat model" }));
+    fireEvent.click(
+      within(await screen.findByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6 Sol" })
+    );
+    const initialLabel = screen.getByRole("button", { name: "Chat model" }).textContent ?? "";
+    expect(initialLabel).toContain("GPT-6 Sol");
 
-    // Model selection is session-id scoped. Deltas for the same session must
-    // not overwrite a local picker choice while the session stays selected.
+    // A pick is session scoped. Deltas for the same session, even one that
+    // swaps its model, must not overwrite it while the session stays selected.
     const baseSession = snapshot.sessions[0];
     if (!baseSession) throw new Error("snapshot must include session-1");
     act(() => {
@@ -679,7 +682,8 @@ describe("App", () => {
       permissionMode: "provider-defaults",
       cols: 120,
       rows: 32,
-      attachments: null
+      attachments: null,
+      autoTier: null
     });
     await waitFor(() =>
       expect(autotitleWorkspace).toHaveBeenCalledWith({
@@ -1072,7 +1076,8 @@ describe("App", () => {
         permissionMode: "provider-defaults",
         cols: 120,
         rows: 32,
-        attachments: null
+        attachments: null,
+        autoTier: null
       })
     );
   });

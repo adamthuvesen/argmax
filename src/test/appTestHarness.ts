@@ -126,6 +126,8 @@ export let setPriorityDismissed: AppTestMockFn<ArgmaxApi["workspaces"]["setPrior
  *  to put the Usage page into a specific state. */
 export let usageSummary: AppTestMockFn<ArgmaxApi["usage"]["summary"]>;
 export let usageRemaining: AppTestMockFn<ArgmaxApi["usage"]["remaining"]>;
+/** Null by default: no chat was routed, so the Router card stays hidden. */
+export let usageRouterCost: AppTestMockFn<ArgmaxApi["usage"]["routerCost"]>;
 export let activitySummary: AppTestMockFn<ArgmaxApi["activity"]["summary"]>;
 export let menuCommandListener: ((command: MenuCommand) => void) | null = null;
 export let focusSessionListener: ((sessionId: string) => void) | null = null;
@@ -399,6 +401,7 @@ export function setupAppTestMocks(): void {
   usageRemaining = vi
     .fn<ArgmaxApi["usage"]["remaining"]>()
     .mockResolvedValue(usageRemainingFixture());
+  usageRouterCost = vi.fn<ArgmaxApi["usage"]["routerCost"]>().mockResolvedValue(null);
   activitySummary = vi
     .fn<ArgmaxApi["activity"]["summary"]>()
     .mockImplementation((input) => Promise.resolve(demoActivitySummary(input)));
@@ -443,7 +446,8 @@ export function setupAppTestMocks(): void {
     },
     usage: {
       summary: usageSummary,
-      remaining: usageRemaining
+      remaining: usageRemaining,
+      routerCost: usageRouterCost
     },
     activity: {
       summary: activitySummary
@@ -472,7 +476,17 @@ export function setupAppTestMocks(): void {
       updateSettings: () => Promise.resolve(primaryProject()),
       listBranches,
       refreshBranch: () => Promise.resolve(primaryProject()),
-      switchBranch: () => Promise.resolve(primaryProject())
+      switchBranch: () => Promise.resolve(primaryProject()),
+      checkPrompt: () => Promise.resolve({
+        decision: "none",
+        checkId: null,
+        suggestedProjectId: null,
+        runnerUpProjectId: null,
+        suggestedProbability: 0,
+        currentProbability: 0,
+        reasons: []
+      }),
+      resolveCheck: () => Promise.resolve()
     },
     workspaces: {
       createIsolated: createIsolatedWorkspace,
@@ -596,6 +610,10 @@ export function setupAppTestMocks(): void {
     },
     settings: {
       agentTools: agentToolsStub,
+      routing: () => Promise.resolve({ enabled: false, projectCheck: "switch" }),
+      setRoutingKey: () => Promise.reject(new Error("Routing key not stubbed")),
+      clearRoutingKey: () => Promise.resolve({ enabled: false, projectCheck: "switch" }),
+      setProjectCheck: ({ mode }) => Promise.resolve({ enabled: false, projectCheck: mode }),
       setBrowserTools: setBrowserToolsStub,
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
@@ -771,12 +789,10 @@ export async function openSettings(group: SettingsGroup = "General"): Promise<vo
   fireEvent.click(screen.getByRole("button", { name: "Argmax menu" }));
   const menu = await screen.findByRole("menu", { name: "Argmax menu" });
   fireEvent.click(within(menu).getByRole("menuitem", { name: /Settings/ }));
-  // Settings replaces the app sidebar with its own rail; the panel itself is
-  // lazy, so wait for its page title rather than for the rail.
+  // Settings replaces the app sidebar with its own rail and reopens on the
+  // group last shown, so always pick the group; the panel itself is lazy, so
+  // wait for its page title rather than for the rail.
   const settingsGroups = await screen.findByRole("complementary", { name: "Settings groups" });
-  await screen.findByRole("heading", { name: "General" });
-  if (group === "General") return settle();
-
   fireEvent.click(within(settingsGroups).getByRole("button", { name: new RegExp(`^${group}$`) }));
   await screen.findByRole("heading", { name: group });
   if (group === "Advanced") {

@@ -141,6 +141,40 @@ final class TranscriptInteractionTests: XCTestCase {
         XCTAssertNil(transcriptMultitaskAnswerPreview("(no answer)"))
         XCTAssertEqual(transcriptMultitaskStatus("blocked").label, "Waiting for you")
         XCTAssertEqual(transcriptMultitaskStatus("cancelled").label, "Stopped")
+        XCTAssertEqual(
+            transcriptMultitaskDisplayStatus(state: "running", attention: .approvalNeeded),
+            .needsYou
+        )
+    }
+
+    func testComposerMultitasksHideDismissedUnlessLiveAgain() throws {
+        let multitask = TranscriptMultitask(
+            id: "mt-1",
+            childSessionId: "child-1",
+            taskLabel: "Fix copy",
+            prompt: nil,
+            answer: "Done",
+            state: "complete",
+            createdAt: "2026-01-01T00:00:00Z"
+        )
+        let items: [TranscriptItem] = [.multitask(multitask)]
+        XCTAssertEqual(TranscriptComposerMultitasks.notices(from: items).map(\.id), ["mt-1"])
+
+        let suite = "argmax.transcript-composer.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        TranscriptMultitaskDismissals.dismiss("child-1", defaults: defaults)
+
+        let doneSession = makeSession(id: "child-1", workspaceId: "w-1", state: .complete, launchKind: "multitask")
+        XCTAssertTrue(
+            TranscriptComposerMultitasks.visible([multitask], sessions: [doneSession], defaults: defaults).isEmpty
+        )
+
+        let runningSession = makeSession(id: "child-1", workspaceId: "w-1", state: .running, launchKind: "multitask")
+        XCTAssertEqual(
+            TranscriptComposerMultitasks.visible([multitask], sessions: [runningSession], defaults: defaults).map(\.id),
+            ["mt-1"]
+        )
     }
 
     func testMultitaskDismissalsPersistNewestTwoHundredChildSessions() throws {

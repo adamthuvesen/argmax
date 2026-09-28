@@ -37,7 +37,7 @@ import type {
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import { modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
+import { isAutoTier, modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
 import { orderedOpenFilePaths } from "../lib/openFileContext.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
@@ -871,9 +871,9 @@ export function SessionConversation({
   // for the same reason: a session marked failed (most commonly because its
   // provider process didn't survive an app restart — orphan recovery) has no
   // live handle, so sending input takes the same relaunch-with-resume path and
-  // continues the conversation.
+  // continues the conversation. An archived workspace can only be read.
   const canSend = Boolean(
-    session && ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state)
+    session && workspace?.state !== "archived" && ["complete", "waiting", "running", "cancelled", "failed"].includes(session.state)
   );
   // Currently running → the next submit goes onto the queue rather than
   // straight to the agent. Used to tweak placeholder and Send tooltip copy.
@@ -955,6 +955,17 @@ export function SessionConversation({
         sentAtMs: Date.now()
       });
       try {
+        // An Auto selection describes the displayed route, not a user pin.
+        // Keep that distinction across the async send so a stale dashboard
+        // cannot overwrite a newer route or a pin from another window.
+        const deliveryModel: ModelPickerSelection =
+          session && targetSessionId === session.id &&
+          isAutoTier(session.autoTier) &&
+          model.provider === session.provider &&
+          model.modelId === session.modelId &&
+          (model.reasoningEffort ?? null) === (session.reasoningEffort ?? null)
+            ? { ...model, autoTier: session.autoTier }
+            : model;
         const mentionedNames = new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []);
         const references =
           (model.provider === "claude" ||
@@ -968,15 +979,15 @@ export function SessionConversation({
           : [];
         if (references.length > 0) {
           if (delivery === "steer") {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references, delivery);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references, delivery);
           } else {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments, references);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references);
           }
         } else {
           if (delivery === "steer") {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments, undefined, delivery);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, undefined, delivery);
           } else {
-            await onSendSessionInput(targetSessionId, text, model, mode, attachments);
+            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments);
           }
         }
       } catch (error) {
@@ -987,7 +998,8 @@ export function SessionConversation({
         throw error;
       }
     },
-    [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId, toolCalls, agentCodenames]
+    [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId,
+      session?.autoTier, session?.modelId, session?.reasoningEffort, toolCalls, agentCodenames]
   );
   const isTurnStarting = turnStartBaseline !== null;
   // Whether the session reached a live state after the send. A follow-up sent
@@ -1383,14 +1395,21 @@ export function SessionConversation({
   const floatingHeading =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
-  // Depend on session.id rather than the session object: the parent rebuilds
-  // SessionSummary references on every dashboard delta, which would otherwise
-  // overwrite the user's per-session model pick on every streaming event.
-  useEffect(() => {
+  // Reseed on the session's id and model fields rather than the session
+  // object: the parent rebuilds SessionSummary references on every dashboard
+  // delta. The model fields matter because the Mac re-routes an Auto chat's
+  // follow-ups; a composer still holding the old model would send it back as a
+  // pin and undo the route. A stored pick is the user's own and still wins.
+  // Reseeded during render, not in an effect, so the chip never paints a frame
+  // with the session's new model but the composer's old one: that frame drops
+  // the Router label and breaks the chip's switch motion.
+  const seededModelKey = [sessionId, session?.provider, session?.modelId, session?.reasoningEffort].join("\n");
+  const [seededFor, setSeededFor] = useState(seededModelKey);
+  if (seededFor !== seededModelKey) {
+    setSeededFor(seededModelKey);
     const fallback = modelPickerSelectionFromSession(session);
     setSelectedModel(sessionId ? readStoredSessionModel(sessionId, fallback) : fallback);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- session.id is the identity gate; `session` mutates per-tick by design
-  }, [sessionId]);
+  }
 
   const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
 

@@ -355,6 +355,12 @@
   border-color: color-mix(in oklab, var(--accent) 40%, var(--line-strong));
 }
 
+/* A key field beside its Save button in a row's control column. */
+.settings-routing-key-input {
+  width: 220px;
+  max-width: 100%;
+}
+
 .settings-textarea {
   resize: vertical;
   min-height: 64px;

@@ -40,13 +40,16 @@ describe("useSessionCommands", () => {
     ["codex", "gpt-5.6-terra", true],
     ["codex", "gpt-6-luna", true],
     ["codex", "unknown", false],
+    ["claude", "claude-opus-5-5", true],
     ["claude", "claude-fable-5-1", false],
     ["claude", "claude-opus-5", false],
     ["claude", "claude-sonnet-5", false],
     ["claude", "claude-haiku-4-5", false],
-    ["cursor", "gpt-5.6-sol-medium", false],
-    ["cursor", "composer-2.5", false],
-    ["cursor", "grok-4.7-medium", false],
+    ["cursor", "gpt-5.6-sol-medium", true],
+    ["cursor", "composer-2.5", true],
+    ["cursor", "grok-4.7-medium", true],
+    ["cursor", "gemini-3.8-flash-medium", false],
+    ["cursor", "auto-smart[optimize_for=cost]", false],
     ["grok", "grok-4.7", true],
     ["grok", "grok-4.6", false],
     ["grok", "grok-4.5", false],
@@ -92,6 +95,25 @@ describe("useSessionCommands", () => {
     expect(onEarlyStop).toHaveBeenCalledWith("session-1");
     expect(terminateMock).toHaveBeenCalledWith("session-1");
     expect(archiveMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["queue", "steer"] as const)("omits Auto model echoes from a %s send", async (delivery) => {
+    const { result } = renderHook(() =>
+      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: true })
+    );
+    await act(async () => {
+      await result.current.sendSessionInput("session-1", "continue", {
+        provider: "codex", label: "GPT-6 Astra", modelId: "gpt-6-astra",
+        reasoningEffort: "high", autoTier: "balanced"
+      }, "auto", undefined, undefined, delivery);
+    });
+    const mock = delivery === "steer" ? steerInputMock : sendInputMock;
+    expect(mock).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-1", input: "continue", fastMode: false })
+    );
+    for (const field of ["provider", "modelId", "modelLabel", "reasoningEffort"]) {
+      expect(mock.mock.calls[0]?.[0]).not.toHaveProperty(field);
+    }
   });
 
   it("archives the workspace onEarlyStop returns after a successful stop", async () => {

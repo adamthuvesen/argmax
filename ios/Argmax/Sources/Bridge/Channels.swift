@@ -152,10 +152,13 @@ struct LaunchSessionInput: Encodable, Sendable {
     var rows = 32
     /// Images the launcher picked, stored on the Mac before this call.
     var attachments: [ComposerAttachment] = []
+    /// A Router pick: the Mac routes the launch and overwrites the model
+    /// fields above. Nil for a model picked by hand.
+    var autoTier: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case workspaceId, provider, prompt, modelLabel, modelId, reasoningEffort
-        case fastMode, agentMode, cols, rows, attachments
+        case fastMode, agentMode, cols, rows, attachments, autoTier
     }
 
     func encode(to encoder: Encoder) throws {
@@ -177,7 +180,17 @@ struct LaunchSessionInput: Encodable, Sendable {
         } else {
             try container.encode(attachments, forKey: .attachments)
         }
+        // Only on a Router pick, unlike the web launcher's null: the input
+        // denies unknown fields, and a Mac built before routing would refuse
+        // every launch that named the key.
+        try container.encodeIfPresent(autoTier, forKey: .autoTier)
     }
+}
+
+/// `settings:routing`: whether a Jev key is saved on the Mac, which is what
+/// puts the Router rows in the model picker. The key itself is desktop-only.
+struct RoutingSettings: Decodable, Sendable {
+    var enabled: Bool
 }
 
 /// `WorkspacesAutotitleInput` — a second, toolless CLI call that renames the
@@ -228,12 +241,11 @@ struct SaveAttachmentImageResult: Decodable, Sendable {
 struct SendInputInput: Encodable, Sendable {
     var sessionId: String
     var input: String
-    /// Carries the picked provider unconditionally, the way the composer
-    /// does; the host only acts on it when it differs from the session's
-    /// current provider, and only on an idle follow-up.
-    var provider: String
-    var modelLabel: String
-    var modelId: String
+    /// Omitted, with the model fields, when a routed chat is sent untouched.
+    /// The host treats a present model as a pin and clears Auto.
+    var provider: String?
+    var modelLabel: String?
+    var modelId: String?
     var reasoningEffort: String?
     /// Auto, the only mode left. Still on the wire, because a Mac built
     /// before Plan was removed reads the field.
@@ -249,10 +261,12 @@ struct SendInputInput: Encodable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(sessionId, forKey: .sessionId)
         try container.encode(input, forKey: .input)
-        try container.encode(provider, forKey: .provider)
-        try container.encode(modelLabel, forKey: .modelLabel)
-        try container.encode(modelId, forKey: .modelId)
-        try container.encodeAlways(reasoningEffort, forKey: .reasoningEffort)
+        if let provider { try container.encode(provider, forKey: .provider) }
+        if let modelLabel { try container.encode(modelLabel, forKey: .modelLabel) }
+        if let modelId {
+            try container.encode(modelId, forKey: .modelId)
+            try container.encodeAlways(reasoningEffort, forKey: .reasoningEffort)
+        }
         // Off, same as `LaunchSessionInput`: fast mode is a Codex-only
         // control the phone does not surface.
         try container.encode(false, forKey: .fastMode)
@@ -481,12 +495,25 @@ extension BridgeClient {
         try await request("usage:remaining", as: PlanLimits.self)
     }
 
+    /// Not in the read list, so it carries an operation id, as the web
+    /// launcher's call does.
+    func routingSettings() async throws -> RoutingSettings {
+        try await request("settings:routing", as: RoutingSettings.self)
+    }
+
     /// The Usage page ledger: totals, per-provider cards, daily series, token
     /// split, and model breakdown for one window. Always fetched unfiltered —
     /// the provider filter is applied client-side so the cards stay global.
     /// A read (`src/shared/remoteReadChannels.json`), never a poll.
     func usageSummary(_ input: UsageSummaryInput) async throws -> UsageSummary {
         try await request("usage:summary", input: input, as: UsageSummary.self)
+    }
+
+    /// What each Router tier cost in the window: turns, spend, and median
+    /// turn and first-answer times. `null` from a host with no routing
+    /// history; a read, never a poll.
+    func routerCost(_ input: RouterCostInput) async throws -> RouterCostSummary? {
+        try await request("usage:router-cost", input: input, as: RouterCostSummary?.self)
     }
 
     /// The Activity page ledger: totals, repos, daily series, 365-day

@@ -268,9 +268,60 @@ account and a temporary project.
 - **Forking:** `session:fork` creates a new session flagged with `resume_fork`. The next turn invokes the provider's fork flag (`--fork-session` for Claude and Grok, `exec fork` for Codex, `--fork` for OpenCode). Cursor does not support session forking.
 - **Session moves:** An agent-requested move waits for the current turn to settle and copies the transcript into a fresh session at the destination. A cross-project move always clears `provider_conversation_id`. A move to another checkout of the same project carries it where the provider allows — see below. The first destination turn receives the handoff note, plus the capped transcript when the conversation did not travel.
 - **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). A fresh install starts on Opus 5 at Medium. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
-- **Fast mode:** The model catalog explicitly marks eligible models. The picker offers Speed and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Eligible today: Codex Astra, Sol, Terra, and Luna (`serviceTier: "priority"` per turn), and Grok 4.7 (`grok-4.7-build-fast` on ACP and the CLI). Availability depends on the provider account. Cursor ACP advertises exactly one variant per family and `session/set_model` rejects any other id, including a flipped `fast=` parameter, so Argmax offers no Speed control for Cursor. OpenCode has none. Claude's settings flag remains wired, but the current Claude catalog has no verified eligible models: [Claude's documentation](https://code.claude.com/docs/en/fast-mode) restricts Fast to Opus 4.6 and says enabling it on other models switches models. Unknown models default to ineligible. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
-- **Reasoning effort:** Claude gets the CLI's `--effort` flag (low → max; Ultra clamps to max, the flag's ceiling). The appended system prompt never varies with effort, so an effort change on a follow-up keeps the cached system prompt. Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP takes the advertised configuration described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
+- **Fast mode:** The model catalog explicitly marks eligible models. The picker offers the Fast mode row and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Eligible today: Codex Astra, Sol, Terra, and Luna (`serviceTier: "priority"` per turn), Grok 4.7 (`grok-4.7-build-fast` on ACP and the CLI), Claude Opus 5.5 (`"fastMode": true` in `--settings`, twice the price), and every Cursor model whose ACP config has a `fast` option (Composer 2.5, Grok 4.7, GPT-5.6 Sol/Terra/Luna, Opus 5.5; not Gemini 3.8 Flash or Auto). Availability depends on the provider account. OpenCode has none. [Claude's documentation](https://code.claude.com/docs/en/fast-mode) limits Fast to Opus 5.5, 5 and 4.8 and says enabling it on another model switches to Opus, so the rest of the Claude catalog stays ineligible. Unknown models default to ineligible. The picker's control is the **Fast mode** row at the foot of the list (Off / On); it is not called Speed because that names a Router tier. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
+- **Reasoning effort:** Claude gets the CLI's `--effort` flag (low → max; Ultra clamps to max, the flag's ceiling). The appended system prompt never varies with effort, while cache reuse still depends on the model and endpoint below. Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP sets it as the model's `thought_level` config option, described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
 - **Context window:** Claude's 1M models launch on the `[1m]` spelling of their id (`claude-opus-5-5[1m]`, `claude-opus-5[1m]`, `claude-fable-5-1[1m]`), since the CLI only resolves a bare id's window through a first-party lookup — behind a custom `ANTHROPIC_BASE_URL` it assumes 200k and auto-compacts there, a fifth of the way into the advertised window. The suffix rides on the launch flag alone; the CLI reports the bare id back, so usage and pricing are unchanged. The catalog's `contextWindow` decides which ids get it (`CLAUDE_LONG_CONTEXT_MODELS` in [adapters.rs](../src-tauri/src/providers/adapters.rs)).
+
+### Follow-up cache boundaries
+
+Argmax chooses a model and effort between turns. A native conversation ID
+preserves the provider's history, but does not prove that a server-side prompt
+cache entry survived. A cache miss can leave an earlier matching prefix alive,
+so returning from model B to model A may reuse A's prefix if it is still
+available. No idle duration proves that a switch is free.
+
+- **Codex:** Each turn starts a new app-server process, resumes the durable
+  thread, and sends the selected model and effort in `turn/start`. Codex
+  0.156.1's `reasoning_effort_override` is an opt-in development feature;
+  Argmax does not enable it, though the user's Codex configuration still
+  applies. A request-level effort change has no established
+  cache-preservation guarantee. The public GPT-6
+  `configuration_update` mechanism requires a stable request-level effort and
+  compatible history handling around compaction and truncation. Those API
+  rules alone do not establish the behavior of Codex app-server on resumed
+  turns. [App-server protocol](https://learn.chatgpt.com/docs/app-server),
+  [reasoning updates](https://developers.openai.com/api/docs/guides/reasoning#change-reasoning-mid-conversation),
+  [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
+- **Claude Code:** The resumed control process receives `--model` and
+  `--effort` again. Claude Code documents cache-preserving effort changes on
+  Opus 5.5 and Fable 5.1 with an API key or Claude subscription, subject to
+  its listed platform, gateway, beta, and HIPAA exclusions. Other effort
+  changes can reset the cache. A model switch starts a model-specific cache.
+  The main conversation may use a one-hour TTL within subscription usage and
+  five minutes under API-key or usage-credit billing; custom settings can
+  change it. [Claude Code caching](https://code.claude.com/docs/en/prompt-caching).
+- **Cursor:** ACP resumes a session and sets its model and thought-level
+  options. Cursor documents a cache miss on model switches; it makes no
+  corresponding guarantee for ACP effort changes. Argmax lacks native Cursor
+  token-usage accounting for cache reads. [Cursor harness](https://cursor.com/blog/continually-improving-agent-harness).
+- **OpenCode:** Its native HTTP transport resumes the session and sends the
+  selected model and variant with the next prompt. OpenCode Go recommends a
+  stable session identifier for routing and caching, but does not guarantee
+  cache reuse after a variant change. The underlying service determines cache
+  behavior. [OpenCode Go](https://opencode.ai/docs/go/).
+- **Grok Build:** ACP loads the session and sets the model and reasoning mode.
+  xAI describes stable conversation routing and possible eviction for its API,
+  but does not specify an ACP cache contract for these changes. The provider
+  reports cache-read and cache-write tokens when available.
+  [xAI caching](https://docs.x.ai/developers/advanced-api-usage/prompt-caching/best-practices).
+
+The provider tests check selected settings for effort down → back and model
+A → B → A sequences. The Codex fixture additionally starts a fresh process
+each turn, resumes the thread, and emits a compaction notification. These
+fixture assertions cover selected wire parameters when run; they do not
+measure cache reuse or model compliance. A live cache check must record cached and
+uncached input tokens, writes, latency, and cost for unchanged, effort-down,
+effort-back, and model A → B → A turns, including resume and compaction.
 
 ### The agent's todo list
 
@@ -430,7 +481,7 @@ Their model IDs are `auto-smart[optimize_for=cost]`,
 `auto-smart[optimize_for=balanced]`, and `auto-smart[optimize_for=intelligence]`.
 These bracket parameters were verified with live CLI requests on 2026-09-07,
 even though `--list-models` only listed plain Auto. Auto has no manual reasoning
-effort or Fast control. Billing retains the existing Cursor telemetry placeholder,
+effort or Fast control; its `optimize_for` is set as an ACP config option. Billing retains the existing Cursor telemetry placeholder,
 not an estimate of the routed model's actual cost.
 
 Cursor's one-shot result usage contains billing totals across model calls, not
@@ -440,13 +491,13 @@ for all Cursor models, including sessions with previously saved context values.
 ACP provides no token usage or context occupancy.
 
 Chat launches run over Agent Client Protocol (ACP) against a pooled `cursor-agent acp` process ([cursor_acp.rs](../src-tauri/src/providers/cursor_acp.rs)).
-- **Scope:** All Cursor models use ACP. A launch takes the configuration Cursor advertises for the requested model's family, whatever effort and Fast state that carries. Cursor lists exactly one variant per family, it does not follow the parameters saved in `cli-config.json`, and `session/set_model` rejects any id it did not list — so requiring an exact match rejected most of the catalog, the default model included. A family Cursor does not advertise at all still returns an error rather than silently changing models.
+- **Scope:** All Cursor models use ACP. `initialize` declares `clientCapabilities._meta.parameterizedModelPicker`. Without it Cursor lists one preset variant per family (`composer-2.5[fast=true]`), rejects every other, and ignores the app's and `cli-config.json`'s preferences, so the chat's effort and Fast never applied. With it the model is a bare id (`session/set_config_option` `model`), and the answer lists that model's own options. Argmax then sets the effort option (`effort`, `reasoning_effort` or `reasoning`, all category `thought_level`; the nearest offered level, `xhigh` or `extra-high`), `fast` from the chat's Fast mode, and Auto's `optimize_for` from the catalog id. It leaves Claude's on/off `thinking` switch and `context` at Cursor's defaults. A chat with no effort keeps Cursor's default. A family Cursor does not advertise at all still returns an error rather than silently changing models.
 - **Turn lifecycle:** ACP notifications translate into standard Cursor stream events. Each translated line carries the native ACP session id, which lets completed task rows link child-agent runs to their provider parent. Tool rows are named from `rawInput._toolName` to prevent sub-agents from collapsing into generic `other` tools.
 - **A tool row waits for the update that names it.** Cursor opens *every* tool call nameless — `{"title":"Edit File","kind":"edit","rawInput":{}}` — and fills in `rawInput` and `locations` one `tool_call_update` later. Drawing the row from the opening line froze those empty arguments onto the transcript, which is why an edit read as "Edited file" with no path, no diff, and no place in the changed-files card. A bare `status: in_progress` still draws nothing, since it says nothing about what the tool is; a completion draws the row regardless, because after it nothing more is coming.
 - **A write's diff is computed from the pair Cursor sends.** ACP reports a completed write as `content: [{type:"diff", path, oldText, newText}]`, and both sides are the file's *whole* text. A one-line change to a 60-line file arrives as 60 lines each way. `unified_diff` in [unified_diff.rs](../src-tauri/src/providers/unified_diff.rs) reduces the pair to hunks with git's own three lines of context, and the result rides the tool's arguments as `unified_diff`, where the chat's file-change card reads it. Passing the pair through instead would have reported every line of the file as rewritten, `+60 −60` included. Two of Cursor's own markers are decoded on the way: a create arrives as unified-diff header lines with one marker character eaten (`oldText` is the literal `-- /dev/null`, `newText` opens with `++ b/<path>`), and a delete reports the removed path as its own `oldText` with an empty `newText`. These rows also carry an explicit create or delete operation, so an empty-file create and a contentless delete still reach the changed-files card. A diff past 128 KiB is a rewrite and is dropped, leaving the path without a stat.
 - **Permissions:** Provider defaults preserves native permission rules. Full access launches a separate forced ACP pool and allows requests. Ask for approval forwards native requests to the chat, but Cursor actions already allowed by its rules may still run without prompting. Cursor's question tool arrives as its own `cursor/ask_question` request and reaches the question dock; a permission request whose options carry more than one `allow_once` is that tool's fallback rather than a permission, and is declined instead of shown — see [approvals-checks.md](approvals-checks.md). Pools are isolated by permission mode.
 - **MCP servers:** Cursor stores user-MCP OAuth grants against the ACP process's launch directory rather than `session/new.cwd`. Argmax therefore starts every Cursor ACP process from the user's home directory, giving all Argmax Cursor chats one Cursor-owned authentication scope; authenticate a user MCP once with `cd ~ && cursor-agent mcp login <name>`. The session still works in its checkout. Argmax passes Cursor-approved entries from the checkout's `.cursor/mcp.json` through `session/new` / `session/load` beside its per-session `argmax` server, and starts project stdio servers in that checkout so relative paths retain their meaning. Approve a project server with `cursor-agent mcp enable <name>` from the checkout, and authenticate a project-only remote server there too. Unapproved project servers remain unavailable, matching Cursor's trust gate. If a project server uses configuration ACP cannot represent exactly, Argmax keeps Cursor's native per-checkout launch and logs that the separate checkout login is still required rather than silently dropping fields. The pool fingerprints global and project config, project approvals, and the names holding grants in the active scope, so configuration, approval, or completed login reaches the next chat while token refresh alone does not churn a warm process.
-- **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed. The server runs in its own process group and teardown signals the group, so the MCP servers it started die with it.
+- **Cancellation & cleanup:** `terminate` cancels in-flight prompts. Workspace pool entries are evicted when isolated workspaces archive or are removed. The server runs in its own process group and teardown signals the group, so the MCP servers it started die with it. Cursor's shell keeps its cwd in that warm process. After a shell there has returned output, a later shell that completes with no result replaces the process on the next launch: the cwd was deleted out from under it, Cursor reports the command completed and omits `rawOutput`, and the process would otherwise keep spawning into the missing directory. That is the failure an agent reads as a broken shell and routes around by typing into the integrated terminal.
 
 ## OpenCode
 
@@ -466,7 +517,8 @@ Grok Build chats use a pooled `grok agent stdio` ACP process, isolated by worksp
 - **`--cwd` is passed explicitly** even though the child is already spawned in the worktree: with `[cli] use_leader` enabled the turn runs inside a shared leader process whose cwd is not the child's. Same trap OpenCode's `--dir` covers.
 - **Repo-local MCP servers are gated on folder trust.** `grok inspect --json` reports `projectTrusted: false` for a checkout the user has never accepted, and the `.grok/config.toml` Argmax writes is ignored until it is true. A launch therefore records the workspace in Grok's own `trusted_folders.toml` and gives the entry back at the end ([agent-tools.md](agent-tools.md)).
 - **Skills** come from `.grok/skills`, `.agents/skills`, and — by Grok's own compatibility rules — `.claude/skills`, plus `~/.grok/installed-plugins/<plugin>/skills` and the bundled cache at `~/.grok/bundled/skills`.
-- **Pricing** is the `grok-4.7-build` / `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. The 4.6 rates in `MODEL_PRICING` were solved from the CLI's own `total_cost_usd` and reproduce it exactly; 4.7 is served at that same rate, and 4.5 costs twice as much. The default and title calls use 4.7.
+- **Usage rides the `session/prompt` response.** Grok sends no ACP `usage_update`; the turn's bill is an x.ai `_meta.usage` extension on the prompt response, the same per-model `modelUsage` / `costUsdTicks` shape as its session logs. `usage_lines` in [grok_acp.rs](../src-tauri/src/providers/grok_acp.rs) turns each billed model into a content-less `assistant` line, and the Grok normalizer records it at the cost Grok charged rather than the rate table. The figure totals every model call in the turn, so it leaves the context meter alone.
+- **Pricing** is the `grok-4.7-build` / `grok-4.6-build` / `grok-4.5-build` SKU rate, not xAI's published API list price. 4.7 lists at $2 / $6 per million on xAI's API; its SKU bills 0.34x that. Every Grok rate in `MODEL_PRICING` was solved from the `costUsdTicks` Grok reported on 2026-09-27 and reproduces it to the tick: 4.7 and 4.6 at $0.68 / $2.04 / $0.17 (input / output / cache read, doubled since 2026-09-01), 4.5 the same but $0.102 for cache reads, and 4.7 Fast at twice 4.7. Recorded turns carry Grok's own cost, so the table prices only what arrives without one. The default and title calls use 4.7.
 - **Session sync is not supported.** Grok stores transcripts under `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/` (`$GROK_HOME/sessions/…` when that variable is set), which is a lossless cwd mapping, but Argmax has no reader for it yet — the Settings toggle renders disabled.
 
 ## Subagent Activity

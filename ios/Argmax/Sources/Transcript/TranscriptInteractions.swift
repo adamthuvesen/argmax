@@ -189,8 +189,9 @@ struct TranscriptInteractiveRow: View {
                     multitask: multitask,
                     liveState: live?.state,
                     liveLabel: live?.label,
+                    liveAttention: live?.attention,
                     client: client,
-                    onLoad: loadMultitask,
+                    onLoad: { try await transcript.loadMultitaskDetail(childSessionID: $0) },
                     onOpenFile: onOpenFile,
                     onOpenFullChat: onOpenSession
                 )
@@ -222,28 +223,13 @@ struct TranscriptInteractiveRow: View {
         try await transcript.loadAgentEvents(for: agent)
     }
 
-    private func loadMultitask(_ sessionID: String) async throws -> TranscriptMultitaskDetailSnapshot {
-        async let page = client.transcriptEvents(sessionID: sessionID)
-        async let dashboard = client.transcriptDashboard()
-        let (loadedPage, loadedDashboard) = try await (page, dashboard)
-        guard let session = loadedDashboard.sessions.first(where: { $0.id == sessionID }) else {
-            throw BridgeError.malformedResponse
-        }
-        let workspacePath = loadedDashboard.workspaces.first { $0.id == session.workspaceId }?.path
-        return TranscriptMultitaskDetailSnapshot(
-            items: TranscriptProjection.project(events: loadedPage.events, workspacePath: workspacePath),
-            sendContext: context(for: session),
-            workspacePath: workspacePath
-        )
-    }
-
     private func liveMultitask(
         for multitask: TranscriptMultitask
-    ) -> (state: String, label: String?)? {
+    ) -> (state: String, label: String?, attention: AttentionState)? {
         guard let childSessionID = multitask.childSessionId,
               let session = dashboard.snapshot.sessions.first(where: { $0.id == childSessionID })
         else { return nil }
         let label = dashboard.snapshot.workspaces.first(where: { $0.id == session.workspaceId })?.taskLabel
-        return (session.state.rawWire, label)
+        return (session.state.rawWire, label, session.attention)
     }
 }

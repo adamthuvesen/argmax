@@ -39,7 +39,7 @@ struct DiffScreen: View {
             Theme.ground.ignoresSafeArea()
             switch chrome {
             case .pushed:
-                content.safeAreaInset(edge: .top, spacing: 0) { header }
+                content.screenHeaderBar { header }
             case .embedded:
                 content
             }

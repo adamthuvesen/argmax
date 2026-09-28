@@ -62,6 +62,7 @@ pub fn normalize_assistant_text(
         .is_some();
     if !has_timestamp {
         context.cursor_assistant_text = None;
+        context.cursor_answer_start = 0;
         return Some(text);
     }
     let prior = context.cursor_assistant_text.take().unwrap_or_default();
@@ -74,8 +75,25 @@ pub fn normalize_assistant_text(
     // because each subsequent prior is even longer.
     match text.strip_prefix(prior.as_str()) {
         Some(suffix) => Some(suffix.to_string()),
-        None => Some(text),
+        None => {
+            context.cursor_answer_start = 0;
+            Some(text)
+        }
     }
+}
+
+/// The turn's answer: the text after its latest tool call. Narration before a
+/// tool is already on the timeline as deltas, and repeating it here showed it
+/// twice. A turn that ends on a tool has nothing after it, so it keeps the
+/// whole text rather than report no answer at all.
+fn take_final_answer(context: &mut NormalizerSessionContext) -> Option<String> {
+    let start = std::mem::take(&mut context.cursor_answer_start);
+    let text = context.cursor_assistant_text.take()?;
+    let answer = text.get(start..).map(str::trim_start).unwrap_or_default();
+    if !answer.trim().is_empty() {
+        return Some(answer.to_string());
+    }
+    Some(text).filter(|text| !text.trim().is_empty())
 }
 
 pub fn normalize_result_success(
@@ -83,11 +101,7 @@ pub fn normalize_result_success(
     context: &mut NormalizerSessionContext,
 ) -> Vec<PersistTimelineEventInput> {
     let mut events = Vec::new();
-    if let Some(final_text) = context
-        .cursor_assistant_text
-        .take()
-        .filter(|text| !text.trim().is_empty())
-    {
+    if let Some(final_text) = take_final_answer(context) {
         events.push(timeline_event(
             event,
             "message.completed",
@@ -112,10 +126,7 @@ pub fn synthesize_message_completed_from_exit(
     if context.cursor_turn_completed_emitted {
         return None;
     }
-    let final_text = context
-        .cursor_assistant_text
-        .take()
-        .filter(|text| !text.trim().is_empty())?;
+    let final_text = take_final_answer(context)?;
     context.cursor_turn_completed_emitted = true;
     Some(timeline_event(
         event,
@@ -449,6 +460,39 @@ mod tests {
             result.events[1].payload.get("cursorResultSuccess"),
             Some(&json!(true))
         );
+    }
+
+    #[test]
+    fn cursor_completion_carries_only_the_text_after_the_last_tool() {
+        let mut context = NormalizerSessionContext::default();
+        let assistant = |text: &str, at: u32| {
+            json!({ "type": "assistant", "message": text, "timestamp_ms": at }).to_string()
+        };
+        let tool = r#"{"type":"tool_call","subtype":"started","call_id":"t1","tool_call":{"readToolCall":{"args":{"path":"a.md"}}}}"#;
+        for line in [
+            assistant("Reading it.\n", 1),
+            tool.to_string(),
+            assistant("Reading it.\nHere is the answer.", 2),
+        ] {
+            normalize_provider_event(ProviderId::Cursor, &output_event(&line), &mut context);
+        }
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"result","subtype":"success"}"#),
+            &mut context,
+        );
+        assert_eq!(result.events[0].message, "Here is the answer.");
+
+        // A turn that ends on a tool keeps its whole text as the answer.
+        for line in [assistant("Checking.", 3), tool.to_string()] {
+            normalize_provider_event(ProviderId::Cursor, &output_event(&line), &mut context);
+        }
+        let result = normalize_provider_event(
+            ProviderId::Cursor,
+            &output_event(r#"{"type":"result","subtype":"success"}"#),
+            &mut context,
+        );
+        assert_eq!(result.events[0].message, "Checking.");
     }
 
     #[test]

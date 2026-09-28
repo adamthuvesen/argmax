@@ -1,0 +1,52 @@
+{
+  "tiers": [
+    {
+      "tier": "intelligence",
+      "chats": 6,
+      "turns": 31,
+      "escalations": 0,
+      "reroutes": 1,
+      "measuredCostUsd": 9.48,
+      "estimatedCostUsd": 0,
+      "unpricedTurns": 1,
+      "models": [
+        { "provider": "claude", "modelId": "claude-opus-5-5", "turns": 24, "costUsd": 8.1, "estimated": false },
+        { "provider": "codex", "modelId": "gpt-5.5", "turns": 7, "costUsd": 1.38, "estimated": false }
+      ],
+      "medianTurnSeconds": 94.2,
+      "medianFirstAnswerSeconds": 4.6
+    },
+    {
+      "tier": "balanced",
+      "chats": 11,
+      "turns": 48,
+      "escalations": 3,
+      "reroutes": 0,
+      "measuredCostUsd": 2.9,
+      "estimatedCostUsd": 0.41,
+      "unpricedTurns": 0,
+      "models": [
+        { "provider": "claude", "modelId": "claude-sonnet-5", "turns": 36, "costUsd": 2.9, "estimated": false },
+        { "provider": "cursor", "modelId": "composer-2", "turns": 12, "costUsd": 0.41, "estimated": true }
+      ],
+      "medianTurnSeconds": 41.8,
+      "medianFirstAnswerSeconds": 2.3,
+      "futureColumn": true
+    },
+    {
+      "tier": "cost",
+      "chats": 4,
+      "turns": 9,
+      "escalations": 2,
+      "reroutes": 0,
+      "measuredCostUsd": 0.03,
+      "estimatedCostUsd": 0,
+      "unpricedTurns": 0,
+      "models": [
+        { "provider": "claude", "modelId": "claude-haiku-4-5", "turns": 9, "costUsd": 0.03, "estimated": false }
+      ],
+      "medianTurnSeconds": 8.4,
+      "medianFirstAnswerSeconds": null
+    }
+  ]
+}

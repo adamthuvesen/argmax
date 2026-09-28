@@ -812,7 +812,7 @@ pub(super) fn parse_agent_mode(value: &str) -> Option<AgentMode> {
     }
 }
 
-pub(super) fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
+pub(crate) fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
     match value {
         "low" => Some(ReasoningEffort::Low),
         "medium" => Some(ReasoningEffort::Medium),

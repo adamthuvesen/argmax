@@ -4,7 +4,7 @@ import { optionName } from "../../test/optionName.js";
 import { PROVIDER_MODELS, type ProviderModelSelection } from "../../shared/providerModels.js";
 import { LAUNCH_MODEL_RECENCY_KEY } from "../lib/launchModelPreference.js";
 import { LaunchModelSelector, ModelSelector, type ProviderAvailability } from "./ModelSelector.js";
-import type { ModelPickerSelection } from "../lib/models.js";
+import { autoTierSelection, type ModelPickerSelection } from "../lib/models.js";
 
 afterEach(() => {
   cleanup();
@@ -150,7 +150,7 @@ describe("Cursor Auto models", () => {
     rerender(<ModelSelector ariaLabel="Chat model" provider="cursor" value={model} onChange={onChange} withEffortSlider fastModeEnabled onFastModeEnabledChange={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-    expect(screen.queryByRole("button", { name: /Speed/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Fast mode/ })).toBeNull();
   });
 });
 
@@ -319,20 +319,20 @@ describe("LaunchModelSelector — all providers", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
-    const speedMenu = screen.getByRole("listbox", { name: "Speed" });
+    fireEvent.click(screen.getByRole("button", { name: "Fast mode" }));
+    const speedMenu = screen.getByRole("listbox", { name: "Fast mode" });
     expect(
       within(speedMenu)
         .getAllByRole("option")
         .map((option) => optionName(option))
-    ).toEqual(["Standard", "Fast"]);
-    fireEvent.click(within(speedMenu).getByRole("button", { name: "Fast" }));
+    ).toEqual(["Off", "On"]);
+    fireEvent.click(within(speedMenu).getByRole("button", { name: "On" }));
 
     expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
   });
 
   // Both boxes are placed by `useAnchoredPopover` — the flyout against the
-  // chip, the Speed submenu against its own row. jsdom has no layout to check
+  // chip, the Fast mode submenu against its own row. jsdom has no layout to check
   // where they land, so this pins the wiring: each carries the primitive's
   // inline positioning rather than falling back to a hard-coded side in CSS,
   // which is what used to leave the flyout clipped at the viewport edge.
@@ -363,8 +363,8 @@ describe("LaunchModelSelector — all providers", () => {
     // launcher is what pins the height; this path must not write that cap.
     expect(flyout?.style.maxHeight).toBe("");
 
-    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
-    expect(screen.getByRole("listbox", { name: "Speed" })).toHaveStyle({ position: "absolute" });
+    fireEvent.click(screen.getByRole("button", { name: "Fast mode" }));
+    expect(screen.getByRole("listbox", { name: "Fast mode" })).toHaveStyle({ position: "absolute" });
   });
 
   it("marks fast mode in the closed chip for a supported model", () => {
@@ -413,8 +413,8 @@ describe("LaunchModelSelector — all providers", () => {
 
       expect(screen.getByRole("button", { name: "Launch model" }).getAttribute("title")).not.toContain("Fast speed");
       fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-      expect(screen.queryByRole("button", { name: "Speed" })).toBeNull();
-      expect(screen.queryByRole("listbox", { name: "Speed" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Fast mode" })).toBeNull();
+      expect(screen.queryByRole("listbox", { name: "Fast mode" })).toBeNull();
       expect(onFastModeEnabledChange).not.toHaveBeenCalled();
     }
   );
@@ -475,9 +475,9 @@ describe("LaunchModelSelector — all providers", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Speed" }));
-    const speedMenu = screen.getByRole("listbox", { name: "Speed" });
-    const fastButton = within(speedMenu).getByRole("button", { name: "Fast" });
+    fireEvent.click(screen.getByRole("button", { name: "Fast mode" }));
+    const speedMenu = screen.getByRole("listbox", { name: "Fast mode" });
+    const fastButton = within(speedMenu).getByRole("button", { name: "On" });
     expect(fastButton).toBeEnabled();
     fireEvent.click(fastButton);
     expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
@@ -788,5 +788,68 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       label: "Haiku 4.5",
       modelId: "claude-haiku-4-5"
     });
+  });
+});
+
+describe("LaunchModelSelector — Auto rows", () => {
+  const OPUS: ModelPickerSelection = { provider: "claude", ...OPUS_MEDIUM };
+
+  function openLaunchPicker(props: { autoRouting?: boolean; value?: ModelPickerSelection }): ReturnType<typeof vi.fn> {
+    const onChange = vi.fn();
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        autoRouting={props.autoRouting}
+        withEffortSlider
+        value={props.value ?? OPUS}
+        onChange={onChange}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    return onChange;
+  }
+
+  it("offers no Auto rows while routing is off", () => {
+    openLaunchPicker({});
+    const list = screen.getByRole("listbox", { name: "Launch model" });
+    expect(within(list).queryByRole("button", { name: "Router Balance" })).toBeNull();
+  });
+
+  it("leads with the three tiers when routing is on and picks one with its tier", () => {
+    const onChange = openLaunchPicker({ autoRouting: true });
+    const options = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole("option");
+    expect(options.slice(0, 3).map((option) => optionName(option))).toEqual([
+      "Router Frontier",
+      "Router Balance",
+      "Router Speed"
+    ]);
+    // Under the Router header the rows drop the repeated prefix.
+    expect(options[0]).toHaveTextContent(/^Frontier$/);
+    // Router Balance falls back to Opus, but an Opus pick does not select it.
+    expect(options[1]).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Router Speed" }));
+    expect(onChange).toHaveBeenCalledWith(autoTierSelection("cost"));
+  });
+
+  it("uses the short Router label for a recent tier", () => {
+    window.localStorage.setItem(LAUNCH_MODEL_RECENCY_KEY, JSON.stringify(["auto:intelligence"]));
+    openLaunchPicker({ autoRouting: true });
+    const [recent] = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole("option");
+    expect(recent).toHaveTextContent(/^Frontier$/);
+  });
+
+  it("hides the effort chip for an Auto selection", () => {
+    render(
+      <LaunchModelSelector
+        ariaLabel="Launch model"
+        autoRouting
+        withEffortSlider
+        value={autoTierSelection("balanced")}
+        onChange={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Launch model" }).textContent).toBe("Balance");
+    expect(screen.queryByRole("button", { name: "Launch model effort" })).toBeNull();
   });
 });

@@ -238,6 +238,47 @@ pub static ARC_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_ma
     ] as &'static [&'static str],
 };
 
+// v56: Auto routing. `sessions.auto_tier` marks a chat the router drives and
+// `auto_route` carries its latest routing reason for the model chip;
+// `turn_routes` keeps every decision for the routing report.
+pub static AUTO_ROUTING_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at", "auto_route",
+        "auto_tier", "cache_read_tokens", "cache_write_tokens", "completed_at",
+        "context_tokens", "context_window", "cost_usd", "id", "imported",
+        "input_tokens", "last_activity_at", "last_model_id", "launch_depth",
+        "launch_kind", "launched_by_session_id", "model_id", "model_label",
+        "output_tokens", "permission_mode", "pr_branch_at_start",
+        "pr_branch_last_active", "prompt", "provider", "provider_conversation_id",
+        "reasoning_effort", "resume_fork", "started_at", "state", "wait_reported_at",
+        "workspace_id",
+    ] as &'static [&'static str],
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "tier",
+    ] as &'static [&'static str],
+};
+
+// v60: Jev's raw answers on each route row, for tuning the thresholds.
+pub static TURN_ROUTE_SIGNALS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "signals_json", "tier",
+    ] as &'static [&'static str],
+};
+
+// v58: Project check. One row per suggestion the user answered or switch
+// Argmax made, read back for pair suppression (docs/routing.md).
+pub static PROJECT_CHECKS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_checks" => &[
+        "created_at", "current_probability", "current_project_id", "decision", "id",
+        "outcome", "prompt_hash", "reasons", "resolved_at", "session_id",
+        "suggested_probability", "suggested_project_id",
+    ] as &'static [&'static str],
+};
+
 pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "gh_pull_requests" => &[
         "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
@@ -1032,6 +1073,46 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 56,
+        name: "auto_routing",
+        up: AUTO_ROUTING,
+        affected_tables: &["sessions", "turn_routes"],
+        expected_columns: &AUTO_ROUTING_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 57,
+        name: "turn_routes_pinned_decision",
+        up: TURN_ROUTES_PINNED_DECISION,
+        affected_tables: &["turn_routes"],
+        expected_columns: &AUTO_ROUTING_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 58,
+        name: "project_checks",
+        up: crate::persistence::project_checks::MIGRATION_SQL,
+        affected_tables: &["project_checks"],
+        expected_columns: &PROJECT_CHECKS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 59,
+        name: "events_session_moved_index",
+        up: EVENTS_SESSION_MOVED_INDEX,
+        affected_tables: &[],
+        expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 60,
+        name: "turn_route_signals",
+        up: TURN_ROUTE_SIGNALS,
+        affected_tables: &["turn_routes"],
+        expected_columns: &TURN_ROUTE_SIGNALS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
 
 // GitHub state belongs to a project and PR number. Session links keep the
@@ -1425,6 +1506,68 @@ DROP INDEX IF EXISTS idx_raw_outputs_session_created;
 // seeded under the old name.
 const RENAME_SCRATCH_PROJECT_TO_CHAT: &str = r#"
 UPDATE projects SET name = 'Chat' WHERE id = 'scratch-side-chats' AND name = 'Side chats';
+"#;
+
+// Auto routing (docs/routing.md). One `turn_routes` row per decision: the
+// launch route, and later re-routes, escalations, kept routes and fallbacks.
+const AUTO_ROUTING: &str = r#"
+ALTER TABLE sessions ADD COLUMN auto_tier TEXT CHECK (auto_tier IN ('cost', 'balanced', 'intelligence'));
+ALTER TABLE sessions ADD COLUMN auto_route TEXT;
+CREATE TABLE turn_routes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback')),
+  reason TEXT NOT NULL
+);
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
+"#;
+
+// A hand-picked model ends Auto routing for a chat; a 'pinned' row marks that
+// moment so the Router cost card can close the previous route's window. It is
+// neither a turn nor a switch. SQLite cannot widen v56's `decision` CHECK in
+// place, so this rebuilds `turn_routes` through an explicit column list, the
+// idiom v52's `ROUTINE_ARC_TARGET` uses. Row ids carry over, so rows keep
+// their order.
+const TURN_ROUTES_PINNED_DECISION: &str = r#"
+CREATE TABLE turn_routes_canonical (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL
+    CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback', 'pinned')),
+  reason TEXT NOT NULL
+);
+
+INSERT INTO turn_routes_canonical (
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort, kind,
+  difficulty, kind_confidence, difficulty_confidence, decision, reason
+)
+SELECT
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort, kind,
+  difficulty, kind_confidence, difficulty_confidence, decision, reason
+FROM turn_routes;
+
+DROP TABLE turn_routes;
+ALTER TABLE turn_routes_canonical RENAME TO turn_routes;
+
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
 "#;
 
 // The disposal an agent asked for while its own turn was still running.
@@ -1908,6 +2051,22 @@ ALTER TABLE projects ADD COLUMN default_model_id TEXT NOT NULL DEFAULT '';
 const EVENTS_RESTART_RECOVERY_INDEX: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_events_restart_recovery
   ON events(session_id) WHERE type = 'process_did_not_survive_restart';
+"#;
+
+// Project check reads a project's history without the chats that were later
+// moved elsewhere. Asking that per session walked each session's whole event
+// history (1.8 s for a project with 800 chats); like the restart-recovery
+// index above, this partial index holds only the few move events.
+const EVENTS_SESSION_MOVED_INDEX: &str = r#"
+CREATE INDEX IF NOT EXISTS idx_events_session_moved
+  ON events(session_id) WHERE type = 'session.moved';
+"#;
+
+// Every answer Jev gave for a route (kind and level probabilities, correction,
+// scope, simpler, UI) as JSON, so routing thresholds can be tuned from real
+// decisions. NULL for rows Jev did not classify.
+const TURN_ROUTE_SIGNALS: &str = r#"
+ALTER TABLE turn_routes ADD COLUMN signals_json TEXT;
 "#;
 
 // Per-row sidebar glyph chosen from the Edit Icon picker. NULL in both columns
@@ -2546,7 +2705,9 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &ARC_COLUMNS, "sessions").expect("sessions");
+        verify_table_columns(&connection, &AUTO_ROUTING_COLUMNS, "sessions").expect("sessions");
+        verify_table_columns(&connection, &TURN_ROUTE_SIGNALS_COLUMNS, "turn_routes")
+            .expect("turn_routes");
         verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
             .expect("routines");
         for table in ["arcs", "arc_events"] {
@@ -2684,6 +2845,14 @@ mod tests {
                     55,
                     compute_migration_checksum(RENAME_SCRATCH_PROJECT_TO_CHAT)
                 ),
+                (56, compute_migration_checksum(AUTO_ROUTING)),
+                (57, compute_migration_checksum(TURN_ROUTES_PINNED_DECISION)),
+                (
+                    58,
+                    compute_migration_checksum(crate::persistence::project_checks::MIGRATION_SQL)
+                ),
+                (59, compute_migration_checksum(EVENTS_SESSION_MOVED_INDEX)),
+                (60, compute_migration_checksum(TURN_ROUTE_SIGNALS)),
             ]
         );
 

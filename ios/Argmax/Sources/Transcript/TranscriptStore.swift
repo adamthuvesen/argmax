@@ -319,7 +319,8 @@ final class TranscriptStore: ObservableObject {
             prompt: row.prompt,
             state: row.state,
             attention: row.attention,
-            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort
+            reasoningEffort: row.reasoningEffort ?? current?.reasoningEffort,
+            autoTier: row.autoTier
         ), title: workspace?.taskLabel, pendingMessages: nil)
     }
 
@@ -382,6 +383,29 @@ final class TranscriptStore: ObservableObject {
             events: page.events,
             includingChildActivity: true,
             workspacePath: workspacePath
+        )
+    }
+
+    func loadMultitaskDetail(childSessionID: String) async throws -> TranscriptMultitaskDetailSnapshot {
+        async let page = client.transcriptEvents(sessionID: childSessionID)
+        async let dashboard = client.transcriptDashboard()
+        let (loadedPage, loadedDashboard) = try await (page, dashboard)
+        guard let session = loadedDashboard.sessions.first(where: { $0.id == childSessionID }) else {
+            throw BridgeError.malformedResponse
+        }
+        let childWorkspacePath = loadedDashboard.workspaces.first { $0.id == session.workspaceId }?.path
+        let sendContext = TranscriptSendContext(
+            sessionID: session.id,
+            provider: session.provider,
+            modelLabel: session.modelLabel,
+            modelID: session.modelId,
+            reasoningEffort: session.reasoningEffort,
+            isRunning: session.state == .running
+        )
+        return TranscriptMultitaskDetailSnapshot(
+            items: TranscriptProjection.project(events: loadedPage.events, workspacePath: childWorkspacePath),
+            sendContext: sendContext,
+            workspacePath: childWorkspacePath
         )
     }
 
@@ -535,6 +559,7 @@ final class TranscriptStore: ObservableObject {
             modelLabel: catalogModel?.label ?? row.modelLabel,
             effort: row.reasoningEffort,
             efforts: catalogModel?.reasoningEfforts.map(\.rawValue) ?? [],
+            autoTier: row.autoTier.flatMap(AutoTier.init(rawValue:)),
             queued: messages.map { entry in
                 NativeQueuedMessage(
                     id: entry.id,

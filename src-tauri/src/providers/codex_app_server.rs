@@ -1722,6 +1722,112 @@ mod tests {
         assert_eq!(params["input"][0]["text"], "Do the work");
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fake_app_server_receives_each_follow_up_model_and_effort_after_resume() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("fake-codex-follow-up");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+printf '%s\n' "$@" >> launch-args.txt
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"codexHome":"/tmp/codex","platformFamily":"unix","platformOs":"test","userAgent":"fake"}}'
+      ;;
+    *'"method":"thread/start"'*|*'"method":"thread/resume"'*)
+      printf '%s\n' "$line" >> thread-requests.jsonl
+      printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"thread-1"}}}'
+      ;;
+    *'"method":"turn/start"'*)
+      printf '%s\n' "$line" >> turn-requests.jsonl
+      printf '%s\n' '{"jsonrpc":"2.0","id":3,"result":{"turn":{"id":"turn-1","status":"inProgress","items":[]}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"item/started","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"compact-1","type":"contextCompaction"}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread-1","turnId":"turn-1","item":{"id":"compact-1","type":"contextCompaction"}}}'
+      printf '%s\n' '{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}'
+      ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let database = Arc::new(Database::open(temp.path().join("argmax.sqlite")).unwrap());
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
+        let selections = [
+            ("gpt-6-astra", ReasoningEffort::High),
+            ("gpt-6-astra", ReasoningEffort::Low),
+            ("gpt-6-astra", ReasoningEffort::High),
+            ("gpt-6-sol", ReasoningEffort::Medium),
+            ("gpt-6-astra", ReasoningEffort::High),
+        ];
+        for (index, (model, effort)) in selections.iter().enumerate() {
+            let events = Arc::new(Mutex::new(Vec::new()));
+            let captured = Arc::clone(&events);
+            let callback: EventCallback = Arc::new(move |event| {
+                captured.lock().unwrap().push(event);
+            });
+            let mut launch_input = input(PermissionMode::ProviderDefaults);
+            launch_input.workspace_path = temp.path().to_path_buf();
+            launch_input.model_id = (*model).to_string();
+            launch_input.reasoning_effort = Some(*effort);
+            launch_input.resume_conversation_id = (index > 0).then(|| "thread-1".to_string());
+            let _handle = launch_turn(
+                server.to_str().unwrap(),
+                &launch_input,
+                None,
+                Arc::clone(&approvals),
+                Arc::clone(&questions),
+                callback,
+            )
+            .await
+            .unwrap();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while !events
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|event| event.r#type == ProviderRuntimeEventType::Exit)
+                {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("fake Codex turn completed");
+        }
+
+        let thread_requests = fs::read_to_string(temp.path().join("thread-requests.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(thread_requests.len(), selections.len());
+        assert_eq!(thread_requests[0]["method"], "thread/start");
+        for request in &thread_requests[1..] {
+            assert_eq!(request["method"], "thread/resume");
+            assert_eq!(request["params"]["threadId"], "thread-1");
+        }
+        let turn_requests = fs::read_to_string(temp.path().join("turn-requests.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(turn_requests.len(), selections.len());
+        for (request, (model, effort)) in turn_requests.iter().zip(selections.iter()) {
+            assert_eq!(request["params"]["threadId"], "thread-1");
+            assert_eq!(request["params"]["model"], *model);
+            assert_eq!(request["params"]["effort"], effort.as_str());
+        }
+        assert!(!fs::read_to_string(temp.path().join("launch-args.txt"))
+            .unwrap()
+            .contains("features.reasoning_effort_override=true"));
+    }
+
     #[test]
     fn turn_tells_codex_to_publish_plan_progress_when_it_happens() {
         let params = turn_params(

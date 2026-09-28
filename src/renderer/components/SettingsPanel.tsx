@@ -6,7 +6,8 @@ import type {
   DiagnosticsReport,
   DiscoveredProvider,
   IdeId,
-  ProjectSummary
+  ProjectSummary,
+  RoutingSettings
 } from "../../shared/types.js";
 import type { FontFamilyId, FontSize } from "../lib/fonts.js";
 import type { InkStrength } from "../lib/inkStrength.js";
@@ -46,16 +47,20 @@ export function SettingsPanel({
   defaultEffort,
   onDefaultEffortChange,
   onDefaultModelChange,
+  routing,
+  onRoutingChange,
   chatVerbosity,
   onChatVerbosityChange,
   sidebarArcsVisible,
   onSidebarArcsVisibleChange,
+  sidebarArchivedVisible,
+  onSidebarArchivedVisibleChange,
   sidebarPriorityVisible,
   onSidebarPriorityVisibleChange,
-  sidebarTranslucent,
-  onSidebarTranslucentChange,
-  sidebarTranslucency,
-  onSidebarTranslucencyChange,
+  windowTranslucent,
+  onWindowTranslucentChange,
+  windowTranslucency,
+  onWindowTranslucencyChange,
   workspaceCardVisible,
   onWorkspaceCardVisibleChange,
   developerToolsEnabled,
@@ -127,16 +132,21 @@ export function SettingsPanel({
   defaultEffort: ReasoningEffort;
   onDefaultEffortChange: (effort: ReasoningEffort) => void;
   onDefaultModelChange: (model: ModelPickerSelection) => void;
+  /** Null until the first read answers. */
+  routing: RoutingSettings | null;
+  onRoutingChange: (routing: RoutingSettings) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
   sidebarArcsVisible: boolean;
   onSidebarArcsVisibleChange: (v: boolean) => void;
+  sidebarArchivedVisible: boolean;
+  onSidebarArchivedVisibleChange: (v: boolean) => void;
   sidebarPriorityVisible: boolean;
   onSidebarPriorityVisibleChange: (v: boolean) => void;
-  sidebarTranslucent: boolean;
-  onSidebarTranslucentChange: (v: boolean) => void;
-  sidebarTranslucency: number;
-  onSidebarTranslucencyChange: (v: number) => void;
+  windowTranslucent: boolean;
+  onWindowTranslucentChange: (v: boolean) => void;
+  windowTranslucency: number;
+  onWindowTranslucencyChange: (v: number) => void;
   workspaceCardVisible: boolean;
   onWorkspaceCardVisibleChange: (v: boolean) => void;
   developerToolsEnabled: boolean;
@@ -383,12 +393,14 @@ export function SettingsPanel({
             onUserBubbleTintChange={onUserBubbleTintChange}
             sidebarArcsVisible={sidebarArcsVisible}
             onSidebarArcsVisibleChange={onSidebarArcsVisibleChange}
+            sidebarArchivedVisible={sidebarArchivedVisible}
+            onSidebarArchivedVisibleChange={onSidebarArchivedVisibleChange}
             sidebarPriorityVisible={sidebarPriorityVisible}
             onSidebarPriorityVisibleChange={onSidebarPriorityVisibleChange}
-            sidebarTranslucent={sidebarTranslucent}
-            onSidebarTranslucentChange={onSidebarTranslucentChange}
-            sidebarTranslucency={sidebarTranslucency}
-            onSidebarTranslucencyChange={onSidebarTranslucencyChange}
+            windowTranslucent={windowTranslucent}
+            onWindowTranslucentChange={onWindowTranslucentChange}
+            windowTranslucency={windowTranslucency}
+            onWindowTranslucencyChange={onWindowTranslucencyChange}
             workspaceCardVisible={workspaceCardVisible}
             onWorkspaceCardVisibleChange={onWorkspaceCardVisibleChange}
             contextIndicatorEnabled={contextIndicatorEnabled}
@@ -409,6 +421,8 @@ export function SettingsPanel({
               defaultEffort={defaultEffort}
               onDefaultEffortChange={onDefaultEffortChange}
               onDefaultModelChange={onDefaultModelChange}
+              routing={routing}
+              onRoutingChange={onRoutingChange}
               chatVerbosity={chatVerbosity}
               onChatVerbosityChange={onChatVerbosityChange}
               fastModeEnabled={fastModeEnabled}

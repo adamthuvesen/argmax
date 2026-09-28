@@ -20,6 +20,7 @@ import { UsageBreakdown } from "./UsageBreakdown.js";
 import { UsageHero } from "./UsageHero.js";
 import { UsageProviderRows } from "./UsageProviderRows.js";
 import { UsageRemainingCard } from "./UsageRemaining.js";
+import { RouterCostCard } from "./UsageRouterCost.js";
 import { UsageSkeleton } from "./UsageSkeleton.js";
 import { UsageTokenFlow } from "./UsageTokenFlow.js";
 import { formatCount, formatRangeLabel, formatScanStamp } from "./usageFormat.js";
@@ -306,6 +307,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
               error={remainingError}
               onRefresh={() => void loadRemaining()}
             />
+            <RouterCostCard usageWindow={usageWindow} visible={visible} />
           </>
         ) : (
           <UsageSkeleton />

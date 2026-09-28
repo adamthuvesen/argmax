@@ -13,11 +13,7 @@ import {
   isHiddenToolName,
   type ToolCall
 } from "./toolCalls.js";
-import {
-  advanceTurnBoundary,
-  isSupersededAnswerDelta,
-  type TurnBoundary
-} from "./turnBoundaries.js";
+import { supersededAnswerDeltaIds } from "./turnBoundaries.js";
 
 function isPayloadTruncationMarker(event: TimelineEvent): boolean {
   const canonical = decodeTimelineEvent(event);
@@ -346,29 +342,9 @@ export function buildConversationEvents(events: readonly TimelineEvent[]): Timel
         (isConversationVisible(event) || isToolBoundaryEvent(event))
     )
     .reverse();
-  // Right-to-left sweep tracking each session's next turn boundary — the same
-  // rule the dashboard merge applies when pruning (see turnBoundaries.ts).
-  const nextBoundary = new Map<string, TurnBoundary>();
-  const visibleIds = new Set<string>();
-  for (let index = ascending.length - 1; index >= 0; index -= 1) {
-    const event = ascending[index];
-    if (!event) continue;
-    const canonical = decodeTimelineEvent(event);
-    if (canonical.kind === "message" && canonical.phase === "delta") {
-      if (!isSupersededAnswerDelta(event, nextBoundary.get(event.sessionId))) {
-        visibleIds.add(event.id);
-      }
-      continue;
-    }
-    const boundary = advanceTurnBoundary(nextBoundary.get(event.sessionId), event);
-    if (boundary !== undefined) {
-      nextBoundary.set(event.sessionId, boundary);
-    }
-    if (!isToolBoundaryEvent(event)) {
-      visibleIds.add(event.id);
-    }
-  }
-  return ascending.filter((event) => visibleIds.has(event.id));
+  // The same rule the dashboard merge applies when pruning (see turnBoundaries.ts).
+  const superseded = supersededAnswerDeltaIds(ascending);
+  return ascending.filter((event) => !superseded.has(event.id) && !isToolBoundaryEvent(event));
 }
 
 export function hasRenderableSessionContent(

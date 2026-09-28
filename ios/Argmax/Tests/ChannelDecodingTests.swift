@@ -93,6 +93,21 @@ final class ChannelDecodingTests: XCTestCase {
         XCTAssertEqual(summary.scanPhase, "idle")
     }
 
+    // MARK: - usage:router-cost
+
+    /// Shaped after `bindings.d.ts` `RouterCostSummary`: tiers in wire order,
+    /// a null median, and an unknown column that must decode to nothing.
+    func testDecodesARouterCostSummary() throws {
+        let summary = try XCTUnwrap(fixture("usage-router-cost", as: RouterCostSummary?.self))
+        XCTAssertEqual(summary.tiers.map(\.tier), ["intelligence", "balanced", "cost"])
+        let balanced = summary.tiers[1]
+        XCTAssertEqual(balanced.costUsd, 3.31, accuracy: 0.001)
+        XCTAssertTrue(balanced.isEstimated)
+        XCTAssertEqual(balanced.models.map(\.modelId), ["claude-sonnet-5", "composer-2"])
+        XCTAssertEqual(summary.tiers[0].pricedTurns, 30)
+        XCTAssertNil(summary.tiers[2].medianFirstAnswerSeconds)
+    }
+
     // MARK: - activity:summary
     /// Shaped after the real `activity:summary` payload: totals, repos,
     /// series, heatmap, streaks, cadence, PRs, reviews — plus one unknown

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type {
   AgentMode,
   ComposerAttachment,
@@ -9,6 +9,7 @@ import type {
 } from "../../shared/types.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
+import { agentStripLimit } from "../lib/agentStripLimit.js";
 import { agentTabId, multitaskTabId, readAgentTab } from "../lib/agentTabs.js";
 import { agentRootToolUseId, assignAgentCodenames, codenameForTool, fallbackCodename } from "../lib/agentNames.js";
 import type { FontSize } from "../lib/fonts.js";
@@ -29,8 +30,6 @@ import { WorkingNest } from "./WorkingNest.js";
 import { AgentRosterPopover } from "./AgentRosterPopover.js";
 
 type AgentStatus = "running" | "done" | "error" | "missing";
-
-const ACTIVE_STRIP_LIMIT = 4;
 
 /** Which entries earn the strip's limited slots once the roster outgrows
  *  them. This decides membership only: the strip draws the survivors in
@@ -75,7 +74,6 @@ export function AgentsView({
   parentSession,
   agentTabs,
   pendingMessages,
-  stripLimit = ACTIVE_STRIP_LIMIT,
   workspace,
   onCancelQueuedMessage,
   onClearSession,
@@ -106,8 +104,6 @@ export function AgentsView({
   parentSession: SessionSummary | null;
   agentTabs: AgentTabsState;
   pendingMessages?: Record<string, PendingMessage[]>;
-  /** Mobile keeps fewer live identities ahead of the fixed roster control. */
-  stripLimit?: number;
   workspace: WorkspaceSummary | null;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
   onClearSession?: (sessionId: string) => Promise<void>;
@@ -276,6 +272,31 @@ export function AgentsView({
     () => roster.entries.filter((entry) => entry.status !== "done" || entry.id === activeId),
     [activeId, roster.entries]
   );
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const [stripLimit, setStripLimit] = useState(() => agentStripLimit(0));
+  const stripHidden = tabIds.length === 0;
+  // The row is absent in the empty state, so the effect has to re-bind once
+  // the tab list mounts. Width changes only update state when the slot count
+  // changes, which keeps a panel drag from re-rendering on every pixel.
+  useLayoutEffect(() => {
+    const node = stripRef.current;
+    if (!node) return undefined;
+    const apply = (width: number): void => {
+      setStripLimit((current) => {
+        const next = agentStripLimit(width);
+        return current === next ? current : next;
+      });
+    };
+    apply(node.clientWidth);
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width === undefined) return;
+      apply(width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [stripHidden]);
   // Over the limit, slots go to the selection, then failures, then the newest
   // work; the survivors are still drawn in launch order, so switching tabs
   // shifts at most the one entry that had to make room.
@@ -386,7 +407,12 @@ export function AgentsView({
   return (
     <div className="review-agents">
       <div className="file-tabs-shell agent-tabs-shell">
-        <div className="file-tabs agent-active-tabs" role="tablist" aria-label="Subagents and multitasks">
+        <div
+          ref={stripRef}
+          className="file-tabs agent-active-tabs"
+          role="tablist"
+          aria-label="Subagents and multitasks"
+        >
           {visibleStripEntries.map((entry) => {
             const isActive = entry.id === activeId;
             return (

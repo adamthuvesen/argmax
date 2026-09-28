@@ -10,10 +10,10 @@
 //   node scripts/bridge.mjs watch [--seconds 30]
 //   node scripts/bridge.mjs logs [--after-seq N]
 //   node scripts/bridge.mjs chat --repo <path> --prompt '…' [--provider claude]
-//        [--worktree] [--timeout 600] [--model-id …] [--model-label …] [--effort …]
+//        [--worktree] [--timeout 600] [--model-id …] [--model-label …] [--effort …] [--fast]
 //        [--permission-mode provider-defaults|auto-approve|ask-each-time]
-//        [--decide approve|reject]
-//   node scripts/bridge.mjs reply --session <id> --prompt '…' [--timeout 600]
+//        [--decide approve|reject] [--auto cost|balanced|intelligence]
+//   node scripts/bridge.mjs reply --session <id> --prompt '…' [--timeout 600] [--fast]
 //        [--decide approve|reject]
 //   node scripts/bridge.mjs terminal --workspace <id> --run '<shell command>' [--seconds 10]
 //   node scripts/bridge.mjs perf [--seconds 60] [--output ./argmax-performance.json]
@@ -65,7 +65,7 @@ function fail(message) {
 function parseArgs(argv) {
   const positionals = [];
   const flags = {};
-  const bare = new Set(["--worktree"]);
+  const bare = new Set(["--worktree", "--fast"]);
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (!arg.startsWith("--")) {
@@ -147,14 +147,24 @@ async function commandChat(bridge, flags) {
     modelLabel: flags["model-label"] ?? defaults.modelLabel,
     modelId: flags["model-id"] ?? defaults.modelId,
     reasoningEffort: flags.effort ?? defaults.reasoningEffort,
-    fastMode: false,
+    fastMode: Boolean(flags.fast),
     agentMode: null,
     permissionMode: flags["permission-mode"] ?? null,
     cols: 120,
     rows: 32,
-    attachments: null
+    attachments: null,
+    autoTier: flags.auto ?? null
   });
-  console.log(JSON.stringify({ launched: true, sessionId: session.id, workspaceId: workspace.id }));
+  console.log(
+    JSON.stringify({
+      launched: true,
+      sessionId: session.id,
+      workspaceId: workspace.id,
+      ...(session.autoTier
+        ? { provider: session.provider, modelId: session.modelId, effort: session.reasoningEffort, autoRoute: session.autoRoute }
+        : {})
+    })
+  );
   await followSession(bridge, {
     sessionId: session.id,
     workspaceId: workspace.id,
@@ -182,7 +192,7 @@ async function commandReply(bridge, flags) {
     modelLabel: null,
     modelId: null,
     reasoningEffort: null,
-    fastMode: false
+    fastMode: Boolean(flags.fast)
   });
   console.log(JSON.stringify({ sent: true, queued: sent.queued, sessionId: session.id }));
   await followSession(bridge, {

@@ -11,6 +11,7 @@ struct TranscriptComposer: View {
 
     @EnvironmentObject private var transcript: TranscriptStore
     @EnvironmentObject private var store: DashboardStore
+    @EnvironmentObject private var navigator: ChatNavigator
     @Environment(\.accentTint) private var accent
     @Environment(\.openURL) private var openURL
 
@@ -55,12 +56,20 @@ struct TranscriptComposer: View {
     var body: some View {
         if let composer = transcript.composer {
             // One column, one width: the gutter is applied here so the PR
-            // pill, the queued lane and the card all share the card's edges.
-            // The pill sits on top, above the queue, so a stack of queued
-            // follow-ups grows down toward the card and leaves it in place.
+            // pill, multitasks, the queued lane and the card all share the
+            // card's edges. Multitasks sit above queued follow-ups so side
+            // work stays in view like the desktop checks lane.
             VStack(alignment: .leading, spacing: Spacing.snug) {
                 if let pullRequest {
                     pullRequestPill(pullRequest, sessionID: composer.sessionId)
+                }
+                if !composerMultitasks.isEmpty {
+                    TranscriptComposerMultitaskSection(
+                        multitasks: composerMultitasks,
+                        client: store.client,
+                        onLoad: { try await transcript.loadMultitaskDetail(childSessionID: $0) },
+                        onOpenFullChat: { navigator.awaitingSessionID = $0 }
+                    )
                 }
                 if !composer.queued.isEmpty {
                     queue(composer)
@@ -88,6 +97,13 @@ struct TranscriptComposer: View {
     }
 
     // MARK: - The card
+
+    private var composerMultitasks: [TranscriptMultitask] {
+        TranscriptComposerMultitasks.visible(
+            TranscriptComposerMultitasks.notices(from: transcript.items),
+            sessions: store.snapshot.sessions
+        )
+    }
 
     /// The live workspace, so an OPEN → MERGED dashboard delta repaints the
     /// pill while this chat stays on screen.
@@ -225,12 +241,13 @@ struct TranscriptComposer: View {
     /// where a choice is actually being made.
     @ViewBuilder
     private func modelEffortControl(_ composer: NativeComposerState, model: ModelSelection) -> some View {
+        let chipLabel = routedChipLabel(composer, model: model) ?? model.label
         ComposerChipButton { picking = .model } content: {
-            Text(model.label)
+            Text(chipLabel)
                 .typeStyle(.footnote)
                 .foregroundStyle(Theme.ink)
         }
-        .accessibilityLabel("Model, \(model.label)")
+        .accessibilityLabel("Model, \(chipLabel)")
         if supportsEffort(composer) {
             ComposerChipButton { picking = .effort } content: {
                 Text(catalog.label(for: effortBinding(composer).wrappedValue))
@@ -362,6 +379,14 @@ struct TranscriptComposer: View {
     }
 
     // MARK: - Model & effort
+
+    /// A routed chat names its tier and the model the router chose, "Standard
+    /// → Opus 5.5", as the desktop chip does. Picking a model pins the chat:
+    /// the host clears the tier on that follow-up, and the chip reads plainly.
+    private func routedChipLabel(_ composer: NativeComposerState, model: ModelSelection) -> String? {
+        guard modelOverride == nil, let tier = composer.autoTier else { return nil }
+        return "\(tier.shortLabel) → \(model.label)"
+    }
 
     private func activeModel(for composer: NativeComposerState) -> ModelSelection {
         modelOverride ?? ModelSelection(
@@ -502,14 +527,17 @@ struct TranscriptComposer: View {
         focused = false
         Task {
             do {
+                // An untouched Auto send carries no model. Echoing the chip's
+                // model is a pin, and a stale dashboard would pin the old one.
+                let untouchedAuto = modelOverride == nil && composer.autoTier != nil
                 _ = try await store.client.sendInput(
                     SendInputInput(
                         sessionId: composer.sessionId,
                         input: prompt,
-                        provider: model.provider,
-                        modelLabel: model.label,
-                        modelId: model.modelId,
-                        reasoningEffort: model.reasoningEffort?.rawValue,
+                        provider: untouchedAuto ? nil : model.provider,
+                        modelLabel: untouchedAuto ? nil : model.label,
+                        modelId: untouchedAuto ? nil : model.modelId,
+                        reasoningEffort: untouchedAuto ? nil : model.reasoningEffort?.rawValue,
                         attachments: sent
                     )
                 )

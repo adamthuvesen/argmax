@@ -34,7 +34,7 @@ struct TranscriptScreen: View {
             .environment(\.transcriptWorkspacePath,
                          store.snapshot.workspaces.first { $0.id == row.workspace.id }?.path ?? row.workspace.path)
             .background(Theme.ground.ignoresSafeArea())
-            .safeAreaInset(edge: .top, spacing: 0) { header }
+            .screenHeaderBar { header }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 TranscriptComposerFloor(
                     workspaceID: row.workspace.id,
@@ -162,36 +162,14 @@ struct TranscriptScreen: View {
                 Text(draftFailure).typeMeta().foregroundStyle(Theme.rose).screenGutter()
             }
         }
-        .background {
-            if reduceTransparency {
-                Theme.ground.ignoresSafeArea(edges: .top)
-            } else {
-                // Keep the content visible under the header and status bar.
-                // The blur fades beyond the controls instead of ending at a
-                // hard horizontal edge above the first visible message.
-                Rectangle()
-                    .fill(.regularMaterial)
-                    .mask {
-                        LinearGradient(
-                            stops: [.init(color: .black, location: 0),
-                                    .init(color: .black, location: 0.65),
-                                    .init(color: .clear, location: 1)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-                    .padding(.bottom, -24)
-                    .ignoresSafeArea(edges: .top)
-                    .allowsHitTesting(false)
-            }
-        }
+        .background(alignment: .top) { HeaderScrollScrim(fadeHeight: 24) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("transcript-header")
     }
 
     private var headerButtonBackground: some View {
         Circle()
-            .fill(Theme.ground.opacity(reduceTransparency ? 1 : 0.92))
+            .fill(Theme.raised.opacity(reduceTransparency ? 1 : 0.92))
             .overlay {
                 Circle().strokeBorder(Theme.line.opacity(0.35), lineWidth: 0.5)
             }

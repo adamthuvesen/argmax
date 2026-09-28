@@ -79,6 +79,52 @@ struct ModelSelection: Codable, Hashable, Sendable {
     var label: String
     var modelId: String
     var reasoningEffort: ReasoningEffort?
+    /// Set on a Router row: the Mac picks provider, model and effort from
+    /// the prompt, and the fields above are only the fallback it overwrites.
+    var autoTier: AutoTier? = nil
+}
+
+/// A Router tier, `AutoTier` on the wire. Labels and fallback mirror
+/// `AUTO_TIER_*` and `autoTierSelection` in `src/renderer/lib/models.ts`.
+enum AutoTier: String, Codable, CaseIterable, Hashable, Sendable {
+    // Picker order: the strongest tier first.
+    case intelligence
+    case balanced
+    case cost
+
+    /// Apart from every `provider/modelId` a model row carries.
+    static let pickerPrefix = "auto/"
+
+    init?(pickerValue: String) {
+        guard pickerValue.hasPrefix(Self.pickerPrefix) else { return nil }
+        self.init(rawValue: String(pickerValue.dropFirst(Self.pickerPrefix.count)))
+    }
+
+    var pickerValue: String { Self.pickerPrefix + rawValue }
+
+    /// The tier alone, for rows under the Router heading and a routed
+    /// chat's chip, where the prefix is noise.
+    var shortLabel: String {
+        switch self {
+        case .cost: return "Speed"
+        case .balanced: return "Balance"
+        case .intelligence: return "Frontier"
+        }
+    }
+
+    var label: String { "Router \(shortLabel)" }
+
+    /// The backend's fallback, Opus 5.5 at medium, so every reader of a
+    /// selection's model keeps working.
+    var selection: ModelSelection {
+        ModelSelection(
+            provider: "claude",
+            label: label,
+            modelId: "claude-opus-5-5",
+            reasoningEffort: .medium,
+            autoTier: self
+        )
+    }
 }
 
 struct CatalogProvider: Codable, Hashable, Sendable, Identifiable {

@@ -21,6 +21,17 @@ function installWindowChrome(): void {
       void appWindow.startDragging();
     }
   });
+  // WKWebView's own menu (Reload, Inspect Element, AutoFill) reads as a web
+  // page, not an app. Keep it only where it does real work: text fields
+  // (paste, spelling) and selected text (copy, look up). Rows with their own
+  // menu call preventDefault in their onContextMenu, which bubbles here first.
+  window.addEventListener("contextmenu", (event) => {
+    const target = event.target;
+    const editable = "input, textarea, [contenteditable]:not([contenteditable='false'])";
+    if (target instanceof Element && target.closest(editable)) return;
+    if (!(window.getSelection()?.isCollapsed ?? true)) return;
+    event.preventDefault();
+  });
 }
 
 // Mirrors document visibility onto the root element so CSS can stop the app's

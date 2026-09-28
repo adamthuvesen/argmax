@@ -24,6 +24,30 @@ async projectsPickFolder(input: ProjectsPickFolderInput) : Promise<Result<Projec
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Project check: whether the prompt reads like work for another project.
+ * Never fails for want of an answer — no key, a Jev error or a short prompt
+ * all come back as `none` (docs/routing.md#project-check).
+ */
+async projectsCheckPrompt(input: ProjectsCheckPromptInput) : Promise<Result<ProjectCheck, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_check_prompt", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Records what the user did with a check's suggestion or switch.
+ */
+async projectsResolveCheck(input: ProjectsResolveCheckInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_resolve_check", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async dashboardList(input: DashboardListInput) : Promise<Result<DashboardListSnapshot, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("dashboard_list", { input }) };
@@ -339,6 +363,42 @@ async sessionClear(input: SessionClearInput) : Promise<Result<SessionSummary, Ar
 async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Result<FollowUpSuggestion, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_suggest_follow_up", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsRouting(input: SettingsRoutingInput) : Promise<Result<RoutingSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_routing", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsSetProjectCheck(input: SetProjectCheckInput) : Promise<Result<RoutingSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_project_check", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Saves a Jev API key after proving it works with one live classification,
+ * so a typo is reported here rather than on the next Auto launch.
+ */
+async settingsSetRoutingKey(input: SetRoutingKeyInput) : Promise<Result<RoutingSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_routing_key", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsClearRoutingKey() : Promise<Result<RoutingSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_clear_routing_key") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1350,6 +1410,17 @@ async usageRemaining(input: UsageRemainingInput) : Promise<Result<UsageRemaining
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * `None` when no chat was routed in the window; the card then stays hidden.
+ */
+async usageRouterCost(input: UsageRouterCostInput) : Promise<Result<RouterCostSummary | null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("usage_router_cost", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async activitySummary(input: ActivitySummaryInput) : Promise<Result<ActivitySummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("activity_summary", { input }) };
@@ -1649,6 +1720,7 @@ export type AttachmentPath = string
 export type AttachmentSizeBytes = number
 export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: AttachmentMimeType; dataBase64: Base64ImageData }
 export type AttentionState = "normal" | "blocked" | "failed" | "review-ready" | "question-asked" | "approval-needed"
+export type AutoTier = "cost" | "balanced" | "intelligence"
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
@@ -2007,6 +2079,46 @@ export type PerformanceStatus = { recording: boolean; startedAt: string | null; 
 export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time"
 export type ProcessGroupMetrics = { cpuPercent: number; rssBytes: number; processCount: number }
 export type ProcessTreeMetrics = { total: ProcessGroupMetrics; host: ProcessGroupMetrics; webview: ProcessGroupMetrics; agents: ProcessGroupMetrics }
+export type ProjectCheck = { decision: ProjectCheckDecision;
+/**
+ * Names this check when its outcome is reported; null for `none`.
+ */
+checkId: string | null; suggestedProjectId: string | null;
+/**
+ * A second project Jev gave real weight to, offered in the dialog.
+ */
+runnerUpProjectId: string | null; suggestedProbability: number; currentProbability: number;
+/**
+ * Why, in the words the dialog shows: "Mentions argmax", "Jev 96%".
+ */
+reasons: string[] }
+export type ProjectCheckDecision = "none" | "suggest" | "switch"
+export type ProjectCheckMode = "off" |
+/**
+ * Ask before starting in the project Jev picked.
+ */
+"suggest" |
+/**
+ * Ask, and start there without asking when the evidence is overwhelming.
+ */
+"switch"
+export type ProjectCheckOutcome =
+/**
+ * Started in the suggested project, by the user or by the switch.
+ */
+"accepted" |
+/**
+ * Started where the launcher was aimed after all.
+ */
+"stayed" |
+/**
+ * Undid an automatic switch.
+ */
+"undone" |
+/**
+ * Went back to the composer without launching.
+ */
+"cancelled"
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
@@ -2027,12 +2139,27 @@ export type ProjectSource = { id: string; projectId: string; title: string; kind
 export type ProjectSourceAddedBy = "user" | "agent"
 export type ProjectSourceKind = "file" | "url"
 export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
+export type ProjectsCheckPromptInput = {
+/**
+ * The project the launcher is aimed at.
+ */
+projectId: ProjectId; prompt: Prompt;
+/**
+ * The user picked this project by hand for this draft: a check may
+ * suggest another one but never switches away on its own.
+ */
+pickedByHand: boolean }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
 export type ProjectsPickFolderInput = Record<string, never>
 export type ProjectsRefreshBranchInput = { projectId: ProjectId }
 export type ProjectsRegisterInput = { repoPath: RepoPath }
 export type ProjectsRemoveInput = { projectId: ProjectId }
+export type ProjectsResolveCheckInput = { checkId: NonEmptyString; outcome: ProjectCheckOutcome;
+/**
+ * The chat the launch started, when it started one.
+ */
+sessionId: SessionId | null }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
@@ -2095,7 +2222,13 @@ arcId?: string | null;
  * against the caps it would otherwise be checked against: the Arc's
  * coordinator launching itself.
  */
-arcIsCoordinatorLaunch?: boolean }
+arcIsCoordinatorLaunch?: boolean;
+/**
+ * Let the router pick provider, model and effort from the prompt. The
+ * provider/model/effort fields above are then only the fallback the
+ * router overwrites. See docs/routing.md.
+ */
+autoTier?: AutoTier | null }
 export type ProvidersResizeInput = { sessionId: SessionId; cols: TerminalCols; rows: TerminalRows }
 export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
 /**
@@ -2224,6 +2357,63 @@ export type ReviewLoadDiffInput = { kind: WorkspaceTargetKind; id: WorkspaceTarg
 contextLines?: DiffContextLines | null }
 export type RewindFilesResult = { checkpoint: Checkpoint; recoveryCheckpoint: Checkpoint; restoredPaths: string[] }
 export type RewindPreview = { checkpoint: Checkpoint; currentFingerprint: CheckoutFingerprint; changedPaths: string[]; deletedPaths: string[] }
+export type RouterCostSummary = {
+/**
+ * Frontier, Balance, Speed, in that order; a tier with no turns in the
+ * window is left out.
+ */
+tiers: RouterTierCost[] }
+export type RouterDecisionSummary = { provider: ProviderId; modelId: string; reasoningEffort: string | null; kind: string | null; difficulty: string | null; decision: string; reason: string;
+/**
+ * Number of admitted route windows with this decision.
+ */
+count: number;
+/**
+ * Answered turns in those windows, including continuations.
+ */
+turns: number }
+export type RouterModelCost = { provider: ProviderId; modelId: string; turns: number; costUsd: number;
+/**
+ * True when the cost is a transcript estimate (Cursor).
+ */
+estimated: boolean }
+export type RouterTierCost = { tier: AutoTier;
+/**
+ * Distinct chats with at least one turn on this tier.
+ */
+chats: number; turns: number; escalations: number; reroutes: number;
+/**
+ * Priced from recorded provider usage.
+ */
+measuredCostUsd: number;
+/**
+ * Cursor turns, estimated from the transcript at Cursor's list prices.
+ */
+estimatedCostUsd: number;
+/**
+ * Answered turns with no usage recorded, or on a model no price table
+ * knows: counted, never $0. A turn the model never answered is not
+ * counted anywhere.
+ */
+unpricedTurns: number;
+/**
+ * Most turns first.
+ */
+models: RouterModelCost[];
+/**
+ * Route decisions behind the counted turns, most decisions first.
+ */
+decisions: RouterDecisionSummary[];
+/**
+ * Median seconds from send to the end of a turn, less any time an
+ * approval waited on the user. `None` until a turn has finished.
+ */
+medianTurnSeconds: number | null;
+/**
+ * Median seconds from send to the model's first text, reasoning, or tool
+ * call.
+ */
+medianFirstAnswerSeconds: number | null }
 export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; arcId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
 /**
  * Who put a scheduled task in the list. `Agent` is a wake a chat set for
@@ -2258,6 +2448,12 @@ runTarget?: RoutineRunTarget | null;
  * when `run_target` is `ArcCoordinator`; ignored otherwise.
  */
 arcId?: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean | null }
+/**
+ * Auto routing is on exactly when a Jev API key is saved. `key_hint` names
+ * the saved key by its last four characters. Project check uses the same key,
+ * so its mode travels with it.
+ */
+export type RoutingSettings = { enabled: boolean; keyHint?: string | null; projectCheck: ProjectCheckMode }
 export type RowCounts = { projects: number; workspaces: number; sessions: number; events: number; rawOutputs: number; approvals: number; checks: number; learnings: number; usageEvents: number }
 export type RuntimeDiagnostics = { rssBytes: number; openFileDescriptors: number; tokioTrackedTasks: number }
 export type SaveImageResult = { filePath: string; sizeBytes: number }
@@ -2356,8 +2552,20 @@ launchKind: string;
  * The Arc this session belongs to, when it was launched or attached as
  * part of one. Null for an ordinary chat.
  */
-arcId?: string | null }
+arcId?: string | null;
+/**
+ * The Auto tier (`cost` / `balanced` / `intelligence`) when the router
+ * picks this chat's model. Cleared when the user picks a model by hand.
+ */
+autoTier?: string | null;
+/**
+ * Why the router picked the current model, e.g. `coding · standard`.
+ */
+autoRoute?: string | null }
 export type SetBrowserToolsInput = { enabled: boolean }
+export type SetProjectCheckInput = { mode: ProjectCheckMode }
+export type SetRoutingKeyInput = { apiKey: string }
+export type SettingsRoutingInput = Record<string, never>
 export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "system"
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
@@ -2416,7 +2624,12 @@ export type SystemRendererStallInput = { durationMs: number }
  * The app-wide default agent (Settings → Agents), including per-provider
  * permission modes. The renderer mirrors it here for autonomous launches.
  */
-export type SystemSetDefaultAgentInput = { provider: ProviderId; permissionMode: PermissionMode | null; permissionModes: Partial<{ [key in ProviderId]: PermissionMode }> | null; modelLabel: NonEmptyString; modelId: NonEmptyString;
+export type SystemSetDefaultAgentInput = {
+/**
+ * Absent, together with the model fields, when the caller is updating
+ * permission modes and the model already on disk should stay.
+ */
+provider?: ProviderId | null; permissionMode: PermissionMode | null; permissionModes: Partial<{ [key in ProviderId]: PermissionMode }> | null; modelLabel?: string | null; modelId?: string | null;
 /**
  * Absent for a fast model that has no effort control at all.
  */
@@ -2444,11 +2657,12 @@ export type TimelineEvent = { id: string; sessionId: string; type: string; messa
 /**
  * Where a dollar figure came from. `provider_reported` is the CLI's own
  * accounting (Grok ticks, OpenCode cost); `list_price` is our table applied
- * to the token counts; `unpriced` means a model the table does not know, so
- * tokens are counted but no dollars are claimed; `mixed` is a bucket that
- * combines more than one of those.
+ * to the token counts; `estimated` is a Cursor chat whose tokens were rebuilt
+ * from its transcript and priced at Cursor's rates; `unpriced` means a model
+ * no table knows, so tokens are counted but no dollars are claimed; `mixed`
+ * is a bucket that combines more than one of those.
  */
-export type UsageCostSource = "provider_reported" | "list_price" | "unpriced" | "mixed"
+export type UsageCostSource = "provider_reported" | "list_price" | "estimated" | "unpriced" | "mixed"
 export type UsageCounts = { input: number; output: number; cacheRead: number; cacheWrite: number }
 export type UsageDayRow = { bucketStart: string; sessions: number; tokens: UsageTokenTotals; costUsd: number; costSource: UsageCostSource }
 export type UsageLimitWindow = { id: string; label: string;
@@ -2476,8 +2690,9 @@ export type UsageProviderRemaining = { provider: ProviderId; kind: UsagePlanKind
 messageUrl: string | null }
 export type UsageProviderSummary = { provider: ProviderId;
 /**
- * `false` when the provider has no local usage source (Cursor). Such a
- * row carries zeros and the page says so instead of showing $0.
+ * `false` when the provider has no usage source. Such a row carries
+ * zeros and the page says so instead of showing $0. Every provider has
+ * one today — Cursor's is an estimate — but the page keeps the case.
  */
 available: boolean; sessions: number; tokens: UsageTokenTotals; costUsd: number;
 /**
@@ -2492,6 +2707,7 @@ export type UsageRemaining = {
 fetchedAt: string; providers: UsageProviderRemaining[] }
 export type UsageRemainingInput = Record<string, never>
 export type UsageResolution = "hour" | "day"
+export type UsageRouterCostInput = { window: UsageWindow }
 export type UsageScanPhase = "idle" | "scanning"
 export type UsageScanState = { phase: UsageScanPhase; filesTotal: number; filesDone: number;
 /**
@@ -2531,6 +2747,11 @@ rangeStart: string; rangeEnd: string; resolution: UsageResolution; scan: UsageSc
  */
 sessions: number; tokens: UsageTokenTotals; costUsd: number; cacheSavingsUsd: number; costSource: UsageCostSource;
 /**
+ * The part of `cost_usd` and `tokens` rebuilt from Cursor transcripts,
+ * so the page can say how much of the figure is an estimate.
+ */
+estimatedCostUsd: number; estimatedTokens: number;
+/**
  * The window before this one, narrowed the same way, for the "vs the
  * previous 30 days" comparison. `None` when the ledger cannot cover it.
  */
@@ -2543,7 +2764,7 @@ timeZone: NonEmptyString;
 /**
  * Narrow the totals, chart, and breakdowns to one provider. The
  * per-provider rows always cover every provider, so the page can still
- * offer the others. Cursor keeps no local usage log and is rejected.
+ * offer the others.
  */
 provider?: ProviderId | null }
 /**

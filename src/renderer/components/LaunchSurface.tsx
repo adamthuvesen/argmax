@@ -33,6 +33,8 @@ import {
   SCRATCH_PROJECT_ID,
   type AgentMode,
   type ComposerAttachment,
+  type ProjectCheck,
+  type ProjectCheckOutcome,
   type ProjectSummary,
   type WorkspaceSummary
 } from "../../shared/types.js";
@@ -44,7 +46,7 @@ import {
 } from "../../shared/cloudProviders.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { errorMessage } from "../../shared/error.js";
-import { showErrorToast } from "../state/toast.js";
+import { showErrorToast, showToast } from "../state/toast.js";
 import {
   appendReferencesToPrompt,
   imageAttachmentReference
@@ -59,6 +61,7 @@ import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
+import { NO_PROJECT_CHECK, useProjectCheck } from "../hooks/useProjectCheck.js";
 import { useProjectCheckoutTerminal } from "../hooks/useProjectCheckoutTerminal.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import {
@@ -89,6 +92,7 @@ import {
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
+import { ProjectCheckDialog } from "./ProjectCheckDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
@@ -133,11 +137,27 @@ function parentFolderLabel(repoPath: string): string {
   return parent || "/";
 }
 
+/** The chat a launch started, so a switch Project check made can be undone. */
+export interface LaunchedChat {
+  sessionId: string;
+  workspaceId: string;
+}
+
+/** Everything a launch needs, held while Project check's dialog is open. */
+interface PendingLaunch {
+  prompt: string;
+  model: ModelPickerSelection;
+  workspaceMode: WorkspaceMode;
+  attachments: ComposerAttachment[] | undefined;
+  goalCondition: string | undefined;
+}
+
 function isOptionButtonTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("button.project-picker-item") !== null;
 }
 
 export function LaunchSurface({
+  autoRouting = false,
   claimsBrowserRequests = false,
   isFocused = true,
   fastModeEnabled = false,
@@ -162,6 +182,8 @@ export function LaunchSurface({
   workspaces = [],
   onCheckoutWorkspaceCreated
 }: {
+  /** Offer the Auto rows in the model picker (a routing key is saved). */
+  autoRouting?: boolean;
   /** True when this launcher is the only surface on screen, so chat links and
    *  the actions menu have nowhere else to open the browser. False for a
    *  launcher cell sharing the grid with session panes. */
@@ -178,14 +200,16 @@ export function LaunchSurface({
   onAddProject: () => void;
   onBranchSwitch: (updated: ProjectSummary) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
+  /** `projectId` overrides the launcher's project: Project check's pick. */
   onLaunchTask: (
     prompt: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
     workspaceMode: WorkspaceMode,
     attachments?: ComposerAttachment[],
-    goalCondition?: string
-  ) => Promise<void>;
+    goalCondition?: string,
+    projectId?: string
+  ) => Promise<LaunchedChat | void>;
   onLaunchSideChat?: (
     prompt: string,
     model: ModelPickerSelection,
@@ -218,11 +242,12 @@ export function LaunchSurface({
   // `project` so chat mode disables them without unmounting the surface.
   const chatMode = sideChatMode && onLaunchSideChat !== undefined;
   const [cloudSelected, setCloudSelected] = useState(false);
-  const cloudProvider = isHostedCloudProvider(model.provider) ? model.provider : null;
+  // An Auto pick's provider is only the router's fallback, not a cloud target.
+  const cloudProvider = !model.autoTier && isHostedCloudProvider(model.provider) ? model.provider : null;
   const cloudMode = cloudSelected && !chatMode && cloudProvider !== null;
   useEffect(() => {
-    if (chatMode || !isHostedCloudProvider(model.provider)) setCloudSelected(false);
-  }, [chatMode, model.provider]);
+    if (chatMode || model.autoTier || !isHostedCloudProvider(model.provider)) setCloudSelected(false);
+  }, [chatMode, model.autoTier, model.provider]);
   const [cloudDraft, setCloudDraft] = useState<{
     projectId: string;
     provider: HostedCloudProvider;
@@ -270,6 +295,20 @@ export function LaunchSurface({
   });
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
+  // Picking a project for this draft is a stronger signal than the launcher's
+  // remembered default: Project check may still ask, but never switches away.
+  const [projectPickedByHand, setProjectPickedByHand] = useState(false);
+  const [projectCheckDraft, setProjectCheckDraft] = useState<{
+    check: ProjectCheck;
+    launch: PendingLaunch;
+  } | null>(null);
+  const projectCheckEnabled = autoRouting && !chatMode && !cloudMode && project !== null && projects.length >= 2;
+  const checkProjectBeforeLaunch = useProjectCheck({
+    enabled: projectCheckEnabled,
+    projectId: project?.id ?? null,
+    prompt,
+    pickedByHand: projectPickedByHand
+  });
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
@@ -299,12 +338,16 @@ export function LaunchSurface({
       return;
     }
     providerSteeringDone.current = true;
+    // An Auto row's provider is the router's transport placeholder, not a
+    // model the user picked. Steering it onto a manual model would pin the
+    // launcher off Router whenever Claude is the one CLI that is missing.
+    if (model.autoTier) return;
     const current = discoveredProviders.find((entry) => entry.provider === model.provider);
     if (current?.installed && current.authenticated !== false) return;
     const preferred = preferredLaunchModel(discoveredProviders);
     if (preferred.provider === model.provider && preferred.modelId === model.modelId) return;
     onModelChange(preferred);
-  }, [surfaceReady, discoveredProviders, model.provider, model.modelId, onModelChange]);
+  }, [surfaceReady, discoveredProviders, model.autoTier, model.provider, model.modelId, onModelChange]);
 
   // Changes + Files panel against the selected project's main checkout. Lets
   // the user inspect and edit files before starting a session. Cmd/Ctrl+B
@@ -420,7 +463,7 @@ export function LaunchSurface({
   // toggles the browser. Only the focused launcher answers, and the folder
   // picker exists only on the task launcher: a side chat has no project to
   // switch.
-  const supportsEffort = model.reasoningEffort != null;
+  const supportsEffort = model.reasoningEffort != null && !model.autoTier;
   useEffect(() => {
     if (!isFocused) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -474,6 +517,7 @@ export function LaunchSurface({
     if (resetSignal === lastResetSignal.current) return;
     lastResetSignal.current = resetSignal;
     setCloudSelected(false);
+    setProjectPickedByHand(false);
     reviewClosePanel();
     if (draftKey) setPrompt(readDraft(draftKey).text);
   }, [draftKey, resetSignal, reviewClosePanel, setPrompt]);
@@ -648,6 +692,7 @@ export function LaunchSurface({
       persistLaunchProjectId(candidate.id);
       onSideChatModeChange?.(false);
       onSelectProject(candidate.id);
+      setProjectPickedByHand(true);
       setProjectPickerOpen(false);
       setCompactContextOpen(false);
     },
@@ -959,28 +1004,128 @@ export function LaunchSurface({
     const openingPrompt = goalCondition ?? trimmedPrompt;
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
+    const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
 
+    if (chatMode && onLaunchSideChat) {
+      setIsSubmitting(true);
+      setStatus(null);
+      // Drop the stored draft before the first await. Launching unmounts this
+      // surface, and a remounted NEW CHAT reads storage: if the entry is still
+      // here, the sent prompt comes back. `persist: !isSubmitting` stops the
+      // write effect from recreating it while the text stays on screen.
+      if (draftKey) clearDraft(draftKey);
+      try {
+        await onLaunchSideChat(finalPrompt, model, "auto", attachments, goalCondition);
+        setPrompt("");
+        clearAttachments();
+      } catch (error) {
+        showErrorToast(errorMessage(error) || "Could not start agent.");
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    const launch: PendingLaunch = { prompt: finalPrompt, model, workspaceMode, attachments, goalCondition };
     setIsSubmitting(true);
     setStatus(null);
-    // Drop the stored draft before the first await. Launching unmounts this
-    // surface, and a remounted NEW CHAT reads storage: if the entry is still
-    // here, the sent prompt comes back. `persist: !isSubmitting` stops the
-    // write effect from recreating it while the text stays on screen.
+    // The check reads the prompt as typed: attachment references say nothing
+    // about which project it belongs to.
+    // Only a live check is awaited: with it off the launch starts in this tick.
+    const check = projectCheckEnabled ? await checkProjectBeforeLaunch(openingPrompt) : NO_PROJECT_CHECK;
+    if (check.decision === "suggest" && project) {
+      setIsSubmitting(false);
+      setProjectCheckDraft({ check, launch });
+      return;
+    }
+    if (check.decision === "switch" && project && check.suggestedProjectId) {
+      await switchAndLaunch(check, launch, project);
+      return;
+    }
+    await launchIn(launch, undefined);
+  };
+
+  const launchIn = async (
+    launch: PendingLaunch,
+    projectId: string | undefined
+  ): Promise<LaunchedChat | undefined> => {
+    setIsSubmitting(true);
+    // See the side-chat path above: the draft goes before the first await.
     if (draftKey) clearDraft(draftKey);
     try {
-      const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
-      if (chatMode && onLaunchSideChat) {
-        await onLaunchSideChat(finalPrompt, model, "auto", attachments, goalCondition);
-      } else {
-        await onLaunchTask(finalPrompt, model, "auto", workspaceMode, attachments, goalCondition);
-      }
+      const launched = await onLaunchTask(
+        launch.prompt,
+        launch.model,
+        "auto",
+        launch.workspaceMode,
+        launch.attachments,
+        launch.goalCondition,
+        projectId
+      );
       setPrompt("");
       clearAttachments();
+      setProjectPickedByHand(false);
+      return launched ?? undefined;
     } catch (error) {
       showErrorToast(errorMessage(error) || "Could not start agent.");
+      return undefined;
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const resolveProjectCheck = (
+    check: ProjectCheck,
+    outcome: ProjectCheckOutcome,
+    sessionId: string | null
+  ): void => {
+    if (!check.checkId) return;
+    void window.argmax?.projects
+      .resolveCheck({ checkId: check.checkId, outcome, sessionId })
+      .catch(() => undefined);
+  };
+
+  // A switch made without asking comes with an Undo: stop the chat it started,
+  // archive that workspace, and start the same prompt where the launcher was
+  // aimed. The toast outlives this surface, so the closure carries its own
+  // launch rather than reading component state.
+  const switchAndLaunch = async (
+    check: ProjectCheck,
+    launch: PendingLaunch,
+    fromProject: ProjectSummary
+  ): Promise<void> => {
+    const target = projects.find((candidate) => candidate.id === check.suggestedProjectId);
+    if (!target) {
+      await launchIn(launch, undefined);
+      return;
+    }
+    const launched = await launchIn(launch, target.id);
+    if (!launched) return;
+    resolveProjectCheck(check, "accepted", launched.sessionId);
+    const launchTask = onLaunchTask;
+    showToast({
+      kind: "info",
+      message: `Started in ${target.name} instead of ${fromProject.name}.`,
+      detail: check.reasons.join(" · "),
+      durationMs: 8_000,
+      action: {
+        label: "Undo",
+        run: () => {
+          resolveProjectCheck(check, "undone", launched.sessionId);
+          void undoSwitch(launched, () =>
+            launchTask(
+              launch.prompt,
+              launch.model,
+              "auto",
+              launch.workspaceMode,
+              launch.attachments,
+              launch.goalCondition,
+              fromProject.id
+            )
+          );
+        }
+      }
+    });
   };
 
   if (!project && !chatMode) {
@@ -1175,6 +1320,7 @@ export function LaunchSurface({
               </span>
             ) : <LaunchModelSelector
               ariaLabel="Switch model"
+              autoRouting={autoRouting}
               availability={providerAvailability}
               fastModeEnabled={fastModeEnabled}
               open={modelPickerOpen}
@@ -1381,12 +1527,12 @@ export function LaunchSurface({
                 disabled={isSubmitting}
                 title={cloudMode
                   ? "Switch to Local"
-                  : isHostedCloudProvider(model.provider)
-                    ? `Switch to Cloud · ${cloudProviderName(model.provider)}`
-                    : `${PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`}
+                  : cloudProvider
+                    ? `Switch to Cloud · ${cloudProviderName(cloudProvider)}`
+                    : `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`}
                 onClick={() => {
-                  if (!cloudMode && !isHostedCloudProvider(model.provider)) {
-                    setStatus(`${PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`);
+                  if (!cloudMode && !cloudProvider) {
+                    setStatus(`${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`);
                     return;
                   }
                   closeContextPickers();
@@ -1449,6 +1595,27 @@ export function LaunchSurface({
         ) : null}
       </form>
       </div>
+      {projectCheckDraft && project ? (
+        <ProjectCheckDialog
+          check={projectCheckDraft.check}
+          currentProject={project}
+          projects={projects}
+          onStart={(projectId) => {
+            const { check, launch } = projectCheckDraft;
+            setProjectCheckDraft(null);
+            void launchIn(launch, projectId === project.id ? undefined : projectId).then((launched) => {
+              if (launched) {
+                resolveProjectCheck(check, projectId === project.id ? "stayed" : "accepted", launched.sessionId);
+              }
+            });
+          }}
+          onCancel={() => {
+            resolveProjectCheck(projectCheckDraft.check, "cancelled", null);
+            setProjectCheckDraft(null);
+            if (isFocusedRef.current) promptInputRef.current?.focus();
+          }}
+        />
+      ) : null}
       {cloudDraft ? (
         <CloudTaskDialog
           open
@@ -1483,4 +1650,17 @@ export function LaunchSurface({
       ) : null}
     </div>
   );
+}
+
+async function undoSwitch(launched: LaunchedChat, relaunch: () => Promise<unknown>): Promise<void> {
+  const api = window.argmax;
+  if (!api) return;
+  try {
+    // A chat that already finished has nothing to stop.
+    await api.providers.terminate(launched.sessionId).catch(() => undefined);
+    await api.workspaces.archive({ workspaceId: launched.workspaceId, force: true });
+    await relaunch();
+  } catch (error) {
+    showErrorToast(errorMessage(error) || "Could not move the chat back.");
+  }
 }

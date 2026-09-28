@@ -1005,6 +1005,33 @@ pub fn has_provider_permission_event(
     Ok(exists != 0)
 }
 
+/// Whether the current turn (everything since the latest user message) already
+/// has a `session.completed`. Cursor and OpenCode report the end of a turn in
+/// their own output, which the normalizer records, before the process exits;
+/// the exit path checks this so the turn is not completed twice.
+pub fn turn_completion_recorded(connection: &Connection, session_id: &str) -> ArgmaxResult<bool> {
+    let exists = connection
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM events
+                WHERE session_id = ?1
+                  AND type = 'session.completed'
+                  AND created_at >= COALESCE((
+                    SELECT created_at FROM events
+                    WHERE session_id = ?1 AND type = 'user.message'
+                    ORDER BY created_at DESC LIMIT 1
+                  ), '')
+            )
+            "#,
+            [session_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(exists != 0)
+}
+
 /// A Cursor trace import persists a synthetic `traceNoOutput` completion in
 /// the sequence slot the tool's real result will occupy once the child
 /// transcript catches up. The real completion then arrives under the same
@@ -1635,6 +1662,56 @@ fn count_tool_calls_since_last_prompt(
         .map_err(sqlite_error)?
         .query_row([session_id], |row| row.get::<_, u32>(0))
         .map_err(sqlite_error)
+}
+
+/// Recent transcript rows for follow-up routing, with the same Clear and
+/// subagent exclusions as the visible provider handoff transcript.
+pub fn routing_visible_messages(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<Vec<RoutingVisibleMessage>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+        SELECT type, substr(message, 1, 601), length(message) > 600 FROM events
+        WHERE session_id = ?
+          AND type IN ('user.message', 'message.completed')
+          AND message <> ''
+          AND rowid > COALESCE((
+            SELECT MAX(rowid) FROM events cleared
+            WHERE cleared.session_id = events.session_id
+              AND cleared.type = 'session.cleared'
+          ), 0)
+          AND json_extract(payload_json, '$.parent_tool_use_id') IS NULL
+          AND json_extract(payload_json, '$.traceImported') IS NULL
+          AND NOT (
+            (json_extract(payload_json, '$.item_type') = 'agent_message'
+              OR json_extract(payload_json, '$.item.type') = 'agent_message')
+            AND (json_extract(payload_json, '$.thread_id') IS NOT NULL
+              OR json_extract(payload_json, '$.sender_thread_id') IS NOT NULL
+              OR json_extract(payload_json, '$.item.thread_id') IS NOT NULL
+              OR json_extract(payload_json, '$.item.sender_thread_id') IS NOT NULL)
+          )
+        ORDER BY rowid DESC LIMIT 30
+        "#,
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([session_id], |row| {
+            Ok(RoutingVisibleMessage {
+                event_type: row.get(0)?,
+                text: row.get(1)?,
+                truncated: row.get(2)?,
+            })
+        })
+        .map_err(sqlite_error)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)
+}
+
+pub struct RoutingVisibleMessage {
+    pub event_type: String,
+    pub text: String,
+    pub truncated: bool,
 }
 
 /// When the current turn's prompt landed — what `session_status` ages to

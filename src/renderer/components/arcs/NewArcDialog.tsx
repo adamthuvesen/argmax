@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { ProjectSummary } from "../../../shared/types.js";
 import { useMotionPresence } from "../../hooks/useMotionPresence.js";
 import { useRestoreFocus } from "../../hooks/useRestoreFocus.js";
-import { readStoredLaunchModel } from "../../lib/launchModelPreference.js";
+import { readStoredManualLaunchModel } from "../../lib/launchModelPreference.js";
 import { factoryLaunchModel, type ModelPickerSelection } from "../../lib/models.js";
 import { showArcPage } from "../../state/overlays.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -45,7 +45,7 @@ export function NewArcDialog({
   const [homeProjectId, setHomeProjectId] = useState<string>(projects[0]?.id ?? "");
   const [folder, setFolder] = useState("");
   const [folderOpen, setFolderOpen] = useState(false);
-  const [model, setModel] = useState<ModelPickerSelection>(() => readStoredLaunchModel() ?? factoryLaunchModel());
+  const [model, setModel] = useState<ModelPickerSelection>(() => readStoredManualLaunchModel() ?? factoryLaunchModel());
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -64,7 +64,7 @@ export function NewArcDialog({
     setHomeProjectId(projects[0]?.id ?? "");
     setFolder("");
     setFolderOpen(false);
-    setModel(readStoredLaunchModel() ?? factoryLaunchModel());
+    setModel(readStoredManualLaunchModel() ?? factoryLaunchModel());
     setSubmitting(false);
     nameTouched.current = false;
     briefTouched.current = false;

@@ -6,6 +6,12 @@ import SwiftUI
 // phone. The provider filter narrows on the host; the cards always
 // list every provider, so the picker keeps offering the others.
 
+/// Cursor keeps no token log, so its figures are rebuilt from the transcripts
+/// of the chats Argmax ran and read "≈", as on the desktop.
+private func approximately(_ text: String, _ provider: String) -> String {
+    provider == "cursor" ? "≈\(text)" : text
+}
+
 // MARK: - Hero
 
 struct UsageHero: View {
@@ -45,7 +51,10 @@ struct UsageHero: View {
             let stats = dailyStats
             Text(stats)
                 .typeMeta().foregroundStyle(Theme.muted)
-            if summary.costSource == "mixed" || summary.costSource == "list_price" {
+            if summary.costSource == "estimated" {
+                Text("Estimated from Cursor chat transcripts\(pricingSuffix)")
+                    .typeMeta().foregroundStyle(Theme.muted)
+            } else if summary.costSource == "mixed" || summary.costSource == "list_price" {
                 Text("Part reported, part list price\(pricingSuffix)")
                     .typeMeta().foregroundStyle(Theme.muted)
             }
@@ -130,8 +139,11 @@ struct UsageProviderCards: View {
                         .typeMeta().foregroundStyle(Theme.muted).monospacedDigit()
                 }
                 Text(
-                    store.usageMode == .tokens
-                        ? InsightsFormat.compact(value) : InsightsFormat.usdFull(value)
+                    approximately(
+                        store.usageMode == .tokens
+                            ? InsightsFormat.compact(value) : InsightsFormat.usdFull(value),
+                        provider.provider
+                    )
                 )
                 .typeStyle(.title3, weight: .bold).monospacedDigit()
                 .foregroundStyle(Theme.ink).lineLimit(1).minimumScaleFactor(0.7)
@@ -403,9 +415,12 @@ struct UsageBreakdown: View {
                             .lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 4)
                         Text(
-                            store.usageMode == .tokens
-                                ? InsightsFormat.compact(row.tokens.processed)
-                                : InsightsFormat.usdFull(row.costUsd)
+                            approximately(
+                                store.usageMode == .tokens
+                                    ? InsightsFormat.compact(row.tokens.processed)
+                                    : InsightsFormat.usdFull(row.costUsd),
+                                row.provider
+                            )
                         )
                         .typeContent().monospacedDigit().foregroundStyle(Theme.ink)
                     }

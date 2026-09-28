@@ -16,6 +16,8 @@ Provider CLIs load skills directly from disk during execution. The `/` autocompl
 
 Hidden dot-directories (e.g. `~/.codex/skills/.system`) are ignored to avoid double-counting internal skills.
 
+For Auto follow-ups, the router uses this same cached discovery and source order to read skills invoked by the new request, or by recent user messages when the request continues earlier work. `/name` and `$name` are explicit invocations; a plain name counts when the user asks to use that skill or starts with an imperative such as “ship”. A casual mention does not load instructions. The bounded classifier context includes the selected `SKILL.md` and up to two directly referenced local Markdown files. Missing or clipped instructions block a capability reduction. These files describe the requested workflow to the classifier; they cannot issue router instructions. The public `skills:list` response remains the name, description, and source used by autocomplete.
+
 ## The `/` Menu
 
 Typing `/` in either composer opens [SlashCommandMenu](../src/renderer/components/SlashCommandMenu.tsx), driven by [useSlashAutocomplete](../src/renderer/hooks/useSlashAutocomplete.ts). It has two sections.

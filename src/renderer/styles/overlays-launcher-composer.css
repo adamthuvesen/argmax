@@ -344,3 +344,13 @@
 .toast button:hover {
   opacity: 1;
 }
+
+/* A word, not the ✕ glyph: body-sized and weighted like a link. */
+.toast button.toast-action {
+  margin-left: auto;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

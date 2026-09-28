@@ -37,6 +37,9 @@ struct TranscriptSessionMetadata: Codable, Hashable, Sendable, Identifiable {
     var reasoningEffort: String?
     var contextTokens: Int? = nil
     var contextWindow: Int? = nil
+    /// The Router tier while the router picks this chat's model; cleared
+    /// once a model is picked by hand.
+    var autoTier: String? = nil
 }
 
 struct TranscriptWorkspaceMetadata: Decodable, Hashable, Sendable, Identifiable {

@@ -1,7 +1,15 @@
 import type { JSX } from "react";
 import type { ProviderId, UsageSummary } from "../../../shared/types.js";
-import { formatCount, formatMetric, formatPercent, formatTokens, formatUsd } from "./usageFormat.js";
 import {
+  approximately,
+  formatCount,
+  formatMetric,
+  formatPercent,
+  formatTokens,
+  formatUsd
+} from "./usageFormat.js";
+import {
+  isEstimatedProvider,
   orderedProviderRows,
   processedTokens,
   providerLabel,
@@ -58,6 +66,7 @@ export function UsageProviderRows({
           const value = providerValue(row, metric);
           const share = row.available ? shareOfTotal(value, total) : null;
           const pressed = selected === row.provider;
+          const estimated = isEstimatedProvider(row.provider);
           const body = (
             <>
               {/* Rank is drawn as a rule along the tile's foot rather than as a
@@ -92,7 +101,7 @@ export function UsageProviderRows({
                   ) : null}
                 </span>
                 <span className="usage-provider-amount">
-                  {row.available ? formatMetric(value, metric) : "—"}
+                  {row.available ? approximately(formatMetric(value, metric), estimated) : "—"}
                 </span>
                 <span className="usage-provider-detail">
                   {row.available ? (
@@ -103,9 +112,12 @@ export function UsageProviderRows({
                       </span>
                       {/* The figure the headline is not already showing, so a tile
                           never spends a line repeating the one above it. */}
-                      {metric === "cost"
-                        ? `${formatTokens(processedTokens(row.tokens))} tokens`
-                        : formatUsd(row.costUsd)}
+                      {approximately(
+                        metric === "cost"
+                          ? `${formatTokens(processedTokens(row.tokens))} tokens`
+                          : formatUsd(row.costUsd),
+                        estimated
+                      )}
                     </>
                   ) : (
                     "No local usage data"

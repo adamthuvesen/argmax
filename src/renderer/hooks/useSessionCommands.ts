@@ -79,13 +79,15 @@ export function useSessionCommands({
       const result = await sendInput({
         sessionId,
         input,
-        // Carries the picked provider; the backend only acts on it when it
-        // differs from the session's current provider (and the session is idle).
-        provider: model.provider,
-        modelLabel: model.label,
-        modelId: model.modelId,
-        reasoningEffort: model.reasoningEffort ?? null,
-        fastMode: fastMode && modelSupportsFastMode(model),
+        // Auto echoes carry no model override. Only a deliberate picker
+        // selection can pin the backend's current route.
+        ...(model.autoTier ? {} : {
+          provider: model.provider,
+          modelLabel: model.label,
+          modelId: model.modelId,
+          reasoningEffort: model.reasoningEffort ?? null
+        }),
+        fastMode: !model.autoTier && fastMode && modelSupportsFastMode(model),
         agentMode,
         attachments: attachments?.length ? attachments : null,
         ...(agentReferences?.length ? { agentReferences } : {})

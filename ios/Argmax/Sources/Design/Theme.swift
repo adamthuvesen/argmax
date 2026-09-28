@@ -16,15 +16,26 @@ import UIKit
 // the window rather than asking every view to re-read a preference.
 
 enum Theme {
-    /// The one ground per appearance. Dark `--bg`, light `--bg`.
-    static let groundColor = dynamic(light: 0xFD_FD_FD, dark: 0x14_14_14)
-    /// A raised surface is the ground plus 4% ink — never a grey card with a
-    /// shadow. Sheets, fields, the reconnecting strip, chip fills.
-    static let raisedColor = blend(groundColor, toward: inkColor, 0.04)
+    /// The one ground per appearance. Light `--bg`; dark `--panel-sunken` — one
+    /// step below desktop `--bg` so OLED nights sit deeper without touching ink.
+    static let groundColor = dynamic(light: 0xFD_FD_FD, dark: 0x0F_0F_0F)
+    /// Cards and fields above the ground. Paper keeps the ground-plus-4%-ink
+    /// recipe; charcoal takes desktop `--composer-surface`, which reads as a
+    /// clear lift once the phone ground sits at `--panel-sunken`.
+    static let raisedColor = UIColor { traits in
+        if traits.userInterfaceStyle == .dark {
+            return UIColor(rgb: 0x20_20_20)
+        }
+        return blend(groundColor, toward: inkColor, 0.04).resolvedColor(with: traits)
+    }
+    /// The recessed well inside a raised card — composer chips, attach, mic.
+    /// Paper matches the ground; charcoal takes `--panel`, one step under the
+    /// composer surface so controls read inset rather than punched through.
+    static let insetColor = dynamic(light: 0xFD_FD_FD, dark: 0x1A_1A_1A)
     /// Desktop `--user-message-bg` when accent bubbles are disabled.
     static let userMessageNeutralColor = dynamic(light: 0xEE_F0_F1, dark: 0x21_21_21)
-    /// What a row looks like under the thumb. Same recipe, one step up.
-    static let pressedColor = blend(groundColor, toward: inkColor, 0.06)
+    /// What a row looks like under the thumb — one step above its surface.
+    static let pressedColor = blend(raisedColor, toward: inkColor, 0.05)
     /// Primary text. Warm off-white on charcoal, warm near-black on paper —
     /// never `#fff` or `#000`, which bloom and glare respectively.
     static let inkColor = dynamic(light: 0x1F_1D_18, dark: 0xF4_F2_EC)
@@ -40,7 +51,7 @@ enum Theme {
     /// step rather than an opacity fade, so it keeps its contrast on paper.
     static let mutedStrongColor = dynamic(light: 0x5D_59_4F, dark: 0xAE_AA_A1)
     /// Hairline separators, inset to the text column by their callers.
-    static let lineColor = dynamic(light: 0xE3_E6_E8, dark: 0x2B_2B_29)
+    static let lineColor = dynamic(light: 0xE3_E6_E8, dark: 0x26_26_24)
 
     // Attention has its own three, and they are never the accent: a list
     // where everything is orange ranks nothing. Muted fills at 16% with the
@@ -107,6 +118,7 @@ enum Theme {
 
     static var ground: Color { Color(groundColor) }
     static var raised: Color { Color(raisedColor) }
+    static var inset: Color { Color(insetColor) }
     static var userMessageNeutral: Color { Color(userMessageNeutralColor) }
     static var pressed: Color { Color(pressedColor) }
     static var ink: Color { Color(inkColor) }

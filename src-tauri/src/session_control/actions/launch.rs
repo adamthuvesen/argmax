@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, LazyLock, Mutex},
 };
 
@@ -8,8 +9,8 @@ use chrono::{Duration, Utc};
 use super::super::{
     argmax_protocol_error, invalid_input_error,
     protocol::{
-        LaunchAction, LaunchedSession, SessionControlError, SessionControlResponse,
-        SessionControlResult,
+        LaunchAction, LaunchProjectCheck, LaunchedSession, SessionControlError,
+        SessionControlResponse, SessionControlResult,
     },
     protocol_error,
     registry::ParentLaunchSettings,
@@ -234,6 +235,7 @@ pub(crate) async fn launch_with_spec(
             goal_max_turns: None,
             arc_id: spec.arc_id,
             arc_is_coordinator_launch: spec.arc_is_coordinator_launch,
+            auto_tier: None,
         })
         .await;
     let session = match launch_result {
@@ -265,6 +267,7 @@ pub(super) async fn launch_session(
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
+    data_dir: Option<PathBuf>,
 ) -> Result<SessionControlResponse, SessionControlError> {
     // Before the workspace, the worktree and the provider process: a bad
     // check-in is worth refusing while nothing has been spent on it.
@@ -281,7 +284,7 @@ pub(super) async fn launch_session(
     };
     let launch_budget_lock = launch_budget_lock(budget_key);
     let launch_budget_turn = launch_budget_lock.lock().await;
-    let (parent_project_id, lineage, parent_arc) = {
+    let (parent_project_id, lineage, parent_arc, parent_auto_tier) = {
         let connection = database.connection();
         let parent_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
@@ -296,7 +299,7 @@ pub(super) async fn launch_session(
             }
             None => None,
         };
-        (project_id, lineage, parent_arc)
+        (project_id, lineage, parent_arc, parent_session.auto_tier)
     };
     let depth = lineage.depth + 1;
     if depth > MAX_LAUNCH_DEPTH {
@@ -325,12 +328,40 @@ pub(super) async fn launch_session(
     if let Some(arc) = &parent_arc {
         check_arc_launch_budget(arc, &database)?;
     }
-    let provider = action.provider.unwrap_or(parent.provider);
+    // `model: "auto"` / `"auto:<tier>"` hands provider, model and effort to
+    // the router; an explicit `reasoning` still wins over the routed effort.
+    let auto_route = match launch_auto_tier(
+        action.model.as_deref(),
+        action.provider.is_some(),
+        parent_auto_tier.as_deref(),
+    )? {
+        Some(tier) => {
+            let api_key = crate::routing::require_api_key().map_err(argmax_protocol_error)?;
+            let mut route = crate::routing::resolve_route(&action.prompt, tier, &api_key).await;
+            // `reasoning` is the effort the launch will actually run. Record
+            // that, not the classifier's effort, or the route history and a
+            // later resume disagree with the turn.
+            if let Some(effort) = action.reasoning {
+                route.effort = Some(effort);
+            }
+            Some(route)
+        }
+        None => None,
+    };
+    let provider = auto_route
+        .as_ref()
+        .map(|route| route.provider)
+        .unwrap_or(action.provider.unwrap_or(parent.provider));
     // A model id names a model the CLI accepts; Rust has no label catalog
     // (labels live in `src/shared/providerModels.ts`), so an explicit id is
     // its own sidebar label — the same fallback session sync uses.
-    let (model_label, model_id, reasoning_effort) =
-        match (action.model, provider == parent.provider) {
+    let (model_label, model_id, reasoning_effort) = match &auto_route {
+        Some(route) => (
+            route.model_label.clone(),
+            route.model_id.clone(),
+            route.effort,
+        ),
+        None => match (action.model, provider == parent.provider) {
             (Some(model), _) => (model.clone(), model, provider_effort(provider, &parent)),
             (None, true) => (
                 parent.model_label.clone(),
@@ -345,7 +376,8 @@ pub(super) async fn launch_session(
                     parse_reasoning_effort(defaults.reasoning_effort),
                 )
             }
-        };
+        },
+    };
     // The sidebar label the new session is about to get, read here as well so
     // a check-in wake can name the work rather than quote its whole prompt.
     let label = action
@@ -358,27 +390,64 @@ pub(super) async fn launch_session(
     // there" rule that keeps the coordinator the only writer.
     let prompt = match &parent_arc {
         Some(arc) => format!("{}\n\n{}", member_preamble(arc), action.prompt),
-        None => action.prompt,
+        None => action.prompt.clone(),
     };
+    // The check reads the task the agent wrote, not the Arc preamble wrapped
+    // around it, and it runs against the project the launch would have used.
+    // An explicit project or path does not skip it: that argument is the aim.
+    // Lookup only. Registering a path here so the check can name it would
+    // leave that project behind when the launch then starts somewhere else.
+    // An unregistered path has no row to be current, so it is not checked;
+    // `launch_with_spec` registers the repository the session actually starts in.
+    let aimed_id = {
+        let connection = database.read_connection();
+        let projects = crate::persistence::projects::list_projects(&connection)
+            .map_err(argmax_protocol_error)?;
+        match super::resolve_project(&projects, action.project.as_deref(), &parent_project_id) {
+            Ok(project) => Some(project.id),
+            Err(_) => None,
+        }
+    };
+    let check = match aimed_id {
+        Some(project_id) => {
+            crate::routing::project_check::check_agent_launch(
+                Arc::clone(&database),
+                data_dir,
+                project_id,
+                action.prompt.clone(),
+            )
+            .await
+        }
+        None => crate::routing::project_check::AgentLaunchCheck::none(),
+    };
+    let aimed_launch = aim_at_check(
+        action.project.clone(),
+        action.path.clone(),
+        action.branch.clone(),
+        action.worktree,
+        check,
+    )
+    .await;
     let outcome = launch_with_spec(
         LaunchSpec {
             // An agent-launched session is its own piece of work, not a chat
             // running beside this one: it takes the project's checkout, or its
             // own worktree.
             alongside: None,
-            project: action.project,
-            path: action.path,
-            branch: action.branch,
+            project: aimed_launch.project,
+            path: aimed_launch.path,
+            branch: aimed_launch.branch,
             prompt,
             worktree: action.worktree,
             provider,
             model_label,
             model_id,
-            // An explicit effort wins over whatever the model choice implied,
-            // so `reasoning` means the same thing whether or not `model` was
-            // named alongside it.
+            // An explicit effort wins over the model default and over the
+            // routed effort. The same override is written onto the route
+            // above, so the recorded row matches the turn.
             reasoning_effort: action.reasoning.or(reasoning_effort),
-            fast_mode: parent.fast_mode,
+            // A routed launch never runs Fast: the grid's cells never ask for it.
+            fast_mode: parent.fast_mode && auto_route.is_none(),
             permission_mode: action.permission_mode.unwrap_or(parent.permission_mode),
             agent_mode: parent.agent_mode,
             task_label: action.task_label,
@@ -386,11 +455,20 @@ pub(super) async fn launch_session(
             arc_is_coordinator_launch: false,
         },
         Arc::clone(&database),
-        workspaces,
+        workspaces.clone(),
         providers,
         &parent_project_id,
     )
     .await?;
+    if let Some(route) = &auto_route {
+        let session = {
+            let connection = database.connection();
+            crate::persistence::turn_routes::record_route(&connection, &outcome.session_id, route)
+                .map_err(argmax_protocol_error)?;
+            find_session_by_id(&connection, &outcome.session_id).map_err(argmax_protocol_error)?
+        };
+        workspaces.publish_session(session);
+    }
     {
         let connection = database.connection();
         record_session_launch(
@@ -401,6 +479,17 @@ pub(super) async fn launch_session(
             LAUNCH_KIND_AGENT,
         )
         .map_err(argmax_protocol_error)?;
+    }
+    if let Some(record) = aimed_launch.record {
+        let connection = database.connection();
+        if let Err(error) = crate::persistence::project_checks::record_project_check(
+            &connection,
+            &record,
+            "accepted",
+            Some(&outcome.session_id),
+        ) {
+            tracing::warn!(target: "argmax::routing", "could not record project check: {error}");
+        }
     }
     drop(launch_budget_turn);
     if let Some(minutes) = check_in_minutes {
@@ -421,8 +510,121 @@ pub(super) async fn launch_session(
             project_name: outcome.project_name,
             path: outcome.path,
             branch: outcome.branch,
+            project_check: aimed_launch.project_check,
         },
     )))
+}
+
+/// Where a `session_launch` should actually start, after project check.
+struct AimedLaunch {
+    project: Option<String>,
+    path: Option<String>,
+    branch: Option<String>,
+    project_check: Option<LaunchProjectCheck>,
+    record: Option<crate::persistence::project_checks::ProjectCheckRecord>,
+}
+
+async fn aim_at_check(
+    project: Option<String>,
+    path: Option<String>,
+    branch: Option<String>,
+    worktree: bool,
+    check: crate::routing::project_check::AgentLaunchCheck,
+) -> AimedLaunch {
+    use crate::routing::project_check::ProjectCheckDecision;
+
+    let report = |decision: &str| LaunchProjectCheck {
+        decision: decision.to_string(),
+        suggested_project_id: check.suggested_project_id.clone().unwrap_or_default(),
+        suggested_project_name: check.suggested_project_name.clone().unwrap_or_default(),
+        reasons: check.reasons.clone(),
+    };
+    match check.decision {
+        ProjectCheckDecision::Switch => {
+            let project_id = check
+                .suggested_project_id
+                .clone()
+                .expect("a switch names the project");
+            let repo_path = check
+                .suggested_repo_path
+                .clone()
+                .expect("a switch names the checkout");
+            // A branch or checkout of the repository the caller aimed at does
+            // not exist on the one the prompt belongs to. Keep `path` only
+            // when it is already a checkout of the project being switched to,
+            // and never carry `branch`: a ref from the other repo would fail
+            // the launch we just moved.
+            let path = if worktree {
+                None
+            } else if let Some(path) = path.as_deref() {
+                checkout_of_project(&repo_path, path).await
+            } else {
+                None
+            };
+            AimedLaunch {
+                project: Some(project_id),
+                path,
+                branch: None,
+                project_check: Some(report("switch")),
+                record: check.record,
+            }
+        }
+        ProjectCheckDecision::Suggest => AimedLaunch {
+            project,
+            path,
+            branch,
+            project_check: Some(report("suggest")),
+            record: None,
+        },
+        ProjectCheckDecision::None => AimedLaunch {
+            project,
+            path,
+            branch,
+            project_check: None,
+            record: None,
+        },
+    }
+}
+
+async fn checkout_of_project(repo_path: &str, requested: &str) -> Option<String> {
+    resolve_registered_checkout(repo_path, requested)
+        .await
+        .ok()
+        .map(|(path, _branch)| path)
+}
+
+fn auto_tier_from_model(
+    model: Option<&str>,
+) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+    let Some(model) = model else {
+        return Ok(None);
+    };
+    if model == "auto" {
+        return Ok(Some(crate::routing::table::AutoTier::Balanced));
+    }
+    let Some(tier) = model.strip_prefix("auto:") else {
+        return Ok(None);
+    };
+    crate::routing::parse_tier(tier).map(Some).ok_or_else(|| {
+        protocol_error(
+            "INVALID_INPUT",
+            format!("Unknown Auto tier `{tier}`. Use auto, auto:cost, auto:balanced or auto:intelligence."),
+        )
+    })
+}
+
+/// The tier a launch routes with: the one `model` names, or, when the caller
+/// named neither a model nor a provider, the parent chat's own. A Router chat
+/// otherwise hands its child whichever concrete model its last turn landed on.
+fn launch_auto_tier(
+    model: Option<&str>,
+    provider_named: bool,
+    parent_auto_tier: Option<&str>,
+) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+    if model.is_some() || provider_named {
+        return auto_tier_from_model(model);
+    }
+    Ok(parent_auto_tier.and_then(crate::routing::parse_tier))
 }
 
 /// A check-in may land no sooner than the next minute and no further out than
@@ -524,4 +726,50 @@ fn provider_effort(
 
 fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
     serde_json::from_value(serde_json::json!(value?)).ok()
+}
+
+#[cfg(test)]
+mod auto_model_tests {
+    use super::{auto_tier_from_model, launch_auto_tier};
+    use crate::routing::table::AutoTier;
+
+    #[test]
+    fn auto_model_names_pick_a_tier_and_reject_unknown_ones() {
+        assert_eq!(auto_tier_from_model(None).ok(), Some(None));
+        assert_eq!(auto_tier_from_model(Some("gpt-6-sol")).ok(), Some(None));
+        assert_eq!(
+            auto_tier_from_model(Some("auto")).ok(),
+            Some(Some(AutoTier::Balanced))
+        );
+        assert_eq!(
+            auto_tier_from_model(Some("auto:cost")).ok(),
+            Some(Some(AutoTier::Cost))
+        );
+        let error = auto_tier_from_model(Some("auto:fast")).expect_err("unknown tier");
+        assert_eq!(error.code, "INVALID_INPUT");
+        assert!(
+            error.message.contains("auto:intelligence"),
+            "{}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn a_router_chat_launches_through_the_router_unless_told_otherwise() {
+        let parent = Some("intelligence");
+        assert_eq!(
+            launch_auto_tier(None, false, parent).ok(),
+            Some(Some(AutoTier::Intelligence))
+        );
+        assert_eq!(
+            launch_auto_tier(Some("gpt-6-sol"), false, parent).ok(),
+            Some(None)
+        );
+        assert_eq!(launch_auto_tier(None, true, parent).ok(), Some(None));
+        assert_eq!(
+            launch_auto_tier(Some("auto:cost"), false, parent).ok(),
+            Some(Some(AutoTier::Cost))
+        );
+        assert_eq!(launch_auto_tier(None, false, None).ok(), Some(None));
+    }
 }

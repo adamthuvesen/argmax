@@ -19,8 +19,9 @@ use crate::session_control::{
     LearningsAddAction, LearningsSearchAction, ListAction, MessageAction, MoveAction,
     ProjectsAction, ReadAction, RenameAction, ScheduleCancelAction, ScheduleFollowupAction,
     ScheduleListAction, ScheduleResumeAction, SessionControlAction, SourcesAddAction,
-    SourcesListAction, SourcesReadAction, StatusAction, StopAction, TerminalReadAction,
-    TerminalSpawnAction, WaitAction, WorkspaceDiffAction, WorkspaceStatusAction,
+    SourcesListAction, SourcesReadAction, StatusAction, StopAction, TerminalCloseAction,
+    TerminalReadAction, TerminalSpawnAction, TerminalWriteAction, WaitAction, WorkspaceDiffAction,
+    WorkspaceStatusAction,
 };
 
 #[derive(Clone)]
@@ -55,7 +56,11 @@ pub struct SessionLaunchParams {
     /// the provider running this session.
     pub provider: Option<String>,
     /// Model id for that provider, as listed in Argmax's model picker (for
-    /// example claude-opus-5 or gpt-6-sol). Defaults to this session's model.
+    /// example claude-opus-5 or gpt-6-sol). Defaults to this session's model,
+    /// or to its Auto tier when this session runs on Auto and `provider` is
+    /// not given either. `auto`, `auto:cost`, `auto:balanced` or
+    /// `auto:intelligence` lets the router pick provider, model and effort
+    /// from the prompt; `provider` is then ignored.
     pub model: Option<String>,
     /// Give the new session its own git worktree instead of sharing the
     /// project's checkout. Use it when the work would collide with yours.
@@ -179,6 +184,24 @@ pub struct TerminalSpawnParams {
     pub session: Option<String>,
     /// A command line to type into the shell, run as if the user typed it.
     pub command: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct TerminalWriteParams {
+    /// Terminal to type into, from terminal_spawn or terminal_read.
+    pub terminal_id: String,
+    /// Text sent verbatim. Control characters pass through: "\u0003" is
+    /// Ctrl-C, "\u0004" is Ctrl-D.
+    pub text: String,
+    /// Press Enter after the text. Defaults to true; pass false for a bare
+    /// keystroke such as Ctrl-C.
+    pub submit: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct TerminalCloseParams {
+    /// Terminal to terminate, from terminal_spawn or terminal_read.
+    pub terminal_id: String,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
@@ -393,7 +416,10 @@ visible and steerable after your turn — a separate repository investigation, a
 Keep bounded research, review, and implementation in this chat using your provider's native \
 subagents. A new session starts cold, so put everything it needs in `prompt`. It is a top-level \
 sidebar session, not a subagent: the user sees it, it spends real tokens, and it outlives your \
-turn. Capped at two levels deep and ten launches per session."
+turn. Capped at two levels deep and ten launches per session. Project check may start the session \
+in a different project when the prompt clearly belongs there: `projectId`, `projectName`, and \
+`path` are where it actually started, and `projectCheck` is set when another project was suggested \
+or chosen. Trust those fields over the project you passed."
     )]
     async fn session_launch(
         &self,
@@ -637,6 +663,41 @@ looked."
             terminal_id: params.terminal_id,
             session: params.session,
             max_chars: params.max_chars,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "terminal_write",
+        description = "Type into a running terminal: a follow-up command in the same shell, an \
+answer to a prompt, or a control key such as Ctrl-C (\"\\u0003\" with submit false) to stop a \
+dev server without losing its tab. Read the result back with terminal_read. Fails if the shell \
+has exited."
+    )]
+    async fn terminal_write(
+        &self,
+        Parameters(params): Parameters<TerminalWriteParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::TerminalWrite(TerminalWriteAction {
+            terminal_id: params.terminal_id,
+            text: params.text,
+            submit: params.submit,
+        }))
+        .await
+    }
+
+    #[tool(
+        name = "terminal_close",
+        description = "Terminate a terminal and everything running in it (SIGTERM, then SIGKILL \
+after 1.5s). Use it to clean up a dev server or watcher you started once it is no longer \
+needed. The captured output stays readable with terminal_read."
+    )]
+    async fn terminal_close(
+        &self,
+        Parameters(params): Parameters<TerminalCloseParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        call(SessionControlAction::TerminalClose(TerminalCloseAction {
+            terminal_id: params.terminal_id,
         }))
         .await
     }

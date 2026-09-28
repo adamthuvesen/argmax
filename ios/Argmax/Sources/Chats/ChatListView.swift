@@ -56,7 +56,7 @@ struct ChatListView: View {
                         list
                     }
                 }
-                .safeAreaInset(edge: .top, spacing: 0) { header }
+                .screenHeaderBar { header }
                 // Over the rows rather than above them: the chats on screen
                 // are still the right chats, and moving them all down 28pt
                 // is the one thing that makes a wobbly connection worse.
@@ -274,12 +274,11 @@ struct ChatListView: View {
         if appearance.showArcs, !arcs.isEmpty {
             Group {
                 heading("Arcs", id: "arcs", count: arcs.count)
-                ForEach(Array((isCollapsed("arcs") ? [] : arcs).enumerated()), id: \.element.id) { index, arc in
+                ForEach((isCollapsed("arcs") ? [] : arcs), id: \.id) { arc in
                     ArcListRow(
                         arc: arc,
                         sessions: store.snapshot.sessions.filter { $0.arcId == arc.id },
-                        now: store.now,
-                        separated: index < arcs.count - 1
+                        now: store.now
                     ) {
                         path.append(ArcRoute(arcID: arc.id))
                     }
@@ -305,9 +304,6 @@ struct ChatListView: View {
                     ChatListRow(
                         row: row,
                         now: store.now,
-                        // None after the last row of a section: the section
-                        // gap below is the divider there.
-                        separated: index < rows.count - 1,
                         settled: settled,
                         // Capped, because a hundred rows at 40ms is four
                         // seconds of a list assembling itself.
@@ -597,7 +593,6 @@ struct ChatListRow: View {
     let row: ChatRow
     /// The store's clock, so every row on screen ages against one instant.
     let now: Date
-    let separated: Bool
     var settled = true
     var stagger = 0
     let open: () -> Void
@@ -657,12 +652,6 @@ struct ChatListRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(RowPress())
-        .overlay(alignment: .bottomLeading) {
-            if separated {
-                HairlineDivider(inset: Spacing.gutter)
-                    .padding(.trailing, Spacing.gutter)
-            }
-        }
         .animation(.easeOut(duration: 0.15), value: row.attention)
         // The list settles in once, on first load, 40ms apart.
         .opacity(settled ? 1 : 0)
@@ -729,7 +718,7 @@ func compactElapsed(since date: Date?, now: Date) -> String {
 #Preview("Rows") {
     List {
         Section {
-            ChatListRow(row: .preview(label: "Wire the review screen", running: true), now: .now, separated: true) {}
+            ChatListRow(row: .preview(label: "Wire the review screen", running: true), now: .now) {}
                 .plainRow()
             // Running with an icon colour: the nest takes the colour, and the
             // icon waits until the turn ends.
@@ -740,14 +729,12 @@ func compactElapsed(since date: Date?, now: Date) -> String {
                     icon: "Gauge",
                     iconColor: "violet"
                 ),
-                now: .now,
-                separated: true
+                now: .now
             ) {}
             .plainRow()
             ChatListRow(
                 row: .preview(label: "Rewrite the release notes", icon: "Newspaper", iconColor: "amber"),
-                now: .now,
-                separated: true
+                now: .now
             ) {}
             .plainRow()
             ChatListRow(
@@ -756,46 +743,39 @@ func compactElapsed(since date: Date?, now: Date) -> String {
                     provider: "codex",
                     attention: .approvalNeeded
                 ),
-                now: .now,
-                separated: true
+                now: .now
             ) {}
             .plainRow()
             ChatListRow(
                 row: .preview(label: "Bump the Rust toolchain", provider: "grok", attention: .failed),
-                now: .now,
-                separated: false
+                now: .now
             ) {}
             .plainRow()
         }
         Section {
             ChatListRow(
                 row: .preview(label: "Port the sidebar grouping", attention: .reviewReady),
-                now: .now,
-                separated: true
+                now: .now
             ) {}
             .plainRow()
             ChatListRow(
                 row: .preview(label: "Wire up open and merged PR glyphs", prState: "OPEN", prNumber: 214),
-                now: .now,
-                separated: true
+                now: .now
             ) {}
             .plainRow()
             ChatListRow(
                 row: .preview(label: "Fix the keyboard inset on the composer", prState: "MERGED", prNumber: 209),
-                now: .now,
-                separated: true
+                now: .now
             ) {}
             .plainRow()
             ChatListRow(
                 row: .preview(label: "A quiet finished chat with a very long task label indeed", provider: "cursor"),
-                now: .now,
-                separated: true
+                now: .now
             ) {}
             .plainRow()
             ChatListRow(
                 row: .preview(label: "Side chat about ISO timestamps", project: "Chat", kind: .scratch),
-                now: .now,
-                separated: false
+                now: .now
             ) {}
             .plainRow()
         }

@@ -36,6 +36,7 @@ import {
 } from "../../lib/schedule.js";
 import { LoadingLine } from "../LoadingLine.js";
 import { SettingsListPicker } from "../settings/settingsPrimitives.js";
+import { RunAtPicker } from "./RunAtPicker.js";
 import { uuidV4 } from "../../lib/uuid.js";
 import { showErrorToast } from "../../state/toast.js";
 
@@ -719,12 +720,10 @@ function ScheduledTaskEditor({
                 <label className="sched-label" htmlFor="scheduled-once">
                   Run at
                 </label>
-                <input
+                <RunAtPicker
                   id="scheduled-once"
-                  type="datetime-local"
-                  className="sched-input sched-input-compact"
                   value={draft.controls.onceAt}
-                  onChange={(event) => patchControls({ onceAt: event.target.value })}
+                  onChange={(onceAt) => patchControls({ onceAt })}
                 />
               </div>
             ) : null}

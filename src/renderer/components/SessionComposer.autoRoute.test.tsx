@@ -65,6 +65,44 @@ describe("SessionComposer Auto chip", () => {
     expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ provider: "claude", modelId: "claude-fable-5-1", reasoningEffort: "high", autoTier: "balanced" });
   });
 
+  it("says why when the router switches the chat, until the next draft starts", () => {
+    const { rerender } = renderConversation(routedSession);
+    expect(screen.queryByText("coding · heavy; confident upgrade")).toBeNull();
+
+    const upgraded = {
+      ...routedSession,
+      modelLabel: "Fable 5.1",
+      modelId: "claude-fable-5-1",
+      reasoningEffort: "high" as const,
+      autoRoute: "coding · heavy; confident upgrade"
+    };
+    rerenderConversation(rerender, upgraded);
+
+    // The chip reads the new route from the first frame of the switch.
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Balance → Fable 5.1");
+    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).toBe("High");
+    expect(screen.getByText("coding · heavy; confident upgrade").closest("[role='status']")).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "n" } });
+    expect(screen.queryByText("coding · heavy; confident upgrade")).toBeNull();
+  });
+
+  it("names the router's pick once when a routed chat has just launched", () => {
+    const launched = baseSession({ ...routedSession, id: "session-fresh", startedAt: new Date().toISOString() });
+    renderConversation(launched);
+
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Balance → Opus 5.5");
+    expect(screen.getByText("coding · standard").closest("[role='status']")).not.toBeNull();
+  });
+
+  it("says nothing for the route a chat opened with, or for a pin", () => {
+    const { rerender } = renderConversation(routedSession);
+    const pinned = { ...routedSession, modelLabel: "Sonnet 5", modelId: "claude-sonnet-5", autoTier: null, autoRoute: null };
+    rerenderConversation(rerender, pinned);
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("keeps the user's own pick when the chat is re-routed", async () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
     const { rerender } = renderConversation(routedSession, [], { onSendSessionInput });

@@ -1395,19 +1395,21 @@ export function SessionConversation({
   const floatingHeading =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
-  // Depend on the session's id and model fields rather than the session
+  // Reseed on the session's id and model fields rather than the session
   // object: the parent rebuilds SessionSummary references on every dashboard
   // delta. The model fields matter because the Mac re-routes an Auto chat's
   // follow-ups; a composer still holding the old model would send it back as a
   // pin and undo the route. A stored pick is the user's own and still wins.
-  const sessionProvider = session?.provider;
-  const sessionModelId = session?.modelId;
-  const sessionReasoningEffort = session?.reasoningEffort;
-  useEffect(() => {
+  // Reseeded during render, not in an effect, so the chip never paints a frame
+  // with the session's new model but the composer's old one: that frame drops
+  // the Router label and breaks the chip's switch motion.
+  const seededModelKey = [sessionId, session?.provider, session?.modelId, session?.reasoningEffort].join("\n");
+  const [seededFor, setSeededFor] = useState(seededModelKey);
+  if (seededFor !== seededModelKey) {
+    setSeededFor(seededModelKey);
     const fallback = modelPickerSelectionFromSession(session);
     setSelectedModel(sessionId ? readStoredSessionModel(sessionId, fallback) : fallback);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the id and model fields are the gate; `session` mutates per-tick by design
-  }, [sessionId, sessionProvider, sessionModelId, sessionReasoningEffort]);
+  }
 
   const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
 

@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Router Switch Motion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap" rel="stylesheet">
+<style>
+/* Tokens copied from src/renderer/styles/tokens.css (sage accent). */
+:root {
+  --bg: #fcfcfb;
+  --panel: #ffffff;
+  --line: #e6e3dc;
+  --text: #1c1b18;
+  --muted: #8a857b;
+  --muted-strong: #666158;
+  --chip-ink: color-mix(in oklab, var(--muted) 55%, var(--muted-strong));
+  --chip: color-mix(in oklab, var(--panel), var(--text) 6%);
+  --accent: #446c56;
+  --accent-soft: #e7efe7;
+  --glint: color-mix(in oklab, var(--accent) 22%, transparent);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 6px 24px rgb(0 0 0 / 0.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141414; --panel: #1b1b1a; --line: #2a2926;
+    --text: #e3e0d8; --muted: #8a857b; --muted-strong: #a5a198; --chip-ink: var(--muted);
+    --chip: color-mix(in oklab, var(--panel), var(--text) 5%);
+    --accent: #6dab86; --accent-soft: rgba(109, 171, 134, 0.14);
+    --glint: color-mix(in oklab, var(--accent) 30%, transparent);
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141414; --panel: #1b1b1a; --line: #2a2926;
+  --text: #e3e0d8; --muted: #8a857b; --muted-strong: #a5a198; --chip-ink: var(--muted);
+  --chip: color-mix(in oklab, var(--panel), var(--text) 5%);
+  --accent: #6dab86; --accent-soft: rgba(109, 171, 134, 0.14);
+  --glint: color-mix(in oklab, var(--accent) 30%, transparent);
+  --shadow: none;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 "Geist", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+main { max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 20px; font-weight: 560; margin: 0 0 6px; letter-spacing: -0.01em; }
+.lede { color: var(--muted-strong); max-width: 70ch; margin: 0 0 20px; }
+
+.controls {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  padding: 10px 0 14px; background: var(--bg);
+}
+.group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.group > .label { color: var(--muted); font-size: 11px; margin-right: 4px; }
+button.opt {
+  font: inherit; font-size: 12px; color: var(--muted-strong);
+  background: var(--chip); border: 0; border-radius: 999px;
+  padding: 3px 10px; cursor: pointer;
+}
+button.opt:hover { color: var(--text); }
+button.opt[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+
+.now {
+  color: var(--muted); font-size: 12px; min-height: 18px; margin-bottom: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.now b { color: var(--text); font-weight: 500; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 14px; }
+/* The longest label ("Fable 5.1 Extra High") outgrows a half-width card at 2.4×. */
+.grid.wide { grid-template-columns: 1fr; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 16px 16px 14px; box-shadow: var(--shadow); min-width: 0;
+}
+.card h2 { font-size: 13px; font-weight: 560; margin: 0; }
+.card h2 .tag { color: var(--accent); font-weight: 500; margin-left: 6px; font-size: 11px; }
+.card p { color: var(--muted-strong); margin: 2px 0 12px; font-size: 12px; }
+
+/* A replica of the session composer's bottom row. Everything is in em so the
+   Size toggle scales it without CSS zoom (which would skew offsetWidth). */
+.stage {
+  --z: 1.4;
+  font-size: calc(13px * var(--z));
+  background: var(--bg); border-radius: 12px; padding: 1.6em 1em 1em;
+  overflow: hidden;
+}
+.composer {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 1.1em;
+  padding: 0.75em 0.6em 0.55em;
+}
+.placeholder { color: var(--muted); padding: 0 0.3em 0.9em; font-size: 0.95em; }
+.toolbar { display: flex; align-items: center; gap: 0.45em; min-width: 0; }
+.glyph {
+  flex: none; width: 2em; height: 2em; border-radius: 999px; background: var(--chip);
+  display: grid; place-items: center; color: var(--muted-strong);
+}
+.glyph svg { width: 1em; height: 1em; }
+.spacer { flex: 1; }
+.send { background: var(--text); color: var(--bg); }
+
+.pill-wrap { position: relative; flex: none; }
+.pill {
+  position: relative; display: inline-flex; align-items: center;
+  height: 2em; padding: 0 0.7em; border-radius: 999px; background: var(--chip);
+  white-space: nowrap; isolation: isolate;
+}
+.pill > .fx { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1; }
+.pill .clip { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: -1; }
+.seg {
+  position: relative; display: inline-block; vertical-align: top;
+  height: 1.45em; line-height: 1.45em; overflow: hidden;
+}
+.seg > .txt { display: inline-block; white-space: pre; }
+.seg.arrow { margin: 0 0.3em; color: var(--text); }
+.seg.effort { margin-left: 0.3em; color: var(--chip-ink); }
+.seg.effort > .txt { color: inherit; }
+.scr { color: var(--accent); opacity: 0.75; }
+
+/* A reroute lands on send, when the draft has just emptied, so the reason
+   borrows the placeholder line for a moment and hands it back. */
+.placeholder { position: relative; }
+.reason {
+  position: absolute; inset: 0 0 auto 0.3em; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; color: var(--muted-strong); opacity: 0;
+}
+.reason .dir { color: var(--accent); margin-right: 0.3em; }
+
+.probe { position: absolute; visibility: hidden; left: -9999px; top: 0; }
+
+.foot { margin-top: 28px; color: var(--muted); font-size: 12px; max-width: 72ch; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Router switch</h1>
+  <p class="lede">
+    What the model chip does when the router reroutes a follow-up: effort changes, model changes, both,
+    a step down after the cache goes cold, and Grok's escalation onto Claude. The switch lands as the
+    follow-up is sent, so the eye is already on the composer. Every card plays the same switch at once.
+  </p>
+
+  <div class="controls">
+    <div class="group" id="scenarios"><span class="label">Switch</span></div>
+    <div class="group">
+      <span class="label">Playback</span>
+      <button class="opt" id="replay">Replay</button>
+      <button class="opt" id="slow" aria-pressed="false">Slow ×4</button>
+      <button class="opt" id="reduce" aria-pressed="false">Reduce motion</button>
+      <button class="opt" id="reason" aria-pressed="false">Reason caption</button>
+    </div>
+    <div class="group" id="themes">
+      <span class="label">Theme</span>
+      <button class="opt" data-theme-choice="system" aria-pressed="true">System</button>
+      <button class="opt" data-theme-choice="light" aria-pressed="false">Light</button>
+      <button class="opt" data-theme-choice="dark" aria-pressed="false">Dark</button>
+    </div>
+    <div class="group" id="sizes">
+      <span class="label">Size</span>
+      <button class="opt" data-z="1" aria-pressed="false">1×</button>
+      <button class="opt" data-z="1.4" aria-pressed="true">1.4×</button>
+      <button class="opt" data-z="2.4" aria-pressed="false">2.4×</button>
+    </div>
+  </div>
+  <div class="now" id="now"></div>
+
+  <div class="grid" id="grid"></div>
+
+  <p class="foot">
+    Motion is transform and opacity, plus the width of the one chip that changes size and the colour of
+    one short word. Under Reduce motion every option becomes the same 160&nbsp;ms crossfade.
+  </p>
+</main>
+
+<script>
+const EFFORT_RANK = { Low: 0, Medium: 1, High: 2, "Extra High": 3, Max: 4 };
+const MODEL_RANK = { "Grok 4.7": 0, "Opus 5.5": 1, "Fable 5.1": 2 };
+
+// Chained so the loop never jumps: each switch starts where the last one ended.
+const SCENARIOS = [
+  { name: "Effort up", from: ["Balance", "Opus 5.5", "Medium"], to: ["Balance", "Opus 5.5", "High"],
+    reason: "Harder follow-up · cache was cold" },
+  { name: "Model up", from: ["Balance", "Opus 5.5", "High"], to: ["Balance", "Fable 5.1", "High"],
+    reason: "Confident upgrade" },
+  { name: "Escalate", from: ["Balance", "Fable 5.1", "High"], to: ["Balance", "Fable 5.1", "Extra High"],
+    reason: "Escalated · looked like a redo" },
+  { name: "Step down", from: ["Balance", "Fable 5.1", "Extra High"], to: ["Balance", "Opus 5.5", "Medium"],
+    reason: "Lighter follow-up · cache was cold", dir: -1 },
+  { name: "Grok → Claude", from: ["Speed", "Grok 4.7", "Low"], to: ["Speed", "Opus 5.5", "High"],
+    reason: "Escalated to Claude · top of Grok's ladder", loop: false },
+];
+for (const sc of SCENARIOS) {
+  const delta = (MODEL_RANK[sc.to[1]] - MODEL_RANK[sc.from[1]]) || (EFFORT_RANK[sc.to[2]] - EFFORT_RANK[sc.from[2]]);
+  sc.dir ??= delta < 0 ? -1 : 1;
+}
+
+const settings = { slow: false, reduce: matchMedia("(prefers-reduced-motion: reduce)").matches, reason: false };
+const T = (ms) => ms * (settings.slow ? 4 : 1);
+const SEGS = ["tier", "model", "effort"];
+
+/* ---------- DOM ---------- */
+const ICONS = {
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  branch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-6 3-10.5 6"/></svg>',
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+};
+
+function pillHTML(state) {
+  const [tier, model, effort] = state;
+  return `<span class="seg tier"><span class="txt">${tier}</span></span>` +
+    `<span class="seg arrow"><span class="txt">→</span></span>` +
+    `<span class="seg model"><span class="txt">${model}</span></span>` +
+    `<span class="seg effort"><span class="txt">${effort}</span></span>`;
+}
+
+function buildCard(option) {
+  const card = document.createElement("section");
+  card.className = "card";
+  card.innerHTML = `
+    <h2>${option.title}${option.tag ? `<span class="tag">${option.tag}</span>` : ""}</h2>
+    <p>${option.blurb}</p>
+    <div class="stage">
+      <div class="composer">
+        <div class="placeholder"><span class="ph">Ask for follow-up changes</span><span class="reason"></span></div>
+        <div class="toolbar">
+          <span class="glyph">${ICONS.plus}</span>
+          <div class="pill-wrap"><div class="pill"></div><div class="pill probe"></div></div>
+          <span class="glyph">${ICONS.branch}</span>
+          <span class="spacer"></span>
+          <span class="glyph send">${ICONS.up}</span>
+        </div>
+      </div>
+    </div>`;
+  const pill = card.querySelector(".pill:not(.probe)");
+  const probe = card.querySelector(".probe");
+  const reason = card.querySelector(".reason");
+  return { card, pill, probe, reason, option, state: null };
+}
+
+function reset(c, state) {
+  for (const a of c.card.getAnimations({ subtree: true })) a.cancel();
+  c.run = (c.run ?? 0) + 1;
+  c.pill.innerHTML = pillHTML(state);
+  c.pill.style.cssText = "";
+  c.state = state;
+}
+
+const seg = (pill, key) => pill.querySelector(`.seg.${key}`);
+const changedKeys = (sc) => SEGS.filter((_, i) => sc.from[i] !== sc.to[i]);
+
+/** Where each segment sits once the pill shows `state`, measured off-screen. */
+function layoutOf(c, state) {
+  c.probe.innerHTML = pillHTML(state);
+  const out = { width: c.probe.offsetWidth };
+  for (const key of [...SEGS, "arrow"]) {
+    const el = seg(c.probe, key);
+    out[key] = { left: el.offsetLeft, width: el.offsetWidth };
+  }
+  return out;
+}
+
+/** Swap one segment's text: old leaves with `out`, new arrives with `inn`,
+ *  while the segment's width eases between the two words. */
+function swap(el, text, { out, inn, dur, delay = 0, easing = "cubic-bezier(.2,.8,.2,1)" }) {
+  const old = el.firstElementChild;
+  const next = document.createElement("span");
+  next.className = "txt";
+  next.textContent = text;
+  next.style.cssText = "position:absolute;left:0;top:0";
+  el.appendChild(next);
+  const w0 = old.offsetWidth, w1 = next.offsetWidth;
+  const opts = { duration: dur, delay, easing, fill: "both" };
+  old.animate(out, opts);
+  next.animate(inn, opts);
+  const width = el.animate([{ width: `${w0}px` }, { width: `${w1}px` }], opts);
+  return width.finished.then(() => {
+    old.remove();
+    next.style.cssText = "";
+    for (const a of el.getAnimations({ subtree: true })) a.cancel();
+    return next;
+  }).catch(() => null);
+}
+
+function fx(c, css, clip = false) {
+  const el = document.createElement("span");
+  el.className = "fx";
+  el.style.cssText = css;
+  (clip ? ensureClip(c.pill) : c.pill).appendChild(el);
+  return el;
+}
+function ensureClip(pill) {
+  let clip = pill.querySelector(":scope > .clip");
+  if (!clip) { clip = document.createElement("span"); clip.className = "clip"; pill.prepend(clip); }
+  return clip;
+}
+
+function roll(c, sc, { stagger = 70, dur = 460, easing = "cubic-bezier(.3,1.3,.5,1)" } = {}) {
+  const d = sc.dir;
+  return Promise.all(changedKeys(sc).map((key, i) => swap(seg(c.pill, key), sc.to[SEGS.indexOf(key)], {
+    out: [{ transform: "translateY(0)", opacity: 1 }, { transform: `translateY(${-d * 100}%)`, opacity: 0 }],
+    inn: [{ transform: `translateY(${d * 100}%)`, opacity: 0 }, { transform: "translateY(0)", opacity: 1 }],
+    dur: T(dur), delay: T(i * stagger), easing,
+  })));
+}
+
+/* ---------- The options ---------- */
+const OPTIONS = [
+  {
+    title: "A · Odometer",
+    blurb: "Only the words that changed roll, up for a stronger pick and down for a lighter one. Tier and arrow hold still, so the eye lands on what moved.",
+    play: (c, sc) => roll(c, sc),
+  },
+  {
+    title: "B · Handoff",
+    blurb: "The arrow nudges forward and the router hands off: the old model slides out to the right, the new one comes in from behind the arrow.",
+    play: (c, sc) => {
+      const arrow = seg(c.pill, "arrow").firstElementChild;
+      arrow.animate([{ transform: "translateX(0)" }, { transform: "translateX(0.28em)" }, { transform: "translateX(0)" }],
+        { duration: T(420), easing: "cubic-bezier(.3,.7,.3,1)" });
+      arrow.animate([{ color: "var(--text)" }, { color: "var(--accent)" }, { color: "var(--text)" }], { duration: T(700) });
+      return Promise.all(changedKeys(sc).map((key, i) => swap(seg(c.pill, key), sc.to[SEGS.indexOf(key)], {
+        out: [{ transform: "translateX(0)", opacity: 1 }, { transform: "translateX(0.6em)", opacity: 0 }],
+        inn: [{ transform: "translateX(-0.5em)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }],
+        dur: T(380), delay: T(120 + i * 60),
+      })));
+    },
+  },
+  {
+    title: "C · Decode",
+    tag: "loudest",
+    blurb: "The changed words scramble and resolve left to right, the way a departure board settles. Unsettled letters carry the accent.",
+    play: (c, sc) => Promise.all(changedKeys(sc).map((key, i) => decode(c, seg(c.pill, key), sc.to[SEGS.indexOf(key)], T(560), T(i * 90)))),
+  },
+  {
+    title: "D · Glint",
+    tag: "calmest",
+    blurb: "One soft accent band crosses the pill, the reading wave's cousin, and each changed word crossfades as the band passes over it.",
+    play: (c, sc) => {
+      const lay = layoutOf(c, sc.to);
+      const pillW = Math.max(lay.width, c.pill.offsetWidth);
+      const bandW = c.pill.offsetHeight * 2.4;
+      const dur = T(760);
+      const band = fx(c, `inset:0 auto 0 0;width:${bandW}px;border-radius:0;` +
+        `background:linear-gradient(90deg,transparent,var(--glint),transparent)`, true);
+      band.animate([{ transform: `translateX(${-bandW}px)` }, { transform: `translateX(${pillW}px)` }],
+        { duration: dur, easing: "cubic-bezier(.45,0,.35,1)", fill: "both" });
+      return Promise.all(changedKeys(sc).map((key) => {
+        const center = lay[key].left + lay[key].width / 2;
+        const at = dur * (center + bandW / 2) / (pillW + bandW);
+        return swap(seg(c.pill, key), sc.to[SEGS.indexOf(key)], {
+          out: [{ opacity: 1 }, { opacity: 0 }],
+          inn: [{ opacity: 0, transform: "translateY(0.12em)" }, { opacity: 1, transform: "translateY(0)" }],
+          dur: T(260), delay: Math.max(0, at - T(130)),
+        });
+      })).then(() => band.remove());
+    },
+  },
+  {
+    title: "E · Route trace",
+    blurb: "A hairline draws from the tier through the arrow to the new pick, like the route being taken, then lifts away. Words swap as the line reaches them.",
+    play: (c, sc) => {
+      const lay = layoutOf(c, sc.to);
+      const start = lay.tier.left, end = lay.effort.left + lay.effort.width;
+      const len = end - start, draw = T(520);
+      const line = fx(c, `inset:auto auto 0.34em ${start}px;height:1.5px;width:${len}px;` +
+        `background:var(--accent);border-radius:1px;transform-origin:left;transform:scaleX(0)`);
+      const head = fx(c, `inset:auto auto calc(0.34em - 1.5px) ${start - 2.25}px;width:4.5px;height:4.5px;` +
+        `background:var(--accent);box-shadow:0 0 6px var(--accent)`);
+      const traceEase = "cubic-bezier(.5,0,.2,1)";
+      line.animate([
+        { transform: "scaleX(0)", opacity: 1, offset: 0 },
+        { transform: "scaleX(1)", opacity: 1, offset: 0.55 },
+        { transform: "scaleX(1)", opacity: 0, offset: 1 },
+      ], { duration: draw / 0.55, easing: traceEase, fill: "both" });
+      head.animate([
+        { transform: "translateX(0)", opacity: 1, offset: 0 },
+        { transform: `translateX(${len}px)`, opacity: 1, offset: 0.55 },
+        { transform: `translateX(${len}px)`, opacity: 0, offset: 1 },
+      ], { duration: draw / 0.55, easing: traceEase, fill: "both" });
+      return Promise.all(changedKeys(sc).map((key) => swap(seg(c.pill, key), sc.to[SEGS.indexOf(key)], {
+        out: [{ opacity: 1, transform: "translateX(0)" }, { opacity: 0, transform: "translateX(0.3em)" }],
+        inn: [{ opacity: 0, transform: "translateX(-0.3em)" }, { opacity: 1, transform: "translateX(0)" }],
+        dur: T(300), delay: draw * Math.max(0, (lay[key].left - start) / len) * 0.9,
+      }))).then(() => { line.remove(); head.remove(); });
+    },
+  },
+  {
+    title: "F · Heat",
+    tag: "pick",
+    blurb: "Odometer, plus the effort slider's heat language: a stronger pick flushes the pill and sends a ring out, harder the higher the effort. A lighter pick exhales.",
+    play: (c, sc) => {
+      const heat = EFFORT_RANK[sc.to[2]];
+      if (sc.dir > 0) {
+        const flush = fx(c, "background:var(--accent)");
+        flush.animate([{ opacity: 0 }, { opacity: 0.1 + 0.05 * heat, offset: 0.3 }, { opacity: 0 }],
+          { duration: T(900), easing: "ease-out", fill: "both" });
+        const rings = heat >= 3 ? 2 : 1;
+        for (let r = 0; r < rings; r++) {
+          const ring = fx(c, `box-shadow:0 0 0 1.5px var(--accent), 0 0 ${6 + heat * 3}px var(--accent)`);
+          ring.animate([{ transform: "scale(1)", opacity: 0.9 }, { transform: "scale(1.09, 1.35)", opacity: 0 }],
+            { duration: T(700), delay: T(80 + r * 170), easing: "cubic-bezier(.2,.7,.3,1)", fill: "both" });
+        }
+      } else {
+        c.pill.animate([{ transform: "scale(1)" }, { transform: "scale(0.965)" }, { transform: "scale(1)" }],
+          { duration: T(460), easing: "cubic-bezier(.4,0,.2,1)" });
+      }
+      return roll(c, sc).then((spans) => {
+        // The new effort word holds the heat, then cools to chip ink.
+        if (sc.dir > 0 && spans[changedKeys(sc).indexOf("effort")]) {
+          spans[changedKeys(sc).indexOf("effort")].animate(
+            [{ color: "var(--accent)" }, { color: "var(--accent)", offset: 0.5 }, { color: "var(--chip-ink)" }],
+            { duration: T(1500) });
+        }
+      });
+    },
+  },
+];
+
+const SCRAMBLE = "ABCDEFGHJKLMNOPRSTUVXYZ0123456789";
+function decode(c, el, text, dur, delay) {
+  const run = c.run;
+  const old = el.firstElementChild;
+  const w0 = old.offsetWidth;
+  const probe = document.createElement("span");
+  probe.className = "txt"; probe.textContent = text; probe.style.cssText = "position:absolute;visibility:hidden";
+  el.appendChild(probe);
+  const w1 = probe.offsetWidth; probe.remove();
+  el.animate([{ width: `${w0}px` }, { width: `${w1}px` }],
+    { duration: dur * 0.6, delay, easing: "cubic-bezier(.2,.8,.2,1)", fill: "both" });
+  return new Promise((resolve) => {
+    const t0 = performance.now() + delay;
+    let lastTick = 0;
+    const frame = (now) => {
+      if (run !== c.run) return resolve();
+      if (now < t0) return requestAnimationFrame(frame);
+      const t = (now - t0) / dur;
+      if (t >= 1) {
+        old.textContent = text;
+        for (const a of el.getAnimations()) a.cancel();
+        return resolve();
+      }
+      if (now - lastTick > 48) {
+        lastTick = now;
+        old.innerHTML = [...text].map((ch, i) => {
+          const settle = 0.25 + 0.75 * (i / text.length);
+          if (ch === " " || t >= settle) return ch;
+          return `<span class="scr">${SCRAMBLE[(Math.random() * SCRAMBLE.length) | 0]}</span>`;
+        }).join("");
+      }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+function reducedSwap(c, sc) {
+  return Promise.all(changedKeys(sc).map((key) => swap(seg(c.pill, key), sc.to[SEGS.indexOf(key)], {
+    out: [{ opacity: 1 }, { opacity: 0 }], inn: [{ opacity: 0 }, { opacity: 1 }], dur: T(160), easing: "linear",
+  })));
+}
+
+function showReason(c, sc) {
+  c.reason.innerHTML = `<span class="dir">${sc.dir > 0 ? "↑" : "↓"}</span>${sc.reason}`;
+  const timing = { duration: T(2800), delay: T(200), easing: "ease-out", fill: "both" };
+  c.reason.animate([
+    { opacity: 0, transform: "translateY(0.35em)", offset: 0 },
+    { opacity: 1, transform: "translateY(0)", offset: 0.1 },
+    { opacity: 1, transform: "translateY(0)", offset: 0.85 },
+    { opacity: 0, transform: "translateY(-0.2em)", offset: 1 },
+  ], timing);
+  c.card.querySelector(".ph").animate([
+    { opacity: 1, offset: 0 }, { opacity: 0, offset: 0.06 }, { opacity: 0, offset: 0.9 }, { opacity: 1, offset: 1 },
+  ], timing);
+}
+
+/* ---------- Playback ---------- */
+const grid = document.getElementById("grid");
+const cards = OPTIONS.map(buildCard);
+for (const c of cards) grid.appendChild(c.card);
+
+let selected = "loop";
+let loopIndex = 0;
+let timer = null;
+
+function play(sc) {
+  document.getElementById("now").innerHTML =
+    `<b>${sc.name}</b> · ${sc.from[0]} → ${sc.from[1]} ${sc.from[2]} &nbsp;⟶&nbsp; ${sc.to[1]} ${sc.to[2]}`;
+  for (const c of cards) {
+    const same = c.state && c.state.join() === sc.from.join();
+    reset(c, sc.from);
+    const run = c.run;
+    const go = () => {
+      if (run !== c.run) return;
+      if (settings.reason) showReason(c, sc);
+      (settings.reduce ? reducedSwap(c, sc) : c.option.play(c, sc)).then(() => { c.state = sc.to; });
+    };
+    // A jump between unchained states gets a beat so it doesn't read as the animation.
+    same ? go() : setTimeout(go, T(450));
+  }
+}
+
+function schedule() {
+  clearTimeout(timer);
+  const loopList = SCENARIOS.filter((s) => s.loop !== false);
+  const sc = selected === "loop" ? loopList[loopIndex++ % loopList.length] : SCENARIOS[selected];
+  play(sc);
+  timer = setTimeout(schedule, T(settings.reason ? 3600 : 2600));
+}
+
+/* ---------- Controls ---------- */
+const scenarioGroup = document.getElementById("scenarios");
+const scenarioButtons = [["loop", "Loop all"], ...SCENARIOS.map((s, i) => [i, s.name])].map(([key, label]) => {
+  const b = document.createElement("button");
+  b.className = "opt"; b.textContent = label; b.setAttribute("aria-pressed", String(key === selected));
+  b.onclick = () => {
+    selected = key;
+    for (const x of scenarioButtons) x.setAttribute("aria-pressed", String(x === b));
+    schedule();
+  };
+  scenarioGroup.appendChild(b);
+  return b;
+});
+
+function toggle(id, key) {
+  const b = document.getElementById(id);
+  b.setAttribute("aria-pressed", String(settings[key]));
+  b.onclick = () => { settings[key] = !settings[key]; b.setAttribute("aria-pressed", String(settings[key])); schedule(); };
+}
+toggle("slow", "slow");
+toggle("reduce", "reduce");
+toggle("reason", "reason");
+document.getElementById("replay").onclick = () => {
+  if (selected === "loop") loopIndex = Math.max(0, loopIndex - 1);
+  schedule();
+};
+
+for (const b of document.querySelectorAll("[data-theme-choice]")) {
+  b.onclick = () => {
+    const v = b.dataset.themeChoice;
+    if (v === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.dataset.theme = v;
+    for (const x of document.querySelectorAll("[data-theme-choice]")) x.setAttribute("aria-pressed", String(x === b));
+  };
+}
+for (const b of document.querySelectorAll("[data-z]")) {
+  b.onclick = () => {
+    for (const s of document.querySelectorAll(".stage")) s.style.setProperty("--z", b.dataset.z);
+    grid.classList.toggle("wide", Number(b.dataset.z) > 2);
+    for (const x of document.querySelectorAll("[data-z]")) x.setAttribute("aria-pressed", String(x === b));
+    schedule();
+  };
+}
+const params = new URLSearchParams(location.search);
+if (params.get("theme")) document.querySelector(`[data-theme-choice="${params.get("theme")}"]`)?.click();
+if (params.has("reason")) document.getElementById("reason").click();
+
+document.fonts.ready.then(schedule);
+</script>
+</body>
+</html>

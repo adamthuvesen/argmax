@@ -24,6 +24,19 @@ Three picker entries, one per tier. The UI names and the stored values differ:
 | Router Speed | `cost` | cheap and fast models |
 
 A routed chat's chip reads `Balance → Opus 5.5` while the router drives it.
+When the router moves the chat to another model or effort, the chip plays the
+switch once ([useRouteSwitch.ts](../src/renderer/hooks/useRouteSwitch.ts)):
+the words that changed roll, up for a stronger route and down for a lighter
+one (judged by output price, else by effort, in
+[routeSwitch.ts](../src/renderer/lib/routeSwitch.ts)). A stronger route also
+flushes the pill and blooms one halo out of it, brighter at Extra High and
+above, and the new effort lands in the accent before cooling. The
+route's reason takes the empty composer's placeholder line for about four
+seconds.
+A chat opened within ten seconds of its launch plays the router's first pick
+the same way, unfolding the model from the tier name, with the flush but no
+halo. Reopening an older routed chat plays nothing. Design notes are in
+[design/router-switch](design/router-switch/README.md).
 Agents launch a routed chat through `session_launch` with `model: "auto"`
 (Balance) or `"auto:cost" | "auto:balanced" | "auto:intelligence"`; an explicit
 `reasoning` there still overrides the routed effort

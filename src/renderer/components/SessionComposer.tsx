@@ -58,6 +58,8 @@ import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useFollowUpSuggestion } from "../hooks/useFollowUpSuggestion.js";
+import { useRouteSwitch, useRouteSwitchElapsed } from "../hooks/useRouteSwitch.js";
+import { routeSwitchPace } from "../lib/routeSwitch.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import {
@@ -81,7 +83,12 @@ import { parseGoalCommand } from "../lib/goalCommand.js";
 import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
-import { autoSessionChipLabel, type ModelPickerSelection } from "../lib/models.js";
+import {
+  AUTO_TIER_SHORT_LABELS,
+  autoSessionChipLabel,
+  isAutoTier,
+  type ModelPickerSelection
+} from "../lib/models.js";
 import { ChangeCount } from "./ChangeCount.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
@@ -89,7 +96,7 @@ import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
-import { LaunchModelSelector, ModelSelector } from "./ModelSelector.js";
+import { LaunchModelSelector, ModelSelector, type ChipRouteSwitch } from "./ModelSelector.js";
 import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -329,6 +336,32 @@ export function SessionComposer({
       ? (autoSessionChipLabel(session) ?? undefined)
       : undefined;
   const autoChipTitle = autoChipLabel ? (session?.autoRoute ?? undefined) : undefined;
+  // When the router moves the chat to another model or effort, the chip plays
+  // the switch, and the router's reason borrows the placeholder line for a
+  // moment: a reroute lands on send, when the draft has just emptied.
+  const routeSwitch = useRouteSwitch(session);
+  const chipRouteSwitch: ChipRouteSwitch | null =
+    routeSwitch && session && autoChipLabel
+      ? {
+          ...routeSwitch,
+          // A launch unfolds from the launcher's tier-only chip ("Balance").
+          fromChipLabel: routeSwitch.from
+            ? (autoSessionChipLabel({ ...session, ...routeSwitch.from }) ?? "")
+            : isAutoTier(session.autoTier)
+              ? AUTO_TIER_SHORT_LABELS[session.autoTier]
+              : ""
+        }
+      : null;
+  const captionPace = chipRouteSwitch ? routeSwitchPace(chipRouteSwitch) : null;
+  const captionElapsed = useRouteSwitchElapsed(
+    chipRouteSwitch,
+    captionPace ? captionPace.delayMs + captionPace.captionMs : 0
+  );
+  const [endedCaptionId, setEndedCaptionId] = useState<number | null>(null);
+  const routeCaption =
+    chipRouteSwitch?.reason && captionElapsed !== null && endedCaptionId !== chipRouteSwitch.id && input === ""
+      ? chipRouteSwitch
+      : null;
   useEffect(() => {
     if (!isFocused || !hasSession) return undefined;
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -1128,9 +1161,27 @@ export function SessionComposer({
             </div>
           </div>
         ) : null}
+        {routeCaption ? (
+          <div
+            key={routeCaption.id}
+            className="route-switch-caption"
+            role="status"
+            style={{
+              animationDelay: `${(captionPace?.delayMs ?? 0) - (captionElapsed ?? 0)}ms`,
+              animationDuration: `${captionPace?.captionMs ?? 0}ms`
+            }}
+            onAnimationEnd={() => setEndedCaptionId(routeCaption.id)}
+          >
+            <span className="route-switch-caption-direction" aria-hidden="true">
+              {routeCaption.from === null ? "→" : routeCaption.direction === "up" ? "↑" : "↓"}
+            </span>
+            {routeCaption.reason}
+          </div>
+        ) : null}
         <textarea
           className={skillHighlight ? "composer-input--highlighting" : undefined}
           aria-label="Chat prompt"
+          data-route-caption={routeCaption ? "" : undefined}
           data-placeholder-kind={
             followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined
           }
@@ -1189,6 +1240,7 @@ export function SessionComposer({
                 provider={session.provider}
                 chipLabel={autoChipLabel}
                 chipTitle={autoChipTitle}
+                routeSwitch={chipRouteSwitch}
                 value={selectedModel}
                 onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
                 fastModeEnabled={fastModeEnabled}
@@ -1209,6 +1261,7 @@ export function SessionComposer({
                 value={selectedModel}
                 chipLabel={autoChipLabel}
                 chipTitle={autoChipTitle}
+                routeSwitch={chipRouteSwitch}
                 availability={providerAvailability}
                 onChange={(model) => {
                   // `session.provider` only catches up when the backend

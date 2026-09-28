@@ -1210,6 +1210,54 @@
   color: var(--composer-suggestion);
 }
 
+/* The router's reason for a switch, on the placeholder's line while the draft
+   is empty; the placeholder steps aside until it has gone. Same box metrics as
+   the textarea (see .composer-highlight-backdrop), one line, ellipsized. */
+.session-input textarea[data-route-caption]::placeholder {
+  color: transparent;
+}
+
+.route-switch-caption {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  overflow: hidden;
+  padding: var(--space-2);
+  font-family: var(--font-prose);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  color: var(--muted-strong);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  animation: route-switch-caption 4500ms ease-out both;
+}
+
+.route-switch-caption-direction {
+  margin-right: 0.35em;
+  color: var(--accent);
+}
+
+@keyframes route-switch-caption {
+  0% { opacity: 0; transform: translateY(0.35em); }
+  8% { opacity: 1; transform: translateY(0); }
+  88% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-switch-caption {
+    animation-name: route-switch-caption-fade;
+  }
+
+  @keyframes route-switch-caption-fade {
+    0%, 100% { opacity: 0; }
+    5%, 90% { opacity: 1; }
+  }
+}
+
 /* Holds the running turn's controls — Stop, and on touch the queue button —
    so the pair reads as one slot at the toolbar's end. */
 .session-send-slot {

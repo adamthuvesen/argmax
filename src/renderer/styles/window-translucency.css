@@ -89,8 +89,11 @@
   --code-surface: color-mix(in srgb, var(--code-surface-solid) calc(100% - var(--window-surface-translucency)), transparent);
   --tool-block-surface: color-mix(in srgb, var(--tool-block-surface-solid) calc(100% - var(--window-surface-translucency)), transparent);
   --user-message-bg: color-mix(in srgb, var(--user-message-bg-solid) calc(100% - var(--window-surface-translucency)), transparent);
-  --composer-chip: color-mix(in srgb, var(--composer-chip-solid) calc(100% - var(--window-composer-translucency)), transparent);
-  --composer-chip-hover: color-mix(in srgb, var(--composer-chip-hover-solid) calc(100% - var(--window-composer-translucency)), transparent);
+  /* A chip is only a few ink points off the card, and thinning both by alpha
+     scales that step toward zero, so over a bright desktop the pills vanish.
+     An ink wash lifts by the same amount over whatever shows through. */
+  --composer-chip: color-mix(in srgb, var(--text) 7%, transparent);
+  --composer-chip-hover: color-mix(in srgb, var(--text) 11%, transparent);
   --composer-tray: color-mix(in srgb, var(--composer-tray-solid) calc(100% - var(--window-composer-translucency)), transparent);
   /* Hairlines stay opaque while grounds thin, so a 1px border stacks as a dark
      band over glass (sidebar footer, panel strips). Thin the shipped strokes. */
@@ -111,6 +114,8 @@
   --line: color-mix(in oklab, var(--text) 11%, transparent);
   --line-soft: color-mix(in oklab, var(--text) 7%, transparent);
   --line-strong: color-mix(in oklab, var(--text) 15%, transparent);
+  --composer-chip: color-mix(in srgb, var(--text) 10%, transparent);
+  --composer-chip-hover: color-mix(in srgb, var(--text) 15%, transparent);
 }
 
 /* The turn's changes card sinks half a step toward `--code-surface`, which

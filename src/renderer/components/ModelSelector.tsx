@@ -17,16 +17,19 @@ import {
   useAnchoredPopover
 } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useRouteSwitchElapsed } from "../hooks/useRouteSwitch.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { postToNative } from "../mobile/nativeHost.js";
 import { EffortPixelField } from "./EffortPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
+import { RollingText } from "./RollingText.js";
 import {
   LAUNCH_MODEL_RECENCY_KEY,
   readLaunchModelRecency
 } from "../lib/launchModelPreference.js";
 import { touchIdRecency } from "../lib/recencyList.js";
+import { routeSwitchMotionMs, routeSwitchPace, type RouteSwitch } from "../lib/routeSwitch.js";
 import {
   allModelOptions,
   AUTO_TIER_DESCRIPTIONS,
@@ -55,6 +58,12 @@ const RECENT_GROUP_LABEL = "Recent";
 
 /** The header the Auto rows sit under, above every provider group. */
 const AUTO_GROUP_LABEL = "Router";
+
+/** A router switch as the chip plays it: the switch, plus the label the chip
+ *  read before it. */
+export interface ChipRouteSwitch extends RouteSwitch {
+  fromChipLabel: string;
+}
 
 /** A catalog label that names its provider ("Grok 4.7 (Cursor)") repeats the
  *  group header it sits under; the row drops the suffix, the chip keeps it. */
@@ -165,6 +174,7 @@ export function ModelSelector({
   onOpenChange,
   open,
   provider,
+  routeSwitch,
   withEffortSlider = false,
   effortOpen,
   onEffortOpenChange,
@@ -179,6 +189,7 @@ export function ModelSelector({
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
   provider: ProviderId;
+  routeSwitch?: ChipRouteSwitch | null;
   withEffortSlider?: boolean;
   effortOpen?: boolean;
   onEffortOpenChange?: (open: boolean) => void;
@@ -220,6 +231,7 @@ export function ModelSelector({
       effortOpen={effortOpen}
       onEffortOpenChange={onEffortOpenChange}
       supportsFastModeForValue={(model) => modelSupportsFastMode({ provider, modelId: model.modelId })}
+      routeSwitch={routeSwitch}
       value={value}
     />
   );
@@ -241,6 +253,7 @@ export function LaunchModelSelector({
   open,
   openBelow = false,
   portaled = false,
+  routeSwitch,
   withEffortSlider = false,
   effortOpen,
   onEffortOpenChange,
@@ -270,6 +283,7 @@ export function LaunchModelSelector({
   openBelow?: boolean;
   /** Portal the menu to `<body>` with fixed positioning — for scroll-trapping modals. */
   portaled?: boolean;
+  routeSwitch?: ChipRouteSwitch | null;
   withEffortSlider?: boolean;
   effortOpen?: boolean;
   onEffortOpenChange?: (open: boolean) => void;
@@ -339,6 +353,7 @@ export function LaunchModelSelector({
       effortOpen={effortOpen}
       onEffortOpenChange={onEffortOpenChange}
       supportsFastModeForValue={(model) => !model.autoTier && modelSupportsFastMode(model)}
+      routeSwitch={routeSwitch}
       value={value}
     />
   );
@@ -397,12 +412,14 @@ function EffortSlider({
   ariaLabel,
   open: controlledOpen,
   onOpenChange,
-  portaled = false
+  portaled = false,
+  routeSwitch
 }: {
   value: ReasoningEffort;
   efforts: readonly ReasoningEffort[];
   onChange: (value: ReasoningEffort) => void;
   ariaLabel: string;
+  routeSwitch?: ChipRouteSwitch | null;
   /** Lift the popover's open state when a host needs to see it — the mobile
    *  back gesture counts an open picker as a screen, and cannot count one it
    *  does not know about. Uncontrolled everywhere else. */
@@ -417,6 +434,33 @@ function EffortSlider({
     if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(next);
   };
+  const switchElapsed = useRouteSwitchElapsed(routeSwitch, routeSwitchMotionMs(routeSwitch));
+  const pace = routeSwitch ? routeSwitchPace(routeSwitch) : null;
+  // A launch (no previous route) rolls the effort in from nothing, after the
+  // model; a model without an effort before has nothing to roll from. The
+  // effort trails the model's roll unless the model stayed put.
+  const fromRoute = routeSwitch?.from;
+  const fromEffort = fromRoute?.reasoningEffort ?? null;
+  const effortDelayMs = pace
+    ? pace.delayMs + (fromRoute?.modelId === routeSwitch?.to.modelId ? 0 : pace.staggerMs)
+    : 0;
+  const effortRoll =
+    routeSwitch && pace && switchElapsed !== null && (fromRoute === null || fromEffort)
+      ? {
+          id: routeSwitch.id,
+          from: fromEffort ? effortLabel(fromEffort) : "",
+          direction: routeSwitch.direction,
+          elapsedMs: switchElapsed,
+          delayMs: effortDelayMs,
+          durationMs: pace.rollMs
+        }
+      : null;
+  // A stronger pick lands in the accent and cools back to chip ink, the way
+  // the slider's own heat does. Keyed on the switch so each one replays.
+  const heatKey =
+    routeSwitch && switchElapsed !== null && routeSwitch.direction === "up" && fromEffort !== value
+      ? routeSwitch.id
+      : null;
   // Draft effort while the picker is open. It's committed to the parent only on
   // dismiss, so dragging back and forth doesn't reflow the composer toolbar (the
   // chip that anchors this popover) underneath the cursor.
@@ -615,7 +659,21 @@ function EffortSlider({
       >
         {/* No caret: the effort label sits inside the shared model pill, and two
             carets in one pill only ask which half is the control. */}
-        <span className="model-picker-label">{effortLabel(value)}</span>
+        <span
+          key={heatKey ?? "rest"}
+          className="model-picker-label"
+          data-route-heat={heatKey === null ? undefined : ""}
+          style={
+            heatKey === null || !pace
+              ? undefined
+              : {
+                  animationDelay: `${effortDelayMs - (switchElapsed ?? 0)}ms`,
+                  animationDuration: `${pace.inkMs}ms`
+                }
+          }
+        >
+          <RollingText text={effortLabel(value)} roll={effortRoll} />
+        </span>
       </button>
       {effortPopover
         ? portaled && typeof document !== "undefined"
@@ -648,6 +706,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   effortOpen,
   onEffortOpenChange,
   supportsFastModeForValue,
+  routeSwitch,
   value
 }: {
   ariaLabel: string;
@@ -679,10 +738,26 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   effortOpen?: boolean;
   onEffortOpenChange?: (open: boolean) => void;
   supportsFastModeForValue: (value: T) => boolean;
+  /** The router's latest switch in this chat, played once on the chip. */
+  routeSwitch?: ChipRouteSwitch | null;
   value: T;
 }): JSX.Element {
   const [internalOpen, setInternalOpen] = useState(false);
   const [fastModeMenuOpen, setFastModeMenuOpen] = useState(false);
+  const switchElapsed = useRouteSwitchElapsed(routeSwitch, routeSwitchMotionMs(routeSwitch));
+  const playing = routeSwitch && switchElapsed !== null ? routeSwitch : null;
+  const pace = playing ? routeSwitchPace(playing) : null;
+  const labelRoll =
+    playing && pace
+      ? {
+          id: playing.id,
+          from: playing.fromChipLabel,
+          direction: playing.direction,
+          elapsedMs: switchElapsed ?? 0,
+          delayMs: pace.delayMs,
+          durationMs: pace.rollMs
+        }
+      : null;
   const open = controlledOpen ?? internalOpen;
   const setOpen = (next: boolean | ((open: boolean) => boolean)): void => {
     const nextValue = typeof next === "function" ? next(open) : next;
@@ -925,7 +1000,36 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   );
 
   return (
-    <div className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}>
+    <div
+      className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}
+    >
+      {/* A stronger pick flushes the pill and blooms one halo out of it; a
+          launch only flushes. Keyed on the switch so each one replays. */}
+      {playing?.direction === "up" && withEffortSlider ? (
+        <Fragment key={playing.id}>
+          <span
+            className="route-switch-flush"
+            aria-hidden="true"
+            data-heat={playing.to.reasoningEffort ? EFFORT_HEAT_TIER[playing.to.reasoningEffort] : undefined}
+            style={{
+              animationDelay: `${(pace?.delayMs ?? 0) - (switchElapsed ?? 0)}ms`,
+              animationDuration: `${pace?.flushMs ?? 0}ms`
+            }}
+          />
+          {/* The halo says "stepped up", which a launch hasn't. */}
+          {playing.from ? (
+            <span
+              className="route-switch-ring"
+              aria-hidden="true"
+              data-heat={playing.to.reasoningEffort ? EFFORT_HEAT_TIER[playing.to.reasoningEffort] : undefined}
+              style={{
+                animationDelay: `${-(switchElapsed ?? 0)}ms`,
+                animationDuration: `${pace?.ringMs ?? 0}ms`
+              }}
+            />
+          ) : null}
+        </Fragment>
+      ) : null}
     <div
       className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
       ref={flyout.setAnchor}
@@ -945,7 +1049,9 @@ function ChipModelPicker<T extends ProviderModelSelection>({
         {effectiveFastModeEnabled ? (
           <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
         ) : null}
-        <span className="model-picker-label">{chipLabel ?? value.label}</span>
+        <span className="model-picker-label">
+          <RollingText text={chipLabel ?? value.label} roll={labelRoll} />
+        </span>
         {/* In a composer the pill around model + effort is the affordance, the
             way the phone draws it — no caret on either half. Settings has no
             pill and no effort chip, so the model chip carries the caret. */}
@@ -967,6 +1073,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           open={effortOpen}
           onOpenChange={onEffortOpenChange}
           portaled={portaled}
+          routeSwitch={routeSwitch}
           onChange={(reasoningEffort) => onChange({ ...value, reasoningEffort })}
         />
       ) : null}

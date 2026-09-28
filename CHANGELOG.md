@@ -11,6 +11,14 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 
 ## Unreleased
 
+### Added
+
+- Cursor can launch Claude Sonnet 5.5 (`claude-sonnet-5-5-medium`), with effort through Max. The CLI has no Fast variant for it.
+
+### Changed
+
+- Claude's Sonnet row is Sonnet 5.5 (`claude-sonnet-5-5`) on the 1M window, at the same $2/$10 rate as Sonnet 5. Title calls use it. A stored Sonnet 5 pick follows Sonnet 5.5.
+
 ## 0.5.1 — 2026-09-22
 
 ### Added

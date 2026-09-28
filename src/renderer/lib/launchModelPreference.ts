@@ -2,8 +2,10 @@ import {
   DEFAULT_REASONING_EFFORT,
   effortForModel,
   REASONING_EFFORTS,
+  successorModelId,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
+import type { ProviderId } from "../../shared/types.js";
 import {
   allModelOptions,
   autoTierKey,
@@ -63,8 +65,12 @@ export function readStoredLaunchModel(): ModelPickerSelection | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   const { provider, modelId, autoTier } = parsed as Record<string, unknown>;
   if (isAutoTier(autoTier)) return autoTierSelection(autoTier);
+  const resolvedId =
+    typeof provider === "string" && typeof modelId === "string"
+      ? successorModelId(provider as ProviderId, modelId)
+      : modelId;
   const option = allModelOptions.find(
-    (candidate) => candidate.provider === provider && candidate.modelId === modelId
+    (candidate) => candidate.provider === provider && candidate.modelId === resolvedId
   );
   if (!option) return null;
   const selection: ModelPickerSelection = {

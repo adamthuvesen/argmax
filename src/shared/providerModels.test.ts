@@ -69,6 +69,13 @@ describe("reasoningEffortsForModel", () => {
       "xhigh",
       "max"
     ]);
+    expect(reasoningEffortsForModel("cursor", "claude-sonnet-5-5-medium")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ]);
   });
 
   // Grok Build's CLI rejects anything above xhigh outright:
@@ -212,8 +219,9 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(usage, "claude-opus-4-8")).toBeCloseTo(36.75, 9);
   });
 
-  it("prices Sonnet 5 input-only at $2/M", () => {
+  it("prices Sonnet 5 and 5.5 input-only at $2/M", () => {
     expect(costOf(million, "claude-sonnet-5")).toBeCloseTo(2.0, 9);
+    expect(costOf(million, "claude-sonnet-5-5")).toBeCloseTo(2.0, 9);
   });
 
   it("prices Haiku 4.5 input-only at $1/M", () => {

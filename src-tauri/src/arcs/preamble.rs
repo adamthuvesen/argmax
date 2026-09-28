@@ -59,7 +59,7 @@ derived artifacts. Launch a small session for it rather than doing it here, so t
 is spent on judgement.\n\
 \n\
 Pick the model per piece. Docs, wording, deck and cleanup passes go on a cheaper model — pass \
-`model: \"claude-sonnet-5\"` on session_launch — and the strong model is for method or analysis \
+`model: \"claude-sonnet-5-5\"` on session_launch — and the strong model is for method or analysis \
 work.\n\
 \n\
 Record durable repo facts with learnings_add as you get them, and check learnings_search before \
@@ -113,7 +113,7 @@ too: merging a branch, running the project's checks, rebuilding derived artifact
 session for it rather than doing it here, so this chat's context is spent on judgement.\n\
 \n\
 Pick the model per piece. Docs, wording, deck and cleanup passes go on a cheaper model — pass \
-`model: \"claude-sonnet-5\"` on session_launch — and the strong model is for method or analysis \
+`model: \"claude-sonnet-5-5\"` on session_launch — and the strong model is for method or analysis \
 work.\n\
 \n\
 Record durable repo facts with learnings_add as you get them, and check learnings_search before \

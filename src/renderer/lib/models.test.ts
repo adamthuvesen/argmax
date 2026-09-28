@@ -91,6 +91,22 @@ describe("modelSelectionFromSession", () => {
     });
   });
 
+  it("follows Sonnet 5 onto Sonnet 5.5", () => {
+    const session: SessionSummary = {
+      ...BASE_SESSION,
+      provider: "claude",
+      modelLabel: "Sonnet 5",
+      modelId: "claude-sonnet-5",
+      reasoningEffort: "high"
+    };
+
+    expect(modelSelectionFromSession(session)).toEqual({
+      label: "Sonnet 5.5",
+      modelId: "claude-sonnet-5-5",
+      reasoningEffort: "high"
+    });
+  });
+
   it("falls back to the provider's default when the model is not in the catalog", () => {
     const retired: SessionSummary = {
       ...BASE_SESSION,

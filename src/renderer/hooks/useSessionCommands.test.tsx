@@ -44,6 +44,8 @@ describe("useSessionCommands", () => {
     ["claude", "claude-fable-5-1", false],
     ["claude", "claude-opus-5", false],
     ["claude", "claude-sonnet-5", false],
+    ["claude", "claude-sonnet-5-5", false],
+    ["cursor", "claude-sonnet-5-5-medium", false],
     ["claude", "claude-haiku-4-5", false],
     ["cursor", "gpt-5.6-sol-medium", true],
     ["cursor", "composer-2.5", true],

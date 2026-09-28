@@ -33,7 +33,7 @@ describe("ModelSelector — one row per model", () => {
     expect(within(list).getAllByRole("option")).toHaveLength(4);
     expect(within(list).getByText("Fable 5.1")).toBeInTheDocument();
     expect(within(list).getByText("Opus 5.5")).toBeInTheDocument();
-    expect(within(list).getByText("Sonnet 5")).toBeInTheDocument();
+    expect(within(list).getByText("Sonnet 5.5")).toBeInTheDocument();
     expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
   });
 
@@ -83,7 +83,7 @@ describe("ModelSelector — one row per model", () => {
     expect(within(list).getAllByRole("option").map((option) => optionName(option))).toEqual([
       "Fable 5.1",
       "Opus 5.5",
-      "Sonnet 5",
+      "Sonnet 5.5",
       "Haiku 4.5"
     ]);
   });
@@ -159,7 +159,7 @@ describe("ModelSelector type to filter", () => {
     openClaudePicker(OPUS_MEDIUM);
     const list = screen.getByRole("listbox", { name: "Chat model" });
     const options = within(list).getAllByRole("option");
-    // Fable 5.1 (0), Opus 5.5 (1), Sonnet 5 (2), Haiku 4.5 (3)
+    // Fable 5.1 (0), Opus 5.5 (1), Sonnet 5.5 (2), Haiku 4.5 (3)
     expect(options[0]).not.toHaveAttribute("data-active");
     expect(options[0]).toHaveAttribute("aria-selected", "false");
     expect(options[1]).toHaveAttribute("data-active", "true");

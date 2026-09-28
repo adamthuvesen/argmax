@@ -611,14 +611,14 @@ describe("App settings", () => {
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5" }));
     const save = vi.mocked(window.argmax!.system.setDefaultAgent);
     render(<App />);
-    await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: "claude-sonnet-5" })));
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: "claude-sonnet-5-5" })));
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     fireEvent.click(within(await screen.findByRole("listbox", { name: "Switch model" })).getByRole("button", { name: "Router Balance" }));
 
     await waitFor(() => expect(window.localStorage.getItem(LAUNCH_MODEL_KEY)).toContain("balanced"));
     for (const [input] of save.mock.calls) expect(input.modelLabel).not.toBe("Router Balance");
-    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" }));
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }));
   });
 
   it("keeps browser preferences local instead of trying to save desktop defaults", async () => {
@@ -671,7 +671,7 @@ describe("App settings", () => {
   it.each([
     ["codex", "gpt-6-sol", true],
     ["claude", "claude-opus-5-5", true],
-    ["claude", "claude-sonnet-5", false]
+    ["claude", "claude-sonnet-5-5", false]
   ] as const)("settings Fast mode persists and gates the next %s launch", async (provider, modelId, fastMode) => {
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider, modelId }));
     render(<App />);

@@ -42,6 +42,15 @@ describe("launch model preference", () => {
     expect(readLaunchModelRecency()).toEqual(["auto:intelligence"]);
   });
 
+  it("follows a stored Sonnet 5 pick onto Sonnet 5.5", () => {
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5" }));
+    expect(readStoredLaunchModel()).toMatchObject({
+      provider: "claude",
+      label: "Sonnet 5.5",
+      modelId: "claude-sonnet-5-5"
+    });
+  });
+
   it("returns null for a model that left the catalog", () => {
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "codex", modelId: "gpt-2" }));
     expect(readStoredLaunchModel()).toBeNull();

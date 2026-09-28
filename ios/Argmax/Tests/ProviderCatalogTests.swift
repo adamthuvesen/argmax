@@ -115,8 +115,8 @@ final class ProviderCatalogTests: XCTestCase {
     func testTheCatalogueCarriesContextWindows() throws {
         let opus = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-opus-5"))
         XCTAssertEqual(opus.contextWindow, 1_000_000)
-        let sonnet = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-sonnet-5"))
-        XCTAssertEqual(sonnet.contextWindow, 200_000)
+        let sonnet = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-sonnet-5-5"))
+        XCTAssertEqual(sonnet.contextWindow, 1_000_000)
         let withWindow = catalog.providers.flatMap(\.models).filter { $0.contextWindow != nil }
         XCTAssertGreaterThan(withWindow.count, 20, "the exporter dropped the field")
     }
@@ -152,6 +152,6 @@ final class ProviderCatalogTests: XCTestCase {
         for provider in catalog.providers {
             XCTAssertFalse(provider.titleModelId.isEmpty)
         }
-        XCTAssertEqual(catalog.provider("claude")?.titleModelId, "claude-sonnet-5")
+        XCTAssertEqual(catalog.provider("claude")?.titleModelId, "claude-sonnet-5-5")
     }
 }

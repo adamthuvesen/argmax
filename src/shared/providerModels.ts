@@ -69,7 +69,7 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * Effort levels a given model offers in the picker, low → high. Claude's own
  * models run the full low→ultra list. Codex Astra/Sol/Terra match that (their CLI
  * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
- * Luna/Terra/Sol, Opus 5 Thinking, and Opus 5.5 go to Max (no Ultra suffix).
+ * Luna/Terra/Sol, Opus 5 Thinking, Opus 5.5, and Sonnet 5.5 go to Max (no Ultra suffix).
  * Cursor Grok 4.7 goes to Extra High; Cursor Grok 4.6/4.5 and Gemini 3.8 Flash
  * stop at High. OpenCode Go (opencode-go/*) models
  * ship non-prefix variant lists because their CLI exposes only certain
@@ -94,6 +94,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
     provider === "cursor" &&
     (modelId.startsWith("claude-opus-5-thinking") ||
       modelId.startsWith("claude-opus-5-5") ||
+      modelId.startsWith("claude-sonnet-5-5") ||
       modelId.startsWith("gpt-5.6-luna") ||
       modelId.startsWith("gpt-5.6-terra") ||
       modelId.startsWith("gpt-5.6-sol"))
@@ -198,7 +199,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   claude: [
     { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Opus 5.5", modelId: "claude-opus-5-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
-    { label: "Sonnet 5", modelId: "claude-sonnet-5", supportsReasoningEffort: true, contextWindow: 200_000 },
+    { label: "Sonnet 5.5", modelId: "claude-sonnet-5-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
   ],
   // The GPT-6 models' Codex CLI catalog reports a 272_000 default context. Live
@@ -238,6 +239,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       modelId: "claude-opus-5-5-medium",
       supportsReasoningEffort: true,
       supportsFastMode: true,
+      contextWindow: 1_000_000
+    },
+    // cursor-agent 2026.09.26 lists low through max and no `-fast` ids.
+    {
+      label: "Claude Sonnet 5.5 (Cursor)",
+      modelId: "claude-sonnet-5-5-medium",
+      supportsReasoningEffort: true,
       contextWindow: 1_000_000
     }
   ],
@@ -283,7 +291,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
 // `--effort low` rather than Haiku: a local bake-off found it roughly twice as
 // fast for this prompt, with matching title quality.
 export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
-  claude: "claude-sonnet-5",
+  claude: "claude-sonnet-5-5",
   codex: "gpt-6-luna",
   cursor: "composer-2.5",
   opencode: "opencode/big-pickle",
@@ -355,7 +363,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Claude Code 2.1.280 catalog tier `tier_4_20_cache_read_0_20`.
   "claude-opus-5-5":     { input: 4,    output: 20,  cacheRead: 0.2,   cacheWrite: 5 },
   "claude-opus-5":       { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  // Sonnet 5's $2/$10 launch price became the standard rate on 2026-09-01.
+  // Sonnet 5.5 kept Sonnet 5's rate. Sonnet 5's $2/$10 launch price became
+  // the standard rate on 2026-09-01, and stays priced for sessions already
+  // launched on it.
+  "claude-sonnet-5-5":   { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "claude-sonnet-5":     { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
 
@@ -382,6 +393,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-5-5-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "claude-sonnet-5-5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 
   // OpenCode Zen free tier — $0 across the board. OpenCode Go (opencode-go/*)
@@ -465,6 +477,18 @@ export function normalizeModelId(modelId: string): string {
 }
 
 /**
+ * Catalog id that replaced a stored one. A Sonnet 5 session or launch
+ * preference follows Sonnet 5.5 instead of falling through to the provider
+ * default. The stored row is left alone; only the pick the user sees moves.
+ */
+export function successorModelId(provider: ProviderId, modelId: string): string {
+  if (provider === "claude" && normalizeModelId(modelId) === "claude-sonnet-5") {
+    return "claude-sonnet-5-5";
+  }
+  return modelId;
+}
+
+/**
  * Display label for a model id, or null when the catalog doesn't know it.
  * Sessions carry a stored label, but it is only as good as whatever wrote it:
  * an imported session's label comes from the provider's transcript, which
@@ -477,7 +501,11 @@ export function modelLabelFor(provider: ProviderId, modelId: string): string | n
   const match = PROVIDER_MODELS[provider]?.find(
     (model) => normalizeModelId(model.modelId) === wanted
   );
-  return match?.label ?? null;
+  if (match) return match.label;
+  // Sonnet 5 left the picker. Old transcripts still name it, and the chip
+  // should keep the name it ran under rather than the raw id.
+  if (provider === "claude" && wanted === "claude-sonnet-5") return "Sonnet 5";
+  return null;
 }
 
 /**

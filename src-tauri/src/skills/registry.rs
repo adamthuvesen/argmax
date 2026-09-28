@@ -148,9 +148,9 @@ impl SkillRegistry {
             if !wanted.contains(&key) || found.contains_key(&key) {
                 continue;
             }
-            if !fs::metadata(&skill.path)
+            if fs::metadata(&skill.path)
                 .ok()
-                .is_some_and(|metadata| metadata.len() <= SKILL_FILE_SIZE_CAP_BYTES)
+                .is_none_or(|metadata| metadata.len() > SKILL_FILE_SIZE_CAP_BYTES)
             {
                 continue;
             }
@@ -521,7 +521,7 @@ fn bounded_instructions(path: &Path, body: &str, max_chars: usize) -> (String, b
         let candidate = word
             .rsplit_once("](")
             .map_or(word, |(_, path)| path)
-            .trim_end_matches(|character: char| matches!(character, ')' | '.' | ',' | ';' | ':'))
+            .trim_end_matches([')', '.', ',', ';', ':'])
             .trim_matches(|character: char| {
                 !character.is_ascii_alphanumeric()
                     && character != '.'

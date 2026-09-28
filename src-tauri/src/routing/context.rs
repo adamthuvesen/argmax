@@ -263,7 +263,7 @@ fn invoked_skills(message: &str, available: &[&str]) -> (Vec<String>, bool) {
         });
         let marked = token.starts_with('/') || token.starts_with('$');
         let name = token
-            .trim_start_matches(|character| character == '/' || character == '$')
+            .trim_start_matches(['/', '$'])
             .trim_end_matches(|character: char| {
                 !character.is_ascii_alphanumeric() && character != '-'
             });
@@ -303,13 +303,12 @@ fn invoked_skills(message: &str, available: &[&str]) -> (Vec<String>, bool) {
                 .chars()
                 .next()
                 .is_some_and(|character| character.is_ascii_alphabetic());
-        if (marked && known) || named || explicit_unknown {
-            if !invoked
+        if ((marked && known) || named || explicit_unknown)
+            && !invoked
                 .iter()
                 .any(|skill: &String| skill.eq_ignore_ascii_case(name))
-            {
-                invoked.push(name.to_string());
-            }
+        {
+            invoked.push(name.to_string());
         }
     }
     let complete = invoked.len() <= 2;

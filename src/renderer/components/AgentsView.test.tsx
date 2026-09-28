@@ -6,6 +6,7 @@ import { useAgentTabs, type AgentTabsState } from "../hooks/useAgentTabs.js";
 import { SessionTimelineProvider } from "../hooks/useSessionTimeline.js";
 import type { MultitaskChild } from "../lib/multitask.js";
 import { SessionTimelines } from "../lib/sessionTimelines.js";
+import { agentStripLimit } from "../lib/agentStripLimit.js";
 import { AgentsView } from "./AgentsView.js";
 
 function event(
@@ -100,6 +101,21 @@ function renderView(
     />
   );
 }
+
+describe("agentStripLimit", () => {
+  it("keeps four until the row has a width, then scales from two to seven", () => {
+    expect(agentStripLimit(0)).toBe(4);
+    expect(agentStripLimit(Number.NaN)).toBe(4);
+    expect(agentStripLimit(95)).toBe(2);
+    expect(agentStripLimit(287)).toBe(2);
+    expect(agentStripLimit(288)).toBe(3);
+    expect(agentStripLimit(384)).toBe(4);
+    expect(agentStripLimit(576)).toBe(6);
+    expect(agentStripLimit(671)).toBe(6);
+    expect(agentStripLimit(672)).toBe(7);
+    expect(agentStripLimit(2000)).toBe(7);
+  });
+});
 
 describe("AgentsView", () => {
   it("discovers existing and later agents without a transcript click and preserves selection", () => {
@@ -430,12 +446,49 @@ describe("AgentsView", () => {
       activeTabId: "task-1"
     }), events);
 
-    // The selection holds a slot and the newest launches take the rest, but
-    // the survivors are still drawn oldest first.
+    // Unmeasured (jsdom lays nothing out) the strip keeps four. The selection
+    // holds a slot and the newest launches take the rest, drawn oldest first.
     expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title")))
       .toEqual(["Task 1", "Task 4", "Task 5", "Task 6"]);
     expect(screen.getByRole("button", { name: "+2 active" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All agents 6" })).toBeInTheDocument();
+  });
+
+  it("draws two tabs in a narrow strip and seven in a wide one", () => {
+    const events = Array.from({ length: 8 }, (_, index) =>
+      launch(`task-${index + 1}`, `Task ${index + 1}`, `2026-05-12T15:00:0${index + 1}.000Z`));
+    const tabs = agentTabs({
+      tabIds: events.map((_, index) => `task-${index + 1}`),
+      activeTabId: "task-1"
+    });
+    const prototype = HTMLElement.prototype;
+    const original = Object.getOwnPropertyDescriptor(prototype, "clientWidth");
+    const setWidth = (width: number): void => {
+      Object.defineProperty(prototype, "clientWidth", {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.classList.contains("agent-active-tabs") ? width : 0;
+        }
+      });
+    };
+    const restore = (): void => {
+      if (original) Object.defineProperty(prototype, "clientWidth", original);
+    };
+
+    try {
+      setWidth(200);
+      renderView(tabs, events);
+      expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title")))
+        .toEqual(["Task 1", "Task 8"]);
+      cleanup();
+
+      setWidth(700);
+      renderView(tabs, events);
+      expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("title")))
+        .toEqual(["Task 1", "Task 3", "Task 4", "Task 5", "Task 6", "Task 7", "Task 8"]);
+    } finally {
+      restore();
+    }
   });
 
   it("names the active subagent, its role, and its model in the pane header", () => {

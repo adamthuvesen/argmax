@@ -299,7 +299,8 @@
 }
 
 /* Agents are a live workload, not file history. The strip keeps only the
-   selected, running, and failed entries while the fixed controls open the full
+   selected, running, and failed entries, as many as its width fits (two to
+   seven, measured in AgentsView), while the fixed controls open the full
    status-grouped roster. It never becomes a second horizontal scroller. */
 .agent-tabs-shell {
   display: flex;

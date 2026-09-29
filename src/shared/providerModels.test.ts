@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "./logger.js";
 import {
   __resetUnknownModelLog,
+  contextWindowForModel,
   costOf,
   effortForModel,
   MODEL_PRICING,
@@ -415,5 +416,11 @@ describe("effortForModel", () => {
 
   it("defaults to Medium when no preference is given", () => {
     expect(effortForModel("claude", "claude-opus-5")).toBe("medium");
+  });
+});
+
+describe("contextWindowForModel", () => {
+  it("reads a retired id's window from its successor", () => {
+    expect(contextWindowForModel("claude-sonnet-5")).toBe(1_000_000);
   });
 });

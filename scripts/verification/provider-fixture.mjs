@@ -12,8 +12,8 @@ const execFileAsync = promisify(execFile);
 
 export const VERIFICATION_PROVIDER = Object.freeze({
   provider: "claude",
-  modelId: "claude-sonnet-5",
-  modelLabel: "Sonnet 5",
+  modelId: "claude-sonnet-5-5",
+  modelLabel: "Sonnet 5.5",
   modeEnv: "ARGMAX_VERIFICATION",
   binaryEnv: "ARGMAX_VERIFICATION_CLAUDE_BINARY",
   homeEnv: "ARGMAX_VERIFICATION_HOME",

@@ -27,7 +27,7 @@ final class NewChatPlanTests: XCTestCase {
             project: project,
             baseRef: baseRef,
             model: model,
-            titleModelId: "claude-sonnet-5",
+            titleModelId: "claude-sonnet-5-5",
             prompt: prompt
         )
     }
@@ -134,7 +134,7 @@ final class NewChatPlanTests: XCTestCase {
                 project: nil,
                 baseRef: nil,
                 model: model,
-                titleModelId: "claude-sonnet-5",
+                titleModelId: "claude-sonnet-5-5",
                 prompt: "Match this mock",
                 attachments: [
                     ComposerAttachment(filePath: "/data/attachments/launch-p-1/a.png", mimeType: "image/png", sizeBytes: 12)
@@ -164,7 +164,7 @@ final class NewChatPlanTests: XCTestCase {
                     modelId: "claude-haiku-4-5",
                     reasoningEffort: nil
                 ),
-                titleModelId: "claude-sonnet-5",
+                titleModelId: "claude-sonnet-5-5",
                 prompt: "Ask something"
             )
         )
@@ -179,7 +179,7 @@ final class NewChatPlanTests: XCTestCase {
         let plan = try XCTUnwrap(plan(.worktree, project: project))
         let input = plan.autoTitleInput(workspaceID: "w-1")
         XCTAssertEqual(input.provider, "claude")
-        XCTAssertEqual(input.modelId, "claude-sonnet-5")
+        XCTAssertEqual(input.modelId, "claude-sonnet-5-5")
         XCTAssertEqual(input.prompt, "Tidy the chat list")
     }
 

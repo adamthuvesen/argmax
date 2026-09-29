@@ -170,12 +170,12 @@ final class ChannelEncodingTests: XCTestCase {
             AutoTitleWorkspaceInput(
                 workspaceId: "w-1",
                 provider: "claude",
-                modelId: "claude-sonnet-5",
+                modelId: "claude-sonnet-5-5",
                 prompt: "Tidy the list"
             )
         )
         XCTAssertEqual(Set(body.keys), ["workspaceId", "provider", "modelId", "prompt"])
-        XCTAssertEqual(body["modelId"] as? String, "claude-sonnet-5", "titles ride the cheap model, not the chat's")
+        XCTAssertEqual(body["modelId"] as? String, "claude-sonnet-5-5", "titles ride the cheap model, not the chat's")
     }
 
     func testListBranches() throws {

@@ -33,9 +33,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     // Claude Code 2.1.280 catalog tier `tier_4_20_cache_read_0_20`.
     "claude-opus-5-5" => ModelPricing { input: 4.0, output: 20.0, cache_read: 0.2, cache_write: 5.0 },
     "claude-opus-5" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
-    // Sonnet 5.5 kept Sonnet 5's rate. Sonnet 5 stays priced for sessions already launched on it.
     "claude-sonnet-5-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
-    "claude-sonnet-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-haiku-4-5" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 },
     "gpt-6-astra" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "gpt-6-sol" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
@@ -97,6 +95,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
     "opencode-go/deepseek-v4-flash" => ModelPricing { input: 0.22, output: 0.66, cache_read: 0.007, cache_write: 0.0 },
     "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
+    "claude-sonnet-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-7" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
     "claude-opus-4-6" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },

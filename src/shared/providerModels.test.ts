@@ -169,12 +169,12 @@ describe("reasoningEffortsForModel", () => {
 
 describe("normalizeModelId", () => {
   it("strips a trailing -YYYYMMDD date suffix", () => {
-    expect(normalizeModelId("claude-sonnet-5-20250101")).toBe("claude-sonnet-5");
+    expect(normalizeModelId("claude-sonnet-5-5-20250101")).toBe("claude-sonnet-5-5");
     expect(normalizeModelId("claude-haiku-4-5-20241022")).toBe("claude-haiku-4-5");
   });
 
   it("leaves bare ids untouched", () => {
-    expect(normalizeModelId("claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(normalizeModelId("claude-sonnet-5-5")).toBe("claude-sonnet-5-5");
     expect(normalizeModelId("gpt-6-sol")).toBe("gpt-6-sol");
   });
 
@@ -219,9 +219,10 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(usage, "claude-opus-4-8")).toBeCloseTo(36.75, 9);
   });
 
-  it("prices Sonnet 5 and 5.5 input-only at $2/M", () => {
-    expect(costOf(million, "claude-sonnet-5")).toBeCloseTo(2.0, 9);
+  it("prices Sonnet 5.5 input-only at $2/M, and stored Sonnet 5 sessions via aliases", () => {
     expect(costOf(million, "claude-sonnet-5-5")).toBeCloseTo(2.0, 9);
+    expect(MODEL_PRICING["claude-sonnet-5"]).toBeUndefined();
+    expect(costOf(million, "claude-sonnet-5")).toBeCloseTo(2.0, 9);
   });
 
   it("prices Haiku 4.5 input-only at $1/M", () => {
@@ -252,8 +253,8 @@ describe("costOf — golden fixtures", () => {
   });
 
   it("strips date suffixes before pricing lookup", () => {
-    const suffixed = costOf(million, "claude-sonnet-5-20250101");
-    const bare = costOf(million, "claude-sonnet-5");
+    const suffixed = costOf(million, "claude-sonnet-5-5-20250101");
+    const bare = costOf(million, "claude-sonnet-5-5");
     expect(suffixed).toBe(bare);
     expect(suffixed).toBeCloseTo(2.0, 9);
   });
@@ -296,7 +297,7 @@ describe("costOf — unknown model", () => {
 
 describe("MODEL_PRICING coverage", () => {
   it("ships entries for the launch-default model ids", () => {
-    expect(MODEL_PRICING["claude-sonnet-5"]).toBeDefined();
+    expect(MODEL_PRICING["claude-sonnet-5-5"]).toBeDefined();
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
     expect(MODEL_PRICING["gpt-6-sol"]).toBeDefined();
     expect(MODEL_PRICING["gpt-6-astra"]).toBeDefined();

@@ -97,7 +97,7 @@ describe("SessionComposer Auto chip", () => {
 
   it("says nothing for the route a chat opened with, or for a pin", () => {
     const { rerender } = renderConversation(routedSession);
-    const pinned = { ...routedSession, modelLabel: "Sonnet 5", modelId: "claude-sonnet-5", autoTier: null, autoRoute: null };
+    const pinned = { ...routedSession, modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5", autoTier: null, autoRoute: null };
     rerenderConversation(rerender, pinned);
 
     expect(screen.queryByRole("status")).toBeNull();

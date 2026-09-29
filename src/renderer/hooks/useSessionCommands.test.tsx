@@ -43,7 +43,7 @@ describe("useSessionCommands", () => {
     ["claude", "claude-opus-5-5", true],
     ["claude", "claude-fable-5-1", false],
     ["claude", "claude-opus-5", false],
-    ["claude", "claude-sonnet-5", false],
+    ["claude", "claude-sonnet-5-5", false],
     ["claude", "claude-sonnet-5-5", false],
     ["cursor", "claude-sonnet-5-5-medium", false],
     ["claude", "claude-haiku-4-5", false],

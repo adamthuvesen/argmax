@@ -785,7 +785,6 @@ mod tests {
             ("claude-opus-5-5", "claude-opus-5-5[1m]"),
             ("claude-fable-5-1", "claude-fable-5-1[1m]"),
             ("claude-sonnet-5-5", "claude-sonnet-5-5[1m]"),
-            ("claude-sonnet-5", "claude-sonnet-5"),
             ("claude-haiku-4-5", "claude-haiku-4-5"),
         ] {
             let input = ProviderLaunchInput {

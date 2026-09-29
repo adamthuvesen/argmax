@@ -26,7 +26,7 @@
       "estimatedCostUsd": 0.41,
       "unpricedTurns": 0,
       "models": [
-        { "provider": "claude", "modelId": "claude-sonnet-5", "turns": 36, "costUsd": 2.9, "estimated": false },
+        { "provider": "claude", "modelId": "claude-sonnet-5-5", "turns": 36, "costUsd": 2.9, "estimated": false },
         { "provider": "cursor", "modelId": "composer-2", "turns": 12, "costUsd": 0.41, "estimated": true }
       ],
       "medianTurnSeconds": 41.8,

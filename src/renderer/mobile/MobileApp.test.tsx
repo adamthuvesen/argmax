@@ -137,7 +137,7 @@ describe("MobileApp", () => {
       "launch-project-2": { text: "Another project's draft", attachments: [unrelated] }
     }));
     const seed = {
-      model: { provider: "claude" as const, label: "Sonnet 5", modelId: "claude-sonnet-5", reasoningEffort: "medium" as const },
+      model: { provider: "claude" as const, label: "Sonnet 5.5", modelId: "claude-sonnet-5-5", reasoningEffort: "medium" as const },
       prompt: "",
       attachments: [screenshot]
     };

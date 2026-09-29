@@ -363,11 +363,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Claude Code 2.1.280 catalog tier `tier_4_20_cache_read_0_20`.
   "claude-opus-5-5":     { input: 4,    output: 20,  cacheRead: 0.2,   cacheWrite: 5 },
   "claude-opus-5":       { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  // Sonnet 5.5 kept Sonnet 5's rate. Sonnet 5's $2/$10 launch price became
-  // the standard rate on 2026-09-01, and stays priced for sessions already
-  // launched on it.
   "claude-sonnet-5-5":   { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
-  "claude-sonnet-5":     { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
 
   // Short-context rates (<272K). Long-context multipliers are not modeled.
@@ -428,6 +424,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "opencode-go/deepseek-v4-flash": { input: 0.22, output: 0.66, cacheRead: 0.007, cacheWrite: 0 },
   "claude-fable-5":       { input: 10,   output: 50,   cacheRead: 1,     cacheWrite: 12.5 },
+  "claude-sonnet-5":      { input: 2,    output: 10,   cacheRead: 0.2,   cacheWrite: 2.5 },
   "claude-opus-4-8":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-7":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-opus-4-6":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
@@ -497,15 +494,11 @@ export function successorModelId(provider: ProviderId, modelId: string): string 
  */
 export function modelLabelFor(provider: ProviderId, modelId: string): string | null {
   if (!modelId) return null;
-  const wanted = normalizeModelId(modelId);
+  const wanted = normalizeModelId(successorModelId(provider, modelId));
   const match = PROVIDER_MODELS[provider]?.find(
     (model) => normalizeModelId(model.modelId) === wanted
   );
-  if (match) return match.label;
-  // Sonnet 5 left the picker. Old transcripts still name it, and the chip
-  // should keep the name it ran under rather than the raw id.
-  if (provider === "claude" && wanted === "claude-sonnet-5") return "Sonnet 5";
-  return null;
+  return match?.label ?? null;
 }
 
 /**

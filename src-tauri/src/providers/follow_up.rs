@@ -553,7 +553,7 @@ mod tests {
             );
             connection
             .execute(
-                "UPDATE sessions SET provider = ?, model_id = 'claude-sonnet-5' WHERE id = 's1'",
+                "UPDATE sessions SET provider = ?, model_id = 'claude-sonnet-5-5' WHERE id = 's1'",
                     (provider,),
                 )
                 .expect("restore provider");
@@ -634,7 +634,7 @@ mod tests {
             .expect("insert workspace");
         connection
             .execute(
-                "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode, prompt, state, attention, started_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'claude-sonnet-5', NULL, 'auto-approve', 'auto', 'prompt', 'complete', 'none', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+                "INSERT INTO sessions (id, workspace_id, provider, model_label, model_id, reasoning_effort, permission_mode, agent_mode, prompt, state, attention, started_at, last_activity_at) VALUES ('s1', 'w1', 'claude', 'Sonnet', 'claude-sonnet-5-5', NULL, 'auto-approve', 'auto', 'prompt', 'complete', 'none', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
                 [],
             )
             .expect("insert session");

@@ -1436,7 +1436,7 @@ describe("SessionConversation — streaming & composer", () => {
     },
     {
       currentProvider: "claude",
-      currentModel: { modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" },
+      currentModel: { modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" },
       switchedModel: "GPT-5.6 Terra",
       switchedProvider: "codex",
       dialogName: "Switch this chat to Codex"
@@ -2536,7 +2536,7 @@ describe("SessionConversation — streaming & composer", () => {
     renderConversation(
       baseSession({
         provider: "claude",
-        modelId: "claude-sonnet-5",
+        modelId: "claude-sonnet-5-5",
         reasoningEffort: "high",
         agentMode: "auto",
         state: "running"
@@ -2548,7 +2548,7 @@ describe("SessionConversation — streaming & composer", () => {
             id: "queued-1",
             sessionId: "session-a",
             content: "Keep the current tool running",
-            modelId: "claude-sonnet-5",
+            modelId: "claude-sonnet-5-5",
             reasoningEffort: "high",
             agentMode: "auto",
             queuedAt: "2026-05-12T15:30:30.000Z"

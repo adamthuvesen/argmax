@@ -42,7 +42,7 @@ const sameEnvelopeProviderCases: Array<{
 }> = [
   {
     provider: "claude",
-    modelLabel: "Sonnet 5",
+    modelLabel: "Sonnet 5.5",
     hiddenWhenExpanded: [],
     events: sameEnvelopeMinimalTurn([
       event("read-start", "command.started", "Read", SAME_ENVELOPE_AT, {
@@ -417,7 +417,7 @@ describe("SessionConversation — tools & chrome", () => {
   it("opens a live Compact launch straight from its row", () => {
     const onOpenAgent = vi.fn<(tool: ToolCall) => void>();
     renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Sonnet 5", state: "running" }),
+      baseSession({ provider: "claude", modelLabel: "Sonnet 5.5", state: "running" }),
       [
         event("u1", "user.message", "explore repo with a subagent", "2026-05-12T15:00:00.000Z"),
         event("task-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {

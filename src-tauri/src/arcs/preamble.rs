@@ -200,7 +200,7 @@ mod tests {
         let preamble = coordinator_preamble(&arc("Ship the thing."));
         assert!(preamble.contains("Read the clock with `date`"));
         assert!(preamble.contains("carry the time they were sent"));
-        assert!(preamble.contains("claude-sonnet-5"));
+        assert!(preamble.contains("claude-sonnet-5-5"));
         assert!(preamble.contains("learnings_add"));
         assert!(preamble.contains("learnings_search"));
     }
@@ -236,7 +236,7 @@ mod tests {
         assert!(preamble.contains("LOG.md is append-only history"));
         assert!(preamble.contains("Read the clock with `date`"));
         assert!(preamble.contains("Integration is a member's job too"));
-        assert!(preamble.contains("claude-sonnet-5"));
+        assert!(preamble.contains("claude-sonnet-5-5"));
         assert!(preamble.contains("learnings_add"));
         assert!(preamble.contains("`check_in_minutes` on session_launch"));
         assert!(preamble.contains("do not implement code yourself"));

@@ -608,7 +608,7 @@ describe("App settings", () => {
 
   it("keeps the pinned default agent model when the launcher switches to a Router row", async () => {
     window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd", projectCheck: "switch" });
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5" }));
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5-5" }));
     const save = vi.mocked(window.argmax!.system.setDefaultAgent);
     render(<App />);
     await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: "claude-sonnet-5-5" })));

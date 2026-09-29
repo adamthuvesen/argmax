@@ -13,7 +13,7 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 
 ### Changed
 
-- Router coding, research, and questions launch on Sonnet 5.5. Balance standard and heavy mechanical work does too. Light mechanical work stays on Composer, and reviews stay on Opus. Grok is no longer a launch model. A Speed follow-up stays on Sonnet until the next task is a review. When routing fails, Speed falls back to Sonnet 5.5 at medium effort.
+- Router coding, research, and questions launch on Sonnet 5.5. Balance standard coding and research use Sonnet 5.5 at high effort, and Balance standard and heavy mechanical work uses it at medium. Frontier light mechanical work uses Sonnet 5.5 at medium. Light mechanical work on Speed and Balance stays on Composer, and reviews stay on Opus. Grok is no longer a launch model. A Speed follow-up stays on Sonnet until the next task is a review. When routing fails, Speed falls back to Sonnet 5.5 at medium effort.
 
 ### Added
 

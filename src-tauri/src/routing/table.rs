@@ -214,6 +214,9 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         // (56.0% vs 49.2%); Fable is the step after Opus high on its ladder.
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Research) => &ASTRA,
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Question) => &FABLE,
+        // Frontier light is the value column, which is Composer for a
+        // rename. A small mechanical edit there still gets Sonnet medium.
+        (AutoTier::Intelligence, Difficulty::Light, TaskKind::Mechanical) => &SONNET,
         // Speed's heavy column is Opus. Sonnet medium finished the same two
         // small tasks faster than Opus medium and at about half the price
         // (2026-09-28). Reviews stay on Opus.
@@ -225,6 +228,12 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         // Balance's mechanical value cell is Composer. Standard and heavy
         // edits go to Sonnet; light renames stay on Composer.
         (AutoTier::Balanced, Difficulty::Standard | Difficulty::Heavy, TaskKind::Mechanical) => {
+            &SONNET
+        }
+        // Balance standard coding and research run Sonnet at high. The value
+        // column would be Opus medium. Heavy stays on Opus high.
+        (AutoTier::Balanced, Difficulty::Standard, TaskKind::Coding | TaskKind::Research) => {
+            effort = High;
             &SONNET
         }
         _ => cell(kind, column),
@@ -415,7 +424,7 @@ mod tests {
                 Standard,
                 [
                     "Sonnet 5.5 · medium",
-                    "Opus 5.5 · medium",
+                    "Sonnet 5.5 · high",
                     "Opus 5.5 · high",
                 ],
             ),
@@ -430,7 +439,7 @@ mod tests {
                 [
                     "Composer 2.5 (Cursor)",
                     "Composer 2.5 (Cursor)",
-                    "Composer 2.5 (Cursor)",
+                    "Sonnet 5.5 · medium",
                 ],
             ),
             (
@@ -465,7 +474,7 @@ mod tests {
                 Standard,
                 [
                     "Sonnet 5.5 · medium",
-                    "Opus 5.5 · medium",
+                    "Sonnet 5.5 · high",
                     "Opus 5.5 · high",
                 ],
             ),

@@ -197,14 +197,21 @@ pub(crate) fn decide(tier: AutoTier, classification: &Classification) -> RouteDe
         && difficulty == Difficulty::Heavy
         && classification.probability_at_least_bucket(Difficulty::Heavy) < BALANCED_HIGH_EFFORT
     {
-        // Balance's standard and heavy cells share a column; only the effort
-        // differs.
+        // Not confident it is heavy, so launch the standard cell at medium.
+        // Standard coding and research are Sonnet at high on their own.
         notes.push("not sure it is hard, medium effort");
         Difficulty::Standard
     } else {
         difficulty
     };
-    let routed = table::route(tier, kind, grid_difficulty, classification.is_ui());
+    let mut routed = table::route(tier, kind, grid_difficulty, classification.is_ui());
+    if grid_difficulty != difficulty
+        && routed
+            .effort
+            .is_some_and(|effort| table::rank(effort) > table::rank(ReasoningEffort::Medium))
+    {
+        routed.effort = Some(ReasoningEffort::Medium);
+    }
     let mut reason = format!("{} · {}", kind_label(kind), difficulty_label(difficulty));
     if classification.is_ui() {
         reason.push_str(" · UI");
@@ -394,8 +401,9 @@ mod tests {
             AutoTier::Balanced,
             &classification(TaskKind::Question, 0.4, 1.0, 0.3),
         );
-        // coding · light → standard → Balanced Value cell.
-        assert_eq!(decision.model_id, "claude-opus-5-5");
+        // coding · light → standard → Balance standard coding is Sonnet high.
+        assert_eq!(decision.model_id, "claude-sonnet-5-5");
+        assert_eq!(decision.effort, Some(ReasoningEffort::High));
         assert_eq!(decision.kind, Some(TaskKind::Coding));
         assert_eq!(decision.difficulty, Some(Difficulty::Standard));
         assert!(
@@ -420,7 +428,7 @@ mod tests {
         };
         let decision = decide(AutoTier::Balanced, &split);
         assert_eq!(decision.difficulty, Some(Difficulty::Standard));
-        assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
+        assert_eq!(decision.effort, Some(ReasoningEffort::High));
         assert_eq!(decision.reason, "coding · standard");
 
         let leaning_hard = Classification {
@@ -460,6 +468,7 @@ mod tests {
         };
         let decision = decide(AutoTier::Balanced, &leaning);
         assert_eq!(decision.difficulty, Some(Difficulty::Heavy));
+        assert_eq!(decision.model_id, "claude-sonnet-5-5");
         assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
         assert!(
             decision.reason.contains("medium effort"),

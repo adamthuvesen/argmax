@@ -124,7 +124,7 @@ Overrides on top of the grid:
   most often reported wrong. Speed keeps Composer for mechanical work,
   including UI work.
 - **Balance runs heavy work at high only when Jev puts at least 0.6 on hard or
-  very hard.** Below that it runs at medium, the Standard cell, and a
+  very hard.** Below that it runs the standard cell at medium, and a
   follow-up can climb. Frontier keeps high.
 - **The launch grid does not pick Grok.** A chat already on Grok Build still
   follows difficulty: Light low, Standard medium, Heavy high.
@@ -137,6 +137,9 @@ Overrides on top of the grid:
 - **Balance sends its standard and heavy mechanical work to Sonnet 5.5 ·
   medium.** Light mechanical work stays on Composer. Heavy mechanical effort
   stays medium on every tier.
+- **Balance standard coding and research launch on Sonnet 5.5 · high.** Heavy
+  coding and research stay on Opus 5.5 · high.
+- **Frontier light mechanical work launches on Sonnet 5.5 · medium.**
 - Frontier · Heavy sends **research to GPT-6 Astra** and **questions to Fable
   5.1**; coding stays on Opus 5.5.
 - Mechanical work never runs above medium; the cheap review cell is Opus 5.5

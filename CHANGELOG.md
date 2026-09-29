@@ -13,7 +13,7 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 
 ### Changed
 
-- Router Speed sends questions, and heavy coding and research, to Sonnet 5.5. Reviews stay on Opus. A Speed follow-up stays on Sonnet until the next task is a review.
+- Router coding, research, and questions launch on Sonnet 5.5. Balance standard and heavy mechanical work does too. Light mechanical work stays on Composer, and reviews stay on Opus. Grok is no longer a launch model. A Speed follow-up stays on Sonnet until the next task is a review. When routing fails, Speed falls back to Sonnet 5.5 at medium effort.
 
 ### Added
 

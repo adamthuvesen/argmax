@@ -64,9 +64,9 @@ pub const OPUS: RouteModel = RouteModel {
     label: "Opus 5.5",
     efforts: CLAUDE_EFFORTS,
 };
-/// Speed's stand-in for Grok questions and for the heavy cells that would
-/// otherwise be Opus. Weaker than Opus on purpose, so a review or a wrong
-/// answer can still climb.
+/// Coding, research, and questions on Speed, plus Balance's lighter coding
+/// and research and its larger mechanical edits. Weaker than Opus on purpose,
+/// so a review or a wrong answer can still climb.
 pub const SONNET: RouteModel = RouteModel {
     provider: ProviderId::Claude,
     model_id: "claude-sonnet-5-5",
@@ -115,7 +115,14 @@ pub const GROK: RouteModel = RouteModel {
 };
 
 pub const ROUTE_MODELS: &[&RouteModel] = &[
-    &OPUS, &SONNET, &FABLE, &SOL, &ASTRA, &COMPOSER, &CURSOR_OPUS, &GROK,
+    &OPUS,
+    &SONNET,
+    &FABLE,
+    &SOL,
+    &ASTRA,
+    &COMPOSER,
+    &CURSOR_OPUS,
+    &GROK,
 ];
 
 impl RouteModel {
@@ -133,23 +140,25 @@ pub struct RoutedModel {
 
 fn cell(kind: TaskKind, column: Column) -> &'static RouteModel {
     match (kind, column) {
-        (TaskKind::Coding, Column::Cheap) => &COMPOSER,
+        // Sonnet 5.5 replaced Composer on these cells (2026-09-29). On the
+        // same two agent tasks it finished in 17.6 s against Composer's
+        // 45.3 s, and CursorBench scores it 55.5% against 27.7%.
+        (TaskKind::Coding, Column::Cheap) => &SONNET,
         (TaskKind::Coding, _) => &OPUS,
-        // Speed weighs latency as much as cost. Inside Argmax, with Cursor's
-        // warm ACP pool, Composer finished four turns in 42 s against 89 s for
-        // DeepSeek V4.1 Flash and 58 s for Opus medium (2026-09-27), so the
-        // cheap cells use Composer rather than the cheapest model.
+        // Renames stay on Composer: inside Argmax, with Cursor's warm ACP
+        // pool, it finished four turns in 42 s against 58 s for Opus medium
+        // (2026-09-27), and the work does not repay Sonnet's price.
         (TaskKind::Mechanical, Column::Cheap) => &COMPOSER,
         (TaskKind::Mechanical, Column::Value) => &COMPOSER,
         (TaskKind::Mechanical, Column::Frontier) => &OPUS,
-        (TaskKind::Research, Column::Cheap) => &COMPOSER,
+        (TaskKind::Research, Column::Cheap) => &SONNET,
         (TaskKind::Research, _) => &OPUS,
         (TaskKind::Review, Column::Cheap) => &OPUS,
         // Sol measured 2.7x slower than Opus medium at a lower score for a
         // quarter less per turn; Frontier keeps Astra as the second family.
         (TaskKind::Review, Column::Value) => &OPUS,
         (TaskKind::Review, Column::Frontier) => &ASTRA,
-        (TaskKind::Question, Column::Cheap) => &GROK,
+        (TaskKind::Question, Column::Cheap) => &SONNET,
         (TaskKind::Question, _) => &OPUS,
     }
 }
@@ -170,8 +179,8 @@ fn column_and_effort(tier: AutoTier, difficulty: Difficulty) -> (Column, Reasoni
     }
 }
 
-/// Grok's effort follows the task's difficulty on every tier, so a launch and
-/// the follow-up policy agree and a Grok chat can climb low → medium → high.
+/// Grok's effort follows the task's difficulty, so a chat already on Grok
+/// can climb low → medium → high. The launch grid no longer picks Grok.
 fn grok_effort(difficulty: Difficulty) -> ReasoningEffort {
     match difficulty {
         Difficulty::Light => Low,
@@ -180,9 +189,10 @@ fn grok_effort(difficulty: Difficulty) -> ReasoningEffort {
     }
 }
 
-/// `ui` marks visual UI or design work. Balance keeps Composer for everything
-/// else, but sends UI work to Opus 5.5 low: Composer's UI tweaks were the
-/// chats most often reported wrong (3 of 22 escalated, 2026-09-28).
+/// `ui` marks visual UI or design work. The Composer cell left on Balance is
+/// light mechanical work, and that UI work goes to Opus 5.5 low: Composer's
+/// UI tweaks were the chats most often reported wrong (3 of 22 escalated,
+/// 2026-09-28).
 pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -> RoutedModel {
     let (column, mut effort) = column_and_effort(tier, difficulty);
     // Renames and bulk edits never repay more than medium, on any tier.
@@ -204,18 +214,23 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         // (56.0% vs 49.2%); Fable is the step after Opus high on its ladder.
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Research) => &ASTRA,
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Question) => &FABLE,
-        // Speed, measured 2026-09-28: Sonnet 5.5 medium finished the same two
-        // small tasks faster than Opus medium and at about half the price,
-        // and faster than Grok 4.7. Reviews stay on Opus. Balance light
-        // questions stay on Grok through the cheap cell below.
-        (AutoTier::Cost, _, TaskKind::Question) => &SONNET,
-        (AutoTier::Cost, Difficulty::Heavy, TaskKind::Coding | TaskKind::Research) => &SONNET,
+        // Speed's heavy column is Opus. Sonnet medium finished the same two
+        // small tasks faster than Opus medium and at about half the price
+        // (2026-09-28). Reviews stay on Opus.
+        (
+            AutoTier::Cost,
+            Difficulty::Heavy,
+            TaskKind::Coding | TaskKind::Research | TaskKind::Question,
+        ) => &SONNET,
+        // Balance's mechanical value cell is Composer. Standard and heavy
+        // edits go to Sonnet; light renames stay on Composer.
+        (AutoTier::Balanced, Difficulty::Standard | Difficulty::Heavy, TaskKind::Mechanical) => {
+            &SONNET
+        }
         _ => cell(kind, column),
     };
     let (model, effort) = if tier == AutoTier::Balanced && ui && model == &COMPOSER {
         (&OPUS, Low)
-    } else if model == &GROK {
-        (model, grok_effort(difficulty))
     } else {
         (model, effort)
     };
@@ -317,13 +332,13 @@ pub(crate) fn capability(model_id: &str) -> Option<usize> {
     }
 }
 
-/// Used when Jev is unavailable: the tier's standard coding cell, so an
-/// Speed chat stays cheap and fast (Composer) rather than landing on Opus.
+/// Used when Jev is unavailable: the tier's standard coding cell, so a
+/// Speed chat lands on Sonnet medium rather than Opus.
 pub fn fallback(tier: AutoTier) -> RoutedModel {
     match tier {
         AutoTier::Cost => RoutedModel {
-            model: &COMPOSER,
-            effort: None,
+            model: &SONNET,
+            effort: Some(Medium),
         },
         AutoTier::Balanced | AutoTier::Intelligence => RoutedModel {
             model: &OPUS,
@@ -390,8 +405,8 @@ mod tests {
                 Coding,
                 Light,
                 [
-                    "Composer 2.5 (Cursor)",
-                    "Composer 2.5 (Cursor)",
+                    "Sonnet 5.5 · low",
+                    "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
             ),
@@ -399,7 +414,7 @@ mod tests {
                 Coding,
                 Standard,
                 [
-                    "Composer 2.5 (Cursor)",
+                    "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                     "Opus 5.5 · high",
                 ],
@@ -423,7 +438,7 @@ mod tests {
                 Standard,
                 [
                     "Composer 2.5 (Cursor)",
-                    "Composer 2.5 (Cursor)",
+                    "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
             ),
@@ -432,7 +447,7 @@ mod tests {
                 Heavy,
                 [
                     "Composer 2.5 (Cursor)",
-                    "Composer 2.5 (Cursor)",
+                    "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
             ),
@@ -440,8 +455,8 @@ mod tests {
                 Research,
                 Light,
                 [
-                    "Composer 2.5 (Cursor)",
-                    "Composer 2.5 (Cursor)",
+                    "Sonnet 5.5 · low",
+                    "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
             ),
@@ -449,7 +464,7 @@ mod tests {
                 Research,
                 Standard,
                 [
-                    "Composer 2.5 (Cursor)",
+                    "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                     "Opus 5.5 · high",
                 ],
@@ -457,7 +472,11 @@ mod tests {
             (
                 Research,
                 Heavy,
-                ["Sonnet 5.5 · medium", "Opus 5.5 · high", "GPT-6 Astra · high"],
+                [
+                    "Sonnet 5.5 · medium",
+                    "Opus 5.5 · high",
+                    "GPT-6 Astra · high",
+                ],
             ),
             (
                 Review,
@@ -477,12 +496,20 @@ mod tests {
             (
                 Question,
                 Light,
-                ["Sonnet 5.5 · low", "Grok 4.7 · low", "Opus 5.5 · medium"],
+                [
+                    "Sonnet 5.5 · low",
+                    "Sonnet 5.5 · medium",
+                    "Opus 5.5 · medium",
+                ],
             ),
             (
                 Question,
                 Standard,
-                ["Sonnet 5.5 · medium", "Opus 5.5 · medium", "Opus 5.5 · high"],
+                [
+                    "Sonnet 5.5 · medium",
+                    "Opus 5.5 · medium",
+                    "Opus 5.5 · high",
+                ],
             ),
             (
                 Question,
@@ -515,13 +542,15 @@ mod tests {
         use TaskKind::{Coding, Mechanical, Question};
         let balanced =
             |kind, difficulty, ui| cell_text(route(AutoTier::Balanced, kind, difficulty, ui));
-        assert_eq!(balanced(Coding, Light, true), "Opus 5.5 · low");
-        assert_eq!(balanced(Mechanical, Heavy, true), "Opus 5.5 · low");
-        assert_eq!(balanced(Coding, Light, false), "Composer 2.5 (Cursor)");
-        // Only Composer cells move, and only on Balance.
-        assert_eq!(balanced(Question, Light, true), "Grok 4.7 · low");
+        // Light mechanical is the Composer cell left on Balance.
+        assert_eq!(balanced(Mechanical, Light, true), "Opus 5.5 · low");
+        assert_eq!(balanced(Mechanical, Light, false), "Composer 2.5 (Cursor)");
+        assert_eq!(balanced(Mechanical, Heavy, true), "Sonnet 5.5 · medium");
+        assert_eq!(balanced(Coding, Light, true), "Sonnet 5.5 · medium");
+        assert_eq!(balanced(Question, Light, true), "Sonnet 5.5 · medium");
+        // Speed keeps Composer for mechanical work, including UI work.
         assert_eq!(
-            cell_text(route(AutoTier::Cost, Coding, Light, true)),
+            cell_text(route(AutoTier::Cost, Mechanical, Light, true)),
             "Composer 2.5 (Cursor)"
         );
         let cursor = follow_up_target(ProviderId::Cursor, AutoTier::Balanced, Coding, Light, true);
@@ -600,7 +629,7 @@ mod tests {
 
     #[test]
     fn fallback_follows_the_tier() {
-        assert_eq!(cell_text(fallback(AutoTier::Cost)), "Composer 2.5 (Cursor)");
+        assert_eq!(cell_text(fallback(AutoTier::Cost)), "Sonnet 5.5 · medium");
         assert_eq!(cell_text(fallback(AutoTier::Balanced)), "Opus 5.5 · medium");
         assert_eq!(
             cell_text(fallback(AutoTier::Intelligence)),

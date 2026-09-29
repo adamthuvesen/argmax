@@ -333,10 +333,16 @@ mod tests {
 
     #[test]
     fn an_uninstalled_grid_pick_moves_to_an_installed_provider() {
-        let route = fallback_decision(AutoTier::Cost, "test");
+        // Light mechanical work is the Speed cell that still launches Cursor.
+        let route = decide(
+            AutoTier::Cost,
+            &classification(TaskKind::Mechanical, 1.0, 0.2, 0.9),
+        );
         assert_eq!(route.provider, ProviderId::Cursor);
+        assert_eq!(route.model_id, "composer-2.5");
         let moved = with_available_provider(route, &[ProviderId::Claude]);
         assert_eq!(moved.provider, ProviderId::Claude);
+        assert_eq!(moved.model_id, "claude-sonnet-5-5");
         assert!(moved.reason.contains("cursor unavailable"));
     }
 
@@ -479,12 +485,12 @@ mod tests {
     fn balanced_ui_work_leaves_composer_and_records_its_signals() {
         let ui = Classification {
             ui: Some(0.97),
-            ..classification(TaskKind::Coding, 1.0, 1.0, 0.8)
+            ..classification(TaskKind::Mechanical, 1.0, 1.0, 0.8)
         };
         let decision = decide(AutoTier::Balanced, &ui);
         assert_eq!(decision.model_id, "claude-opus-5-5");
         assert_eq!(decision.effort, Some(ReasoningEffort::Low));
-        assert_eq!(decision.reason, "coding · light · UI");
+        assert_eq!(decision.reason, "mechanical · light · UI");
         let signals: serde_json::Value =
             serde_json::from_str(decision.signals.as_deref().expect("signals")).unwrap();
         assert_eq!(signals["ui"], 0.97);
@@ -493,8 +499,8 @@ mod tests {
     #[test]
     fn fallback_is_recorded_as_unrouted_and_follows_the_tier() {
         let decision = fallback_decision(AutoTier::Cost, "Jev request failed");
-        assert_eq!(decision.model_id, "composer-2.5");
-        assert_eq!(decision.effort, None);
+        assert_eq!(decision.model_id, "claude-sonnet-5-5");
+        assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
         assert_eq!(decision.decision, RouteDecisionKind::Fallback);
         assert_eq!(decision.kind, None);
         assert_eq!(decision.reason, "unrouted: Jev request failed");

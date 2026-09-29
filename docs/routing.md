@@ -111,29 +111,32 @@ Kind × column picks the model:
 
 | Kind | Cheap | Value | Frontier |
 |---|---|---|---|
-| coding | Composer 2.5 | Opus 5.5 | Opus 5.5 |
+| coding | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
 | mechanical | Composer 2.5 | Composer 2.5 | Opus 5.5 |
-| research | Composer 2.5 | Opus 5.5 | Opus 5.5 |
+| research | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
 | review | Opus 5.5 · low | Opus 5.5 | GPT-6 Astra |
-| question | Grok 4.7 | Opus 5.5 | Opus 5.5 |
+| question | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
 
 Overrides on top of the grid:
 
-- **Balance sends UI work to Opus 5.5 · low** wherever its cell is Composer.
-  Composer's UI tweaks were the Composer chats most often reported wrong. Speed
-  keeps Composer for UI work.
+- **Balance sends light mechanical UI work to Opus 5.5 · low.** That is the
+  Composer cell left on Balance. Composer's UI tweaks were the Composer chats
+  most often reported wrong. Speed keeps Composer for mechanical work,
+  including UI work.
 - **Balance runs heavy work at high only when Jev puts at least 0.6 on hard or
   very hard.** Below that it runs at medium, the Standard cell, and a
   follow-up can climb. Frontier keeps high.
-- **Grok's effort follows difficulty** on every tier: Light low, Standard
-  medium, Heavy high. Balance light questions are the cell that still launches
-  Grok. Speed questions launch Sonnet 5.5 instead.
-- **Speed sends its questions, and its heavy coding and research, to Sonnet
-  5.5** at the effort in the table above (low for a light question, medium
-  otherwise). Heavy reviews and the cheap review cell stay on Opus. A Speed
-  follow-up that is already on Claude stays on Sonnet until the next task is
-  a review, which moves to Opus. A reported-wrong answer still climbs the
-  Claude ladder, whose first rung is Opus medium.
+- **The launch grid does not pick Grok.** A chat already on Grok Build still
+  follows difficulty: Light low, Standard medium, Heavy high.
+- **Speed's heavy coding, research, and questions stay on Sonnet 5.5 ·
+  medium.** Those cells would otherwise be the Opus value column. Light is
+  low and standard is medium, from the table above. Reviews stay on Opus. A
+  Speed follow-up that is already on Claude stays on Sonnet until the next
+  task is a review, which moves to Opus. A reported-wrong answer still climbs
+  the Claude ladder, whose first rung is Opus medium.
+- **Balance sends its standard and heavy mechanical work to Sonnet 5.5 ·
+  medium.** Light mechanical work stays on Composer. Heavy mechanical effort
+  stays medium on every tier.
 - Frontier · Heavy sends **research to GPT-6 Astra** and **questions to Fable
   5.1**; coding stays on Opus 5.5.
 - Mechanical work never runs above medium; the cheap review cell is Opus 5.5
@@ -144,7 +147,7 @@ Overrides on top of the grid:
   escalation.
 
 If Jev fails, the tier's **fallback** is used and recorded with the reason
-`unrouted: …`: Speed → Composer 2.5, Balance and Frontier → Opus 5.5 · medium.
+`unrouted: …`: Speed → Sonnet 5.5 · medium, Balance and Frontier → Opus 5.5 · medium.
 
 **Fast is never used for a routed turn.** `route_launch` clears `fast_mode`,
 and so does every follow-up the router still drives, including one it leaves
@@ -211,7 +214,7 @@ The provider targets are:
 | Codex | Sol for coding and mechanical work at any difficulty, and for lighter work of any kind. Astra for heavy review, research and questions, and Frontier standard review or research. A chat launched on Astra for a review moves to Sol for the code that follows when the switch pays. |
 | Cursor | Composer for lighter work, Cursor Opus for review, more demanding work, and Balance UI work (low). Model downgrades stay blocked while pricing is unavailable. |
 | OpenCode | None. The grid never launches OpenCode, so a routed chat never runs there. |
-| Grok Build | Grok 4.7 with effort by difficulty: low, medium, high. |
+| Grok Build | The grid never launches Grok. A chat already there stays on Grok 4.7 with effort by difficulty: low, medium, high. |
 
 ### Cache and economics
 

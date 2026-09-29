@@ -35,8 +35,8 @@ const AUTO_TIER_LABELS: Record<AutoTier, string> = {
 };
 
 export const AUTO_TIER_DESCRIPTIONS: Record<AutoTier, string> = {
-  cost: "Fast, cheap models; Opus for reviews and heavy work",
-  balanced: "Opus for real work, cheap models for light tasks",
+  cost: "Sonnet and Composer; Opus only for reviews",
+  balanced: "Sonnet for everyday work, Opus for heavy work and reviews",
   intelligence: "Frontier models, deeper reasoning"
 };
 

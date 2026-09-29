@@ -64,6 +64,7 @@ function buildCatalogue({ models, picker }) {
     PROVIDER_MODEL_DEFAULTS,
     PROVIDER_TITLE_MODEL,
     FORK_CAPABLE_PROVIDERS,
+    SUCCESSOR_MODEL_IDS,
     REASONING_EFFORTS,
     DEFAULT_REASONING_EFFORT,
     reasoningEffortsForModel,
@@ -90,6 +91,9 @@ function buildCatalogue({ models, picker }) {
       forkCapable: FORK_CAPABLE_PROVIDERS.has(provider),
       titleModelId: PROVIDER_TITLE_MODEL[provider],
       defaultModel: selection({ provider, ...modelDefaultForProvider(provider) }),
+      // Retired id → the catalog id that replaced it, so a stored chat on a
+      // retired model reads and relaunches as its successor.
+      successors: { ...(SUCCESSOR_MODEL_IDS[provider] ?? {}) },
       models: PROVIDER_MODELS[provider].map((model) => ({
         label: model.label,
         modelId: model.modelId,

@@ -527,6 +527,10 @@ async fn run_turn(
             emit_line(line);
         }
     }
+    // A cancelled or failed turn keeps what it already said, too.
+    if let Some(line) = translation.close_answer(&acp_session_id) {
+        emit_line(line);
+    }
     client.unsubscribe(&acp_session_id, subscription);
     if let Ok(response) = &outcome {
         for line in usage_lines(response, &acp_session_id) {
@@ -607,6 +611,8 @@ fn usage_lines(response: &Value, session_id: &str) -> Vec<Value> {
 #[derive(Default)]
 struct GrokTurnTranslation {
     assistant_text: String,
+    /// The answer burst still streaming, exactly as its deltas carried it.
+    open_answer: String,
     tools: HashMap<String, GrokToolInfo>,
 }
 
@@ -630,6 +636,17 @@ impl GrokTurnTranslation {
         let Some(kind) = update.get("sessionUpdate").and_then(Value::as_str) else {
             return Vec::new();
         };
+        let mut lines: Vec<Value> = match kind {
+            "agent_thought_chunk" | "tool_call" | "tool_call_update" => {
+                self.close_answer(session_id).into_iter().collect()
+            }
+            _ => Vec::new(),
+        };
+        lines.extend(self.translate_update(kind, update, session_id));
+        lines
+    }
+
+    fn translate_update(&mut self, kind: &str, update: &Value, session_id: &str) -> Vec<Value> {
         match kind {
             "agent_thought_chunk" => content_text(update)
                 .map(|thinking| {
@@ -643,6 +660,7 @@ impl GrokTurnTranslation {
             "agent_message_chunk" => content_text(update)
                 .map(|text| {
                     append_message_chunk(&mut self.assistant_text, &text);
+                    self.open_answer.push_str(&text);
                     vec![json!({
                         "type": "stream_event", "session_id": session_id,
                         "event": { "type": "content_block_delta", "index": 0,
@@ -692,6 +710,24 @@ impl GrokTurnTranslation {
             }
             _ => Vec::new(),
         }
+    }
+
+    /// Closes the streaming answer burst with the whole-message `assistant`
+    /// envelope Claude sends after each text block. It becomes the burst's
+    /// `message.completed`, the durable row a reopened chat reads the answer
+    /// from: the session backfill keeps every durable row but only the newest
+    /// page of deltas, so a Grok answer that lived only in deltas vanished
+    /// from every turn but the last few. The text is the deltas verbatim, so
+    /// the renderer supersedes them without changing what the bubble reads.
+    fn close_answer(&mut self, session_id: &str) -> Option<Value> {
+        let text = std::mem::take(&mut self.open_answer);
+        if text.trim().is_empty() {
+            return None;
+        }
+        Some(json!({
+            "type": "assistant", "session_id": session_id,
+            "message": { "role": "assistant", "content": [{ "type": "text", "text": text }] }
+        }))
     }
 
     fn success_result(&self, session_id: &str) -> Value {
@@ -1069,12 +1105,14 @@ done
                 "rawOutput": {"output": "ok"}}}),
             "g1",
         );
+        assert_eq!(completed[0]["type"], "assistant");
+        assert_eq!(completed[0]["message"]["content"][0]["text"], "Done");
         assert_eq!(
-            completed[0]["message"]["content"][0]["tool_use_id"],
+            completed[1]["message"]["content"][0]["tool_use_id"],
             "call-1"
         );
-        assert_eq!(completed[0]["message"]["content"][0]["status"], "completed");
-        assert_eq!(completed[0]["message"]["content"][0]["is_error"], false);
+        assert_eq!(completed[1]["message"]["content"][0]["status"], "completed");
+        assert_eq!(completed[1]["message"]["content"][0]["is_error"], false);
     }
 
     #[test]
@@ -1248,10 +1286,12 @@ done
 
     // The shape a real ACP turn takes: two answer bursts with a tool call
     // between them, then the closing result carrying both bursts concatenated.
-    // Each burst is its own bubble, so the result has to stay silent — it is
-    // the fallback for a turn whose answer never streamed, not a second copy.
+    // Each burst is its own bubble and closes with its own `message.completed`
+    // (the row a reopened chat reads it from), so the result has to stay
+    // silent — it is the fallback for a turn whose answer never streamed, not
+    // a second copy.
     #[test]
-    fn grok_answer_deltas_silence_the_trailing_result() {
+    fn grok_answer_bursts_complete_and_silence_the_trailing_result() {
         use crate::providers::normalizer::{
             normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
         };
@@ -1284,6 +1324,7 @@ done
                 "content": {"type": "text", "text": "The port is 8790."}}}),
             "g1",
         ));
+        lines.extend(translation.close_answer("g1"));
         lines.push(translation.success_result("g1"));
 
         let mut context = NormalizerSessionContext::for_provider(ProviderId::Grok, "grok-4.6");
@@ -1312,15 +1353,22 @@ done
             .map(|event| event.message.as_str())
             .collect();
         assert_eq!(answers, vec!["Checking the config.", "The port is 8790."]);
-        assert!(
-            !events
-                .iter()
-                .any(|event| event.r#type == "message.completed"),
-            "the result must not re-emit the streamed answer: {:?}",
-            events
-                .iter()
-                .map(|event| (event.r#type.as_str(), event.message.as_str()))
-                .collect::<Vec<_>>()
+        let sequence: Vec<_> = events
+            .iter()
+            .filter(|event| event.payload.get("thinking").is_none())
+            .map(|event| (event.r#type.as_str(), event.message.as_str()))
+            .collect();
+        assert_eq!(
+            sequence,
+            vec![
+                ("message.delta", "Checking the config."),
+                ("message.completed", "Checking the config."),
+                ("command.started", "read_file"),
+                ("command.completed", "tool_result"),
+                ("message.delta", "The port is 8790."),
+                ("message.completed", "The port is 8790."),
+            ],
+            "each burst completes before the tool that follows it, and the result stays silent"
         );
     }
 

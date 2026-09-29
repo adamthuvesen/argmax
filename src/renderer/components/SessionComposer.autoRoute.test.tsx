@@ -33,10 +33,10 @@ describe("SessionComposer Auto chip", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5" })
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" })
     );
 
-    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Sonnet 5");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Sonnet 5.5");
   });
 
   it("offers no Auto rows in the follow-up picker", () => {
@@ -97,7 +97,7 @@ describe("SessionComposer Auto chip", () => {
 
   it("says nothing for the route a chat opened with, or for a pin", () => {
     const { rerender } = renderConversation(routedSession);
-    const pinned = { ...routedSession, modelLabel: "Sonnet 5", modelId: "claude-sonnet-5", autoTier: null, autoRoute: null };
+    const pinned = { ...routedSession, modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5", autoTier: null, autoRoute: null };
     rerenderConversation(rerender, pinned);
 
     expect(screen.queryByRole("status")).toBeNull();
@@ -108,19 +108,19 @@ describe("SessionComposer Auto chip", () => {
     const { rerender } = renderConversation(routedSession, [], { onSendSessionInput });
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5" })
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" })
     );
 
     const escalated = { ...routedSession, modelLabel: "Fable 5.1", modelId: "claude-fable-5-1", reasoningEffort: "high" as const };
     rerenderConversation(rerender, escalated, [], { onSendSessionInput });
 
-    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Sonnet 5");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Sonnet 5.5");
     const promptInput = screen.getByLabelText("Chat prompt");
     fireEvent.change(promptInput, { target: { value: "keep going" } });
     fireEvent.keyDown(promptInput, { key: "Enter" });
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ modelId: "claude-sonnet-5" });
+    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ modelId: "claude-sonnet-5-5" });
     expect(onSendSessionInput.mock.calls[0]?.[2]).not.toHaveProperty("autoTier");
   });
 });

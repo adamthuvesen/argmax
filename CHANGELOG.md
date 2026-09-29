@@ -11,6 +11,18 @@ Argmax is pre-1.0 and every release is marked a pre-release on GitHub.
 
 ## Unreleased
 
+### Changed
+
+- Router coding, research, and questions launch on Sonnet 5.5. Balance standard coding and research use Sonnet 5.5 at high effort, and Balance standard and heavy mechanical work uses it at medium. Frontier light mechanical work uses Sonnet 5.5 at medium. Light mechanical work on Speed and Balance stays on Composer, and reviews stay on Opus. Grok is no longer a launch model. A Speed follow-up stays on Sonnet until the next task is a review. When routing fails, Speed falls back to Sonnet 5.5 at medium effort.
+
+### Added
+
+- Cursor can launch Claude Sonnet 5.5 (`claude-sonnet-5-5-medium`), with effort through Max. The CLI has no Fast variant for it.
+
+### Changed
+
+- Claude's Sonnet row is Sonnet 5.5 (`claude-sonnet-5-5`) on the 1M window, at the same $2/$10 rate as Sonnet 5. Title calls use it. A stored Sonnet 5 pick or chat follows Sonnet 5.5, and old Sonnet 5 chats are labeled Sonnet 5.5.
+
 ## 0.5.1 — 2026-09-22
 
 ### Added

@@ -83,7 +83,7 @@ describe("launcher prompt across context changes", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch model" }));
     fireEvent.click(
       within(await screen.findByRole("listbox", { name: "Switch model" })).getByRole("button", {
-        name: "Sonnet 5"
+        name: "Sonnet 5.5"
       })
     );
 

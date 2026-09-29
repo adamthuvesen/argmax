@@ -41,12 +41,15 @@
       "id": "claude",
       "displayName": "Claude",
       "forkCapable": true,
-      "titleModelId": "claude-sonnet-5",
+      "titleModelId": "claude-sonnet-5-5",
       "defaultModel": {
         "provider": "claude",
         "label": "Opus 5.5",
         "modelId": "claude-opus-5-5",
         "reasoningEffort": "medium"
+      },
+      "successors": {
+        "claude-sonnet-5": "claude-sonnet-5-5"
       },
       "models": [
         {
@@ -78,9 +81,9 @@
           "defaultEffort": "medium"
         },
         {
-          "label": "Sonnet 5",
-          "modelId": "claude-sonnet-5",
-          "contextWindow": 200000,
+          "label": "Sonnet 5.5",
+          "modelId": "claude-sonnet-5-5",
+          "contextWindow": 1000000,
           "reasoningEfforts": [
             "low",
             "medium",
@@ -111,6 +114,7 @@
         "modelId": "gpt-6-sol",
         "reasoningEffort": "medium"
       },
+      "successors": {},
       "models": [
         {
           "label": "GPT-6 Astra",
@@ -180,6 +184,7 @@
         "modelId": "grok-4.7-medium",
         "reasoningEffort": "medium"
       },
+      "successors": {},
       "models": [
         {
           "label": "Auto Cost (Cursor)",
@@ -283,6 +288,19 @@
             "max"
           ],
           "defaultEffort": "medium"
+        },
+        {
+          "label": "Claude Sonnet 5.5 (Cursor)",
+          "modelId": "claude-sonnet-5-5-medium",
+          "contextWindow": 1000000,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
         }
       ]
     },
@@ -297,6 +315,7 @@
         "modelId": "opencode-go/glm-5.3-flash",
         "reasoningEffort": "high"
       },
+      "successors": {},
       "models": [
         {
           "label": "Big Pickle",
@@ -399,6 +418,7 @@
         "modelId": "grok-4.7",
         "reasoningEffort": "medium"
       },
+      "successors": {},
       "models": [
         {
           "label": "Grok 4.7",

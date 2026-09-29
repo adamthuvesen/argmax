@@ -103,7 +103,7 @@ final class ChannelDecodingTests: XCTestCase {
         let balanced = summary.tiers[1]
         XCTAssertEqual(balanced.costUsd, 3.31, accuracy: 0.001)
         XCTAssertTrue(balanced.isEstimated)
-        XCTAssertEqual(balanced.models.map(\.modelId), ["claude-sonnet-5", "composer-2"])
+        XCTAssertEqual(balanced.models.map(\.modelId), ["claude-sonnet-5-5", "composer-2"])
         XCTAssertEqual(summary.tiers[0].pricedTurns, 30)
         XCTAssertNil(summary.tiers[2].medianFirstAnswerSeconds)
     }

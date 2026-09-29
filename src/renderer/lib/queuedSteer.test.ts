@@ -48,7 +48,7 @@ describe("canSteerQueuedMessage", () => {
       },
       entry
     ],
-    ["the row names another model", session, { ...entry, modelId: "claude-sonnet-5" }],
+    ["the row names another model", session, { ...entry, modelId: "claude-sonnet-5-5" }],
     ["the row names another effort", session, { ...entry, reasoningEffort: "high" as const }]
   ])("refuses when %s", (_case, openSession, queued) => {
     expect(canSteerQueuedMessage(openSession, queued)).toBe(false);

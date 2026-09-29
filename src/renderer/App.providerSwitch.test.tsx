@@ -9,7 +9,7 @@ async function openSessionPane(): Promise<void> {
   expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 }
 
-// The seeded session runs on Codex, so "Sonnet 5" crosses providers and raises
+// The seeded session runs on Codex, so "Sonnet 5.5" crosses providers and raises
 // the confirmation. The path under test is the recommended one: the launcher
 // has to come up already aimed at the picked model, holding the follow-up the
 // user had started for the old agent.
@@ -45,7 +45,7 @@ describe("provider switch — new session instead", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(
       within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", {
-        name: "Sonnet 5"
+        name: "Sonnet 5.5"
       })
     );
     fireEvent.click(
@@ -53,7 +53,7 @@ describe("provider switch — new session instead", () => {
     );
 
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("Second opinion on the auth guard");
-    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Sonnet 5");
+    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Sonnet 5.5");
     expect(screen.queryByRole("textbox", { name: "Chat prompt" })).not.toBeInTheDocument();
     expect(screen.queryByText("The grid is full. Close a pane to start a new chat here.")).not.toBeInTheDocument();
 

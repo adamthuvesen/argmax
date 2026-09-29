@@ -5330,8 +5330,8 @@ mod tests {
                     id: "session-1".to_string(),
                     workspace_id: "workspace-1".to_string(),
                     provider: "claude".to_string(),
-                    model_label: "Sonnet 5".to_string(),
-                    model_id: "claude-sonnet-5".to_string(),
+                    model_label: "Sonnet 5.5".to_string(),
+                    model_id: "claude-sonnet-5-5".to_string(),
                     reasoning_effort: None,
                     permission_mode: Some("auto-approve".to_string()),
                     agent_mode: Some("auto".to_string()),
@@ -5762,20 +5762,20 @@ mod tests {
                 .unwrap()
                 .expect("queued")
         };
-        let echo = enqueue("claude-sonnet-5", None);
+        let echo = enqueue("claude-sonnet-5-5", None);
         assert_eq!(
             (echo.model_id, echo.model_label, echo.reasoning_effort),
             (None, None, None)
         );
         let picked = enqueue("claude-opus-5-5", None);
         assert_eq!(picked.model_id.as_deref(), Some("claude-opus-5-5"));
-        let effort = enqueue("claude-sonnet-5", Some("high"));
+        let effort = enqueue("claude-sonnet-5-5", Some("high"));
         assert_eq!(
             (
                 effort.model_id.as_deref(),
                 effort.reasoning_effort.as_deref()
             ),
-            (Some("claude-sonnet-5"), Some("high"))
+            (Some("claude-sonnet-5-5"), Some("high"))
         );
     }
 

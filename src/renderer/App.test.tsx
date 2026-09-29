@@ -100,7 +100,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByLabelText("Chat prompt");
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-    fireEvent.click(within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5" }));
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" }));
     fireEvent.click(within(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).getByRole("button", { name: "New chat" }));
 
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
@@ -689,7 +689,7 @@ describe("App", () => {
       expect(autotitleWorkspace).toHaveBeenCalledWith({
         workspaceId: "workspace-1",
         provider: "claude",
-        modelId: "claude-sonnet-5",
+        modelId: "claude-sonnet-5-5",
         prompt: "Implement PTY launch"
       })
     );
@@ -1057,7 +1057,7 @@ describe("App", () => {
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
     // The launcher defaults to Opus 5 at Medium; switching to Sonnet (also
     // effort-capable) carries that Medium over rather than resetting.
-    fireEvent.click(within(launchPopover).getByText("Sonnet 5"));
+    fireEvent.click(within(launchPopover).getByText("Sonnet 5.5"));
     fireEvent.change(await screen.findByLabelText("Task prompt"), {
       target: { value: "Review this change" }
     });
@@ -1068,8 +1068,8 @@ describe("App", () => {
         workspaceId: "workspace-1",
         provider: "claude",
         prompt: "Review this change",
-        modelLabel: "Sonnet 5",
-        modelId: "claude-sonnet-5",
+        modelLabel: "Sonnet 5.5",
+        modelId: "claude-sonnet-5-5",
         reasoningEffort: "medium",
         fastMode: false,
         agentMode: "auto",

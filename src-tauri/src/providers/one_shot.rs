@@ -140,7 +140,7 @@ pub async fn suggest_follow_up(
 /// with `PROVIDER_MODEL_DEFAULTS`.
 pub fn helper_model(provider: ProviderId) -> &'static str {
     match provider {
-        ProviderId::Claude => "claude-sonnet-5",
+        ProviderId::Claude => "claude-sonnet-5-5",
         ProviderId::Codex => "gpt-6-luna",
         ProviderId::Cursor => "composer-2.5",
         ProviderId::Opencode => "opencode/big-pickle",
@@ -897,13 +897,13 @@ mod tests {
 
     #[test]
     fn claude_command_disables_tools_and_persistence() {
-        let command = one_shot_command(ProviderId::Claude, "claude-sonnet-5", "META", None);
+        let command = one_shot_command(ProviderId::Claude, "claude-sonnet-5-5", "META", None);
         assert_eq!(
             command.args,
             vec![
                 "-p",
                 "--model",
-                "claude-sonnet-5",
+                "claude-sonnet-5-5",
                 "--effort",
                 "low",
                 "--output-format",

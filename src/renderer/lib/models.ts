@@ -2,6 +2,7 @@ import {
   DEFAULT_REASONING_EFFORT,
   effortForModel,
   modelLabelFor,
+  successorModelId,
   PROVIDER_MODEL_DEFAULTS,
   PROVIDER_MODELS,
   reasoningEffortsForModel,
@@ -207,9 +208,12 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
   if (!session) {
     return modelDefaultForProvider("codex");
   }
+  // A replaced id follows its successor before the catalog lookup, so a
+  // Sonnet 5 chat keeps a Sonnet row instead of dropping to the provider default.
+  const modelId = successorModelId(session.provider, session.modelId);
   // The catalog wins over the stored label when it recognizes the id: an
   // imported session's label is the provider's raw API id, not a chip name.
-  const label = modelLabelFor(session.provider, session.modelId);
+  const label = modelLabelFor(session.provider, modelId);
   if (!label) {
     // A model Argmax doesn't carry — an imported transcript can name anything,
     // and a retired model outlives its catalog entry. Fall back to that
@@ -224,14 +228,14 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
   // the ladder: `reasoningEffortsForModel` answers per provider, so it hands
   // Haiku the full Claude ladder for a model that has no effort at all.
   const supportsEffort =
-    PROVIDER_MODELS[session.provider].find((model) => model.modelId === session.modelId)
+    PROVIDER_MODELS[session.provider].find((model) => model.modelId === modelId)
       ?.supportsReasoningEffort === true;
   const reasoningEffort =
     session.reasoningEffort ??
-    (supportsEffort ? effortForModel(session.provider, session.modelId) : undefined);
+    (supportsEffort ? effortForModel(session.provider, modelId) : undefined);
   return {
     label,
-    modelId: session.modelId,
+    modelId,
     ...(reasoningEffort ? { reasoningEffort } : {})
   };
 }

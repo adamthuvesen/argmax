@@ -137,6 +137,9 @@ struct CatalogProvider: Codable, Hashable, Sendable, Identifiable {
     var titleModelId: String
     var defaultModel: ModelSelection
     var models: [CatalogModel]
+    /// Retired model id → the catalog id that replaced it. Optional so a
+    /// bundle written before the exporter carried the field still decodes.
+    var successors: [String: String]?
 }
 
 /// Names the bundle the app's code lives in. A class only because
@@ -189,8 +192,11 @@ struct ProviderCatalog: Codable, Sendable {
         providers.first { $0.id == id }
     }
 
+    /// The catalog row for an id, following a retired id to its successor.
     func model(provider: String, modelId: String) -> CatalogModel? {
-        self.provider(provider)?.models.first { $0.modelId == modelId }
+        guard let entry = self.provider(provider) else { return nil }
+        let wanted = entry.successors?[modelId] ?? modelId
+        return entry.models.first { $0.modelId == wanted }
     }
 
     /// Why a provider's rows in the model picker are dimmed, or nil when the

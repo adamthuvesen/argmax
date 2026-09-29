@@ -309,7 +309,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.getByText("Second answer.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Chat model" })).toHaveTextContent("Sonnet 5");
+    expect(screen.getByRole("button", { name: "Chat model" })).toHaveTextContent("Sonnet 5.5");
     expect(screen.queryByText("review-ready")).not.toBeInTheDocument();
     expect(screen.queryByText("complete")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second chat" })).toHaveAttribute("aria-current", "true");
@@ -916,7 +916,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
     const launchPopover = await screen.findByRole("listbox", { name: "Switch model" });
-    fireEvent.click(within(launchPopover).getByText("Sonnet 5"));
+    fireEvent.click(within(launchPopover).getByText("Sonnet 5.5"));
     const input = await screen.findByLabelText<HTMLInputElement>("Task prompt");
     fireEvent.change(input, { target: { value: "/" } });
 
@@ -1441,8 +1441,8 @@ describe("App sidebar", () => {
           id: "session-working",
           workspaceId: "workspace-working",
           provider: "claude",
-          modelLabel: "Sonnet 5",
-          modelId: "claude-sonnet-5",
+          modelLabel: "Sonnet 5.5",
+          modelId: "claude-sonnet-5-5",
           permissionMode: "auto-approve",
           providerConversationId: "session-working",
           prompt: "Working chat",
@@ -1462,8 +1462,8 @@ describe("App sidebar", () => {
           id: "session-other",
           workspaceId: "workspace-other",
           provider: "claude",
-          modelLabel: "Sonnet 5",
-          modelId: "claude-sonnet-5",
+          modelLabel: "Sonnet 5.5",
+          modelId: "claude-sonnet-5-5",
           permissionMode: "auto-approve",
           providerConversationId: "session-other",
           prompt: "Other chat",

@@ -59,7 +59,7 @@ derived artifacts. Launch a small session for it rather than doing it here, so t
 is spent on judgement.\n\
 \n\
 Pick the model per piece. Docs, wording, deck and cleanup passes go on a cheaper model — pass \
-`model: \"claude-sonnet-5\"` on session_launch — and the strong model is for method or analysis \
+`model: \"claude-sonnet-5-5\"` on session_launch — and the strong model is for method or analysis \
 work.\n\
 \n\
 Record durable repo facts with learnings_add as you get them, and check learnings_search before \
@@ -113,7 +113,7 @@ too: merging a branch, running the project's checks, rebuilding derived artifact
 session for it rather than doing it here, so this chat's context is spent on judgement.\n\
 \n\
 Pick the model per piece. Docs, wording, deck and cleanup passes go on a cheaper model — pass \
-`model: \"claude-sonnet-5\"` on session_launch — and the strong model is for method or analysis \
+`model: \"claude-sonnet-5-5\"` on session_launch — and the strong model is for method or analysis \
 work.\n\
 \n\
 Record durable repo facts with learnings_add as you get them, and check learnings_search before \
@@ -200,7 +200,7 @@ mod tests {
         let preamble = coordinator_preamble(&arc("Ship the thing."));
         assert!(preamble.contains("Read the clock with `date`"));
         assert!(preamble.contains("carry the time they were sent"));
-        assert!(preamble.contains("claude-sonnet-5"));
+        assert!(preamble.contains("claude-sonnet-5-5"));
         assert!(preamble.contains("learnings_add"));
         assert!(preamble.contains("learnings_search"));
     }
@@ -236,7 +236,7 @@ mod tests {
         assert!(preamble.contains("LOG.md is append-only history"));
         assert!(preamble.contains("Read the clock with `date`"));
         assert!(preamble.contains("Integration is a member's job too"));
-        assert!(preamble.contains("claude-sonnet-5"));
+        assert!(preamble.contains("claude-sonnet-5-5"));
         assert!(preamble.contains("learnings_add"));
         assert!(preamble.contains("`check_in_minutes` on session_launch"));
         assert!(preamble.contains("do not implement code yourself"));

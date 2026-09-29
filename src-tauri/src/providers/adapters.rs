@@ -240,11 +240,11 @@ fn cursor_structured_args(
 
 // Cursor picks reasoning effort and fast serving through the model id (e.g.
 // gpt-5.6-sol-high, claude-opus-5-thinking-xhigh-fast). Effort: GPT-5.6
-// Luna/Terra/Sol, Opus 5 Thinking, and Opus 5.5 are parameterized up to Max; Grok 4.7
+// Luna/Terra/Sol, Opus 5 Thinking, Opus 5.5, and Sonnet 5.5 are parameterized up to Max; Grok 4.7
 // stops at Extra High; Grok 4.6/4.5 and Gemini 3.8 Flash stop at High.
 // Composer has no effort variant and passes through. Fast: append "-fast"
 // after the effort suffix for every model that has a fast variant — all but
-// Gemini 3.8 Flash and the Auto routing modes. The renderer only enables the
+// Gemini 3.8 Flash, Sonnet 5.5, and the Auto routing modes. The renderer only enables the
 // Speed toggle for those, so this mirrors it. The adapter guard also protects
 // resumed sessions carrying a stale fast setting.
 //
@@ -263,7 +263,8 @@ fn cursor_model_for(
             | "gpt-5.6-terra-medium"
             | "gpt-5.6-sol-medium"
             | "claude-opus-5-thinking-medium"
-            | "claude-opus-5-5-medium",
+            | "claude-opus-5-5-medium"
+            | "claude-sonnet-5-5-medium",
             Some(effort),
         ) => {
             let family = model_id.trim_end_matches("-medium");
@@ -283,6 +284,7 @@ fn cursor_model_for(
         _ => model_id.to_string(),
     };
     let supports_fast_mode = !model_id.starts_with("gemini-3.8-flash")
+        && !model_id.starts_with("claude-sonnet-5-5")
         && !matches!(
             model_id,
             "auto-smart[optimize_for=cost]"
@@ -680,10 +682,25 @@ fn claude_settings_args(
 // PROVIDER_MODELS.claude (providerModels.ts). Only the launch flag carries the
 // suffix — the CLI reports the bare id back on every message, so usage rows and
 // pricing keep matching MODEL_PRICING.
-const CLAUDE_LONG_CONTEXT_MODELS: [&str; 3] =
-    ["claude-fable-5-1", "claude-opus-5-5", "claude-opus-5"];
+const CLAUDE_LONG_CONTEXT_MODELS: [&str; 4] = [
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-sonnet-5-5",
+];
+
+// A retired id launches as the model that replaced it, so a routine or chat
+// stored on it keeps running. Mirrors SUCCESSOR_MODEL_IDS.claude
+// (providerModels.ts).
+fn claude_successor_model(model_id: &str) -> &str {
+    match model_id {
+        "claude-sonnet-5" => "claude-sonnet-5-5",
+        other => other,
+    }
+}
 
 fn claude_model_arg(model_id: &str) -> String {
+    let model_id = claude_successor_model(model_id);
     if CLAUDE_LONG_CONTEXT_MODELS.contains(&model_id) {
         format!("{model_id}[1m]")
     } else {
@@ -778,7 +795,8 @@ mod tests {
             ("claude-opus-5", "claude-opus-5[1m]"),
             ("claude-opus-5-5", "claude-opus-5-5[1m]"),
             ("claude-fable-5-1", "claude-fable-5-1[1m]"),
-            ("claude-sonnet-5", "claude-sonnet-5"),
+            ("claude-sonnet-5-5", "claude-sonnet-5-5[1m]"),
+            ("claude-sonnet-5", "claude-sonnet-5-5[1m]"),
             ("claude-haiku-4-5", "claude-haiku-4-5"),
         ] {
             let input = ProviderLaunchInput {
@@ -1266,6 +1284,30 @@ mod tests {
             .position(|a| a == "--model")
             .expect("model flag");
         assert_eq!(args[i + 1], "gemini-3.8-flash-high");
+    }
+
+    #[test]
+    fn cursor_sonnet_55_effort_maps_to_variant_and_has_no_fast_suffix() {
+        let cases = [
+            (ReasoningEffort::Low, false, "claude-sonnet-5-5-low"),
+            (ReasoningEffort::High, false, "claude-sonnet-5-5-high"),
+            (ReasoningEffort::Max, false, "claude-sonnet-5-5-max"),
+            (ReasoningEffort::Ultra, true, "claude-sonnet-5-5-max"),
+        ];
+        for (effort, fast_mode, expected) in cases {
+            let input = ProviderLaunchInput {
+                model_id: "claude-sonnet-5-5-medium".to_string(),
+                reasoning_effort: Some(effort),
+                fast_mode,
+                ..launch_input(ProviderId::Cursor)
+            };
+            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
+            let i = args
+                .iter()
+                .position(|a| a == "--model")
+                .expect("model flag");
+            assert_eq!(args[i + 1], expected, "sonnet 5.5 effort {effort:?}");
+        }
     }
 
     #[test]

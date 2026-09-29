@@ -20,7 +20,9 @@ import {
 import {
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_MODEL_DEFAULTS,
-  PROVIDER_MODELS
+  PROVIDER_MODELS,
+  modelLabelFor,
+  successorModelId
 } from "../../../shared/providerModels.js";
 import {
   buildSchedule,
@@ -90,7 +92,8 @@ function draftFromRoutine(routine: Routine): DraftState {
     name: routine.name,
     projectId: routine.projectId,
     provider: routine.provider,
-    modelId: routine.modelId,
+    // A routine stored on a retired model edits and saves as its successor.
+    modelId: successorModelId(routine.provider, routine.modelId),
     prompt: routine.prompt,
     runTarget: routine.runTarget,
     arcId: routine.arcId,
@@ -464,7 +467,8 @@ export function ScheduledTasksPanel({
                         <span className="sched-dot" aria-hidden="true" />
                         {runTargetLabel(routine.runTarget)}
                         <span className="sched-dot" aria-hidden="true" />
-                        {PROVIDER_DISPLAY_NAMES[routine.provider]} {routine.modelLabel}
+                        {PROVIDER_DISPLAY_NAMES[routine.provider]}{" "}
+                        {modelLabelFor(routine.provider, routine.modelId) ?? routine.modelLabel}
                       </span>
                     </div>
 

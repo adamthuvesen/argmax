@@ -30,6 +30,13 @@ final class ProviderCatalogTests: XCTestCase {
         XCTAssertNotNil(catalog.model(provider: catalog.fallbackModel.provider, modelId: catalog.fallbackModel.modelId))
     }
 
+    /// A chat stored on a retired model reads and relaunches as its successor.
+    func testARetiredIdFollowsItsSuccessor() throws {
+        let sonnet = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-sonnet-5"))
+        XCTAssertEqual(sonnet.modelId, "claude-sonnet-5-5")
+        XCTAssertEqual(sonnet.label, "Sonnet 5.5")
+    }
+
     /// The ladders are resolved at export time because they are functions of
     /// the model id in TypeScript. Grok Build's CLI rejects anything above
     /// Extra High, so the phone must not offer Max or Ultra.
@@ -115,8 +122,8 @@ final class ProviderCatalogTests: XCTestCase {
     func testTheCatalogueCarriesContextWindows() throws {
         let opus = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-opus-5"))
         XCTAssertEqual(opus.contextWindow, 1_000_000)
-        let sonnet = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-sonnet-5"))
-        XCTAssertEqual(sonnet.contextWindow, 200_000)
+        let sonnet = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-sonnet-5-5"))
+        XCTAssertEqual(sonnet.contextWindow, 1_000_000)
         let withWindow = catalog.providers.flatMap(\.models).filter { $0.contextWindow != nil }
         XCTAssertGreaterThan(withWindow.count, 20, "the exporter dropped the field")
     }
@@ -152,6 +159,6 @@ final class ProviderCatalogTests: XCTestCase {
         for provider in catalog.providers {
             XCTAssertFalse(provider.titleModelId.isEmpty)
         }
-        XCTAssertEqual(catalog.provider("claude")?.titleModelId, "claude-sonnet-5")
+        XCTAssertEqual(catalog.provider("claude")?.titleModelId, "claude-sonnet-5-5")
     }
 }

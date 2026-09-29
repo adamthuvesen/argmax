@@ -197,14 +197,21 @@ pub(crate) fn decide(tier: AutoTier, classification: &Classification) -> RouteDe
         && difficulty == Difficulty::Heavy
         && classification.probability_at_least_bucket(Difficulty::Heavy) < BALANCED_HIGH_EFFORT
     {
-        // Balance's standard and heavy cells share a column; only the effort
-        // differs.
+        // Not confident it is heavy, so launch the standard cell at medium.
+        // Standard coding and research are Sonnet at high on their own.
         notes.push("not sure it is hard, medium effort");
         Difficulty::Standard
     } else {
         difficulty
     };
-    let routed = table::route(tier, kind, grid_difficulty, classification.is_ui());
+    let mut routed = table::route(tier, kind, grid_difficulty, classification.is_ui());
+    if grid_difficulty != difficulty
+        && routed
+            .effort
+            .is_some_and(|effort| table::rank(effort) > table::rank(ReasoningEffort::Medium))
+    {
+        routed.effort = Some(ReasoningEffort::Medium);
+    }
     let mut reason = format!("{} · {}", kind_label(kind), difficulty_label(difficulty));
     if classification.is_ui() {
         reason.push_str(" · UI");
@@ -333,10 +340,16 @@ mod tests {
 
     #[test]
     fn an_uninstalled_grid_pick_moves_to_an_installed_provider() {
-        let route = fallback_decision(AutoTier::Cost, "test");
+        // Light mechanical work is the Speed cell that still launches Cursor.
+        let route = decide(
+            AutoTier::Cost,
+            &classification(TaskKind::Mechanical, 1.0, 0.2, 0.9),
+        );
         assert_eq!(route.provider, ProviderId::Cursor);
+        assert_eq!(route.model_id, "composer-2.5");
         let moved = with_available_provider(route, &[ProviderId::Claude]);
         assert_eq!(moved.provider, ProviderId::Claude);
+        assert_eq!(moved.model_id, "claude-sonnet-5-5");
         assert!(moved.reason.contains("cursor unavailable"));
     }
 
@@ -388,8 +401,9 @@ mod tests {
             AutoTier::Balanced,
             &classification(TaskKind::Question, 0.4, 1.0, 0.3),
         );
-        // coding · light → standard → Balanced Value cell.
-        assert_eq!(decision.model_id, "claude-opus-5-5");
+        // coding · light → standard → Balance standard coding is Sonnet high.
+        assert_eq!(decision.model_id, "claude-sonnet-5-5");
+        assert_eq!(decision.effort, Some(ReasoningEffort::High));
         assert_eq!(decision.kind, Some(TaskKind::Coding));
         assert_eq!(decision.difficulty, Some(Difficulty::Standard));
         assert!(
@@ -414,7 +428,7 @@ mod tests {
         };
         let decision = decide(AutoTier::Balanced, &split);
         assert_eq!(decision.difficulty, Some(Difficulty::Standard));
-        assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
+        assert_eq!(decision.effort, Some(ReasoningEffort::High));
         assert_eq!(decision.reason, "coding · standard");
 
         let leaning_hard = Classification {
@@ -454,6 +468,7 @@ mod tests {
         };
         let decision = decide(AutoTier::Balanced, &leaning);
         assert_eq!(decision.difficulty, Some(Difficulty::Heavy));
+        assert_eq!(decision.model_id, "claude-sonnet-5-5");
         assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
         assert!(
             decision.reason.contains("medium effort"),
@@ -479,12 +494,12 @@ mod tests {
     fn balanced_ui_work_leaves_composer_and_records_its_signals() {
         let ui = Classification {
             ui: Some(0.97),
-            ..classification(TaskKind::Coding, 1.0, 1.0, 0.8)
+            ..classification(TaskKind::Mechanical, 1.0, 1.0, 0.8)
         };
         let decision = decide(AutoTier::Balanced, &ui);
         assert_eq!(decision.model_id, "claude-opus-5-5");
         assert_eq!(decision.effort, Some(ReasoningEffort::Low));
-        assert_eq!(decision.reason, "coding · light · UI");
+        assert_eq!(decision.reason, "mechanical · light · UI");
         let signals: serde_json::Value =
             serde_json::from_str(decision.signals.as_deref().expect("signals")).unwrap();
         assert_eq!(signals["ui"], 0.97);
@@ -493,8 +508,8 @@ mod tests {
     #[test]
     fn fallback_is_recorded_as_unrouted_and_follows_the_tier() {
         let decision = fallback_decision(AutoTier::Cost, "Jev request failed");
-        assert_eq!(decision.model_id, "composer-2.5");
-        assert_eq!(decision.effort, None);
+        assert_eq!(decision.model_id, "claude-sonnet-5-5");
+        assert_eq!(decision.effort, Some(ReasoningEffort::Medium));
         assert_eq!(decision.decision, RouteDecisionKind::Fallback);
         assert_eq!(decision.kind, None);
         assert_eq!(decision.reason, "unrouted: Jev request failed");

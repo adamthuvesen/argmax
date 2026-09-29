@@ -475,8 +475,8 @@ fn build_launch_input() -> ProvidersLaunchInput {
         workspace_id: WorkspaceId::try_from(WORKSPACE_ID.to_owned()).expect("workspace id valid"),
         provider: argmax_lib::ipc::validation::ProviderId::Claude,
         prompt: Prompt::try_from("hello world".to_owned()).expect("prompt valid"),
-        model_label: NonEmptyString::try_from("Sonnet 5".to_owned()).expect("label valid"),
-        model_id: NonEmptyString::try_from("claude-sonnet-5".to_owned()).expect("id valid"),
+        model_label: NonEmptyString::try_from("Sonnet 5.5".to_owned()).expect("label valid"),
+        model_id: NonEmptyString::try_from("claude-sonnet-5-5".to_owned()).expect("id valid"),
         reasoning_effort: None,
         fast_mode: false,
         agent_mode: None,
@@ -1601,10 +1601,10 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
             input: Prompt::try_from("queued after done".to_owned()).expect("prompt valid"),
             provider: None,
             model_label: Some(
-                NonEmptyString::try_from("Sonnet 5".to_owned()).expect("model label valid"),
+                NonEmptyString::try_from("Sonnet 5.5".to_owned()).expect("model label valid"),
             ),
             model_id: Some(
-                NonEmptyString::try_from("claude-sonnet-5".to_owned()).expect("model id valid"),
+                NonEmptyString::try_from("claude-sonnet-5-5".to_owned()).expect("model id valid"),
             ),
             reasoning_effort: None,
             fast_mode: true,
@@ -1633,8 +1633,8 @@ async fn queued_follow_up_drains_after_provider_thread_completion() {
     let launches = launcher.launches();
     assert_eq!(launches[0].prompt, "hello world");
     assert_eq!(launches[1].prompt, "queued after done");
-    assert_eq!(launches[1].model_label, "Sonnet 5");
-    assert_eq!(launches[1].model_id, "claude-sonnet-5");
+    assert_eq!(launches[1].model_label, "Sonnet 5.5");
+    assert_eq!(launches[1].model_id, "claude-sonnet-5-5");
     assert!(launches[1].fast_mode);
 
     // The drained user.message event re-persists the queued attachment so the
@@ -1881,8 +1881,8 @@ async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
 
     let launches = launcher.launches();
     assert_eq!(launches[1].provider, ProviderId::Claude);
-    assert_eq!(launches[1].model_label, "Sonnet 5");
-    assert_eq!(launches[1].model_id, "claude-sonnet-5");
+    assert_eq!(launches[1].model_label, "Sonnet 5.5");
+    assert_eq!(launches[1].model_id, "claude-sonnet-5-5");
     assert!(!launches[1].fast_mode);
 }
 
@@ -2266,8 +2266,8 @@ async fn terminate_during_follow_up_spawn_disposes_handle_on_resolve() {
                 id: "follow-up-cancel".to_owned(),
                 workspace_id: WORKSPACE_ID.to_owned(),
                 provider: "claude".to_owned(),
-                model_label: "Sonnet 5".to_owned(),
-                model_id: "claude-sonnet-5".to_owned(),
+                model_label: "Sonnet 5.5".to_owned(),
+                model_id: "claude-sonnet-5-5".to_owned(),
                 reasoning_effort: None,
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
@@ -2375,8 +2375,8 @@ async fn follow_up_send_input_returns_before_provider_spawn() {
                 id: "follow-up-fast-return".to_owned(),
                 workspace_id: WORKSPACE_ID.to_owned(),
                 provider: "claude".to_owned(),
-                model_label: "Sonnet 5".to_owned(),
-                model_id: "claude-sonnet-5".to_owned(),
+                model_label: "Sonnet 5.5".to_owned(),
+                model_id: "claude-sonnet-5-5".to_owned(),
                 reasoning_effort: None,
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
@@ -2447,8 +2447,8 @@ fn recover_orphaned_sessions_marks_running_rows_failed() {
             id: "orphan-1".to_owned(),
             workspace_id: WORKSPACE_ID.to_owned(),
             provider: "claude".to_owned(),
-            model_label: "Sonnet 5".to_owned(),
-            model_id: "claude-sonnet-5".to_owned(),
+            model_label: "Sonnet 5.5".to_owned(),
+            model_id: "claude-sonnet-5-5".to_owned(),
             reasoning_effort: None,
             permission_mode: Some("auto-approve".to_owned()),
             agent_mode: Some("auto".to_owned()),
@@ -2501,8 +2501,8 @@ fn recover_orphaned_sessions_tells_the_chat_that_dispatched_a_multitask() {
                 id: id.to_owned(),
                 workspace_id: WORKSPACE_ID.to_owned(),
                 provider: "claude".to_owned(),
-                model_label: "Sonnet 5".to_owned(),
-                model_id: "claude-sonnet-5".to_owned(),
+                model_label: "Sonnet 5.5".to_owned(),
+                model_id: "claude-sonnet-5-5".to_owned(),
                 reasoning_effort: None,
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),
@@ -2567,8 +2567,8 @@ fn recover_orphaned_sessions_marks_waiting_and_blocked_rows_failed() {
                 id: session_id.to_owned(),
                 workspace_id: WORKSPACE_ID.to_owned(),
                 provider: "claude".to_owned(),
-                model_label: "Sonnet 5".to_owned(),
-                model_id: "claude-sonnet-5".to_owned(),
+                model_label: "Sonnet 5.5".to_owned(),
+                model_id: "claude-sonnet-5-5".to_owned(),
                 reasoning_effort: None,
                 permission_mode: Some("auto-approve".to_owned()),
                 agent_mode: Some("auto".to_owned()),

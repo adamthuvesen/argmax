@@ -26,7 +26,7 @@
   --sidebar: color-mix(in oklab, color-mix(in oklab, #f1f0e9, #f6f6f5 var(--background-whiteness)), #000000 var(--background-dim));
   --panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --review-panel: color-mix(in oklab, color-mix(in oklab, #f1f0e9, #f6f6f5 var(--background-whiteness)), #000000 var(--background-dim));
-  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #efeee6, #f2f2f1 var(--background-whiteness)), #000000 var(--background-dim));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #f2f1ea, #f5f5f4 var(--background-whiteness)), #000000 var(--background-dim));
   --panel-soft: color-mix(in oklab, color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --composer-surface: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel-sunken: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));

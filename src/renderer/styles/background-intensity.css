@@ -23,10 +23,10 @@
   --background-whiteness: calc(max(0, var(--background-intensity) - 10) / 90 * 100%);
   --background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);
   --bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --sidebar: color-mix(in oklab, color-mix(in oklab, #f1f0e9, #f6f6f5 var(--background-whiteness)), #000000 var(--background-dim));
+  --sidebar: color-mix(in oklab, color-mix(in oklab, #f4f3ee, #f9f9f8 var(--background-whiteness)), #000000 var(--background-dim));
   --panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --review-panel: color-mix(in oklab, color-mix(in oklab, #f1f0e9, #f6f6f5 var(--background-whiteness)), #000000 var(--background-dim));
-  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #f2f1ea, #f5f5f4 var(--background-whiteness)), #000000 var(--background-dim));
+  --review-panel: color-mix(in oklab, color-mix(in oklab, #f4f3ee, #f9f9f8 var(--background-whiteness)), #000000 var(--background-dim));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ec, #f8f8f7 var(--background-whiteness)), #000000 var(--background-dim));
   --panel-soft: color-mix(in oklab, color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --composer-surface: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel-sunken: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));

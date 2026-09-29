@@ -1,7 +1,7 @@
 /**
  * How strongly the app background follows the active theme, a whole number
  * from 0 to 100. Dark mode runs from a lifted charcoal at 0 through the shipped
- * palette at 70 to pure black at 100; light mode runs from soft gray at 0
+ * palette at 70 to a deep near-black at 100; light mode runs from soft gray at 0
  * through warm paper at 10 to pure white at 100. The arithmetic lives in
  * styles/background-intensity.css.
  */
@@ -20,7 +20,7 @@ export const BACKGROUND_INTENSITY_PRESETS: readonly BackgroundIntensity[] = [0, 
 export function backgroundIntensityHint(intensity: BackgroundIntensity): string {
   if (intensity === DEFAULT_BACKGROUND_INTENSITY) return "Default.";
   if (intensity === BACKGROUND_INTENSITY_MIN) return "Lightest: light gray in dark mode, soft gray in light mode.";
-  if (intensity === BACKGROUND_INTENSITY_MAX) return "Pure black in dark mode, pure white in light mode.";
+  if (intensity === BACKGROUND_INTENSITY_MAX) return "Deepest near-black in dark mode, pure white in light mode.";
   return intensity < DEFAULT_BACKGROUND_INTENSITY ? "Softer than default." : "Stronger than default.";
 }
 

@@ -226,7 +226,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(DEFAULT_BACKGROUND_INTENSITY).toBe(70);
     // The dark formulas are anchored on 70, the default, where both pulls are zero.
     expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, 70 - var(--background-intensity)) / 70");
-    expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, var(--background-intensity) - 70) / 30");
+    expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, var(--background-intensity) - 70) / 30 * 67%");
     expect(styles.indexOf('url("./styles/tokens.css")')).toBeLessThan(
       styles.indexOf('url("./styles/background-intensity.css")')
     );
@@ -285,7 +285,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       "--bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
     );
 
-    // 100 is pure black for the page, sidebars, code and terminal grounds.
+    // The dark grounds fall toward black, but 100 stops 67% of the way there.
     for (const surface of ["bg", "panel-sunken", "code-surface", "terminal-surface"]) {
       expect(dark, surface).toMatch(new RegExp(`--${surface}: .* #000000 var\\(--background-fall\\)\\);`));
     }

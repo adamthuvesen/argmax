@@ -821,13 +821,14 @@ fn normalize_json_payload(
     if speaks_claude_stream_json(provider) && timeline_type == "message.completed" {
         context.claude_turn_answer_emitted = true;
     }
-    // Grok never closes a turn with the `assistant` envelope that arms the
-    // guard above (see claude.rs::streamed_tool_use_block) — its answer exists
-    // only as `text_delta` bursts — so the trailing `result` used to synthesize
-    // a second bubble holding every burst concatenated. An answer delta arms it
-    // instead: the result only speaks when the deltas did not. A `thinking_delta`
-    // is reasoning, not an answer, so a turn that only reasons and then answers
-    // through `result` alone keeps that fallback.
+    // Grok's CLI never closed a turn with the `assistant` envelope that arms
+    // the guard above (see claude.rs::streamed_tool_use_block), and the ACP
+    // bridge only sends one when a burst closes (grok_acp.rs::close_answer),
+    // so the trailing `result` used to synthesize a second bubble holding
+    // every burst concatenated. An answer delta arms it as well: the result
+    // only speaks when the deltas did not. A `thinking_delta` is reasoning,
+    // not an answer, so a turn that only reasons and then answers through
+    // `result` alone keeps that fallback.
     if provider == ProviderId::Grok
         && timeline_type == "message.delta"
         && provider_type.as_deref() == Some("content_block_delta")

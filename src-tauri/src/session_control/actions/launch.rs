@@ -736,7 +736,7 @@ mod auto_model_tests {
     #[test]
     fn auto_model_names_pick_a_tier_and_reject_unknown_ones() {
         assert_eq!(auto_tier_from_model(None).ok(), Some(None));
-        assert_eq!(auto_tier_from_model(Some("gpt-6-sol")).ok(), Some(None));
+        assert_eq!(auto_tier_from_model(Some("gpt-6.1-sol")).ok(), Some(None));
         assert_eq!(
             auto_tier_from_model(Some("auto")).ok(),
             Some(Some(AutoTier::Balanced))
@@ -762,7 +762,7 @@ mod auto_model_tests {
             Some(Some(AutoTier::Intelligence))
         );
         assert_eq!(
-            launch_auto_tier(Some("gpt-6-sol"), false, parent).ok(),
+            launch_auto_tier(Some("gpt-6.1-sol"), false, parent).ok(),
             Some(None)
         );
         assert_eq!(launch_auto_tier(None, true, parent).ok(), Some(None));

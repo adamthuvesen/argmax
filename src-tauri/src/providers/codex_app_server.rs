@@ -434,7 +434,9 @@ fn apply_permission_policy(
 fn effective_effort(input: &ProviderLaunchInput) -> Option<&'static str> {
     let effort = input.reasoning_effort?;
     Some(match input.model_id.as_str() {
-        "gpt-6-astra" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
+        "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => {
+            effort.as_str()
+        }
         "gpt-6-luna" | "gpt-5.6-luna" if effort.as_str() == "ultra" => "max",
         "gpt-6-luna" | "gpt-5.6-luna" => effort.as_str(),
         _ if matches!(effort.as_str(), "max" | "ultra") => "xhigh",
@@ -1763,7 +1765,7 @@ done
             ("gpt-6-astra", ReasoningEffort::High),
             ("gpt-6-astra", ReasoningEffort::Low),
             ("gpt-6-astra", ReasoningEffort::High),
-            ("gpt-6-sol", ReasoningEffort::Medium),
+            ("gpt-6.1-sol", ReasoningEffort::Medium),
             ("gpt-6-astra", ReasoningEffort::High),
         ];
         for (index, (model, effort)) in selections.iter().enumerate() {

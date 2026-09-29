@@ -1575,8 +1575,8 @@ pub struct ProviderDefaults {
 pub fn provider_defaults(provider: &str) -> ProviderDefaults {
     match provider {
         "codex" => ProviderDefaults {
-            model_label: "GPT-6 Sol",
-            model_id: "gpt-6-sol",
+            model_label: "GPT-6.1 Sol",
+            model_id: "gpt-6.1-sol",
             reasoning_effort: Some("medium"),
         },
         "cursor" => ProviderDefaults {

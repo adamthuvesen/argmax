@@ -56,7 +56,7 @@ pub struct SessionLaunchParams {
     /// the provider running this session.
     pub provider: Option<String>,
     /// Model id for that provider, as listed in Argmax's model picker (for
-    /// example claude-opus-5 or gpt-6-sol). Defaults to this session's model,
+    /// example claude-opus-5 or gpt-6.1-sol). Defaults to this session's model,
     /// or to its Auto tier when this session runs on Auto and `provider` is
     /// not given either. `auto`, `auto:cost`, `auto:balanced` or
     /// `auto:intelligence` lets the router pick provider, model and effort

@@ -264,7 +264,7 @@ not price.
 | Provider | Ladder |
 |---|---|
 | Claude | Opus 5.5 · medium → Opus 5.5 · high → Fable 5.1 · high → Fable 5.1 · xhigh |
-| Codex | GPT-6 Sol · medium → Sol · high → GPT-6 Astra · high → Astra · xhigh |
+| Codex | GPT-6.1 Sol · medium → Sol · high → GPT-6 Astra · high → Astra · xhigh |
 | Cursor | Composer 2.5 → Claude Opus 5.5 (Cursor) · medium → · high |
 | Grok | Grok 4.7 · low → · medium → · high → **Opus 5.5 · high on Claude** |
 

@@ -75,13 +75,13 @@ describe("App", () => {
   it("restores the persisted launcher default model", async () => {
     persistLaunchModel({
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "high"
     });
     render(<App />);
 
-    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-6 Sol");
+    expect(await screen.findByRole("button", { name: "Switch model" })).toHaveTextContent("GPT-6.1 Sol");
   });
 
   it("moves a provider-switch screenshot to the launcher without mixing in its old draft", async () => {
@@ -173,10 +173,10 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(await screen.findByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6 Sol" })
+      within(await screen.findByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6.1 Sol" })
     );
     const initialLabel = screen.getByRole("button", { name: "Chat model" }).textContent ?? "";
-    expect(initialLabel).toContain("GPT-6 Sol");
+    expect(initialLabel).toContain("GPT-6.1 Sol");
 
     // A pick is session scoped. Deltas for the same session, even one that
     // swaps its model, must not overwrite it while the session stays selected.

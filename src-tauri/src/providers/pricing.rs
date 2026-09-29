@@ -36,6 +36,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "claude-sonnet-5-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-haiku-4-5" => ModelPricing { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 },
     "gpt-6-astra" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
+    "gpt-6.1-sol" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "gpt-6-sol" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "gpt-6-luna" => ModelPricing { input: 0.1, output: 0.5, cache_read: 0.01, cache_write: 0.125 },
     // Promotional rate, promised through at least 2026-11-21.

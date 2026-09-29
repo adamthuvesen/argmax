@@ -31,7 +31,7 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
     });
     expect(PROVIDER_MODEL_DEFAULTS.claude.reasoningEffort).toBeUndefined();
     expect(PROVIDER_MODEL_DEFAULTS.codex).toMatchObject({
-      modelId: "gpt-6-sol",
+      modelId: "gpt-6.1-sol",
       supportsReasoningEffort: true
     });
     expect(PROVIDER_MODEL_DEFAULTS.codex.reasoningEffort).toBeUndefined();
@@ -128,7 +128,7 @@ describe("reasoningEffortsForModel", () => {
       "max",
       "ultra"
     ]);
-    expect(reasoningEffortsForModel("codex", "gpt-6-sol")).toEqual([
+    expect(reasoningEffortsForModel("codex", "gpt-6.1-sol")).toEqual([
       "low",
       "medium",
       "high",
@@ -156,7 +156,7 @@ describe("reasoningEffortsForModel", () => {
   it("lists Codex models Astra → Sol → Terra → Luna", () => {
     expect(PROVIDER_MODELS.codex.map((model) => model.modelId)).toEqual([
       "gpt-6-astra",
-      "gpt-6-sol",
+      "gpt-6.1-sol",
       "gpt-5.6-terra",
       "gpt-6-luna"
     ]);
@@ -176,7 +176,7 @@ describe("normalizeModelId", () => {
 
   it("leaves bare ids untouched", () => {
     expect(normalizeModelId("claude-sonnet-5-5")).toBe("claude-sonnet-5-5");
-    expect(normalizeModelId("gpt-6-sol")).toBe("gpt-6-sol");
+    expect(normalizeModelId("gpt-6.1-sol")).toBe("gpt-6.1-sol");
   });
 
   it("does not strip non-date trailing suffixes", () => {
@@ -230,8 +230,8 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(million, "claude-haiku-4-5")).toBeCloseTo(1.0, 9);
   });
 
-  it("prices GPT-6 Sol input-only at $2/M", () => {
-    expect(costOf(million, "gpt-6-sol")).toBeCloseTo(2.0, 9);
+  it("prices GPT-6.1 Sol input-only at $2/M", () => {
+    expect(costOf(million, "gpt-6.1-sol")).toBeCloseTo(2.0, 9);
   });
 
   it("prices GPT-6 Astra at its current list rates", () => {
@@ -300,7 +300,7 @@ describe("MODEL_PRICING coverage", () => {
   it("ships entries for the launch-default model ids", () => {
     expect(MODEL_PRICING["claude-sonnet-5-5"]).toBeDefined();
     expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
-    expect(MODEL_PRICING["gpt-6-sol"]).toBeDefined();
+    expect(MODEL_PRICING["gpt-6.1-sol"]).toBeDefined();
     expect(MODEL_PRICING["gpt-6-astra"]).toBeDefined();
     expect(MODEL_PRICING["claude-opus-5"]).toBeDefined();
     expect(MODEL_PRICING["grok-4.7-medium"]).toBeDefined();

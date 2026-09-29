@@ -39,8 +39,8 @@ describe("ModelSelector — one row per model", () => {
 
   it("keeps GPT-6 Astra above Sol in the Codex picker", () => {
     const value: ProviderModelSelection = {
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "medium"
     };
     render(<ModelSelector ariaLabel="Chat model" provider="codex" value={value} onChange={vi.fn()} />);
@@ -49,7 +49,7 @@ describe("ModelSelector — one row per model", () => {
     const options = within(screen.getByRole("listbox", { name: "Chat model" })).getAllByRole("option");
     expect(options.map((option) => optionName(option))).toEqual([
       "GPT-6 Astra",
-      "GPT-6 Sol",
+      "GPT-6.1 Sol",
       "GPT-5.6 Terra",
       "GPT-6 Luna"
     ]);
@@ -303,8 +303,8 @@ describe("LaunchModelSelector — all providers", () => {
   it("shows speed in the model picker and toggles fast mode", () => {
     const value: ModelPickerSelection = {
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "medium"
     };
     const onFastModeEnabledChange = vi.fn();
@@ -339,8 +339,8 @@ describe("LaunchModelSelector — all providers", () => {
   it("positions the model flyout and speed submenu with the shared primitive", async () => {
     const value: ModelPickerSelection = {
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "high"
     };
     render(
@@ -370,8 +370,8 @@ describe("LaunchModelSelector — all providers", () => {
   it("marks fast mode in the closed chip for a supported model", () => {
     const value: ModelPickerSelection = {
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "medium"
     };
     render(
@@ -384,7 +384,7 @@ describe("LaunchModelSelector — all providers", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute("title", "GPT-6 Sol · Fast speed");
+    expect(screen.getByRole("button", { name: "Launch model" })).toHaveAttribute("title", "GPT-6.1 Sol · Fast speed");
   });
 
   const unsupportedFastModeModels = (["claude", "cursor", "opencode", "grok"] as const)
@@ -452,7 +452,7 @@ describe("LaunchModelSelector — all providers", () => {
 
   it.each([
     { provider: "codex" as const, label: "GPT-6 Astra", modelId: "gpt-6-astra" },
-    { provider: "codex" as const, label: "GPT-6 Sol", modelId: "gpt-6-sol" },
+    { provider: "codex" as const, label: "GPT-6.1 Sol", modelId: "gpt-6.1-sol" },
     { provider: "codex" as const, label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
     { provider: "codex" as const, label: "GPT-6 Luna", modelId: "gpt-6-luna" },
     { provider: "grok" as const, label: "Grok 4.7", modelId: "grok-4.7" }
@@ -486,7 +486,7 @@ describe("LaunchModelSelector — all providers", () => {
 
 describe("LaunchModelSelector — provider availability gating", () => {
   // The Codex row, by name: annotated ("… not installed") when gated.
-  const CODEX_SOL_ROW = /^GPT-6 Sol/;
+  const CODEX_SOL_ROW = /^GPT-6.1 Sol/;
   const CLAUDE_VALUE: ModelPickerSelection = {
     provider: "claude",
     label: "Opus 5.5",
@@ -630,8 +630,8 @@ describe("ModelSelector — standalone effort slider", () => {
   it("caps the Codex Astra/Sol/Terra effort slider at Ultra", () => {
     const value: ModelPickerSelection = {
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "medium"
     };
     render(<LaunchModelSelector ariaLabel="Chat model" value={value} onChange={vi.fn()} withEffortSlider />);
@@ -702,11 +702,11 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       modelId: "claude-opus-5-5",
       reasoningEffort: "max"
     });
-    fireEvent.click(screen.getByRole("button", { name: "GPT-6 Sol" }));
+    fireEvent.click(screen.getByRole("button", { name: "GPT-6.1 Sol" }));
     expect(onChange).toHaveBeenCalledWith({
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "max"
     });
   });
@@ -718,11 +718,11 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       modelId: "claude-opus-5-5",
       reasoningEffort: "ultra"
     });
-    fireEvent.click(screen.getByRole("button", { name: "GPT-6 Sol" }));
+    fireEvent.click(screen.getByRole("button", { name: "GPT-6.1 Sol" }));
     expect(onChange).toHaveBeenCalledWith({
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "ultra"
     });
   });
@@ -746,8 +746,8 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
   it("keeps Extra High (never promotes to Ultra) switching Codex → Claude", () => {
     const onChange = openWith({
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "xhigh"
     });
     fireEvent.click(screen.getByText("Opus 5.5"));

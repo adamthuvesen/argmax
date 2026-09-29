@@ -735,7 +735,9 @@ fn codex_reasoning_args(input: &ProviderLaunchInput) -> Vec<String> {
 // Clamp is a backstop for provider-switch and resume paths that skip the picker.
 fn codex_effort_value(model_id: &str, effort: ReasoningEffort) -> &'static str {
     match model_id {
-        "gpt-6-astra" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
+        "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => {
+            effort.as_str()
+        }
         "gpt-6-luna" | "gpt-5.6-luna" => match effort {
             ReasoningEffort::Ultra => "max",
             other => other.as_str(),

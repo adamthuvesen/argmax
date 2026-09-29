@@ -81,8 +81,8 @@ pub const FABLE: RouteModel = RouteModel {
 };
 pub const SOL: RouteModel = RouteModel {
     provider: ProviderId::Codex,
-    model_id: "gpt-6-sol",
-    label: "GPT-6 Sol",
+    model_id: "gpt-6.1-sol",
+    label: "GPT-6.1 Sol",
     efforts: CODEX_EFFORTS,
 };
 pub const ASTRA: RouteModel = RouteModel {
@@ -335,7 +335,7 @@ pub fn follow_up_target(
 pub(crate) fn capability(model_id: &str) -> Option<usize> {
     match model_id {
         "composer-2.5" | "grok-4.7" | "claude-sonnet-5-5" => Some(0),
-        "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6-sol" => Some(1),
+        "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6.1-sol" | "gpt-6-sol" => Some(1),
         "claude-fable-5-1" | "gpt-6-astra" => Some(2),
         _ => None,
     }
@@ -588,7 +588,7 @@ mod tests {
         );
         assert_eq!(
             target(ProviderId::Codex, TaskKind::Coding, Difficulty::Heavy).as_deref(),
-            Some("GPT-6 Sol · high")
+            Some("GPT-6.1 Sol · high")
         );
         assert_eq!(
             target(ProviderId::Codex, TaskKind::Review, Difficulty::Heavy).as_deref(),

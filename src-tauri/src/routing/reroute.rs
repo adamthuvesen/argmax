@@ -669,7 +669,7 @@ mod tests {
 
     #[test]
     fn return_to_hard_task_restores_capability() {
-        let chat = state(ProviderId::Codex, "gpt-6-sol", Some(Low));
+        let chat = state(ProviderId::Codex, "gpt-6.1-sol", Some(Low));
         let mut task = classified(TaskKind::Research, 3.5, 0.95);
         task.follow_up_scope = Some(FollowUpScope::Continuation);
         task.simpler_task = Some(0.0);
@@ -713,7 +713,7 @@ mod tests {
         );
         assert_eq!(
             (decision.model_id.as_str(), decision.effort),
-            ("gpt-6-sol", Some(High))
+            ("gpt-6.1-sol", Some(High))
         );
         assert!(decision.reason.contains("cover the cache rebuild"));
     }
@@ -765,7 +765,7 @@ mod tests {
         let task = classified(TaskKind::Mechanical, 0.0, 0.95);
         let decision = follow_up_route(&chat, &task);
         assert_eq!(decision.decision, RouteDecisionKind::Reroute);
-        assert_eq!(decision.model_id, "gpt-6-sol");
+        assert_eq!(decision.model_id, "gpt-6.1-sol");
     }
 
     #[test]
@@ -819,7 +819,7 @@ mod tests {
                 "claude-opus-5-5",
                 Some(High),
             ),
-            ("gpt-6-sol", Some(High), "gpt-6-astra", Some(High)),
+            ("gpt-6.1-sol", Some(High), "gpt-6-astra", Some(High)),
             ("composer-2.5", None, "claude-opus-5-5-medium", Some(Medium)),
             (
                 "claude-opus-5-5-medium",

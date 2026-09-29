@@ -44,9 +44,10 @@ import {
   type InkStrength
 } from "./inkStrength.js";
 import {
-  BACKGROUND_INTENSITY_HINTS,
   BACKGROUND_INTENSITY_MAX,
   BACKGROUND_INTENSITY_MIN,
+  BACKGROUND_INTENSITY_PRESETS,
+  backgroundIntensityHint,
   type BackgroundIntensity
 } from "./backgroundIntensity.js";
 import { THEME_OPTIONS, type ThemeMode } from "./theme.js";
@@ -122,10 +123,7 @@ const INK_STRENGTH_LEVELS: InkStrength[] = Array.from(
   (_, index) => (INK_STRENGTH_MIN + index) as InkStrength
 );
 
-const BACKGROUND_INTENSITY_LEVELS: BackgroundIntensity[] = Array.from(
-  { length: BACKGROUND_INTENSITY_MAX - BACKGROUND_INTENSITY_MIN + 1 },
-  (_, index) => (BACKGROUND_INTENSITY_MIN + index) as BackgroundIntensity
-);
+const BACKGROUND_INTENSITY_STEP = 10;
 
 /**
  * Rows for one 1–10 type-size slider: a step in each direction, then every
@@ -242,26 +240,27 @@ function backgroundIntensityCommands(
   onChange: (intensity: BackgroundIntensity) => void
 ): PaletteItem[] {
   const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
-    const next = direction === "stronger" ? current + 1 : current - 1;
-    const inRange = next >= BACKGROUND_INTENSITY_MIN && next <= BACKGROUND_INTENSITY_MAX;
+    const target = direction === "stronger" ? current + BACKGROUND_INTENSITY_STEP : current - BACKGROUND_INTENSITY_STEP;
+    const next = Math.min(BACKGROUND_INTENSITY_MAX, Math.max(BACKGROUND_INTENSITY_MIN, target));
+    const inRange = next !== current;
     return {
       id: `setting:background-intensity:${direction}`,
       label: `Background intensity: ${direction}`,
       subtitle: inRange
-        ? `Page color · now level ${current}`
+        ? `Page color · now ${current}`
         : `Page color · already the ${direction === "stronger" ? "strongest" : "softest"} background`,
       group: "Actions",
       icon: Contrast,
       keepOpen: true,
       run: () => {
-        if (inRange) onChange(next as BackgroundIntensity);
+        if (inRange) onChange(next);
       }
     };
   };
-  const levels: PaletteItem[] = BACKGROUND_INTENSITY_LEVELS.map((level) => ({
+  const levels: PaletteItem[] = BACKGROUND_INTENSITY_PRESETS.map((level) => ({
     id: `setting:background-intensity:${level}`,
     label: `Background intensity ${level}`,
-    subtitle: `Page color · ${BACKGROUND_INTENSITY_HINTS[level]}`,
+    subtitle: `Page color · ${backgroundIntensityHint(level)}`,
     group: "Actions",
     icon: level === current ? Check : Contrast,
     run: () => onChange(level)

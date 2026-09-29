@@ -16,7 +16,7 @@ Argmax uses plain CSS in [src/renderer/styles.css](../src/renderer/styles.css) w
 
 Keep individual surface files under 1,000 lines. Aggregator files should only contain imports.
 
-`background-intensity.css` follows `tokens.css` and overrides neutral surface colors per intensity level: every light level, and every dark level except 7. Keep the original palette in `tokens.css` so dark level 7, and any page without the attribute, retains its exact colors.
+`background-intensity.css` follows `tokens.css` and derives neutral surface colors from one 0–100 intensity number (`--background-intensity`, set on `<html>` by `lib/backgroundIntensity.ts`) with `calc()` and nested `color-mix()`; there is no rung table. Keep the original palette in `tokens.css` so dark 70, the default, and any page without the attribute, retains its exact colors.
 
 ## Core Design Constraints
 
@@ -53,7 +53,7 @@ Keep individual surface files under 1,000 lines. Aggregator files should only co
   - Terminal surfaces resolve `--text-terminal` in pixels via helpers in `src/renderer/lib/fonts.ts` using `@property` length registrations.
 - **Focus Rings:** Global focus uses `outline: none` and `box-shadow: inset 0 0 0 1.5px var(--line-strong)`. Specific controls use `var(--ring)`.
 
-- **Background intensity:** Settings → Appearance offers levels 1–10, stored per browser in `argmax.background.intensity` and applied through `<html data-background-intensity>`. Light mode runs from slightly cream paper at level 1 to pure white at level 10 in nine equal oklab steps: surfaces mix between their own cream and white endpoints, so the offsets between chrome, panels, and recessed surfaces shrink evenly toward white. The queued composer tray keeps a small text tint so it remains distinct at the white endpoint. The cream end is the shipped palette moved 40% toward heavy paper stock, tinted by Anthropic's ivory (`#f0eee6`); lines and scrollbars stay grey at level 10 so borders still separate surfaces there. Dark mode keeps level 7 as the shipped palette, softens with finer steps below it, and stops at a very dark gray above it so those rungs stay evenly spaced. Shared surface tokens move with the page, including composers, model pickers, workspace cards, review panels, and overlays. The preference follows the resolved theme in System mode and works alongside ink strength.
+- **Background intensity:** Settings → Appearance offers a 0–100 slider, stored per browser in `argmax.background.level` (the old 1–10 `argmax.background.intensity` carries over as level × 10) and applied through `<html data-background-intensity>` plus `--background-intensity`. Light mode runs from soft gray at 0 (paper dimmed by up to 14% black) through warm paper at 10 (tinted by Anthropic's ivory, `#f0eee6`) to pure white at 100; above 10 surfaces mix between their own paper and white endpoints, so the offsets between chrome, panels, and recessed surfaces shrink evenly toward white, and lines and scrollbars stay grey at 100 so borders still separate surfaces. Dark mode keeps 70 as the shipped palette, lifts toward a lighter charcoal down to 0, and falls to pure black at 100 for the page, sidebars, code, and terminal (cards and lines keep a small step). Shared surface tokens move with the page, including composers, model pickers, workspace cards, review panels, and overlays. The preference follows the resolved theme in System mode and works alongside ink strength.
 
 ## Tokens
 

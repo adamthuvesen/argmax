@@ -55,7 +55,7 @@ it("applies display preferences from Actions to the desktop and saved settings",
     { query: "App font size 8", key: FONT_SIZE_STORAGE_KEY, value: "8", attribute: "data-font-size" },
     { query: "Chat font size 7", key: CHAT_FONT_SIZE_STORAGE_KEY, value: "7" },
     { query: "Ink strength 3", key: INK_STRENGTH_STORAGE_KEY, value: "3", attribute: "data-ink-strength" },
-    { query: "Background intensity 4", key: BACKGROUND_INTENSITY_STORAGE_KEY, value: "4", attribute: "data-background-intensity" },
+    { query: "Background intensity 50", key: BACKGROUND_INTENSITY_STORAGE_KEY, value: "50", attribute: "data-background-intensity" },
     { query: "Chat width 5", key: CHAT_WIDTH_KEY, value: "5" }
   ];
   for (const choice of choices) {

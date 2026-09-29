@@ -100,4 +100,4 @@ The request carries a target state rather than "toggle" on purpose: a pane mount
 
 Terminal tabs use fully rounded corners and the mode switcher's flat `--row-selected` fill, without a ring or shadow in either theme.
 
-The terminal surface sits on `--bg`, a shade below the panel, so a shell reads as a window onto the machine rather than as more chrome. Background intensity also updates the xterm canvas through `--terminal-surface`. Level 7 keeps the original terminal palette. Other levels scale its background with the page, and the runtime observes `data-background-intensity` so open terminals update immediately.
+The terminal surface sits on `--bg`, a shade below the panel, so a shell reads as a window onto the machine rather than as more chrome. Background intensity also updates the xterm canvas through `--terminal-surface`. Dark 70 keeps the original terminal palette. Other values scale its background with the page, and the runtime observes `data-background-intensity` so open terminals update immediately.

@@ -25,7 +25,7 @@ function inputWith(overrides: Partial<SettingCommandsInput> = {}): SettingComman
     onFontHeavinessChange: vi.fn(),
     inkStrength: 7,
     onInkStrengthChange: vi.fn(),
-    backgroundIntensity: 7,
+    backgroundIntensity: 70,
     onBackgroundIntensityChange: vi.fn(),
     desktopNotificationsEnabled: true,
     onDesktopNotificationsEnabledChange: vi.fn(),
@@ -59,7 +59,7 @@ describe("buildSettingCommands", () => {
     byId.get("setting:chat-font-size:2")!.run();
     byId.get("setting:font-heaviness:8")!.run();
     byId.get("setting:ink-strength:3")!.run();
-    byId.get("setting:background-intensity:4")!.run();
+    byId.get("setting:background-intensity:50")!.run();
     byId.get("setting:notifications:disable")!.run();
     byId.get("setting:keep-awake:enable")!.run();
     byId.get("setting:fast-mode:enable")!.run();
@@ -76,7 +76,7 @@ describe("buildSettingCommands", () => {
     expect(input.onChatFontSizeChange).toHaveBeenCalledWith(2);
     expect(input.onFontHeavinessChange).toHaveBeenCalledWith(8);
     expect(input.onInkStrengthChange).toHaveBeenCalledWith(3);
-    expect(input.onBackgroundIntensityChange).toHaveBeenCalledWith(4);
+    expect(input.onBackgroundIntensityChange).toHaveBeenCalledWith(50);
     expect(input.onDesktopNotificationsEnabledChange).toHaveBeenCalledWith(false);
     expect(input.onKeepAwakeEnabledChange).toHaveBeenCalledWith(true);
     expect(input.onFastModeEnabledChange).toHaveBeenCalledWith(true);
@@ -101,7 +101,7 @@ describe("buildSettingCommands", () => {
       "setting:chat-font-size:6",
       "setting:font-heaviness:5",
       "setting:ink-strength:7",
-      "setting:background-intensity:7"
+      "setting:background-intensity:70"
     ]);
   });
 
@@ -169,7 +169,7 @@ describe("buildSettingCommands", () => {
     expect(top("chat font larger")).toBe("Chat font size: larger");
     expect(top("ink strength 2")).toBe("Ink strength 2");
     expect(top("ink softer")).toBe("Ink strength: softer");
-    expect(top("background intensity 2")).toBe("Background intensity 2");
+    expect(top("background intensity 25")).toBe("Background intensity 25");
     expect(top("background softer")).toBe("Background intensity: softer");
   });
 });

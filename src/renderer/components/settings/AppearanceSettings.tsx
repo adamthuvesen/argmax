@@ -44,7 +44,7 @@ import {
   type InkStrength
 } from "../../lib/inkStrength.js";
 import {
-  BACKGROUND_INTENSITY_HINTS,
+  backgroundIntensityHint,
   BACKGROUND_INTENSITY_MAX,
   BACKGROUND_INTENSITY_MIN,
   toBackgroundIntensity,
@@ -209,7 +209,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Background intensity"
-          description={`Page and surface colors. ${BACKGROUND_INTENSITY_HINTS[backgroundIntensity]}`}
+          description={`Page and surface colors. ${backgroundIntensityHint(backgroundIntensity)}`}
           control={
             <Slider
               ariaLabel="Background intensity"

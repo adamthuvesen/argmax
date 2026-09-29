@@ -474,15 +474,20 @@ export function normalizeModelId(modelId: string): string {
 }
 
 /**
- * Catalog id that replaced a stored one. A Sonnet 5 session or launch
- * preference follows Sonnet 5.5 instead of falling through to the provider
- * default. The stored row is left alone; only the pick the user sees moves.
+ * Retired ids and the catalog id that replaced each. A stored Sonnet 5
+ * session, routine, or launch preference follows Sonnet 5.5 instead of
+ * falling through to the provider default. The stored row is left alone;
+ * only the pick the user sees and the model the CLI runs move. Mirrored by
+ * `claude_model_arg` (adapters.rs) and shipped to the phone in
+ * providerModels.json.
  */
+export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<string, string>>>> = {
+  claude: { "claude-sonnet-5": "claude-sonnet-5-5" }
+};
+
+/** Catalog id that replaced a stored one, or the id itself. */
 export function successorModelId(provider: ProviderId, modelId: string): string {
-  if (provider === "claude" && normalizeModelId(modelId) === "claude-sonnet-5") {
-    return "claude-sonnet-5-5";
-  }
-  return modelId;
+  return SUCCESSOR_MODEL_IDS[provider]?.[normalizeModelId(modelId)] ?? modelId;
 }
 
 /**

@@ -552,7 +552,8 @@ final class TranscriptStore: ObservableObject {
         composer = NativeComposerState(
             sessionId: row.id,
             provider: row.provider,
-            modelId: row.modelId,
+            // A retired id follows its successor, as the label below does.
+            modelId: catalogModel?.modelId ?? row.modelId,
             // The catalogue wins when it knows the id, as on desktop: an
             // agent-launched or imported session stores the raw API id
             // ("claude-opus-5") as its label.

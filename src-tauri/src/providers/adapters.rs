@@ -689,7 +689,18 @@ const CLAUDE_LONG_CONTEXT_MODELS: [&str; 4] = [
     "claude-sonnet-5-5",
 ];
 
+// A retired id launches as the model that replaced it, so a routine or chat
+// stored on it keeps running. Mirrors SUCCESSOR_MODEL_IDS.claude
+// (providerModels.ts).
+fn claude_successor_model(model_id: &str) -> &str {
+    match model_id {
+        "claude-sonnet-5" => "claude-sonnet-5-5",
+        other => other,
+    }
+}
+
 fn claude_model_arg(model_id: &str) -> String {
+    let model_id = claude_successor_model(model_id);
     if CLAUDE_LONG_CONTEXT_MODELS.contains(&model_id) {
         format!("{model_id}[1m]")
     } else {
@@ -785,6 +796,7 @@ mod tests {
             ("claude-opus-5-5", "claude-opus-5-5[1m]"),
             ("claude-fable-5-1", "claude-fable-5-1[1m]"),
             ("claude-sonnet-5-5", "claude-sonnet-5-5[1m]"),
+            ("claude-sonnet-5", "claude-sonnet-5-5[1m]"),
             ("claude-haiku-4-5", "claude-haiku-4-5"),
         ] {
             let input = ProviderLaunchInput {

@@ -30,6 +30,13 @@ final class ProviderCatalogTests: XCTestCase {
         XCTAssertNotNil(catalog.model(provider: catalog.fallbackModel.provider, modelId: catalog.fallbackModel.modelId))
     }
 
+    /// A chat stored on a retired model reads and relaunches as its successor.
+    func testARetiredIdFollowsItsSuccessor() throws {
+        let sonnet = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-sonnet-5"))
+        XCTAssertEqual(sonnet.modelId, "claude-sonnet-5-5")
+        XCTAssertEqual(sonnet.label, "Sonnet 5.5")
+    }
+
     /// The ladders are resolved at export time because they are functions of
     /// the model id in TypeScript. Grok Build's CLI rejects anything above
     /// Extra High, so the phone must not offer Max or Ultra.

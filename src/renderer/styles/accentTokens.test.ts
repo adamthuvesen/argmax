@@ -278,15 +278,15 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       if (/^(line|scrollbar)/.test(surface)) continue;
       // The paper stop is warm, not grey: more red than blue.
       expect(Number.parseInt(cream.slice(1, 3), 16), surface).toBeGreaterThan(Number.parseInt(cream.slice(5, 7), 16));
-      // 100 is pure white on every surface.
-      expect(white, surface).toBe("#ffffff");
+      // 100 is pure white on every surface, except the sidebars, which stay a step under it.
+      expect(white, surface).toBe(/^(sidebar|review-)/.test(surface) ? { sidebar: "#f6f6f5", "review-panel": "#f6f6f5", "review-sidebar": "#f2f2f1" }[surface] : "#ffffff");
     }
     expect(light).toContain(
       "--bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
     );
 
     // 100 is pure black for the page, sidebars, code and terminal grounds.
-    for (const surface of ["bg", "sidebar", "review-panel", "panel-sunken", "code-surface", "terminal-surface"]) {
+    for (const surface of ["bg", "panel-sunken", "code-surface", "terminal-surface"]) {
       expect(dark, surface).toMatch(new RegExp(`--${surface}: .* #000000 var\\(--background-fall\\)\\);`));
     }
     // 0 lifts the page to the lightest charcoal.

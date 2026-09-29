@@ -571,8 +571,9 @@ export function __resetUnknownModelLog(): void {
  * window behind.
  */
 export function contextWindowForModel(modelId: string): number | null {
-  const id = normalizeModelId(modelId);
-  for (const models of Object.values(PROVIDER_MODELS)) {
+  for (const [provider, models] of Object.entries(PROVIDER_MODELS) as [ProviderId, ProviderModelOption[]][]) {
+    // A retired id reads its successor's window, the model it now launches on.
+    const id = normalizeModelId(successorModelId(provider, modelId));
     const match = models.find((model) => model.modelId === id);
     if (match?.contextWindow) return match.contextWindow;
   }

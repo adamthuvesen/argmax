@@ -1430,7 +1430,7 @@ describe("SessionConversation — streaming & composer", () => {
     {
       currentProvider: "codex",
       currentModel: { modelLabel: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
-      switchedModel: "Sonnet 5",
+      switchedModel: "Sonnet 5.5",
       switchedProvider: "claude",
       dialogName: "Switch this chat to Claude"
     },

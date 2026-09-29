@@ -170,6 +170,21 @@ describe("ScheduledTasksPanel", () => {
     expect(screen.queryByText("New task")).not.toBeInTheDocument();
   });
 
+  it("shows and saves a task stored on a retired model as its successor", async () => {
+    routinesStub.list.mockResolvedValue([routine({ modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" })]);
+    render(<ScheduledTasksPanel projects={[project()]} />);
+
+    expect(await screen.findByRole("listitem")).toHaveTextContent("Claude Sonnet 5.5");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Morning triage" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(routinesStub.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" })
+      )
+    );
+  });
+
   it("creates a task through the editor with the generated daily cron", async () => {
     routinesStub.list.mockResolvedValue([]);
     render(<ScheduledTasksPanel projects={[project()]} />);

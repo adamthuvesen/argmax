@@ -35,6 +35,13 @@
           }
           var contrast = localStorage.getItem("argmax.contrast.level");
           if (/^(?:100|[1-9]?\d)$/.test(contrast || "")) {
+            // The contrast rules only apply under [data-background-intensity],
+            // so a saved contrast with no saved background gets the default 70
+            // that React applies on mount.
+            if (intensity === null) {
+              root.setAttribute("data-background-intensity", "70");
+              root.style.setProperty("--background-intensity", "70");
+            }
             root.setAttribute("data-contrast", contrast);
             root.style.setProperty("--contrast", contrast);
           }

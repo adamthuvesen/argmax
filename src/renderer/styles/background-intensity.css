@@ -6,11 +6,10 @@
    Light: 0 is a soft gray, 10 is the warm cream paper the old level 1 shipped,
    and 100 is pure white. Below 10 every surface is dimmed by the same share of
    black, so the offsets between chrome, panels, and recessed surfaces hold.
-   The sidebars and review panels end a step under white (and a step over black
-   in dark) so the main view still reads as the raised ground at the extremes.
    Above 10 each surface mixes between its own cream and white endpoints, so
-   those offsets shrink evenly toward white. Lines and scrollbars stay grey at
-   the white end so borders still separate surfaces there.
+   those offsets shrink evenly toward white, and at 100 the chrome, sidebars,
+   and panels are all the same white. Lines and scrollbars stay grey at the
+   white end so borders still separate surfaces there.
 
    Dark: 70 is the palette Argmax ships, and the number there leaves every
    literal in tokens.css untouched. Below it surfaces lighten toward a mid
@@ -24,10 +23,10 @@
   --background-whiteness: calc(max(0, var(--background-intensity) - 10) / 90 * 100%);
   --background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);
   --bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --sidebar: color-mix(in oklab, color-mix(in oklab, #f4f3ee, #f9f9f8 var(--background-whiteness)), #000000 var(--background-dim));
+  --sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --review-panel: color-mix(in oklab, color-mix(in oklab, #f4f3ee, #f9f9f8 var(--background-whiteness)), #000000 var(--background-dim));
-  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ec, #f8f8f7 var(--background-whiteness)), #000000 var(--background-dim));
+  --review-panel: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel-soft: color-mix(in oklab, color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --composer-surface: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel-sunken: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));

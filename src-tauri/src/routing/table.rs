@@ -306,10 +306,18 @@ pub fn follow_up_target(
                 });
             }
             ProviderId::Claude => {
+                // Cost work substituted onto Claude stays on Sonnet, as the
+                // launch does; only reviews and heavy non-mechanical work
+                // take Opus.
+                let heavy = difficulty == Difficulty::Heavy && kind != TaskKind::Mechanical;
                 return Some(RoutedModel {
-                    model: &OPUS,
+                    model: if kind == TaskKind::Review || heavy {
+                        &OPUS
+                    } else {
+                        &SONNET
+                    },
                     effort: target.effort,
-                })
+                });
             }
             _ => {}
         }
@@ -698,6 +706,31 @@ mod tests {
             ),
             "Opus 5.5 · high"
         );
+        // Work substituted onto Claude stays on Sonnet, as the launch does.
+        for (kind, difficulty, expected) in [
+            (TaskKind::Coding, Difficulty::Light, "Sonnet 5.5 · medium"),
+            (
+                TaskKind::Mechanical,
+                Difficulty::Heavy,
+                "Sonnet 5.5 · medium",
+            ),
+            (TaskKind::Research, Difficulty::Heavy, "Opus 5.5 · high"),
+        ] {
+            assert_eq!(
+                cell_text(
+                    follow_up_target(
+                        ProviderId::Claude,
+                        AutoTier::Economy,
+                        kind,
+                        difficulty,
+                        false
+                    )
+                    .unwrap()
+                ),
+                expected,
+                "{kind:?} {difficulty:?}"
+            );
+        }
     }
 
     #[test]

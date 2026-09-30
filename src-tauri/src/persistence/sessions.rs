@@ -197,7 +197,7 @@ pub struct SessionSummary {
     /// part of one. Null for an ordinary chat.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arc_id: Option<String>,
-    /// The Auto tier (`cost` / `balanced` / `intelligence`) when the router
+    /// The Auto tier (`cost` / `economy` / `balanced` / `intelligence`) when the router
     /// picks this chat's model. Cleared when the user picks a model by hand.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_tier: Option<String>,

@@ -12,7 +12,9 @@ use crate::ipc::validation::{ProviderId, ReasoningEffort};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum AutoTier {
+    // Legacy wire value: Speed.
     Cost,
+    Economy,
     Balanced,
     Intelligence,
 }
@@ -81,9 +83,15 @@ pub const FABLE: RouteModel = RouteModel {
 };
 pub const SOL: RouteModel = RouteModel {
     provider: ProviderId::Codex,
-    model_id: "gpt-6-sol",
-    label: "GPT-6 Sol",
+    model_id: "gpt-6.1-sol",
+    label: "GPT-6.1 Sol",
     efforts: CODEX_EFFORTS,
+};
+pub const LUNA: RouteModel = RouteModel {
+    provider: ProviderId::Codex,
+    model_id: "gpt-6-luna",
+    label: "GPT-6 Luna",
+    efforts: &[Low, Medium, High, Xhigh, Max],
 };
 pub const ASTRA: RouteModel = RouteModel {
     provider: ProviderId::Codex,
@@ -119,6 +127,7 @@ pub const ROUTE_MODELS: &[&RouteModel] = &[
     &SONNET,
     &FABLE,
     &SOL,
+    &LUNA,
     &ASTRA,
     &COMPOSER,
     &CURSOR_OPUS,
@@ -167,6 +176,8 @@ fn cell(kind: TaskKind, column: Column) -> &'static RouteModel {
 /// when the user has said the work is failing.
 fn column_and_effort(tier: AutoTier, difficulty: Difficulty) -> (Column, ReasoningEffort) {
     match (tier, difficulty) {
+        (AutoTier::Economy, Difficulty::Light | Difficulty::Standard) => (Column::Cheap, Medium),
+        (AutoTier::Economy, Difficulty::Heavy) => (Column::Value, High),
         (AutoTier::Cost, Difficulty::Light) => (Column::Cheap, Low),
         (AutoTier::Cost, Difficulty::Standard) => (Column::Cheap, Medium),
         (AutoTier::Cost, Difficulty::Heavy) => (Column::Value, Medium),
@@ -189,11 +200,31 @@ fn grok_effort(difficulty: Difficulty) -> ReasoningEffort {
     }
 }
 
+/// Cost minimizes API-equivalent completion cost. Reviews retain Opus until
+/// we have evidence for a cheaper reviewer. Mechanical edits stop at medium.
+fn cost_route(kind: TaskKind, difficulty: Difficulty) -> RoutedModel {
+    let (model, effort) = match (kind, difficulty) {
+        (TaskKind::Review, Difficulty::Light) => (&OPUS, Low),
+        (TaskKind::Review, Difficulty::Standard) => (&OPUS, Medium),
+        (TaskKind::Review, Difficulty::Heavy) => (&OPUS, High),
+        (_, Difficulty::Light) | (TaskKind::Mechanical, Difficulty::Standard) => (&LUNA, Medium),
+        (_, Difficulty::Standard) | (TaskKind::Mechanical, Difficulty::Heavy) => (&SOL, Medium),
+        (_, Difficulty::Heavy) => (&SOL, High),
+    };
+    RoutedModel {
+        model,
+        effort: Some(effort),
+    }
+}
+
 /// `ui` marks visual UI or design work. The Composer cell left on Balance is
 /// light mechanical work, and that UI work goes to Opus 5.5 low: Composer's
 /// UI tweaks were the chats most often reported wrong (3 of 22 escalated,
 /// 2026-09-28).
 pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -> RoutedModel {
+    if tier == AutoTier::Economy {
+        return cost_route(kind, difficulty);
+    }
     let (column, mut effort) = column_and_effort(tier, difficulty);
     // Renames and bulk edits never repay more than medium, on any tier.
     if kind == TaskKind::Mechanical && rank(effort) > rank(Medium) {
@@ -259,6 +290,38 @@ pub fn follow_up_target(
     difficulty: Difficulty,
     ui: bool,
 ) -> Option<RoutedModel> {
+    if tier == AutoTier::Economy {
+        let target = cost_route(kind, difficulty);
+        match provider {
+            ProviderId::Codex => {
+                return Some(RoutedModel {
+                    // Keep the native Codex conversation for a review. A reported
+                    // wrong answer can cross to Opus through the Cost ladder.
+                    model: if target.model.provider == ProviderId::Codex {
+                        target.model
+                    } else {
+                        &SOL
+                    },
+                    effort: target.effort,
+                });
+            }
+            ProviderId::Claude => {
+                // Cost work substituted onto Claude stays on Sonnet, as the
+                // launch does; only reviews and heavy non-mechanical work
+                // take Opus.
+                let heavy = difficulty == Difficulty::Heavy && kind != TaskKind::Mechanical;
+                return Some(RoutedModel {
+                    model: if kind == TaskKind::Review || heavy {
+                        &OPUS
+                    } else {
+                        &SONNET
+                    },
+                    effort: target.effort,
+                });
+            }
+            _ => {}
+        }
+    }
     let (_, mut effort) = column_and_effort(tier, difficulty);
     if difficulty == Difficulty::Light && tier != AutoTier::Intelligence {
         effort = Low;
@@ -334,8 +397,8 @@ pub fn follow_up_target(
 /// retained, never assigned a capability based on their price.
 pub(crate) fn capability(model_id: &str) -> Option<usize> {
     match model_id {
-        "composer-2.5" | "grok-4.7" | "claude-sonnet-5-5" => Some(0),
-        "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6-sol" => Some(1),
+        "composer-2.5" | "grok-4.7" | "claude-sonnet-5-5" | "gpt-6-luna" => Some(0),
+        "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6.1-sol" | "gpt-6-sol" => Some(1),
         "claude-fable-5-1" | "gpt-6-astra" => Some(2),
         _ => None,
     }
@@ -345,6 +408,10 @@ pub(crate) fn capability(model_id: &str) -> Option<usize> {
 /// Speed chat lands on Sonnet medium rather than Opus.
 pub fn fallback(tier: AutoTier) -> RoutedModel {
     match tier {
+        AutoTier::Economy => RoutedModel {
+            model: &SOL,
+            effort: Some(Medium),
+        },
         AutoTier::Cost => RoutedModel {
             model: &SONNET,
             effort: Some(Medium),
@@ -356,7 +423,14 @@ pub fn fallback(tier: AutoTier) -> RoutedModel {
     }
 }
 
+/// The routable model for a stored id. A retired id resolves to its
+/// successor, so a saved Auto chat on it keeps a known capability instead of
+/// reaching the follow-up path's `expect`.
 pub fn route_model(model_id: &str) -> Option<&'static RouteModel> {
+    let model_id = match model_id {
+        "gpt-6-sol" => "gpt-6.1-sol",
+        other => other,
+    };
     ROUTE_MODELS
         .iter()
         .copied()
@@ -538,6 +612,128 @@ mod tests {
     }
 
     #[test]
+    fn cost_launches_match_the_budget_policy_without_changing_speed() {
+        use Difficulty::{Heavy, Light, Standard};
+        use TaskKind::{Coding, Mechanical, Question, Research, Review};
+        for kind in [Coding, Research, Question] {
+            for (difficulty, expected) in [
+                (Light, "GPT-6 Luna · medium"),
+                (Standard, "GPT-6.1 Sol · medium"),
+                (Heavy, "GPT-6.1 Sol · high"),
+            ] {
+                assert_eq!(
+                    cell_text(route(AutoTier::Economy, kind, difficulty, false)),
+                    expected
+                );
+            }
+        }
+        for (kind, difficulty, expected) in [
+            (Mechanical, Light, "GPT-6 Luna · medium"),
+            (Mechanical, Standard, "GPT-6 Luna · medium"),
+            (Mechanical, Heavy, "GPT-6.1 Sol · medium"),
+            (Review, Light, "Opus 5.5 · low"),
+            (Review, Standard, "Opus 5.5 · medium"),
+            (Review, Heavy, "Opus 5.5 · high"),
+        ] {
+            assert_eq!(
+                cell_text(route(AutoTier::Economy, kind, difficulty, false)),
+                expected
+            );
+            assert_eq!(
+                route(AutoTier::Economy, kind, difficulty, true),
+                route(AutoTier::Economy, kind, difficulty, false)
+            );
+        }
+        assert_eq!(
+            cell_text(fallback(AutoTier::Economy)),
+            "GPT-6.1 Sol · medium"
+        );
+        assert_eq!(cell_text(fallback(AutoTier::Cost)), "Sonnet 5.5 · medium");
+        assert_eq!(clamp_effort(Ultra, &LUNA), Some(Max));
+    }
+
+    #[test]
+    fn cost_follow_ups_keep_the_native_provider_and_budget_models() {
+        assert_eq!(
+            cell_text(
+                follow_up_target(
+                    ProviderId::Codex,
+                    AutoTier::Economy,
+                    TaskKind::Coding,
+                    Difficulty::Light,
+                    false
+                )
+                .unwrap()
+            ),
+            "GPT-6 Luna · medium"
+        );
+        assert_eq!(
+            cell_text(
+                follow_up_target(
+                    ProviderId::Codex,
+                    AutoTier::Economy,
+                    TaskKind::Mechanical,
+                    Difficulty::Heavy,
+                    false
+                )
+                .unwrap()
+            ),
+            "GPT-6.1 Sol · medium"
+        );
+        assert_eq!(
+            cell_text(
+                follow_up_target(
+                    ProviderId::Codex,
+                    AutoTier::Economy,
+                    TaskKind::Review,
+                    Difficulty::Heavy,
+                    false
+                )
+                .unwrap()
+            ),
+            "GPT-6.1 Sol · high"
+        );
+        assert_eq!(
+            cell_text(
+                follow_up_target(
+                    ProviderId::Claude,
+                    AutoTier::Economy,
+                    TaskKind::Review,
+                    Difficulty::Heavy,
+                    false
+                )
+                .unwrap()
+            ),
+            "Opus 5.5 · high"
+        );
+        // Work substituted onto Claude stays on Sonnet, as the launch does.
+        for (kind, difficulty, expected) in [
+            (TaskKind::Coding, Difficulty::Light, "Sonnet 5.5 · medium"),
+            (
+                TaskKind::Mechanical,
+                Difficulty::Heavy,
+                "Sonnet 5.5 · medium",
+            ),
+            (TaskKind::Research, Difficulty::Heavy, "Opus 5.5 · high"),
+        ] {
+            assert_eq!(
+                cell_text(
+                    follow_up_target(
+                        ProviderId::Claude,
+                        AutoTier::Economy,
+                        kind,
+                        difficulty,
+                        false
+                    )
+                    .unwrap()
+                ),
+                expected,
+                "{kind:?} {difficulty:?}"
+            );
+        }
+    }
+
+    #[test]
     fn clamp_keeps_supported_levels_and_otherwise_steps_down() {
         assert_eq!(clamp_effort(Xhigh, &GROK), Some(Xhigh));
         assert_eq!(clamp_effort(Ultra, &OPUS), Some(Max));
@@ -588,7 +784,7 @@ mod tests {
         );
         assert_eq!(
             target(ProviderId::Codex, TaskKind::Coding, Difficulty::Heavy).as_deref(),
-            Some("GPT-6 Sol · high")
+            Some("GPT-6.1 Sol · high")
         );
         assert_eq!(
             target(ProviderId::Codex, TaskKind::Review, Difficulty::Heavy).as_deref(),

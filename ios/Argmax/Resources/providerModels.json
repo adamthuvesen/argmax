@@ -110,11 +110,13 @@
       "titleModelId": "gpt-6-luna",
       "defaultModel": {
         "provider": "codex",
-        "label": "GPT-6 Sol",
-        "modelId": "gpt-6-sol",
+        "label": "GPT-6.1 Sol",
+        "modelId": "gpt-6.1-sol",
         "reasoningEffort": "medium"
       },
-      "successors": {},
+      "successors": {
+        "gpt-6-sol": "gpt-6.1-sol"
+      },
       "models": [
         {
           "label": "GPT-6 Astra",
@@ -131,8 +133,8 @@
           "defaultEffort": "medium"
         },
         {
-          "label": "GPT-6 Sol",
-          "modelId": "gpt-6-sol",
+          "label": "GPT-6.1 Sol",
+          "modelId": "gpt-6.1-sol",
           "contextWindow": 272000,
           "reasoningEfforts": [
             "low",
@@ -437,7 +439,7 @@
   ],
   "defaultModelIds": {
     "claude": "claude-opus-5-5",
-    "codex": "gpt-6-sol",
+    "codex": "gpt-6.1-sol",
     "cursor": "grok-4.7-medium",
     "opencode": "opencode-go/glm-5.3-flash",
     "grok": "grok-4.7"

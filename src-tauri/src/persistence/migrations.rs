@@ -269,6 +269,27 @@ pub static TURN_ROUTE_SIGNALS_COLUMNS: phf::Map<&'static str, &'static [&'static
     ] as &'static [&'static str],
 };
 
+// v61: The Economy tier widens both routing CHECKs without changing saved
+// choices or the history attached to a session.
+pub static ROUTER_ECONOMY_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "sessions" => &[
+        "agent_mode", "arc_id", "attention", "attention_changed_at", "auto_route",
+        "auto_tier", "cache_read_tokens", "cache_write_tokens", "completed_at",
+        "context_tokens", "context_window", "cost_usd", "id", "imported",
+        "input_tokens", "last_activity_at", "last_model_id", "launch_depth",
+        "launch_kind", "launched_by_session_id", "model_id", "model_label",
+        "output_tokens", "permission_mode", "pr_branch_at_start",
+        "pr_branch_last_active", "prompt", "provider", "provider_conversation_id",
+        "reasoning_effort", "resume_fork", "started_at", "state", "wait_reported_at",
+        "workspace_id",
+    ] as &'static [&'static str],
+    "turn_routes" => &[
+        "created_at", "decision", "difficulty", "difficulty_confidence", "id",
+        "kind", "kind_confidence", "model_id", "provider", "reason",
+        "reasoning_effort", "session_id", "signals_json", "tier",
+    ] as &'static [&'static str],
+};
+
 // v58: Project check. One row per suggestion the user answered or switch
 // Argmax made, read back for pair suppression (docs/routing.md).
 pub static PROJECT_CHECKS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -1111,6 +1132,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: TURN_ROUTE_SIGNALS,
         affected_tables: &["turn_routes"],
         expected_columns: &TURN_ROUTE_SIGNALS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 61,
+        name: "router_economy_tier",
+        up: ROUTER_ECONOMY_TIER,
+        affected_tables: &["sessions", "turn_routes"],
+        expected_columns: &ROUTER_ECONOMY_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -2069,6 +2098,54 @@ const TURN_ROUTE_SIGNALS: &str = r#"
 ALTER TABLE turn_routes ADD COLUMN signals_json TEXT;
 "#;
 
+// Keep sessions as the parent table. Replacing only its constrained column
+// preserves every child row and foreign key; rebuilding turn_routes retains
+// its row IDs, pinned decisions, index, and v60 classifier signals.
+const ROUTER_ECONOMY_TIER: &str = r#"
+ALTER TABLE sessions RENAME COLUMN auto_tier TO auto_tier_legacy;
+ALTER TABLE sessions ADD COLUMN auto_tier TEXT
+  CHECK (auto_tier IN ('cost', 'economy', 'balanced', 'intelligence'));
+UPDATE sessions SET auto_tier = auto_tier_legacy;
+ALTER TABLE sessions DROP COLUMN auto_tier_legacy;
+
+CREATE TABLE turn_routes_economy (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  tier TEXT NOT NULL CHECK (tier IN ('cost', 'economy', 'balanced', 'intelligence')),
+  provider TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  reasoning_effort TEXT,
+  kind TEXT CHECK (kind IN ('coding', 'mechanical', 'research', 'review', 'question')),
+  difficulty TEXT CHECK (difficulty IN ('light', 'standard', 'heavy')),
+  kind_confidence REAL,
+  difficulty_confidence REAL,
+  decision TEXT NOT NULL
+    CHECK (decision IN ('launch', 'reroute', 'escalate', 'kept', 'fallback', 'pinned')),
+  reason TEXT NOT NULL,
+  signals_json TEXT
+);
+
+INSERT INTO turn_routes_economy (
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort,
+  kind, difficulty, kind_confidence, difficulty_confidence, decision, reason,
+  signals_json
+)
+SELECT
+  id, session_id, created_at, tier, provider, model_id, reasoning_effort,
+  kind, difficulty, kind_confidence, difficulty_confidence, decision, reason,
+  signals_json
+FROM turn_routes;
+
+UPDATE sqlite_sequence
+SET seq = MAX(seq, (SELECT seq FROM sqlite_sequence WHERE name = 'turn_routes'))
+WHERE name = 'turn_routes_economy';
+
+DROP TABLE turn_routes;
+ALTER TABLE turn_routes_economy RENAME TO turn_routes;
+CREATE INDEX idx_turn_routes_session ON turn_routes(session_id, id);
+"#;
+
 // Per-row sidebar glyph chosen from the Edit Icon picker. NULL in both columns
 // keeps the row on its live status marker, so existing workspaces are unchanged.
 const WORKSPACE_CUSTOM_ICON: &str = r#"
@@ -2658,6 +2735,152 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
 
     #[test]
+    fn economy_tier_upgrade_preserves_routes_sessions_and_children() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..60]).unwrap();
+        seed_minimal_session(&connection);
+        connection
+            .execute_batch(
+                r#"
+            UPDATE sessions SET auto_tier = 'cost', auto_route = 'saved route' WHERE id = 's1';
+            INSERT INTO sessions (
+              id, workspace_id, provider, model_label, prompt, state, attention,
+              started_at, last_activity_at, auto_tier
+            ) VALUES
+              ('s2', 'w1', 'claude', 'Sonnet', 'hello', 'running', 'normal',
+               '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', 'balanced'),
+              ('s3', 'w1', 'claude', 'Sonnet', 'hello', 'running', 'normal',
+               '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z', 'intelligence');
+            INSERT INTO events (id, session_id, type, message, created_at)
+              VALUES ('e1', 's1', 'message.completed', 'saved', '2026-05-24T10:00:00.000Z');
+            INSERT INTO turn_routes (
+              id, session_id, created_at, tier, provider, model_id,
+              decision, reason, signals_json
+            ) VALUES
+              (7, 's1', '2026-05-24T10:00:00.000Z', 'cost', 'claude',
+               'sonnet', 'launch', 'saved reason', '{"kind":"coding"}'),
+              (8, 's2', '2026-05-24T10:00:00.000Z', 'balanced', 'claude',
+               'sonnet', 'pinned', 'hand-picked', NULL),
+              (9, 's3', '2026-05-24T10:00:00.000Z', 'intelligence', 'claude',
+               'opus', 'fallback', 'saved fallback', NULL);
+            INSERT INTO turn_routes (
+              id, session_id, created_at, tier, provider, model_id, decision, reason
+            ) VALUES (20, 's1', '2026-05-24T10:00:00.000Z', 'cost', 'claude',
+              'sonnet', 'kept', 'old deleted route');
+            DELETE FROM turn_routes WHERE id = 20;
+        "#,
+            )
+            .unwrap();
+
+        run_migrations(&mut connection).unwrap();
+        let tiers: Vec<(String, String)> = connection
+            .prepare("SELECT id, auto_tier FROM sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            tiers,
+            [
+                ("s1".into(), "cost".into()),
+                ("s2".into(), "balanced".into()),
+                ("s3".into(), "intelligence".into())
+            ]
+        );
+        let routes: Vec<(i64, String, String, String, Option<String>)> = connection
+            .prepare("SELECT id, tier, decision, reason, signals_json FROM turn_routes ORDER BY id")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            routes,
+            [
+                (
+                    7,
+                    "cost".into(),
+                    "launch".into(),
+                    "saved reason".into(),
+                    Some("{\"kind\":\"coding\"}".into())
+                ),
+                (
+                    8,
+                    "balanced".into(),
+                    "pinned".into(),
+                    "hand-picked".into(),
+                    None
+                ),
+                (
+                    9,
+                    "intelligence".into(),
+                    "fallback".into(),
+                    "saved fallback".into(),
+                    None
+                ),
+            ]
+        );
+        let event_session: String = connection
+            .query_row("SELECT session_id FROM events WHERE id = 'e1'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(event_session, "s1");
+        let auto_route: String = connection
+            .query_row(
+                "SELECT auto_route FROM sessions WHERE id = 's1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(auto_route, "saved route");
+
+        connection
+            .execute(
+                "UPDATE sessions SET auto_tier = 'economy' WHERE id = 's1'",
+                [],
+            )
+            .unwrap();
+        connection.execute("INSERT INTO turn_routes (session_id, created_at, tier, provider, model_id, decision, reason) VALUES ('s1', '2026-05-24T10:01:00.000Z', 'economy', 'codex', 'luna', 'reroute', 'cheap')", []).unwrap();
+        let next_id: i64 = connection
+            .query_row("SELECT MAX(id) FROM turn_routes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(next_id, 21);
+        assert!(connection
+            .execute(
+                "UPDATE sessions SET auto_tier = 'invalid' WHERE id = 's1'",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute("UPDATE turn_routes SET tier = 'invalid' WHERE id = 7", [])
+            .is_err());
+        let index_count: i64 = connection.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_turn_routes_session'", [], |row| row.get(0)).unwrap();
+        assert_eq!(index_count, 1);
+        let fk_violations: i64 = connection
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(fk_violations, 0);
+        connection
+            .execute("DELETE FROM sessions WHERE id = 's1'", [])
+            .unwrap();
+        let child_count: i64 = connection.query_row("SELECT (SELECT COUNT(*) FROM events WHERE id = 'e1') + (SELECT COUNT(*) FROM turn_routes WHERE session_id = 's1')", [], |row| row.get(0)).unwrap();
+        assert_eq!(child_count, 0);
+        run_migrations(&mut connection).unwrap();
+    }
+
+    #[test]
     fn provider_defaults_upgrade_preserves_chats_and_session_triggers() {
         let mut connection = Connection::open_in_memory().unwrap();
         run_migrations_with(&mut connection, &MIGRATIONS[..37]).unwrap();
@@ -2705,8 +2928,8 @@ mod tests {
         // v1 EXPECTED_COLUMNS.
         verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
             .expect("projects");
-        verify_table_columns(&connection, &AUTO_ROUTING_COLUMNS, "sessions").expect("sessions");
-        verify_table_columns(&connection, &TURN_ROUTE_SIGNALS_COLUMNS, "turn_routes")
+        verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "sessions").expect("sessions");
+        verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "turn_routes")
             .expect("turn_routes");
         verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
             .expect("routines");
@@ -2853,6 +3076,7 @@ mod tests {
                 ),
                 (59, compute_migration_checksum(EVENTS_SESSION_MOVED_INDEX)),
                 (60, compute_migration_checksum(TURN_ROUTE_SIGNALS)),
+                (61, compute_migration_checksum(ROUTER_ECONOMY_TIER)),
             ]
         );
 

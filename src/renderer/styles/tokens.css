@@ -34,16 +34,16 @@
      pair down toward paper; it cannot walk it up, which is why a brighter
      sidebar than this one belongs here and not on a rung. */
   --bg: #fcfcfb;
-  --sidebar: #fbfbf9;
+  --sidebar: #fcfcfb;
   --panel: #ffffff;
   /* Both sidebars share warm paper in light and lifted charcoal in dark. */
-  --review-panel: #fbfbf9;
+  --review-panel: #fcfcfb;
   /* File-tree column inside the review panel. Paper sinks, charcoal lifts:
      in light this sits a step under the panel, in dark a step above it — the
      same trick --tool-block-surface plays, and the reason the column can't
      just take --panel-sunken (in dark that is the darkest surface in the app
      and the column would read as a hole rather than a sidebar). */
-  --review-sidebar: #fafaf7;
+  --review-sidebar: #fcfcfb;
   --panel-soft: #fafafa;
   /* The two composers (.composer in the launcher, .session-input in a session).
      They are cards, but the one card the user types into, so dark lifts them a

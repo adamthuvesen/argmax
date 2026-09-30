@@ -81,6 +81,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   if (provider === "codex") {
     if (
       modelId === "gpt-6-astra" ||
+      modelId === "gpt-6.1-sol" ||
       modelId === "gpt-6-sol" ||
       modelId === "gpt-5.6-sol" ||
       modelId === "gpt-5.6-terra"
@@ -209,7 +210,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // the CLI measures occupancy against. Verified against codex-cli 0.149.0.
   codex: [
     { label: "GPT-6 Astra", modelId: "gpt-6-astra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
-    { label: "GPT-6 Sol", modelId: "gpt-6-sol", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
+    { label: "GPT-6.1 Sol", modelId: "gpt-6.1-sol", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
     { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 },
     { label: "GPT-6 Luna", modelId: "gpt-6-luna", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 }
   ],
@@ -320,8 +321,8 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     supportsReasoningEffort: true
   },
   codex: {
-    label: "GPT-6 Sol",
-    modelId: "gpt-6-sol",
+    label: "GPT-6.1 Sol",
+    modelId: "gpt-6.1-sol",
     supportsReasoningEffort: true
   },
   cursor: {
@@ -368,6 +369,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // Short-context rates (<272K). Long-context multipliers are not modeled.
   "gpt-6-astra":         { input: 10,   output: 50,  cacheRead: 1,    cacheWrite: 12.5 },
+  "gpt-6.1-sol":         { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "gpt-6-sol":           { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
   "gpt-6-luna":          { input: 0.1,  output: 0.5, cacheRead: 0.01,  cacheWrite: 0.125 },
   // Promotional rate, promised through at least 2026-11-21.
@@ -482,7 +484,8 @@ export function normalizeModelId(modelId: string): string {
  * providerModels.json.
  */
 export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<string, string>>>> = {
-  claude: { "claude-sonnet-5": "claude-sonnet-5-5" }
+  claude: { "claude-sonnet-5": "claude-sonnet-5-5" },
+  codex: { "gpt-6-sol": "gpt-6.1-sol" }
 };
 
 /** Catalog id that replaced a stored one, or the id itself. */

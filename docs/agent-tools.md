@@ -59,7 +59,8 @@ so a launcher can check one child without listing every session.
 `session_launch.reasoning` accepts `low`, `medium`, `high`, `xhigh`, `max`, or
 `ultra`. `permissionMode` accepts `auto-approve`, `ask-each-time`, or
 `provider-defaults`. Omitted values inherit from the caller. `model: "auto"`
-(or `auto:cost`, `auto:balanced`, `auto:intelligence`) lets the router pick
+(or `auto:cost` for Speed, `auto:economy` for Cost,
+`auto:balanced`, `auto:intelligence`) lets the router pick
 provider, model and effort from the prompt; it needs a saved Jev key, and an
 explicit `reasoning` still wins. A caller on Auto that omits both `model` and
 `provider` inherits its Auto tier rather than the model its last turn ran on.

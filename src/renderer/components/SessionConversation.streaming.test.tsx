@@ -156,9 +156,9 @@ describe("SessionConversation — streaming & composer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     fireEvent.click(
-      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6 Sol" })
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "GPT-6.1 Sol" })
     );
-    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6 Sol");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6.1 Sol");
 
     // Parent rebuilds the SessionSummary object on every dashboard delta. A new
     // object reference with the same id, even one carrying a server-side model
@@ -184,7 +184,7 @@ describe("SessionConversation — streaming & composer", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6 Sol");
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("GPT-6.1 Sol");
     window.localStorage.removeItem("argmax.sessionModel.session-a");
   });
 

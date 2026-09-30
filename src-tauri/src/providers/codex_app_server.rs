@@ -24,6 +24,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
+use super::adapters::successor_model_id;
 use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
@@ -209,7 +210,7 @@ pub async fn launch_turn(
         &input.session_id,
         json!({
             "type": "turn_context",
-            "model": input.model_id,
+            "model": successor_model_id(ProviderId::Codex, &input.model_id),
             "reasoning_effort": effective_effort(input),
         }),
     );
@@ -350,7 +351,10 @@ fn thread_params(
 ) -> Value {
     let mut params = Map::new();
     params.insert("cwd".to_string(), json!(input.workspace_path));
-    params.insert("model".to_string(), json!(input.model_id));
+    params.insert(
+        "model".to_string(),
+        json!(successor_model_id(ProviderId::Codex, &input.model_id)),
+    );
     if let Some(resume_id) = &input.resume_conversation_id {
         params.insert("threadId".to_string(), json!(resume_id));
     }
@@ -369,7 +373,10 @@ fn turn_params(input: &ProviderLaunchInput, thread_id: &str, prompt: String) -> 
             json!([{ "type": "text", "text": prompt }]),
         ),
         ("cwd".to_string(), json!(input.workspace_path)),
-        ("model".to_string(), json!(input.model_id)),
+        (
+            "model".to_string(),
+            json!(successor_model_id(ProviderId::Codex, &input.model_id)),
+        ),
         ("summary".to_string(), json!("auto")),
         (
             "additionalContext".to_string(),
@@ -434,7 +441,9 @@ fn apply_permission_policy(
 fn effective_effort(input: &ProviderLaunchInput) -> Option<&'static str> {
     let effort = input.reasoning_effort?;
     Some(match input.model_id.as_str() {
-        "gpt-6-astra" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => effort.as_str(),
+        "gpt-6-astra" | "gpt-6.1-sol" | "gpt-6-sol" | "gpt-5.6-sol" | "gpt-5.6-terra" => {
+            effort.as_str()
+        }
         "gpt-6-luna" | "gpt-5.6-luna" if effort.as_str() == "ultra" => "max",
         "gpt-6-luna" | "gpt-5.6-luna" => effort.as_str(),
         _ if matches!(effort.as_str(), "max" | "ultra") => "xhigh",
@@ -1763,7 +1772,7 @@ done
             ("gpt-6-astra", ReasoningEffort::High),
             ("gpt-6-astra", ReasoningEffort::Low),
             ("gpt-6-astra", ReasoningEffort::High),
-            ("gpt-6-sol", ReasoningEffort::Medium),
+            ("gpt-6.1-sol", ReasoningEffort::Medium),
             ("gpt-6-astra", ReasoningEffort::High),
         ];
         for (index, (model, effort)) in selections.iter().enumerate() {

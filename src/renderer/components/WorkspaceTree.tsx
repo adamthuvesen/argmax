@@ -302,7 +302,11 @@ export function WorkspaceTree({
     if (rowTop < viewTop || rowBottom > viewBottom) {
       const target = Math.max(0, rowTop - effectiveHeight / 2);
       node.scrollTop = target;
-      setScrollTop(target);
+      // Read back rather than trust `target`: the browser clamps it to the
+      // scrollable range, and a clamp that changes nothing fires no scroll
+      // event. Keeping the requested value leaves the window offset from a
+      // list that is still at the top, which paints as blank rows above it.
+      setScrollTop(node.scrollTop);
     }
   }, [state.selectedPath, visibleRows, effectiveHeight]);
 

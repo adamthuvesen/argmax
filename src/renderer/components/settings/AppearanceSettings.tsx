@@ -44,12 +44,19 @@ import {
   type InkStrength
 } from "../../lib/inkStrength.js";
 import {
-  BACKGROUND_INTENSITY_HINTS,
+  backgroundIntensityHint,
   BACKGROUND_INTENSITY_MAX,
   BACKGROUND_INTENSITY_MIN,
   toBackgroundIntensity,
   type BackgroundIntensity
 } from "../../lib/backgroundIntensity.js";
+import {
+  contrastHint,
+  CONTRAST_MAX,
+  CONTRAST_MIN,
+  toContrast,
+  type Contrast
+} from "../../lib/contrast.js";
 import { setMascotVisible, useMascotVisible } from "../../lib/mascotVisibility.js";
 import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
@@ -112,7 +119,9 @@ export function AppearanceSettings({
   inkStrength,
   onInkStrengthChange,
   backgroundIntensity,
-  onBackgroundIntensityChange
+  onBackgroundIntensityChange,
+  contrast,
+  onContrastChange
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
@@ -126,6 +135,8 @@ export function AppearanceSettings({
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  contrast: Contrast;
+  onContrastChange: (contrast: Contrast) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   browserThemeMode: ThemeMode;
@@ -174,7 +185,11 @@ export function AppearanceSettings({
   };
   const pickBackgroundIntensity = (raw: number): void => {
     const intensity = toBackgroundIntensity(raw);
-    if (intensity) onBackgroundIntensityChange(intensity);
+    if (intensity !== null) onBackgroundIntensityChange(intensity);
+  };
+  const pickContrast = (raw: number): void => {
+    const next = toContrast(raw);
+    if (next !== null) onContrastChange(next);
   };
   const fontStack = FONT_OPTIONS.find((option) => option.id === fontFamily)?.stack;
   // Straight from the store rather than through props: every running mark in
@@ -209,7 +224,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Background intensity"
-          description={`Page and surface colors. ${BACKGROUND_INTENSITY_HINTS[backgroundIntensity]}`}
+          description={`Page and surface colors. ${backgroundIntensityHint(backgroundIntensity)}`}
           control={
             <Slider
               ariaLabel="Background intensity"
@@ -218,6 +233,20 @@ export function AppearanceSettings({
               value={backgroundIntensity}
               valueLabel={String(backgroundIntensity)}
               onChange={pickBackgroundIntensity}
+            />
+          }
+        />
+        <SettingRow
+          label="Contrast"
+          description={`Borders and dividers between surfaces. ${contrastHint(contrast)}`}
+          control={
+            <Slider
+              ariaLabel="Contrast"
+              min={CONTRAST_MIN}
+              max={CONTRAST_MAX}
+              value={contrast}
+              valueLabel={String(contrast)}
+              onChange={pickContrast}
             />
           }
         />

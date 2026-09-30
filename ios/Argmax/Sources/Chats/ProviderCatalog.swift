@@ -91,6 +91,7 @@ enum AutoTier: String, Codable, CaseIterable, Hashable, Sendable {
     case intelligence
     case balanced
     case cost
+    case economy
 
     /// Apart from every `provider/modelId` a model row carries.
     static let pickerPrefix = "auto/"
@@ -109,18 +110,19 @@ enum AutoTier: String, Codable, CaseIterable, Hashable, Sendable {
         case .cost: return "Speed"
         case .balanced: return "Balance"
         case .intelligence: return "Frontier"
+        case .economy: return "Cost"
         }
     }
 
     var label: String { "Router \(shortLabel)" }
 
-    /// The backend's fallback, Opus 5.5 at medium, so every reader of a
-    /// selection's model keeps working.
+    /// The backend's fallback, so every reader of a selection's model keeps
+    /// working.
     var selection: ModelSelection {
         ModelSelection(
-            provider: "claude",
+            provider: self == .economy ? "codex" : "claude",
             label: label,
-            modelId: "claude-opus-5-5",
+            modelId: self == .economy ? "gpt-6.1-sol" : "claude-opus-5-5",
             reasoningEffort: .medium,
             autoTier: self
         )

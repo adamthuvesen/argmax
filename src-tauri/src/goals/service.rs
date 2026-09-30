@@ -428,7 +428,7 @@ impl GoalService {
             // every time round.
             let escalation = if not_yet_streak >= 2 {
                 not_yet_streak = 0;
-                self.escalation_for(&goal)?
+                self.escalation_for(&goal).await?
             } else {
                 None
             };
@@ -462,7 +462,8 @@ impl GoalService {
     /// For an Auto chat, the next rung up its ladder. The caller records it
     /// once the send is admitted. `None` for a chat the user pinned or one
     /// already at the top.
-    fn escalation_for(&self, goal: &Goal) -> ArgmaxResult<Option<RouteDecision>> {
+    async fn escalation_for(&self, goal: &Goal) -> ArgmaxResult<Option<RouteDecision>> {
+        let available = self.providers.available_providers().await;
         let connection = self.database.connection();
         let session = find_session_by_id(&connection, &goal.session_id)?;
         let Some(tier) = session
@@ -481,6 +482,7 @@ impl GoalService {
             parse_provider(&session.provider)?,
             &session.model_id,
             effort,
+            &available,
             "escalated: the goal came back not met twice in a row",
         ) else {
             return Ok(None);

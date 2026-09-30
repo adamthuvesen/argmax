@@ -1,125 +1,83 @@
-/* Light mode runs from slightly cream paper at level 1 to pure white at
-   level 10 in nine equal oklab steps. Surfaces mix between their own two
-   endpoints, so every rung moves them by the same share and the offsets
-   between chrome, panels, and recessed surfaces shrink evenly toward white.
-   The queued composer tray keeps a small text tint so it remains distinct at
-   the white endpoint. The cream end is the shipped palette moved 40% toward
-   heavy paper stock (Anthropic's ivory, #f0eee6, is the tint); lines and
-   scrollbars stay grey at the white end so borders still separate surfaces
-   there. An absent
-   attribute keeps the shipped literals in tokens.css. */
-:root:not([data-theme="dark"]):is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="7"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
-  --bg: color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness));
-  --sidebar: color-mix(in oklab, #f1f0e9, #ffffff var(--background-whiteness));
-  --panel: color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness));
-  --review-panel: color-mix(in oklab, #f1f0e9, #ffffff var(--background-whiteness));
-  --review-sidebar: color-mix(in oklab, #efeee6, #ffffff var(--background-whiteness));
-  --panel-soft: color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness));
-  --composer-surface: color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness));
-  --panel-sunken: color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness));
-  --code-surface: color-mix(in oklab, #edeeeb, #ffffff var(--background-whiteness));
-  --terminal-surface: color-mix(in oklab, #f2f1eb, #ffffff var(--background-whiteness));
-  --tool-block-surface: color-mix(in oklab, #eeeeeb, #ffffff var(--background-whiteness));
-  --line: color-mix(in oklab, #d4d6d4, #ebeeef var(--background-whiteness));
-  --line-soft: color-mix(in oklab, #dee0dd, #f4f5f6 var(--background-whiteness));
-  --line-strong: color-mix(in oklab, #c0c5c4, #dadfe2 var(--background-whiteness));
-  --scrollbar-thumb: color-mix(in oklab, #d3d6d5, #e6eaec var(--background-whiteness));
-  --scrollbar-thumb-hover: color-mix(in oklab, #c6cac9, #dadfe2 var(--background-whiteness));
-  --overlay-panel: color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness));
-  --overlay-panel-raised: color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness));
+/* Background intensity is one continuous 0–100 dial. lib/backgroundIntensity.ts
+   writes the number to <html> as `--background-intensity` (and mirrors it in
+   `data-background-intensity` for the terminal and Mermaid observers); the
+   arithmetic below turns it into mix percentages, so there is no rung table.
+
+   Light: 0 is a soft gray, 10 is the warm cream paper the old level 1 shipped,
+   and 100 is pure white. Below 10 every surface is dimmed by the same share of
+   black, so the offsets between chrome, panels, and recessed surfaces hold.
+   Above 10 each surface mixes between its own cream and white endpoints, so
+   those offsets shrink evenly toward white, and at 100 the chrome, sidebars,
+   and panels are all the same white. Lines and scrollbars stay grey at the
+   white end so borders still separate surfaces there.
+
+   Dark: 70 is the palette Argmax ships, and the number there leaves every
+   literal in tokens.css untouched. Below it surfaces lighten toward a mid
+   charcoal (0 is the lightest), above it they darken toward black but stop two thirds of the way
+   there at 100 (the fall is scaled by 67%), because full black was never
+   wanted. Lines and scrollbars keep a small step so boundaries stay visible.
+
+   Contrast is a second 0–100 dial (`--contrast`, mirrored in `data-contrast`)
+   that moves only the three line tokens, on top of whatever intensity made
+   them. 50 is a no-op. Below it lines fade toward --bg (capped at 70% so they
+   never vanish); above it they mix toward black on paper and white on charcoal
+   (capped at 40% and 30%). Each line is built from a `-at-intensity` base so
+   the two dials compose instead of overwriting each other.
+
+   An absent attribute keeps the shipped literals in tokens.css. */
+
+:root:not([data-theme="dark"])[data-background-intensity] {
+  --background-whiteness: calc(max(0, var(--background-intensity) - 10) / 90 * 100%);
+  --background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);
+  --line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);
+  --line-firm: calc(max(0, var(--contrast, 50) - 50) / 50 * 40%);
+  --bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --review-panel: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --panel-soft: color-mix(in oklab, color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --composer-surface: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --panel-sunken: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --code-surface: color-mix(in oklab, color-mix(in oklab, #edeeeb, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --terminal-surface: color-mix(in oklab, color-mix(in oklab, #f2f1eb, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --tool-block-surface: color-mix(in oklab, color-mix(in oklab, #eeeeeb, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --line-at-intensity: color-mix(in oklab, color-mix(in oklab, #d4d6d4, #ebeeef var(--background-whiteness)), #000000 var(--background-dim));
+  --line: color-mix(in oklab, color-mix(in oklab, var(--line-at-intensity), var(--bg) var(--line-fade)), #000000 var(--line-firm));
+  --line-soft-at-intensity: color-mix(in oklab, color-mix(in oklab, #dee0dd, #f4f5f6 var(--background-whiteness)), #000000 var(--background-dim));
+  --line-soft: color-mix(in oklab, color-mix(in oklab, var(--line-soft-at-intensity), var(--bg) var(--line-fade)), #000000 var(--line-firm));
+  --line-strong-at-intensity: color-mix(in oklab, color-mix(in oklab, #c0c5c4, #dadfe2 var(--background-whiteness)), #000000 var(--background-dim));
+  --line-strong: color-mix(in oklab, color-mix(in oklab, var(--line-strong-at-intensity), var(--bg) var(--line-fade)), #000000 var(--line-firm));
+  --scrollbar-thumb: color-mix(in oklab, color-mix(in oklab, #d3d6d5, #e6eaec var(--background-whiteness)), #000000 var(--background-dim));
+  --scrollbar-thumb-hover: color-mix(in oklab, color-mix(in oklab, #c6cac9, #dadfe2 var(--background-whiteness)), #000000 var(--background-dim));
+  --overlay-panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --overlay-panel-raised: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
 }
 
-:root:not([data-theme="dark"])[data-background-intensity="1"] { --background-whiteness: 0%; }
-:root:not([data-theme="dark"])[data-background-intensity="2"] { --background-whiteness: 11%; }
-:root:not([data-theme="dark"])[data-background-intensity="3"] { --background-whiteness: 22%; }
-:root:not([data-theme="dark"])[data-background-intensity="4"] { --background-whiteness: 33%; }
-:root:not([data-theme="dark"])[data-background-intensity="5"] { --background-whiteness: 44%; }
-:root:not([data-theme="dark"])[data-background-intensity="6"] { --background-whiteness: 56%; }
-:root:not([data-theme="dark"])[data-background-intensity="7"] { --background-whiteness: 67%; }
-:root:not([data-theme="dark"])[data-background-intensity="8"] { --background-whiteness: 78%; }
-:root:not([data-theme="dark"])[data-background-intensity="9"] { --background-whiteness: 89%; }
-:root:not([data-theme="dark"])[data-background-intensity="10"] { --background-whiteness: 100%; }
-
-/* Dark mode: level 7 owns no rule, so the default retains every shipped
-   literal in tokens.css. Other rungs move the neutral surfaces together while
-   preserving the offsets that distinguish app chrome, live composers, nested
-   panels, code, and picker rows. Lines and scrollbars move with them so their
-   contrast remains proportional. */
-:root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"], [data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
-  --bg: color-mix(in oklab, #141414, var(--background-bg-target) var(--background-pull));
-  --sidebar: color-mix(in oklab, #171717, var(--background-sidebar-target) var(--background-pull));
-  --panel: color-mix(in oklab, #1a1a1a, var(--background-panel-target) var(--background-pull));
-  --review-panel: color-mix(in oklab, #171717, var(--background-review-panel-target) var(--background-pull));
-  --review-sidebar: color-mix(in oklab, #1b1b1b, var(--background-review-sidebar-target) var(--background-pull));
-  --panel-soft: color-mix(in oklab, #212121, var(--background-panel-soft-target) var(--background-pull));
-  --composer-surface: color-mix(in oklab, #202020, var(--background-composer-target) var(--background-pull));
-  --panel-sunken: color-mix(in oklab, #0f0f0f, var(--background-sunken-target) var(--background-pull));
-  --code-surface: color-mix(in oklab, #0f0f0f, var(--background-code-target) var(--background-pull));
-  --terminal-surface: color-mix(in oklab, #141414, var(--background-terminal-target) var(--background-pull));
-  --tool-block-surface: color-mix(in oklab, #181818, var(--background-tool-target) var(--background-pull));
-  --line: color-mix(in oklab, #2b2b29, var(--background-line-target) var(--background-pull));
-  --line-soft: color-mix(in oklab, #212120, var(--background-line-soft-target) var(--background-pull));
-  --line-strong: color-mix(in oklab, #3a3a37, var(--background-line-strong-target) var(--background-pull));
-  --scrollbar-thumb: color-mix(in oklab, #3a3a37, var(--background-scrollbar-target) var(--background-pull));
-  --scrollbar-thumb-hover: color-mix(in oklab, #8a857b, var(--background-scrollbar-hover-target) var(--background-pull));
-  --overlay-panel: color-mix(in oklab, #171716, var(--background-overlay-target) var(--background-pull));
-  --overlay-panel-raised: color-mix(in oklab, #292926, var(--background-overlay-raised-target) var(--background-pull));
+:root[data-theme="dark"][data-background-intensity] {
+  --background-lift: calc(max(0, 70 - var(--background-intensity)) / 70 * 100%);
+  --background-fall: calc(max(0, var(--background-intensity) - 70) / 30 * 67%);
+  --line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);
+  --line-firm: calc(max(0, var(--contrast, 50) - 50) / 50 * 30%);
+  --bg: color-mix(in oklab, color-mix(in oklab, #141414, #2c2c2c var(--background-lift)), #000000 var(--background-fall));
+  --sidebar: color-mix(in oklab, color-mix(in oklab, #171717, #2f2f2f var(--background-lift)), #050505 var(--background-fall));
+  --panel: color-mix(in oklab, color-mix(in oklab, #1a1a1a, #323232 var(--background-lift)), #050505 var(--background-fall));
+  --review-panel: color-mix(in oklab, color-mix(in oklab, #171717, #2f2f2f var(--background-lift)), #050505 var(--background-fall));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #1b1b1b, #383838 var(--background-lift)), #080808 var(--background-fall));
+  --panel-soft: color-mix(in oklab, color-mix(in oklab, #212121, #393939 var(--background-lift)), #101010 var(--background-fall));
+  --composer-surface: color-mix(in oklab, color-mix(in oklab, #202020, #383838 var(--background-lift)), #0d0d0d var(--background-fall));
+  --panel-sunken: color-mix(in oklab, color-mix(in oklab, #0f0f0f, #272727 var(--background-lift)), #000000 var(--background-fall));
+  --code-surface: color-mix(in oklab, color-mix(in oklab, #0f0f0f, #272727 var(--background-lift)), #000000 var(--background-fall));
+  --terminal-surface: color-mix(in oklab, color-mix(in oklab, #141414, #2c2c2c var(--background-lift)), #000000 var(--background-fall));
+  --tool-block-surface: color-mix(in oklab, color-mix(in oklab, #181818, #303030 var(--background-lift)), #050505 var(--background-fall));
+  --line-at-intensity: color-mix(in oklab, color-mix(in oklab, #2b2b29, #434341 var(--background-lift)), #1a1a18 var(--background-fall));
+  --line: color-mix(in oklab, color-mix(in oklab, var(--line-at-intensity), var(--bg) var(--line-fade)), #ffffff var(--line-firm));
+  --line-soft-at-intensity: color-mix(in oklab, color-mix(in oklab, #212120, #393938 var(--background-lift)), #111110 var(--background-fall));
+  --line-soft: color-mix(in oklab, color-mix(in oklab, var(--line-soft-at-intensity), var(--bg) var(--line-fade)), #ffffff var(--line-firm));
+  --line-strong-at-intensity: color-mix(in oklab, color-mix(in oklab, #3a3a37, #52524f var(--background-lift)), #262624 var(--background-fall));
+  --line-strong: color-mix(in oklab, color-mix(in oklab, var(--line-strong-at-intensity), var(--bg) var(--line-fade)), #ffffff var(--line-firm));
+  --scrollbar-thumb: color-mix(in oklab, color-mix(in oklab, #3a3a37, #52524f var(--background-lift)), #262624 var(--background-fall));
+  --scrollbar-thumb-hover: color-mix(in oklab, color-mix(in oklab, #8a857b, #8a857b var(--background-lift)), #8a857b var(--background-fall));
+  --overlay-panel: color-mix(in oklab, color-mix(in oklab, #171716, #2f2f2e var(--background-lift)), #000000 var(--background-fall));
+  --overlay-panel-raised: color-mix(in oklab, color-mix(in oklab, #292926, #41413f var(--background-lift)), #161614 var(--background-fall));
 }
-
-:root[data-theme="dark"]:is([data-background-intensity="1"], [data-background-intensity="2"], [data-background-intensity="3"], [data-background-intensity="4"], [data-background-intensity="5"], [data-background-intensity="6"]) {
-  --background-bg-target: #2c2c2c;
-  --background-sidebar-target: #2f2f2f;
-  --background-panel-target: #323232;
-  --background-review-panel-target: #2f2f2f;
-  --background-review-sidebar-target: #383838;
-  --background-panel-soft-target: #393939;
-  --background-composer-target: #383838;
-  --background-sunken-target: #272727;
-  --background-code-target: #272727;
-  --background-terminal-target: #2c2c2c;
-  --background-tool-target: #303030;
-  --background-line-target: #434341;
-  --background-line-soft-target: #393938;
-  --background-line-strong-target: #52524f;
-  --background-scrollbar-target: #52524f;
-  --background-scrollbar-hover-target: #8a857b;
-  --background-overlay-target: #2f2f2e;
-  --background-overlay-raised-target: #41413f;
-}
-
-/* Dark mode's high end stops at a very dark gray rather than black. Black is
-   only one rung's worth of contrast past shipped charcoal, so aiming at it
-   made 7→8, 8→9, and 9→10 read as jumps; halving the reach halves each step
-   and leaves level 10 with a surface that still separates from its borders. */
-:root[data-theme="dark"]:is([data-background-intensity="8"], [data-background-intensity="9"], [data-background-intensity="10"]) {
-  --background-bg-target: #0a0a0a;
-  --background-sidebar-target: #0d0d0d;
-  --background-panel-target: #101010;
-  --background-review-panel-target: #0d0d0d;
-  --background-review-sidebar-target: #161616;
-  --background-panel-soft-target: #171717;
-  --background-composer-target: #161616;
-  --background-sunken-target: #050505;
-  --background-code-target: #050505;
-  --background-terminal-target: #0a0a0a;
-  --background-tool-target: #0e0e0e;
-  --background-line-target: #21211f;
-  --background-line-soft-target: #171716;
-  --background-line-strong-target: #30302d;
-  --background-scrollbar-target: #30302d;
-  --background-scrollbar-hover-target: #8a857b;
-  --background-overlay-target: #0d0d0c;
-  --background-overlay-raised-target: #1f1f1c;
-}
-
-/* Dark mode's useful low end starts at the former level 4. Spread that
-   smaller interval across six rungs for finer control near shipped charcoal. */
-:root[data-theme="dark"][data-background-intensity="1"] { --background-pull: 50%; }
-:root[data-theme="dark"][data-background-intensity="2"] { --background-pull: 42%; }
-:root[data-theme="dark"][data-background-intensity="3"] { --background-pull: 33%; }
-:root[data-theme="dark"][data-background-intensity="4"] { --background-pull: 25%; }
-:root[data-theme="dark"][data-background-intensity="5"] { --background-pull: 17%; }
-:root[data-theme="dark"][data-background-intensity="6"] { --background-pull: 8%; }
-:root[data-theme="dark"][data-background-intensity="8"] { --background-pull: 33%; }
-:root[data-theme="dark"][data-background-intensity="9"] { --background-pull: 67%; }
-:root[data-theme="dark"][data-background-intensity="10"] { --background-pull: 100%; }

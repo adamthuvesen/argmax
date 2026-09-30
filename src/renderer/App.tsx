@@ -402,6 +402,8 @@ export function App(): JSX.Element {
     setInkStrength,
     backgroundIntensity,
     setBackgroundIntensity,
+    contrast,
+    setContrast,
     defaultIde,
     setDefaultIde,
     detectedIdes
@@ -1966,6 +1968,8 @@ export function App(): JSX.Element {
           onInkStrengthChange: setInkStrength,
           backgroundIntensity,
           onBackgroundIntensityChange: setBackgroundIntensity,
+          contrast,
+          onContrastChange: setContrast,
           chatVerbosity,
           onChatVerbosityChange: setChatVerbosity,
           chatWidth,
@@ -2062,6 +2066,8 @@ export function App(): JSX.Element {
       setInkStrength,
       backgroundIntensity,
       setBackgroundIntensity,
+      contrast,
+      setContrast,
       chatVerbosity,
       setChatVerbosity,
       chatWidth,
@@ -2571,6 +2577,8 @@ export function App(): JSX.Element {
                 onInkStrengthChange={setInkStrength}
                 backgroundIntensity={backgroundIntensity}
                 onBackgroundIntensityChange={setBackgroundIntensity}
+                contrast={contrast}
+                onContrastChange={setContrast}
                 themeMode={themeMode}
                 onThemeModeChange={handleThemeModeChange}
                 browserThemeMode={browserThemeMode}

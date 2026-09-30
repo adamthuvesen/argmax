@@ -671,7 +671,7 @@ The `argmax session …` CLI still speaks the same socket from a terminal. See
 
 Defaults are configured in Settings → Agents → Default model (`localStorage.argmax.launch.model`). When unset, the app selects the highest priority installed provider:
 1. Claude (Opus 5.5)
-2. Codex (GPT-6 Sol)
+2. Codex (GPT-6.1 Sol)
 3. Cursor (Grok 4.7)
 4. OpenCode (GLM-5.3-Flash)
 5. Grok Build (Grok 4.7)

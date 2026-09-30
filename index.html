@@ -18,9 +18,32 @@
                 : "light"
               : mode;
           document.documentElement.setAttribute("data-theme", resolved);
-          var backgroundIntensity = localStorage.getItem("argmax.background.intensity");
-          if (/^(?:[1-9]|10)$/.test(backgroundIntensity || "")) {
-            document.documentElement.setAttribute("data-background-intensity", backgroundIntensity);
+          // Mirrors lib/backgroundIntensity.ts and lib/contrast.ts: a 0-100 level,
+          // or the former 1-10 scale times ten. The CSS reads the custom
+          // properties, so the attribute alone would leave them unset.
+          var root = document.documentElement;
+          var level = localStorage.getItem("argmax.background.level");
+          var legacy = localStorage.getItem("argmax.background.intensity");
+          var intensity = /^(?:100|[1-9]?\d)$/.test(level || "")
+            ? level
+            : /^(?:[1-9]|10)$/.test(legacy || "")
+              ? String(Number(legacy) * 10)
+              : null;
+          if (intensity !== null) {
+            root.setAttribute("data-background-intensity", intensity);
+            root.style.setProperty("--background-intensity", intensity);
+          }
+          var contrast = localStorage.getItem("argmax.contrast.level");
+          if (/^(?:100|[1-9]?\d)$/.test(contrast || "")) {
+            // The contrast rules only apply under [data-background-intensity],
+            // so a saved contrast with no saved background gets the default 70
+            // that React applies on mount.
+            if (intensity === null) {
+              root.setAttribute("data-background-intensity", "70");
+              root.style.setProperty("--background-intensity", "70");
+            }
+            root.setAttribute("data-contrast", contrast);
+            root.style.setProperty("--contrast", contrast);
           }
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "dark");

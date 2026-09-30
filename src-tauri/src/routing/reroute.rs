@@ -50,7 +50,8 @@ use ReasoningEffort::{High, Low, Medium, Xhigh};
 /// Cursor conversation. The Grok ladder ends by handing the chat to Opus 5.5
 /// on Claude Code: a user still unhappy at Grok high needs a stronger model,
 /// not more effort on a weak one. That last rung is the one automatic
-/// provider switch; the chat continues from its visible transcript.
+/// provider switch on the existing tiers. Cost can also hand Sol to Opus
+/// after Sol high fails; those chats continue from their visible transcript.
 fn ladder(provider: ProviderId) -> &'static [(&'static RouteModel, Option<ReasoningEffort>)] {
     match provider {
         ProviderId::Claude => &[
@@ -89,6 +90,9 @@ pub struct FollowUpState {
     pub provider: ProviderId,
     pub model_id: String,
     pub effort: Option<ReasoningEffort>,
+    /// Providers whose CLI is installed. A ladder rung on another provider is
+    /// skipped when it is not in here. Empty means unknown, so nothing is held.
+    pub available: Vec<ProviderId>,
     /// Input-side tokens of the latest turn: what a switch has to re-read.
     pub context_tokens: u64,
     /// Last-turn observations only cap the next-turn forecast. A long prior
@@ -117,7 +121,13 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
     }
 
     if classification.correction.unwrap_or(0.0) >= CORRECTION_THRESHOLD {
-        return match next_rung(state.provider, &state.model_id, state.effort) {
+        return match next_rung(
+            state.tier,
+            state.provider,
+            &state.model_id,
+            state.effort,
+            &state.available,
+        ) {
             Some(rung) => decision_from(
                 state.tier,
                 rung,
@@ -348,9 +358,10 @@ pub fn escalate(
     provider: ProviderId,
     model_id: &str,
     effort: Option<ReasoningEffort>,
+    available: &[ProviderId],
     reason: &str,
 ) -> Option<RouteDecision> {
-    next_rung(provider, model_id, effort).map(|rung| {
+    next_rung(tier, provider, model_id, effort, available).map(|rung| {
         decision_from(
             tier,
             rung,
@@ -367,12 +378,23 @@ pub fn escalate(
 /// (a hand-routed effort, say) goes to the first stronger rung. Position, not
 /// price, orders a ladder: Cursor's models carry no price in Argmax, so price
 /// alone would call Composer and Opus equal.
-pub fn next_rung(
+fn next_rung(
+    tier: AutoTier,
     provider: ProviderId,
     model_id: &str,
     effort: Option<ReasoningEffort>,
+    available: &[ProviderId],
 ) -> Option<RoutedModel> {
-    let rungs = ladder(provider);
+    let rungs = if tier == AutoTier::Economy && provider == ProviderId::Codex {
+        &[
+            (&table::LUNA, Some(Medium)),
+            (&table::SOL, Some(Medium)),
+            (&table::SOL, Some(High)),
+            (&table::OPUS, Some(High)),
+        ][..]
+    } else {
+        ladder(provider)
+    };
     let next = match rungs
         .iter()
         .position(|(model, rung_effort)| model.model_id == model_id && *rung_effort == effort)
@@ -385,7 +407,13 @@ pub fn next_rung(
             })
         }
     };
-    next.map(|(model, effort)| RoutedModel {
+    // A rung on another provider (Cost's last step to Opus, Grok's to Opus)
+    // holds at the top of the ladder when that CLI is not installed: the send
+    // would persist the switch and then fail to launch.
+    next.filter(|(model, _)| {
+        model.provider == provider || available.is_empty() || available.contains(&model.provider)
+    })
+    .map(|(model, effort)| RoutedModel {
         model,
         effort: *effort,
     })
@@ -507,6 +535,7 @@ mod tests {
             provider,
             model_id: model_id.to_string(),
             effort,
+            available: Vec::new(),
             context_tokens: 168_000,
             last_turn: median_turn(),
             downgrade_safe: true,
@@ -669,7 +698,7 @@ mod tests {
 
     #[test]
     fn return_to_hard_task_restores_capability() {
-        let chat = state(ProviderId::Codex, "gpt-6-sol", Some(Low));
+        let chat = state(ProviderId::Codex, "gpt-6.1-sol", Some(Low));
         let mut task = classified(TaskKind::Research, 3.5, 0.95);
         task.follow_up_scope = Some(FollowUpScope::Continuation);
         task.simpler_task = Some(0.0);
@@ -677,6 +706,55 @@ mod tests {
         assert_eq!(decision.model_id, "gpt-6-astra");
         assert_eq!(decision.effort, Some(High));
         assert_eq!(decision.decision, RouteDecisionKind::Reroute);
+    }
+
+    #[test]
+    fn cost_holds_at_sol_high_when_claude_is_not_installed() {
+        let mut correction = classified(TaskKind::Coding, 1.5, 0.95);
+        correction.correction = Some(0.95);
+        for (available, moves) in [
+            (vec![], true),
+            (vec![ProviderId::Codex, ProviderId::Claude], true),
+            (vec![ProviderId::Codex], false),
+        ] {
+            let mut chat = state(ProviderId::Codex, "gpt-6.1-sol", Some(High));
+            chat.tier = AutoTier::Economy;
+            chat.available = available.clone();
+            let route = follow_up_route(&chat, &correction);
+            let goal = escalate(
+                AutoTier::Economy,
+                ProviderId::Codex,
+                "gpt-6.1-sol",
+                Some(High),
+                &available,
+                "goal incomplete",
+            );
+            assert_eq!(
+                route.decision == RouteDecisionKind::Escalate,
+                moves,
+                "{available:?}"
+            );
+            assert_eq!(goal.is_some(), moves, "{available:?}");
+            if moves {
+                assert_eq!(route.provider, ProviderId::Claude);
+            } else {
+                assert_eq!(route.provider, ProviderId::Codex);
+            }
+        }
+    }
+
+    #[test]
+    fn a_chat_stored_on_retired_sol_routes_without_panicking() {
+        for (kind, score) in [
+            (TaskKind::Coding, 0.5),
+            (TaskKind::Coding, 3.5),
+            (TaskKind::Research, 2.0),
+        ] {
+            let chat = state(ProviderId::Codex, "gpt-6-sol", Some(Medium));
+            let mut task = classified(kind, score, 0.95);
+            task.follow_up_scope = Some(FollowUpScope::Continuation);
+            let _ = follow_up_route(&chat, &task);
+        }
     }
 
     #[test]
@@ -713,7 +791,7 @@ mod tests {
         );
         assert_eq!(
             (decision.model_id.as_str(), decision.effort),
-            ("gpt-6-sol", Some(High))
+            ("gpt-6.1-sol", Some(High))
         );
         assert!(decision.reason.contains("cover the cache rebuild"));
     }
@@ -765,7 +843,7 @@ mod tests {
         let task = classified(TaskKind::Mechanical, 0.0, 0.95);
         let decision = follow_up_route(&chat, &task);
         assert_eq!(decision.decision, RouteDecisionKind::Reroute);
-        assert_eq!(decision.model_id, "gpt-6-sol");
+        assert_eq!(decision.model_id, "gpt-6.1-sol");
     }
 
     #[test]
@@ -796,6 +874,57 @@ mod tests {
     }
 
     #[test]
+    fn cost_corrections_climb_luna_to_sol_then_handoff_to_opus() {
+        let mut correction = classified(TaskKind::Coding, 2.0, 0.9);
+        correction.correction = Some(0.9);
+        for (model, effort, expected, next_effort, provider) in [
+            (
+                "gpt-6-luna",
+                Medium,
+                "gpt-6.1-sol",
+                Medium,
+                ProviderId::Codex,
+            ),
+            (
+                "gpt-6.1-sol",
+                Medium,
+                "gpt-6.1-sol",
+                High,
+                ProviderId::Codex,
+            ),
+            (
+                "gpt-6.1-sol",
+                High,
+                "claude-opus-5-5",
+                High,
+                ProviderId::Claude,
+            ),
+        ] {
+            let mut current = state(ProviderId::Codex, model, Some(effort));
+            current.tier = AutoTier::Economy;
+            let route = follow_up_route(&current, &correction);
+            assert_eq!(route.decision, RouteDecisionKind::Escalate);
+            assert_eq!(
+                (route.model_id.as_str(), route.effort, route.provider),
+                (expected, Some(next_effort), provider)
+            );
+            let goal_route = escalate(
+                AutoTier::Economy,
+                ProviderId::Codex,
+                model,
+                Some(effort),
+                &[],
+                "goal incomplete",
+            )
+            .unwrap();
+            assert_eq!(
+                (goal_route.model_id, goal_route.provider),
+                (expected.to_string(), provider)
+            );
+        }
+    }
+
+    #[test]
     fn a_reported_wrong_answer_climbs_one_rung_and_stops_at_the_top() {
         let mut correction = classified(TaskKind::Coding, 2.0, 0.9);
         correction.correction = Some(0.85);
@@ -819,7 +948,7 @@ mod tests {
                 "claude-opus-5-5",
                 Some(High),
             ),
-            ("gpt-6-sol", Some(High), "gpt-6-astra", Some(High)),
+            ("gpt-6.1-sol", Some(High), "gpt-6-astra", Some(High)),
             ("composer-2.5", None, "claude-opus-5-5-medium", Some(Medium)),
             (
                 "claude-opus-5-5-medium",

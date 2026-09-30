@@ -3,6 +3,8 @@ import { PROVIDER_MODELS, reasoningEffortsForModel } from "../../shared/provider
 import type { DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
 import {
   allModelOptions,
+  AUTO_TIERS,
+  autoTierSelection,
   FALLBACK_LAUNCH_MODEL,
   factoryLaunchModel,
   modelDefaultForProvider,
@@ -17,8 +19,8 @@ const BASE_SESSION: SessionSummary = {
   id: "session-1",
   workspaceId: "workspace-1",
   provider: "codex",
-  modelLabel: "GPT-6 Sol",
-  modelId: "gpt-6-sol",
+  modelLabel: "GPT-6.1 Sol",
+  modelId: "gpt-6.1-sol",
   permissionMode: "auto-approve",
   providerConversationId: null,
   prompt: "Review this",
@@ -34,28 +36,48 @@ const BASE_SESSION: SessionSummary = {
   launchKind: "agent"
 };
 
+describe("Router tier selections", () => {
+  it("keeps the Speed wire value and gives Cost its own Sol fallback", () => {
+    expect(AUTO_TIERS).toEqual(["intelligence", "balanced", "cost", "economy"]);
+    expect(autoTierSelection("cost")).toEqual({
+      provider: "claude",
+      label: "Router Speed",
+      modelId: "claude-opus-5-5",
+      reasoningEffort: "medium",
+      autoTier: "cost"
+    });
+    expect(autoTierSelection("economy")).toEqual({
+      provider: "codex",
+      label: "Router Cost",
+      modelId: "gpt-6.1-sol",
+      reasoningEffort: "medium",
+      autoTier: "economy"
+    });
+  });
+});
+
 describe("modelSelectionFromSession", () => {
   it("preserves the stored session model", () => {
     const session: SessionSummary = { ...BASE_SESSION, reasoningEffort: "high" };
     expect(modelSelectionFromSession(session)).toEqual({
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "high"
     });
     expect(modelPickerSelectionFromSession(session)).toEqual({
       provider: "codex",
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "high"
     });
   });
 
   it("names the default effort when the session row carries none", () => {
     // Imported sessions and older rows have no effort, but the model runs at
-    // one — the composer chip reads "GPT-6 Sol Medium", not the model alone.
+    // one — the composer chip reads "GPT-6.1 Sol Medium", not the model alone.
     expect(modelSelectionFromSession(BASE_SESSION)).toEqual({
-      label: "GPT-6 Sol",
-      modelId: "gpt-6-sol",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
       reasoningEffort: "medium"
     });
   });

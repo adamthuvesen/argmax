@@ -104,6 +104,17 @@ impl ProviderDiscovery {
         vec![claude, codex, cursor, opencode, grok]
     }
 
+    /// Providers whose CLI is installed and not known to be logged out: the
+    /// ones a route may land on. Empty means discovery learned nothing.
+    pub async fn available_providers(&self) -> Vec<ProviderId> {
+        self.discover_all()
+            .await
+            .into_iter()
+            .filter(|report| report.installed && report.authenticated != Some(false))
+            .map(|report| report.provider)
+            .collect()
+    }
+
     /// Drop every cached capability report so the next `discover` re-probes the
     /// provider CLIs. Backs the renderer's explicit "Refresh" / "Try again"
     /// actions — without it a provider installed after boot stays "Not found"

@@ -1,3 +1,4 @@
+
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,32 +11,44 @@ import {
 } from "./backgroundIntensity.js";
 
 afterEach(() => {
-  window.localStorage.removeItem(BACKGROUND_INTENSITY_STORAGE_KEY);
+  window.localStorage.clear();
   document.documentElement.removeAttribute("data-background-intensity");
+  document.documentElement.style.removeProperty("--background-intensity");
 });
 
 describe("backgroundIntensity", () => {
-  it("accepts only whole levels from 1 through 10", () => {
-    expect(toBackgroundIntensity(1)).toBe(1);
-    expect(toBackgroundIntensity("10")).toBe(10);
+  it("accepts only whole numbers from 0 through 100", () => {
+    expect(toBackgroundIntensity(0)).toBe(0);
+    expect(toBackgroundIntensity("100")).toBe(100);
+    expect(toBackgroundIntensity("37")).toBe(37);
     expect(toBackgroundIntensity("7x")).toBeNull();
-    expect(toBackgroundIntensity("7.0")).toBeNull();
+    expect(toBackgroundIntensity("07")).toBeNull();
     expect(toBackgroundIntensity(" 7 ")).toBeNull();
     expect(toBackgroundIntensity(4.5)).toBeNull();
-    expect(toBackgroundIntensity(0)).toBeNull();
-    expect(toBackgroundIntensity(11)).toBeNull();
+    expect(toBackgroundIntensity(-1)).toBeNull();
+    expect(toBackgroundIntensity(101)).toBeNull();
   });
 
-  it("reads a stored level and falls back to the shipped background", () => {
+  it("reads a stored value and falls back to the shipped background", () => {
     expect(readStoredBackgroundIntensity()).toBe(DEFAULT_BACKGROUND_INTENSITY);
-    window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, "3");
-    expect(readStoredBackgroundIntensity()).toBe(3);
-    window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, "3oops");
+    window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, "35");
+    expect(readStoredBackgroundIntensity()).toBe(35);
+    window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, "35oops");
     expect(readStoredBackgroundIntensity()).toBe(DEFAULT_BACKGROUND_INTENSITY);
   });
 
-  it("applies the level to the document root", () => {
-    applyBackgroundIntensityToDocument(9);
-    expect(document.documentElement.getAttribute("data-background-intensity")).toBe("9");
+  it("carries a stored 1–10 level over as level × 10", () => {
+    window.localStorage.setItem("argmax.background.intensity", "7");
+    expect(readStoredBackgroundIntensity()).toBe(DEFAULT_BACKGROUND_INTENSITY);
+    window.localStorage.setItem("argmax.background.intensity", "10");
+    expect(readStoredBackgroundIntensity()).toBe(100);
+    window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, "12");
+    expect(readStoredBackgroundIntensity()).toBe(12);
+  });
+
+  it("applies the value to the document root", () => {
+    applyBackgroundIntensityToDocument(90);
+    expect(document.documentElement.getAttribute("data-background-intensity")).toBe("90");
+    expect(document.documentElement.style.getPropertyValue("--background-intensity")).toBe("90");
   });
 });

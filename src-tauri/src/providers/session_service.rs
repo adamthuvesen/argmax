@@ -530,6 +530,9 @@ pub struct ProviderSessionService {
     lifecycle: Arc<WorkspaceLifecycle>,
     approvals: Option<Arc<ApprovalService>>,
     questions: OnceLock<Arc<crate::questions::service::QuestionService>>,
+    /// The boot-warmed discovery cache, so a follow-up route never lands on a
+    /// CLI that is not installed. Unset in tests, which means "unknown".
+    provider_discovery: OnceLock<Arc<super::discovery::ProviderDiscovery>>,
     session_control: OnceLock<Arc<SessionLaunchRegistry>>,
     /// Installed after database startup. A provider turn must capture code
     /// state before the first possible write, while scratch chats skip it.
@@ -670,6 +673,7 @@ impl ProviderSessionService {
             lifecycle,
             approvals,
             questions: OnceLock::new(),
+            provider_discovery: OnceLock::new(),
             session_control: OnceLock::new(),
             checkpoints: OnceLock::new(),
             goals: OnceLock::new(),
@@ -683,6 +687,20 @@ impl ProviderSessionService {
     pub fn set_session_control(&self, registry: Arc<SessionLaunchRegistry>) {
         if self.session_control.set(registry).is_err() {
             tracing::warn!("session control registry was already installed");
+        }
+    }
+
+    pub fn set_provider_discovery(&self, discovery: Arc<super::discovery::ProviderDiscovery>) {
+        if self.provider_discovery.set(discovery).is_err() {
+            tracing::warn!("provider discovery was already installed");
+        }
+    }
+
+    /// Installed providers, or empty when discovery is not wired in.
+    pub(crate) async fn available_providers(&self) -> Vec<ProviderId> {
+        match self.provider_discovery.get() {
+            Some(discovery) => discovery.available_providers().await,
+            None => Vec::new(),
         }
     }
 
@@ -1524,9 +1542,11 @@ impl ProviderSessionService {
             &self.database.read_connection(),
             session_id,
         )?;
+        let available = self.available_providers().await;
         let state = crate::routing::reroute::FollowUpState {
             tier,
             provider: current_provider,
+            available,
             model_id: session.model_id.clone(),
             effort: current_effort,
             context_tokens: session.context_tokens.max(0) as u64,

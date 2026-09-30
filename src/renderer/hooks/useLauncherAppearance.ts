@@ -31,6 +31,12 @@ import {
   type BackgroundIntensity
 } from "../lib/backgroundIntensity.js";
 import {
+  applyContrastToDocument,
+  CONTRAST_STORAGE_KEY,
+  readStoredContrast,
+  type Contrast
+} from "../lib/contrast.js";
+import {
   applyAccentToDocument,
   readStoredAccent,
   writeStoredAccent,
@@ -77,6 +83,8 @@ export function useLauncherAppearance(): {
   setInkStrength: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   setBackgroundIntensity: (intensity: BackgroundIntensity) => void;
+  contrast: Contrast;
+  setContrast: (contrast: Contrast) => void;
   defaultIde: IdeId | null;
   setDefaultIde: (ide: IdeId | null) => void;
   detectedIdes: DetectedIde[];
@@ -97,6 +105,7 @@ export function useLauncherAppearance(): {
   const [backgroundIntensity, setBackgroundIntensity] = useState<BackgroundIntensity>(() =>
     readStoredBackgroundIntensity()
   );
+  const [contrast, setContrast] = useState<Contrast>(() => readStoredContrast());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);
   const ideListLoadedRef = useRef(false);
@@ -135,6 +144,12 @@ export function useLauncherAppearance(): {
     window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, String(backgroundIntensity));
     applyBackgroundIntensityToDocument(backgroundIntensity);
   }, [backgroundIntensity]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(CONTRAST_STORAGE_KEY, String(contrast));
+    applyContrastToDocument(contrast);
+  }, [contrast]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -227,6 +242,8 @@ export function useLauncherAppearance(): {
     setInkStrength,
     backgroundIntensity,
     setBackgroundIntensity,
+    contrast,
+    setContrast,
     defaultIde,
     setDefaultIde,
     detectedIdes

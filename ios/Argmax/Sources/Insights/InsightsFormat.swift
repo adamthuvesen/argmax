@@ -191,13 +191,14 @@ enum InsightsPalette {
         }
     }
 
-    /// Router tiers, strongest to fastest: violet, blue, sage. Keyed by the
+    /// Router tiers: violet, blue, sage, amber. Keyed by the
     /// wire tier so a tier keeps its hue whichever tiers the window has.
     static func tier(_ id: String) -> Color {
         switch AutoTier(rawValue: id) {
         case .intelligence: return Theme.violet
         case .balanced: return Color(Theme.activityBlueColor)
         case .cost: return Theme.sage
+        case .economy: return Theme.amber
         case nil: return Theme.muted
         }
     }

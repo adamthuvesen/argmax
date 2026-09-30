@@ -45,7 +45,7 @@ describe("RouterCostCard", () => {
     }
   });
 
-  it("lists tiers Frontier, Balance, Speed and marks estimated amounts", async () => {
+  it("lists Frontier, Balance, Speed and Cost and marks estimated amounts", async () => {
     stubRouterCost({
       tiers: [
         tier({
@@ -71,7 +71,8 @@ describe("RouterCostCard", () => {
             { provider: "cursor", modelId: "composer-2.5", turns: 4, costUsd: 0.5, estimated: true },
             { provider: "cursor", modelId: "mystery-model", turns: 1, costUsd: 0, estimated: true }
           ]
-        })
+        }),
+        tier({ tier: "economy", chats: 1, turns: 2, measuredCostUsd: 0.02 })
       ]
     });
 
@@ -80,7 +81,7 @@ describe("RouterCostCard", () => {
     const table = await screen.findByRole("table", { name: "Router cost by tier" });
     const rows = within(table).getAllByRole("row").slice(1);
     const names = rows.map((row) => within(row).getByRole("rowheader").firstChild?.textContent);
-    expect(names).toEqual(["Frontier", "Balance", "Speed"]);
+    expect(names).toEqual(["Frontier", "Balance", "Speed", "Cost"]);
 
     // Frontier: measured only, so no ≈; $8 over 4 turns.
     expect(within(rows[0]).getByText("$8.00")).toBeInTheDocument();

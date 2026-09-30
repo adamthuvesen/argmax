@@ -608,7 +608,7 @@ fn auto_tier_from_model(
     crate::routing::parse_tier(tier).map(Some).ok_or_else(|| {
         protocol_error(
             "INVALID_INPUT",
-            format!("Unknown Auto tier `{tier}`. Use auto, auto:cost, auto:balanced or auto:intelligence."),
+            format!("Unknown Auto tier `{tier}`. Use auto, auto:cost, auto:economy, auto:balanced or auto:intelligence."),
         )
     })
 }
@@ -736,7 +736,7 @@ mod auto_model_tests {
     #[test]
     fn auto_model_names_pick_a_tier_and_reject_unknown_ones() {
         assert_eq!(auto_tier_from_model(None).ok(), Some(None));
-        assert_eq!(auto_tier_from_model(Some("gpt-6-sol")).ok(), Some(None));
+        assert_eq!(auto_tier_from_model(Some("gpt-6.1-sol")).ok(), Some(None));
         assert_eq!(
             auto_tier_from_model(Some("auto")).ok(),
             Some(Some(AutoTier::Balanced))
@@ -744,6 +744,10 @@ mod auto_model_tests {
         assert_eq!(
             auto_tier_from_model(Some("auto:cost")).ok(),
             Some(Some(AutoTier::Cost))
+        );
+        assert_eq!(
+            auto_tier_from_model(Some("auto:economy")).ok(),
+            Some(Some(AutoTier::Economy))
         );
         let error = auto_tier_from_model(Some("auto:fast")).expect_err("unknown tier");
         assert_eq!(error.code, "INVALID_INPUT");
@@ -762,7 +766,7 @@ mod auto_model_tests {
             Some(Some(AutoTier::Intelligence))
         );
         assert_eq!(
-            launch_auto_tier(Some("gpt-6-sol"), false, parent).ok(),
+            launch_auto_tier(Some("gpt-6.1-sol"), false, parent).ok(),
             Some(None)
         );
         assert_eq!(launch_auto_tier(None, true, parent).ok(), Some(None));

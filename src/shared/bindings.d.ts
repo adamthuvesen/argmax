@@ -1720,7 +1720,7 @@ export type AttachmentPath = string
 export type AttachmentSizeBytes = number
 export type AttachmentsSaveImageInput = { sessionId: SessionId; mimeType: AttachmentMimeType; dataBase64: Base64ImageData }
 export type AttentionState = "normal" | "blocked" | "failed" | "review-ready" | "question-asked" | "approval-needed"
-export type AutoTier = "cost" | "balanced" | "intelligence"
+export type AutoTier = "cost" | "economy" | "balanced" | "intelligence"
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
@@ -2554,7 +2554,7 @@ launchKind: string;
  */
 arcId?: string | null;
 /**
- * The Auto tier (`cost` / `balanced` / `intelligence`) when the router
+ * The Auto tier (`cost` / `economy` / `balanced` / `intelligence`) when the router
  * picks this chat's model. Cleared when the user picks a model by hand.
  */
 autoTier?: string | null;

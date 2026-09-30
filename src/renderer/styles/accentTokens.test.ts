@@ -10,15 +10,12 @@ import {
 import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
 import { SERVER_ICON_TONE_DEPTH } from "../lib/serverIcons.js";
 
-const LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
-const levelList = (levels: readonly number[]) =>
-  levels.map((level) => `[data-background-intensity="${level}"]`).join(", ");
-const LIGHT_LADDER = `:root:not([data-theme="dark"]):is(${levelList(LEVELS)})`;
-const DARK_LADDER = `:root[data-theme="dark"]:is(${levelList([1, 2, 3, 4, 5, 6, 8, 9, 10])})`;
+const LIGHT_RULE = ':root:not([data-theme="dark"])[data-background-intensity]';
+const DARK_RULE = ':root[data-theme="dark"][data-background-intensity]';
 const NEUTRAL_SURFACES = [
   "bg", "sidebar", "panel", "review-panel", "review-sidebar", "panel-soft", "composer-surface",
-  "panel-sunken", "code-surface", "terminal-surface", "tool-block-surface", "line", "line-soft",
-  "line-strong", "scrollbar-thumb", "scrollbar-thumb-hover", "overlay-panel", "overlay-panel-raised"
+  "panel-sunken", "code-surface", "terminal-surface", "tool-block-surface", "line-at-intensity",
+  "line-soft-at-intensity", "line-strong-at-intensity", "scrollbar-thumb", "scrollbar-thumb-hover", "overlay-panel", "overlay-panel-raised"
 ];
 
 function readSource(path: string): string {
@@ -226,85 +223,93 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
     const ladder = readSource("src/renderer/styles/background-intensity.css");
 
-    expect(DEFAULT_BACKGROUND_INTENSITY).toBe(7);
-    expect(ladder).not.toMatch(/:root\[data-theme="dark"\][^{]*\[data-background-intensity="7"\]/);
+    expect(DEFAULT_BACKGROUND_INTENSITY).toBe(70);
+    // The dark formulas are anchored on 70, the default, where both pulls are zero.
+    expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, 70 - var(--background-intensity)) / 70");
+    expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, var(--background-intensity) - 70) / 30 * 67%");
     expect(styles.indexOf('url("./styles/tokens.css")')).toBeLessThan(
       styles.indexOf('url("./styles/background-intensity.css")')
     );
     expect(cssRuleBody(tokens, ":root")).toContain("--bg: #fcfcfb;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain("--bg: #141414;");
 
-    // Every dark rung mixes away from a restated copy of the shipped literal,
-    // so a literal that moves without its copy leaves rung 6 jumping off the
-    // default instead of easing away from it.
+    // Every dark surface mixes away from a restated copy of the shipped literal,
+    // so a literal that moves without its copy leaves the default jumping off
+    // the shipped palette instead of matching it.
     const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
-    const darkLadder = cssRuleBody(ladder, DARK_LADDER);
+    const darkRule = cssRuleBody(ladder, DARK_RULE);
     for (const surface of ["bg", "sidebar", "panel", "review-panel", "review-sidebar"]) {
-      expect(darkLadder.match(new RegExp(`--${surface}: color-mix\\(in oklab, (#[0-9a-f]{6})`))?.[1]).toBe(
-        dark.match(new RegExp(`--${surface}: (#[0-9a-f]{6});`))?.[1]
-      );
+      expect(
+        darkRule.match(new RegExp(`--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, (#[0-9a-f]{6})`))?.[1]
+      ).toBe(dark.match(new RegExp(`--${surface}: (#[0-9a-f]{6});`))?.[1]);
     }
   });
 
-  it("scales every neutral surface and its boundaries on every rung", () => {
+  it("scales every neutral surface and its boundaries across the dial", () => {
     const ladder = readSource("src/renderer/styles/background-intensity.css");
-    const light = cssRuleBody(ladder, LIGHT_LADDER);
-    const dark = cssRuleBody(ladder, DARK_LADDER);
+    const light = cssRuleBody(ladder, LIGHT_RULE);
+    const dark = cssRuleBody(ladder, DARK_RULE);
     for (const surface of NEUTRAL_SURFACES) {
       expect(light).toMatch(
-        new RegExp(`--${surface}: color-mix\\(in oklab, #[0-9a-f]{6}, #[0-9a-f]{6} var\\(--background-whiteness\\)\\);`)
+        new RegExp(
+          `--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, #[0-9a-f]{6}, #[0-9a-f]{6} var\\(--background-whiteness\\)\\), #000000 var\\(--background-dim\\)\\);`
+        )
       );
       expect(dark).toMatch(
-        new RegExp(`--${surface}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--background-[a-z-]+-target\\) var\\(--background-pull\\)\\);`)
+        new RegExp(
+          `--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, #[0-9a-f]{6}, #[0-9a-f]{6} var\\(--background-lift\\)\\), #[0-9a-f]{6} var\\(--background-fall\\)\\);`
+        )
       );
     }
+    // Light: soft gray at 0, warm paper at 10, pure white at 100.
+    expect(light).toContain("--background-whiteness: calc(max(0, var(--background-intensity) - 10) / 90 * 100%);");
+    expect(light).toContain("--background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);");
+  });
 
-    const percent = (selector: string, variable: string) =>
-      Number(new RegExp(`--${variable}: (?<value>\\d+)%;`).exec(cssRuleBody(ladder, selector))?.groups?.value);
-    // Light mode climbs in nine equal steps from cream to white.
-    const whiteness = LEVELS.map((level) =>
-      percent(`:root:not([data-theme="dark"])[data-background-intensity="${level}"]`, "background-whiteness")
-    );
-    expect(whiteness[0]).toBe(0);
-    expect(whiteness[9]).toBe(100);
-    for (let index = 1; index < whiteness.length; index += 1) {
-      expect(Math.abs(whiteness[index] - whiteness[index - 1] - 100 / 9)).toBeLessThanOrEqual(1);
+  it("layers contrast over the intensity lines and is a no-op at 50", () => {
+    const ladder = readSource("src/renderer/styles/background-intensity.css");
+    for (const [rule, toward] of [[LIGHT_RULE, "#000000"], [DARK_RULE, "#ffffff"]]) {
+      const body = cssRuleBody(ladder, rule);
+      expect(body).toContain("--line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);");
+      expect(body).toMatch(/--line-firm: calc\(max\(0, var\(--contrast, 50\) - 50\) \/ 50 \* \d+%\);/);
+      for (const line of ["line", "line-soft", "line-strong"]) {
+        expect(body).toContain(
+          `--${line}: color-mix(in oklab, color-mix(in oklab, var(--${line}-at-intensity), var(--bg) var(--line-fade)), ${toward} var(--line-firm));`
+        );
+      }
     }
-    // Dark level 1 starts at the former level 4 mix, then closes the gap to
-    // the exact shipped palette at level 7 in progressively smaller steps.
-    const darkPulls = LEVELS.filter((level) => level !== 7).map((level) =>
-      percent(`:root[data-theme="dark"][data-background-intensity="${level}"]`, "background-pull")
-    );
-    expect(darkPulls).toEqual([50, 42, 33, 25, 17, 8, 33, 67, 100]);
   });
 
   it("pins light and dark background endpoints", () => {
     const ladder = readSource("src/renderer/styles/background-intensity.css");
-    const light = cssRuleBody(ladder, LIGHT_LADDER);
-    const darkLow = cssRuleBody(ladder, `:root[data-theme="dark"]:is(${levelList([1, 2, 3, 4, 5, 6])})`);
-    const darkHigh = cssRuleBody(ladder, `:root[data-theme="dark"]:is(${levelList([8, 9, 10])})`);
+    const light = cssRuleBody(ladder, LIGHT_RULE);
+    const dark = cssRuleBody(ladder, DARK_RULE);
 
     for (const [, surface, cream, white] of light.matchAll(
-      /--([a-z-]+): color-mix\(in oklab, (#[0-9a-f]{6}), (#[0-9a-f]{6}) var/g
+      /--([a-z-]+): color-mix\(in oklab, color-mix\(in oklab, (#[0-9a-f]{6}), (#[0-9a-f]{6}) var/g
     )) {
       // Lines and scrollbars stay grey at both ends.
       if (/^(line|scrollbar)/.test(surface)) continue;
-      // Level 1 is warm paper, not grey: more red than blue.
+      // The paper stop is warm, not grey: more red than blue.
       expect(Number.parseInt(cream.slice(1, 3), 16), surface).toBeGreaterThan(Number.parseInt(cream.slice(5, 7), 16));
-      // Level 10 is pure white on every surface.
-      expect(white, surface).toBe("#ffffff");
+      // 100 is pure white on every surface, except the sidebars, which match --bg in light.
+      expect(white, surface).toBe(/^(sidebar|review-)/.test(surface) ? { sidebar: "#ffffff", "review-panel": "#ffffff", "review-sidebar": "#ffffff" }[surface] : "#ffffff");
     }
-    expect(light).toContain("--bg: color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness));");
+    expect(light).toContain(
+      "--bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
+    );
+    for (const surface of ["sidebar", "review-panel", "review-sidebar"]) {
+      expect(light, surface).toContain(
+        `--${surface}: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));`
+      );
+    }
 
-    expect(darkLow).toContain("--background-bg-target: #2c2c2c;");
-    // Dark mode stops short of black so the rungs above the default stay
-    // even and level 10 keeps a surface distinct from its borders.
-    expect(darkHigh).toContain("--background-bg-target: #0a0a0a;");
-    expect(darkHigh).toContain("--background-terminal-target: #0a0a0a;");
-    expect(darkHigh).toContain("--background-panel-target: #101010;");
-    expect(darkHigh).toContain("--background-composer-target: #161616;");
-    expect(darkHigh).toContain("--background-panel-soft-target: #171717;");
-    expect(darkHigh).toContain("--background-sunken-target: #050505;");
+    // The dark grounds fall toward black, but 100 stops 67% of the way there.
+    for (const surface of ["bg", "panel-sunken", "code-surface", "terminal-surface"]) {
+      expect(dark, surface).toMatch(new RegExp(`--${surface}: .* #000000 var\\(--background-fall\\)\\);`));
+    }
+    // 0 lifts the page to the lightest charcoal.
+    expect(dark).toContain("#141414, #2c2c2c var(--background-lift)");
   });
 
   it("keeps review scope menus below their trigger", () => {

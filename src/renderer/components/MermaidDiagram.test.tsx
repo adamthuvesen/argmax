@@ -68,6 +68,22 @@ describe("MermaidDiagram", () => {
     expect(renderMermaidDiagram).not.toHaveBeenCalled();
   });
 
+  it("draws a diagram again when the contrast changes", async () => {
+    const source = "flowchart LR\n  A --> B";
+    render(<MermaidDiagram source={source} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("mermaid-svg")).toBeInTheDocument();
+    });
+    renderMermaidDiagram.mockClear();
+
+    document.documentElement.setAttribute("data-contrast", "80");
+    try {
+      await waitFor(() => expect(renderMermaidDiagram).toHaveBeenCalledWith(source));
+    } finally {
+      document.documentElement.removeAttribute("data-contrast");
+    }
+  });
+
   it("toggles the mermaid source without leaving the diagram", async () => {
     render(<MermaidDiagram source={"flowchart LR\n  A --> B"} />);
     await waitFor(() => {

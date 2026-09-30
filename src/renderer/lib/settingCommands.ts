@@ -44,11 +44,19 @@ import {
   type InkStrength
 } from "./inkStrength.js";
 import {
-  BACKGROUND_INTENSITY_HINTS,
   BACKGROUND_INTENSITY_MAX,
   BACKGROUND_INTENSITY_MIN,
+  BACKGROUND_INTENSITY_PRESETS,
+  backgroundIntensityHint,
   type BackgroundIntensity
 } from "./backgroundIntensity.js";
+import {
+  CONTRAST_MAX,
+  CONTRAST_MIN,
+  CONTRAST_PRESETS,
+  contrastHint,
+  type Contrast as ContrastLevel
+} from "./contrast.js";
 import { THEME_OPTIONS, type ThemeMode } from "./theme.js";
 import { CHAT_WIDTH_HINTS, CHAT_WIDTH_MIN, CHAT_WIDTH_MAX, type ChatWidth } from "./chatWidth.js";
 import type { ReviewPanelSide } from "./reviewPanelSide.js";
@@ -84,6 +92,8 @@ export type SettingCommandsInput = {
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  contrast: ContrastLevel;
+  onContrastChange: (contrast: ContrastLevel) => void;
   desktopNotificationsEnabled: boolean;
   onDesktopNotificationsEnabledChange: (enabled: boolean) => void;
   keepAwakeEnabled: boolean;
@@ -122,10 +132,8 @@ const INK_STRENGTH_LEVELS: InkStrength[] = Array.from(
   (_, index) => (INK_STRENGTH_MIN + index) as InkStrength
 );
 
-const BACKGROUND_INTENSITY_LEVELS: BackgroundIntensity[] = Array.from(
-  { length: BACKGROUND_INTENSITY_MAX - BACKGROUND_INTENSITY_MIN + 1 },
-  (_, index) => (BACKGROUND_INTENSITY_MIN + index) as BackgroundIntensity
-);
+const BACKGROUND_INTENSITY_STEP = 10;
+const CONTRAST_STEP = 10;
 
 /**
  * Rows for one 1–10 type-size slider: a step in each direction, then every
@@ -242,31 +250,65 @@ function backgroundIntensityCommands(
   onChange: (intensity: BackgroundIntensity) => void
 ): PaletteItem[] {
   const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
-    const next = direction === "stronger" ? current + 1 : current - 1;
-    const inRange = next >= BACKGROUND_INTENSITY_MIN && next <= BACKGROUND_INTENSITY_MAX;
+    const target = direction === "stronger" ? current + BACKGROUND_INTENSITY_STEP : current - BACKGROUND_INTENSITY_STEP;
+    const next = Math.min(BACKGROUND_INTENSITY_MAX, Math.max(BACKGROUND_INTENSITY_MIN, target));
+    const inRange = next !== current;
     return {
       id: `setting:background-intensity:${direction}`,
       label: `Background intensity: ${direction}`,
       subtitle: inRange
-        ? `Page color · now level ${current}`
+        ? `Page color · now ${current}`
         : `Page color · already the ${direction === "stronger" ? "strongest" : "softest"} background`,
       group: "Actions",
       icon: Contrast,
       keepOpen: true,
       run: () => {
-        if (inRange) onChange(next as BackgroundIntensity);
+        if (inRange) onChange(next);
       }
     };
   };
-  const levels: PaletteItem[] = BACKGROUND_INTENSITY_LEVELS.map((level) => ({
+  const levels: PaletteItem[] = BACKGROUND_INTENSITY_PRESETS.map((level) => ({
     id: `setting:background-intensity:${level}`,
     label: `Background intensity ${level}`,
-    subtitle: `Page color · ${BACKGROUND_INTENSITY_HINTS[level]}`,
+    subtitle: `Page color · ${backgroundIntensityHint(level)}`,
     group: "Actions",
     icon: level === current ? Check : Contrast,
     run: () => onChange(level)
   }));
   return [stepRow("stronger"), stepRow("softer"), ...levels];
+}
+
+function contrastCommands(
+  current: ContrastLevel,
+  onChange: (contrast: ContrastLevel) => void
+): PaletteItem[] {
+  const stepRow = (direction: "firmer" | "softer"): PaletteItem => {
+    const target = direction === "firmer" ? current + CONTRAST_STEP : current - CONTRAST_STEP;
+    const next = Math.min(CONTRAST_MAX, Math.max(CONTRAST_MIN, target));
+    const inRange = next !== current;
+    return {
+      id: `setting:contrast:${direction}`,
+      label: `Contrast: ${direction}`,
+      subtitle: inRange
+        ? `Borders · now ${current}`
+        : `Borders · already the ${direction === "firmer" ? "firmest" : "softest"} contrast`,
+      group: "Actions",
+      icon: Contrast,
+      keepOpen: true,
+      run: () => {
+        if (inRange) onChange(next);
+      }
+    };
+  };
+  const levels: PaletteItem[] = CONTRAST_PRESETS.map((level) => ({
+    id: `setting:contrast:${level}`,
+    label: `Contrast ${level}`,
+    subtitle: `Borders · ${contrastHint(level)}`,
+    group: "Actions",
+    icon: level === current ? Check : Contrast,
+    run: () => onChange(level)
+  }));
+  return [stepRow("firmer"), stepRow("softer"), ...levels];
 }
 
 export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[] {
@@ -406,6 +448,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       input.backgroundIntensity,
       input.onBackgroundIntensityChange
     ),
+    ...contrastCommands(input.contrast, input.onContrastChange),
     ...toggleCommands
   ];
 }

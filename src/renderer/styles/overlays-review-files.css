@@ -86,7 +86,7 @@
 
 .workspace-tree-row:hover {
   color: var(--text);
-  background-color: color-mix(in oklab, var(--review-sidebar) 92%, var(--text));
+  background-color: var(--row-hover);
 }
 
 .workspace-tree-row:focus-visible {
@@ -132,7 +132,7 @@
    stays findable at a glance in a long tree without shouting. */
 .workspace-tree-file[aria-pressed="true"] {
   color: var(--text);
-  background-color: color-mix(in oklab, var(--review-sidebar) 86%, var(--text));
+  background-color: var(--row-selected);
   font-weight: var(--weight-medium);
 }
 
@@ -276,7 +276,7 @@
 .changes-tree-row-shell:hover .workspace-tree-row,
 .changes-tree-row-shell:focus-within .workspace-tree-row {
   color: var(--text);
-  background-color: color-mix(in oklab, var(--review-sidebar) 92%, var(--text));
+  background-color: var(--row-hover);
 }
 
 .changes-tree-row-shell .workspace-tree-file[aria-pressed="true"] {

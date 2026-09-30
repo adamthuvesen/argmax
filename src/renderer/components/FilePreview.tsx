@@ -26,7 +26,7 @@ import {
 import type { Extension } from "@codemirror/state";
 import CodeMirror from "@uiw/react-codemirror";
 import { ChevronRight, Code, Eye, FileText, Image as ImageIcon, RotateCcw } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useState, type JSX } from "react";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useState, type JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -36,10 +36,18 @@ import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { ImageFilePreview } from "./ImageFilePreview.js";
 import { LinesSkeleton } from "./LinesSkeleton.js";
 import { MarkdownTable } from "./MarkdownTable.js";
+import { importChunk } from "../lib/importChunk.js";
+import { isMermaidFenceClass } from "../lib/mermaidFence.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 import { WebLink } from "./WebLink.js";
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
+
+const MermaidDiagram = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./MermaidDiagram.js")).MermaidDiagram
+  }))
+);
 
 function isMarkdownPath(path: string | null): boolean {
   if (!path) return false;
@@ -292,6 +300,26 @@ export function FilePreview({
                   <a href={href} title={title}>{children}</a>
                 ),
               table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
+              // A mermaid fence is a figure; lift it out of the <pre> that wraps code.
+              pre: ({ node, children, ...rest }) => {
+                const first = node?.children[0];
+                const classes =
+                  first?.type === "element" && Array.isArray(first.properties.className)
+                    ? first.properties.className.join(" ")
+                    : undefined;
+                return isMermaidFenceClass(classes) ? <>{children}</> : <pre {...rest}>{children}</pre>;
+              },
+              code: ({ className, children, ...rest }) => {
+                if (!isMermaidFenceClass(className)) {
+                  return <code className={className} {...rest}>{children}</code>;
+                }
+                const source = (typeof children === "string" ? children : "").replace(/\n$/, "");
+                return (
+                  <Suspense fallback={<p role="status">Drawing diagram</p>}>
+                    <MermaidDiagram source={source} />
+                  </Suspense>
+                );
+              },
               img: ({ src, alt, ...rest }) => {
                 const resolved = resolveMarkdownImageSrc(
                   typeof src === "string" ? src : undefined,

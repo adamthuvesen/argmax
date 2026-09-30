@@ -860,6 +860,7 @@ pub fn run() {
                                 Some(Arc::clone(&approvals)),
                             );
                             providers.set_question_service(Arc::clone(&questions));
+                            providers.set_provider_discovery(Arc::clone(&state.provider_discovery));
                             // Kept for the boot-recovery pass below, which needs
                             // the same registry the socket hands out.
                             let after_turn_registry = session_launch_registry.clone();
@@ -1575,8 +1576,8 @@ pub struct ProviderDefaults {
 pub fn provider_defaults(provider: &str) -> ProviderDefaults {
     match provider {
         "codex" => ProviderDefaults {
-            model_label: "GPT-6 Sol",
-            model_id: "gpt-6-sol",
+            model_label: "GPT-6.1 Sol",
+            model_id: "gpt-6.1-sol",
             reasoning_effort: Some("medium"),
         },
         "cursor" => ProviderDefaults {

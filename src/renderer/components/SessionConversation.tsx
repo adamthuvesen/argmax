@@ -38,6 +38,7 @@ import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
 import { isAutoTier, modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
+import { successorModelId } from "../../shared/providerModels.js";
 import { orderedOpenFilePaths } from "../lib/openFileContext.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
@@ -962,7 +963,7 @@ export function SessionConversation({
           session && targetSessionId === session.id &&
           isAutoTier(session.autoTier) &&
           model.provider === session.provider &&
-          model.modelId === session.modelId &&
+          model.modelId === successorModelId(session.provider, session.modelId) &&
           (model.reasoningEffort ?? null) === (session.reasoningEffort ?? null)
             ? { ...model, autoTier: session.autoTier }
             : model;

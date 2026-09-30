@@ -65,6 +65,20 @@ describe("SessionComposer Auto chip", () => {
     expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ provider: "claude", modelId: "claude-fable-5-1", reasoningEffort: "high", autoTier: "balanced" });
   });
 
+  it("keeps a chat stored on a retired model in Auto and sends it unpinned", async () => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const retired = { ...routedSession, modelLabel: "Sonnet 5", modelId: "claude-sonnet-5" };
+    renderConversation(retired, [], { onSendSessionInput });
+
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Balance → Sonnet 5.5");
+    const promptInput = screen.getByLabelText("Chat prompt");
+    fireEvent.change(promptInput, { target: { value: "keep going" } });
+    fireEvent.keyDown(promptInput, { key: "Enter" });
+
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
+    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ modelId: "claude-sonnet-5-5", autoTier: "balanced" });
+  });
+
   it("says why when the router switches the chat, until the next draft starts", () => {
     const { rerender } = renderConversation(routedSession);
     expect(screen.queryByText("coding · heavy; confident upgrade")).toBeNull();

@@ -50,6 +50,13 @@ import {
   backgroundIntensityHint,
   type BackgroundIntensity
 } from "./backgroundIntensity.js";
+import {
+  CONTRAST_MAX,
+  CONTRAST_MIN,
+  CONTRAST_PRESETS,
+  contrastHint,
+  type Contrast as ContrastLevel
+} from "./contrast.js";
 import { THEME_OPTIONS, type ThemeMode } from "./theme.js";
 import { CHAT_WIDTH_HINTS, CHAT_WIDTH_MIN, CHAT_WIDTH_MAX, type ChatWidth } from "./chatWidth.js";
 import type { ReviewPanelSide } from "./reviewPanelSide.js";
@@ -85,6 +92,8 @@ export type SettingCommandsInput = {
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  contrast: ContrastLevel;
+  onContrastChange: (contrast: ContrastLevel) => void;
   desktopNotificationsEnabled: boolean;
   onDesktopNotificationsEnabledChange: (enabled: boolean) => void;
   keepAwakeEnabled: boolean;
@@ -124,6 +133,7 @@ const INK_STRENGTH_LEVELS: InkStrength[] = Array.from(
 );
 
 const BACKGROUND_INTENSITY_STEP = 10;
+const CONTRAST_STEP = 10;
 
 /**
  * Rows for one 1–10 type-size slider: a step in each direction, then every
@@ -268,6 +278,39 @@ function backgroundIntensityCommands(
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
+function contrastCommands(
+  current: ContrastLevel,
+  onChange: (contrast: ContrastLevel) => void
+): PaletteItem[] {
+  const stepRow = (direction: "firmer" | "softer"): PaletteItem => {
+    const target = direction === "firmer" ? current + CONTRAST_STEP : current - CONTRAST_STEP;
+    const next = Math.min(CONTRAST_MAX, Math.max(CONTRAST_MIN, target));
+    const inRange = next !== current;
+    return {
+      id: `setting:contrast:${direction}`,
+      label: `Contrast: ${direction}`,
+      subtitle: inRange
+        ? `Borders · now ${current}`
+        : `Borders · already the ${direction === "firmer" ? "firmest" : "softest"} contrast`,
+      group: "Actions",
+      icon: Contrast,
+      keepOpen: true,
+      run: () => {
+        if (inRange) onChange(next);
+      }
+    };
+  };
+  const levels: PaletteItem[] = CONTRAST_PRESETS.map((level) => ({
+    id: `setting:contrast:${level}`,
+    label: `Contrast ${level}`,
+    subtitle: `Borders · ${contrastHint(level)}`,
+    group: "Actions",
+    icon: level === current ? Check : Contrast,
+    run: () => onChange(level)
+  }));
+  return [stepRow("firmer"), stepRow("softer"), ...levels];
+}
+
 export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[] {
   const themes: PaletteItem[] = THEME_OPTIONS.map((option) => ({
     id: `setting:theme:${option.id}`,
@@ -405,6 +448,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       input.backgroundIntensity,
       input.onBackgroundIntensityChange
     ),
+    ...contrastCommands(input.contrast, input.onContrastChange),
     ...toggleCommands
   ];
 }

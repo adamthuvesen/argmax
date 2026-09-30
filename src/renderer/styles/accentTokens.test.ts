@@ -14,8 +14,8 @@ const LIGHT_RULE = ':root:not([data-theme="dark"])[data-background-intensity]';
 const DARK_RULE = ':root[data-theme="dark"][data-background-intensity]';
 const NEUTRAL_SURFACES = [
   "bg", "sidebar", "panel", "review-panel", "review-sidebar", "panel-soft", "composer-surface",
-  "panel-sunken", "code-surface", "terminal-surface", "tool-block-surface", "line", "line-soft",
-  "line-strong", "scrollbar-thumb", "scrollbar-thumb-hover", "overlay-panel", "overlay-panel-raised"
+  "panel-sunken", "code-surface", "terminal-surface", "tool-block-surface", "line-at-intensity",
+  "line-soft-at-intensity", "line-strong-at-intensity", "scrollbar-thumb", "scrollbar-thumb-hover", "overlay-panel", "overlay-panel-raised"
 ];
 
 function readSource(path: string): string {
@@ -264,6 +264,20 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // Light: soft gray at 0, warm paper at 10, pure white at 100.
     expect(light).toContain("--background-whiteness: calc(max(0, var(--background-intensity) - 10) / 90 * 100%);");
     expect(light).toContain("--background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);");
+  });
+
+  it("layers contrast over the intensity lines and is a no-op at 50", () => {
+    const ladder = readSource("src/renderer/styles/background-intensity.css");
+    for (const [rule, toward] of [[LIGHT_RULE, "#000000"], [DARK_RULE, "#ffffff"]]) {
+      const body = cssRuleBody(ladder, rule);
+      expect(body).toContain("--line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);");
+      expect(body).toMatch(/--line-firm: calc\(max\(0, var\(--contrast, 50\) - 50\) \/ 50 \* \d+%\);/);
+      for (const line of ["line", "line-soft", "line-strong"]) {
+        expect(body).toContain(
+          `--${line}: color-mix(in oklab, color-mix(in oklab, var(--${line}-at-intensity), var(--bg) var(--line-fade)), ${toward} var(--line-firm));`
+        );
+      }
+    }
   });
 
   it("pins light and dark background endpoints", () => {

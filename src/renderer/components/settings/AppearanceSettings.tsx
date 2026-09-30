@@ -50,6 +50,13 @@ import {
   toBackgroundIntensity,
   type BackgroundIntensity
 } from "../../lib/backgroundIntensity.js";
+import {
+  contrastHint,
+  CONTRAST_MAX,
+  CONTRAST_MIN,
+  toContrast,
+  type Contrast
+} from "../../lib/contrast.js";
 import { setMascotVisible, useMascotVisible } from "../../lib/mascotVisibility.js";
 import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
@@ -112,7 +119,9 @@ export function AppearanceSettings({
   inkStrength,
   onInkStrengthChange,
   backgroundIntensity,
-  onBackgroundIntensityChange
+  onBackgroundIntensityChange,
+  contrast,
+  onContrastChange
 }: {
   fontFamily: FontFamilyId;
   onFontFamilyChange: (id: FontFamilyId) => void;
@@ -126,6 +135,8 @@ export function AppearanceSettings({
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  contrast: Contrast;
+  onContrastChange: (contrast: Contrast) => void;
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
   browserThemeMode: ThemeMode;
@@ -176,6 +187,10 @@ export function AppearanceSettings({
     const intensity = toBackgroundIntensity(raw);
     if (intensity) onBackgroundIntensityChange(intensity);
   };
+  const pickContrast = (raw: number): void => {
+    const next = toContrast(raw);
+    if (next !== null) onContrastChange(next);
+  };
   const fontStack = FONT_OPTIONS.find((option) => option.id === fontFamily)?.stack;
   // Straight from the store rather than through props: every running mark in
   // the app subscribes to it, and a second copy in App state would be a second
@@ -218,6 +233,20 @@ export function AppearanceSettings({
               value={backgroundIntensity}
               valueLabel={String(backgroundIntensity)}
               onChange={pickBackgroundIntensity}
+            />
+          }
+        />
+        <SettingRow
+          label="Contrast"
+          description={`Borders and dividers between surfaces. ${contrastHint(contrast)}`}
+          control={
+            <Slider
+              ariaLabel="Contrast"
+              min={CONTRAST_MIN}
+              max={CONTRAST_MAX}
+              value={contrast}
+              valueLabel={String(contrast)}
+              onChange={pickContrast}
             />
           }
         />

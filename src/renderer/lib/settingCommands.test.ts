@@ -27,6 +27,8 @@ function inputWith(overrides: Partial<SettingCommandsInput> = {}): SettingComman
     onInkStrengthChange: vi.fn(),
     backgroundIntensity: 70,
     onBackgroundIntensityChange: vi.fn(),
+    contrast: 50,
+    onContrastChange: vi.fn(),
     desktopNotificationsEnabled: true,
     onDesktopNotificationsEnabledChange: vi.fn(),
     keepAwakeEnabled: false,
@@ -60,6 +62,7 @@ describe("buildSettingCommands", () => {
     byId.get("setting:font-heaviness:8")!.run();
     byId.get("setting:ink-strength:3")!.run();
     byId.get("setting:background-intensity:50")!.run();
+    byId.get("setting:contrast:75")!.run();
     byId.get("setting:notifications:disable")!.run();
     byId.get("setting:keep-awake:enable")!.run();
     byId.get("setting:fast-mode:enable")!.run();
@@ -77,6 +80,7 @@ describe("buildSettingCommands", () => {
     expect(input.onFontHeavinessChange).toHaveBeenCalledWith(8);
     expect(input.onInkStrengthChange).toHaveBeenCalledWith(3);
     expect(input.onBackgroundIntensityChange).toHaveBeenCalledWith(50);
+    expect(input.onContrastChange).toHaveBeenCalledWith(75);
     expect(input.onDesktopNotificationsEnabledChange).toHaveBeenCalledWith(false);
     expect(input.onKeepAwakeEnabledChange).toHaveBeenCalledWith(true);
     expect(input.onFastModeEnabledChange).toHaveBeenCalledWith(true);
@@ -101,7 +105,8 @@ describe("buildSettingCommands", () => {
       "setting:chat-font-size:6",
       "setting:font-heaviness:5",
       "setting:ink-strength:7",
-      "setting:background-intensity:70"
+      "setting:background-intensity:70",
+      "setting:contrast:50"
     ]);
   });
 

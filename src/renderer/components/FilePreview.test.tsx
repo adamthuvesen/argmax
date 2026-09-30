@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -44,6 +45,16 @@ function makeState(overrides: Partial<WorkspaceFilesState> = {}): WorkspaceFiles
     ...overrides
   };
 }
+
+vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof MermaidRuntime>();
+  return {
+    ...actual,
+    renderMermaidDiagram: vi.fn(() =>
+      Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` })
+    )
+  };
+});
 
 describe("FilePreview", () => {
   it.each([
@@ -208,6 +219,22 @@ describe("FilePreview", () => {
     expect(src).toContain("repo");
     expect(src).toContain("docs");
     expect(src).toContain("logo.png");
+  });
+
+  it("draws a mermaid fence in a markdown file and leaves other fences as code", async () => {
+    const content = ["```mermaid", "flowchart LR", "  A --> B", "```", "", "```sh", "echo hi", "```"].join("\n");
+    const { container } = render(
+      <FilePreview
+        state={makeState({
+          selectedPath: "docs/ARCHITECTURE.md",
+          preview: { kind: "text", content, size: content.length, mtimeMs: 1 },
+          buffer: content
+        })}
+      />
+    );
+    expect(await screen.findByTestId("mermaid-svg")).toBeInTheDocument();
+    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(screen.getByText("echo hi")).toBeInTheDocument();
   });
 
   it("shows an image file instead of the binary message", () => {

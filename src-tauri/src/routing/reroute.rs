@@ -691,6 +691,20 @@ mod tests {
     }
 
     #[test]
+    fn a_chat_stored_on_retired_sol_routes_without_panicking() {
+        for (kind, score) in [
+            (TaskKind::Coding, 0.5),
+            (TaskKind::Coding, 3.5),
+            (TaskKind::Research, 2.0),
+        ] {
+            let chat = state(ProviderId::Codex, "gpt-6-sol", Some(Medium));
+            let mut task = classified(kind, score, 0.95);
+            task.follow_up_scope = Some(FollowUpScope::Continuation);
+            let _ = follow_up_route(&chat, &task);
+        }
+    }
+
+    #[test]
     fn matched_earlier_task_restores_its_escalated_effort() {
         let mut chat = state(ProviderId::Codex, "gpt-6-astra", Some(Low));
         chat.resume_target = Some(RoutedModel {

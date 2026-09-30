@@ -415,7 +415,14 @@ pub fn fallback(tier: AutoTier) -> RoutedModel {
     }
 }
 
+/// The routable model for a stored id. A retired id resolves to its
+/// successor, so a saved Auto chat on it keeps a known capability instead of
+/// reaching the follow-up path's `expect`.
 pub fn route_model(model_id: &str) -> Option<&'static RouteModel> {
+    let model_id = match model_id {
+        "gpt-6-sol" => "gpt-6.1-sol",
+        other => other,
+    };
     ROUTE_MODELS
         .iter()
         .copied()

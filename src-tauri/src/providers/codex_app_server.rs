@@ -24,6 +24,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
 use uuid::Uuid;
 
+use super::adapters::successor_model_id;
 use super::environment::build_provider_environment;
 use super::normalizer::ProviderOutputStream;
 use super::runtime::{
@@ -209,7 +210,7 @@ pub async fn launch_turn(
         &input.session_id,
         json!({
             "type": "turn_context",
-            "model": input.model_id,
+            "model": successor_model_id(ProviderId::Codex, &input.model_id),
             "reasoning_effort": effective_effort(input),
         }),
     );
@@ -350,7 +351,10 @@ fn thread_params(
 ) -> Value {
     let mut params = Map::new();
     params.insert("cwd".to_string(), json!(input.workspace_path));
-    params.insert("model".to_string(), json!(input.model_id));
+    params.insert(
+        "model".to_string(),
+        json!(successor_model_id(ProviderId::Codex, &input.model_id)),
+    );
     if let Some(resume_id) = &input.resume_conversation_id {
         params.insert("threadId".to_string(), json!(resume_id));
     }
@@ -369,7 +373,10 @@ fn turn_params(input: &ProviderLaunchInput, thread_id: &str, prompt: String) -> 
             json!([{ "type": "text", "text": prompt }]),
         ),
         ("cwd".to_string(), json!(input.workspace_path)),
-        ("model".to_string(), json!(input.model_id)),
+        (
+            "model".to_string(),
+            json!(successor_model_id(ProviderId::Codex, &input.model_id)),
+        ),
         ("summary".to_string(), json!("auto")),
         (
             "additionalContext".to_string(),

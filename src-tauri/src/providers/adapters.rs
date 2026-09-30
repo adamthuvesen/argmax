@@ -198,7 +198,10 @@ fn codex_common_args(
     mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = codex_permission_args(input);
-    args.extend(["--model".to_string(), input.model_id.clone()]);
+    args.extend([
+        "--model".to_string(),
+        successor_model_id(ProviderId::Codex, &input.model_id).to_string(),
+    ]);
     args.extend([
         "-c".to_string(),
         r#"model_reasoning_summary="auto""#.to_string(),
@@ -690,17 +693,17 @@ const CLAUDE_LONG_CONTEXT_MODELS: [&str; 4] = [
 ];
 
 // A retired id launches as the model that replaced it, so a routine or chat
-// stored on it keeps running. Mirrors SUCCESSOR_MODEL_IDS.claude
-// (providerModels.ts).
-fn claude_successor_model(model_id: &str) -> &str {
-    match model_id {
-        "claude-sonnet-5" => "claude-sonnet-5-5",
-        other => other,
+// stored on it keeps running. Mirrors SUCCESSOR_MODEL_IDS (providerModels.ts).
+pub(super) fn successor_model_id(provider: ProviderId, model_id: &str) -> &str {
+    match (provider, model_id) {
+        (ProviderId::Claude, "claude-sonnet-5") => "claude-sonnet-5-5",
+        (ProviderId::Codex, "gpt-6-sol") => "gpt-6.1-sol",
+        _ => model_id,
     }
 }
 
 fn claude_model_arg(model_id: &str) -> String {
-    let model_id = claude_successor_model(model_id);
+    let model_id = successor_model_id(ProviderId::Claude, model_id);
     if CLAUDE_LONG_CONTEXT_MODELS.contains(&model_id) {
         format!("{model_id}[1m]")
     } else {
@@ -1067,6 +1070,26 @@ mod tests {
                 .any(|arg| arg == "model_reasoning_effort=\"max\""),
             "luna max should pass through, got {max_args:?}"
         );
+    }
+
+    #[test]
+    fn codex_retired_sol_launches_as_its_successor() {
+        let input = ProviderLaunchInput {
+            model_id: "gpt-6-sol".to_string(),
+            ..launch_input(ProviderId::Codex)
+        };
+        for args in [
+            (get_provider_definition(ProviderId::Codex).structured_args)(&input, None),
+            (get_provider_definition(ProviderId::Codex).structured_resume_args)(
+                &input, "conv-1", None,
+            ),
+        ] {
+            let position = args
+                .iter()
+                .position(|arg| arg == "--model")
+                .expect("--model");
+            assert_eq!(args[position + 1], "gpt-6.1-sol");
+        }
     }
 
     #[test]

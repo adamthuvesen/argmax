@@ -114,7 +114,9 @@
         "modelId": "gpt-6.1-sol",
         "reasoningEffort": "medium"
       },
-      "successors": {},
+      "successors": {
+        "gpt-6-sol": "gpt-6.1-sol"
+      },
       "models": [
         {
           "label": "GPT-6 Astra",

@@ -51,6 +51,15 @@ describe("launch model preference", () => {
     });
   });
 
+  it("follows a stored GPT-6 Sol pick onto GPT-6.1 Sol", () => {
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "codex", modelId: "gpt-6-sol" }));
+    expect(readStoredLaunchModel()).toMatchObject({
+      provider: "codex",
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol"
+    });
+  });
+
   it("returns null for a model that left the catalog", () => {
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "codex", modelId: "gpt-2" }));
     expect(readStoredLaunchModel()).toBeNull();

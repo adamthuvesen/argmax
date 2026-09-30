@@ -484,7 +484,8 @@ export function normalizeModelId(modelId: string): string {
  * providerModels.json.
  */
 export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<string, string>>>> = {
-  claude: { "claude-sonnet-5": "claude-sonnet-5-5" }
+  claude: { "claude-sonnet-5": "claude-sonnet-5-5" },
+  codex: { "gpt-6-sol": "gpt-6.1-sol" }
 };
 
 /** Catalog id that replaced a stored one, or the id itself. */

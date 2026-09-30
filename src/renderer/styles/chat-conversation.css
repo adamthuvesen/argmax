@@ -835,6 +835,20 @@
   min-height: 0;
 }
 
+/* The list scrolls on its own composited layer, and WebKit snaps that
+   layer's clip to device pixels independently of the scrims painted here.
+   When the box lands on a fractional offset the two round apart, and one
+   device row of text shows at full ink above the top scrim: a bright line
+   over the fade. Overhang each scrim by a pixel so the seam stays covered;
+   the space outside is the same surface, with nothing drawn at the edge. */
+.conversation-scroll.scroll-fade::before {
+  top: -1px;
+}
+
+.conversation-scroll.scroll-fade::after {
+  bottom: -1px;
+}
+
 /* PR milestones belong to the chat, including while it has no assistant turn.
    Keep the sweep outside the scroller so it has no effect on transcript layout.
    An explicit width avoids the canvas intrinsic-size feedback loop. */

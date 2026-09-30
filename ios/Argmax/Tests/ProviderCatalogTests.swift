@@ -11,6 +11,18 @@ import XCTest
 final class ProviderCatalogTests: XCTestCase {
     private let catalog = ProviderCatalog.bundled
 
+    func testRouterTiersKeepSpeedAndAddCostWithItsOwnFallback() {
+        XCTAssertEqual(AutoTier.allCases, [.intelligence, .balanced, .cost, .economy])
+        XCTAssertEqual(AutoTier.cost.shortLabel, "Speed")
+        XCTAssertEqual(AutoTier.cost.selection.provider, "claude")
+        XCTAssertEqual(AutoTier.cost.selection.modelId, "claude-opus-5-5")
+        XCTAssertEqual(AutoTier.economy.shortLabel, "Cost")
+        XCTAssertEqual(AutoTier.economy.selection.provider, "codex")
+        XCTAssertEqual(AutoTier.economy.selection.modelId, "gpt-6.1-sol")
+        XCTAssertEqual(AutoTier.economy.selection.reasoningEffort, .medium)
+        XCTAssertEqual(AutoTier(pickerValue: AutoTier.economy.pickerValue), .economy)
+    }
+
     func testTheCatalogueIsBundledAndCoversEveryProvider() {
         XCTAssertEqual(catalog.providers.map(\.id), ["claude", "codex", "cursor", "opencode", "grok"])
         XCTAssertEqual(catalog.launchPriority, catalog.providers.map(\.id))

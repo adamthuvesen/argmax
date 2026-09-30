@@ -3,6 +3,8 @@ import { PROVIDER_MODELS, reasoningEffortsForModel } from "../../shared/provider
 import type { DiscoveredProvider, ProviderId, SessionSummary } from "../../shared/types.js";
 import {
   allModelOptions,
+  AUTO_TIERS,
+  autoTierSelection,
   FALLBACK_LAUNCH_MODEL,
   factoryLaunchModel,
   modelDefaultForProvider,
@@ -33,6 +35,26 @@ const BASE_SESSION: SessionSummary = {
   imported: false,
   launchKind: "agent"
 };
+
+describe("Router tier selections", () => {
+  it("keeps the Speed wire value and gives Cost its own Sol fallback", () => {
+    expect(AUTO_TIERS).toEqual(["intelligence", "balanced", "cost", "economy"]);
+    expect(autoTierSelection("cost")).toEqual({
+      provider: "claude",
+      label: "Router Speed",
+      modelId: "claude-opus-5-5",
+      reasoningEffort: "medium",
+      autoTier: "cost"
+    });
+    expect(autoTierSelection("economy")).toEqual({
+      provider: "codex",
+      label: "Router Cost",
+      modelId: "gpt-6.1-sol",
+      reasoningEffort: "medium",
+      autoTier: "economy"
+    });
+  });
+});
 
 describe("modelSelectionFromSession", () => {
   it("preserves the stored session model", () => {

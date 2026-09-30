@@ -18,26 +18,29 @@ import type { AutoTier, DiscoveredProvider, ProviderId, SessionSummary } from ".
 export type ModelPickerSelection = ProviderModelSelection & { provider: ProviderId; autoTier?: AutoTier };
 
 /** Picker order: the strongest tier first. */
-export const AUTO_TIERS: readonly AutoTier[] = ["intelligence", "balanced", "cost"];
+export const AUTO_TIERS: readonly AutoTier[] = ["intelligence", "balanced", "cost", "economy"];
 
 /** The tier alone, for chips and rows under the Router header, where the
  *  "Router" prefix would only make them longer. */
 export const AUTO_TIER_SHORT_LABELS: Record<AutoTier, string> = {
   cost: "Speed",
   balanced: "Balance",
-  intelligence: "Frontier"
+  intelligence: "Frontier",
+  economy: "Cost"
 };
 
 const AUTO_TIER_LABELS: Record<AutoTier, string> = {
   cost: "Router Speed",
   balanced: "Router Balance",
-  intelligence: "Router Frontier"
+  intelligence: "Router Frontier",
+  economy: "Router Cost"
 };
 
 export const AUTO_TIER_DESCRIPTIONS: Record<AutoTier, string> = {
   cost: "Sonnet and Composer; Opus only for reviews",
   balanced: "Sonnet for everyday work, Opus for heavy work and reviews",
-  intelligence: "Frontier models, deeper reasoning"
+  intelligence: "Frontier models, deeper reasoning",
+  economy: "Luna for routine work, Sol for larger work; Opus for reviews"
 };
 
 /** Picker row and recency key for an Auto row, apart from every `provider:modelId`. */
@@ -49,13 +52,14 @@ export function isAutoTier(value: unknown): value is AutoTier {
   return AUTO_TIERS.includes(value as AutoTier);
 }
 
-/** An Auto picker row. Provider, model and effort are the backend's fallback
- *  (Opus 5.5 at medium), so every consumer that reads them keeps working. */
+/** An Auto picker row. Provider, model and effort are the backend's fallback,
+ *  so every consumer that reads them keeps working. */
 export function autoTierSelection(autoTier: AutoTier): ModelPickerSelection {
+  const economy = autoTier === "economy";
   return {
-    provider: "claude",
+    provider: economy ? "codex" : "claude",
     label: AUTO_TIER_LABELS[autoTier],
-    modelId: "claude-opus-5-5",
+    modelId: economy ? "gpt-6.1-sol" : "claude-opus-5-5",
     reasoningEffort: "medium",
     autoTier
   };

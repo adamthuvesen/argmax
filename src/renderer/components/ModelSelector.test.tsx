@@ -815,13 +815,14 @@ describe("LaunchModelSelector — Auto rows", () => {
     expect(within(list).queryByRole("button", { name: "Router Balance" })).toBeNull();
   });
 
-  it("leads with the three tiers when routing is on and picks one with its tier", () => {
+  it("leads with four tiers when routing is on and picks each by wire value", () => {
     const onChange = openLaunchPicker({ autoRouting: true });
     const options = within(screen.getByRole("listbox", { name: "Launch model" })).getAllByRole("option");
-    expect(options.slice(0, 3).map((option) => optionName(option))).toEqual([
+    expect(options.slice(0, 4).map((option) => optionName(option))).toEqual([
       "Router Frontier",
       "Router Balance",
-      "Router Speed"
+      "Router Speed",
+      "Router Cost"
     ]);
     // Under the Router header the rows drop the repeated prefix.
     expect(options[0]).toHaveTextContent(/^Frontier$/);
@@ -830,6 +831,9 @@ describe("LaunchModelSelector — Auto rows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Router Speed" }));
     expect(onChange).toHaveBeenCalledWith(autoTierSelection("cost"));
+    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Router Cost" }));
+    expect(onChange).toHaveBeenCalledWith(autoTierSelection("economy"));
   });
 
   it("uses the short Router label for a recent tier", () => {

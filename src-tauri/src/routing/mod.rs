@@ -158,14 +158,31 @@ pub(crate) fn with_available_provider(
         return route;
     };
     let previous = route.provider;
-    if let Some((kind, difficulty)) = route.kind.zip(route.difficulty) {
-        if let Some(routed) = table::follow_up_target(provider, route.tier, kind, difficulty, false)
-        {
-            route.provider = routed.model.provider;
-            route.model_id = routed.model.model_id.to_string();
-            route.model_label = routed.model.label.to_string();
-            route.effort = routed.effort;
-        }
+    let target = if route.tier == AutoTier::Economy
+        && provider == ProviderId::Claude
+        && route.kind != Some(TaskKind::Review)
+    {
+        // Launch substitution has no native conversation to preserve. Use
+        // Sonnet for budget work instead of the Opus follow-up target.
+        let heavy =
+            route.difficulty == Some(Difficulty::Heavy) && route.kind != Some(TaskKind::Mechanical);
+        Some(RoutedModel {
+            model: if heavy { &table::OPUS } else { &table::SONNET },
+            effort: route.effort,
+        })
+    } else {
+        route
+            .kind
+            .zip(route.difficulty)
+            .and_then(|(kind, difficulty)| {
+                table::follow_up_target(provider, route.tier, kind, difficulty, false)
+            })
+    };
+    if let Some(routed) = target {
+        route.provider = routed.model.provider;
+        route.model_id = routed.model.model_id.to_string();
+        route.model_label = routed.model.label.to_string();
+        route.effort = routed.effort;
     }
     if route.provider == previous {
         let defaults = crate::provider_defaults(provider.as_str());
@@ -319,6 +336,7 @@ pub fn difficulty_label(difficulty: Difficulty) -> &'static str {
 
 pub fn tier_label(tier: AutoTier) -> &'static str {
     match tier {
+        AutoTier::Economy => "economy",
         AutoTier::Cost => "cost",
         AutoTier::Balanced => "balanced",
         AutoTier::Intelligence => "intelligence",
@@ -327,6 +345,7 @@ pub fn tier_label(tier: AutoTier) -> &'static str {
 
 pub fn parse_tier(value: &str) -> Option<AutoTier> {
     match value {
+        "economy" => Some(AutoTier::Economy),
         "cost" => Some(AutoTier::Cost),
         "balanced" => Some(AutoTier::Balanced),
         "intelligence" => Some(AutoTier::Intelligence),
@@ -337,6 +356,34 @@ pub fn parse_tier(value: &str) -> Option<AutoTier> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cost_uses_sonnet_when_codex_is_unavailable() {
+        let route = fallback_decision(AutoTier::Economy, "classifier unavailable");
+        let route = with_available_provider(route, &[ProviderId::Claude]);
+        assert_eq!(route.tier, AutoTier::Economy);
+        assert_eq!(route.provider, ProviderId::Claude);
+        assert_eq!(route.model_id, "claude-sonnet-5-5");
+        assert_eq!(
+            route.effort,
+            Some(crate::ipc::validation::ReasoningEffort::Medium)
+        );
+    }
+
+    #[test]
+    fn tiers_round_trip_and_legacy_cost_keeps_speed() {
+        for tier in [
+            AutoTier::Cost,
+            AutoTier::Economy,
+            AutoTier::Balanced,
+            AutoTier::Intelligence,
+        ] {
+            assert_eq!(parse_tier(tier_label(tier)), Some(tier));
+            assert_eq!(serde_json::to_value(tier).unwrap(), tier_label(tier));
+        }
+        assert_eq!(parse_tier("cost"), Some(AutoTier::Cost));
+        assert_eq!(parse_tier("economy"), Some(AutoTier::Economy));
+    }
 
     #[test]
     fn an_uninstalled_grid_pick_moves_to_an_installed_provider() {

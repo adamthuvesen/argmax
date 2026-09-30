@@ -50,7 +50,8 @@ use ReasoningEffort::{High, Low, Medium, Xhigh};
 /// Cursor conversation. The Grok ladder ends by handing the chat to Opus 5.5
 /// on Claude Code: a user still unhappy at Grok high needs a stronger model,
 /// not more effort on a weak one. That last rung is the one automatic
-/// provider switch; the chat continues from its visible transcript.
+/// provider switch on the existing tiers. Cost can also hand Sol to Opus
+/// after Sol high fails; those chats continue from their visible transcript.
 fn ladder(provider: ProviderId) -> &'static [(&'static RouteModel, Option<ReasoningEffort>)] {
     match provider {
         ProviderId::Claude => &[
@@ -117,7 +118,7 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
     }
 
     if classification.correction.unwrap_or(0.0) >= CORRECTION_THRESHOLD {
-        return match next_rung(state.provider, &state.model_id, state.effort) {
+        return match next_rung(state.tier, state.provider, &state.model_id, state.effort) {
             Some(rung) => decision_from(
                 state.tier,
                 rung,
@@ -350,7 +351,7 @@ pub fn escalate(
     effort: Option<ReasoningEffort>,
     reason: &str,
 ) -> Option<RouteDecision> {
-    next_rung(provider, model_id, effort).map(|rung| {
+    next_rung(tier, provider, model_id, effort).map(|rung| {
         decision_from(
             tier,
             rung,
@@ -367,12 +368,22 @@ pub fn escalate(
 /// (a hand-routed effort, say) goes to the first stronger rung. Position, not
 /// price, orders a ladder: Cursor's models carry no price in Argmax, so price
 /// alone would call Composer and Opus equal.
-pub fn next_rung(
+fn next_rung(
+    tier: AutoTier,
     provider: ProviderId,
     model_id: &str,
     effort: Option<ReasoningEffort>,
 ) -> Option<RoutedModel> {
-    let rungs = ladder(provider);
+    let rungs = if tier == AutoTier::Economy && provider == ProviderId::Codex {
+        &[
+            (&table::LUNA, Some(Medium)),
+            (&table::SOL, Some(Medium)),
+            (&table::SOL, Some(High)),
+            (&table::OPUS, Some(High)),
+        ][..]
+    } else {
+        ladder(provider)
+    };
     let next = match rungs
         .iter()
         .position(|(model, rung_effort)| model.model_id == model_id && *rung_effort == effort)
@@ -793,6 +804,56 @@ mod tests {
         let decision = follow_up_route(&chat, &classified(TaskKind::Coding, 3.0, 0.95));
         assert_eq!(decision.decision, RouteDecisionKind::Kept);
         assert!(decision.reason.contains("no follow-up routing policy"));
+    }
+
+    #[test]
+    fn cost_corrections_climb_luna_to_sol_then_handoff_to_opus() {
+        let mut correction = classified(TaskKind::Coding, 2.0, 0.9);
+        correction.correction = Some(0.9);
+        for (model, effort, expected, next_effort, provider) in [
+            (
+                "gpt-6-luna",
+                Medium,
+                "gpt-6.1-sol",
+                Medium,
+                ProviderId::Codex,
+            ),
+            (
+                "gpt-6.1-sol",
+                Medium,
+                "gpt-6.1-sol",
+                High,
+                ProviderId::Codex,
+            ),
+            (
+                "gpt-6.1-sol",
+                High,
+                "claude-opus-5-5",
+                High,
+                ProviderId::Claude,
+            ),
+        ] {
+            let mut current = state(ProviderId::Codex, model, Some(effort));
+            current.tier = AutoTier::Economy;
+            let route = follow_up_route(&current, &correction);
+            assert_eq!(route.decision, RouteDecisionKind::Escalate);
+            assert_eq!(
+                (route.model_id.as_str(), route.effort, route.provider),
+                (expected, Some(next_effort), provider)
+            );
+            let goal_route = escalate(
+                AutoTier::Economy,
+                ProviderId::Codex,
+                model,
+                Some(effort),
+                "goal incomplete",
+            )
+            .unwrap();
+            assert_eq!(
+                (goal_route.model_id, goal_route.provider),
+                (expected.to_string(), provider)
+            );
+        }
     }
 
     #[test]

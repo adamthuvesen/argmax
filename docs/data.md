@@ -136,6 +136,13 @@ only closes the previous row's window. Follow-up routes are recorded once the
 send is admitted, so a send Stop cancelled leaves no row. See
 [routing.md](routing.md).
 
+Migration v61 adds `economy` as a routing tier in both `sessions.auto_tier` and
+`turn_routes.tier`. Existing `cost`, `balanced`, and `intelligence` values stay
+unchanged. It replaces only the constrained session column, leaving the parent
+table and its child rows in place. It rebuilds `turn_routes` with explicit
+columns, preserving IDs, pinned decisions, the v60 `signals_json` values, the
+next route ID, and the session index.
+
 ## Repositories
 
 `data_migrations` (v46) records one-time upgrades that depend on local paths.

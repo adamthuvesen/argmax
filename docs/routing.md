@@ -15,13 +15,14 @@ and `route_follow_up` / `apply_auto_follow_up` in
 
 ## Tiers
 
-Three picker entries, one per tier. The UI names and the stored values differ:
+Four picker entries, one per tier. The UI names and the stored values differ:
 
 | UI | Stored `auto_tier` | Aims for |
 |---|---|---|
 | Router Frontier | `intelligence` | frontier models, deeper reasoning |
 | Router Balance | `balanced` | the default Auto tier |
-| Router Speed | `cost` | cheap and fast models |
+| Router Speed | `cost` | shortest wait |
+| Router Cost | `economy` | lowest API-equivalent completion cost |
 
 A routed chat's chip reads `Balance → Opus 5.5` while the router drives it.
 When the router moves the chat to another model or effort, the chip plays the
@@ -38,7 +39,8 @@ the same way, unfolding the model from the tier name, with the flush but no
 halo. Reopening an older routed chat plays nothing. Design notes are in
 [design/router-switch](design/router-switch/README.md).
 Agents launch a routed chat through `session_launch` with `model: "auto"`
-(Balance) or `"auto:cost" | "auto:balanced" | "auto:intelligence"`; an explicit
+(Balance) or `"auto:cost"` (Speed), `"auto:economy"` (Cost),
+`"auto:balanced"` or `"auto:intelligence"`; an explicit
 `reasoning` there still overrides the routed effort
 ([agent-tools.md](agent-tools.md)). A chat already on Auto that omits both
 `model` and `provider` launches on its own tier, so its children route too.
@@ -99,6 +101,25 @@ re-routing.
 `resolve_route`: classify, settle, then look up the grid in
 [table.rs](../src-tauri/src/routing/table.rs).
 
+Cost has its own launch grid:
+
+| Kind | Light | Standard | Heavy |
+|---|---|---|---|
+| coding | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
+| mechanical | Luna · medium | Luna · medium | Sol 6.1 · medium |
+| research | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
+| question | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
+| review | Opus 5.5 · low | Opus 5.5 · medium | Opus 5.5 · high |
+
+When Codex is unavailable, Cost launches on Sonnet for lighter work and
+mechanical edits, and Opus for heavy work and reviews.
+
+Luna is GPT-6 Luna. Cost optimizes API-equivalent completion cost rather
+than subscription allowance or provider. The initial policy follows the
+2026-09-29 Sol comparison and 2026-09-30 Luna queue task. Evidence outside
+those bounded tasks is provisional. Existing `cost` values still mean Speed,
+so saved sessions and picker preferences retain their behavior.
+
 Tier × difficulty picks a column and an effort:
 
 | Difficulty | Speed | Balance | Frontier |
@@ -150,7 +171,8 @@ Overrides on top of the grid:
   escalation.
 
 If Jev fails, the tier's **fallback** is used and recorded with the reason
-`unrouted: …`: Speed → Sonnet 5.5 · medium, Balance and Frontier → Opus 5.5 · medium.
+`unrouted: …`: Cost → Sol 6.1 · medium, Speed → Sonnet 5.5 · medium,
+Balance and Frontier → Opus 5.5 · medium.
 
 **Fast is never used for a routed turn.** `route_launch` clears `fast_mode`,
 and so does every follow-up the router still drives, including one it leaves
@@ -218,6 +240,14 @@ The provider targets are:
 | Cursor | Composer for lighter work, Cursor Opus for review, more demanding work, and Balance UI work (low). Model downgrades stay blocked while pricing is unavailable. |
 | OpenCode | None. The grid never launches OpenCode, so a routed chat never runs there. |
 | Grok Build | The grid never launches Grok. A chat already there stays on Grok 4.7 with effort by difficulty: low, medium, high. |
+
+Cost follow-ups on Codex use the same Luna/Sol task cells. A review in an
+existing Codex conversation uses Sol at the review's effort rather than
+switching providers mid-task. A Claude conversation stays on Opus. The normal
+confidence and cache-payback rules still gate reductions. Reported-wrong
+answers and incomplete Goals on Cost climb Luna medium → Sol medium → Sol high
+→ Opus high. The last step changes provider and rebuilds context from the
+visible transcript, then follows the Claude escalation ladder.
 
 ### Cache and economics
 
@@ -300,7 +330,8 @@ chat, or one at the top of its ladder, is not escalated. See
 Migration v56 added `sessions.auto_tier` (`cost` / `balanced` /
 `intelligence`, NULL for a chat the router does not drive), `sessions.auto_route`
 (the latest routing reason, shown on the chip) and the `turn_routes` table;
-v57 widened `turn_routes.decision` to allow `pinned`.
+v57 widened `turn_routes.decision` to allow `pinned`. v61 adds `economy`
+for Cost while preserving `cost` as Speed and all existing route history.
 
 `turn_routes` has one row per decision: `session_id`, `created_at`, `tier`,
 `provider`, `model_id`, `reasoning_effort`, `kind`, `difficulty`, the two

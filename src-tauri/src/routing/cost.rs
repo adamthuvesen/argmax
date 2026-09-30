@@ -343,12 +343,13 @@ fn median(mut values: Vec<f64>) -> Option<f64> {
     })
 }
 
-/// Frontier, Balance, Speed.
+/// Frontier, Balance, Speed, Cost.
 fn tier_rank(tier: AutoTier) -> u8 {
     match tier {
         AutoTier::Intelligence => 0,
         AutoTier::Balanced => 1,
         AutoTier::Cost => 2,
+        AutoTier::Economy => 3,
     }
 }
 

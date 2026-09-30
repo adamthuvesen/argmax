@@ -185,7 +185,7 @@ export function AppearanceSettings({
   };
   const pickBackgroundIntensity = (raw: number): void => {
     const intensity = toBackgroundIntensity(raw);
-    if (intensity) onBackgroundIntensityChange(intensity);
+    if (intensity !== null) onBackgroundIntensityChange(intensity);
   };
   const pickContrast = (raw: number): void => {
     const next = toContrast(raw);

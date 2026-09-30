@@ -90,6 +90,9 @@ pub struct FollowUpState {
     pub provider: ProviderId,
     pub model_id: String,
     pub effort: Option<ReasoningEffort>,
+    /// Providers whose CLI is installed. A ladder rung on another provider is
+    /// skipped when it is not in here. Empty means unknown, so nothing is held.
+    pub available: Vec<ProviderId>,
     /// Input-side tokens of the latest turn: what a switch has to re-read.
     pub context_tokens: u64,
     /// Last-turn observations only cap the next-turn forecast. A long prior
@@ -118,7 +121,13 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
     }
 
     if classification.correction.unwrap_or(0.0) >= CORRECTION_THRESHOLD {
-        return match next_rung(state.tier, state.provider, &state.model_id, state.effort) {
+        return match next_rung(
+            state.tier,
+            state.provider,
+            &state.model_id,
+            state.effort,
+            &state.available,
+        ) {
             Some(rung) => decision_from(
                 state.tier,
                 rung,
@@ -349,9 +358,10 @@ pub fn escalate(
     provider: ProviderId,
     model_id: &str,
     effort: Option<ReasoningEffort>,
+    available: &[ProviderId],
     reason: &str,
 ) -> Option<RouteDecision> {
-    next_rung(tier, provider, model_id, effort).map(|rung| {
+    next_rung(tier, provider, model_id, effort, available).map(|rung| {
         decision_from(
             tier,
             rung,
@@ -373,6 +383,7 @@ fn next_rung(
     provider: ProviderId,
     model_id: &str,
     effort: Option<ReasoningEffort>,
+    available: &[ProviderId],
 ) -> Option<RoutedModel> {
     let rungs = if tier == AutoTier::Economy && provider == ProviderId::Codex {
         &[
@@ -396,7 +407,13 @@ fn next_rung(
             })
         }
     };
-    next.map(|(model, effort)| RoutedModel {
+    // A rung on another provider (Cost's last step to Opus, Grok's to Opus)
+    // holds at the top of the ladder when that CLI is not installed: the send
+    // would persist the switch and then fail to launch.
+    next.filter(|(model, _)| {
+        model.provider == provider || available.is_empty() || available.contains(&model.provider)
+    })
+    .map(|(model, effort)| RoutedModel {
         model,
         effort: *effort,
     })
@@ -518,6 +535,7 @@ mod tests {
             provider,
             model_id: model_id.to_string(),
             effort,
+            available: Vec::new(),
             context_tokens: 168_000,
             last_turn: median_turn(),
             downgrade_safe: true,
@@ -691,6 +709,41 @@ mod tests {
     }
 
     #[test]
+    fn cost_holds_at_sol_high_when_claude_is_not_installed() {
+        let mut correction = classified(TaskKind::Coding, 1.5, 0.95);
+        correction.correction = Some(0.95);
+        for (available, moves) in [
+            (vec![], true),
+            (vec![ProviderId::Codex, ProviderId::Claude], true),
+            (vec![ProviderId::Codex], false),
+        ] {
+            let mut chat = state(ProviderId::Codex, "gpt-6.1-sol", Some(High));
+            chat.tier = AutoTier::Economy;
+            chat.available = available.clone();
+            let route = follow_up_route(&chat, &correction);
+            let goal = escalate(
+                AutoTier::Economy,
+                ProviderId::Codex,
+                "gpt-6.1-sol",
+                Some(High),
+                &available,
+                "goal incomplete",
+            );
+            assert_eq!(
+                route.decision == RouteDecisionKind::Escalate,
+                moves,
+                "{available:?}"
+            );
+            assert_eq!(goal.is_some(), moves, "{available:?}");
+            if moves {
+                assert_eq!(route.provider, ProviderId::Claude);
+            } else {
+                assert_eq!(route.provider, ProviderId::Codex);
+            }
+        }
+    }
+
+    #[test]
     fn a_chat_stored_on_retired_sol_routes_without_panicking() {
         for (kind, score) in [
             (TaskKind::Coding, 0.5),
@@ -860,6 +913,7 @@ mod tests {
                 ProviderId::Codex,
                 model,
                 Some(effort),
+                &[],
                 "goal incomplete",
             )
             .unwrap();

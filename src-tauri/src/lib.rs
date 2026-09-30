@@ -860,6 +860,7 @@ pub fn run() {
                                 Some(Arc::clone(&approvals)),
                             );
                             providers.set_question_service(Arc::clone(&questions));
+                            providers.set_provider_discovery(Arc::clone(&state.provider_discovery));
                             // Kept for the boot-recovery pass below, which needs
                             // the same registry the socket hands out.
                             let after_turn_registry = session_launch_registry.clone();

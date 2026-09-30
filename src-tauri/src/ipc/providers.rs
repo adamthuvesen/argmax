@@ -49,14 +49,7 @@ pub(crate) async fn providers_launch_impl(
 ) -> ArgmaxResult<SessionSummary> {
     // Route before the permission default: that default is per provider.
     // Discovery is cached from boot, so this does not re-probe every CLI.
-    let available = state
-        .provider_discovery
-        .discover_all()
-        .await
-        .into_iter()
-        .filter(|report| report.installed && report.authenticated != Some(false))
-        .map(|report| report.provider)
-        .collect::<Vec<_>>();
+    let available = state.provider_discovery.available_providers().await;
     let route = crate::routing::route_launch(&mut input, &available).await?;
     apply_launch_permission_default(&mut input, default_agent);
     let session = live_providers(state)?.launch(input).await?;

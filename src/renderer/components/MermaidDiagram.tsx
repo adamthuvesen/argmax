@@ -31,7 +31,7 @@ function subscribeToAppearance(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-accent", "data-background-intensity"]
+    attributeFilter: ["data-theme", "data-accent", "data-background-intensity", "data-contrast"]
   });
   return () => observer.disconnect();
 }
@@ -39,7 +39,7 @@ function subscribeToAppearance(onChange: () => void): () => void {
 function readAppearanceKey(): string {
   if (typeof document === "undefined") return "light:";
   const root = document.documentElement;
-  return `${root.getAttribute("data-theme") ?? "light"}:${root.getAttribute("data-accent") ?? ""}:${root.getAttribute("data-background-intensity") ?? "7"}`;
+  return `${root.getAttribute("data-theme") ?? "light"}:${root.getAttribute("data-accent") ?? ""}:${root.getAttribute("data-background-intensity") ?? "7"}:${root.getAttribute("data-contrast") ?? "50"}`;
 }
 
 function useAppearanceKey(): string {

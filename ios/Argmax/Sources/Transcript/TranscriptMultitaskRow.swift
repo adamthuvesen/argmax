@@ -434,7 +434,10 @@ private struct TranscriptMultitaskDetail: View {
             }
         }
         .task(id: childSessionID) { await requestReload() }
-        .onReceive(dashboard.transcriptChanged) { requestReloadSoon() }
+        .onReceive(dashboard.transcriptChanged) { changed in
+            guard changed?.contains(childSessionID) ?? true else { return }
+            requestReloadSoon()
+        }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -503,6 +506,9 @@ private struct TranscriptMultitaskDetail: View {
         repeat {
             reloadRequested = false
             await reloadOnce()
+            // Each read is the whole sub-transcript, so a streaming child
+            // refetches at most once a second instead of once per chunk.
+            if reloadRequested { try? await Task.sleep(for: .seconds(1)) }
         } while reloadRequested && !Task.isCancelled
         loadInFlight = false
     }

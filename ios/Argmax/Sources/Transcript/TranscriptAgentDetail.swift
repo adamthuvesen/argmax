@@ -88,7 +88,11 @@ struct TranscriptAgentDetail: View {
             }
         }
         .task(id: agent.id) { await requestReload() }
-        .onReceive(dashboard.transcriptChanged) { requestReloadSoon() }
+        .onReceive(dashboard.transcriptChanged) { changed in
+            // Provider-native children write under the parent session.
+            guard changed?.contains(agent.parentSessionId) ?? true else { return }
+            requestReloadSoon()
+        }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -113,6 +117,9 @@ struct TranscriptAgentDetail: View {
         repeat {
             reloadRequested = false
             await reloadOnce()
+            // Each read is the whole sub-transcript, so a streaming child
+            // refetches at most once a second instead of once per chunk.
+            if reloadRequested { try? await Task.sleep(for: .seconds(1)) }
         } while reloadRequested && !Task.isCancelled
         loadInFlight = false
     }

@@ -69,7 +69,9 @@ struct RootView: View {
                     // A phone that has been in a pocket for an hour is the
                     // case this exists for.
                     Task { await planLimits.refreshIfStale() }
-                    insights.prefetch()
+                    // No Insights prefetch here: ~25 KB compressed a time
+                    // over cellular for a screen that paints from its disk
+                    // cache and refreshes itself when opened.
                 }
             }
             .confirmationDialog(

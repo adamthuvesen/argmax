@@ -1603,6 +1603,37 @@ pub fn provider_defaults(provider: &str) -> ProviderDefaults {
     }
 }
 
+/// Sidebar label for a model id the catalog may not list. Rust has no label
+/// catalog (labels live in `src/shared/providerModels.ts`), so a Claude API id
+/// is read as `claude-<family>-<version…>` ("claude-opus-5" → "Opus 5",
+/// "claude-haiku-4-5-20251001" → "Haiku 4.5"); any other id is its own label.
+/// Clients prefer the catalog's label whenever it knows the id.
+pub fn fallback_model_label(model_id: &str) -> String {
+    let Some(rest) = model_id.strip_prefix("claude-") else {
+        return model_id.to_string();
+    };
+    let mut parts = rest.split('-');
+    let family = parts.next().unwrap_or_default();
+    // A date suffix is eight digits; a version segment is one or two.
+    let version: Vec<&str> = parts
+        .take_while(|part| {
+            (1..=2).contains(&part.len()) && part.bytes().all(|b| b.is_ascii_digit())
+        })
+        .collect();
+    let mut chars = family.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_alphabetic() => {
+            let name = format!("{}{}", first.to_ascii_uppercase(), chars.as_str());
+            if version.is_empty() {
+                name
+            } else {
+                format!("{name} {}", version.join("."))
+            }
+        }
+        _ => model_id.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingsExportChange {
     Unchanged,
@@ -1725,6 +1756,19 @@ fn specta_typescript() -> Typescript {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fallback_model_label_reads_claude_api_ids() {
+        assert_eq!(fallback_model_label("claude-opus-5"), "Opus 5");
+        assert_eq!(fallback_model_label("claude-opus-5-5"), "Opus 5.5");
+        assert_eq!(
+            fallback_model_label("claude-haiku-4-5-20251001"),
+            "Haiku 4.5"
+        );
+        assert_eq!(fallback_model_label("claude-3-opus"), "claude-3-opus");
+        assert_eq!(fallback_model_label("gpt-6.1-sol"), "gpt-6.1-sol");
+    }
+
     fn chunk(terminal_id: &str, data: &str) -> TerminalPush {
         TerminalPush::Data(terminal::service::TerminalChunk {
             terminal_id: terminal_id.to_string(),

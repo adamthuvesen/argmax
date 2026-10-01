@@ -353,8 +353,8 @@ pub(super) async fn launch_session(
         .map(|route| route.provider)
         .unwrap_or(action.provider.unwrap_or(parent.provider));
     // A model id names a model the CLI accepts; Rust has no label catalog
-    // (labels live in `src/shared/providerModels.ts`), so an explicit id is
-    // its own sidebar label — the same fallback session sync uses.
+    // (labels live in `src/shared/providerModels.ts`), so an explicit id gets
+    // the readable fallback label — the same one session sync uses.
     let (model_label, model_id, reasoning_effort) = match &auto_route {
         Some(route) => (
             route.model_label.clone(),
@@ -362,7 +362,11 @@ pub(super) async fn launch_session(
             route.effort,
         ),
         None => match (action.model, provider == parent.provider) {
-            (Some(model), _) => (model.clone(), model, provider_effort(provider, &parent)),
+            (Some(model), _) => (
+                crate::fallback_model_label(&model),
+                model,
+                provider_effort(provider, &parent),
+            ),
             (None, true) => (
                 parent.model_label.clone(),
                 parent.model_id.clone(),

@@ -38,7 +38,11 @@ final class DashboardStore: ObservableObject {
     /// stutter in a running chat. Only the screens that refetch subscribe.
     /// Detail sheets use transcript invalidations too, including child
     /// sessions whose events do not change the parent's projected rows.
-    let transcriptChanged = PassthroughSubject<Void, Never>()
+    /// The value names the sessions whose transcripts advanced, or is nil
+    /// when anything may have moved (a reconnect, a resync, a metadata hint),
+    /// so a sheet refetches only for its own session rather than for every
+    /// chunk streamed anywhere on the Mac.
+    let transcriptChanged = PassthroughSubject<Set<String>?, Never>()
     /// The workspaces whose review may have changed.
     let reviewChanged = PassthroughSubject<Set<String>, Never>()
     private var snapshotVersion = 0
@@ -118,11 +122,16 @@ final class DashboardStore: ObservableObject {
             for await event in events {
                 guard let self else { return }
                 self.onTranscriptEvent?(event)
-                self.transcriptChanged.send()
                 switch event {
                 case .push(let channel, let payload):
-                    if channel == "dashboard:delta" { self.apply(payload) }
+                    guard channel == "dashboard:delta", let delta = self.apply(payload) else { break }
+                    if delta.resyncRequired == true || delta.dashboardChanged == true {
+                        self.transcriptChanged.send(nil)
+                    } else if let ids = delta.changedSessionIds, !ids.isEmpty {
+                        self.transcriptChanged.send(Set(ids))
+                    }
                 case .resync:
+                    self.transcriptChanged.send(nil)
                     self.invalidateReviews(Set(self.snapshot.workspaces.map(\.id)))
                     await self.reload()
                 }
@@ -135,7 +144,7 @@ final class DashboardStore: ObservableObject {
                 self.connection = state
                 self.onTranscriptConnection?(state)
                 if state == .live {
-                    self.transcriptChanged.send()
+                    self.transcriptChanged.send(nil)
                     self.invalidateReviews(Set(self.snapshot.workspaces.map(\.id)))
                     // A reconnect misses whatever changed while the socket
                     // was down, and the host replays nothing, so the
@@ -243,7 +252,8 @@ final class DashboardStore: ObservableObject {
                        attention: session.attention, working: session.state == .running)
     }
 
-    private func apply(_ payload: Data) {
+    @discardableResult
+    private func apply(_ payload: Data) -> DashboardDelta? {
         do {
             let delta = try JSONDecoder().decode(DashboardDelta.self, from: payload)
             Self.log.debug("dashboard:delta sessions=\(delta.sessions?.count ?? 0) workspaces=\(delta.workspaces?.count ?? 0) changed=\(delta.dashboardChanged ?? false)")
@@ -256,10 +266,12 @@ final class DashboardStore: ObservableObject {
             } else if delta.dashboardChanged == true {
                 scheduleMetadataReload()
             }
+            return delta
         } catch {
             // A delta the phone cannot read is a phone that stops updating
             // until the next reload — say so rather than sitting quietly stale.
             Self.log.error("dashboard:delta undecodable: \(String(describing: error), privacy: .public)")
+            return nil
         }
     }
 

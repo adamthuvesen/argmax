@@ -392,12 +392,13 @@ fn delete_sessions(
 }
 
 /// Sidebar label for the model the transcript was produced with. Rust has no
-/// model catalog (labels live in `src/shared/providerModels.ts`), so the raw
-/// id is the honest fallback.
+/// model catalog (labels live in `src/shared/providerModels.ts`), so the
+/// readable id fallback stands in.
 fn model_label(session: &DiscoveredSession, provider: &str) -> String {
     session
         .model_id
-        .clone()
+        .as_deref()
+        .map(crate::fallback_model_label)
         .unwrap_or_else(|| crate::provider_defaults(provider).model_label.to_string())
 }
 

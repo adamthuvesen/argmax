@@ -2,8 +2,10 @@
 //
 // Frames are JSON text in both directions, except that a client whose auth
 // frame asks for `"compression":"deflate"` gets frames over 16 KiB as binary:
-// a zero byte, then the JSON as raw DEFLATE (`outbound_message`).
-//   client → {"type":"auth","token":"…","compression":"deflate"}
+// a zero byte, then the JSON as raw DEFLATE (`outbound_message`). A client
+// that shows no terminal sends `"terminalOutput":false` and is never pushed
+// `terminal:data`; leaving the field out keeps the push.
+//   client → {"type":"auth","token":"…","compression":"deflate","terminalOutput":false}
 //            {"type":"request","id":1,"channel":"dashboard:list","input":{}}
 //            {"type":"ping"}
 //   server → {"type":"auth-ok","operationReplay":true,"dashboardChanges":true,"compression":"deflate"}
@@ -55,6 +57,10 @@ pub enum ClientMessage {
         token: String,
         /// The client reads binary deflate frames (`deflate_frame`).
         deflate: bool,
+        /// The client wants `terminal:data` / `terminal:exit` pushes. The
+        /// native phone has no terminal, and a busy build would otherwise
+        /// stream its whole output over cellular for nothing.
+        terminal_output: bool,
     },
     Request {
         id: i64,
@@ -92,10 +98,18 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
 
     let first = tokio::time::timeout(AUTH_TIMEOUT, receiver.next()).await;
     let mut deflate = false;
+    let mut terminal_output = true;
     let outcome = match &first {
         Ok(Some(Ok(Message::Text(text)))) => {
             let frame = parse_client_frame(text);
             deflate = matches!(frame, ClientMessage::Auth { deflate: true, .. });
+            terminal_output = !matches!(
+                frame,
+                ClientMessage::Auth {
+                    terminal_output: false,
+                    ..
+                }
+            );
             auth_outcome(&frame, &bridge.token)
         }
         Ok(Some(Ok(_))) => AuthOutcome::Rejected("first frame was not text"),
@@ -131,7 +145,7 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
         let state = bridge.app.state::<AppState>();
         (
             state.remote_events.subscribe(),
-            state.remote_terminal_events.subscribe(),
+            terminal_output.then(|| state.remote_terminal_events.subscribe()),
         )
     };
     let (responses, mut queued) = mpsc::channel::<String>(RESPONSE_QUEUE);
@@ -146,7 +160,7 @@ async fn serve_client(socket: WebSocket, bridge: Arc<RemoteBridge>) {
                     None => break,
                 },
                 event = events.recv() => writer_step(event, LagReport::Resync),
-                event = terminal_events.recv() => writer_step(event, LagReport::Silent),
+                event = next_terminal_event(&mut terminal_events) => writer_step(event, LagReport::Silent),
             };
             let frame = match step {
                 WriterStep::Send(frame) => frame,
@@ -271,6 +285,16 @@ async fn stop_writer(writer: tauri::async_runtime::JoinHandle<()>) {
     let _ = writer.await;
 }
 
+/// The next terminal push, or never for a client that opted out of them.
+async fn next_terminal_event(
+    events: &mut Option<broadcast::Receiver<RemoteEvent>>,
+) -> Result<RemoteEvent, broadcast::error::RecvError> {
+    match events {
+        Some(events) => events.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
 fn reserve_request_slot(slots: &Arc<Semaphore>) -> Result<OwnedSemaphorePermit, ArgmaxError> {
     Arc::clone(slots).try_acquire_owned().map_err(|_| {
         ArgmaxError::service(
@@ -293,6 +317,8 @@ pub fn parse_client_frame(text: &str) -> ClientMessage {
             Some(token) => ClientMessage::Auth {
                 token: token.to_string(),
                 deflate: value.get("compression").and_then(Value::as_str) == Some("deflate"),
+                terminal_output: value.get("terminalOutput").and_then(Value::as_bool)
+                    != Some(false),
             },
             None => ClientMessage::Malformed {
                 id,
@@ -577,7 +603,23 @@ mod tests {
         let asks = parse_client_frame(r#"{"type":"auth","token":"t","compression":"deflate"}"#);
         assert!(matches!(asks, ClientMessage::Auth { deflate: true, .. }));
         let plain = parse_client_frame(r#"{"type":"auth","token":"t"}"#);
-        assert!(matches!(plain, ClientMessage::Auth { deflate: false, .. }));
+        assert!(matches!(
+            plain,
+            ClientMessage::Auth {
+                deflate: false,
+                terminal_output: true,
+                ..
+            }
+        ));
+        let no_terminal =
+            parse_client_frame(r#"{"type":"auth","token":"t","terminalOutput":false}"#);
+        assert!(matches!(
+            no_terminal,
+            ClientMessage::Auth {
+                terminal_output: false,
+                ..
+            }
+        ));
         assert_eq!(
             serde_json::from_str::<Value>(&auth_ok_frame(true)).unwrap()["compression"],
             "deflate"

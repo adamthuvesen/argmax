@@ -7,7 +7,7 @@ import Network
 // WebSocket, except that a host told `"compression":"deflate"` at auth sends
 // frames over 16 KiB as binary: a zero byte, then the JSON as raw DEFLATE.
 //
-//   client → {"type":"auth","token":"…","compression":"deflate"}
+//   client → {"type":"auth","token":"…","compression":"deflate","terminalOutput":false}
 //            {"type":"request","id":1,"channel":"…","input":{},"operation":{…}}
 //            {"type":"ping"}
 //   host   → {"type":"auth-ok","operationReplay":true,"dashboardChanges":true,
@@ -776,9 +776,11 @@ actor BridgeClient {
         authTask = Task {
             do {
                 // A host that knows `compression` sends its large frames
-                // deflated; one that does not ignores the field.
+                // deflated; one that does not ignores the field. The phone
+                // has no terminal, so it declines `terminal:data` pushes.
                 let auth = try JSONSerialization.data(withJSONObject: ["type": "auth", "token": token,
-                                                                       "compression": "deflate"])
+                                                                       "compression": "deflate",
+                                                                       "terminalOutput": false])
                 try await socket.send(.string(String(decoding: auth, as: UTF8.self)))
             } catch {
                 self.socketFailed(generation: mine)

@@ -119,8 +119,11 @@ struct ReviewScreen: View {
             guard changed.contains(workspace.id), !canvas, refreshTask == nil else { return }
             // Coalesce streaming events without postponing reads until the
             // entire turn ends. File counts alone miss repeated file edits.
+            // Every refresh re-reads the file list and the open diff, so a
+            // streaming turn costs one read every two seconds, not two a
+            // second, over cellular.
             refreshTask = Task {
-                do { try await Task.sleep(for: .milliseconds(500)) }
+                do { try await Task.sleep(for: .seconds(2)) }
                 catch { return }
                 fileRevision += 1
                 refreshTask = nil

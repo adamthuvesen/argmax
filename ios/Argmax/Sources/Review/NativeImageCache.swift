@@ -79,12 +79,14 @@ actor NativeImageCache {
             }
             try? FileManager.default.removeItem(at: file)
             try FileManager.default.moveItem(at: download, to: file)
+            // The move keeps the temp file's date; stamp it as just shown so LRU ranks it newest.
+            try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
             return file
         }
         downloads[name] = task
         defer { downloads[name] = nil }
         let stored = try await task.value
-        evictOverLimit()
+        evictOverLimit(keeping: stored)
         return stored
     }
 
@@ -94,7 +96,8 @@ actor NativeImageCache {
     }
 
     /// Drop the least recently shown originals once the folder passes its limit.
-    private func evictOverLimit() {
+    /// `kept` is the original about to be decoded, so it must survive this pass.
+    private func evictOverLimit(keeping kept: URL) {
         let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
         guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys)
         else { return }
@@ -103,7 +106,7 @@ actor NativeImageCache {
             return (file, values.fileSize ?? 0, values.contentModificationDate ?? .distantPast)
         }
         var total = entries.reduce(0) { $0 + $1.size }
-        for entry in entries.sorted(by: { $0.used < $1.used }) where total > Self.diskLimit {
+        for entry in entries.sorted(by: { $0.used < $1.used }) where total > Self.diskLimit && entry.url.lastPathComponent != kept.lastPathComponent {
             try? FileManager.default.removeItem(at: entry.url)
             total -= entry.size
         }

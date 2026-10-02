@@ -27,6 +27,8 @@ function inputWith(overrides: Partial<SettingCommandsInput> = {}): SettingComman
     onInkStrengthChange: vi.fn(),
     backgroundIntensity: 70,
     onBackgroundIntensityChange: vi.fn(),
+    sidebarIntensity: 70,
+    onSidebarIntensityChange: vi.fn(),
     contrast: 50,
     onContrastChange: vi.fn(),
     desktopNotificationsEnabled: true,
@@ -62,6 +64,7 @@ describe("buildSettingCommands", () => {
     byId.get("setting:font-heaviness:8")!.run();
     byId.get("setting:ink-strength:3")!.run();
     byId.get("setting:background-intensity:50")!.run();
+    byId.get("setting:sidebar-intensity:50")!.run();
     byId.get("setting:contrast:75")!.run();
     byId.get("setting:notifications:disable")!.run();
     byId.get("setting:keep-awake:enable")!.run();
@@ -80,6 +83,7 @@ describe("buildSettingCommands", () => {
     expect(input.onFontHeavinessChange).toHaveBeenCalledWith(8);
     expect(input.onInkStrengthChange).toHaveBeenCalledWith(3);
     expect(input.onBackgroundIntensityChange).toHaveBeenCalledWith(50);
+    expect(input.onSidebarIntensityChange).toHaveBeenCalledWith(50);
     expect(input.onContrastChange).toHaveBeenCalledWith(75);
     expect(input.onDesktopNotificationsEnabledChange).toHaveBeenCalledWith(false);
     expect(input.onKeepAwakeEnabledChange).toHaveBeenCalledWith(true);
@@ -106,6 +110,7 @@ describe("buildSettingCommands", () => {
       "setting:font-heaviness:5",
       "setting:ink-strength:7",
       "setting:background-intensity:70",
+      "setting:sidebar-intensity:70",
       "setting:contrast:50"
     ]);
   });
@@ -121,6 +126,19 @@ describe("buildSettingCommands", () => {
     const input = inputWith({ fontHeaviness: 5 });
     buildSettingCommands(input).find((row) => row.id === "setting:font-heaviness:heavier")!.run();
     expect(input.onFontHeavinessChange).toHaveBeenCalledWith(6);
+  });
+
+  it("steps sidebar intensity within its range and keeps the palette open", () => {
+    for (const [level, direction] of [[0, "softer"], [100, "stronger"]] as const) {
+      const input = inputWith({ sidebarIntensity: level });
+      const command = buildSettingCommands(input).find((row) => row.id === `setting:sidebar-intensity:${direction}`)!;
+      expect(command.keepOpen).toBe(true);
+      command.run();
+      expect(input.onSidebarIntensityChange).not.toHaveBeenCalled();
+    }
+    const input = inputWith({ sidebarIntensity: 70 });
+    buildSettingCommands(input).find((row) => row.id === "setting:sidebar-intensity:stronger")!.run();
+    expect(input.onSidebarIntensityChange).toHaveBeenCalledWith(80);
   });
 
   it("steps a font size one notch and keeps the palette open", () => {
@@ -176,5 +194,7 @@ describe("buildSettingCommands", () => {
     expect(top("ink softer")).toBe("Ink strength: softer");
     expect(top("background intensity 25")).toBe("Background intensity 25");
     expect(top("background softer")).toBe("Background intensity: softer");
+    expect(top("sidebar intensity 25")).toBe("Sidebar intensity 25");
+    expect(top("sidebar softer")).toBe("Sidebar intensity: softer");
   });
 });

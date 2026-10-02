@@ -31,6 +31,12 @@ import {
   type BackgroundIntensity
 } from "../lib/backgroundIntensity.js";
 import {
+  applySidebarIntensityToDocument,
+  SIDEBAR_INTENSITY_STORAGE_KEY,
+  readStoredSidebarIntensity,
+  type SidebarIntensity
+} from "../lib/sidebarIntensity.js";
+import {
   applyContrastToDocument,
   CONTRAST_STORAGE_KEY,
   readStoredContrast,
@@ -83,6 +89,8 @@ export function useLauncherAppearance(): {
   setInkStrength: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   setBackgroundIntensity: (intensity: BackgroundIntensity) => void;
+  sidebarIntensity: SidebarIntensity;
+  setSidebarIntensity: (intensity: SidebarIntensity) => void;
   contrast: Contrast;
   setContrast: (contrast: Contrast) => void;
   defaultIde: IdeId | null;
@@ -104,6 +112,9 @@ export function useLauncherAppearance(): {
   const [inkStrength, setInkStrength] = useState<InkStrength>(() => readStoredInkStrength());
   const [backgroundIntensity, setBackgroundIntensity] = useState<BackgroundIntensity>(() =>
     readStoredBackgroundIntensity()
+  );
+  const [sidebarIntensity, setSidebarIntensity] = useState<SidebarIntensity>(() =>
+    readStoredSidebarIntensity()
   );
   const [contrast, setContrast] = useState<Contrast>(() => readStoredContrast());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
@@ -144,6 +155,12 @@ export function useLauncherAppearance(): {
     window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, String(backgroundIntensity));
     applyBackgroundIntensityToDocument(backgroundIntensity);
   }, [backgroundIntensity]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(SIDEBAR_INTENSITY_STORAGE_KEY, String(sidebarIntensity));
+    applySidebarIntensityToDocument(sidebarIntensity);
+  }, [sidebarIntensity]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -242,6 +259,8 @@ export function useLauncherAppearance(): {
     setInkStrength,
     backgroundIntensity,
     setBackgroundIntensity,
+    sidebarIntensity,
+    setSidebarIntensity,
     contrast,
     setContrast,
     defaultIde,

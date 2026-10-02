@@ -13,7 +13,7 @@ import { SERVER_ICON_TONE_DEPTH } from "../lib/serverIcons.js";
 const LIGHT_RULE = ':root:not([data-theme="dark"])[data-background-intensity]';
 const DARK_RULE = ':root[data-theme="dark"][data-background-intensity]';
 const NEUTRAL_SURFACES = [
-  "bg", "sidebar", "panel", "review-panel", "review-sidebar", "panel-soft", "composer-surface",
+  "bg", "panel", "panel-soft", "composer-surface",
   "panel-sunken", "code-surface", "terminal-surface", "tool-block-surface", "line-at-intensity",
   "line-soft-at-intensity", "line-strong-at-intensity", "scrollbar-thumb", "scrollbar-thumb-hover", "overlay-panel", "overlay-panel-raised"
 ];
@@ -238,7 +238,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // the shipped palette instead of matching it.
     const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
     const darkRule = cssRuleBody(ladder, DARK_RULE);
-    for (const surface of ["bg", "sidebar", "panel", "review-panel", "review-sidebar"]) {
+    for (const surface of ["bg", "panel"]) {
       expect(
         darkRule.match(new RegExp(`--${surface}: color-mix\\(in oklab, color-mix\\(in oklab, (#[0-9a-f]{6})`))?.[1]
       ).toBe(dark.match(new RegExp(`--${surface}: (#[0-9a-f]{6});`))?.[1]);
@@ -292,17 +292,12 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       if (/^(line|scrollbar)/.test(surface)) continue;
       // The paper stop is warm, not grey: more red than blue.
       expect(Number.parseInt(cream.slice(1, 3), 16), surface).toBeGreaterThan(Number.parseInt(cream.slice(5, 7), 16));
-      // 100 is pure white on every surface, except the sidebars, which match --bg in light.
-      expect(white, surface).toBe(/^(sidebar|review-)/.test(surface) ? { sidebar: "#ffffff", "review-panel": "#ffffff", "review-sidebar": "#ffffff" }[surface] : "#ffffff");
+      expect(white, surface).toBe("#ffffff");
     }
     expect(light).toContain(
       "--bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
     );
-    for (const surface of ["sidebar", "review-panel", "review-sidebar"]) {
-      expect(light, surface).toContain(
-        `--${surface}: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));`
-      );
-    }
+
 
     // The dark grounds fall toward black, but 100 stops 67% of the way there.
     for (const surface of ["bg", "panel-sunken", "code-surface", "terminal-surface"]) {
@@ -310,6 +305,23 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
     // 0 lifts the page to the lightest charcoal.
     expect(dark).toContain("#141414, #2c2c2c var(--background-lift)");
+  });
+
+  it("keeps sidebar colors independent of background intensity", () => {
+    const background = readSource("src/renderer/styles/background-intensity.css");
+    const sidebar = readSource("src/renderer/styles/sidebar-intensity.css");
+    const tokens = readSource("src/renderer/styles/tokens.css");
+    const light = cssRuleBody(sidebar, ':root:not([data-theme="dark"])[data-sidebar-intensity]');
+    const dark = cssRuleBody(sidebar, ':root[data-theme="dark"][data-sidebar-intensity]');
+    expect(sidebar).not.toContain("var(--background-intensity)");
+    for (const surface of ["sidebar", "review-panel", "review-sidebar"]) {
+      expect(background).not.toContain(`--${surface}:`);
+      expect(light).toContain(`--${surface}: color-mix(`);
+      expect(readHex(dark, surface)).toBe(readHex(cssRuleBody(tokens, ':root[data-theme="dark"]'), surface));
+      expect(luminance(readHex(cssRuleBody(tokens, ":root"), surface))).toBeLessThan(
+        luminance(readHex(cssRuleBody(tokens, ":root"), "bg"))
+      );
+    }
   });
 
   it("keeps review scope menus below their trigger", () => {

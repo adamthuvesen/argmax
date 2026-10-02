@@ -402,6 +402,8 @@ export function App(): JSX.Element {
     setInkStrength,
     backgroundIntensity,
     setBackgroundIntensity,
+    sidebarIntensity,
+    setSidebarIntensity,
     contrast,
     setContrast,
     defaultIde,
@@ -1968,6 +1970,8 @@ export function App(): JSX.Element {
           onInkStrengthChange: setInkStrength,
           backgroundIntensity,
           onBackgroundIntensityChange: setBackgroundIntensity,
+          sidebarIntensity,
+          onSidebarIntensityChange: setSidebarIntensity,
           contrast,
           onContrastChange: setContrast,
           chatVerbosity,
@@ -2066,6 +2070,8 @@ export function App(): JSX.Element {
       setInkStrength,
       backgroundIntensity,
       setBackgroundIntensity,
+      sidebarIntensity,
+      setSidebarIntensity,
       contrast,
       setContrast,
       chatVerbosity,
@@ -2577,6 +2583,8 @@ export function App(): JSX.Element {
                 onInkStrengthChange={setInkStrength}
                 backgroundIntensity={backgroundIntensity}
                 onBackgroundIntensityChange={setBackgroundIntensity}
+                sidebarIntensity={sidebarIntensity}
+                onSidebarIntensityChange={setSidebarIntensity}
                 contrast={contrast}
                 onContrastChange={setContrast}
                 themeMode={themeMode}

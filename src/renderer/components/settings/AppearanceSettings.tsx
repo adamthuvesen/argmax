@@ -51,6 +51,13 @@ import {
   type BackgroundIntensity
 } from "../../lib/backgroundIntensity.js";
 import {
+  sidebarIntensityHint,
+  SIDEBAR_INTENSITY_MAX,
+  SIDEBAR_INTENSITY_MIN,
+  toSidebarIntensity,
+  type SidebarIntensity
+} from "../../lib/sidebarIntensity.js";
+import {
   contrastHint,
   CONTRAST_MAX,
   CONTRAST_MIN,
@@ -120,6 +127,8 @@ export function AppearanceSettings({
   onInkStrengthChange,
   backgroundIntensity,
   onBackgroundIntensityChange,
+  sidebarIntensity,
+  onSidebarIntensityChange,
   contrast,
   onContrastChange
 }: {
@@ -135,6 +144,8 @@ export function AppearanceSettings({
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  sidebarIntensity: SidebarIntensity;
+  onSidebarIntensityChange: (intensity: SidebarIntensity) => void;
   contrast: Contrast;
   onContrastChange: (contrast: Contrast) => void;
   themeMode: ThemeMode;
@@ -187,6 +198,10 @@ export function AppearanceSettings({
     const intensity = toBackgroundIntensity(raw);
     if (intensity !== null) onBackgroundIntensityChange(intensity);
   };
+  const pickSidebarIntensity = (raw: number): void => {
+    const intensity = toSidebarIntensity(raw);
+    if (intensity !== null) onSidebarIntensityChange(intensity);
+  };
   const pickContrast = (raw: number): void => {
     const next = toContrast(raw);
     if (next !== null) onContrastChange(next);
@@ -233,6 +248,20 @@ export function AppearanceSettings({
               value={backgroundIntensity}
               valueLabel={String(backgroundIntensity)}
               onChange={pickBackgroundIntensity}
+            />
+          }
+        />
+        <SettingRow
+          label="Sidebar intensity"
+          description={`Side panel colors. ${sidebarIntensityHint(sidebarIntensity)}`}
+          control={
+            <Slider
+              ariaLabel="Sidebar intensity"
+              min={SIDEBAR_INTENSITY_MIN}
+              max={SIDEBAR_INTENSITY_MAX}
+              value={sidebarIntensity}
+              valueLabel={String(sidebarIntensity)}
+              onChange={pickSidebarIntensity}
             />
           }
         />

@@ -6,6 +6,7 @@
    at the top of the file. */
 @import url("./styles/tokens.css");
 @import url("./styles/background-intensity.css");
+@import url("./styles/sidebar-intensity.css");
 @import url("./styles/working-nest.css");
 @import url("./styles/reading-wave.css");
 @import url("./styles/scroll-fade.css");

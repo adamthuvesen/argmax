@@ -7,6 +7,7 @@ import { CHAT_WIDTH_KEY } from "./lib/chatWidth.js";
 import { CHAT_FONT_SIZE_STORAGE_KEY, FONT_SIZE_STORAGE_KEY, FONT_STORAGE_KEY } from "./lib/fonts.js";
 import { INK_STRENGTH_STORAGE_KEY } from "./lib/inkStrength.js";
 import { BACKGROUND_INTENSITY_STORAGE_KEY } from "./lib/backgroundIntensity.js";
+import { SIDEBAR_INTENSITY_STORAGE_KEY } from "./lib/sidebarIntensity.js";
 import { REVIEW_PANEL_SIDE_KEY } from "./lib/reviewPanelSide.js";
 import {
   COMPOSER_CONTEXT_INDICATOR_KEY,
@@ -56,6 +57,7 @@ it("applies display preferences from Actions to the desktop and saved settings",
     { query: "Chat font size 7", key: CHAT_FONT_SIZE_STORAGE_KEY, value: "7" },
     { query: "Ink strength 3", key: INK_STRENGTH_STORAGE_KEY, value: "3", attribute: "data-ink-strength" },
     { query: "Background intensity 50", key: BACKGROUND_INTENSITY_STORAGE_KEY, value: "50", attribute: "data-background-intensity" },
+    { query: "Sidebar intensity 50", key: SIDEBAR_INTENSITY_STORAGE_KEY, value: "50", attribute: "data-sidebar-intensity" },
     { query: "Chat width 5", key: CHAT_WIDTH_KEY, value: "5" }
   ];
   for (const choice of choices) {
@@ -72,6 +74,24 @@ it("applies display preferences from Actions to the desktop and saved settings",
     if (choice.attribute) expect(document.documentElement).toHaveAttribute(choice.attribute, choice.value);
   }
   expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "5");
+});
+
+it("updates sidebar intensity from Appearance and restores it after reopening", async () => {
+  const first = render(<App />);
+  await screen.findByRole("button", { name: "Build dashboard" });
+  await openSettings("Appearance");
+  const slider = await screen.findByRole("slider", { name: "Sidebar intensity" });
+  expect(slider).toHaveValue("70");
+  fireEvent.change(slider, { target: { value: "85" } });
+  expect(window.localStorage.getItem(SIDEBAR_INTENSITY_STORAGE_KEY)).toBe("85");
+  expect(document.documentElement).toHaveAttribute("data-sidebar-intensity", "85");
+  await closeSettings();
+  first.unmount();
+
+  render(<App />);
+  await screen.findByRole("button", { name: "Build dashboard" });
+  await openSettings("Appearance");
+  expect(await screen.findByRole("slider", { name: "Sidebar intensity" })).toHaveValue("85");
 });
 
 it("applies the font family and Files panel side from Actions", async () => {

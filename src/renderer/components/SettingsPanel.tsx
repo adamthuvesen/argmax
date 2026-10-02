@@ -12,6 +12,7 @@ import type {
 import type { FontFamilyId, FontSize } from "../lib/fonts.js";
 import type { InkStrength } from "../lib/inkStrength.js";
 import type { BackgroundIntensity } from "../lib/backgroundIntensity.js";
+import type { SidebarIntensity } from "../lib/sidebarIntensity.js";
 import type { Contrast } from "../lib/contrast.js";
 import type { ThemeMode } from "../lib/theme.js";
 import type { AccentId } from "../lib/accent.js";
@@ -96,6 +97,8 @@ export function SettingsPanel({
   onInkStrengthChange,
   backgroundIntensity,
   onBackgroundIntensityChange,
+  sidebarIntensity,
+  onSidebarIntensityChange,
   contrast,
   onContrastChange,
   themeMode,
@@ -184,6 +187,8 @@ export function SettingsPanel({
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  sidebarIntensity: SidebarIntensity;
+  onSidebarIntensityChange: (intensity: SidebarIntensity) => void;
   contrast: Contrast;
   onContrastChange: (contrast: Contrast) => void;
   themeMode: ThemeMode;
@@ -388,6 +393,8 @@ export function SettingsPanel({
             onInkStrengthChange={onInkStrengthChange}
             backgroundIntensity={backgroundIntensity}
             onBackgroundIntensityChange={onBackgroundIntensityChange}
+            sidebarIntensity={sidebarIntensity}
+            onSidebarIntensityChange={onSidebarIntensityChange}
             contrast={contrast}
             onContrastChange={onContrastChange}
             themeMode={themeMode}

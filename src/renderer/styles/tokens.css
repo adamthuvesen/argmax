@@ -28,22 +28,19 @@
      the inherited `calt` wins. It takes the same property to turn it off. */
   --code-font-features: "liga" 0, "clig" 0, "calt" 0;
 
-  /* Light's ground is warm near-white, and the chrome sits barely under it:
-     the page and the sidebars are within two units, so their boundary is
-     carried by --line rather than by a step in fill. Intensity walks this
-     pair down toward paper; it cannot walk it up, which is why a brighter
-     sidebar than this one belongs here and not on a rung. */
+  /* Light sidebars sit slightly below the warm near-white page.
+     Background and sidebar intensity adjust their surfaces independently. */
   --bg: #fcfcfb;
-  --sidebar: #fcfcfb;
+  --sidebar: #f9f9f7;
   --panel: #ffffff;
   /* Both sidebars share warm paper in light and lifted charcoal in dark. */
-  --review-panel: #fcfcfb;
+  --review-panel: #f9f9f7;
   /* File-tree column inside the review panel. Paper sinks, charcoal lifts:
      in light this sits a step under the panel, in dark a step above it — the
      same trick --tool-block-surface plays, and the reason the column can't
      just take --panel-sunken (in dark that is the darkest surface in the app
      and the column would read as a hole rather than a sidebar). */
-  --review-sidebar: #fcfcfb;
+  --review-sidebar: #f7f7f5;
   --panel-soft: #fafafa;
   /* The two composers (.composer in the launcher, .session-input in a session).
      They are cards, but the one card the user types into, so dark lifts them a

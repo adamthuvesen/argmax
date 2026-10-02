@@ -60,6 +60,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
         settings: [
           "Browser theme",
           "Background intensity",
+          "Sidebar intensity",
           "Accent",
           "Activity icons",
           "Activity mark",

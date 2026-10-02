@@ -1,0 +1,18 @@
+/* Side panels have an independent 0–100 dial. At the default 70 they sit
+   slightly below the page on paper and above it on charcoal. The review
+   file tree keeps one extra step of separation within its panel. */
+:root:not([data-theme="dark"])[data-sidebar-intensity] {
+  --sidebar-whiteness: calc(max(0, var(--sidebar-intensity) - 10) / 90 * 100%);
+  --sidebar-dim: calc(max(0, 10 - var(--sidebar-intensity)) / 10 * 14%);
+  --sidebar: color-mix(in oklab, color-mix(in oklab, #eeede7, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
+  --review-panel: color-mix(in oklab, color-mix(in oklab, #eeede7, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #e8e7e0, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
+}
+
+:root[data-theme="dark"][data-sidebar-intensity] {
+  --sidebar-lift: calc(max(0, 70 - var(--sidebar-intensity)) / 70 * 100%);
+  --sidebar-fall: calc(max(0, var(--sidebar-intensity) - 70) / 30 * 67%);
+  --sidebar: color-mix(in oklab, color-mix(in oklab, #171717, #2f2f2f var(--sidebar-lift)), #050505 var(--sidebar-fall));
+  --review-panel: color-mix(in oklab, color-mix(in oklab, #171717, #2f2f2f var(--sidebar-lift)), #050505 var(--sidebar-fall));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #1b1b1b, #383838 var(--sidebar-lift)), #080808 var(--sidebar-fall));
+}

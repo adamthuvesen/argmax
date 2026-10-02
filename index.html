@@ -45,6 +45,13 @@
             root.setAttribute("data-contrast", contrast);
             root.style.setProperty("--contrast", contrast);
           }
+          // Mirrors lib/sidebarIntensity.ts. Without it a saved level paints
+          // the default sidebars until React mounts, then snaps.
+          var sidebar = localStorage.getItem("argmax.sidebar.level");
+          if (/^(?:100|[1-9]?\d)$/.test(sidebar || "")) {
+            root.setAttribute("data-sidebar-intensity", sidebar);
+            root.style.setProperty("--sidebar-intensity", sidebar);
+          }
         } catch (e) {
           document.documentElement.setAttribute("data-theme", "dark");
         }

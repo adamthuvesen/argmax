@@ -7,6 +7,7 @@ import type { ToolCall } from "../lib/toolCalls.js";
 import type { TodoList } from "../lib/todoList.js";
 import type * as TurnFileChanges from "../lib/turnFileChanges.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
+import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
 
 const collectTurnFileChanges = vi.hoisted(() => vi.fn(() => []));
 
@@ -98,6 +99,7 @@ function renderTurn(
     defaultToolCallGroupsExpanded?: boolean;
     thinkingDisplay?: ThinkingDisplay;
     todo?: TodoList | null;
+    follow?: TranscriptFollow;
     onOpenAgent?: (tool: ToolCall) => void;
   } = {}
 ): { rerender: () => void; container: HTMLElement } {
@@ -116,6 +118,7 @@ function renderTurn(
       defaultToolCallGroupsExpanded={overrides.defaultToolCallGroupsExpanded}
       thinkingDisplay={overrides.thinkingDisplay}
       todo={overrides.todo}
+      follow={overrides.follow}
       onOpenAgent={overrides.onOpenAgent}
     />
   );
@@ -130,6 +133,44 @@ afterEach(() => {
 });
 
 describe("SessionConversationTurn", () => {
+  it.each([1, 16])("shows a finished Minimal reply after %i steps without requiring scrolling", (steps) => {
+    vi.useFakeTimers();
+    let detached = false;
+    const follow: TranscriptFollow = {
+      isDetached: () => detached,
+      newBelowCount: () => 0,
+      subscribe: () => () => undefined
+    };
+    const toolItems = Array.from({ length: steps }, (_, index) => ({
+      kind: "tool" as const,
+      tool: { ...edit, id: `edit-${index}`, toolUseId: `edit-${index}`,
+        createdAt: new Date(Date.parse(session.startedAt) + index * 2000 + 1000).toISOString() }
+    }));
+    const narration = toolItems.map((_, index) => ({
+      ...turn.assistantEvents[0], id: `progress-${index}`, message: `Checking file ${index}.`,
+      createdAt: new Date(Date.parse(session.startedAt) + index * 2000).toISOString()
+    }));
+    const options = {
+      item: { ...turn, toolItems, assistantEvents: narration },
+      session: { ...session, state: "running" as SessionSummary["state"] },
+      defaultToolCallsDisplay: "single-line" as const,
+      follow
+    };
+    const { rerender } = renderTurn(options);
+    expect(screen.getAllByRole("button", { name: /Edited/ }).length).toBeGreaterThan(0);
+    detached = true;
+    options.item = { ...options.item, assistantEvents: [...narration, {
+      ...turn.assistantEvents[0], createdAt: "2026-05-12T15:01:00.000Z",
+      message: "The requested implementation is complete. All focused checks passed."
+    }] };
+    options.session = session;
+    rerender();
+    act(() => { vi.advanceTimersByTime(600); });
+    expect(screen.queryByRole("button", { name: /Edited/ })).not.toBeInTheDocument();
+    expect(screen.getByText("The requested implementation is complete. All focused checks passed.")).toBeVisible();
+    expect(follow.isDetached()).toBe(true);
+  });
+
   it.each([
     { hasPlan: true, hasAgent: false },
     { hasPlan: false, hasAgent: true },

@@ -51,6 +51,13 @@ import {
   type BackgroundIntensity
 } from "./backgroundIntensity.js";
 import {
+  SIDEBAR_INTENSITY_MAX,
+  SIDEBAR_INTENSITY_MIN,
+  SIDEBAR_INTENSITY_PRESETS,
+  sidebarIntensityHint,
+  type SidebarIntensity
+} from "./sidebarIntensity.js";
+import {
   CONTRAST_MAX,
   CONTRAST_MIN,
   CONTRAST_PRESETS,
@@ -92,6 +99,8 @@ export type SettingCommandsInput = {
   onInkStrengthChange: (strength: InkStrength) => void;
   backgroundIntensity: BackgroundIntensity;
   onBackgroundIntensityChange: (intensity: BackgroundIntensity) => void;
+  sidebarIntensity: SidebarIntensity;
+  onSidebarIntensityChange: (intensity: SidebarIntensity) => void;
   contrast: ContrastLevel;
   onContrastChange: (contrast: ContrastLevel) => void;
   desktopNotificationsEnabled: boolean;
@@ -278,6 +287,39 @@ function backgroundIntensityCommands(
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
+function sidebarIntensityCommands(
+  current: SidebarIntensity,
+  onChange: (intensity: SidebarIntensity) => void
+): PaletteItem[] {
+  const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
+    const target = direction === "stronger" ? current + 10 : current - 10;
+    const next = Math.min(SIDEBAR_INTENSITY_MAX, Math.max(SIDEBAR_INTENSITY_MIN, target));
+    const inRange = next !== current;
+    return {
+      id: `setting:sidebar-intensity:${direction}`,
+      label: `Sidebar intensity: ${direction}`,
+      subtitle: inRange
+        ? `Side panel color · now ${current}`
+        : `Side panel color · already the ${direction === "stronger" ? "strongest" : "softest"} sidebar`,
+      group: "Actions",
+      icon: PanelLeft,
+      keepOpen: true,
+      run: () => {
+        if (inRange) onChange(next);
+      }
+    };
+  };
+  const levels: PaletteItem[] = SIDEBAR_INTENSITY_PRESETS.map((level) => ({
+    id: `setting:sidebar-intensity:${level}`,
+    label: `Sidebar intensity ${level}`,
+    subtitle: `Side panel color · ${sidebarIntensityHint(level)}`,
+    group: "Actions",
+    icon: level === current ? Check : PanelLeft,
+    run: () => onChange(level)
+  }));
+  return [stepRow("stronger"), stepRow("softer"), ...levels];
+}
+
 function contrastCommands(
   current: ContrastLevel,
   onChange: (contrast: ContrastLevel) => void
@@ -448,6 +490,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
       input.backgroundIntensity,
       input.onBackgroundIntensityChange
     ),
+    ...sidebarIntensityCommands(input.sidebarIntensity, input.onSidebarIntensityChange),
     ...contrastCommands(input.contrast, input.onContrastChange),
     ...toggleCommands
   ];

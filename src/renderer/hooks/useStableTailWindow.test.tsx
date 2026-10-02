@@ -40,6 +40,42 @@ function Harness({ items, follow }: { items: readonly string[]; follow: Transcri
 }
 
 describe("useStableTailWindow", () => {
+  it("accepts rows that fit while detached, then freezes the current rows at capacity", () => {
+    const follow = createFollow();
+    const view = render(<Harness items={["a"]} follow={follow} />);
+    follow.set(true);
+    view.rerender(<Harness items={["a", "b", "c"]} follow={follow} />);
+    expect(screen.getByLabelText("Visible rows")).toHaveTextContent("a,b,c");
+
+    view.rerender(<Harness items={["a", "b", "c", "d"]} follow={follow} />);
+    expect(screen.getByLabelText("Visible rows")).toHaveTextContent("a,b,c");
+    expect(follow.isDetached()).toBe(true);
+  });
+
+  it("renders replacement rows after folding removes the detached window", () => {
+    const follow = createFollow();
+    const view = render(<Harness items={["a", "b", "c", "d"]} follow={follow} />);
+    follow.set(true);
+    view.rerender(<Harness items={["e", "f", "g", "h"]} follow={follow} />);
+    expect(screen.getByLabelText("Visible rows")).toHaveTextContent("f,g,h");
+    expect(screen.getByLabelText("Hidden rows")).toHaveTextContent("1");
+    expect(follow.isDetached()).toBe(true);
+  });
+
+  it("preserves revealed capacity when detached activity folds and reopens", () => {
+    const follow = createFollow();
+    const items = ["a", "b", "c", "d", "e", "answer"];
+    const view = render(<Harness items={items} follow={follow} />);
+    follow.set(true);
+    fireEvent.click(screen.getByRole("button", { name: "Show earlier" }));
+    expect(screen.getByLabelText("Visible rows")).toHaveTextContent("b,c,d,e,answer");
+
+    view.rerender(<Harness items={["answer"]} follow={follow} />);
+    view.rerender(<Harness items={items} follow={follow} />);
+    expect(screen.getByLabelText("Visible rows")).toHaveTextContent("b,c,d,e,answer");
+    expect(follow.isDetached()).toBe(true);
+  });
+
   it("follows the tail until detached, then retains the mounted ids", () => {
     const follow = createFollow();
     const view = render(<Harness items={["a", "b", "c", "d"]} follow={follow} />);

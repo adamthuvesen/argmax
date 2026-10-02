@@ -439,6 +439,31 @@ describe("useConversationScroll", () => {
     expect(controller.follow.isDetached()).toBe(true);
   });
 
+  it.each([
+    { naturalHeight: 700, expectedTop: 380, expectedFloor: "880px" },
+    { naturalHeight: 1300, expectedTop: 788, expectedFloor: "1288px" }
+  ])("keeps a removed anchor's position within the remaining $naturalHeight px of content", ({ naturalHeight, expectedTop, expectedFloor }) => {
+    const props: HarnessProps = { items: ["one"] };
+    const view = render(<Harness {...props} />);
+    const geometry: Geometry = {
+      viewportHeight: 500, naturalHeight: 1300, top: 0,
+      promptTop: 400, blockTop: 850, turnTop: 0
+    };
+    const { scroll, content, block } = installGeometry(geometry);
+    act(() => view.rerender(<Harness {...props} />));
+    act(() => wheel(scroll, -12));
+    geometry.top = 788;
+    scroll.dispatchEvent(new Event("scroll"));
+
+    block.remove();
+    geometry.naturalHeight = naturalHeight;
+    act(() => flushResize());
+
+    expect(content.style.minHeight).toBe(expectedFloor);
+    expect(geometry.top).toBe(expectedTop);
+    expect(controller.follow.isDetached()).toBe(true);
+  });
+
   it("preserves a fine-grained anchor when content changes above it inside one turn", () => {
     const props: HarnessProps = { items: ["one"] };
     const view = render(<Harness {...props} />);

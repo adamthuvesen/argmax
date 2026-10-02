@@ -44,16 +44,9 @@ import {
   type UserMessageAttachment
 } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
-import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
+import { ALWAYS_FOLLOWING, type TranscriptFollow } from "../hooks/useConversationScroll.js";
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
-
-// The conversation-level window counts turns. A provider can keep one turn
-// open for hours, so that outer bound alone does not bound the DOM. Keep each
-// turn's rendered body small as well. Explicit reveals may grow it by design.
-const TURN_BODY_WINDOW = 16;
-const TURN_BODY_WINDOW_STEP = 32;
 
 function SessionConversationTurnInner({
   item,
@@ -75,7 +68,7 @@ function SessionConversationTurnInner({
   defaultToolCallGroupsExpanded,
   thinkingDisplay,
   defaultTurnChangesExpanded,
-  follow,
+  follow = ALWAYS_FOLLOWING,
   restoringTranscript = false,
   todo = null
 }: {
@@ -487,16 +480,6 @@ function SessionConversationTurnInner({
     }
     return { kind: child.kind, id: child.id, node: child.node, activity: child.activity };
   });
-  const {
-    visibleItems: mountedBodyChildren,
-    hiddenEarlierCount: hiddenEarlierBodyCount,
-    showEarlier: showEarlierBody
-  } = useStableTailWindow(bodyChildren, {
-    initialCount: TURN_BODY_WINDOW,
-    pageSize: TURN_BODY_WINDOW_STEP,
-    follow,
-    getId: (child) => child.id
-  });
   const earliestCreatedAt = [...assistantChildren, ...toolChildren]
     .map((c) => c.createdAt)
     .filter((t) => t.length > 0)
@@ -577,9 +560,8 @@ function SessionConversationTurnInner({
       hasCollapsibleActivity={compactActivity && bodyChildren.some((child) => child.kind === "tool")}
       hasHiddenWork={hasHiddenWork}
       hideWorkingWhenCollapsed={minimalActivity}
-      body={mountedBodyChildren}
-      hiddenEarlierBodyCount={hiddenEarlierBodyCount}
-      onShowEarlierBody={showEarlierBody}
+      body={bodyChildren}
+      follow={follow}
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
       {...(turnMarkdown ? { turnMarkdown } : {})}
       {...(changesCard ? { changes: changesCard } : {})}

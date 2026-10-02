@@ -22,9 +22,11 @@ struct TranscriptMarkdownPreparation {
             defer { mathIndex += 1 }
             return "\(Self.mathPrefix)\(mathIndex)\u{E001}"
         }
-        func appendLifted(_ marker: String) {
+        // The marker keeps its line's indent, so a table inside a list item
+        // stays in that item instead of closing the list.
+        func appendLifted(_ marker: String, indent line: String) {
             if output.last?.isEmpty == false { output.append("") }
-            output.append(marker)
+            output.append(String(line.prefix { $0 == " " || $0 == "\t" }) + marker)
             output.append("")
         }
 
@@ -46,21 +48,21 @@ struct TranscriptMarkdownPreparation {
             if let display = Self.displayMath(startingAt: index, lines: lines) {
                 let marker = blockMarker()
                 lifted[marker] = .math(source: display.source, display: true)
-                appendLifted(marker)
+                appendLifted(marker, indent: line)
                 index = display.nextIndex
                 continue
             }
             if let table = TranscriptTable.parse(startingAt: index, lines: lines) {
                 let marker = blockMarker()
                 lifted[marker] = .table(table.table)
-                appendLifted(marker)
+                appendLifted(marker, indent: line)
                 index = table.nextIndex
                 continue
             }
             if let image = TranscriptMarkdownImageSource(markdownLine: trimmed) {
                 let marker = blockMarker()
                 lifted[marker] = .image(image)
-                appendLifted(marker)
+                appendLifted(marker, indent: line)
                 index += 1
                 continue
             }

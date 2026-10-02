@@ -6,8 +6,15 @@ import { registerLiveTimer } from "../lib/liveTimer.js";
 import type { TurnToolItem } from "../lib/toolCalls.js";
 import { ShowEarlier } from "./ShowEarlier.js";
 import type { TurnBodyChild } from "../lib/turnChildren.js";
+import type { TranscriptFollow } from "../hooks/useConversationScroll.js";
+import { useStableTailWindow } from "../hooks/useStableTailWindow.js";
 
 export type { TurnToolItem, TurnBodyChild };
+
+// A provider can keep one turn open for hours. Bound its mounted body as well
+// as the conversation's turn count, allowing explicit reveals to grow it.
+const TURN_BODY_WINDOW = 16;
+const TURN_BODY_WINDOW_STEP = 32;
 
 interface Bounds {
   startedAt: number;
@@ -66,8 +73,7 @@ export function TurnBlock({
   hasCollapsibleActivity = false,
   hasHiddenWork = false,
   hideWorkingWhenCollapsed,
-  hiddenEarlierBodyCount = 0,
-  onShowEarlierBody,
+  follow,
   headerTimestampIso,
   turnMarkdown,
   brief,
@@ -106,10 +112,8 @@ export function TurnBlock({
    *  hid. The parent knows what it dropped; `body` no longer does. */
   hasHiddenWork?: boolean;
   hideWorkingWhenCollapsed?: boolean;
-  /** Rows kept out of the DOM by the turn's render window. */
-  hiddenEarlierBodyCount?: number;
-  /** Reveal the next page of older rows without changing the logical turn. */
-  onShowEarlierBody?: () => void;
+  /** Bound the conversation turn's body while preserving detached rows. */
+  follow?: TranscriptFollow;
   // The canonical timestamp shown in the turn header (typically the earliest
   // assistant event in the turn). Per-paragraph timestamps inside the body
   // are visually suppressed once a turn-level one is available.
@@ -175,10 +179,25 @@ export function TurnBlock({
   // and flips it. Collapsing folds groups to their headers, except in minimal
   // verbosity where a finished turn drops the working rows from the body.
   const toolsAreExpanded = toolsExpanded ?? true;
-  const visibleBody =
+  const visibleBody = (
     hideWorkingWhenCollapsed && !running && !toolsAreExpanded && !settling
       ? body.filter((child) => child.kind !== "tool")
-      : body;
+      : body
+  ).filter((child) => child.node !== null);
+  // Window only rows that can render. Retaining tool ids before Minimal's
+  // delayed fold kept an answer outside a full window even after every
+  // mounted tool disappeared.
+  const {
+    visibleItems: mountedBody,
+    hiddenEarlierCount: hiddenEarlierBodyCount,
+    showEarlier: showEarlierBody
+  } = useStableTailWindow(follow ? visibleBody : [], {
+    initialCount: TURN_BODY_WINDOW,
+    pageSize: TURN_BODY_WINDOW_STEP,
+    follow,
+    getId: (child) => child.id
+  });
+  const renderedBody = follow ? mountedBody : visibleBody;
 
   const elapsedLabel = formatElapsedSeconds(elapsedMs);
   const hasTools = toolItems.length > 0;
@@ -294,21 +313,21 @@ export function TurnBlock({
         ) : null}
       </div>
       {brief?.quote ?? null}
-      {visibleBody.length > 0 ? (
+      {renderedBody.length > 0 ? (
         <div
           className="turn-block-body"
           data-just-revealed={justRevealed ? "true" : undefined}
         >
-          {hiddenEarlierBodyCount > 0 && onShowEarlierBody ? (
+          {hiddenEarlierBodyCount > 0 ? (
             <ShowEarlier
               noun="activity"
               count={hiddenEarlierBodyCount}
-              onClick={onShowEarlierBody}
+              onClick={showEarlierBody}
             />
           ) : null}
           {/* Each row keeps its parent as neighboring activity arrives or
               moves. Regrouping runs here remounts open disclosures. */}
-          {visibleBody.filter((child) => child.node !== null).map((child) => (
+          {renderedBody.map((child) => (
             <div
               key={child.id}
               className="turn-body-item"

@@ -7,8 +7,9 @@
    and 100 is pure white. Below 10 every surface is dimmed by the same share of
    black, so the offsets between chrome, panels, and recessed surfaces hold.
    Above 10 each surface mixes between its own cream and white endpoints, so
-   those offsets shrink evenly toward white, and at 100 the chrome, sidebars,
-   and panels are all the same white. Lines and scrollbars stay grey at the
+   those offsets shrink evenly toward white, and at 100 the page and
+   panels are all the same white. Sidebar colors have their own dial in
+   sidebar-intensity.css. Lines and scrollbars stay grey at the
    white end so borders still separate surfaces there.
 
    Dark: 70 is the palette Argmax ships, and the number there leaves every
@@ -32,10 +33,7 @@
   --line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);
   --line-firm: calc(max(0, var(--contrast, 50) - 50) / 50 * 40%);
   --bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --review-panel: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel-soft: color-mix(in oklab, color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --composer-surface: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --panel-sunken: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
@@ -60,10 +58,7 @@
   --line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);
   --line-firm: calc(max(0, var(--contrast, 50) - 50) / 50 * 30%);
   --bg: color-mix(in oklab, color-mix(in oklab, #141414, #2c2c2c var(--background-lift)), #000000 var(--background-fall));
-  --sidebar: color-mix(in oklab, color-mix(in oklab, #171717, #2f2f2f var(--background-lift)), #050505 var(--background-fall));
   --panel: color-mix(in oklab, color-mix(in oklab, #1a1a1a, #323232 var(--background-lift)), #050505 var(--background-fall));
-  --review-panel: color-mix(in oklab, color-mix(in oklab, #171717, #2f2f2f var(--background-lift)), #050505 var(--background-fall));
-  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #1b1b1b, #383838 var(--background-lift)), #080808 var(--background-fall));
   --panel-soft: color-mix(in oklab, color-mix(in oklab, #212121, #393939 var(--background-lift)), #101010 var(--background-fall));
   --composer-surface: color-mix(in oklab, color-mix(in oklab, #202020, #383838 var(--background-lift)), #0d0d0d var(--background-fall));
   --panel-sunken: color-mix(in oklab, color-mix(in oklab, #0f0f0f, #272727 var(--background-lift)), #000000 var(--background-fall));

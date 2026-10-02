@@ -78,17 +78,17 @@ struct TranscriptMarkdown: View {
                 .padding(.top, level == 1 ? 10 : 6)
                 .accessibilityAddTraits(.isHeader)
         case .listItem(let ordinal, let depth, let text):
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(ordinal.map { "\($0)." } ?? "•")
-                    .typeStyle(proseStyle, monospacedDigit: true)
-                    .foregroundStyle(Theme.muted)
-                    .frame(minWidth: 15, alignment: .trailing)
-                    .accessibilityHidden(true)
+            listRow(ordinal: ordinal, depth: depth) {
                 TranscriptInlineMarkdown(text: text, math: math, lineSpacing: proseLineSpacing, strongStyle: proseStyle)
                     .typeStyle(proseStyle)
                     .foregroundStyle(proseInk)
             }
-            .padding(.leading, CGFloat(max(depth - 1, 0)) * 18)
+        case .listContinuation(let ordinal, let depth, let inner):
+            // The marker is laid out but hidden so the block lines up with
+            // its item's text, whatever the number's width.
+            listRow(ordinal: ordinal, depth: depth, showsMarker: false) {
+                AnyView(blockView(inner, math: math))
+            }
         case .quote(let text):
             HStack(alignment: .top, spacing: 10) {
                 Capsule().fill(Theme.line).frame(width: 3)
@@ -108,6 +108,24 @@ struct TranscriptMarkdown: View {
         case .thematicBreak:
             Divider().overlay(Theme.line)
         }
+    }
+
+    private func listRow(
+        ordinal: Int?,
+        depth: Int,
+        showsMarker: Bool = true,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(ordinal.map { "\($0)." } ?? "•")
+                .typeStyle(proseStyle, monospacedDigit: true)
+                .foregroundStyle(Theme.muted)
+                .frame(minWidth: 15, alignment: .trailing)
+                .opacity(showsMarker ? 1 : 0)
+                .accessibilityHidden(true)
+            content()
+        }
+        .padding(.leading, CGFloat(max(depth - 1, 0)) * 18)
     }
 
     /// The gap above a block. Two list rows sit closer than any other pair

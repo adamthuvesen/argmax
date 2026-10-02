@@ -178,6 +178,12 @@ every mounted turn, tool group, and bubble there (about 1,500 components on a
 98-turn chat). Now only `ScrollToLatestButton` subscribes. The tail windows
 read the value when they render for another reason, and on a return to
 following they render only if their mounted rows went stale.
+While detached, a list that fits its render window still accepts new rows.
+Only a window that would evict mounted rows freezes its IDs. If folding removes
+every retained row, the window shows the current tail. This lets a finished
+Minimal answer appear without requiring a scroll to resume following.
+The turn's window is applied after Minimal folds finished activity, so hidden
+tools cannot occupy the window and exclude the answer.
 
 A notched mouse wheel is eased, not jumped.
 [smoothWheel.ts](../src/renderer/lib/smoothWheel.ts) runs on every scroll
@@ -246,7 +252,10 @@ the turn anchor, resume following, or move a detached reading position.
 
 Detached layout changes preserve the visible anchor. Nested scroll areas use
 their outer box so scrolling a diff cannot look like a transcript layout
-change. CSS `overflow-anchor: none` keeps browser anchoring from competing
+change. If folding removes the anchored row, the controller releases its
+reserved height and clamps the reader to the remaining content when needed,
+while staying detached. This prevents an empty viewport below a finished answer.
+CSS `overflow-anchor: none` keeps browser anchoring from competing
 with the controller. ResizeObserver watches the transcript rows and viewport,
 including composer, panel, and hidden-tab size changes.
 

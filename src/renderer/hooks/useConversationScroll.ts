@@ -281,6 +281,7 @@ export function useConversationScroll({
     // leave it where it is. Decided before the height write so the floor can
     // be sized to it.
     let detachedTop: number | null = null;
+    let anchorRemoved = false;
     if (modeRef.current === "detached") {
       const requestedTop = requestedScrollTopRef.current;
       requestedScrollTopRef.current = null;
@@ -295,8 +296,9 @@ export function useConversationScroll({
         const baseTop = clampedToNewBottom ? lastScrollTopRef.current : currentTop;
         if (clampedToNewBottom || Math.abs(delta) > BOTTOM_EPSILON_PX) detachedTop = baseTop + delta;
         anchor.contentTop = nextContentTop;
-      } else if (clampedToNewBottom) {
-        detachedTop = lastScrollTopRef.current;
+      } else {
+        anchorRemoved = Boolean(content && anchor && !content.contains(anchor.node));
+        if (clampedToNewBottom) detachedTop = lastScrollTopRef.current;
       }
     }
 
@@ -307,6 +309,16 @@ export function useConversationScroll({
       if (latestAnchor) {
         const paddingTop = Number.parseFloat(getComputedStyle(content).paddingTop) || 0;
         followHeight = contentTop(content, latestAnchor) + scroll.clientHeight - paddingTop;
+      }
+      if (anchorRemoved) {
+        // Minimal can fold away the row the reader was anchored to. Keeping
+        // its floor then strands the viewport in blank space below the answer.
+        // Release that reservation and clamp only positions beyond the content
+        // that remains, without resuming following.
+        content.style.minHeight = followHeight > 0 ? `${followHeight}px` : "";
+        const remainingMaxTop = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+        detachedTop = Math.min(detachedTop ?? currentTop, remainingMaxTop);
+        viewportAnchorRef.current = null;
       }
       // A detached reader's floor reaches exactly to the bottom of their
       // viewport: a fold or removal below them cannot clamp the view, and

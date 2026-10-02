@@ -3,7 +3,8 @@ import { ALWAYS_FOLLOWING, type TranscriptFollow } from "./useConversationScroll
 
 /**
  * Keep a bounded tail mounted while following live output. Once the reader
- * detaches, retain those exact ids so incoming rows cannot move their place.
+ * detaches, retain mounted ids when advancing would evict rows they can be
+ * reading. A list that fits still accepts new rows without moving its start.
  *
  * The follow state is read at render instead of arriving as a prop. A detach
  * needs no render at all, since the mounted ids are already the retained ones,
@@ -39,12 +40,19 @@ export function useStableTailWindow<T>(
   const itemById = detached
     ? new Map(items.map((item) => [getId(item), item]))
     : null;
-  const visibleItems = itemById
+  const retainedItems = itemById
     ? retainedIds.flatMap((id) => {
         const item = itemById.get(id);
         return item ? [item] : [];
       })
     : followingItems;
+  // Freezing a short list excluded its final answer, then Minimal folded the
+  // retained activity away and left an empty turn. Advance whenever the new
+  // window keeps every surviving row, including after a fold or disclosure.
+  const followingIdSet = new Set(followingIds);
+  const canAdvance = retainedItems.every((item) => followingIdSet.has(getId(item)));
+  const visibleItems = !detached || canAdvance ? followingItems : retainedItems;
+  if (detached) detachedIdsRef.current = visibleItems.map(getId);
   const firstVisibleId = visibleItems[0] ? getId(visibleItems[0]) : null;
   const firstVisibleIndex = detached
     ? firstVisibleId
@@ -67,14 +75,13 @@ export function useStableTailWindow<T>(
   }), [follow]);
 
   const showEarlier = (): void => {
+    setVisibleCount((current) => current + pageSize);
     if (!detached) {
-      setVisibleCount((current) => current + pageSize);
       return;
     }
     const start = Math.max(0, firstVisibleIndex - pageSize);
     const earlierIds = items.slice(start, firstVisibleIndex).map(getId);
     detachedIdsRef.current = [...earlierIds, ...retainedIds];
-    rerender();
   };
 
   return { visibleItems, hiddenEarlierCount, showEarlier };

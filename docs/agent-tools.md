@@ -209,6 +209,10 @@ authoritative and does not create project memory automatically.
 
 ### Persistent terminals
 
+Agents run ordinary commands in their own shell. The server instructions say
+so (`OWN_SHELL_INSTRUCTION`), and `terminal_spawn` is reserved for processes
+that must outlive the turn or that the user asked to watch.
+
 `terminal_spawn` starts a PTY owned by Argmax, optionally typing a command into
 its shell. The process therefore survives the provider turn that created it
 and remains visible in the Terminal panel. `terminal_read` without a terminal

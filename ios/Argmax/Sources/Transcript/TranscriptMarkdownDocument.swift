@@ -4,6 +4,10 @@ enum TranscriptMarkdownBlock: Sendable {
     case paragraph(AttributedString)
     case heading(level: Int, AttributedString)
     case listItem(ordinal: Int?, depth: Int, AttributedString)
+    /// A later block inside a list item: a paragraph, code, or a table. It
+    /// sits under the item's text with no marker of its own; drawn as items,
+    /// every paragraph repeated the item's number.
+    indirect case listContinuation(ordinal: Int?, depth: Int, TranscriptMarkdownBlock)
     case quote(AttributedString)
     case code(language: String?, source: String)
     case table(TranscriptTable)
@@ -47,6 +51,8 @@ struct TranscriptMarkdownDocument: Sendable {
 
         var parsed: [TranscriptMarkdownBlock] = []
         var previousIdentity: Int?
+        // Each list item's first block, which alone carries the marker.
+        var listItemLeads: [Int: Int] = [:]
         for run in attributed.runs {
             var content = AttributedString(attributed[run.range])
             if let link = run.link, Self.isLocalLink(link) {
@@ -64,28 +70,47 @@ struct TranscriptMarkdownDocument: Sendable {
             let identity = leaf?.identity
             let merge = identity == previousIdentity
             let quote = components.contains { if case .blockQuote = $0.kind { true } else { false } }
-            let listDepth = components.filter {
+            let lists = components.filter {
                 switch $0.kind { case .orderedList, .unorderedList: return true; default: return false }
-            }.count
-            let isOrdered = components.contains {
-                if case .orderedList = $0.kind { return true }
-                return false
             }
-            let ordinal = isOrdered ? components.compactMap { component -> Int? in
-                if case .listItem(let value) = component.kind { return value }
-                return nil
-            }.first : nil
+            let listDepth = lists.count
+            // The innermost list decides the marker: a bullet nested in a
+            // numbered list is still a bullet.
+            let isOrdered = lists.first.map { if case .orderedList = $0.kind { true } else { false } } ?? false
+            let listItem = components.first { if case .listItem = $0.kind { true } else { false } }
+            let ordinal: Int? = isOrdered ? listItem.flatMap {
+                if case .listItem(let value) = $0.kind { value } else { nil }
+            } : nil
 
             let marker = String(content.characters)
-            if let lifted = prepared.lifted[marker] {
+            let lifted = prepared.lifted[marker]
+            if let lifted, quote || listDepth == 0 {
                 parsed.append(lifted)
-                previousIdentity = identity
-                continue
-            }
-            if quote {
+            } else if quote {
                 Self.append(content, as: .quote, merge: merge, to: &parsed)
-            } else if listDepth > 0 {
-                Self.append(content, as: .listItem(ordinal: ordinal, depth: listDepth), merge: merge, to: &parsed)
+            } else if listDepth > 0, let item = listItem?.identity {
+                let lead = listItemLeads[item, default: identity ?? item]
+                listItemLeads[item] = lead
+                let inner: BlockShape? = if case .codeBlock(let language)? = leaf?.kind {
+                    .code(language: language)
+                } else if lead != identity {
+                    .paragraph
+                } else {
+                    nil
+                }
+                if let lifted {
+                    parsed.append(.listContinuation(ordinal: ordinal, depth: listDepth, lifted))
+                } else if let inner {
+                    var nested: [TranscriptMarkdownBlock] = []
+                    if merge, case .listContinuation(_, _, let current)? = parsed.last {
+                        nested = [current]
+                        parsed.removeLast()
+                    }
+                    Self.append(content, as: inner, merge: merge, to: &nested)
+                    parsed += nested.map { .listContinuation(ordinal: ordinal, depth: listDepth, $0) }
+                } else {
+                    Self.append(content, as: .listItem(ordinal: ordinal, depth: listDepth), merge: merge, to: &parsed)
+                }
             } else if let leaf {
                 switch leaf.kind {
                 case .header(let level): Self.append(content, as: .heading(level: level), merge: merge, to: &parsed)

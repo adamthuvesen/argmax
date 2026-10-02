@@ -93,6 +93,48 @@ final class TranscriptMarkdownTests: XCTestCase {
         XCTAssertEqual(source, "let answer = 42\n")
     }
 
+    func testListItemBlocksAfterTheFirstContinueTheItem() throws {
+        let document = TranscriptMarkdownDocument(markdown: """
+        1. **Your machine** and access
+
+           You need `gh` and *pnpm*.
+
+           ```sh
+           pnpm dlx machine-setup
+           ```
+
+           - nested bullet
+
+           | Setting | Purpose |
+           | --- | --- |
+           | KEY | Signs |
+
+           Existing settings may cover these.
+        2. Install
+        """)
+
+        XCTAssertEqual(document.blocks.count, 7)
+        guard case .listItem(1, 1, let lead) = document.blocks[0] else { return XCTFail("expected item 1") }
+        XCTAssertEqual(String(lead.characters), "Your machine and access")
+        guard case .listContinuation(1, 1, .paragraph(let more)) = document.blocks[1] else {
+            return XCTFail("expected continued paragraph, got \(document.blocks[1])")
+        }
+        XCTAssertEqual(String(more.characters), "You need gh and pnpm.")
+        guard case .listContinuation(1, 1, .code("sh", let source)) = document.blocks[2] else {
+            return XCTFail("expected code inside the item, got \(document.blocks[2])")
+        }
+        XCTAssertEqual(source, "pnpm dlx machine-setup\n")
+        guard case .listItem(nil, 2, _) = document.blocks[3] else { return XCTFail("expected nested bullet") }
+        guard case .listContinuation(1, 1, .table(let table)) = document.blocks[4] else {
+            return XCTFail("expected table inside the item, got \(document.blocks[4])")
+        }
+        XCTAssertEqual(table.headers, ["Setting", "Purpose"])
+        guard case .listContinuation(1, 1, .paragraph) = document.blocks[5] else {
+            return XCTFail("expected paragraph after the table to stay in the item, got \(document.blocks[5])")
+        }
+        guard case .listItem(2, 1, _) = document.blocks[6] else { return XCTFail("expected item 2") }
+    }
+
     func testGFMTableIsLiftedAndPreservesPipesInsideCode() throws {
         let document = TranscriptMarkdownDocument(markdown: """
         | Name | Value |

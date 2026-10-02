@@ -631,7 +631,7 @@ create a memory; use it for durable, useful context other agents should be able 
     #[tool(
         name = "terminal_spawn",
         description = "Start a terminal in a workspace and optionally type a command into it. \
-Only for a process that must outlive your turn; run everything else in your own shell. \
+Only for a process that must outlive your turn, or a command the user asked to watch; run everything else in your own shell. \
 This is the only process you can start that outlives your turn: your own shell dies when the turn \
 ends, so a dev server, a watcher, or a tunnel started from Bash is gone by the time you are asked \
 about it. The PTY belongs to Argmax, and the user can see and type in it. Read it back with \

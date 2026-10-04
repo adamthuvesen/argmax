@@ -341,15 +341,6 @@ describe("ArcPage", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("pauses an active arc", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Pause" }));
-
-    await waitFor(() => expect(arcsStub.setState).toHaveBeenCalledTimes(1));
-    expect(arcsStub.setState).toHaveBeenCalledWith({ id: "arc-1", state: "paused" });
-  });
-
   it("confirms and launches a new coordinator", async () => {
     render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
 

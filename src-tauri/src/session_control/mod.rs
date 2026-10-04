@@ -23,19 +23,20 @@ pub use protocol::{
     ChangedFile, CheckOutcome, ChecksOutcome, ChecksRunAction, GoalOutcome, GoalSetAction,
     InboxAction, InboxDelivery, InboxMessage, LaunchAction, LaunchedSession, LearningRecord,
     LearningsAddAction, LearningsSearchAction, LearningsSearchOutcome, ListAction, MessageAction,
-    MessageDelivery, MoveAction, ProjectEntry, ProjectListOutcome, ProjectsAction, ReadAction,
-    ReadEntry, RenameAction, ScheduleCancelAction, ScheduleCancelled, ScheduleEntry,
-    ScheduleFollowupAction, ScheduleListAction, ScheduleListOutcome, ScheduleResumeAction,
-    ScheduleResumed, ScheduledArchive, ScheduledFollowup, ScheduledMove, SessionControlAction,
-    SessionControlError, SessionControlRequest, SessionControlResponse, SessionControlResult,
-    SessionList, SessionListEntry, SessionRead, SessionRenamed, SessionStatus, SessionStopped,
+    MessageDelivery, MoveAction, PrCleanupAction, PrUnwatchAction, PrUnwatchOutcome, PrWatchAction,
+    PrWatchOutcome, ProjectEntry, ProjectListOutcome, ProjectsAction, ReadAction, ReadEntry,
+    RenameAction, ScheduleCancelAction, ScheduleCancelled, ScheduleEntry, ScheduleFollowupAction,
+    ScheduleListAction, ScheduleListOutcome, ScheduleResumeAction, ScheduleResumed,
+    ScheduledArchive, ScheduledFollowup, ScheduledMove, SessionControlAction, SessionControlError,
+    SessionControlRequest, SessionControlResponse, SessionControlResult, SessionList,
+    SessionListEntry, SessionRead, SessionRenamed, SessionStatus, SessionStopped,
     SourceAddedOutcome, SourceReadOutcome, SourceRecord, SourcesAddAction, SourcesListAction,
     SourcesListOutcome, SourcesReadAction, StatusAction, StopAction, TerminalCloseAction,
     TerminalClosed, TerminalOutput, TerminalReadAction, TerminalSpawnAction, TerminalStarted,
     TerminalSummary, TerminalWriteAction, TerminalWritten, WaitAction, WaitOutcome, WaitedSession,
     WorkspaceDiffAction, WorkspaceDiffOutcome, WorkspaceStatusAction, WorkspaceStatusOutcome,
 };
-pub use registry::{AfterTurn, SessionLaunchProcessConfig, SessionLaunchRegistry};
+pub use registry::{AfterTurn, LinkedRoot, SessionLaunchProcessConfig, SessionLaunchRegistry};
 pub use server::{SessionLaunchError, SessionLaunchServer};
 
 use std::time::Duration;
@@ -73,7 +74,9 @@ const SESSION_LIST_LIMIT: usize = 40;
 /// A session the user started is depth 0, so two levels of agent-launched
 /// sessions exist below it and the third is refused.
 const MAX_LAUNCH_DEPTH: i64 = 2;
-const MAX_LAUNCHES_PER_SESSION: i64 = 10;
+/// Sessions one session may launch over its lifetime. The tool description
+/// and docs/agent-tools.md name the number; tests read this constant.
+pub const MAX_LAUNCHES_PER_SESSION: i64 = 20;
 // Arc cap sizes live in `persistence::arcs` — the same module that checks
 // them transactionally against the session insert — and are re-exported here
 // so the existing `ARC_MAX_ACTIVE_MEMBERS`/`ARC_MAX_LAUNCHES_PER_DAY`
@@ -118,6 +121,8 @@ const INBOX_BROADCAST_CAPACITY: usize = 256;
 /// Per-row caps inside a `session_read` page, so one enormous tool result
 /// cannot spend the whole byte budget.
 const READ_ENTRY_MAX_CHARS: usize = 2000;
+/// The line of conversation a `session_list` search hit carries.
+const SESSION_SEARCH_SNIPPET_CHARS: usize = 240;
 const TOOL_ARGUMENT_MAX_CHARS: usize = 160;
 /// `workspace_diff`'s byte budget, the same shape as `session_read`'s: the
 /// default when an agent names none, and the ceiling it may ask for.
@@ -150,10 +155,6 @@ const SCHEDULE_PROMPT_CHARS: usize = 500;
 /// budget on it. The full text always lives in `BRIEF.md`.
 const ARC_STATUS_MEMBER_LIMIT: usize = 50;
 const ARC_STATUS_BRIEF_CHARS: usize = 4 * 1024;
-const DEFAULT_TASK_LABEL: &str = "Local agent task";
-const MAX_TASK_LABEL_CHARS: usize = 64;
-const MAX_TASK_LABEL_BYTES: usize = 200;
-const TASK_LABEL_ELLIPSIS: &str = "...";
 
 pub const SESSION_LAUNCH_SOCKET_ENV: &str = "ARGMAX_SESSION_LAUNCH_SOCKET";
 pub const SESSION_LAUNCH_TOKEN_ENV: &str = "ARGMAX_SESSION_LAUNCH_TOKEN";

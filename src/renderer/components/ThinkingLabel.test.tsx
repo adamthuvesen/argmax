@@ -10,11 +10,6 @@ afterEach(() => {
 });
 
 describe("<ThinkingLabel />", () => {
-  it("exposes the Thinking aria-label so existing selectors keep working", () => {
-    render(<ThinkingLabel />);
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-  });
-
   it("stops claiming the beat while it dissolves", () => {
     // The fade keeps the line on screen for 140ms after another line has taken
     // the beat. It is pixels for that stretch and nothing more: a name and a

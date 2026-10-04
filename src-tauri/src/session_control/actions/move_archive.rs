@@ -487,7 +487,7 @@ async fn continue_moved_session(
     };
     let asked = prompt.as_str().to_string();
     if let Err(error) = providers
-        .send_input(ProvidersSendInput {
+        .send_moved_input(ProvidersSendInput {
             agent_references: None,
             session_id,
             input: prompt,

@@ -62,18 +62,20 @@ struct TranscriptMessageRow: View {
                                 .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(Theme.muted)
+                            .foregroundStyle(secondaryInk)
                             .accessibilityValue(expanded ? "Expanded" : "Collapsed")
                         }
                     } else {
                         messageContent
                     }
                 }
+                .environment(\.proseInkOverride,
+                             message.role == .user && appearance.accentBubbles ? accent.onAccent : nil)
                 .padding(message.role == .user ? Spacing.row : 0)
                 .background {
                     if message.role == .user {
                         RoundedRectangle(cornerRadius: Radius.card)
-                            .fill(appearance.accentBubbles ? accent.color.opacity(0.50) : Theme.userMessageNeutral)
+                            .fill(appearance.accentBubbles ? accent.bubbleColor : Theme.userMessageNeutral)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,15 +118,22 @@ struct TranscriptMessageRow: View {
                 } icon: {
                     Image(systemName: "arrow.turn.down.right").typeSymbol(.caption)
                 }
-                    .foregroundStyle(Theme.muted)
+                    .foregroundStyle(secondaryInk)
             }
             if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 TranscriptMarkdown(text: message.text, client: client, onOpenFile: onOpenFile)
             }
             if let origin = message.originLabel {
-                Text(origin).typeStyle(.footnote).foregroundStyle(Theme.muted)
+                Text(origin).typeStyle(.footnote).foregroundStyle(secondaryInk)
             }
         }
+    }
+
+    /// Caption ink inside the message. `Theme.muted` is a grey tuned for the page,
+    /// so on an accent-filled user bubble it sinks into the fill; the bubble's own
+    /// `onAccent` ink, dimmed to 85%, stays legible on every tint in both appearances.
+    private var secondaryInk: Color {
+        message.role == .user && appearance.accentBubbles ? accent.onAccent.opacity(0.85) : Theme.muted
     }
 
     private var hasMessageCopy: Bool {

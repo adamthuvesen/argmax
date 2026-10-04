@@ -119,6 +119,44 @@ pub(crate) async fn workspace_stat_file_impl(
         .await
 }
 
+#[tauri::command(rename = "workspace:read-external-file")]
+#[specta::specta]
+pub async fn workspace_read_external_file(
+    state: State<'_, AppState>,
+    input: WorkspaceExternalFileInput,
+) -> ArgmaxResult<WorkspaceFilePreview> {
+    workspace_read_external_file_impl(&state, input).await
+}
+
+pub(crate) async fn workspace_read_external_file_impl(
+    state: &AppState,
+    input: WorkspaceExternalFileInput,
+) -> ArgmaxResult<WorkspaceFilePreview> {
+    let database = live_database(state)?;
+    WorkspaceFilesService::new(database)
+        .read_external_file(input.path.as_str())
+        .await
+}
+
+#[tauri::command(rename = "workspace:stat-external-file")]
+#[specta::specta]
+pub async fn workspace_stat_external_file(
+    state: State<'_, AppState>,
+    input: WorkspaceExternalFileInput,
+) -> ArgmaxResult<WorkspaceFileStat> {
+    workspace_stat_external_file_impl(&state, input).await
+}
+
+pub(crate) async fn workspace_stat_external_file_impl(
+    state: &AppState,
+    input: WorkspaceExternalFileInput,
+) -> ArgmaxResult<WorkspaceFileStat> {
+    let database = live_database(state)?;
+    WorkspaceFilesService::new(database)
+        .stat_external_file(input.path.as_str())
+        .await
+}
+
 #[tauri::command(rename = "workspace:grep-content")]
 #[specta::specta]
 pub async fn workspace_grep_content(

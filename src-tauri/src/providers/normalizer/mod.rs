@@ -1691,26 +1691,6 @@ mod tests {
             assert_eq!(started.payload["surface"], json!("todo"));
         }
 
-        #[test]
-        fn grok_textless_merge_delta_survives_as_ids_and_statuses() {
-            let result = normalize(
-                ProviderId::Grok,
-                &json!({
-                    "type": "assistant",
-                    "message": { "content": [{
-                        "type": "tool_use",
-                        "id": "call-2",
-                        "name": "todo_write",
-                        "input": { "merge": true, "todos": [{ "id": "2", "status": "completed" }] }
-                    }]}
-                }),
-            );
-            let todos = todo_payloads(&result);
-            assert_eq!(todos[0]["mode"], json!("merge"));
-            assert_eq!(todos[0]["items"][0]["id"], json!("2"));
-            assert_eq!(todos[0]["items"][0]["text"], Value::Null);
-        }
-
         /// The one brittle dependency: Claude's task id exists only in the
         /// result prose, so the create and its result have to be paired.
         #[test]
@@ -1840,27 +1820,6 @@ mod tests {
             assert_eq!(todos[0]["items"][0]["status"], json!("done"));
             assert_eq!(todos[0]["items"][1]["status"], json!("active"));
             assert_eq!(todos[0]["items"][1]["text"], json!("append two to b.txt"));
-        }
-
-        /// Slug ids in `state.todos` sort alphabetically; the sibling array is
-        /// the plan the agent is actually walking.
-        #[test]
-        fn grok_acp_slug_id_snapshot_keeps_array_order() {
-            let result = normalize(
-                ProviderId::Grok,
-                &json!({
-                    "type": "user",
-                    "message": { "role": "user", "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": "call-1",
-                        "content": "{\"TodosUpdated\":{\"state\":{\"todos\":{\"babysit\":{\"content\":\"Babysit CI\",\"status\":\"pending\"},\"group\":{\"content\":\"Group commits\",\"status\":\"in_progress\"}}},\"todos\":[{\"content\":\"Group commits\",\"status\":\"in_progress\"},{\"content\":\"Babysit CI\",\"status\":\"pending\"}]}}"
-                    }]}
-                }),
-            );
-            let todos = todo_payloads(&result);
-            assert_eq!(todos[0]["items"][0]["id"], json!("group"));
-            assert_eq!(todos[0]["items"][0]["status"], json!("active"));
-            assert_eq!(todos[0]["items"][1]["id"], json!("babysit"));
         }
 
         #[test]

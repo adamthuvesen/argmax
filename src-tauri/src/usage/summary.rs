@@ -399,7 +399,7 @@ fn cursor_buckets(
                     .ok()?
                     .timestamp();
                 let bucket_index = start_secs.iter().rposition(|start| *start <= at)?;
-                let rates = cursor_rates(model_id);
+                let rates = cursor_rates(model_id, &call.created_at);
                 let (cost_usd, cost_source) = match rates {
                     Some(rate) => (rate.cost(call), UsageCostSource::Estimated),
                     None => (0.0, UsageCostSource::Unpriced),

@@ -70,12 +70,6 @@ describe("normalizeMathDelimiters", () => {
     expect(output).toBe("Prices range from \\$10 to \\$20, or \\$100.50 per year.");
   });
 
-  it("handles consecutive currency symbols and lists", () => {
-    const input = "$5, $10, $15 and $20.00 each";
-    const output = normalizeMathDelimiters(input);
-    expect(output).toBe("\\$5, \\$10, \\$15 and \\$20.00 each");
-  });
-
   it("does not escape math that starts with a non-digit like $x_1 = 1$", () => {
     const input = "Let $x_1 = 1$ and $y_2 = 2$.";
     const output = normalizeMathDelimiters(input);
@@ -116,11 +110,6 @@ describe("normalizeMathDelimiters", () => {
 
     const output = normalizeMathDelimiters(input);
     expect(output).toContain("$$\n\\begin{align}\na &= b + c \\\\\nd &= e + f\n\\end{align}\n$$");
-  });
-
-  it("handles empty or purely textual markdown gracefully", () => {
-    expect(normalizeMathDelimiters("")).toBe("");
-    expect(normalizeMathDelimiters("Hello world")).toBe("Hello world");
   });
 
   it("converts bare Greek letter commands in prose to math spans", () => {

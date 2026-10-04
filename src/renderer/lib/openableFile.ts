@@ -1,4 +1,5 @@
 import type { ArgmaxApi } from "../../shared/types.js";
+import { isExternalFilePath } from "./reviewIpc.js";
 
 /**
  * Resolve a path that came from agent text (chip / link) into a workspace-
@@ -9,9 +10,12 @@ import type { ArgmaxApi } from "../../shared/types.js";
  *
  * Resolution order:
  *  1. Literal path — if stat succeeds, use it as-is.
- *  2. Absolute path from another checkout: match its repo-relative suffix
- *     against the workspace file list.
- *  3. Bare basename: use it when exactly one workspace entry matches, or
+ *  2. Absolute or `~/` path that exists on disk outside the workspace: return
+ *     it unchanged. It opens as a read-only external tab, so the file the agent
+ *     named is the file the user sees.
+ *  3. Absolute path that no longer exists (an archived checkout): match its
+ *     repo-relative suffix against the workspace file list.
+ *  4. Bare basename: use it when exactly one workspace entry matches, or
  *     when exactly one of several matches has uncommitted changes.
  * Relative paths with directories are not guessed after a failed literal read.
  */
@@ -28,7 +32,16 @@ export async function resolveOpenablePath(
     // fall through to basename resolution
   }
   const isAbsolute = path.startsWith("/");
-  if (!isAbsolute && path.includes("/")) return null;
+  if (isExternalFilePath(path)) {
+    try {
+      await api.workspace.statExternalFile(path);
+      return path;
+    } catch {
+      if (!isAbsolute) return null;
+    }
+  } else if (path.includes("/")) {
+    return null;
+  }
   let entries;
   try {
     entries = await api.workspace.listFiles({ kind: "workspace", id: workspaceId });

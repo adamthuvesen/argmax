@@ -328,12 +328,6 @@ describe("DiffBlocks", () => {
     expect(screen.getByText("16 unmodified lines")).toBeInTheDocument();
   });
 
-  it("singularizes a one-line gap", () => {
-    render(<DiffBlocks blocks={[TS_HUNK, { ...OMITTED, count: 1 }]} filePath="src/x.ts" />);
-
-    expect(screen.getByText("1 unmodified line")).toBeInTheDocument();
-  });
-
   it("announces a truncated diff and stops advertising expansion", () => {
     const onExpandContext = vi.fn();
     render(

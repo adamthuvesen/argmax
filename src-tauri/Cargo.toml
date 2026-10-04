@@ -50,6 +50,10 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-updater = "2"
+# System-wide chord for the window snapshot (src/window_snapshot). Registered
+# from Rust only, so no webview permission is granted for it. Pinned: newer releases
+# pull a newer tauri/wry into Cargo.lock.
+tauri-plugin-global-shortcut = "=2.3.1"
 # Local end-to-end verification embeds a loopback WebDriver server. The
 # dependency is optional so release builds cannot expose the driver unless the
 # explicit `verification` feature is selected.
@@ -125,6 +129,9 @@ rusqlite = { version = "0.32", features = ["bundled-full"] }
 portable-pty = "0.9"
 
 serde = { version = "1", features = ["derive"] }
+# Reads back a window snapshot to prove it is a real, non-transparent image
+# before it is attached (src/window_snapshot/capture.rs). Already in the tree.
+png = "0.17"
 serde_json = "1"
 thiserror = "1"
 # Push bodies are rendered by native notification surfaces, so they need a
@@ -228,6 +235,9 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSTextField",
     "NSView",
     "NSWindow",
+    "NSWorkspace",
+    "NSRunningApplication",
+    "libc",
 ] }
 objc2-web-kit = { version = "0.3", default-features = false, features = [
     "std",
@@ -243,6 +253,17 @@ objc2-web-kit = { version = "0.3", default-features = false, features = [
 ] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = [
     "std",
+    "CFArray",
+    "CFCGTypes",
+    "CFDictionary",
+    "CFNumber",
+    "CFString",
+] }
+# Window list metadata and the Screen Recording permission check for the window
+# snapshot (src/window_snapshot/macos.rs). Already in the tree via objc2-app-kit.
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+    "std",
+    "CGWindow",
 ] }
 block2 = "0.6"
 

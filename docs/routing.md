@@ -105,19 +105,33 @@ Cost has its own launch grid:
 
 | Kind | Light | Standard | Heavy |
 |---|---|---|---|
-| coding | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
-| mechanical | Luna · medium | Luna · medium | Sol 6.1 · medium |
-| research | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
-| question | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
-| review | Opus 5.5 · low | Opus 5.5 · medium | Opus 5.5 · high |
+| coding | DeepSeek V4.1 Flash · high | Sol 6.1 · medium | Sol 6.1 · high |
+| mechanical | DeepSeek V4.1 Flash · low | DeepSeek V4.1 Flash · low | DeepSeek V4.1 Flash · low |
+| research | DeepSeek V4.1 Flash · high | Sol 6.1 · medium | Sol 6.1 · high |
+| question | DeepSeek V4.1 Flash · high | DeepSeek V4.1 Flash · high | Sol 6.1 · high |
+| review | Sonnet 5.5 · low | Sonnet 5.5 · medium | Sonnet 5.5 · high |
 
-When Codex is unavailable, Cost launches on Sonnet for lighter work and
-mechanical edits, and Opus for heavy work and reviews.
+When Codex is unavailable, Cost launches on Sonnet for lighter work,
+mechanical edits, and reviews, and Opus for other heavy work.
+
+DeepSeek V4.1 Flash took every Luna cell and heavy mechanical work on
+2026-10-04, because it bills cache reads at $0.003 per million tokens against
+Luna's $0.01 and cache reads are most agent tokens. Both figures match
+OpenRouter's catalog (2026-10-04): DeepSeek's own host charges $0.15 in /
+$0.60 out, while hosts range from $0.02 to $0.30 in and $0.003 to $0.048 for
+cache reads, so OpenRouter's choice of host moves the real bill. Artificial
+Analysis lists the common $0.30 / $1.20 host. Its CLI offers low,
+high and max: mechanical edits run at low, other cells at high. No quality
+comparison on agent tasks exists. A Codex or Claude chat keeps its native
+model on follow-ups (Luna medium or Sonnet).
 
 Luna is GPT-6 Luna. Cost optimizes API-equivalent completion cost rather
 than subscription allowance or provider. The initial policy follows the
 2026-09-29 Sol comparison and 2026-09-30 Luna queue task. Evidence outside
-those bounded tasks is provisional. Existing `cost` values still mean Speed,
+those bounded tasks is provisional. On 2026-10-02, reviews moved from Opus to
+Sonnet 5.5 (half the per-token price) and standard questions moved from Sol to
+Luna. Neither move has a review-quality benchmark behind it yet; Sonnet 5 scored
+24–28% on CursorBench against Opus low's 43.7%, and Sonnet 5.5 is untested there. Existing `cost` values still mean Speed,
 so saved sessions and picker preferences retain their behavior.
 
 Tier × difficulty picks a column and an effort:
@@ -133,38 +147,62 @@ Kind × column picks the model:
 | Kind | Cheap | Value | Frontier |
 |---|---|---|---|
 | coding | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
-| mechanical | Composer 2.5 | Composer 2.5 | Opus 5.5 |
+| mechanical | DeepSeek V4.1 Flash · low | DeepSeek V4.1 Flash · low | Opus 5.5 |
 | research | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
 | review | Opus 5.5 · low | Opus 5.5 | GPT-6 Astra |
 | question | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
 
+The review row is the Balance and Frontier answer. Speed and Cost run reviews
+on Sonnet 5.5 instead (see the overrides below), and `table.rs` is the source
+when this table and the code disagree.
+
 Overrides on top of the grid:
 
 - **Balance sends light mechanical UI work to Opus 5.5 · low.** That is the
-  Composer cell left on Balance. Composer's UI tweaks were the Composer chats
-  most often reported wrong. Speed keeps Composer for mechanical work,
-  including UI work.
+  DeepSeek cell left on Balance. Composer's UI tweaks (the model DeepSeek
+  replaced) were the chats most often reported wrong. Speed keeps DeepSeek for
+  mechanical work, including UI work.
 - **Balance runs heavy work at high only when Jev puts at least 0.6 on hard or
   very hard.** Below that it runs the standard cell at medium, and a
   follow-up can climb. Frontier keeps high.
 - **The launch grid does not pick Grok.** A chat already on Grok Build still
   follows difficulty: Light low, Standard medium, Heavy high.
+- **Speed's Light questions and research launch on DeepSeek V4.1 Flash ·
+  high** (2026-10-04). They edit nothing, so a weak answer is cheap to catch,
+  and DeepSeek answers first (0.66 s to first token against Sonnet's 1.19 s in
+  a raw API test). Light coding stays on Sonnet. No quality comparison on
+  agent tasks exists yet. A Speed follow-up on that chat keeps DeepSeek; a
+  reported-wrong chat climbs to DeepSeek high, then to Sonnet 5.5 high.
 - **Speed's heavy coding, research, and questions stay on Sonnet 5.5 ·
   medium.** Those cells would otherwise be the Opus value column. Light is
-  low and standard is medium, from the table above. Reviews stay on Opus. A
-  Speed follow-up that is already on Claude stays on Sonnet until the next
-  task is a review, which moves to Opus. A reported-wrong answer still climbs
+  low and standard is medium, from the table above. A Speed follow-up that
+  is already on Claude stays on Sonnet. A reported-wrong answer still climbs
   the Claude ladder, whose first rung is Opus medium.
+- **Speed and Cost reviews run on Sonnet 5.5 with effort by difficulty:**
+  Light low, Standard medium, Heavy high, at launch and on Claude follow-ups.
+  Sonnet high finishes about as fast as Opus low (17 s vs 19 s on Artificial
+  Analysis, 2026-10-02) at half the per-token price. No review benchmark backs
+  the swap yet.
 - **Balance sends its standard and heavy mechanical work to Sonnet 5.5 ·
-  medium.** Light mechanical work stays on Composer. Heavy mechanical effort
+  medium.** Light mechanical work stays on DeepSeek V4.1 Flash. Heavy mechanical effort
   stays medium on every tier.
 - **Balance standard coding and research launch on Sonnet 5.5 · high.** Heavy
   coding and research stay on Opus 5.5 · high.
 - **Frontier light mechanical work launches on Sonnet 5.5 · medium.**
 - Frontier · Heavy sends **research to GPT-6 Astra** and **questions to Fable
   5.1**; coding stays on Opus 5.5.
+- **DeepSeek V4.1 Flash replaced Composer 2.5 on the mechanical cells
+  (2026-10-04).** It launches on OpenCode through OpenRouter, so it needs
+  OpenCode installed and an OpenRouter key; without OpenCode the route moves to
+  the next installed provider. Raw API speed was measured (0.66 s to first token
+  against Composer's 8.3 s through its CLI) at $0.15 in and $0.60 out per
+  million tokens. No agent-task quality comparison exists yet. Its CLI takes low,
+  high and max, so mechanical medium clamps to low. A DeepSeek chat keeps its
+  model on follow-ups; a reported-wrong chat climbs to DeepSeek high, then to
+  Sonnet 5.5 high on Claude Code. Chats already on Cursor keep the Composer
+  ladder below.
 - Mechanical work never runs above medium; the cheap review cell is Opus 5.5
-  at low.
+  at low, which Balance's light reviews still use.
 - Effort is clamped to what the model's CLI accepts (the `clampEffort` rule in
   [providerModels.ts](../src/shared/providerModels.ts)); Composer takes none.
 - **A launch never runs above high.** xhigh and max are only reached by
@@ -174,9 +212,11 @@ If Jev fails, the tier's **fallback** is used and recorded with the reason
 `unrouted: …`: Cost → Sol 6.1 · medium, Speed → Sonnet 5.5 · medium,
 Balance and Frontier → Opus 5.5 · medium.
 
-**Fast is never used for a routed turn.** `route_launch` clears `fast_mode`,
-and so does every follow-up the router still drives, including one it leaves
-on its model.
+**Fast is never used for a routed turn, except on Composer chats already on Cursor.** `route_launch`
+clears `fast_mode`, and so does every follow-up the router still drives,
+including one it leaves on its model. Composer 2.5 runs Fast regardless,
+because the Cursor provider always turns it on (see
+[providers.md](providers.md)).
 
 ## Follow-ups
 
@@ -235,7 +275,7 @@ The provider targets are:
 
 | Provider | Follow-up policy |
 |---|---|
-| Claude | Opus with supported low, medium, or high effort, except a Speed chat, which stays on Sonnet 5.5 until the next task is a review. Frontier heavy questions target Fable. A retained stronger model can reduce or restore effort in place. |
+| Claude | Opus with supported low, medium, or high effort, except a Speed chat, which stays on Sonnet 5.5, reviews included. Frontier heavy questions target Fable. A retained stronger model can reduce or restore effort in place. |
 | Codex | Sol for coding and mechanical work at any difficulty, and for lighter work of any kind. Astra for heavy review, research and questions, and Frontier standard review or research. A chat launched on Astra for a review moves to Sol for the code that follows when the switch pays. |
 | Cursor | Composer for lighter work, Cursor Opus for review, more demanding work, and Balance UI work (low). Model downgrades stay blocked while pricing is unavailable. |
 | OpenCode | None. The grid never launches OpenCode, so a routed chat never runs there. |
@@ -243,7 +283,8 @@ The provider targets are:
 
 Cost follow-ups on Codex use the same Luna/Sol task cells. A review in an
 existing Codex conversation uses Sol at the review's effort rather than
-switching providers mid-task. A Claude conversation stays on Opus. The normal
+switching providers mid-task. A Claude conversation stays on Sonnet, reviews
+included; only heavy non-mechanical work takes Opus. The normal
 confidence and cache-payback rules still gate reductions. Reported-wrong
 answers and incomplete Goals on Cost climb Luna medium → Sol medium → Sol high
 → Opus high. The last step changes provider and rebuilds context from the
@@ -296,9 +337,10 @@ not price.
 | Claude | Opus 5.5 · medium → Opus 5.5 · high → Fable 5.1 · high → Fable 5.1 · xhigh |
 | Codex | GPT-6.1 Sol · medium → Sol · high → GPT-6 Astra · high → Astra · xhigh |
 | Cursor | Composer 2.5 → Claude Opus 5.5 (Cursor) · medium → · high |
+| OpenCode | DeepSeek V4.1 Flash · high → **Sonnet 5.5 · high on Claude** |
 | Grok | Grok 4.7 · low → · medium → · high → **Opus 5.5 · high on Claude** |
 
-The last Grok rung is the router's only automatic provider switch: the send goes through the ordinary provider-switch path, which starts
+The last Grok and OpenCode rungs are the router's automatic provider switches: the send goes through the ordinary provider-switch path, which starts
 Claude fresh with the visible transcript as context. Cursor climbs to Opus
 inside the same Cursor conversation.
 

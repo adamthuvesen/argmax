@@ -28,7 +28,7 @@ function Harness({
         aria-label="probe"
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        onKeyDown={state.onKeyDown}
+        onKeyDown={(event) => state.onKeyDown(event.nativeEvent)}
       />
       <span data-testid="selection-index">{state.selectionIndex}</span>
       <span data-testid="open">{String(state.popoverOpen)}</span>

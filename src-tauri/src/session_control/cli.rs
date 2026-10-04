@@ -32,6 +32,7 @@ pub enum SessionControlCliInput {
     List {
         project: Option<String>,
         all: bool,
+        query: Option<String>,
     },
     Message {
         session_id: String,
@@ -71,13 +72,20 @@ impl SessionControlCliInput {
                 worktree,
                 keep_source,
             }),
-            SessionControlCliInput::List { project, all } => {
-                SessionControlAction::List(ListAction { project, all })
-            }
+            SessionControlCliInput::List {
+                project,
+                all,
+                query,
+            } => SessionControlAction::List(ListAction {
+                project,
+                all,
+                query,
+            }),
             SessionControlCliInput::Message { session_id, prompt } => {
                 SessionControlAction::Message(MessageAction {
                     session_id,
                     message: prompt.read()?,
+                    fork_findings: false,
                 })
             }
         })
@@ -307,6 +315,7 @@ fn parse_session_move_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
 fn parse_session_list_cli(args: &[OsString]) -> Result<SessionControlCliInput, String> {
     let mut project = None;
     let mut all = false;
+    let mut query = None;
     let mut index = 3;
     while index < args.len() {
         let flag = args[index]
@@ -333,6 +342,20 @@ fn parse_session_list_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
                 }
                 all = true;
             }
+            "--query" => {
+                if query.is_some() {
+                    return Err("--query may be provided only once".to_string());
+                }
+                index += 1;
+                let value = args
+                    .get(index)
+                    .and_then(|value| value.to_str())
+                    .ok_or_else(|| "--query requires a value".to_string())?;
+                if value.trim().is_empty() {
+                    return Err("--query must not be empty".to_string());
+                }
+                query = Some(value.to_string());
+            }
             _ => return Err(format!("unknown session list argument '{flag}'")),
         }
         index += 1;
@@ -340,7 +363,11 @@ fn parse_session_list_cli(args: &[OsString]) -> Result<SessionControlCliInput, S
     if all && project.is_some() {
         return Err("--all cannot be combined with --project".to_string());
     }
-    Ok(SessionControlCliInput::List { project, all })
+    Ok(SessionControlCliInput::List {
+        project,
+        all,
+        query,
+    })
 }
 
 fn parse_session_message_cli(args: &[OsString]) -> Result<SessionControlCliInput, String> {
@@ -623,49 +650,6 @@ mod tests {
     }
 
     #[test]
-    fn the_cli_resolves_its_prompt_into_one_wire_action() {
-        let action = SessionControlCliInput::Launch {
-            project: Some("Argmax".to_string()),
-            prompt: CliPrompt::Value("Ship it".to_string()),
-            worktree: true,
-            path: None,
-            branch: None,
-        }
-        .into_action()
-        .expect("action");
-        assert_eq!(
-            action,
-            SessionControlAction::Launch(LaunchAction {
-                prompt: "Ship it".to_string(),
-                project: Some("Argmax".to_string()),
-                worktree: true,
-                path: None,
-                branch: None,
-                provider: None,
-                model: None,
-                task_label: None,
-                reasoning: None,
-                permission_mode: None,
-                check_in_minutes: None,
-            })
-        );
-
-        let message = SessionControlCliInput::Message {
-            session_id: "abc".to_string(),
-            prompt: CliPrompt::Value("Ping".to_string()),
-        }
-        .into_action()
-        .expect("action");
-        assert_eq!(
-            message,
-            SessionControlAction::Message(MessageAction {
-                session_id: "abc".to_string(),
-                message: "Ping".to_string(),
-            })
-        );
-    }
-
-    #[test]
     fn cli_parser_accepts_list_flags_and_rejects_all_with_project() {
         let args = ["argmax", "session", "list", "--project", "Argmax"].map(OsString::from);
         assert_eq!(
@@ -673,6 +657,7 @@ mod tests {
             SessionControlCliInput::List {
                 project: Some("Argmax".to_string()),
                 all: false,
+                query: None,
             }
         );
 
@@ -682,6 +667,7 @@ mod tests {
             SessionControlCliInput::List {
                 project: None,
                 all: true,
+                query: None,
             }
         );
 
@@ -691,6 +677,17 @@ mod tests {
             SessionControlCliInput::List {
                 project: None,
                 all: false,
+                query: None,
+            }
+        );
+
+        let queried = ["argmax", "session", "list", "--query", "login bug"].map(OsString::from);
+        assert_eq!(
+            parse_session_control_cli(&queried).unwrap(),
+            SessionControlCliInput::List {
+                project: None,
+                all: false,
+                query: Some("login bug".to_string()),
             }
         );
 

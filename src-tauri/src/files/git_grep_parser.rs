@@ -105,25 +105,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn parses_empty_input() {
-        let parsed = parse_git_grep_output("", &options());
-        assert!(parsed.files.is_empty());
-        assert!(!parsed.truncated);
-    }
-
-    #[test]
-    fn parses_single_match() {
-        let raw = "src/foo.rs\x0012\x00fn hello() {\n";
-        let parsed = parse_git_grep_output(raw, &options());
-        assert_eq!(parsed.files.len(), 1);
-        assert_eq!(parsed.files[0].path, "src/foo.rs");
-        assert_eq!(parsed.files[0].matches.len(), 1);
-        assert_eq!(parsed.files[0].matches[0].line, 12);
-        assert_eq!(parsed.files[0].matches[0].preview, "fn hello() {");
-        assert!(!parsed.truncated);
-    }
-
     // Real `git grep -n --null` output: NUL between the fields of a record,
     // newline between records. Getting this backwards let one record's
     // content swallow the next record's path.

@@ -132,8 +132,8 @@ enum AutoTier: String, Codable, CaseIterable, Hashable, Sendable {
 struct CatalogProvider: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var displayName: String
-    /// Whether the CLI can fork a resumed conversation. Cursor cannot, and
-    /// `fork_session` refuses it host-side.
+    /// Whether a chat on this provider can be forked. Cursor forks too, but
+    /// always starts fresh from the copied history.
     var forkCapable: Bool
     /// The cheap model that mints a chat's name from its prompt.
     var titleModelId: String

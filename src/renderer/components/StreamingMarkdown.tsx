@@ -3,6 +3,7 @@ import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markd
 import remarkGfm from "remark-gfm";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { matchFileChip, normalizeFileChipPath } from "../lib/fileChipPath.js";
+import { CHAT_REFERENCE_PREFIX, findChatReferences } from "../lib/composerContext.js";
 import { splitLogSegments } from "../lib/logDump.js";
 import { isMermaidFenceClass } from "../lib/mermaidFence.js";
 import type * as MarkdownBlocks from "../lib/markdownBlocks.js";
@@ -18,8 +19,9 @@ import {
   trackFreshRuns,
   type FreshRun
 } from "../lib/streamFreshRuns.js";
+import { ChatSourceChip } from "./ChatSourceChip.js";
 import { CodeBlock } from "./CodeBlock.js";
-import { FileChip, type FileChipOpenOptions } from "./FileChip.js";
+import { CheckedFileChip, FileChip, type FileChipOpenOptions } from "./FileChip.js";
 import { LogBlock } from "./LogBlock.js";
 import { MarkdownTable } from "./MarkdownTable.js";
 import { MarkdownImage } from "./MarkdownImage.js";
@@ -96,8 +98,17 @@ function subscribeToRevealFrames(listener: (now: number) => void): () => void {
   };
 }
 
+/** The plain text of a link's children, for the chip that replaces the link. */
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  return "";
+}
+
 function chatUrlTransform(value: string): string {
   if (/^argmax-(?:asset|attachment):\/\//i.test(value)) return value;
+  // A cited chat. The anchor below turns it into a chip that opens the chat.
+  if (value.startsWith(CHAT_REFERENCE_PREFIX)) return value;
   return defaultUrlTransform(value);
 }
 
@@ -455,27 +466,34 @@ const markdownComponents: Components = {
     if (hasLanguage || codeText.includes("\n")) {
       return <CodeBlock className={className}>{children}</CodeBlock>;
     }
-    const match = matchFileChip(codeText);
-    if (match) {
-      const path = normalizeFileChipPath(match.path, workspace?.path);
-      return (
-        <FileChip
-          path={path}
-          line={match.line}
-          workspaceId={workspace?.id ?? null}
-          workspaceCwd={workspace?.path ?? null}
-          onOpen={onOpenFile}
-        />
-      );
-    }
-    return (
+    const code = (
       <code className={className} {...rest}>
         {children}
       </code>
     );
+    const match = matchFileChip(normalizeFileChipPath(codeText, workspace?.path));
+    if (!match) return code;
+    const chipProps = {
+      path: match.path,
+      line: match.line,
+      workspaceId: workspace?.id ?? null,
+      workspaceCwd: workspace?.path ?? null,
+      onOpen: onOpenFile
+    };
+    return match.needsExistenceCheck ? (
+      <CheckedFileChip {...chipProps} fallback={code} />
+    ) : (
+      <FileChip {...chipProps} />
+    );
   },
   a: function MarkdownAnchor({ href, children, ...rest }) {
     const { workspace, onOpenFile } = useContext(MarkdownContext);
+    const chat = href?.startsWith(CHAT_REFERENCE_PREFIX)
+      ? findChatReferences(`[x](${href})`)[0]?.reference
+      : undefined;
+    if (chat) {
+      return <ChatSourceChip sessionId={chat.sessionId} title={textOf(children) || "Chat"} />;
+    }
     if (!href || href.startsWith("#")) {
       return (
         <a href={href} {...rest}>
@@ -499,39 +517,42 @@ const markdownComponents: Components = {
     }
     const normalizedHref = normalizeFileChipPath(href, workspace?.path);
     const match = matchFileChip(normalizedHref);
-    if (!match) {
-      return (
-        <a
-          href={href}
-          {...rest}
-          onClick={(event) => {
-            // Directory and extensionless links must never navigate the app webview.
-            event.preventDefault();
-            const api = window.argmax;
-            if (!api) return;
-            const path = normalizeFileChipPath(href, null);
-            void withToast(
-              () => api.system.openPath({
-                path,
-                cwd: path.startsWith("/") ? undefined : workspace?.path
-              }),
-              showToast,
-              "Could not open this path."
-            );
-          }}
-        >
-          {children}
-        </a>
-      );
-    }
-    return (
-      <FileChip
-        path={match.path}
-        line={match.line}
-        workspaceId={workspace?.id ?? null}
-        workspaceCwd={workspace?.path ?? null}
-        onOpen={onOpenFile}
-      />
+    const link = (
+      <a
+        href={href}
+        {...rest}
+        onClick={(event) => {
+          // Directory and extensionless links must never navigate the app webview.
+          event.preventDefault();
+          const api = window.argmax;
+          if (!api) return;
+          const path = normalizeFileChipPath(href, null);
+          void withToast(
+            () => api.system.openPath({
+              path,
+              cwd: path.startsWith("/") ? undefined : workspace?.path
+            }),
+            showToast,
+            "Could not open this path."
+          );
+        }}
+      >
+        {children}
+      </a>
+    );
+    if (!match) return link;
+    const chipProps = {
+      path: match.path,
+      line: match.line,
+      workspaceId: workspace?.id ?? null,
+      workspaceCwd: workspace?.path ?? null,
+      onOpen: onOpenFile
+    };
+    // An extensionless link to a directory keeps opening in the system.
+    return match.needsExistenceCheck ? (
+      <CheckedFileChip {...chipProps} fallback={link} />
+    ) : (
+      <FileChip {...chipProps} />
     );
   },
   img: function MarkdownImg({ src, alt }) {

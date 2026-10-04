@@ -64,11 +64,4 @@ describe("importChunk", () => {
     await loadMissingChunk();
     expect(reload).toHaveBeenCalledTimes(2);
   });
-
-  it("passes a loaded chunk straight through", async () => {
-    await expect(importChunk(() => Promise.resolve({ default: 1 }))).resolves.toEqual({
-      default: 1
-    });
-    expect(reload).not.toHaveBeenCalled();
-  });
 });

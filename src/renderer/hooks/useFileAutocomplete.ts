@@ -1,24 +1,36 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type RefObject,
-  type SyntheticEvent
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
+import type { ComposerField } from "../components/composerEditor/composerField.js";
+import { chatReferenceLink } from "../lib/composerContext.js";
 import { searchFilePaths } from "../lib/paletteSearch.js";
+import { searchChatTitles, type ChatDirectoryEntry } from "../state/chatDirectory.js";
 
 export type FileAutocompleteSource =
   | { kind: "workspace"; id: string }
   | { kind: "project"; id: string };
 
-export interface FileAutocompleteEntry {
-  path: string;
-  kind: "file" | "dir";
-}
+/**
+ * One row of the `@` menu: a file or folder to mention, or a chat to attach as
+ * a reference. A chat row's `path` is its session id, which keeps the key
+ * every row needs unique without a second field.
+ */
+export type FileAutocompleteEntry =
+  | { path: string; kind: "file" | "dir" }
+  | {
+      path: string;
+      kind: "chat";
+      title: string;
+      projectName: string;
+      /** The line of conversation that matched, for a content hit. */
+      snippet?: string;
+    };
+
+/** Shortest query that looks for chats at all: `@a` should stay a file menu. */
+const CHAT_QUERY_MIN_CHARS = 2;
+/** Shortest query worth a conversation-text search, run off the keystroke. */
+const CHAT_CONTENT_QUERY_MIN_CHARS = 3;
+const CHAT_CONTENT_DEBOUNCE_MS = 200;
+const CHAT_ROW_LIMIT = 5;
 
 /**
  * Returns the trigger range when the caret sits inside an `@token` mention —
@@ -72,8 +84,12 @@ export function buildEntries(paths: string[]): FileAutocompleteEntry[] {
 interface UseFileAutocompleteArgs {
   input: string;
   setInput: (value: string) => void;
-  inputRef: RefObject<HTMLTextAreaElement | null>;
+  inputRef: RefObject<ComposerField | null>;
   source: FileAutocompleteSource | null;
+  /** The chats the menu may offer. Omitted, the menu is files only. */
+  chats?: readonly ChatDirectoryEntry[];
+  /** The chat this prompt belongs to, never offered to itself. */
+  ownSessionId?: string | null;
 }
 
 export interface FileAutocompleteState {
@@ -82,8 +98,9 @@ export interface FileAutocompleteState {
   selectionIndex: number;
   setSelectionIndex: (index: number) => void;
   selectEntry: (entry: FileAutocompleteEntry) => void;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
-  onSelectionChange: (event: SyntheticEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (event: KeyboardEvent) => void;
+  /** Report the caret whenever it moves. */
+  onSelectionChange: (caret: number) => void;
 }
 
 const POPOVER_LIMIT = 50;
@@ -97,11 +114,15 @@ function sourceKey(source: FileAutocompleteSource | null): string | null {
   return `${source.kind}:${source.id}`;
 }
 
+const NO_CHATS: readonly ChatDirectoryEntry[] = [];
+
 export function useFileAutocomplete({
   input,
   setInput,
   inputRef,
-  source
+  source,
+  chats = NO_CHATS,
+  ownSessionId = null
 }: UseFileAutocompleteArgs): FileAutocompleteState {
   const [caret, setCaret] = useState(0);
   const [selectionIndex, setSelectionIndex] = useState(0);
@@ -169,7 +190,7 @@ export function useFileAutocomplete({
 
   const allEntries = key ? entriesBySource.get(key) ?? null : null;
 
-  const filteredEntries = useMemo(() => {
+  const fileEntries = useMemo(() => {
     if (!trigger || !allEntries) return [] as FileAutocompleteEntry[];
     if (!trigger.query) return allEntries.slice(0, POPOVER_LIMIT);
     // Fuzzy-rank by path string; map ranked paths back to typed entries. We
@@ -189,6 +210,74 @@ export function useFileAutocomplete({
     return out;
   }, [trigger, allEntries]);
 
+  // Chats named by title come straight from the directory. Chats named by
+  // what was said in them come from the conversation search, a round trip, so
+  // it waits for the typing to pause and answers only for the query it was
+  // asked: a late reply to an old query is dropped.
+  const chatQuery =
+    trigger && trigger.query.length >= CHAT_QUERY_MIN_CHARS ? trigger.query.trim() : "";
+  const [contentHits, setContentHits] = useState<{
+    query: string;
+    entries: FileAutocompleteEntry[];
+  }>({ query: "", entries: [] });
+  useEffect(() => {
+    if (chatQuery.length < CHAT_CONTENT_QUERY_MIN_CHARS || chats.length === 0) return undefined;
+    const search = window.argmax?.session?.search;
+    if (!search) return undefined;
+    let current = true;
+    const timer = window.setTimeout(() => {
+      void search({ query: chatQuery, limit: 12 }).then(
+        (hits) => {
+          if (!current) return;
+          const byId = new Map(chats.map((chat) => [chat.sessionId, chat]));
+          const seen = new Set<string>();
+          const entries: FileAutocompleteEntry[] = [];
+          for (const hit of hits) {
+            const chat = byId.get(hit.sessionId);
+            if (!chat || seen.has(chat.sessionId)) continue;
+            seen.add(chat.sessionId);
+            entries.push({
+              kind: "chat",
+              path: chat.sessionId,
+              title: chat.title,
+              projectName: chat.projectName,
+              snippet: hit.snippet.replace(/<\/?b>/g, "")
+            });
+          }
+          setContentHits({ query: chatQuery, entries });
+        },
+        () => undefined
+      );
+    }, CHAT_CONTENT_DEBOUNCE_MS);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [chatQuery, chats]);
+
+  const chatEntries = useMemo(() => {
+    if (!chatQuery) return [] as FileAutocompleteEntry[];
+    const byTitle: FileAutocompleteEntry[] = searchChatTitles(chats, chatQuery, CHAT_ROW_LIMIT)
+      .filter((chat) => chat.sessionId !== ownSessionId)
+      .map((chat) => ({
+        kind: "chat",
+        path: chat.sessionId,
+        title: chat.title,
+        projectName: chat.projectName
+      }));
+    const taken = new Set(byTitle.map((entry) => entry.path));
+    const byContent =
+      contentHits.query === chatQuery
+        ? contentHits.entries.filter((entry) => !taken.has(entry.path) && entry.path !== ownSessionId)
+        : [];
+    return [...byTitle, ...byContent].slice(0, CHAT_ROW_LIMIT);
+  }, [chatQuery, chats, contentHits, ownSessionId]);
+
+  const filteredEntries = useMemo(
+    () => [...fileEntries, ...chatEntries],
+    [fileEntries, chatEntries]
+  );
+
   // Reset the dismissed flag when the trigger boundary moves — either
   // the user closed and reopened a fresh `@`, or the `@` left the document.
   useEffect(() => {
@@ -203,8 +292,7 @@ export function useFileAutocomplete({
   // results caused visible flicker as the user typed each character.
   const popoverOpen =
     trigger !== null &&
-    allEntries !== null &&
-    allEntries.length > 0 &&
+    ((allEntries !== null && allEntries.length > 0) || chatEntries.length > 0) &&
     (dismissedAt === null || dismissedAt !== trigger.triggerStart);
 
   useEffect(() => {
@@ -219,7 +307,12 @@ export function useFileAutocomplete({
       const before = input.slice(0, trigger.triggerStart);
       const after = input.slice(caret);
       const suffix = entry.kind === "dir" ? "/" : "";
-      const insertion = `@${entry.path}${suffix} `;
+      // A chat is attached as its link, which the editor draws as a chip; a
+      // file stays the `@path` the agent reads.
+      const insertion =
+        entry.kind === "chat"
+          ? `${chatReferenceLink({ sessionId: entry.path, title: entry.title })} `
+          : `@${entry.path}${suffix} `;
       const next = `${before}${insertion}${after}`;
       const nextCaret = before.length + insertion.length;
       setInput(next);
@@ -235,16 +328,12 @@ export function useFileAutocomplete({
     [trigger, input, caret, setInput, inputRef]
   );
 
-  const onSelectionChange = useCallback(
-    (event: SyntheticEvent<HTMLTextAreaElement>): void => {
-      const target = event.currentTarget;
-      setCaret(target.selectionStart ?? 0);
-    },
-    []
-  );
+  const onSelectionChange = useCallback((nextCaret: number): void => {
+    setCaret(nextCaret);
+  }, []);
 
   const onKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
+    (event: KeyboardEvent): void => {
       if (!popoverOpen) return;
       if (event.key === "Escape") {
         event.preventDefault();

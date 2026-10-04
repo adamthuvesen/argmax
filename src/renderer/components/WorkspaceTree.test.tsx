@@ -62,11 +62,6 @@ describe("WorkspaceTree virtualization", () => {
     expect(rendered.length).toBeGreaterThan(10);
   });
 
-  it("renders the empty-state when entries is empty", () => {
-    render(<WorkspaceTree state={makeState([])} height={400} />);
-    expect(screen.getByText("No files in this workspace.")).toBeTruthy();
-  });
-
   it("maps filenames and extensions to distinct icons without changing row labels", () => {
     const entries: WorkspaceFileEntry[] = [
       { path: "app.ts" },

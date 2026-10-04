@@ -110,7 +110,11 @@ fn claude_structured_args(
     mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = vec!["-p".to_string(), "--brief".to_string()];
-    args.extend(claude_common_args(input, mcp, Some(&input.session_id)));
+    args.extend(claude_common_args(
+        input,
+        mcp,
+        Some(input.fresh_native_id()),
+    ));
     args
 }
 
@@ -147,6 +151,10 @@ fn claude_common_args(
     args.extend(claude_effort_args(input));
     args.extend(claude_settings_args(input, mcp));
     args.extend(mcp_injection::mcp_args(ProviderId::Claude, mcp));
+    // Shared by fresh, resumed and control-channel launches, which all build
+    // their argv here. The roots come from the launch config, which is issued
+    // from the database each launch.
+    args.extend(mcp_injection::claude_linked_root_args(mcp));
     args.extend(["--model".to_string(), claude_model_arg(&input.model_id)]);
     if let Some(session_id) = session_id {
         args.extend(["--session-id".to_string(), session_id.to_string()]);
@@ -251,6 +259,13 @@ fn cursor_structured_args(
 // Speed toggle for those, so this mirrors it. The adapter guard also protects
 // resumed sessions carrying a stale fast setting.
 //
+/// Whether a Cursor chat runs Fast. Composer 2.5 always does, whatever the
+/// chat or the router asked for: on a 12-file turn it finished in 39.5 s
+/// against 62 s standard (2026-10-02), and the picker shows it no toggle.
+pub(crate) fn cursor_fast_mode(model_id: &str, fast_mode: bool) -> bool {
+    fast_mode || model_id == "composer-2.5"
+}
+
 // Match the picker's exact base ids (see PROVIDER_MODELS in providerModels.ts,
 // and the spellings from `cursor-agent --list-models`) rather than a prefix, so
 // a future non-parameterized `gpt-5.6-*`/`claude-opus-5-*` model passes
@@ -286,6 +301,7 @@ fn cursor_model_for(
         }
         _ => model_id.to_string(),
     };
+    let fast_mode = cursor_fast_mode(model_id, fast_mode);
     let supports_fast_mode = !model_id.starts_with("gemini-3.8-flash")
         && !model_id.starts_with("claude-sonnet-5-5")
         && !matches!(
@@ -429,36 +445,44 @@ fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 // Reasoning-effort `--variant` for the OpenCode models that take one: every
-// opencode-go model, plus Muse Spark 1.3 on the Zen free tier. Mirrors the
-// variant map in reasoningEffortsForModel (providerModels.ts). Clamps
+// OpenRouter model in the picker except MiniMax M2.7. Mirrors the variant map
+// in reasoningEffortsForModel (providerModels.ts). Clamps
 // unsupported efforts DOWN to the highest supported ≤ incoming; falls back to
 // the lowest supported.
-fn opencode_variant_args(model_id: &str, effort: Option<ReasoningEffort>) -> Vec<String> {
+pub(crate) fn opencode_variant_args(
+    model_id: &str,
+    effort: Option<ReasoningEffort>,
+) -> Vec<String> {
     let effort = match effort {
         Some(e) => e,
         None => return Vec::new(),
     };
     let supported = match model_id {
-        // Muse Spark also has a `minimal` variant below Low, which has no rung
-        // on this ladder.
-        "opencode/muse-spark-1.3-contributor-free" => &[
+        "openrouter/z-ai/glm-5.3-flash"
+        | "openrouter/z-ai/glm-5.3"
+        | "openrouter/deepseek/deepseek-v4.1-flash"
+        | "openrouter/deepseek/deepseek-v4-pro-0813"
+        | "openrouter/moonshotai/kimi-k3" => &[
+            ReasoningEffort::Low,
+            ReasoningEffort::High,
+            ReasoningEffort::Max,
+        ][..],
+        // Qwen3.8 Max and Muse Spark also have a `minimal` variant below Low,
+        // which has no rung on this ladder.
+        "openrouter/qwen/qwen3.8-max-0902" => &[
             ReasoningEffort::Low,
             ReasoningEffort::Medium,
             ReasoningEffort::High,
             ReasoningEffort::Xhigh,
         ][..],
-        "opencode-go/glm-5.3-flash"
-        | "opencode-go/glm-5.3"
-        | "opencode-go/deepseek-v4-flash"
-        | "opencode-go/deepseek-v4.1-flash" => &[
+        "openrouter/meta/muse-spark-1.3-contributor" => &[
             ReasoningEffort::Low,
+            ReasoningEffort::Medium,
             ReasoningEffort::High,
+            ReasoningEffort::Xhigh,
             ReasoningEffort::Max,
         ][..],
-        "opencode-go/qwen3.8-flash" | "opencode-go/deepseek-v4-pro" => {
-            &[ReasoningEffort::High, ReasoningEffort::Max][..]
-        }
-        "opencode-go/kimi-k3" => &[ReasoningEffort::Max][..],
+        "openrouter/qwen/qwen3.8-flash" => &[ReasoningEffort::High, ReasoningEffort::Max][..],
         _ => return Vec::new(),
     };
     if supported.contains(&effort) {
@@ -488,7 +512,7 @@ fn grok_structured_args(
         "--cwd".to_string(),
         input.workspace_path.to_string_lossy().into_owned(),
         "--session-id".to_string(),
-        input.session_id.clone(),
+        input.fresh_native_id().to_string(),
     ];
     args.extend(grok_common_args(input));
     args
@@ -996,6 +1020,55 @@ mod tests {
     }
 
     #[test]
+    fn claude_gets_one_add_dir_per_linked_root_on_fresh_and_resumed_launches() {
+        use crate::session_control::LinkedRoot;
+        let config = SessionLaunchProcessConfig::for_tests(
+            "/tmp/argmax/launch.sock",
+            "token-123",
+            "/Applications/Argmax.app/Contents/MacOS/argmax",
+        )
+        .with_linked_roots(vec![
+            LinkedRoot {
+                name: "docs".to_string(),
+                path: PathBuf::from("/work/docs"),
+            },
+            LinkedRoot {
+                name: "api".to_string(),
+                path: PathBuf::from("/work/api"),
+            },
+        ]);
+        let definition = get_provider_definition(ProviderId::Claude);
+        let input = launch_input(ProviderId::Claude);
+        let fresh = (definition.structured_args)(&input, Some(&config));
+        let resumed = (definition.structured_resume_args)(&input, "conversation-1", Some(&config));
+        for args in [&fresh, &resumed] {
+            let dirs: Vec<&str> = args
+                .windows(2)
+                .filter(|pair| pair[0] == "--add-dir")
+                .map(|pair| pair[1].as_str())
+                .collect();
+            assert_eq!(dirs, vec!["/work/docs", "/work/api"], "{args:?}");
+            // Flags, not the prompt: every `--add-dir` precedes the `--` delimiter.
+            let delimiter = args.iter().position(|arg| arg == "--").expect("delimiter");
+            assert!(args.iter().rposition(|arg| arg == "--add-dir").unwrap() < delimiter);
+        }
+        // No roots, no flag: a project with nothing linked launches as before.
+        let plain = SessionLaunchProcessConfig::for_tests("/s", "t", "/bin/argmax");
+        assert!(!(definition.structured_args)(&input, Some(&plain))
+            .iter()
+            .any(|arg| arg == "--add-dir"));
+        assert!(!(definition.structured_args)(&input, None)
+            .iter()
+            .any(|arg| arg == "--add-dir"));
+        // Other providers take no `--add-dir`.
+        let codex = (get_provider_definition(ProviderId::Codex).structured_args)(
+            &launch_input(ProviderId::Codex),
+            Some(&config),
+        );
+        assert!(!codex.iter().any(|arg| arg == "--add-dir"));
+    }
+
+    #[test]
     fn codex_structured_args_match_runtime_contract() {
         let input = launch_input(ProviderId::Codex);
         let definition = get_provider_definition(ProviderId::Codex);
@@ -1177,7 +1250,7 @@ mod tests {
                 "--force",
                 "--trust",
                 "--model",
-                "composer-2.5",
+                "composer-2.5-fast",
                 "--",
                 "Implement the task",
             ]
@@ -1425,56 +1498,9 @@ mod tests {
     }
 
     #[test]
-    fn cursor_opus_effort_maps_to_thinking_variant_capped_at_max() {
-        let cases = [
-            (ReasoningEffort::Low, "claude-opus-5-thinking-low"),
-            (ReasoningEffort::High, "claude-opus-5-thinking-high"),
-            (ReasoningEffort::Xhigh, "claude-opus-5-thinking-xhigh"),
-            (ReasoningEffort::Max, "claude-opus-5-thinking-max"),
-            (ReasoningEffort::Ultra, "claude-opus-5-thinking-max"),
-        ];
-        for (effort, expected) in cases {
-            let input = ProviderLaunchInput {
-                model_id: "claude-opus-5-thinking-medium".to_string(),
-                reasoning_effort: Some(effort),
-                ..launch_input(ProviderId::Cursor)
-            };
-            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
-            let i = args
-                .iter()
-                .position(|a| a == "--model")
-                .expect("model flag");
-            assert_eq!(args[i + 1], expected, "opus effort {effort:?}");
-        }
-    }
-
-    #[test]
-    fn cursor_opus_55_effort_maps_to_variant_capped_at_max() {
-        let cases = [
-            (ReasoningEffort::Low, "claude-opus-5-5-low"),
-            (ReasoningEffort::High, "claude-opus-5-5-high"),
-            (ReasoningEffort::Xhigh, "claude-opus-5-5-xhigh"),
-            (ReasoningEffort::Max, "claude-opus-5-5-max"),
-            (ReasoningEffort::Ultra, "claude-opus-5-5-max"),
-        ];
-        for (effort, expected) in cases {
-            let input = ProviderLaunchInput {
-                model_id: "claude-opus-5-5-medium".to_string(),
-                reasoning_effort: Some(effort),
-                ..launch_input(ProviderId::Cursor)
-            };
-            let args = (get_provider_definition(ProviderId::Cursor).structured_args)(&input, None);
-            let i = args
-                .iter()
-                .position(|a| a == "--model")
-                .expect("model flag");
-            assert_eq!(args[i + 1], expected, "opus 5.5 effort {effort:?}");
-        }
-    }
-
-    #[test]
     fn cursor_non_parameterized_models_ignore_effort() {
-        // Composer/Gemini have no effort variants — pass the id through untouched.
+        // Composer/Gemini have no effort variants, so effort leaves the id alone.
+        // Composer always runs Fast, which still appends its suffix.
         let input = ProviderLaunchInput {
             model_id: "composer-2.5".to_string(),
             reasoning_effort: Some(ReasoningEffort::High),
@@ -1485,7 +1511,7 @@ mod tests {
             .iter()
             .position(|a| a == "--model")
             .expect("model flag");
-        assert_eq!(args[i + 1], "composer-2.5");
+        assert_eq!(args[i + 1], "composer-2.5-fast");
     }
 
     #[test]
@@ -1504,7 +1530,7 @@ mod tests {
                 "--thinking",
                 "--auto",
                 "-m",
-                "opencode/big-pickle",
+                "openrouter/z-ai/glm-5.3-flash",
                 "--",
                 "Implement the task",
             ]
@@ -1529,20 +1555,19 @@ mod tests {
                 "ses_123",
                 "--auto",
                 "-m",
-                "opencode/big-pickle",
+                "openrouter/z-ai/glm-5.3-flash",
                 "--",
                 "Implement the task",
             ]
         );
     }
 
-    // Muse Spark 1.3 is the one Zen free-tier model that takes `--variant`, so
-    // the matcher can't key on the `opencode-go/` prefix. Its ladder tops out
-    // at xhigh, below the global Max/Ultra.
+    // Qwen3.8 Max's ladder tops out at xhigh, below the global Max/Ultra, so
+    // an Ultra request clamps down while a level it has passes through.
     #[test]
-    fn opencode_zen_muse_spark_takes_a_variant_capped_at_xhigh() {
+    fn opencode_qwen_max_takes_a_variant_capped_at_xhigh() {
         let input = ProviderLaunchInput {
-            model_id: "opencode/muse-spark-1.3-contributor-free".to_string(),
+            model_id: "openrouter/qwen/qwen3.8-max-0902".to_string(),
             reasoning_effort: Some(ReasoningEffort::Ultra),
             ..launch_input(ProviderId::Opencode)
         };
@@ -1686,6 +1711,36 @@ mod tests {
         assert!(!args.contains(&"--session-id".to_string()));
     }
 
+    #[test]
+    fn a_fresh_launch_names_the_continuity_conversation_id_not_the_session_id() {
+        for provider in [ProviderId::Claude, ProviderId::Grok] {
+            let mut input = launch_input(provider);
+            let definition = get_provider_definition(provider);
+            let flag_value = |args: &[String]| {
+                let at = args
+                    .iter()
+                    .position(|arg| arg == "--session-id")
+                    .expect("--session-id");
+                args[at + 1].clone()
+            };
+            // The first conversation is named after the session.
+            assert_eq!(
+                flag_value(&(definition.structured_args)(&input, None)),
+                input.session_id
+            );
+            // Later fresh ones must not reuse it: the CLIs refuse an id whose
+            // transcript exists.
+            input.continuity = Some(crate::providers::LaunchContinuity {
+                fresh_native_id: Some("fresh-id".to_string()),
+                ..Default::default()
+            });
+            assert_eq!(
+                flag_value(&(definition.structured_args)(&input, None)),
+                "fresh-id"
+            );
+        }
+    }
+
     // `--reasoning-effort` accepts only low/medium/high/xhigh; the CLI errors on
     // anything else, so Max and Ultra clamp instead of failing the launch.
     #[test]
@@ -1749,7 +1804,7 @@ mod tests {
             ProviderId::Claude => ("Claude Haiku", "haiku", None),
             ProviderId::Codex => ("GPT-5.6 Sol Low", "gpt-5.6-sol", Some(ReasoningEffort::Low)),
             ProviderId::Cursor => ("Composer 2.5 (Cursor)", "composer-2.5", None),
-            ProviderId::Opencode => ("Big Pickle", "opencode/big-pickle", None),
+            ProviderId::Opencode => ("GLM-5.3-Flash", "openrouter/z-ai/glm-5.3-flash", None),
             ProviderId::Grok => ("Grok 4.6", "grok-4.6", None),
         };
 
@@ -1764,6 +1819,7 @@ mod tests {
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 100,

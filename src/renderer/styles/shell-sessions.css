@@ -18,8 +18,8 @@
   text-align: left;
   border: 0;
   /* A two-line row is ~52px tall; --radius-md read as a square tile at that
-     height. --radius-lg rounds it like the composer and the panel cards. */
-  border-radius: var(--radius-lg);
+     height, and --radius-lg still read boxy, so the row takes --radius-xl. */
+  border-radius: var(--radius-xl);
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);
@@ -76,7 +76,7 @@
 .session-link:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--ink);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
 }
 
 .session-link span {
@@ -249,7 +249,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   transition: background var(--duration-fast) var(--ease);
   /* Off-screen rows skip layout + paint — a no-JS, no-dependency windowing for
      long session lists. Rows stay in the DOM, so keyboard nav and the sidebar's

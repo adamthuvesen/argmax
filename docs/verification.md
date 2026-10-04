@@ -20,7 +20,17 @@ npm run verify -- --scenario cancellation
 npm run verify -- --scenario provider-error
 npm run verify -- --scenario session-move
 npm run verify -- --scenario staged-revert
+npm run verify -- --scenario composer-reference
+npm run verify -- --scenario composer-editor
+npm run verify -- --scenario fork-merge
+npm run verify -- --scenario workspace-settings
 ```
+
+Verification mode must never reach the host's credentials. The routing settings read
+the Keychain for the Jev key on every app start, so `routing/api_key.rs` returns no key
+in verification mode and refuses writes. The `launch` tripwires (`security`, `defaults`,
+`op`, `launchctl`, `brew`, `crontab`, `systemctl`) stay in place and a test runs them to
+prove they fail and log a call.
 
 The scenario runner builds a verification binary and renderer from the current
 checkout, creates a temporary project and app profile, and drives the real
@@ -63,6 +73,37 @@ checkout. The native window must follow the move without another click and
 show the destination seam, branch, and response. Its evidence also records
 both checkout paths, provider invocations, timeline seams, and unchanged
 fixture files. This scenario requires native verification.
+
+`composer-reference` pins the launcher to the fixture model, checks that the usage
+chip shows `63% left in the 5-hour window` within five seconds (from the scripted
+remaining-usage source) and that its popover lists both windows, then uses native
+keys in the New chat composer: it attaches a seeded chat from the `@` menu as a
+chip, leaves for another chat and returns to find the draft restored, and sends
+with Alt+Enter. The launcher must stay open and empty, a new chat in the same
+project must hold the `argmax://chat/<id>` link once, and the chip in that
+chat must open the source. This scenario requires native verification.
+
+`composer-editor` waits for the real CodeMirror editor (the field is a textarea
+until its chunk loads), then checks typing, undo after an `@` pick, whole-chip
+Backspace, copy and cut payloads, an empty selection cutting nothing, and Enter
+right after a menu pick sending the full text. It describes correct behavior, so
+it fails on a build with those defects. This scenario requires native verification.
+
+`fork-merge` clicks "Fork from this turn" on turn one of a two-turn chat and
+checks the boundary in SQLite, sends the fork's first message from the native
+composer, and checks that the fresh provider conversation was told turn one and
+not turn two. While the source runs a held turn it clicks "Bring findings back"
+and "Queue for source": the message queues once, drains once, and the next merge
+carries only new work. A final click forks into an isolated checkout. IPC and
+SQLite are the second read. This scenario requires native verification.
+
+`workspace-settings` snoozes and unsnoozes the seeded chat from its sidebar
+row, then uses Settings → Projects: an unknown branch placeholder is rejected,
+a project template saves, a relative path and the project's own checkout are
+rejected as linked repositories, and a sibling directory is stored as its
+canonical root, toggled off, and removed. Two worktree chats created over IPC
+then show `adam/feat-hello-world` and `adam/feat-hello-world-2`. This scenario
+requires native verification.
 
 `persistent-subagent --native off` checks the Claude native child identity,
 separate lifecycle runs for the initial launch and a `SendMessage` continuation,
@@ -154,6 +195,8 @@ same transcripts. Token counts must match; see [usage.md](usage.md).
 
 ## Rung 2: the renderer in a real browser
 
+Headless Chrome cannot show a WebKit paint bug. A composited-clip seam, a mask edge, or a `backdrop-filter` artifact needs rung 3 or 4 (the dev instance), not this rung. One session spent about 20 calls on a Chrome repro that could not show the seam.
+
 For chat scrolling, run `node scripts/check-chat-scroll.mjs`. It mounts the
 production scroll controller in a browser fixture and checks small upward
 gestures during streaming, folding content, nested scrolling, viewport
@@ -183,6 +226,22 @@ into the state under test, and the expression's value comes back as `eval` in
 the ready line — an async expression can click a row, wait, and return a
 measurement (a scroll gap, a row count, a text probe) alongside the PNG. An
 agent can read the PNG back and *look* at it, and assert on the value.
+
+The composers' prompt editor has its own scripted browser check, because its
+behavior (chips, atomic Backspace, undo, IME, clipboard, the `@` menu, background
+send and its restore, the usage popover) depends on a real `contenteditable`
+that jsdom cannot host:
+
+```bash
+node scripts/verification/composer-editor.mjs --out scratch/composer-editor
+```
+
+It serves the renderer on its own port (`--port`, default 5291), opens the New
+chat launcher in headless Chrome, and sends trusted input over CDP
+(`Input.insertText`, `Input.dispatchKeyEvent`, `Input.imeSetComposition`). It
+prints one JSON report, writes a PNG per state beside it, and exits 1 when a
+check fails. It cannot show a real input method's candidate window or anything
+native; those stay with rungs 3 and 4.
 
 ## The dev instance next to the installed app
 
@@ -380,5 +439,5 @@ user makes — and a window on another Space is not capturable.
 The browser rung against the scratch backend exercises the channels supported
 by the remote bridge. It cannot verify desktop-only behavior such as native
 browser tabs, folder dialogs, session-sync controls, or routines. See
-`REMOTE_UNSUPPORTED_CHANNELS` in
-[dispatch.rs](../src-tauri/src/remote/dispatch.rs) for the exact boundary.
+the catalogue’s `desktop` policy in
+[catalogue.rs](../src-tauri/src/ipc/catalogue.rs) for the exact boundary.

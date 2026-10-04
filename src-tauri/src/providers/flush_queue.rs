@@ -53,7 +53,7 @@ struct PendingTimelineEvent {
     event: PersistTimelineEventInput,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Default, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardDelta {
     pub projects: Vec<ProjectSummary>,
@@ -103,6 +103,13 @@ pub struct PendingMessage {
     pub session_id: String,
     pub content: String,
     pub agent_mode: String,
+    /// The provider this follow-up runs under once it drains. `None` is the
+    /// chat's provider at that moment, which is what every row queued before
+    /// this field existed means. Set only when the sender picked another
+    /// provider than the one the chat will be on; it then carries its own
+    /// `model_label` and `model_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -128,6 +135,11 @@ pub struct PendingMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovery_status: Option<String>,
     pub queued_at: String,
+    /// Who wrote the text. Never serialized: the queue carries it so every
+    /// action on the row (drain, Send now, steer, multitask, restore) reuses
+    /// what the sender was, and no client can set it.
+    #[serde(skip)]
+    pub author: crate::persistence::authorship::PromptAuthor,
 }
 
 #[derive(Debug)]
@@ -819,6 +831,11 @@ mod tests {
             r#type: "message.delta".to_string(),
             message: String::new(),
             payload: serde_json::json!({}),
+            semantic: crate::persistence::timeline_semantics::derive(
+                "message.delta",
+                id,
+                &serde_json::json!({}),
+            ),
             created_at: "2026-01-01T00:00:00Z".to_string(),
             row_cursor: None,
         };
@@ -827,6 +844,7 @@ mod tests {
             session_id: "s1".to_string(),
             content: "hi".to_string(),
             agent_mode: "auto".to_string(),
+            provider: None,
             model_label: None,
             model_id: None,
             reasoning_effort: None,
@@ -836,6 +854,7 @@ mod tests {
             origin: None,
             recovery_status: None,
             queued_at: "2026-01-01T00:00:00Z".to_string(),
+            author: crate::persistence::authorship::PromptAuthor::unattested(),
         };
 
         let mut a = DashboardDelta {

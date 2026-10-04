@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
   type RefObject,
   type SetStateAction
@@ -22,9 +21,11 @@ import {
   listDragTypes,
   readBlobAsBase64
 } from "../lib/composerAttachments.js";
+import { COMPOSER_CLIPBOARD_MIME } from "../lib/composerContext.js";
 import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
 import { shouldPreferHtmlFlavor } from "../lib/clipboardMarkdown.js";
 import type { ComposerAttachment } from "../../shared/types.js";
+import type { ComposerField } from "../components/composerEditor/composerField.js";
 import { showErrorToast } from "../state/toast.js";
 
 function createAttachmentPreviewUrl(blob: Blob): string | null {
@@ -54,8 +55,8 @@ interface ComposerAttachmentsApi {
   onComposerDragLeave: (event: ReactDragEvent<HTMLFormElement>) => void;
   /** Bind to the composer `<form>`'s `onDrop`. */
   onComposerDrop: (event: ReactDragEvent<HTMLFormElement>) => void;
-  /** Bind to the textarea's `onPaste`. */
-  onComposerPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
+  /** Bind to the prompt field's `onPaste`. */
+  onComposerPaste: (event: ClipboardEvent) => void;
   /** Bind to the hidden file `<input>`'s `onChange`. */
   onAttachmentInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
   /** Trigger the hidden file input — call from a button's `onClick`. */
@@ -64,6 +65,12 @@ interface ComposerAttachmentsApi {
   clearAttachments: () => void;
   /** Restore or merge attachments into the active draft. */
   restoreAttachments: (attachments: SetStateAction<ComposerAttachment[]>) => void;
+  /** Add an attachment already saved to the attachment store (a window capture),
+   *  once, as a pasted image would be. `label` names what it is a capture of. */
+  attachSavedAttachment: (attachment: ComposerAttachment, label?: string) => void;
+  /** What a capture is of, by file path, for the chips that show it. Held for
+   *  this mount only: a restored draft shows its images unlabelled. */
+  attachmentLabels: Readonly<Record<string, string>>;
 }
 
 interface ComposerAttachmentsDeps {
@@ -76,6 +83,8 @@ interface ComposerAttachmentsDeps {
   workspacePath: string | null | undefined;
   /** Append `@-mentions` to the live composer text. */
   setInput: (updater: (prev: string) => string) => void;
+  /** The prompt field, where a structured paste reads and restores the caret. */
+  fieldRef?: RefObject<ComposerField | null>;
   /**
    * Third element of `useComposerDraft`: true for the render in which typed
    * text followed the composer onto a new draft key. Images are part of that
@@ -107,7 +116,7 @@ interface ComposerAttachmentsDeps {
  * screenshot never has to be taken twice.
  */
 export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerAttachmentsApi {
-  const { draftKey, workspacePath, setInput, carriedOnRetarget = false, persist = true } = deps;
+  const { draftKey, workspacePath, setInput, fieldRef, carriedOnRetarget = false, persist = true } = deps;
   const [pendingAttachments, setPendingAttachments] = useState<ComposerAttachment[]>(
     () => readDraft(draftKey ?? null).attachments
   );
@@ -329,7 +338,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   );
 
   const onComposerPaste = useCallback(
-    (event: ReactClipboardEvent<HTMLTextAreaElement>): void => {
+    (event: ClipboardEvent): void => {
       const clipboard = event.clipboardData;
       const items = clipboard?.items;
       if (!items || items.length === 0) return;
@@ -353,20 +362,24 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       // it; otherwise fall through and let the native paste insert the plain
       // text untouched.
       const html = clipboard.getData("text/html");
-      if (!html || !shouldPreferHtmlFlavor(html)) return;
+      // A copy from this composer carries its own typed entry; the field takes
+      // it whole, chips and all, and the HTML flavor has nothing to add.
+      if (!html || !shouldPreferHtmlFlavor(html) || Array.from(clipboard.types ?? []).includes(COMPOSER_CLIPBOARD_MIME)) return;
       event.preventDefault();
-      const target = event.currentTarget;
-      const start = target.selectionStart ?? target.value.length;
-      const end = target.selectionEnd ?? start;
+      const field = fieldRef?.current ?? null;
+      const start = field?.selectionStart ?? null;
+      const end = field?.selectionEnd ?? start;
       const plain = clipboard.getData("text/plain");
       const insert = (text: string): void => {
-        setInput((prev) => prev.slice(0, start) + text + prev.slice(end));
-        const caret = start + text.length;
-        // React usually skips the value write when the DOM already matches, so
-        // the synchronous set survives; the frame callback re-asserts it when a
-        // real re-render does flush and resets the caret to the end.
-        target.setSelectionRange(caret, caret);
-        requestAnimationFrame(() => target.setSelectionRange(caret, caret));
+        setInput((prev) => {
+          const from = start ?? prev.length;
+          return prev.slice(0, from) + text + prev.slice(end ?? from);
+        });
+        const caret = (start ?? 0) + text.length;
+        // The field follows `value` on the next render, so the caret is set
+        // again on the next frame, once the text it points into is there.
+        field?.setSelectionRange(caret, caret);
+        requestAnimationFrame(() => field?.setSelectionRange(caret, caret));
       };
       // The markdown rebuilder carries Turndown, which only a structured paste
       // ever needs, so it loads here rather than in the composer's eager
@@ -378,7 +391,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
         () => insert(plain)
       );
     },
-    [attachImageBlobs, setInput]
+    [attachImageBlobs, fieldRef, setInput]
   );
 
   const onAttachmentInputChange = useCallback(
@@ -405,7 +418,19 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     setPendingAttachments(attachments);
   }, []);
 
+  const [attachmentLabels, setAttachmentLabels] = useState<Record<string, string>>({});
+  const attachSavedAttachment = useCallback((attachment: ComposerAttachment, label?: string): void => {
+    if (label) setAttachmentLabels((prev) => ({ ...prev, [attachment.filePath]: label }));
+    setPendingAttachments((prev) =>
+      prev.some((existing) => existing.filePath === attachment.filePath)
+        ? prev
+        : [...prev, attachment]
+    );
+  }, []);
+
   return {
+    attachSavedAttachment,
+    attachmentLabels,
     pendingAttachments,
     pendingAttachmentPreviews,
     isDraggingFiles,

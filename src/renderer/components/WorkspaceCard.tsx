@@ -33,7 +33,7 @@ import { WorkingNest } from "./WorkingNest.js";
 import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 import { GithubIcon } from "./GithubIcon.js";
-import { showErrorToast } from "../state/toast.js";
+import { showErrorToast, showInfoToast } from "../state/toast.js";
 
 /** Avatars shown before the stack folds into a +N chip. Matches the reference
  *  density: four or five colored marks read as a team, more read as noise. */
@@ -142,6 +142,18 @@ export function WorkspaceCard({
       .finally(() => setIsPrPending(false));
   };
 
+  // Never archives the chat; the report says what was kept.
+  const cleanupPr = (prNumber: number): void => {
+    if (!session || !window.argmax?.prs?.cleanup) return;
+    setIsPrPending(true);
+    setStatus(null);
+    void window.argmax.prs
+      .cleanup({ sessionId: session.id, prNumber })
+      .then((report) => showInfoToast(report.text))
+      .catch((error: unknown) => showErrorToast(errorMessage(error)))
+      .finally(() => setIsPrPending(false));
+  };
+
   // Drawn twice — once for the rows on show, once inside the overflow list —
   // so the two cannot drift apart as the row gains props.
   const prRow = (pr: WorkspaceSessionPr): JSX.Element => (
@@ -149,6 +161,7 @@ export function WorkspaceCard({
       key={pr.prNumber}
       pr={pr}
       busy={isPrPending}
+      onCleanup={() => cleanupPr(pr.prNumber)}
       onDismiss={() => dismissPr(pr.prNumber)}
       onSetPrimary={() => setPrimaryPr(pr.prNumber)}
       onUseAutomatic={() => setPrimaryPr(null)}
@@ -305,12 +318,14 @@ function visibleWorkspacePrs(
 
 function WorkspacePrRow({
   busy,
+  onCleanup,
   onDismiss,
   onSetPrimary,
   onUseAutomatic,
   pr
 }: {
   busy: boolean;
+  onCleanup: () => void;
   onDismiss: () => void;
   onSetPrimary: () => void;
   onUseAutomatic: () => void;
@@ -398,6 +413,20 @@ function WorkspacePrRow({
               }}
             >
               Automatic selection
+            </button>
+          ) : null}
+          {pr.prState === "MERGED" ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={busy}
+              title="Delete the merged branch and update the base. Keeps this chat and its checkout."
+              onClick={() => {
+                setActionsOpen(false);
+                onCleanup();
+              }}
+            >
+              Clean up
             </button>
           ) : null}
           <button

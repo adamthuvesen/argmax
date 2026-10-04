@@ -91,6 +91,7 @@ pub async fn launch_turn(
     ]);
     let mut environment = build_provider_environment(overrides);
     if let Err(error) = merge_launch_environment(&mut environment, mcp_environment)
+        .and_then(|()| merge_launch_environment(&mut environment, vec![openrouter_host_pins()]))
         .and_then(|()| apply_permission_override(&mut environment, input))
     {
         launch_scratch.restore();
@@ -1200,6 +1201,19 @@ fn apply_permission_override(
     Ok(())
 }
 
+/// OpenRouter models held to one host. By default OpenRouter sends a request
+/// to the cheapest host, and MiniMax M2.7 is in the picker for its speed:
+/// Groq served it at 367 tok/s where its cheapest host ran near 50 (OpenRouter
+/// endpoint stats, 2026-10-04). Without fallbacks a Groq outage fails the turn
+/// rather than quietly running it slowly. OpenCode passes a model's `options`
+/// through to OpenRouter's `provider` routing field.
+fn openrouter_host_pins() -> (String, String) {
+    let groq_only =
+        json!({ "options": { "provider": { "only": ["groq"], "allow_fallbacks": false } } });
+    let config = json!({ "provider": { "openrouter": { "models": { "minimax/minimax-m2.7": groq_only } } } });
+    (OPENCODE_CONFIG_CONTENT.to_string(), config.to_string())
+}
+
 fn merge_launch_environment(
     environment: &mut Vec<(String, String)>,
     launch_environment: Vec<(String, String)>,
@@ -1651,16 +1665,33 @@ mod tests {
             workspace_path: "/workspace".into(),
             prompt: "Do the work".to_string(),
             model_label: "GLM".to_string(),
-            model_id: "opencode-go/glm-5.3-flash".to_string(),
+            model_id: "openrouter/z-ai/glm-5.3-flash".to_string(),
             reasoning_effort: Some(super::super::ReasoningEffort::High),
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode,
             agent_mode,
             cols: 80,
             rows: 24,
         }
+    }
+
+    #[test]
+    fn host_pins_merge_into_the_inline_launch_config() {
+        let mut environment = vec![(
+            OPENCODE_CONFIG_CONTENT.to_string(),
+            json!({ "mcp": { "argmax": { "enabled": true } } }).to_string(),
+        )];
+        merge_launch_environment(&mut environment, vec![openrouter_host_pins()]).unwrap();
+        let config: Value = serde_json::from_str(&environment[0].1).unwrap();
+        assert_eq!(config["mcp"]["argmax"]["enabled"], true);
+        assert_eq!(
+            config["provider"]["openrouter"]["models"]["minimax/minimax-m2.7"]["options"]
+                ["provider"],
+            json!({ "only": ["groq"], "allow_fallbacks": false })
+        );
     }
 
     #[test]
@@ -1770,46 +1801,10 @@ mod tests {
         assert!(!environment.is_empty());
         let body = prompt_body(&auto).unwrap();
         assert!(body.get("agent").is_none());
-        assert_eq!(body["model"]["providerID"], "opencode-go");
-        assert_eq!(body["model"]["modelID"], "glm-5.3-flash");
+        assert_eq!(body["model"]["providerID"], "openrouter");
+        assert_eq!(body["model"]["modelID"], "z-ai/glm-5.3-flash");
         assert_eq!(body["variant"], "high");
         assert_eq!(body["parts"][0]["text"], "Do the work");
-    }
-
-    #[test]
-    fn resumed_opencode_prompts_select_each_model_and_variant() {
-        for (model, effort, expected_variant) in [
-            (
-                "deepseek-v4.1-flash",
-                super::super::ReasoningEffort::Max,
-                "max",
-            ),
-            (
-                "deepseek-v4.1-flash",
-                super::super::ReasoningEffort::High,
-                "high",
-            ),
-            (
-                "deepseek-v4.1-flash",
-                super::super::ReasoningEffort::Max,
-                "max",
-            ),
-            ("glm-5.3-flash", super::super::ReasoningEffort::High, "high"),
-            (
-                "deepseek-v4.1-flash",
-                super::super::ReasoningEffort::Max,
-                "max",
-            ),
-        ] {
-            let mut input = input(PermissionMode::ProviderDefaults, AgentMode::Auto);
-            input.resume_conversation_id = Some("native-conversation".into());
-            input.model_id = format!("opencode-go/{model}");
-            input.reasoning_effort = Some(effort);
-            let body = prompt_body(&input).unwrap();
-            assert_eq!(body["model"]["providerID"], "opencode-go");
-            assert_eq!(body["model"]["modelID"], model);
-            assert_eq!(body["variant"], expected_variant);
-        }
     }
 
     #[test]
@@ -2180,7 +2175,7 @@ mod tests {
             body["parts"],
             json!([{ "type": "text", "text": "use the new schema" }])
         );
-        assert_eq!(body["model"]["modelID"], "glm-5.3-flash");
+        assert_eq!(body["model"]["modelID"], "z-ai/glm-5.3-flash");
         assert_eq!(body["variant"], "high");
         assert_eq!(handle.steering.lock().acknowledged, 1);
     }

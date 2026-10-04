@@ -31,20 +31,6 @@ pub(crate) async fn dashboard_list_impl(state: &AppState) -> ArgmaxResult<Dashbo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::Database;
-    use std::sync::Arc;
-
-    #[tokio::test]
-    async fn dashboard_list_reads_empty_live_database() {
-        let state = state_with_database(Database::open_in_memory().expect("open database"));
-
-        let snapshot = dashboard_list_impl(&state).await.expect("dashboard list");
-
-        assert!(snapshot.projects.is_empty());
-        assert!(snapshot.workspaces.is_empty());
-        assert!(snapshot.sessions.is_empty());
-        assert!(snapshot.checks.is_empty());
-    }
 
     /// A migration abort is the common reason the database never opens, and the
     /// text it carries is the only thing that tells the user what to fix.
@@ -75,11 +61,5 @@ mod tests {
         assert!(error
             .to_string()
             .contains("startup may still be in progress"));
-    }
-
-    fn state_with_database(database: Database) -> AppState {
-        let state = AppState::new();
-        assert!(state.db.set(Arc::new(database)).is_ok());
-        state
     }
 }

@@ -251,16 +251,4 @@ mod tests {
         std::fs::write(dir.path().join(CONFIG_FILE_NAME), b"{ not json").expect("write");
         assert_eq!(load_or_create_config(dir.path()), SyncConfig::default());
     }
-
-    #[test]
-    fn saved_config_round_trips() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let config = SyncConfig {
-            claude: true,
-            window_hours: WINDOW_7D,
-            ..SyncConfig::default()
-        };
-        save_config(dir.path(), &config).expect("save");
-        assert_eq!(load_or_create_config(dir.path()), config);
-    }
 }

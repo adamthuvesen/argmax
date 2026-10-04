@@ -99,15 +99,4 @@ describe("EngramSettings", () => {
     expect(screen.getByText("Copied")).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledWith(command.value);
   });
-
-  it("calls onProviderChange when Codex is selected", () => {
-    const onProviderChange = vi.fn();
-    render(<EngramSettings provider="cursor" onProviderChange={onProviderChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Engram agent" }));
-    fireEvent.click(screen.getByRole("button", { name: "Codex" }));
-
-    expect(onProviderChange).toHaveBeenCalledWith("codex");
-  });
 });

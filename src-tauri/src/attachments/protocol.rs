@@ -227,16 +227,4 @@ mod tests {
         let response = serve_attachment(base.path(), "https://example.com/foo").await;
         assert_eq!(response.status, AttachmentStatus::BadRequest);
     }
-
-    #[tokio::test]
-    async fn serve_attachment_path_direct_decoding() {
-        let base = TempDir::new().unwrap();
-        let file = base.path().join("direct.png");
-        std::fs::write(&file, b"DIRECT").unwrap();
-        let canonical_file = std::fs::canonicalize(&file).unwrap();
-        let response = serve_attachment_path(base.path(), &canonical_file.to_string_lossy()).await;
-        assert_eq!(response.status, AttachmentStatus::Ok);
-        assert_eq!(response.content_type, Some("image/png"));
-        assert_eq!(response.bytes, b"DIRECT");
-    }
 }

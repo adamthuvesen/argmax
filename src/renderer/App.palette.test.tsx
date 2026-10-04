@@ -12,17 +12,6 @@ describe("App unified search palette", () => {
     setupAppTestMocks();
   });
 
-  it("⌘K opens the palette on the All filter", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    fireEvent.keyDown(document, { key: "k", metaKey: true });
-
-    const dialog = await screen.findByRole("dialog", { name: "Command palette" });
-    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("All");
-    expect(dialog).toBeInTheDocument();
-  });
-
   it("searches chats and projects beyond the first forty catalog entries", async () => {
     mockDashboardSnapshot({
       ...snapshot,

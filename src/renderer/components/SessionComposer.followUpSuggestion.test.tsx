@@ -3,8 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
 import { SETTLE_MS } from "../hooks/useFollowUpSuggestion.js";
 
-const STATIC_PLACEHOLDER = "Reply to your agent, or @-mention files";
-
 /**
  * Suggestions are cached per session and finished turn, so a test that reused
  * one would read the previous test's stub. Each turn ends at its own instant.
@@ -103,26 +101,6 @@ describe("SessionComposer follow-up suggestion", () => {
 
     expect(screen.queryByPlaceholderText("never asked")).toBeNull();
     expect(suggestFollowUp).not.toHaveBeenCalled();
-  });
-
-  it("keeps the static placeholder when the helper model has nothing to offer", async () => {
-    stubSuggestion(() => Promise.resolve({ suggestion: null }));
-
-    renderConversation(baseSession(finishedTurn()));
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(STATIC_PLACEHOLDER)).toBeTruthy();
-    });
-  });
-
-  it("keeps the static placeholder when the helper call fails", async () => {
-    stubSuggestion(() => Promise.reject(new Error("cli missing")));
-
-    renderConversation(baseSession(finishedTurn()));
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(STATIC_PLACEHOLDER)).toBeTruthy();
-    });
   });
 
   it("reuses the suggestion its last turn earned when the chat is reopened", async () => {

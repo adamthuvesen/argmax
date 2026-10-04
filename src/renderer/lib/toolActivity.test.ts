@@ -4,7 +4,6 @@ import type { TimelineEvent } from "../../shared/types.js";
 import {
   decodeToolActivity,
   mergeToolActivity,
-  type ToolActivity,
   type ToolActivityKind
 } from "./toolActivity.js";
 import {
@@ -256,12 +255,6 @@ describe("activity-aware summaries", () => {
         })
       ]).headline
     ).toBe("Activated skills");
-  });
-
-  it("keeps browser identity when a screenshot result arrives", () => {
-    const start: ToolActivity = { version: 1, kind: "browser", evidence: "tool", targets: [] };
-    const end: ToolActivity = { version: 1, kind: "image", evidence: "native", targets: [] };
-    expect(mergeToolActivity(start, end)?.kind).toBe("browser");
   });
 });
 

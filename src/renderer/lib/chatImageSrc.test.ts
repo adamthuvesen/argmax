@@ -24,7 +24,13 @@ describe("resolveChatImageSrc", () => {
     );
   });
 
-  it("routes other absolute paths through the guarded attachment protocol", () => {
+  it("routes paths outside the checkout, such as agent temp screenshots, to the asset protocol", () => {
+    expect(resolveChatImageSrc("/private/tmp/claude-502/scratch/shot.png", "/repo")).toBe(
+      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/private/tmp/claude-502/scratch/shot.png`
+    );
+  });
+
+  it("routes attachment-store paths through the guarded attachment protocol", () => {
     expect(
       resolveChatImageSrc(
         "/Users/me/Library/Application%20Support/com.argmax.rs/local-state/attachments/s/shot.png",

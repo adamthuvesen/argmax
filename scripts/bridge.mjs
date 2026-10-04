@@ -50,7 +50,7 @@ export const LAUNCH_MODEL_DEFAULTS = {
   claude: { modelLabel: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: null },
   codex: { modelLabel: "GPT-6.1 Sol", modelId: "gpt-6.1-sol", reasoningEffort: null },
   cursor: { modelLabel: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: null },
-  opencode: { modelLabel: "GLM-5.3-Flash", modelId: "opencode-go/glm-5.3-flash", reasoningEffort: "high" },
+  opencode: { modelLabel: "GLM-5.3-Flash", modelId: "openrouter/z-ai/glm-5.3-flash", reasoningEffort: "high" },
   grok: { modelLabel: "Grok 4.7", modelId: "grok-4.7", reasoningEffort: null }
 };
 

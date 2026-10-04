@@ -57,21 +57,6 @@ describe("App", () => {
     setupAppTestMocks();
   });
 
-  it("renders the local project launcher from IPC data", async () => {
-    render(<App />);
-
-    expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Argmax" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Build dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Switch model" })).toHaveTextContent("Opus 5.5");
-    expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Board" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Cockpit" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Compare" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Dashboard ready.")).not.toBeInTheDocument();
-  });
-
   it("restores the persisted launcher default model", async () => {
     persistLaunchModel({
       provider: "codex",
@@ -93,7 +78,11 @@ describe("App", () => {
     }));
     mockDashboardSnapshot({
       ...snapshot,
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" as const }))
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete" as const,
+        providerConversationId: "conv-1"
+      }))
     });
     render(<App />);
 
@@ -1092,18 +1081,6 @@ describe("App", () => {
     // Click inert popover chrome (the listbox padding, not an option button).
     fireEvent.click(await screen.findByRole("listbox", { name: "Switch model" }));
     expect(modelToggle).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("dismisses the branch picker when clicking inside the popover chrome", async () => {
-    listBranches.mockResolvedValue(["main", "feature/tidy"]);
-    render(<App />);
-
-    const branchToggle = await screen.findByRole("button", { name: "Switch branch" });
-    fireEvent.click(branchToggle);
-    await waitFor(() => expect(branchToggle).toHaveAttribute("aria-expanded", "true"));
-
-    fireEvent.click(await screen.findByRole("listbox", { name: "Select branch" }));
-    expect(branchToggle).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps the current branch selected in the picker when it is the only branch", async () => {

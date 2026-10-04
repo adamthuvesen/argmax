@@ -38,6 +38,7 @@ touches:
 | `src/**`, `src-tauri/**`, `ios/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
 | `src-tauri/**`, browser-blocking assets, Cargo or workflow config | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
 | `ios/**` | `check:ios-fonts` |
+| `src/**` or `ios/**` | `check:provider-models` (generated iPhone catalogue is current; iOS test model ids exist) |
 | any JS lane change | `vite build` + the bundle budget |
 
 `npm run typecheck` (the tsc lane here and in CI) runs TypeScript 7, the native
@@ -45,6 +46,8 @@ compiler, installed as the `typescript-7` alias: it checks the renderer in about
 1 s against 4.5–4.9 s for TypeScript 5.9, and reports the same diagnostics. The
 `typescript` 5.9 package stays because typescript-eslint's type-aware rules
 support only `<6.1`, and editors load their language service from it.
+
+`cargo fmt --check` runs first in the Rust lane, because it takes about a second and is the likeliest push-time failure. `git push` re-runs the whole script through the pre-push hook, so a tool call that pushes needs a 600 s timeout. The iOS XCTest suite is not part of CI or precheck (macOS minutes bill 10x); run it from `ios/Argmax` per [ios-performance.md](ios-performance.md) when you change Swift.
 
 Workflow changes run both language lanes. Paths are read from Git without quoting,
 so spaces and non-ASCII filenames cannot hide a change. Documentation-only
@@ -91,6 +94,7 @@ it lands.
 - **DOM vs Node Environment:** `.test.tsx` runs under jsdom; `.test.ts` runs under node for speed. `.test.ts` files that require DOM/browser globals (`window`, `document`, `localStorage`) use a `// @vitest-environment jsdom` docblock.
 - **DOM Queries:** Query by role, accessible name, label, or title rather than CSS classes.
 - **Mocks:** Browser preview and shell tests mock `window.argmax` using [src/test/appTestHarness.ts](../src/test/appTestHarness.ts).
+- **The prompt editor:** jsdom has no layout, so the suite renders the composers' lazy `ComposerEditor` as the textarea it shows while the CodeMirror chunk loads (`ComposerFallbackField`, wired in [composerEditorMock.tsx](../src/test/composerEditorMock.tsx)), the way it already swaps the file editor. That mock proves the composers' own behavior and nothing about CodeMirror. The editor is covered against a real `EditorView` in [composerEditor/extensions.test.tsx](../src/renderer/components/composerEditor/extensions.test.tsx) and [ComposerEditorView.test.tsx](../src/renderer/components/ComposerEditorView.test.tsx) (chips, atomic Backspace, clipboard, IME guard, undo) and [ComposerEditor.test.tsx](../src/renderer/components/ComposerEditor.test.tsx) (the hand-over from the textarea), and in a real browser by `node scripts/verification/composer-editor.mjs`. A test that needs the real wrapper calls `vi.unmock("./ComposerEditor.js")`; one that needs the editor inside a composer remaps the module to the view (`vi.mock("./ComposerEditor.js", ...)` returning `ComposerEditorView`), as [SessionComposer.editor.test.tsx](../src/renderer/components/SessionComposer.editor.test.tsx) and [LaunchSurface.editor.test.tsx](../src/renderer/components/LaunchSurface.editor.test.tsx) do for undo, cut, submit and the draft switch. [jsdomCodeMirror.ts](../src/test/jsdomCodeMirror.ts) gives jsdom the zeroed layout CodeMirror measures.
 - **Timers:** A test that waits on a `setInterval` or `setTimeout` in the component must fake it (`vi.useFakeTimers`, or `toFake: ["setInterval", "clearInterval"]` when `waitFor` still needs real `setTimeout`) and advance it with `vi.advanceTimersByTimeAsync`. Sleeping through a real interval is the suite's largest cost and its main flake source on shared CI runners.
 - **Performance Benchmarks:** Run through [vitest.perf.config.ts](../vitest.perf.config.ts) and [src/test/perf.test.ts](../src/test/perf.test.ts).
 

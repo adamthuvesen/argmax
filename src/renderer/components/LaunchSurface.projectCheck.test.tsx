@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectCheck } from "../../shared/types.js";
 import { primaryProject, setupAppTestMocks } from "../../test/appTestHarness.js";
@@ -134,5 +134,41 @@ describe("Project check in the launcher", () => {
     expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "undone" })
     );
+  });
+
+  it("keeps the picked branch for the launch it was picked for, through a switch and its Undo", async () => {
+    const { current, launchLocal } = renderLauncher(checkWith("switch"));
+    vi.mocked(window.argmax!.projects.listBranches).mockResolvedValue(["main", "feature"]);
+    vi.mocked(window.argmax!.projects.listCheckouts).mockResolvedValue([
+      { branch: "main", path: current.repoPath, isMain: true },
+      { branch: "feature", path: "/tmp/worktrees/feature", isMain: false }
+    ]);
+    fireEvent.click(await screen.findByRole("button", { name: "Switch branch" }));
+    fireEvent.click(
+      within(await screen.findByRole("listbox", { name: "Select branch" })).getByRole("button", {
+        name: "feature"
+      })
+    );
+    const pick = {
+      projectId: current.id,
+      branch: "feature",
+      path: "/tmp/worktrees/feature",
+      isMain: false
+    };
+
+    await submit();
+
+    // The launch goes to the other project, and still carries the pick it was
+    // sent with: the host, not the launcher, decides it means nothing there.
+    await waitFor(() => expect(launchLocal).toHaveBeenCalledOnce());
+    expect(launchLocal.mock.calls[0]?.[6]).toBe("project-argmax");
+    expect(launchLocal.mock.calls[0]?.[8]).toEqual(pick);
+
+    // Undo relaunches in the first project with the same pick, even though the
+    // launcher cleared its own after the first launch.
+    act(() => toastSnapshot()?.action?.run());
+    await waitFor(() => expect(launchLocal).toHaveBeenCalledTimes(2));
+    expect(launchLocal.mock.calls[1]?.[6]).toBe(current.id);
+    expect(launchLocal.mock.calls[1]?.[8]).toEqual(pick);
   });
 });

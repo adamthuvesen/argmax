@@ -537,7 +537,15 @@ struct NewChatSheet: View {
                 chooseModel("\(preferred)/\(provider.defaultModel.modelId)")
             }
         }
-        autoRouting = await loadedRouting?.enabled ?? false
+        // A failed read is not "no key": the first one can lose to a socket
+        // that is still settling, and hiding the Router rows for the whole
+        // sheet is the wrong answer to that. Ask once more before giving up.
+        var routing = await loadedRouting
+        if routing == nil {
+            try? await Task.sleep(for: .seconds(1))
+            routing = try? await client.routingSettings()
+        }
+        autoRouting = routing?.enabled ?? false
         await loadBranchesIfNeeded()
     }
 

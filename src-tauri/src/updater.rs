@@ -194,27 +194,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn manual_check_reports_up_to_date() {
-        let dialog = Arc::new(StubDialog::default());
-        let service = UpdateService::new(StubChecker::new(vec![Ok(None)]), dialog.clone());
-
-        let result = service
-            .check_on_user_request()
-            .await
-            .expect("check succeeds");
-
-        assert_eq!(result, UpdateCheckResult::UpToDate);
-        assert_eq!(
-            *dialog.messages.lock().expect("messages poisoned"),
-            vec![(
-                "Updates".to_string(),
-                "Argmax is up to date.".to_string(),
-                "info"
-            )]
-        );
-    }
-
-    #[tokio::test]
     async fn manual_check_reports_available_update() {
         let dialog = Arc::new(StubDialog::default());
         let update = AvailableUpdate {

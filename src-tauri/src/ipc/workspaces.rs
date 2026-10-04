@@ -41,6 +41,22 @@ pub(crate) fn workspaces_create_current_impl(
     live_workspaces(state)?.create_current(input)
 }
 
+#[tauri::command(rename = "workspaces:create-alongside")]
+#[specta::specta]
+pub async fn workspaces_create_alongside(
+    state: State<'_, AppState>,
+    input: crate::workspaces::inputs::WorkspacesCreateInCheckoutInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    workspaces_create_alongside_impl(&state, input).await
+}
+
+pub(crate) async fn workspaces_create_alongside_impl(
+    state: &AppState,
+    input: crate::workspaces::inputs::WorkspacesCreateInCheckoutInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.create_in_checkout(input).await
+}
+
 #[tauri::command(rename = "workspaces:create-scratch")]
 #[specta::specta]
 pub async fn workspaces_create_scratch(
@@ -220,6 +236,22 @@ pub(crate) fn workspaces_set_priority_dismissed_impl(
     live_workspaces(state)?.set_priority_dismissed(input)
 }
 
+#[tauri::command(rename = "workspaces:set-snoozed-until")]
+#[specta::specta]
+pub fn workspaces_set_snoozed_until(
+    state: State<'_, AppState>,
+    input: WorkspacesSetSnoozedUntilInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    workspaces_set_snoozed_until_impl(&state, input)
+}
+
+pub(crate) fn workspaces_set_snoozed_until_impl(
+    state: &AppState,
+    input: WorkspacesSetSnoozedUntilInput,
+) -> ArgmaxResult<WorkspaceSummary> {
+    live_workspaces(state)?.set_snoozed_until(input)
+}
+
 #[tauri::command(rename = "workspaces:set-label")]
 #[specta::specta]
 pub fn workspaces_set_label(
@@ -252,7 +284,7 @@ pub(crate) fn workspaces_set_icon_impl(
     live_workspaces(state)?.set_icon(input)
 }
 
-fn live_workspaces(state: &AppState) -> ArgmaxResult<Arc<WorkspaceService>> {
+pub(super) fn live_workspaces(state: &AppState) -> ArgmaxResult<Arc<WorkspaceService>> {
     state.workspaces.get().cloned().ok_or_else(|| {
         ArgmaxError::service(
             "WORKSPACE_SERVICE_NOT_READY",

@@ -222,6 +222,96 @@ pub fn search_events_raw(
     query: &str,
     limit: usize,
 ) -> ArgmaxResult<Vec<EventSearchResult>> {
+    search_events_in(connection, query, limit)
+}
+
+/// An FTS query over the visible conversation of just `session_ids`: prompts
+/// and answers, no streaming deltas, no subagent trace rows. An agent-facing
+/// search must filter in SQL, not after the limit: a limit applied across
+/// every session would let sessions the caller may not read crowd out the
+/// ones it may. It also keeps one hit per session, chosen before the limit, so
+/// one chat with a hundred matches cannot push every other chat out of it.
+pub fn search_session_conversations(
+    connection: &Connection,
+    query: &str,
+    session_ids: &[String],
+    limit: usize,
+) -> ArgmaxResult<Vec<EventSearchResult>> {
+    if session_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let fts_query = build_fts_prefix_query(query);
+    if fts_query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let scope_json = serde_json::to_string(session_ids).map_err(super::json_error)?;
+    let best = connection
+        .prepare_cached(
+            r#"
+        WITH ranked AS (
+          SELECT events.session_id AS session_id,
+                 events.id AS event_id,
+                 events.rowid AS event_rowid,
+                 events_fts.rank AS rank,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY events.session_id
+                   ORDER BY CASE WHEN events.type IN ('user.message', 'message.completed') THEN 0 ELSE 1 END,
+                            events_fts.rank, events.created_at DESC, events.rowid DESC
+                 ) AS n
+          FROM events_fts
+          JOIN events ON events.rowid = events_fts.rowid
+          WHERE events_fts MATCH ?1
+            AND events.session_id IN (SELECT value FROM json_each(?2))
+            AND events.type IN ('user.message', 'message.completed')
+            AND json_extract(events.payload_json, '$.parent_tool_use_id') IS NULL
+            AND json_extract(events.payload_json, '$.traceImported') IS NULL
+        )
+        SELECT session_id, event_id, event_rowid, rank FROM ranked WHERE n = 1
+        ORDER BY rank LIMIT ?3
+        "#,
+        )
+        .map_err(sqlite_error)?
+        .query_map((fts_query.as_str(), scope_json, limit as i64), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, f64>(3)?,
+            ))
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    // The snippet function needs the MATCH in its own query, so it is read
+    // for the few winning rows rather than for every candidate.
+    let mut snippet_statement = connection
+        .prepare_cached(
+            "SELECT snippet(events_fts, 0, '<b>', '</b>', '...', 12) FROM events_fts \
+             WHERE events_fts MATCH ?1 AND events_fts.rowid = ?2",
+        )
+        .map_err(sqlite_error)?;
+    let mut hits = Vec::with_capacity(best.len());
+    for (session_id, event_id, event_rowid, rank) in best {
+        let snippet = snippet_statement
+            .query_row((fts_query.as_str(), event_rowid), |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(sqlite_error)?;
+        hits.push(EventSearchResult {
+            session_id,
+            event_id,
+            snippet,
+            rank,
+        });
+    }
+    Ok(hits)
+}
+
+fn search_events_in(
+    connection: &Connection,
+    query: &str,
+    limit: usize,
+) -> ArgmaxResult<Vec<EventSearchResult>> {
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }

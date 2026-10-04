@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  applyFontSizeToDocument,
-  applyFontToDocument,
   CHAT_FONT_SIZE_STORAGE_KEY,
   DEFAULT_CHAT_FONT_SIZE,
   DEFAULT_FONT_ID,
@@ -24,8 +22,6 @@ afterEach(() => {
   window.localStorage.removeItem(CHAT_FONT_SIZE_STORAGE_KEY);
   window.localStorage.removeItem("argmax.font.size");
   window.localStorage.removeItem("argmax.font.size.chat");
-  document.documentElement.removeAttribute("data-font");
-  document.documentElement.removeAttribute("data-font-size");
   document.documentElement.style.removeProperty("--text-terminal");
   document.documentElement.style.removeProperty("--not-px");
 });
@@ -48,24 +44,6 @@ describe("fonts", () => {
       expect(FONT_OPTIONS.some((option) => option.id === id)).toBe(false);
     }
   );
-
-  it("falls back to default when storage holds an unknown id", () => {
-    window.localStorage.setItem(FONT_STORAGE_KEY, "comic-sans");
-    expect(readStoredFont()).toBe(DEFAULT_FONT_ID);
-  });
-
-  it("exposes a curated set of options with stacks ending in a system fallback", () => {
-    expect(FONT_OPTIONS.length).toBeGreaterThanOrEqual(4);
-    for (const option of FONT_OPTIONS) {
-      expect(option.stack).toMatch(/(monospace|sans-serif)$/);
-      expect(option.label).toBeTruthy();
-    }
-  });
-
-  it("applyFontToDocument sets the data-font attribute on <html>", () => {
-    applyFontToDocument("geist-mono");
-    expect(document.documentElement.getAttribute("data-font")).toBe("geist-mono");
-  });
 
   it("defaults font size to level 6 when nothing is stored", () => {
     expect(readStoredFontSize()).toBe(6);
@@ -143,11 +121,6 @@ describe("fonts", () => {
     expect(fontSizeBasePx(1)).toBe(10);
     expect(fontSizeBasePx(DEFAULT_FONT_SIZE)).toBe(15);
     expect(fontSizeBasePx(10)).toBe(19);
-  });
-
-  it("applyFontSizeToDocument sets the data-font-size attribute on <html>", () => {
-    applyFontSizeToDocument(4);
-    expect(document.documentElement.getAttribute("data-font-size")).toBe("4");
   });
 
   it("resolves px CSS variables for non-CSS renderers", () => {

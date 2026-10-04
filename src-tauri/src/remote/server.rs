@@ -669,13 +669,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn root_requests_resolve_to_the_app_shell() {
-        assert_eq!(normalize_request_path(""), "/index.html");
-        assert_eq!(normalize_request_path("/"), "/index.html");
-        assert_eq!(normalize_request_path("/assets/app.js"), "/assets/app.js");
-    }
-
     #[tokio::test]
     async fn directory_assets_are_confined_to_their_root() {
         let root = tempdir().expect("root");

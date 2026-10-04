@@ -190,6 +190,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
         fast_mode: true,
         resume_conversation_id: None,
         resume_fork: false,
+        continuity: None,
         permission_mode: PermissionMode::AutoApprove,
         agent_mode: AgentMode::Auto,
         cols: 120,
@@ -528,7 +529,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
         "the agent has to be told what the cap is: {refused}"
     );
 
-    // Ten launched sessions is the per-session cap.
+    // The per-session cap is the one named constant.
     {
         let connection = database.connection();
         connection
@@ -537,7 +538,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
                 [],
             )
             .expect("reset depth");
-        for index in 0..10 {
+        for index in 0..argmax_lib::session_control::MAX_LAUNCHES_PER_SESSION {
             persist_session(
                 &connection,
                 &PersistSessionInput {
@@ -996,6 +997,7 @@ fn credential(
         fast_mode: false,
         resume_conversation_id: None,
         resume_fork: false,
+        continuity: None,
         permission_mode: PermissionMode::AutoApprove,
         agent_mode: AgentMode::Auto,
         cols: 120,
@@ -1098,43 +1100,6 @@ async fn session_rename_updates_the_callers_sidebar_label() {
         task_label_auto, 0,
         "a manual rename stops autotitle overwriting"
     );
-}
-
-#[tokio::test]
-async fn session_rename_truncates_overlong_labels() {
-    let repo = tempfile::tempdir().expect("repo dir");
-    let database = Arc::new(Database::open_in_memory().expect("database"));
-    seed_sessions(
-        &database,
-        &repo.path().display().to_string(),
-        &[("session-agent", "Parent", SessionState::Running)],
-    );
-    let workspaces = WorkspaceService::with_publisher(Arc::clone(&database), |_| {});
-    let providers = ProviderSessionService::with_launcher(
-        Arc::clone(&database),
-        Arc::new(RecordingLauncher::default()),
-        |_| {},
-    );
-    let (server, registry) =
-        SessionLaunchServer::bind(Arc::clone(&database)).expect("bind control socket");
-    let (socket, token) = credential(&registry, repo.path(), "session-agent");
-    let _server = server
-        .start(
-            None,
-            Arc::clone(&database),
-            Arc::clone(&workspaces),
-            Arc::clone(&providers),
-        )
-        .expect("start control socket");
-
-    let long = "å".repeat(80);
-    let response = ask_raw(socket, token, json!({ "rename": { "taskLabel": long } })).await;
-    let response: serde_json::Value = serde_json::from_str(&response).expect("response json");
-    let landed = response["renamed"]["taskLabel"]
-        .as_str()
-        .expect("task label");
-    assert!(landed.ends_with("..."));
-    assert!(landed.chars().count() <= 64);
 }
 
 /// The client refuses a reply over the ceiling it read with, and the rows in a
@@ -2113,6 +2078,497 @@ async fn launch_reasoning_and_permission_mode_override_the_inherited_values() {
     assert_eq!(session.permission_mode, "ask-each-time");
 }
 
+fn set_session_permission_mode(database: &Database, session_id: &str, mode: &str) {
+    database
+        .connection()
+        .execute(
+            "UPDATE sessions SET permission_mode = ? WHERE id = ?",
+            (mode, session_id),
+        )
+        .expect("set permission mode");
+}
+
+async fn launched_modes(
+    harness: &ToolHarness,
+    request: serde_json::Value,
+) -> (String, Option<String>) {
+    let response = harness.ask(json!({ "launch": request })).await;
+    assert!(response["error"].is_null(), "launch response: {response}");
+    let launched = &response["launched"];
+    (
+        launched["permissionMode"]
+            .as_str()
+            .expect("effective mode")
+            .to_string(),
+        launched["permissionModeRequested"]
+            .as_str()
+            .map(str::to_string),
+    )
+}
+
+#[tokio::test]
+async fn a_launch_never_gets_a_looser_permission_mode_than_its_caller() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    // The token was issued with auto-approve; the session row is what the user
+    // set, and it is the one that counts.
+    set_session_permission_mode(&database, "session-agent", "ask-each-time");
+    let (mode, requested) = launched_modes(
+        &harness,
+        json!({ "prompt": "Loosen up", "permissionMode": "auto-approve" }),
+    )
+    .await;
+    assert_eq!(
+        (mode.as_str(), requested.as_deref()),
+        ("ask-each-time", Some("auto-approve"))
+    );
+    let (mode, requested) = launched_modes(&harness, json!({ "prompt": "Default" })).await;
+    assert_eq!((mode.as_str(), requested), ("ask-each-time", None));
+
+    set_session_permission_mode(&database, "session-agent", "provider-defaults");
+    let (mode, requested) = launched_modes(
+        &harness,
+        json!({ "prompt": "Auto", "permissionMode": "auto-approve" }),
+    )
+    .await;
+    assert_eq!(
+        (mode.as_str(), requested.as_deref()),
+        ("provider-defaults", Some("auto-approve"))
+    );
+    let (mode, _) = launched_modes(
+        &harness,
+        json!({ "prompt": "Ask", "permissionMode": "ask-each-time" }),
+    )
+    .await;
+    assert_eq!(mode, "ask-each-time");
+
+    set_session_permission_mode(&database, "session-agent", "auto-approve");
+    let (mode, requested) = launched_modes(
+        &harness,
+        json!({ "prompt": "Anything", "permissionMode": "provider-defaults" }),
+    )
+    .await;
+    assert_eq!((mode.as_str(), requested), ("provider-defaults", None));
+    let (mode, _) = launched_modes(&harness, json!({ "prompt": "Inherit" })).await;
+    assert_eq!(mode, "auto-approve");
+
+    // What the provider was handed matches what was reported.
+    let provider_modes = wait_for(|| {
+        let launches = harness.launcher.launches.lock().expect("launches poisoned");
+        (launches.len() == 6).then(|| {
+            launches
+                .iter()
+                .map(|launch| launch.permission_mode)
+                .collect::<Vec<_>>()
+        })
+    })
+    .await
+    .expect("six provider launches");
+    assert_eq!(
+        provider_modes,
+        vec![
+            PermissionMode::AskEachTime,
+            PermissionMode::AskEachTime,
+            PermissionMode::ProviderDefaults,
+            PermissionMode::AskEachTime,
+            PermissionMode::ProviderDefaults,
+            PermissionMode::AutoApprove,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_retried_launch_with_a_client_request_id_replays_instead_of_spending_again() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+    let launch =
+        |prompt: &str, key: &str| json!({ "launch": { "prompt": prompt, "clientRequestId": key } });
+    let provider_launches = || {
+        harness
+            .launcher
+            .launches
+            .lock()
+            .expect("launches poisoned")
+            .len()
+    };
+
+    let first = harness.ask(launch("Build it", "k1")).await;
+    assert!(first["error"].is_null(), "first launch: {first}");
+    let session_id = first["launched"]["sessionId"]
+        .as_str()
+        .expect("session")
+        .to_string();
+    assert!(first["launched"].get("replayed").is_none());
+    // The receipt named the session before the provider started.
+    let receipt = argmax_lib::persistence::launch_receipts::find_receipt(
+        &database.read_connection(),
+        "session-agent",
+        "k1",
+    )
+    .expect("read receipt")
+    .expect("receipt");
+    assert_eq!(receipt.session_id, session_id);
+    assert_eq!(
+        receipt.workspace_id.as_deref(),
+        first["launched"]["workspaceId"].as_str()
+    );
+    assert_eq!(receipt.status.as_str(), "completed");
+
+    let again = harness.ask(launch("Build it", "k1")).await;
+    assert!(again["error"].is_null(), "retry: {again}");
+    assert_eq!(
+        again["launched"]["sessionId"],
+        first["launched"]["sessionId"]
+    );
+    assert_eq!(
+        again["launched"]["workspaceId"],
+        first["launched"]["workspaceId"]
+    );
+    assert_eq!(again["launched"]["replayed"], true);
+
+    let mismatch = harness.ask(launch("Build something else", "k1")).await;
+    assert_eq!(mismatch["error"]["code"], "LAUNCH_REQUEST_ID_MISMATCH");
+
+    // Two copies of one new call in flight together start one session.
+    let (a, b) = tokio::join!(
+        harness.ask(launch("Race", "k-race")),
+        harness.ask(launch("Race", "k-race"))
+    );
+    assert!(a["error"].is_null() && b["error"].is_null(), "{a} / {b}");
+    assert_eq!(a["launched"]["sessionId"], b["launched"]["sessionId"]);
+
+    // Another key is another launch.
+    let other = harness.ask(launch("Build it", "k2")).await;
+    assert_ne!(
+        other["launched"]["sessionId"],
+        first["launched"]["sessionId"]
+    );
+
+    wait_for(|| (provider_launches() == 3).then_some(()))
+        .await
+        .expect("three provider launches");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        provider_launches(),
+        3,
+        "retries must not start provider processes"
+    );
+    let launched_sessions: i64 = database
+        .read_connection()
+        .query_row(
+            "SELECT COUNT(*) FROM sessions WHERE launched_by_session_id = 'session-agent'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count");
+    assert_eq!(launched_sessions, 3);
+}
+
+#[tokio::test]
+async fn a_launch_that_may_have_started_is_never_repeated_but_a_refused_one_can_be_retried() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+    let launch = |key: &str| json!({ "launch": { "prompt": "Work", "clientRequestId": key } });
+
+    let first = harness.ask(launch("k1")).await;
+    let session_id = first["launched"]["sessionId"]
+        .as_str()
+        .expect("session")
+        .to_string();
+    // The app stopped before the first call could report: the receipt is
+    // `uncertain` and stays so.
+    database
+        .connection()
+        .execute(
+            "UPDATE launch_receipts SET status = 'uncertain', result_json = NULL WHERE client_request_id = 'k1'",
+            [],
+        )
+        .expect("simulate a crash");
+    let retry = harness.ask(launch("k1")).await;
+    assert_eq!(retry["error"]["code"], "LAUNCH_OUTCOME_UNCERTAIN");
+    let message = retry["error"]["message"].as_str().expect("message");
+    assert!(
+        message.contains(&session_id),
+        "the reply must name the session: {message}"
+    );
+    assert!(message.contains(first["launched"]["workspaceId"].as_str().unwrap()));
+    wait_for(|| (harness.launcher.launches.lock().unwrap().len() == 1).then_some(()))
+        .await
+        .expect("first launch");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(harness.launcher.launches.lock().unwrap().len(), 1);
+
+    // A launch refused before it spent anything leaves a key that can be tried
+    // again with the same arguments.
+    let bad = json!({ "launch": {
+        "prompt": "Work", "path": "/definitely/not/a/checkout", "clientRequestId": "k-bad"
+    } });
+    let refused = harness.ask(bad.clone()).await;
+    assert!(refused["error"]["code"].is_string(), "{refused}");
+    let receipt = argmax_lib::persistence::launch_receipts::find_receipt(
+        &database.read_connection(),
+        "session-agent",
+        "k-bad",
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(receipt.status.as_str(), "failed");
+    let refused_again = harness.ask(bad).await;
+    assert_eq!(refused_again["error"]["code"], refused["error"]["code"]);
+    assert_ne!(refused_again["error"]["code"], "LAUNCH_IN_PROGRESS");
+}
+
+fn seed_cap_minus_one_children(database: &Database) {
+    let connection = database.connection();
+    for index in 0..argmax_lib::session_control::MAX_LAUNCHES_PER_SESSION - 1 {
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: format!("child-{index}"),
+                workspace_id: "workspace-session-agent".to_string(),
+                provider: "codex".to_string(),
+                model_label: "GPT-5.6 Sol".to_string(),
+                model_id: "gpt-5.6-sol".to_string(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_string()),
+                agent_mode: Some("auto".to_string()),
+                prompt: "Child".to_string(),
+                state: SessionState::Complete,
+            },
+        )
+        .expect("child");
+        record_session_launch(
+            &connection,
+            &format!("child-{index}"),
+            "session-agent",
+            1,
+            LAUNCH_KIND_AGENT,
+        )
+        .expect("lineage");
+    }
+}
+
+#[tokio::test]
+async fn waiting_on_one_named_child_still_hands_over_a_coalesced_batch_whole() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-parent", "Parent", SessionState::Running),
+            ("child-a", "Task A", SessionState::Complete),
+            ("child-b", "Task B", SessionState::Complete),
+        ],
+    );
+    // What the coalescing window leaves behind: each child's own row, kept with
+    // its body and time but closed, and one batch row still to be collected.
+    {
+        let connection = database.connection();
+        for (child, at) in [("child-a", "t1"), ("child-b", "t2")] {
+            insert_session_message(
+                &connection,
+                &NewSessionMessage {
+                    id: format!("completion:{child}:{at}"),
+                    from_session_id: Some(child.to_string()),
+                    to_session_id: "session-parent".to_string(),
+                    body: format!(
+                        "Session {child} finished at {at}. Final answer:\nresult of {child}"
+                    ),
+                    kind: "completion".to_string(),
+                },
+            )
+            .expect("individual row");
+            argmax_lib::persistence::session_messages::mark_message_delivered(
+                &connection,
+                &format!("completion:{child}:{at}"),
+            )
+            .expect("closed by the batch");
+        }
+        insert_session_message(
+            &connection,
+            &NewSessionMessage {
+                id: "completion-batch:session-parent:completion:child-a:t1".to_string(),
+                from_session_id: None,
+                to_session_id: "session-parent".to_string(),
+                body: "2 sessions you launched finished.\n--- 1/2 ---\nresult of child-a\n--- 2/2 ---\nresult of child-b"
+                    .to_string(),
+                kind: "completion".to_string(),
+            },
+        )
+        .expect("batch row");
+    }
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-parent");
+
+    // A wait that names only child-b reports child-b, and the batch that
+    // carries both results is not hidden by the filter.
+    let waited = harness
+        .ask(json!({ "wait": { "sessions": ["child-b"], "timeoutS": 5 } }))
+        .await;
+    assert_eq!(waited["waited"]["timedOut"], false, "{waited}");
+    let sessions = waited["waited"]["sessions"].as_array().expect("sessions");
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0]["sessionId"], "child-b");
+    let messages = waited["waited"]["messages"].as_array().expect("messages");
+    assert_eq!(messages.len(), 1, "{waited}");
+    let body = messages[0]["body"].as_str().expect("body");
+    assert!(
+        body.contains("result of child-a") && body.contains("result of child-b"),
+        "{body}"
+    );
+
+    // Collected once. A named read is repeatable and does not replay it.
+    let again = harness
+        .ask(json!({ "wait": { "sessions": ["child-a"], "timeoutS": 5 } }))
+        .await;
+    assert_eq!(again["waited"]["sessions"][0]["sessionId"], "child-a");
+    assert!(again["waited"]["messages"]
+        .as_array()
+        .expect("messages")
+        .is_empty());
+
+    // The individual results are still there, with their own times.
+    let kept: i64 = database
+        .read_connection()
+        .query_row(
+            "SELECT COUNT(*) FROM session_messages WHERE id LIKE 'completion:child-%' AND delivered_at IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count");
+    assert_eq!(kept, 2);
+}
+
+#[tokio::test]
+async fn an_interrupted_launch_holds_a_slot_only_while_a_session_exists_for_it() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    seed_cap_minus_one_children(&database);
+    // An uncertain launch whose session was never written started nothing.
+    database
+        .connection()
+        .execute(
+            "INSERT INTO launch_receipts (caller_session_id, client_request_id, request_hash, status, session_id, created_at, updated_at) VALUES ('session-agent', 'ghost', 'h', 'uncertain', 'ghost-session', 't', 't')",
+            [],
+        )
+        .expect("ghost receipt");
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+    let allowed = harness
+        .ask(json!({ "launch": { "prompt": "The last slot" } }))
+        .await;
+    assert!(
+        allowed["error"].is_null(),
+        "a ghost receipt must not hold a slot: {allowed}"
+    );
+
+    // One that stopped after its session was written may be running: it holds a
+    // slot until the session carries its lineage.
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    seed_cap_minus_one_children(&database);
+    {
+        let connection = database.connection();
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "half-launched".to_string(),
+                workspace_id: "workspace-session-agent".to_string(),
+                provider: "codex".to_string(),
+                model_label: "GPT-5.6 Sol".to_string(),
+                model_id: "gpt-5.6-sol".to_string(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_string()),
+                agent_mode: Some("auto".to_string()),
+                prompt: "Child".to_string(),
+                state: SessionState::Running,
+            },
+        )
+        .expect("session without lineage");
+        connection
+            .execute(
+                "INSERT INTO launch_receipts (caller_session_id, client_request_id, request_hash, status, session_id, created_at, updated_at) VALUES ('session-agent', 'half', 'h', 'uncertain', 'half-launched', 't', 't')",
+                [],
+            )
+            .expect("uncertain receipt");
+    }
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+    let refused = harness
+        .ask(json!({ "launch": { "prompt": "One more" } }))
+        .await;
+    assert_eq!(refused["error"]["code"], "LAUNCH_LIMIT_REACHED");
+    assert!(harness.launcher.launches.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_receipt_that_cannot_be_settled_is_marked_uncertain_not_left_pending() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Parent", SessionState::Running)],
+    );
+    database
+        .connection()
+        .execute_batch(
+            "CREATE TRIGGER refuse_completed BEFORE UPDATE ON launch_receipts
+             WHEN NEW.status = 'completed'
+             BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+        )
+        .expect("trigger");
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+    let request = json!({ "launch": { "prompt": "Work", "clientRequestId": "k1" } });
+
+    let first = harness.ask(request.clone()).await;
+    assert!(
+        first["error"].is_null(),
+        "the launch itself succeeded: {first}"
+    );
+
+    let started = std::time::Instant::now();
+    let retry = harness.ask(request).await;
+    assert_eq!(
+        retry["error"]["code"], "LAUNCH_OUTCOME_UNCERTAIN",
+        "{retry}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "a retry must not wait on a launch that is over"
+    );
+    assert!(retry["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains(first["launched"]["sessionId"].as_str().unwrap()));
+}
+
 #[tokio::test]
 async fn launch_can_target_an_existing_checkout_or_fork_from_a_branch() {
     let repo = seed_git_repo(&[("README.md", "source")]);
@@ -2864,4 +3320,898 @@ async fn checks_and_terminals_refuse_cleanly_without_a_window() {
     // with no checks configured is the agent's problem to fix, not the app's.
     let unconfigured = harness.ask(json!({ "checks-run": {} })).await;
     assert_eq!(unconfigured["error"]["code"], "CHECKS_NOT_CONFIGURED");
+}
+
+/// Records PR #`pr_number` for the session the way an explicit `gh pr view`
+/// would: canonical state plus a `referenced` link, which makes it primary.
+fn seed_session_pr(database: &Database, session_id: &str, pr_number: i64, pr_state: &str) {
+    let connection = database.connection();
+    argmax_lib::persistence::gh::record_gh_pr_observation(
+        &connection,
+        &argmax_lib::persistence::gh::GhPrRecord {
+            session_id: session_id.to_string(),
+            pr_number,
+            head_sha: "feedface".to_string(),
+            last_seen_check_state: "pending".to_string(),
+            updated_at: now_iso(),
+            pr_state: Some(pr_state.to_string()),
+            notified_at: None,
+            pr_created_at: None,
+            pr_merged_at: None,
+            head_ref_name: Some("feature/x".to_string()),
+        },
+        argmax_lib::persistence::gh::PrAttribution::Explicit,
+    )
+    .expect("record PR")
+    .expect("link PR");
+    argmax_lib::persistence::gh::store_pr_metadata(
+        &connection,
+        session_id,
+        pr_number,
+        Some(&format!("https://github.com/acme/widgets/pull/{pr_number}")),
+        Some("Fix parser"),
+    )
+    .expect("PR metadata");
+}
+
+/// `pr_watch` defaults to the chat's primary PR, keeps its cursors when it is
+/// called again, and `pr_unwatch` removes it.
+#[tokio::test]
+async fn pr_watch_watches_the_primary_pr_and_pr_unwatch_removes_it() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[("session-agent", "Land the PR", SessionState::Running)],
+    );
+    seed_session_pr(&database, "session-agent", 72, "OPEN");
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let response = harness.ask(json!({ "pr-watch": {} })).await;
+    assert_eq!(
+        response["prWatch"],
+        json!({
+            "projectId": "project-1",
+            "prNumber": 72,
+            "url": "https://github.com/acme/widgets/pull/72",
+            "headSha": "feedface",
+            "watching": true,
+        }),
+        "{response}"
+    );
+    let watch = |database: &Database| {
+        argmax_lib::persistence::pr_watches::find_pr_watch(
+            &database.read_connection(),
+            "session-agent",
+            "project-1",
+            72,
+        )
+        .expect("read watch")
+    };
+    let first = watch(&database).expect("watch stored");
+    assert!(!first.cleanup_on_merge);
+    argmax_lib::persistence::pr_watches::update_pr_watch_cursors(
+        &database.connection(),
+        &first.id,
+        &argmax_lib::persistence::pr_watches::PrWatchCursors {
+            head_sha: "feedface".to_string(),
+            seen_check_failures: vec!["build@feedface".to_string()],
+            seen_feedback_ids: vec!["IC_1".to_string()],
+            reported_ready_sha: None,
+            last_pr_updated_at: None,
+            conflict_state: None,
+        },
+    )
+    .expect("advance cursors");
+
+    let again = harness
+        .ask(json!({ "pr-watch": { "pr": 72, "cleanupOnMerge": true } }))
+        .await;
+    assert_eq!(again["prWatch"]["watching"], true, "{again}");
+    let second = watch(&database).expect("watch kept");
+    assert_eq!(second.id, first.id);
+    assert!(second.cleanup_on_merge, "the options update");
+    assert_eq!(
+        second.seen_check_failures,
+        vec!["build@feedface".to_string()],
+        "the cursors stay"
+    );
+
+    let removed = harness.ask(json!({ "pr-unwatch": {} })).await;
+    assert_eq!(removed["prUnwatch"]["removed"], true, "{removed}");
+    assert!(watch(&database).is_none());
+    let again = harness.ask(json!({ "pr-unwatch": { "pr": 72 } })).await;
+    assert_eq!(again["prUnwatch"]["removed"], false);
+}
+
+#[tokio::test]
+async fn pr_watch_refuses_what_it_cannot_watch() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-agent", "Land the PR", SessionState::Running),
+            ("session-chat", "Chat", SessionState::Running),
+        ],
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let missing = harness.ask(json!({ "pr-watch": {} })).await;
+    assert_eq!(missing["error"]["code"], "PR_NOT_FOUND", "{missing}");
+
+    // A PR Argmax has not read yet is accepted; the poller views it by number.
+    let unseen = harness.ask(json!({ "pr-watch": { "pr": 9 } })).await;
+    assert_eq!(unseen["prWatch"]["prNumber"], 9, "{unseen}");
+    assert!(unseen["prWatch"]["url"].is_null());
+
+    seed_session_pr(&database, "session-agent", 71, "MERGED");
+    let merged = harness.ask(json!({ "pr-watch": { "pr": 71 } })).await;
+    assert_eq!(merged["error"]["code"], "PR_NOT_OPEN", "{merged}");
+
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at)
+                 VALUES ('scratch-side-chats', 'Chat', '/tmp/argmax-side-chats', 'main', 'sibling', ?1, ?1)",
+                [now_iso()],
+            )
+            .expect("scratch project");
+        connection
+            .execute(
+                "UPDATE workspaces SET project_id = 'scratch-side-chats' WHERE id = 'workspace-session-chat'",
+                [],
+            )
+            .expect("move chat to scratch");
+    }
+    let chat = ToolHarness::open(Arc::clone(&database), repo.path(), "session-chat");
+    let refused = chat.ask(json!({ "pr-watch": { "pr": 5 } })).await;
+    assert_eq!(refused["error"]["code"], "PROJECT_NOT_ALLOWED", "{refused}");
+}
+
+/// `pr_cleanup` refuses before it touches git: an open PR, no PR, and a side
+/// chat. The cleanup itself is covered against a real repository in
+/// `git::pr_cleanup`.
+#[tokio::test]
+async fn pr_cleanup_refuses_what_it_cannot_clean_up() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo.path().display().to_string(),
+        &[
+            ("session-agent", "Land the PR", SessionState::Running),
+            ("session-chat", "Chat", SessionState::Running),
+        ],
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let missing = harness.ask(json!({ "pr-cleanup": {} })).await;
+    assert_eq!(missing["error"]["code"], "PR_NOT_FOUND", "{missing}");
+
+    seed_session_pr(&database, "session-agent", 72, "OPEN");
+    let open = harness.ask(json!({ "pr-cleanup": {} })).await;
+    assert_eq!(open["error"]["code"], "PR_NOT_MERGED", "{open}");
+    assert_eq!(
+        open["error"]["message"],
+        "PR #72 is open. Cleanup runs only after it merges."
+    );
+
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at)
+                 VALUES ('scratch-side-chats', 'Chat', '/tmp/argmax-side-chats', 'main', 'sibling', ?1, ?1)",
+                [now_iso()],
+            )
+            .expect("scratch project");
+        connection
+            .execute(
+                "UPDATE workspaces SET project_id = 'scratch-side-chats' WHERE id = 'workspace-session-chat'",
+                [],
+            )
+            .expect("move chat to scratch");
+    }
+    let chat = ToolHarness::open(Arc::clone(&database), repo.path(), "session-chat");
+    let refused = chat.ask(json!({ "pr-cleanup": { "pr": 5 } })).await;
+    assert_eq!(refused["error"]["code"], "PROJECT_NOT_ALLOWED", "{refused}");
+}
+
+// ---------------------------------------------------------------------------
+// History reads: access, item paging, search
+// ---------------------------------------------------------------------------
+
+/// A second project holding one session, beside the one `seed_sessions` makes.
+fn seed_outside_session(database: &Database, repo_path: &str, session_id: &str, label: &str) {
+    let connection = database.connection();
+    persist_project(
+        &connection,
+        &PersistProjectInput {
+            id: "project-2".to_string(),
+            name: "Elsewhere".to_string(),
+            repo_path: format!("{repo_path}/elsewhere"),
+            current_branch: "main".to_string(),
+            default_branch: Some("main".to_string()),
+            settings: ProjectSettings {
+                archive_on_merge: false,
+                worktree_location: format!("{repo_path}/elsewhere-worktrees"),
+                setup_command: String::new(),
+                check_commands: Vec::new(),
+            },
+        },
+    )
+    .expect("second project");
+    let workspace_id = format!("workspace-{session_id}");
+    persist_workspace(
+        &connection,
+        &PersistWorkspaceInput {
+            id: workspace_id.clone(),
+            project_id: "project-2".to_string(),
+            task_label: label.to_string(),
+            branch: "main".to_string(),
+            base_ref: "main".to_string(),
+            path: format!("{repo_path}/elsewhere"),
+            state: "running".to_string(),
+            shared_workspace: true,
+            kind: "git".to_string(),
+            dirty: false,
+            changed_files: 0,
+        },
+    )
+    .expect("second workspace");
+    persist_session(
+        &connection,
+        &PersistSessionInput {
+            id: session_id.to_string(),
+            workspace_id,
+            provider: "codex".to_string(),
+            model_label: "GPT-5.6 Sol".to_string(),
+            model_id: "gpt-5.6-sol".to_string(),
+            reasoning_effort: None,
+            permission_mode: Some("auto-approve".to_string()),
+            agent_mode: Some("auto".to_string()),
+            prompt: "Task".to_string(),
+            state: SessionState::Running,
+        },
+    )
+    .expect("second session");
+}
+
+fn persist_message(
+    database: &Database,
+    session_id: &str,
+    event_id: &str,
+    event_type: &str,
+    message: &str,
+    payload: serde_json::Value,
+) {
+    persist_timeline_event(
+        &database.connection(),
+        &PersistTimelineEventInput {
+            id: event_id.to_string(),
+            session_id: session_id.to_string(),
+            r#type: event_type.to_string(),
+            message: message.to_string(),
+            payload,
+            created_at: None,
+        },
+    )
+    .expect("event");
+}
+
+/// A prompt the person typed into the composer: the one thing that carries the
+/// person mark. Real traffic gets it from the IPC handlers; a test stands in.
+fn persist_person_message(database: &Database, session_id: &str, event_id: &str, message: &str) {
+    argmax_lib::persistence::events::persist_user_prompt(
+        &database.connection(),
+        &PersistTimelineEventInput {
+            id: event_id.to_string(),
+            session_id: session_id.to_string(),
+            r#type: "user.message".to_string(),
+            message: message.to_string(),
+            payload: json!({}),
+            created_at: None,
+        },
+        argmax_lib::persistence::authorship::PromptAuthor::person(
+            argmax_lib::ipc::attest_person_for_tests(),
+        ),
+    )
+    .expect("person prompt");
+}
+
+/// Reads stay inside the caller's project and its launch lineage. A chat in
+/// another project opens only when a person attached it to one of the
+/// caller's own prompts, and a message another session sent never counts as
+/// that person.
+#[tokio::test]
+async fn reads_follow_project_lineage_and_human_attached_references() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let repo_path = repo.path().display().to_string();
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo_path,
+        &[
+            ("session-agent", "Agent", SessionState::Running),
+            ("session-peer", "Same project peer", SessionState::Complete),
+        ],
+    );
+    seed_outside_session(&database, &repo_path, "session-outsider", "Billing rewrite");
+    seed_outside_session_extra(&database, "session-launched", "Launched elsewhere");
+    {
+        let connection = database.connection();
+        record_session_launch(
+            &connection,
+            "session-launched",
+            "session-agent",
+            1,
+            LAUNCH_KIND_AGENT,
+        )
+        .expect("lineage");
+    }
+    persist_message(
+        &database,
+        "session-outsider",
+        "o-1",
+        "message.completed",
+        "secret plan",
+        json!({}),
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+    let read = |session: &str| json!({ "read": { "sessionId": session } });
+    let status = |session: &str| json!({ "status": { "sessionId": session } });
+
+    assert!(
+        harness.ask(read("session-peer")).await["error"].is_null(),
+        "same project"
+    );
+    assert!(
+        harness.ask(read("session-launched")).await["error"].is_null(),
+        "a child the caller launched into another project stays readable"
+    );
+    let denied = harness.ask(read("session-outsider")).await;
+    assert_eq!(denied["error"]["code"], "READ_FORBIDDEN", "{denied}");
+    assert_eq!(
+        harness.ask(status("session-outsider")).await["error"]["code"],
+        "READ_FORBIDDEN"
+    );
+
+    // A message from another session that names the chat is not a grant.
+    persist_message(
+        &database,
+        "session-agent",
+        "agent-note",
+        "user.message",
+        "see [Elsewhere](argmax://chat/session-outsider?v=1)",
+        json!({ "origin": { "sessionId": "session-peer", "label": "Peer", "kind": "message" } }),
+    );
+    assert_eq!(
+        harness.ask(read("session-outsider")).await["error"]["code"],
+        "READ_FORBIDDEN"
+    );
+
+    // The person's own prompt is.
+    persist_person_message(
+        &database,
+        "session-agent",
+        "human-ref",
+        "compare with [Billing rewrite](argmax://chat/session-outsider?v=1)",
+    );
+    let granted = harness.ask(read("session-outsider")).await;
+    assert!(granted["error"].is_null(), "{granted}");
+    assert_eq!(granted["read"]["entries"][0]["text"], "secret plan");
+    assert!(harness.ask(status("session-outsider")).await["error"].is_null());
+
+    // The grant is for that one chat: a different outsider stays closed.
+    seed_outside_session_extra(&database, "session-other", "Unrelated");
+    assert_eq!(
+        harness.ask(read("session-other")).await["error"]["code"],
+        "READ_FORBIDDEN"
+    );
+
+    // The child reads its launcher, whatever the project.
+    let child = ToolHarness::open(Arc::clone(&database), repo.path(), "session-launched");
+    assert!(child.ask(read("session-agent")).await["error"].is_null());
+}
+
+/// The agent-launched session's opening prompt was written by its launcher,
+/// not by a person, so a link in it grants nothing.
+#[tokio::test]
+async fn an_agent_launched_sessions_opening_prompt_is_not_a_human_grant() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let repo_path = repo.path().display().to_string();
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo_path,
+        &[
+            ("session-agent", "Agent", SessionState::Running),
+            ("session-child", "Child", SessionState::Running),
+        ],
+    );
+    seed_outside_session(&database, &repo_path, "session-outsider", "Elsewhere chat");
+    {
+        let connection = database.connection();
+        record_session_launch(
+            &connection,
+            "session-child",
+            "session-agent",
+            1,
+            LAUNCH_KIND_AGENT,
+        )
+        .expect("lineage");
+    }
+    persist_message(
+        &database,
+        "session-child",
+        "child-first",
+        "user.message",
+        "read [Elsewhere](argmax://chat/session-outsider?v=1)",
+        json!({}),
+    );
+    let child = ToolHarness::open(Arc::clone(&database), repo.path(), "session-child");
+    let read = json!({ "read": { "sessionId": "session-outsider" } });
+    assert_eq!(
+        child.ask(read.clone()).await["error"]["code"],
+        "READ_FORBIDDEN"
+    );
+
+    // The person steering the child later is a grant.
+    persist_person_message(
+        &database,
+        "session-child",
+        "child-followup",
+        "also [Elsewhere](argmax://chat/session-outsider?v=1)",
+    );
+    assert!(child.ask(read).await["error"].is_null());
+}
+
+fn seed_outside_session_extra(database: &Database, session_id: &str, label: &str) {
+    let connection = database.connection();
+    let workspace_id = format!("workspace-{session_id}");
+    let repo_path = connection
+        .query_row(
+            "SELECT repo_path FROM projects WHERE id = 'project-2'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .expect("second project path");
+    persist_workspace(
+        &connection,
+        &PersistWorkspaceInput {
+            id: workspace_id.clone(),
+            project_id: "project-2".to_string(),
+            task_label: label.to_string(),
+            branch: "main".to_string(),
+            base_ref: "main".to_string(),
+            path: repo_path,
+            state: "running".to_string(),
+            shared_workspace: true,
+            kind: "git".to_string(),
+            dirty: false,
+            changed_files: 0,
+        },
+    )
+    .expect("workspace");
+    persist_session(
+        &connection,
+        &PersistSessionInput {
+            id: session_id.to_string(),
+            workspace_id,
+            provider: "codex".to_string(),
+            model_label: "GPT-5.6 Sol".to_string(),
+            model_id: "gpt-5.6-sol".to_string(),
+            reasoning_effort: None,
+            permission_mode: Some("auto-approve".to_string()),
+            agent_mode: Some("auto".to_string()),
+            prompt: "Task".to_string(),
+            state: SessionState::Running,
+        },
+    )
+    .expect("session");
+}
+
+/// An entry a page clipped comes back whole, in slices that cut on character
+/// boundaries and join back to the original. A made-up offset is refused, and
+/// so is an entry that is not in that session's readable timeline.
+#[tokio::test]
+async fn an_item_read_serves_the_whole_entry_in_unicode_safe_slices() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let repo_path = repo.path().display().to_string();
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo_path,
+        &[
+            ("session-agent", "Agent", SessionState::Running),
+            ("session-peer", "Peer", SessionState::Complete),
+            ("session-other", "Other", SessionState::Complete),
+        ],
+    );
+    // Two-, three- and four-byte characters, so any byte cut lands mid-character.
+    let long_answer = "é漢🙂 ".repeat(1500);
+    persist_message(
+        &database,
+        "session-peer",
+        "answer-1",
+        "message.completed",
+        &long_answer,
+        json!({}),
+    );
+    persist_message(
+        &database,
+        "session-peer",
+        "trace-1",
+        "message.completed",
+        "subagent chatter",
+        json!({ "parent_tool_use_id": "toolu_1" }),
+    );
+    persist_message(
+        &database,
+        "session-other",
+        "foreign-1",
+        "message.completed",
+        "not yours",
+        json!({}),
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let page = harness
+        .ask(json!({ "read": { "sessionId": "session-peer" } }))
+        .await;
+    let entries = page["read"]["entries"].as_array().expect("entries");
+    assert_eq!(entries.len(), 1, "the trace row is hidden: {page}");
+    assert_eq!(entries[0]["id"], "answer-1");
+    assert_eq!(entries[0]["clipped"], true);
+
+    let mut joined = String::new();
+    let mut offset = 0u64;
+    let mut slices = 0;
+    loop {
+        let reply = harness
+            .ask(json!({ "read": {
+                "sessionId": "session-peer",
+                "itemId": "answer-1",
+                "offset": offset,
+                "maxChars": 1001,
+            } }))
+            .await;
+        assert!(reply["error"].is_null(), "{reply}");
+        let item = &reply["read"]["item"];
+        assert_eq!(item["offset"], offset);
+        assert_eq!(item["totalBytes"], long_answer.len());
+        joined.push_str(item["text"].as_str().expect("text"));
+        slices += 1;
+        match item["nextOffset"].as_u64() {
+            Some(next) => {
+                assert!(
+                    long_answer.is_char_boundary(next as usize),
+                    "slice ended mid-character"
+                );
+                assert_eq!(reply["read"]["truncated"], true);
+                offset = next;
+            }
+            None => {
+                assert_eq!(reply["read"]["truncated"], false);
+                break;
+            }
+        }
+    }
+    assert!(slices > 1);
+    assert_eq!(joined, long_answer, "slices must join back to the entry");
+
+    let mid_char = long_answer
+        .char_indices()
+        .nth(1)
+        .map(|(index, _)| index + 1)
+        .expect("offset");
+    assert!(!long_answer.is_char_boundary(mid_char));
+    let invalid = harness
+        .ask(json!({ "read": {
+            "sessionId": "session-peer", "itemId": "answer-1", "offset": mid_char,
+        } }))
+        .await;
+    assert_eq!(invalid["error"]["code"], "OFFSET_INVALID");
+
+    for item_id in ["trace-1", "foreign-1", "missing"] {
+        let reply = harness
+            .ask(json!({ "read": { "sessionId": "session-peer", "itemId": item_id } }))
+            .await;
+        assert_eq!(
+            reply["error"]["code"], "ITEM_NOT_FOUND",
+            "{item_id}: {reply}"
+        );
+    }
+}
+
+/// A query matches task labels and the conversations the caller may read.
+/// `all` lists other projects but never searches their text, and a result the
+/// caller could not follow is left out of a search.
+#[tokio::test]
+async fn a_list_query_searches_titles_and_only_readable_conversations() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let repo_path = repo.path().display().to_string();
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo_path,
+        &[
+            ("session-agent", "Agent", SessionState::Running),
+            (
+                "session-title",
+                "Migrate the invoice table",
+                SessionState::Complete,
+            ),
+            ("session-body", "Cleanup", SessionState::Complete),
+        ],
+    );
+    seed_outside_session(&database, &repo_path, "session-outsider", "Invoice export");
+    persist_message(
+        &database,
+        "session-body",
+        "body-1",
+        "message.completed",
+        "The invoice totals were off by one cent.",
+        json!({}),
+    );
+    persist_message(
+        &database,
+        "session-body",
+        "body-trace",
+        "message.completed",
+        "invoice detail from a subagent",
+        json!({ "parent_tool_use_id": "toolu_9" }),
+    );
+    persist_message(
+        &database,
+        "session-outsider",
+        "out-1",
+        "message.completed",
+        "invoice secrets",
+        json!({}),
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let reply = harness
+        .ask(json!({ "list": { "all": true, "query": "invoice" } }))
+        .await;
+    assert!(reply["error"].is_null(), "{reply}");
+    let sessions = reply["listed"]["sessions"].as_array().expect("sessions");
+    let ids: Vec<&str> = sessions
+        .iter()
+        .map(|entry| entry["sessionId"].as_str().expect("id"))
+        .collect();
+    assert_eq!(ids, vec!["session-title", "session-body"], "{reply}");
+    assert_eq!(sessions[0]["matched"]["source"], "title");
+    assert_eq!(sessions[1]["matched"]["source"], "content");
+    assert_eq!(sessions[1]["matched"]["itemId"], "body-1");
+    let snippet = sessions[1]["matched"]["snippet"].as_str().expect("snippet");
+    assert!(
+        snippet.contains("invoice") && !snippet.contains("<b>"),
+        "{snippet}"
+    );
+
+    // Without a query `all` still lists the other project, flagged unreadable.
+    let plain = harness.ask(json!({ "list": { "all": true } })).await;
+    let outsider = plain["listed"]["sessions"]
+        .as_array()
+        .expect("sessions")
+        .iter()
+        .find(|entry| entry["sessionId"] == "session-outsider")
+        .cloned()
+        .expect("listed");
+    assert_eq!(outsider["unreadable"], true);
+}
+
+/// Only a prompt marked as the person's grants a chat. A scheduled follow-up, a
+/// goal turn, a session move, another session's message, a forged payload and
+/// any unattested row are not a person attaching a chat, however well-formed
+/// their link.
+#[tokio::test]
+async fn only_a_prompt_the_person_wrote_grants_a_chat_and_only_in_the_composers_grammar() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let repo_path = repo.path().display().to_string();
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo_path,
+        &[("session-agent", "Agent", SessionState::Running)],
+    );
+    seed_outside_session(&database, &repo_path, "session-outsider", "Elsewhere");
+    seed_outside_session_extra(&database, "session-outsider-2", "Elsewhere 2");
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+    let read = |session: &str| json!({ "read": { "sessionId": session } });
+    let link = "[Elsewhere](argmax://chat/session-outsider?v=1)";
+
+    for (index, payload) in [
+        json!({ "starter": "schedule" }),
+        json!({ "starter": "goal" }),
+        json!({ "starter": "move" }),
+        json!({ "origin": { "sessionId": "x", "label": "X", "kind": "message" } }),
+        // Nothing in the payload can make a prompt a person's: only the
+        // `prompt_author` column does, and an unattested row (a legacy row, an
+        // import, an agent path) has none.
+        json!({ "author": "person", "prompt_author": "person" }),
+        json!({}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        persist_message(
+            &database,
+            "session-agent",
+            &format!("agent-authored-{index}"),
+            "user.message",
+            &format!("see {link}"),
+            payload,
+        );
+    }
+    assert_eq!(
+        harness.ask(read("session-outsider")).await["error"]["code"],
+        "READ_FORBIDDEN",
+        "agent-authored prompts must not grant"
+    );
+
+    // Links the composer would not draw as a chip grant nothing either.
+    for (index, text) in [
+        "argmax://chat/session-outsider",
+        "[x](argmax://chat/session-outsider?v=2)",
+        "[x](argmax://chat/session-outsider-2extra)",
+        "[x](argmax://chat/session-outsider",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        persist_message(
+            &database,
+            "session-agent",
+            &format!("loose-{index}"),
+            "user.message",
+            text,
+            json!({}),
+        );
+    }
+    assert_eq!(
+        harness.ask(read("session-outsider")).await["error"]["code"],
+        "READ_FORBIDDEN"
+    );
+    // The id of one chat is a prefix of the other's: naming the longer one
+    // opens only the longer one.
+    persist_person_message(
+        &database,
+        "session-agent",
+        "attach-long",
+        "[Elsewhere 2](argmax://chat/session-outsider-2?v=1&e=evt_9)",
+    );
+    assert!(harness.ask(read("session-outsider-2")).await["error"].is_null());
+    assert_eq!(
+        harness.ask(read("session-outsider")).await["error"]["code"],
+        "READ_FORBIDDEN"
+    );
+
+    persist_person_message(&database, "session-agent", "attach", link);
+    assert!(harness.ask(read("session-outsider")).await["error"].is_null());
+}
+
+/// A search returns each readable chat once, however many lines of it match,
+/// and a page marks as clipped only the tool rows that left something out.
+#[tokio::test]
+async fn one_chat_with_many_matches_cannot_crowd_the_others_out_of_a_search() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let repo_path = repo.path().display().to_string();
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo_path,
+        &[
+            ("session-agent", "Agent", SessionState::Running),
+            ("session-chatty", "Chatty", SessionState::Complete),
+            ("session-quiet", "Quiet", SessionState::Complete),
+        ],
+    );
+    for index in 0..200 {
+        persist_message(
+            &database,
+            "session-chatty",
+            &format!("chatty-{index}"),
+            "message.completed",
+            &format!("the ledger rebuild step {index} finished"),
+            json!({}),
+        );
+    }
+    persist_message(
+        &database,
+        "session-quiet",
+        "quiet-1",
+        "message.completed",
+        "one ledger note",
+        json!({}),
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let reply = harness.ask(json!({ "list": { "query": "ledger" } })).await;
+    let ids: Vec<&str> = reply["listed"]["sessions"]
+        .as_array()
+        .expect("sessions")
+        .iter()
+        .map(|entry| entry["sessionId"].as_str().expect("id"))
+        .collect();
+    assert_eq!(ids.len(), 2, "{reply}");
+    assert!(ids.contains(&"session-chatty") && ids.contains(&"session-quiet"));
+}
+
+#[tokio::test]
+async fn a_tool_row_is_clipped_only_when_its_line_left_something_out() {
+    let repo = tempfile::tempdir().expect("repo dir");
+    let repo_path = repo.path().display().to_string();
+    let database = Arc::new(Database::open_in_memory().expect("database"));
+    seed_sessions(
+        &database,
+        &repo_path,
+        &[
+            ("session-agent", "Agent", SessionState::Running),
+            ("session-peer", "Peer", SessionState::Complete),
+        ],
+    );
+    persist_message(
+        &database,
+        "session-peer",
+        "short",
+        "command.started",
+        "Bash",
+        json!({ "input": { "command": "ls" } }),
+    );
+    persist_message(
+        &database,
+        "session-peer",
+        "wide",
+        "command.started",
+        "Read",
+        json!({ "input": { "file_path": "src/a.rs", "offset": 40, "limit": 20 } }),
+    );
+    persist_message(
+        &database,
+        "session-peer",
+        "ok-empty",
+        "command.completed",
+        "",
+        json!({ "toolName": "Bash" }),
+    );
+    persist_message(
+        &database,
+        "session-peer",
+        "ok-output",
+        "command.completed",
+        "file listing",
+        json!({ "toolName": "Bash" }),
+    );
+    let harness = ToolHarness::open(Arc::clone(&database), repo.path(), "session-agent");
+
+    let page = harness
+        .ask(json!({ "read": { "sessionId": "session-peer" } }))
+        .await;
+    let clipped: Vec<(String, bool)> = page["read"]["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .map(|entry| {
+            (
+                entry["id"].as_str().expect("id").to_string(),
+                entry["clipped"].as_bool().unwrap_or(false),
+            )
+        })
+        .collect();
+    assert_eq!(
+        clipped,
+        vec![
+            ("short".to_string(), false),
+            ("wide".to_string(), true),
+            ("ok-empty".to_string(), false),
+            ("ok-output".to_string(), true),
+        ]
+    );
 }

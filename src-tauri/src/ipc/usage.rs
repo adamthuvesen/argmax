@@ -14,7 +14,9 @@ use super::{
 use crate::error::ArgmaxResult;
 use crate::routing::cost::{router_cost, RouterCostSummary};
 use crate::state::AppState;
-use crate::usage::remaining::{fetch_remaining, LiveRemainingSource, UsageRemaining};
+use crate::usage::remaining::{
+    fetch_remaining, LiveRemainingSource, RemainingSource, UsageRemaining,
+};
 use crate::usage::scanner::{spawn_sweep, ScanProgress};
 use crate::usage::{summary, UsageScanPhase, UsageScanState, UsageSummary, PRICING_AS_OF};
 
@@ -64,7 +66,19 @@ pub async fn usage_remaining(_input: UsageRemainingInput) -> ArgmaxResult<UsageR
 }
 
 pub async fn usage_remaining_impl() -> ArgmaxResult<UsageRemaining> {
-    read_off_main(|| Ok(fetch_remaining(Arc::new(LiveRemainingSource::new())))).await
+    read_off_main(|| Ok(fetch_remaining(remaining_source()))).await
+}
+
+/// A verification build reads scripted figures, so its composer chip has
+/// something to show without a real account. Every other build, and a
+/// verification-mode launch of a build without the feature, reads the live
+/// accounts (the live source fences itself in verification mode).
+fn remaining_source() -> Arc<dyn RemainingSource> {
+    #[cfg(feature = "verification")]
+    if crate::providers::verification::requested() {
+        return Arc::new(crate::usage::remaining::verification::VerificationRemainingSource::new());
+    }
+    Arc::new(LiveRemainingSource::new())
 }
 
 /// `None` when no chat was routed in the window; the card then stays hidden.

@@ -598,6 +598,9 @@ pub fn update_session_provider(
     session_id: &str,
     input: &SessionProviderInput,
 ) -> ArgmaxResult<SessionSummary> {
+    // The id below is nulled, not forgotten: parking keeps the old provider's
+    // conversation so switching back resumes it (docs/providers.md).
+    super::continuity::park_active(connection, session_id)?;
     let mut statement = connection
         .prepare_cached(
             r#"
@@ -692,6 +695,7 @@ pub fn update_session_provider_conversation_id(
     statement
         .execute((provider_conversation_id, now_iso(), session_id))
         .map_err(sqlite_error)?;
+    super::continuity::bind_active(connection, session_id, provider_conversation_id)?;
     find_session_by_id(connection, session_id)
 }
 
@@ -713,6 +717,9 @@ pub fn clear_session_conversation(
     if changes == 0 {
         return Err(ArgmaxError::record_not_found("session", session_id));
     }
+    // A cleared chat has no history any parked conversation could rejoin.
+    super::continuity::invalidate_session_bindings(connection, session_id, "cleared")?;
+    super::continuity::clear_fork_native_plan(connection, session_id)?;
     find_session_by_id(connection, session_id)
 }
 
@@ -727,6 +734,9 @@ pub fn set_session_resume_fork(connection: &Connection, session_id: &str) -> Arg
     if changes == 0 {
         return Err(ArgmaxError::record_not_found("session", session_id));
     }
+    // The stored id still names the source's conversation; the first launch
+    // replaces it with the fork's own, so it is not this session's binding.
+    super::continuity::invalidate_session_bindings(connection, session_id, "fork-source")?;
     Ok(())
 }
 

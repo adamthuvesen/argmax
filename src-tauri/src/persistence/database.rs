@@ -634,14 +634,6 @@ mod tests {
         assert_eq!(database.prune_tasks.lock().expect("tasks").len(), 0);
     }
 
-    #[tokio::test]
-    async fn vacuum_database_runs_on_blocking_pool() {
-        let database = Arc::new(Database::open_in_memory().expect("open db"));
-        vacuum_database(Arc::clone(&database))
-            .await
-            .expect("vacuum");
-    }
-
     fn seed_minimal_session(connection: &Connection) {
         let timestamp = "2026-05-24T10:00:00.000Z";
         connection

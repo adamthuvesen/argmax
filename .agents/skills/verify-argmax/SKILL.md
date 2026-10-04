@@ -75,15 +75,16 @@ Doctor refuses a locked screen. If the screen locks mid-drive, the result is
 Run `launch`, `doctor`, one or more `drive <feature-id>`, `control`, then `clean`.
 An exclusive command lock keeps drives serial. Each drive and `control` re-runs
 doctor first, so its output starts with `READY`. Each starts its own native app. The fixture launches via
-production IPC. Follow-up and Stop use native controls. This does not verify
-the New chat launcher, other app surfaces, or live provider service support.
+production IPC. Follow-up and Stop use native controls. `composer-reference`
+also drives the New chat launcher. This does not verify other app surfaces or
+live provider service support.
 
 ```bash
 node .agents/skills/verify-argmax/verify.mjs drive chat-resume
 ```
 
-Select `chat-resume`, `queued-restart`, `session-move`, `cancellation`, or
-`provider-error` from the feature map.
+Select `chat-resume`, `queued-restart`, `session-move`, `composer-reference`,
+`composer-editor`, `fork-merge`, `workspace-settings`, `cancellation`, or `provider-error` from the feature map.
 A failed drive stays FAIL. After `doctor` and `reset`, one retry is allowed and
 a successful retry is `flaky`. After any surprising result, inspect evidence
 and doctor before continuing. A tripwire hit requires cleanup and an isolation fix.

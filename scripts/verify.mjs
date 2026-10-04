@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, copyFile, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { loadavg, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -14,6 +14,7 @@ import { checkoutFingerprint, delay, fileSha256, runChecked, terminateRunningCom
 import { copyIfPresent, listEvidenceFiles, redact, redactEvidenceTextFiles, writeJson, writeNdjson } from "./verification/evidence.mjs";
 import { verifySessionMove } from "./verification/session-move.mjs";
 import { verifyStagedPreservingRevert } from "./verification/workspace-recovery.mjs";
+import { verifyComposerEditor, verifyComposerReference, verifyForkMergeBack, verifyWorkspaceSettings, workflowDiagnostics, workflowProgress } from "./verification/workflows.mjs";
 import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
@@ -44,7 +45,14 @@ const scenarioDefinitionKeys = Object.freeze({
   "provider-error": "providerError",
   "session-move": "sessionMoveFirst",
   "staged-revert": "providerError",
+  "composer-reference": "composerSource",
+  "composer-editor": "composerSource",
+  "fork-merge": "forkTurnOne",
+  "workspace-settings": "workspaceSettings",
 });
+// Scenarios that drive the New chat launcher, composer chips, or fork and merge
+// through the native window and so have no remote-browser fallback.
+const nativeOnlyScenarios = ["queued-restart", "session-move", "staged-revert", "composer-reference", "composer-editor", "fork-merge", "workspace-settings"];
 
 function providerForScenario(scenario) {
   if (scenario === "persistent-codex-subagent" || scenario === "codex-user-input") return VERIFICATION_CODEX_PROVIDER;
@@ -87,7 +95,7 @@ export function parseVerifyArgs(argv) {
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
   }
-  if (["session-move", "staged-revert"].includes(options.scenario)
+  if (["session-move", "staged-revert", "composer-reference", "composer-editor", "fork-merge", "workspace-settings"].includes(options.scenario)
       && options.native !== "required") {
     throw new Error(`${options.scenario} requires native verification`);
   }
@@ -331,9 +339,33 @@ async function runScenario({
   timeline
 }) {
   const definition = definitionForScenario(scenario);
-  const { workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.prompt);
+  const { project, workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.taskLabel ?? definition.prompt);
   const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
   timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
+
+  const workflows = {
+    "composer-reference": verifyComposerReference,
+    "composer-editor": verifyComposerEditor,
+    "fork-merge": verifyForkMergeBack,
+    "workspace-settings": verifyWorkspaceSettings,
+  };
+  if (workflows[scenario]) {
+    return workflows[scenario]({
+      repoPath,
+      bridge,
+      browser,
+      source: launched,
+      workspace,
+      project,
+      controlDir,
+      invocationLog,
+      databasePath,
+      outputDir,
+      timeoutMs,
+      verifyUi,
+      sendInput,
+    });
+  }
 
   if (scenario === "session-move") {
     return verifySessionMove({
@@ -729,6 +761,12 @@ function expectedPersistenceTexts(scenario) {
     return [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
   }
   if (scenario === "queued-restart") return [VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
+  // The result session is the background chat, not the seeded source chat.
+  if (scenario === "composer-reference" || scenario === "composer-editor") return [VERIFICATION_SCENARIOS.composerBackground.visibleText];
+  if (scenario === "fork-merge") {
+    return [VERIFICATION_SCENARIOS.forkTurnOne.visibleText, VERIFICATION_SCENARIOS.forkMerge.visibleText];
+  }
+  if (scenario === "workspace-settings") return [VERIFICATION_SCENARIOS.workspaceSettings.visibleText];
   if (scenario === "session-move") {
     return [VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText, VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText];
   }
@@ -948,8 +986,7 @@ export async function runVerification(options) {
     if (persistentSubagentScenarios.has(options.scenario) && options.native !== "off") {
       throw new Error(`${options.scenario} requires --native off because it verifies a scratch backend restart`);
     }
-    if (["queued-restart", "session-move", "staged-revert"].includes(options.scenario)
-        && options.native !== "required") {
+    if (nativeOnlyScenarios.includes(options.scenario) && options.native !== "required") {
       throw new Error(`${options.scenario} requires native verification`);
     }
     report.source.beforeBuild = await checkoutFingerprint(repoRoot);
@@ -1048,9 +1085,11 @@ export async function runVerification(options) {
     bridge = await connectBridgeWhenReady({ port: remotePort, token: remoteToken }, options.timeoutMs);
     const health = await bridge.call("health:ping", {});
     report.assertions.push({ name: "backend-ready", ok: Boolean(health) });
-    const titleIncludes = definitionForScenario(options.scenario).prompt;
+    const definition = definitionForScenario(options.scenario);
+    const defaultTitleIncludes = definition.taskLabel ?? definition.prompt;
+    // A scenario with several chats names the row it wants; the rest use the seeded one.
     const verifyUi = desktopHandle
-      ? async ({ name, expectedTexts, expectIdle }) => {
+      ? async ({ name, expectedTexts, expectIdle, titleIncludes = defaultTitleIncludes }) => {
           const result = await desktopModule.verifyDesktopSession({
             browser: desktopHandle.browser,
             outputDir: path.join(outputDir, "native"),
@@ -1064,7 +1103,7 @@ export async function runVerification(options) {
           if (!result.ok) throw new Error(`native UI verification failed: ${result.errors.join("; ")}`);
           return result;
         }
-      : ({ name, expectedTexts, agentExpectedTexts, agentMustSucceed, theme }) => verifyBrowserSession({
+      : ({ name, expectedTexts, agentExpectedTexts, agentMustSucceed, theme, titleIncludes = defaultTitleIncludes }) => verifyBrowserSession({
           repoRoot,
           port: remotePort,
           token: remoteToken,
@@ -1177,6 +1216,10 @@ export async function runVerification(options) {
         restartBackend,
       });
     } catch (error) {
+      if (workflowProgress().length) {
+        await mkdir(path.join(outputDir, "native"), { recursive: true });
+        await writeJson(path.join(outputDir, "native", "workflow-progress.json"), { failedWith: error.message, passedBefore: workflowProgress(), diagnostics: workflowDiagnostics(), hostLoadAverage: loadavg() });
+      }
       if (options.scenario === "session-move") {
         const nativeOutput = path.join(outputDir, "native");
         const failurePath = path.join(nativeOutput, "session-move-failure.json");
@@ -1208,6 +1251,7 @@ export async function runVerification(options) {
     report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
     report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
     report.assertions.push(...(scenarioResult.assertions ?? []));
+    if (scenarioResult.coverage) report.workflowCoverage = scenarioResult.coverage;
     if (persistentSubagentScenarios.has(options.scenario)) {
       report.assertions.push(
         { name: "persistent-child-stable-id", ok: true, value: scenarioResult.nativeChildId },

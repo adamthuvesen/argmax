@@ -1,4 +1,5 @@
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
+import type { TimelineEvent as WireTimelineEvent } from "../../shared/bindings.js";
 import { decodeToolActivity, type ToolActivity } from "./toolActivity.js";
 import type {
   ProviderId,
@@ -200,7 +201,8 @@ type CanonicalErrorEvent = CanonicalCommon & {
   isPayloadTruncation: boolean;
 };
 
-type CanonicalUnknownEvent = CanonicalCommon & {
+type CanonicalUnknownEvent = Omit<CanonicalCommon, "raw"> & {
+  raw: RawTimelineEvent;
   kind: "unknown";
   reason: "invalid-payload" | "unsupported-type";
 };
@@ -262,23 +264,36 @@ function providerThreadId(payload: Record<string, unknown>): string | null {
     ?? stringValue(item?.sender_thread_id);
 }
 
-function common(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalCommon {
+function common<T extends RawTimelineEvent>(raw: T, payload: Record<string, unknown>): Omit<CanonicalCommon, "raw"> & { raw: T } {
+  const context = raw.semantic?.version === 1 ? raw.semantic.context : null;
   return {
     raw,
-    isRaw: payload.raw === true,
-    parentToolUseId: stringValue(payload.parent_tool_use_id),
-    providerThreadId: providerThreadId(payload),
-    agentModelId: nonBlankString(payload.agentModelId),
-    agentReasoningEffort: nonBlankString(payload.agentReasoningEffort),
-    providerChildSessionId: nonBlankString(payload.providerChildSessionId),
-    agentRunId: nonBlankString(payload.agentRunId),
-    agentRootToolUseId: nonBlankString(payload.agentRootToolUseId)
+    isRaw: context ? context.isRaw : payload.raw === true,
+    parentToolUseId: context ? context.parentToolUseId : stringValue(payload.parent_tool_use_id),
+    providerThreadId: context ? context.providerThreadId : providerThreadId(payload),
+    agentModelId: context ? context.agentModelId : nonBlankString(payload.agentModelId),
+    agentReasoningEffort: context ? context.agentReasoningEffort : nonBlankString(payload.agentReasoningEffort),
+    providerChildSessionId: context ? context.providerChildSessionId : nonBlankString(payload.providerChildSessionId),
+    agentRunId: context ? context.agentRunId : nonBlankString(payload.agentRunId),
+    agentRootToolUseId: context ? context.agentRootToolUseId : nonBlankString(payload.agentRootToolUseId)
       ?? nonBlankString(payload.parentToolUseId),
-    providerParentConversationId: nonBlankString(payload.providerParentConversationId),
-    agentCodename: nonBlankString(payload.agentCodename),
-    providerInvocationId: extractProviderInvocationId(payload),
-    traceSuperseded: payload.traceSyntheticSuperseded === true,
-    traceImported: payload.traceImported === true
+    providerParentConversationId: context ? context.providerParentConversationId : nonBlankString(payload.providerParentConversationId),
+    agentCodename: context ? context.agentCodename : nonBlankString(payload.agentCodename),
+    providerInvocationId: context ? context.providerInvocationId : extractProviderInvocationId(payload),
+    traceSuperseded: context ? context.traceSuperseded : payload.traceSyntheticSuperseded === true,
+    traceImported: context ? context.traceImported : payload.traceImported === true
+  };
+}
+
+/** Preserve a malformed wire payload without letting it masquerade as chat. */
+export function decodeWireTimelineEvent(wire: WireTimelineEvent): TimelineEvent {
+  const payload: unknown = wire.payload;
+  return {
+    ...wire,
+    rowCursor: wire.rowCursor ?? undefined,
+    payload: isPlainObject(payload)
+      ? payload
+      : { __argmaxInvalidPayload: true, rawPayload: payload }
   };
 }
 
@@ -296,63 +311,71 @@ function cursorCumulativeText(payload: Record<string, unknown>): string | null {
 
 function decodeMessage(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalMessageEvent {
   const shared = common(raw, payload);
+  const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
+  const meaning = event?.kind === "message" ? event : null;
   const base = {
     ...shared,
     kind: "message" as const,
-    role: raw.type === "user.message" ? "user" as const : "assistant" as const,
-    delivery: raw.type === "user.message" && payload.delivery === "steer" ? "steer" : null,
-    phase: raw.type === "message.delta" ? "delta" as const : "completed" as const,
-    content: raw.type === "message.delta" && payload.thinking === true
+    role: meaning?.role ?? (raw.type === "user.message" ? "user" as const : "assistant" as const),
+    delivery: meaning ? meaning.delivery : (raw.type === "user.message" && payload.delivery === "steer" ? "steer" : null),
+    phase: meaning?.phase ?? (raw.type === "message.delta" ? "delta" as const : "completed" as const),
+    content: meaning?.content ?? (raw.type === "message.delta" && payload.thinking === true
       ? "thinking" as const
-      : "answer" as const,
-    childProse: raw.type !== "user.message" &&
+      : "answer" as const),
+    childProse: (meaning?.role ?? (raw.type === "user.message" ? "user" : "assistant")) !== "user" &&
       (shared.parentToolUseId !== null || shared.providerThreadId !== null),
-    rawStream: payload.stream === "stdout" || payload.stream === "stderr" || payload.stream === "pty"
+    rawStream: meaning?.rawStream ?? (payload.stream === "stdout" || payload.stream === "stderr" || payload.stream === "pty")
   };
   return Object.defineProperty(base, "cumulativeText", {
     enumerable: true,
-    get: () => cursorCumulativeText(payload)
+    get: () => meaning ? meaning.cumulativeText : cursorCumulativeText(payload)
   }) as CanonicalMessageEvent;
 }
 
 function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalToolEvent {
-  const phase = raw.type.slice("command.".length) as CanonicalToolEvent["phase"];
+  const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
+  const meaning = event?.kind === "tool" ? event : null;
+  const phase = meaning?.phase ?? (raw.type.slice("command.".length) as CanonicalToolEvent["phase"]);
   const status = stringValue(payload.status)?.toLowerCase() ?? null;
+  const shared = common(raw, payload);
   return {
-    ...common(raw, payload),
+    ...shared,
     kind: "tool",
     phase,
-    toolUseId: phase === "started"
+    toolUseId: meaning ? meaning.toolUseId : (phase === "started"
       ? extractToolUseId(payload) ?? raw.id
-      : extractCompletionCorrelationId(payload),
-    name: extractToolName(payload),
-    providerName: stringValue(payload.name),
-    invocationId: extractProviderInvocationId(payload),
+      : extractCompletionCorrelationId(payload)),
+    name: meaning?.name ?? extractToolName(payload),
+    providerName: meaning ? meaning.providerName : stringValue(payload.name),
+    invocationId: shared.providerInvocationId,
     activity: decodeToolActivity(payload.activity),
-    surface: stringValue(payload.surface),
-    outcome: phase === "completed"
+    surface: meaning ? meaning.surface : stringValue(payload.surface),
+    outcome: meaning ? meaning.outcome : (phase === "completed"
       ? payload.cancelled === true || payload.canceled === true || status && ["cancelled", "canceled", "interrupted"].includes(status) ? "cancelled"
         : detectToolError(payload) ? "failed" : "succeeded"
-      : null,
-    running: phase !== "completed" || status === "running" || status === "started" || status === "in_progress",
-    traceSyntheticLaunch: payload.traceSyntheticLaunch === true
+      : null),
+    running: meaning?.running ?? (phase !== "completed" || status === "running" || status === "started" || status === "in_progress"),
+    traceSyntheticLaunch: meaning?.traceSyntheticLaunch ?? payload.traceSyntheticLaunch === true
   };
 }
 
 function decodeApproval(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalApprovalEvent {
-  const phase = raw.type === "approval.requested"
+  const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
+  const meaning = event?.kind === "approval" ? event : null;
+  const phase = meaning?.phase ?? (raw.type === "approval.requested"
     ? "requested"
-    : raw.type === "approval.resolved" ? "resolved" : "blocked";
+    : raw.type === "approval.resolved" ? "resolved" : "blocked");
+  const shared = common(raw, payload);
   return {
-    ...common(raw, payload),
+    ...shared,
     kind: "approval",
     phase,
-    approvalId: stringValue(payload.approvalId),
-    provider: stringValue(payload.provider),
-    providerInvocationId: extractProviderInvocationId(payload),
-    providerRequestId: stringValue(payload.providerRequestId),
-    toolUseId: stringValue(payload.toolUseId) ?? stringValue(payload.tool_use_id),
-    resolution: stringValue(payload.status) ?? stringValue(payload.resolution),
+    approvalId: meaning ? meaning.approvalId : stringValue(payload.approvalId),
+    provider: meaning ? meaning.provider : stringValue(payload.provider),
+    providerInvocationId: shared.providerInvocationId,
+    providerRequestId: meaning ? meaning.providerRequestId : stringValue(payload.providerRequestId),
+    toolUseId: meaning ? meaning.toolUseId : stringValue(payload.toolUseId) ?? stringValue(payload.tool_use_id),
+    resolution: meaning ? meaning.resolution : stringValue(payload.status) ?? stringValue(payload.resolution),
     command: stringValue(payload.command),
     cwd: stringValue(payload.cwd),
     riskLevel: stringValue(payload.riskLevel)
@@ -360,17 +383,21 @@ function decodeApproval(raw: TimelineEvent, payload: Record<string, unknown>): C
 }
 
 function decodeAgent(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalAgentEvent {
+  const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
+  const meaning = event?.kind === "agent" ? event : null;
+  const shared = common(raw, payload);
   return {
-    ...common(raw, payload),
+    ...shared,
     kind: "agent",
-    phase: raw.type === "agent.started" ? "started" : "completed",
-    providerInvocationId: extractProviderInvocationId(payload),
-    status: stringValue(payload.status)
+    phase: meaning?.phase ?? (raw.type === "agent.started" ? "started" : "completed"),
+    providerInvocationId: shared.providerInvocationId,
+    status: meaning ? meaning.status : stringValue(payload.status)
   };
 }
 
 function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalLifecycleEvent {
-  const name = raw.type.slice("session.".length);
+  const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
+  const name = event?.kind === "lifecycle" ? event.name : raw.type.slice("session.".length);
   const shared = common(raw, payload);
   if (name === "compacting" || name === "compacted") {
     return { ...shared, kind: "lifecycle", name, preTokens: positiveNumber(payload.preTokens), postTokens: positiveNumber(payload.postTokens) };
@@ -441,16 +468,30 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
 }
 
 function decodeMultitask(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalMultitaskEvent {
+  const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
+  const meaning = event?.kind === "multitask" ? event : null;
   return {
     ...common(raw, payload),
     kind: "multitask",
-    phase: raw.type === "multitask.launched" ? "launched" : "finished",
-    childSessionId: stringValue(payload.childSessionId),
-    state: stringValue(payload.state),
-    taskLabel: stringValue(payload.taskLabel) ?? raw.message,
-    prompt: stringValue(payload.prompt),
-    worktree: payload.worktree === true,
-    answer: stringValue(payload.answer)
+    phase: meaning?.phase ?? (raw.type === "multitask.launched" ? "launched" : "finished"),
+    childSessionId: meaning ? meaning.childSessionId : stringValue(payload.childSessionId),
+    state: meaning ? meaning.state : stringValue(payload.state),
+    taskLabel: (meaning ? meaning.taskLabel : stringValue(payload.taskLabel)) ?? raw.message,
+    prompt: meaning ? meaning.prompt : stringValue(payload.prompt),
+    worktree: meaning ? meaning.worktree : payload.worktree === true,
+    answer: meaning ? meaning.answer : stringValue(payload.answer)
+  };
+}
+
+function decodeError(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalErrorEvent {
+  const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
+  const meaning = event?.kind === "error" ? event : null;
+  return {
+    ...common(raw, payload),
+    kind: "error",
+    code: meaning ? meaning.code : stringValue(payload.code),
+    operation: meaning ? meaning.operation : stringValue(payload.operation),
+    isPayloadTruncation: raw.message === "event payload truncated" && "truncatedEventId" in payload
   };
 }
 
@@ -458,7 +499,7 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
   const cached = decodedEvents.get(raw);
   if (cached) return cached;
   const payloadValue: unknown = raw.payload;
-  if (!isPlainObject(payloadValue)) {
+  if (!isPlainObject(payloadValue) || payloadValue.__argmaxInvalidPayload === true) {
     const decoded: CanonicalUnknownEvent = {
       ...common(raw, {}),
       kind: "unknown",
@@ -468,15 +509,33 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     return decoded;
   }
   const payload = payloadValue;
+  const validRaw = raw as TimelineEvent;
+  const meaning = raw.semantic?.version === 1 ? raw.semantic.event : null;
   let decoded: CanonicalTimelineEvent;
-  if (raw.type === "user.message" || raw.type === "message.delta" || raw.type === "message.completed") {
-    decoded = decodeMessage(raw, payload);
+  if (meaning?.kind === "message") {
+    decoded = decodeMessage(validRaw, payload);
+  } else if (meaning?.kind === "tool") {
+    decoded = decodeTool(validRaw, payload);
+  } else if (meaning?.kind === "approval") {
+    decoded = decodeApproval(validRaw, payload);
+  } else if (meaning?.kind === "agent") {
+    decoded = decodeAgent(validRaw, payload);
+  } else if (meaning?.kind === "lifecycle") {
+    decoded = decodeLifecycle(validRaw, payload);
+  } else if (meaning?.kind === "multitask") {
+    decoded = decodeMultitask(validRaw, payload);
+  } else if (meaning?.kind === "error") {
+    decoded = decodeError(validRaw, payload);
+  } else if (meaning?.kind === "unknown") {
+    decoded = { ...common(validRaw, payload), kind: "unknown", reason: meaning.reason === "invalid-payload" ? "invalid-payload" : "unsupported-type" };
+  } else if (raw.type === "user.message" || raw.type === "message.delta" || raw.type === "message.completed") {
+    decoded = decodeMessage(validRaw, payload);
   } else if (raw.type === "command.started" || raw.type === "command.output" || raw.type === "command.completed") {
-    decoded = decodeTool(raw, payload);
+    decoded = decodeTool(validRaw, payload);
   } else if (raw.type === "approval.requested" || raw.type === "approval.resolved" || raw.type === "permission.blocked") {
-    decoded = decodeApproval(raw, payload);
+    decoded = decodeApproval(validRaw, payload);
   } else if (raw.type === "agent.started" || raw.type === "agent.completed") {
-    decoded = decodeAgent(raw, payload);
+    decoded = decodeAgent(validRaw, payload);
   } else if (
     raw.type === "session.started" ||
     raw.type === "session.streaming" ||
@@ -492,17 +551,11 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     raw.type === "session.note" ||
     raw.type === "session.recovered-from-crash"
   ) {
-    decoded = decodeLifecycle(raw, payload);
+    decoded = decodeLifecycle(validRaw, payload);
   } else if (raw.type === "multitask.launched" || raw.type === "multitask.finished") {
-    decoded = decodeMultitask(raw, payload);
+    decoded = decodeMultitask(validRaw, payload);
   } else if (raw.type === "error") {
-    decoded = {
-      ...common(raw, payload),
-      kind: "error",
-      code: stringValue(payload.code),
-      operation: stringValue(payload.operation),
-      isPayloadTruncation: raw.message === "event payload truncated" && "truncatedEventId" in payload
-    };
+    decoded = decodeError(validRaw, payload);
   } else {
     decoded = { ...common(raw, payload), kind: "unknown", reason: "unsupported-type" };
   }

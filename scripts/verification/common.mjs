@@ -1,9 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { lstat, readFile, readlink } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const runningCommandGroups = new Set();
+
+/**
+ * Stand-ins for machine-global commands. Each one appends its name and first
+ * argument (the subcommand, never the rest, which can hold a secret) to the log
+ * and exits 97, so a disposable app that reaches for the real tool leaves a
+ * record and a failure instead of touching the host. The directory goes first
+ * on the app's PATH.
+ */
+export async function writeTripwires(directory, logPath, names) {
+  await mkdir(directory, { recursive: true });
+  const quotedLog = `'${logPath.replaceAll("'", "'\\''")}'`;
+  for (const name of names) {
+    await writeFile(path.join(directory, name), `#!/bin/sh\nprintf '%s %s\\n' '${name}' "$1" >> ${quotedLog}\nexit 97\n`, { mode: 0o755 });
+  }
+}
 
 export function terminateRunningCommands(signal = "SIGTERM") {
   for (const pid of runningCommandGroups) {

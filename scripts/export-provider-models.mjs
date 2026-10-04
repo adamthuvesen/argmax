@@ -11,17 +11,20 @@
 // resolved here, per model, and shipped as data.
 //
 //   npm run export:provider-models
+//   npm run check:provider-models     # no write; exits 1 on drift (precheck + CI)
 //
 // Output: ios/Argmax/Resources/providerModels.json, bundled by
 // ios/Argmax/project.yml and decoded by Sources/Chats/ProviderCatalog.swift.
 // Re-run it after any catalogue change; ProviderCatalogTests fails the iOS
-// suite when the file is missing or unreadable.
+// suite when the file is missing or unreadable. The iOS suite does not run in
+// CI, so `--check` is the gate: it fails when the file is stale, or when
+// ProviderCatalogTests looks up a model id the catalogue no longer lists.
 //
 // The catalogue's import graph is not runnable under plain node (see the same
 // note in scripts/bridge.mjs), so this loads it through Vite's SSR loader,
 // which is the dev dependency the renderer already builds with.
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -117,6 +120,34 @@ function buildCatalogue({ models, picker }) {
 }
 
 const catalogue = buildCatalogue(await loadCatalogue());
-await mkdir(path.dirname(outputPath), { recursive: true });
-await writeFile(outputPath, `${JSON.stringify(catalogue, null, 2)}\n`);
-console.log(`Wrote ${path.relative(repoRoot, outputPath)}`);
+const serialized = `${JSON.stringify(catalogue, null, 2)}\n`;
+const relativeOutput = path.relative(repoRoot, outputPath);
+
+if (process.argv.includes("--check")) {
+  const failures = [];
+  if ((await readFile(outputPath, "utf8").catch(() => null)) !== serialized) {
+    failures.push(`${relativeOutput} is stale. Run: npm run export:provider-models`);
+  }
+
+  // A test that names a retired id fails only on a Mac with Xcode, so read the
+  // lookups here. A retired id is fine when a successor row resolves it.
+  const testPath = path.join(repoRoot, "ios/Argmax/Tests/ProviderCatalogTests.swift");
+  const testSource = await readFile(testPath, "utf8");
+  for (const [, provider, modelId] of testSource.matchAll(/model\(provider: "([^"]+)", modelId: "([^"]+)"\)/g)) {
+    const entry = catalogue.providers.find((candidate) => candidate.id === provider);
+    const resolved = entry?.successors[modelId] ?? modelId;
+    if (!entry?.models.some((model) => model.modelId === resolved)) {
+      failures.push(`ProviderCatalogTests.swift looks up ${provider}/${modelId}, which the catalogue no longer lists`);
+    }
+  }
+
+  if (failures.length > 0) {
+    console.error(failures.join("\n"));
+    process.exit(1);
+  }
+  console.log("provider-models: iOS catalogue is current.");
+} else {
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, serialized);
+  console.log(`Wrote ${relativeOutput}`);
+}

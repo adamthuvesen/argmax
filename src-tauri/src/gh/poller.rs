@@ -1,6 +1,6 @@
 // GhPoller periodically calls
 // `GhService::refresh` against running sessions, recently completed sessions,
-// and sessions with an open PR. It watches for `check_state` / `head_sha`
+// sessions with an open PR, and sessions with a PR watch (see `gh::watch`). It watches for `check_state` / `head_sha`
 // and milestone transitions and publishes a `DashboardDelta` so the renderer
 // can re-render PR status without polling itself.
 
@@ -19,9 +19,11 @@ use crate::persistence::dashboard::{
 };
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_open_gh_pr_session_ids, list_session_prs, GhPrRecord};
+use crate::persistence::pr_watches::{list_pr_watches, watched_pr_state};
 use crate::providers::flush_queue::DashboardDelta;
 
 use super::service::GhService;
+use super::watch::{run_watch_pass, PrWatchNoticeHook};
 
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -160,6 +162,8 @@ pub struct GhPollerConfig {
     pub on_check_failure: Option<CheckFailureHook>,
     pub on_pr_merged: Option<MergedPrHook>,
     pub on_arc_event: Option<ArcEventHook>,
+    /// Delivers PR watch notices. Without it the watch pass does not run.
+    pub on_watch_notice: Option<PrWatchNoticeHook>,
 }
 
 impl GhPollerConfig {
@@ -172,6 +176,7 @@ impl GhPollerConfig {
             on_check_failure: None,
             on_pr_merged: None,
             on_arc_event: None,
+            on_watch_notice: None,
         }
     }
 
@@ -199,6 +204,11 @@ impl GhPollerConfig {
         self.on_arc_event = Some(hook);
         self
     }
+
+    pub fn with_watch_notice_hook(mut self, hook: PrWatchNoticeHook) -> Self {
+        self.on_watch_notice = Some(hook);
+        self
+    }
 }
 
 /// Owned per-session state the poller carries across ticks.
@@ -223,6 +233,7 @@ struct PollerInner {
     on_check_failure: Option<CheckFailureHook>,
     on_pr_merged: Option<MergedPrHook>,
     on_arc_event: Option<ArcEventHook>,
+    on_watch_notice: Option<PrWatchNoticeHook>,
     /// Last-seen PR state per `(session_id, pr_number)` so a repeated tick is
     /// a no-op while recovered milestone timestamps still publish.
     last_state: Mutex<HashMap<(String, i64), PrState>>,
@@ -287,6 +298,7 @@ impl GhPoller {
                 on_check_failure: config.on_check_failure,
                 on_pr_merged: config.on_pr_merged,
                 on_arc_event: config.on_arc_event,
+                on_watch_notice: config.on_watch_notice,
                 last_state: Mutex::new(HashMap::new()),
                 fired_ledger: Mutex::new(VecDeque::new()),
                 open_pr_backoff: Mutex::new(HashMap::new()),
@@ -387,13 +399,23 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
 
     // Bounded-concurrency fanout — one stuck `gh` no longer holds the
     // remaining sessions hostage.
+    let tick_started_at = crate::persistence::time::now_iso();
     let mut refreshed_sessions = Vec::new();
     for chunk in session_ids.chunks(TICK_CONCURRENCY) {
         let mut join_set = tokio::task::JoinSet::new();
         for session_id in chunk.iter().cloned() {
             let inner = Arc::clone(&inner);
+            let watched_prs = pollable
+                .watched_prs
+                .get(&session_id)
+                .cloned()
+                .unwrap_or_default();
+            let tick_started_at = tick_started_at.clone();
             join_set.spawn(async move {
                 let result = inner.service.refresh(&session_id).await;
+                if result.is_ok() {
+                    refresh_watched_prs(&inner, &session_id, &watched_prs, &tick_started_at).await;
+                }
                 (session_id, result)
             });
         }
@@ -451,6 +473,16 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
             .filter(|session_id| pollable.open_pr_only.contains(*session_id)),
         &settled_open_pr_sessions,
     );
+
+    // After the fanout and transition detection, from the same refreshed
+    // rows: the watch pass reads `gh_pull_requests` and never writes it.
+    if let Some(deliver) = inner.on_watch_notice.as_ref() {
+        if let Err(error) =
+            run_watch_pass(&inner.database, &inner.service, deliver, &tick_started_at).await
+        {
+            tracing::warn!(?error, "gh.poller: watch pass failed");
+        }
+    }
 
     if transitions.is_empty() {
         return Ok(());
@@ -517,12 +549,14 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
 }
 
 struct PollableSessions {
-    /// Union of `running` sessions, recently completed sessions, and sessions
-    /// with an OPEN PR, dedup'd.
+    /// Union of `running` sessions, recently completed sessions, sessions
+    /// with an OPEN PR, and sessions with a PR watch, dedup'd.
     all: Vec<String>,
     /// The subset polled only because of an open PR. These back off while
     /// their PRs stay settled; everything else is refreshed every tick.
     open_pr_only: HashSet<String>,
+    /// `(project_id, pr_number)` of each PR a session watches.
+    watched_prs: HashMap<String, Vec<(String, i64)>>,
 }
 
 fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions> {
@@ -535,6 +569,16 @@ fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions>
         .unwrap_or_else(chrono::Utc::now)
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     active.extend(list_recently_completed_session_ids(&conn, &since)?);
+    // A watched session is always due: no backoff, and no workspace-state
+    // filter, so a watch outlives an archived chat until its PR ends.
+    let mut watched_prs: HashMap<String, Vec<(String, i64)>> = HashMap::new();
+    for watch in list_pr_watches(&conn)? {
+        watched_prs
+            .entry(watch.session_id)
+            .or_default()
+            .push((watch.project_id, watch.pr_number));
+    }
+    active.extend(watched_prs.keys().cloned());
     let open_pr_only: HashSet<String> = list_open_gh_pr_session_ids(&conn)?
         .into_iter()
         .filter(|id| !active.contains(id))
@@ -543,7 +587,45 @@ fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions>
         .into_iter()
         .chain(open_pr_only.iter().cloned())
         .collect();
-    Ok(PollableSessions { all, open_pr_only })
+    Ok(PollableSessions {
+        all,
+        open_pr_only,
+        watched_prs,
+    })
+}
+
+/// A session refresh views only the PRs it can attribute to the session, and
+/// at most `MAX_OPEN_PR_NUMBER_VIEWS` of them. A watched PR the refresh did
+/// not reach this tick is viewed by number, still inside the fanout, so the
+/// watch pass reads a fresh row and the tick keeps one writer phase.
+async fn refresh_watched_prs(
+    inner: &PollerInner,
+    session_id: &str,
+    watched_prs: &[(String, i64)],
+    tick_started_at: &str,
+) {
+    for (project_id, pr_number) in watched_prs {
+        let refreshed_this_tick = {
+            let conn = inner.database.read_connection();
+            match watched_pr_state(&conn, project_id, *pr_number) {
+                Ok(state) => state.is_some_and(|pr| pr.refreshed_at.as_str() >= tick_started_at),
+                Err(error) => {
+                    tracing::warn!(%session_id, pr_number, %error, "gh.poller: could not read watched PR");
+                    continue;
+                }
+            }
+        };
+        if refreshed_this_tick {
+            continue;
+        }
+        if let Err(error) = inner
+            .service
+            .refresh_pr_number(session_id, *pr_number)
+            .await
+        {
+            tracing::debug!(%session_id, pr_number, %error, "gh.poller: watched PR refresh failed");
+        }
+    }
 }
 
 /// Drops backoff entries for sessions that are no longer open-PR-only — a
@@ -777,6 +859,7 @@ fn detect_transition(
                 if !inner.ledger_has(&ledger_key)
                     && !already_launched(inner, &workspace_id, latest)
                     && !suppressed_by_live_arc
+                    && !pr_is_watched(inner, &project_id, latest.pr_number)
                 {
                     if !workspace_is_busy(inner, &workspace_id)
                         && reserve_checkout(inner, &workspace_id, reserved_checkouts)
@@ -805,7 +888,7 @@ fn detect_transition(
     // in, the worktree and its local branch go away with it.
     if is_merged && inner.on_pr_merged.is_some() {
         match resolve_workspace_id_for_pr_action(&inner.database, session_id, latest) {
-            Ok(Some((workspace_id, _project_id))) => {
+            Ok(Some((workspace_id, project_id))) => {
                 // Keyed by workspace and PR, not by session or head_sha: every
                 // session in the checkout sees the same merge, and a merged PR
                 // keeps reporting the same commit on every later tick.
@@ -823,6 +906,17 @@ fn detect_transition(
                             pr_number = latest.pr_number,
                             "gh poller: PR merged but a turn is still running; archive deferred"
                         );
+                        transition.retry = true;
+                    } else if merged_pr_has_watch(
+                        inner,
+                        &workspace_id,
+                        &project_id,
+                        latest.pr_number,
+                    ) {
+                        // The watch pass later in this tick sends the merged
+                        // notice, which starts a turn, and removes the watch.
+                        // Archiving now would cancel that turn, so the archive
+                        // waits for a tick with no watch and a settled turn.
                         transition.retry = true;
                     } else {
                         inner.ledger_add(ledger_key);
@@ -1010,6 +1104,39 @@ fn already_launched(inner: &Arc<PollerInner>, workspace_id: &str, latest: &GhPrR
     )
     .unwrap_or_else(|error| {
         tracing::warn!(%workspace_id, ?error, "gh poller: check-failure launch guard failed");
+        true
+    })
+}
+
+/// A watched PR's session owns its fix, so the follow-up stands down. A lookup
+/// error counts as watched, for the same reason as `already_launched`.
+fn pr_is_watched(inner: &Arc<PollerInner>, project_id: &str, pr_number: i64) -> bool {
+    let conn = inner.database.read_connection();
+    crate::persistence::pr_watches::pr_has_watch(&conn, project_id, pr_number).unwrap_or_else(
+        |error| {
+            tracing::warn!(%project_id, pr_number, ?error, "gh poller: PR watch lookup failed");
+            true
+        },
+    )
+}
+
+/// A session in this workspace still watches the merged PR. A lookup error
+/// counts as watched: the archive is only deferred, and a tick retries it.
+fn merged_pr_has_watch(
+    inner: &Arc<PollerInner>,
+    workspace_id: &str,
+    project_id: &str,
+    pr_number: i64,
+) -> bool {
+    let conn = inner.database.read_connection();
+    conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pr_watches w JOIN sessions s ON s.id = w.session_id
+         WHERE s.workspace_id = ?1 AND w.project_id = ?2 AND w.pr_number = ?3)",
+        rusqlite::params![workspace_id, project_id, pr_number],
+        |row| row.get::<_, bool>(0),
+    )
+    .unwrap_or_else(|error| {
+        tracing::warn!(%workspace_id, ?error, "gh poller: PR watch guard failed");
         true
     })
 }
@@ -2002,6 +2129,42 @@ mod tests {
         );
     }
 
+    /// Snoozing only hides a sidebar row. The poller still settles the
+    /// workspace when its PR merges.
+    #[tokio::test]
+    async fn a_snoozed_workspace_is_still_archived_when_its_pr_merges() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        enable_archive_on_merge(&database);
+        let until = (chrono::Utc::now() + chrono::Duration::days(3))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        crate::persistence::workspaces::set_workspace_snoozed_until(
+            &database.connection(),
+            "w1",
+            Some(&until),
+        )
+        .expect("snooze");
+        let merged_payload = r#"{"number": 42, "headRefOid": "feedface", "headRefName": "feature/x", "state": "MERGED", "mergedAt": "2026-05-24T11:00:00Z", "statusCheckRollup": [{"conclusion": "success"}]}"#;
+        let stub = StubRunner::new(vec![Ok(merged_payload.to_string())]);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let merged = Arc::new(Mutex::new(Vec::<MergedPrContext>::new()));
+        let merged_seen = Arc::clone(&merged);
+        let hook: MergedPrHook = Arc::new(move |context| {
+            merged_seen
+                .lock()
+                .expect("merged contexts poisoned")
+                .push(context);
+        });
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_pr_merged_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("merged tick");
+
+        assert_eq!(merged.lock().expect("merged contexts poisoned").len(), 1);
+    }
+
     /// Archiving a shared checkout deletes nothing — it would only close a chat
     /// in a tree the user is still working in, which is not the cleanup this
     /// setting is for.
@@ -2897,5 +3060,1236 @@ mod tests {
         assert_eq!(recorded.len(), 1);
         assert_eq!(recorded[0].coordinator_session_id, "s1");
         assert_eq!(recorded[0].session_id, "s1");
+    }
+
+    // --- PR watch -----------------------------------------------------
+
+    const PR_URL: &str = "https://github.com/acme/widgets/pull/42";
+    const OLD: &str = "2020-01-01T00:00:00Z";
+    const NEW: &str = "2999-01-01T00:00:00Z";
+
+    /// One `gh pr view` / `gh pr list` payload that both the refresh and the
+    /// watch pass read: the refresh ignores the feedback fields.
+    struct WatchedPr {
+        head: &'static str,
+        state: &'static str,
+        rollup: serde_json::Value,
+        reviews: serde_json::Value,
+        comments: serde_json::Value,
+        updated_at: &'static str,
+        branch: &'static str,
+        merge_commit: &'static str,
+        /// GitHub's `mergeable`: `MERGEABLE`, `CONFLICTING` or `UNKNOWN`.
+        /// Unset reads as no field at all, like older `gh` output.
+        mergeable: Option<&'static str>,
+    }
+
+    impl Default for WatchedPr {
+        fn default() -> Self {
+            Self {
+                head: "feedface",
+                state: "OPEN",
+                rollup: serde_json::json!([{"name": "build", "status": "IN_PROGRESS", "conclusion": ""}]),
+                reviews: serde_json::json!([]),
+                comments: serde_json::json!([]),
+                updated_at: "2026-10-01T00:00:00Z",
+                branch: "feature/x",
+                merge_commit: "abc1234ffff",
+                mergeable: None,
+            }
+        }
+    }
+
+    impl WatchedPr {
+        fn payload(&self) -> String {
+            serde_json::json!({
+                "number": 42,
+                "title": "Fix parser",
+                "url": PR_URL,
+                "headRefOid": self.head,
+                "headRefName": self.branch,
+                "baseRefName": "main",
+                "headRepositoryOwner": {"login": "acme"},
+                "state": self.state,
+                "statusCheckRollup": self.rollup,
+                "reviews": self.reviews,
+                "comments": self.comments,
+                "reviewRequests": [{"__typename": "User", "login": "carol"}],
+                "updatedAt": self.updated_at,
+                "mergeCommit": (self.state == "MERGED").then(|| serde_json::json!({"oid": self.merge_commit})),
+                "mergeable": self.mergeable,
+            })
+            .to_string()
+        }
+    }
+
+    fn threads_payload(threads: serde_json::Value) -> String {
+        serde_json::json!({"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": threads}}}}})
+            .to_string()
+    }
+
+    /// Answers `gh api graphql` with the threads payload and every `gh pr`
+    /// call with the PR payload. The watch pass's own view (the one asking for
+    /// `reviews`) can be made to fail.
+    struct WatchRunner {
+        pr: Mutex<String>,
+        threads: Mutex<String>,
+        watch_view_error: Mutex<Option<String>>,
+        calls: AtomicUsize,
+    }
+
+    impl WatchRunner {
+        fn new(pr: WatchedPr) -> Arc<Self> {
+            Arc::new(Self {
+                pr: Mutex::new(pr.payload()),
+                threads: Mutex::new(threads_payload(serde_json::json!([]))),
+                watch_view_error: Mutex::new(None),
+                calls: AtomicUsize::new(0),
+            })
+        }
+
+        fn set(&self, pr: WatchedPr) {
+            *self.pr.lock().expect("pr poisoned") = pr.payload();
+        }
+
+        fn set_threads(&self, threads: serde_json::Value) {
+            *self.threads.lock().expect("threads poisoned") = threads_payload(threads);
+        }
+
+        fn fail_watch_view(&self, error: Option<&str>) {
+            *self.watch_view_error.lock().expect("error poisoned") = error.map(str::to_string);
+        }
+
+        fn runner(self: Arc<Self>) -> GhRunner {
+            Arc::new(move |_cwd, args: Vec<String>| {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                let result = if args.first().map(String::as_str) == Some("api") {
+                    Ok(self.threads.lock().expect("threads poisoned").clone())
+                } else if args.iter().any(|arg| arg.contains("reviews")) {
+                    match self
+                        .watch_view_error
+                        .lock()
+                        .expect("error poisoned")
+                        .clone()
+                    {
+                        Some(error) => Err(ArgmaxError::service("GH_NON_ZERO_EXIT", error)),
+                        None => Ok(self.pr.lock().expect("pr poisoned").clone()),
+                    }
+                } else {
+                    Ok(self.pr.lock().expect("pr poisoned").clone())
+                };
+                Box::pin(async move { result })
+            })
+        }
+    }
+
+    fn seed_watch(database: &Arc<Database>) {
+        let conn = database.connection();
+        crate::persistence::pr_watches::upsert_pr_watch(
+            &conn, "watch-1", "s1", "p1", 42, false, "",
+        )
+        .expect("seed watch");
+    }
+
+    fn watch_row(
+        database: &Arc<Database>,
+    ) -> Option<crate::persistence::pr_watches::PrWatchRecord> {
+        let conn = database.read_connection();
+        crate::persistence::pr_watches::find_pr_watch(&conn, "s1", "p1", 42).expect("read watch")
+    }
+
+    /// Stores the inbox row the way `send_system_notice` does, so dedupe is
+    /// the real `INSERT OR IGNORE`.
+    fn notice_recorder(
+        database: &Arc<Database>,
+    ) -> (
+        Arc<Mutex<Vec<crate::gh::watch::PrWatchNotice>>>,
+        PrWatchNoticeHook,
+    ) {
+        let notices = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&notices);
+        let database = Arc::clone(database);
+        let hook: PrWatchNoticeHook = Arc::new(move |notice: crate::gh::watch::PrWatchNotice| {
+            let inserted = crate::persistence::session_messages::insert_session_message(
+                &database.connection(),
+                &crate::persistence::session_messages::NewSessionMessage {
+                    id: notice.message_id.clone(),
+                    from_session_id: None,
+                    to_session_id: notice.session_id.clone(),
+                    body: notice.body.clone(),
+                    kind: crate::persistence::session_messages::MESSAGE_KIND.to_string(),
+                },
+            );
+            recorded.lock().expect("notices poisoned").push(notice);
+            Box::pin(async move { inserted })
+        });
+        (notices, hook)
+    }
+
+    fn inbox(database: &Arc<Database>) -> Vec<(String, String)> {
+        let conn = database.read_connection();
+        let mut statement = conn
+            .prepare(
+                "SELECT id, body FROM session_messages WHERE to_session_id = 's1' ORDER BY rowid",
+            )
+            .expect("prepare inbox");
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query inbox")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect inbox")
+    }
+
+    fn watch_poller(
+        database: &Arc<Database>,
+        runner: &Arc<WatchRunner>,
+        hook: PrWatchNoticeHook,
+    ) -> Arc<GhPoller> {
+        let service = GhService::with_runner(Arc::clone(database), Arc::clone(runner).runner());
+        GhPoller::new(
+            GhPollerConfig::new(Arc::clone(database), service).with_watch_notice_hook(hook),
+        )
+    }
+
+    fn failing_build() -> serde_json::Value {
+        serde_json::json!([
+            {"name": "build", "workflowName": "CI", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://ci.example/build"},
+            {"name": "lint", "workflowName": "CI", "status": "COMPLETED", "conclusion": "SUCCESS"}
+        ])
+    }
+
+    fn green_checks() -> serde_json::Value {
+        serde_json::json!([
+            {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
+            {"name": "docs", "status": "COMPLETED", "conclusion": "SKIPPED"}
+        ])
+    }
+
+    #[tokio::test]
+    async fn watch_reports_each_failing_check_once_per_head() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        poller.tick_for_test().await.expect("failing tick");
+        poller.tick_for_test().await.expect("still failing tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1, "one notice for one failure: {rows:?}");
+        assert_eq!(
+            rows[0].1,
+            format!(
+                "PR #42 (Fix parser): 1 check failing on feedfac.\nChecks failing on feedfac:\n- CI / build: https://ci.example/build\n{PR_URL}"
+            )
+        );
+        assert_eq!(rows[0].0, "pr-watch:watch-1:1:feedfac");
+
+        runner.set(WatchedPr {
+            head: "badc0de",
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("new head tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2, "a new head reports its own failure");
+        assert_eq!(rows[1].0, "pr-watch:watch-1:2:badc0de");
+        assert_eq!(
+            watch_row(&database).expect("watch").seen_check_failures,
+            vec!["CI/build@badc0de".to_string()],
+            "the old head's failures are forgotten"
+        );
+    }
+
+    #[tokio::test]
+    async fn watch_reports_new_feedback_once_and_seeds_what_predates_it() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let comments = serde_json::json!([
+            {"id": "IC_old", "author": {"login": "alice"}, "body": "Old note", "createdAt": OLD, "url": "https://x/old"},
+            {"id": "IC_bot", "author": {"login": "coderabbitai[bot]"}, "body": "\n## Walkthrough\nmore", "createdAt": NEW, "url": "https://x/bot"},
+            {"id": "IC_mine", "author": {"login": "me"}, "body": "Fixed in abc", "createdAt": NEW, "viewerDidAuthor": true}
+        ]);
+        let reviews = serde_json::json!([
+            {"id": "PRR_1", "author": {"login": "bob"}, "state": "CHANGES_REQUESTED", "body": "Please split this.\nDetails", "submittedAt": NEW, "commit": {"oid": "feedface"}},
+            {"id": "PRR_2", "author": {"login": "bob"}, "state": "COMMENTED", "body": "", "submittedAt": NEW, "commit": {"oid": "feedface"}}
+        ]);
+        let runner = WatchRunner::new(WatchedPr {
+            comments: comments.clone(),
+            reviews,
+            ..Default::default()
+        });
+        runner.set_threads(serde_json::json!([{
+            "id": "PRRT_1", "isResolved": false, "path": "src/x.rs", "line": 12,
+            "comments": {"nodes": [{"id": "PRRC_1", "author": {"login": "chatgpt-codex-connector", "__typename": "Bot"}, "body": "Off by one", "url": "https://x/r1", "createdAt": NEW}]}
+        }]));
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        poller.tick_for_test().await.expect("feedback tick");
+        poller.tick_for_test().await.expect("quiet tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(
+            rows[0].1,
+            format!(
+                "PR #42 (Fix parser): 3 new feedback items.\nNew feedback:\n\
+- review by bob: CHANGES_REQUESTED on feedfac: Please split this.\n\
+- comment by coderabbitai[bot]: ## Walkthrough https://x/bot\n\
+- thread comment by chatgpt-codex-connector [bot] on src/x.rs:12: Off by one https://x/r1\n{PR_URL}"
+            )
+        );
+
+        let mut more = comments.as_array().expect("comments").clone();
+        more.push(serde_json::json!({"id": "IC_late", "author": {"login": "dave"}, "body": "One more", "createdAt": NEW}));
+        runner.set(WatchedPr {
+            comments: serde_json::Value::Array(more),
+            updated_at: "2026-10-02T00:00:00Z",
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("later feedback tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows[1].1.contains("- comment by dave: One more"),
+            "{}",
+            rows[1].1
+        );
+        assert!(!rows[1].1.contains("coderabbitai"), "nothing is repeated");
+    }
+
+    #[tokio::test]
+    async fn watch_reports_checks_green_once_with_what_the_merge_gate_needs() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: green_checks(),
+            ..Default::default()
+        });
+        runner.set_threads(serde_json::json!([
+            {"id": "PRRT_1", "isResolved": false, "path": "src/x.rs", "line": 12,
+             "comments": {"nodes": [{"id": "PRRC_1", "author": {"login": "bob", "__typename": "User"}, "body": "Rename this", "url": "https://x/r1", "createdAt": OLD}]}},
+            {"id": "PRRT_2", "isResolved": true, "path": "src/y.rs", "line": 3,
+             "comments": {"nodes": [{"id": "PRRC_2", "author": {"login": "bob"}, "body": "Done", "createdAt": OLD}]}}
+        ]));
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        poller.tick_for_test().await.expect("green tick");
+        poller.tick_for_test().await.expect("still green tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1, "green is reported once per head");
+        assert_eq!(
+            rows[0].1,
+            format!(
+                "PR #42 (Fix parser): checks green on feedfac.\nUnresolved review threads (1):\n\
+- src/x.rs:12 by bob: Rename this https://x/r1\nReview requested from: carol.\n\
+Apply the merge gate before merging.\n{PR_URL}"
+            )
+        );
+        assert_eq!(
+            watch_row(&database)
+                .expect("watch")
+                .reported_ready_sha
+                .as_deref(),
+            Some("feedface")
+        );
+    }
+
+    #[tokio::test]
+    async fn watch_ends_with_one_notice_when_the_pr_merges_or_closes() {
+        for (state, summary) in [
+            ("MERGED", "merged as abc1234 (head feedfac)"),
+            ("CLOSED", "closed without merging"),
+        ] {
+            let (_dir, database) = open_db();
+            fixture(&database);
+            complete_session_long_ago(&database, "s1");
+            seed_watch(&database);
+            let runner = WatchRunner::new(WatchedPr {
+                state,
+                rollup: failing_build(),
+                ..Default::default()
+            });
+            let (_notices, hook) = notice_recorder(&database);
+            let poller = watch_poller(&database, &runner, hook);
+
+            poller.tick_for_test().await.expect("terminal tick");
+            poller.tick_for_test().await.expect("after terminal tick");
+            let rows = inbox(&database);
+            assert_eq!(rows.len(), 1, "{state}: {rows:?}");
+            assert_eq!(
+                rows[0].1,
+                format!("PR #42 (Fix parser): {summary}.\nThis watch has ended.\n{PR_URL}"),
+                "a terminal PR reports only its ending"
+            );
+            assert!(watch_row(&database).is_none(), "{state} removes the watch");
+        }
+    }
+
+    /// A notice is staged with the cursors it advances, then delivered. A
+    /// crash after the inbox row is stored redelivers that exact notice; the
+    /// inbox ignores the repeated id. Feedback that arrives in between goes in
+    /// the next notice and the old events are not reported again.
+    #[tokio::test]
+    async fn watch_never_repeats_a_notice_across_ticks_restarts_or_a_crash() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+
+        let stored_then_crashed: PrWatchNoticeHook = {
+            let (_notices, store) = notice_recorder(&database);
+            Arc::new(move |notice| {
+                let stored = store(notice);
+                Box::pin(async move {
+                    stored.await.expect("store");
+                    Err(ArgmaxError::service(
+                        "CRASH",
+                        "process died before the notice was cleared",
+                    ))
+                })
+            })
+        };
+        watch_poller(&database, &runner, stored_then_crashed)
+            .tick_for_test()
+            .await
+            .expect("crashing tick");
+        let first = inbox(&database);
+        assert_eq!(first.len(), 1);
+        let staged = watch_row(&database).expect("watch");
+        assert_eq!(
+            staged
+                .pending_notice
+                .as_ref()
+                .map(|notice| notice.id.as_str()),
+            Some(first[0].0.as_str()),
+            "the notice stays staged until delivery is confirmed"
+        );
+        assert_eq!(
+            staged.seen_check_failures,
+            vec!["CI/build@feedface".to_string()],
+            "its cursors moved with it"
+        );
+
+        // New feedback lands before the next tick.
+        runner.set(WatchedPr {
+            rollup: failing_build(),
+            comments: serde_json::json!([{"id": "IC_new", "author": {"login": "dave"}, "body": "One more", "createdAt": NEW}]),
+            updated_at: "2026-10-02T00:00:00Z",
+            ..Default::default()
+        });
+        let (notices, hook) = notice_recorder(&database);
+        let restarted = watch_poller(&database, &runner, hook);
+        restarted.tick_for_test().await.expect("restarted tick");
+        {
+            let notices = notices.lock().expect("notices");
+            assert_eq!(notices.len(), 1, "the staged notice goes out again");
+            assert_eq!(notices[0].message_id, first[0].0);
+            assert_eq!(notices[0].body, first[0].1, "exactly as staged");
+        }
+        assert_eq!(inbox(&database).len(), 1, "the same id was ignored");
+        assert!(watch_row(&database)
+            .expect("watch")
+            .pending_notice
+            .is_none());
+
+        restarted.tick_for_test().await.expect("feedback tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(
+            rows[1].1.contains("- comment by dave: One more"),
+            "{}",
+            rows[1].1
+        );
+        assert!(
+            !rows[1].1.contains("failing"),
+            "the failure is not repeated"
+        );
+
+        let (notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, hook)
+            .tick_for_test()
+            .await
+            .expect("quiet tick");
+        assert!(
+            notices.lock().expect("notices").is_empty(),
+            "nothing new to send"
+        );
+        assert_eq!(inbox(&database).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn watch_keeps_polling_an_archived_chat_until_the_pr_ends() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET state = 'archived' WHERE id = 'w1'",
+                [],
+            )
+            .expect("archive workspace");
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        let (notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        let before = runner.calls.load(Ordering::SeqCst);
+        poller.tick_for_test().await.expect("archived tick");
+        assert!(
+            runner.calls.load(Ordering::SeqCst) > before,
+            "an archived chat's watched PR is still polled"
+        );
+        assert!(
+            notices.lock().expect("notices").is_empty(),
+            "an archived chat cannot be woken"
+        );
+        assert!(watch_row(&database).is_some());
+
+        runner.set(WatchedPr {
+            state: "MERGED",
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("merged tick");
+        assert!(watch_row(&database).is_none(), "the merge ends the watch");
+        assert!(notices.lock().expect("notices").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_watched_pr_suppresses_the_check_failure_follow_up() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        let failure_hits = Arc::new(AtomicUsize::new(0));
+        let failure_count = Arc::clone(&failure_hits);
+        let failure_hook: CheckFailureHook = Arc::new(move |_| {
+            failure_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&runner).runner());
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service)
+                .with_check_failure_hook(failure_hook)
+                .with_watch_notice_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("failing tick");
+        poller.tick_for_test().await.expect("still failing tick");
+        assert_eq!(
+            failure_hits.load(Ordering::SeqCst),
+            0,
+            "the watching chat owns the fix"
+        );
+        assert_eq!(inbox(&database).len(), 1, "it was told instead");
+
+        crate::persistence::pr_watches::delete_pr_watch(&database.connection(), "s1", "p1", 42)
+            .expect("unwatch");
+        poller.tick_for_test().await.expect("unwatched tick");
+        assert_eq!(
+            failure_hits.load(Ordering::SeqCst),
+            1,
+            "unwatched, the follow-up runs"
+        );
+    }
+
+    /// The watch pass runs after transition detection and never writes
+    /// `gh_pull_requests`, so a watched PR's Arc events fire exactly as an
+    /// unwatched one's.
+    #[tokio::test]
+    async fn arc_events_still_fire_for_a_watched_pr() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        seed_coordinator(&database, "w-coord", "s-coord");
+        seed_arc(&database, "arc-1", "active", Some("s-coord"));
+        set_session_arc(&database, "s1", "arc-1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        let (events, arc_hook) = arc_event_recorder();
+        let (_notices, hook) = notice_recorder(&database);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&runner).runner());
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service)
+                .with_arc_event_hook(arc_hook)
+                .with_watch_notice_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("failing tick");
+        runner.set(WatchedPr {
+            rollup: green_checks(),
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("passing tick");
+        runner.set(WatchedPr {
+            state: "MERGED",
+            rollup: green_checks(),
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("merged tick");
+
+        let kinds: Vec<_> = events
+            .lock()
+            .expect("arc events poisoned")
+            .iter()
+            .map(|event| event.kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ArcEventKind::ChecksFailing,
+                ArcEventKind::ChecksPassing,
+                ArcEventKind::Merged
+            ]
+        );
+        let bodies: Vec<String> = inbox(&database).into_iter().map(|(_, body)| body).collect();
+        assert_eq!(bodies.len(), 3, "{bodies:?}");
+        assert!(bodies[0].contains("1 check failing"));
+        assert!(bodies[1].contains("checks green"));
+        assert!(bodies[2].contains("merged as abc1234"));
+    }
+
+    /// The merged notice starts a turn in the chat. Archive on merge waits for
+    /// the watch to end, then for that turn, rather than cancelling it.
+    #[tokio::test]
+    async fn archive_on_merge_waits_for_the_merged_notice() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        enable_archive_on_merge(&database);
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            state: "MERGED",
+            rollup: green_checks(),
+            ..Default::default()
+        });
+        let merged_hits = Arc::new(AtomicUsize::new(0));
+        let merged_count = Arc::clone(&merged_hits);
+        let merged_hook: MergedPrHook = Arc::new(move |_| {
+            merged_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&runner).runner());
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service)
+                .with_pr_merged_hook(merged_hook)
+                .with_watch_notice_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("merged tick");
+        assert_eq!(inbox(&database).len(), 1, "the chat hears about the merge");
+        assert!(watch_row(&database).is_none());
+        assert_eq!(merged_hits.load(Ordering::SeqCst), 0, "archive waits");
+
+        poller.tick_for_test().await.expect("next tick");
+        assert_eq!(merged_hits.load(Ordering::SeqCst), 1, "then archives");
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_watch_read_skips_the_pr_for_the_tick() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        runner.fail_watch_view(Some("gh failed: API rate limit exceeded for user"));
+        let (notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        poller.tick_for_test().await.expect("rate limited tick");
+        assert!(notices.lock().expect("notices").is_empty());
+        let watch = watch_row(&database).expect("watch");
+        assert_eq!(watch.head_sha, "", "no cursor moved");
+        assert!(watch.seen_feedback_ids.is_none());
+
+        runner.fail_watch_view(None);
+        poller.tick_for_test().await.expect("recovered tick");
+        assert_eq!(inbox(&database).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn watch_reports_a_rerun_that_fails_again_on_the_same_head() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        poller.tick_for_test().await.expect("failing tick");
+        runner.set(WatchedPr {
+            rollup: serde_json::json!([
+                {"name": "build", "workflowName": "CI", "status": "IN_PROGRESS", "conclusion": ""},
+                {"name": "lint", "workflowName": "CI", "status": "COMPLETED", "conclusion": "SUCCESS"}
+            ]),
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("re-run tick");
+        assert_eq!(inbox(&database).len(), 1, "a running check is not news");
+        runner.set(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("failed again tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2, "the second failure wakes the chat: {rows:?}");
+        assert!(rows[1].1.contains("- CI / build: https://ci.example/build"));
+    }
+
+    #[tokio::test]
+    async fn watch_tells_apart_same_named_checks_in_different_workflows() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: serde_json::json!([
+                {"name": "build", "workflowName": "CI", "status": "COMPLETED", "conclusion": "FAILURE"},
+                {"name": "build", "workflowName": "Deploy", "status": "COMPLETED", "conclusion": "FAILURE"}
+            ]),
+            ..Default::default()
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, hook)
+            .tick_for_test()
+            .await
+            .expect("failing tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0]
+                .1
+                .starts_with("PR #42 (Fix parser): 2 checks failing on feedfac."),
+            "{}",
+            rows[0].1
+        );
+    }
+
+    #[tokio::test]
+    async fn watch_wakes_again_when_the_head_returns_to_an_earlier_sha() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        for head in ["feedface", "badc0de", "feedface"] {
+            runner.set(WatchedPr {
+                head,
+                rollup: failing_build(),
+                ..Default::default()
+            });
+            poller.tick_for_test().await.expect("failing tick");
+        }
+        let ids: Vec<String> = inbox(&database).into_iter().map(|(id, _)| id).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "pr-watch:watch-1:1:feedfac",
+                "pr-watch:watch-1:2:badc0de",
+                "pr-watch:watch-1:3:feedfac"
+            ]
+        );
+    }
+
+    fn conflict_pr(mergeable: &'static str) -> WatchedPr {
+        WatchedPr {
+            mergeable: Some(mergeable),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn watch_reports_entering_and_leaving_a_merge_conflict_and_ignores_unknown() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(conflict_pr("MERGEABLE"));
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        // The first clean read seeds the cursor and says nothing.
+        poller.tick_for_test().await.expect("seed tick");
+        assert!(inbox(&database).is_empty());
+        assert_eq!(
+            watch_row(&database).expect("watch").conflict_state,
+            Some(crate::persistence::pr_watches::ConflictState::Clean)
+        );
+
+        runner.set(conflict_pr("CONFLICTING"));
+        poller.tick_for_test().await.expect("conflict tick");
+        poller.tick_for_test().await.expect("same conflict tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1, "one notice for one conflict: {rows:?}");
+        assert_eq!(
+            rows[0].1,
+            format!(
+                "PR #42 (Fix parser): merge conflict.\nMerge conflict: this PR cannot merge into main until the conflict is resolved. Update the branch from main and resolve it.\n{PR_URL}"
+            )
+        );
+
+        // GitHub reports UNKNOWN while it recomputes. That is neither a
+        // resolution nor a new conflict.
+        runner.set(conflict_pr("UNKNOWN"));
+        poller.tick_for_test().await.expect("unknown tick");
+        runner.set(conflict_pr("CONFLICTING"));
+        poller.tick_for_test().await.expect("conflict again tick");
+        assert_eq!(inbox(&database).len(), 1, "UNKNOWN invented no transition");
+        assert_eq!(
+            watch_row(&database).expect("watch").conflict_state,
+            Some(crate::persistence::pr_watches::ConflictState::Conflicting)
+        );
+
+        runner.set(conflict_pr("MERGEABLE"));
+        poller.tick_for_test().await.expect("resolved tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert_eq!(
+            rows[1].1,
+            format!("PR #42 (Fix parser): merge conflict resolved.\n{PR_URL}")
+        );
+
+        runner.set(conflict_pr("UNKNOWN"));
+        poller
+            .tick_for_test()
+            .await
+            .expect("unknown after clean tick");
+        runner.set(conflict_pr("CONFLICTING"));
+        poller.tick_for_test().await.expect("second conflict tick");
+        assert_eq!(
+            inbox(&database).len(),
+            3,
+            "a second conflict is a second notice"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_checks_green_notice_mentions_a_conflict_only_when_this_read_shows_one() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: green_checks(),
+            mergeable: Some("CONFLICTING"),
+            ..Default::default()
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+
+        poller.tick_for_test().await.expect("green and conflicting");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert!(
+            rows[0].1.contains("The PR still has a merge conflict"),
+            "{}",
+            rows[0].1
+        );
+
+        // A push: the head moved, the checks are green again, and GitHub is
+        // still recomputing mergeability. The stored cursor says "conflicting",
+        // but nothing in this read does, so the notice must not say it.
+        runner.set(WatchedPr {
+            head: "badc0de",
+            rollup: green_checks(),
+            mergeable: Some("UNKNOWN"),
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("green and unknown");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(rows[1].1.contains("checks green"), "{}", rows[1].1);
+        assert!(!rows[1].1.contains("merge conflict"), "{}", rows[1].1);
+    }
+
+    #[tokio::test]
+    async fn a_reported_conflict_is_not_repeated_after_a_restart() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(conflict_pr("CONFLICTING"));
+        let (_notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, Arc::clone(&hook))
+            .tick_for_test()
+            .await
+            .expect("first run");
+        assert_eq!(
+            inbox(&database).len(),
+            1,
+            "a conflict at the first read is reported"
+        );
+
+        // A new poller reads the persisted cursor, not an in-memory ledger.
+        let restarted = watch_poller(&database, &runner, hook);
+        restarted.tick_for_test().await.expect("after restart");
+        assert_eq!(inbox(&database).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_merged_pr_reports_the_merge_and_no_conflict() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            state: "MERGED",
+            mergeable: Some("CONFLICTING"),
+            ..Default::default()
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, hook)
+            .tick_for_test()
+            .await
+            .expect("merged tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert!(rows[0].1.contains("merged as abc1234"), "{}", rows[0].1);
+        assert!(!rows[0].1.contains("conflict"), "{}", rows[0].1);
+    }
+
+    #[tokio::test]
+    async fn watch_ends_after_ten_polls_that_cannot_find_the_pr() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner: GhRunner = Arc::new(|_cwd, args: Vec<String>| {
+            let result = if args.first().map(String::as_str) == Some("api") {
+                Ok(threads_payload(serde_json::json!([])))
+            } else {
+                Err(ArgmaxError::service(
+                    "GH_NON_ZERO_EXIT",
+                    "gh failed: GraphQL: Could not resolve to a PullRequest with the number of 42. (repository.pullRequest)",
+                ))
+            };
+            Box::pin(async move { result })
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let service = GhService::with_runner(Arc::clone(&database), runner);
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service).with_watch_notice_hook(hook),
+        );
+
+        for _ in 0..9 {
+            poller.tick_for_test().await.expect("not found tick");
+        }
+        assert!(inbox(&database).is_empty());
+        assert_eq!(watch_row(&database).expect("watch").not_found_count, 9);
+        poller.tick_for_test().await.expect("tenth tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].1.starts_with("PR #42 not found; watch removed."),
+            "{}",
+            rows[0].1
+        );
+        assert!(watch_row(&database).is_none());
+    }
+
+    /// A tick whose refresh did not reach the PR leaves a stale row. The watch
+    /// waits for a fresh one rather than calling a merged PR green.
+    #[tokio::test]
+    async fn watch_skips_a_pr_its_tick_did_not_refresh() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr::default());
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+        poller.tick_for_test().await.expect("pending tick");
+        assert!(inbox(&database).is_empty());
+
+        // The refresh returns cached rows for a workspace with no path.
+        database
+            .connection()
+            .execute("UPDATE workspaces SET path = '' WHERE id = 'w1'", [])
+            .expect("clear path");
+        runner.set(WatchedPr {
+            state: "MERGED",
+            rollup: green_checks(),
+            ..Default::default()
+        });
+        poller.tick_for_test().await.expect("stale tick");
+        assert!(inbox(&database).is_empty(), "{:?}", inbox(&database));
+
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET path = '/tmp/argmax-gh-poller' WHERE id = 'w1'",
+                [],
+            )
+            .expect("restore path");
+        poller.tick_for_test().await.expect("fresh tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].1.contains("merged as abc1234"), "{}", rows[0].1);
+    }
+
+    #[tokio::test]
+    async fn archive_on_merge_waits_only_for_a_watch_on_the_merged_pr() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        settle_session(&database, "s1");
+        enable_archive_on_merge(&database);
+        crate::persistence::pr_watches::upsert_pr_watch(
+            &database.connection(),
+            "watch-43",
+            "s1",
+            "p1",
+            43,
+            false,
+            "",
+        )
+        .expect("watch another PR");
+        let runner = WatchRunner::new(WatchedPr {
+            state: "MERGED",
+            rollup: green_checks(),
+            ..Default::default()
+        });
+        let merged_hits = Arc::new(AtomicUsize::new(0));
+        let merged_count = Arc::clone(&merged_hits);
+        let merged_hook: MergedPrHook = Arc::new(move |_| {
+            merged_count.fetch_add(1, Ordering::SeqCst);
+        });
+        let (_notices, hook) = notice_recorder(&database);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&runner).runner());
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service)
+                .with_pr_merged_hook(merged_hook)
+                .with_watch_notice_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("merged tick");
+        assert_eq!(merged_hits.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn watch_marks_bot_reviews_and_comments_found_over_graphql() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let codex = serde_json::json!({"login": "chatgpt-codex-connector"});
+        let runner = WatchRunner::new(WatchedPr {
+            reviews: serde_json::json!([{"id": "PRR_c", "author": codex, "state": "COMMENTED", "body": "Codex Review: 1 issue", "submittedAt": NEW}]),
+            comments: serde_json::json!([{"id": "IC_c", "author": codex, "body": "Summary", "createdAt": NEW}]),
+            ..Default::default()
+        });
+        let bot = serde_json::json!({"author": {"login": "chatgpt-codex-connector", "__typename": "Bot"}});
+        *runner.threads.lock().expect("threads") =
+            serde_json::json!({"data": {"repository": {"pullRequest": {
+                "reviewThreads": {"nodes": []},
+                "reviews": {"nodes": [bot]},
+                "comments": {"nodes": [bot]}
+            }}}})
+            .to_string();
+        let (_notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, hook)
+            .tick_for_test()
+            .await
+            .expect("feedback tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].1.contains(
+                "- review by chatgpt-codex-connector [bot]: COMMENTED: Codex Review: 1 issue"
+            ),
+            "{}",
+            rows[0].1
+        );
+        assert!(rows[0]
+            .1
+            .contains("- comment by chatgpt-codex-connector [bot]: Summary"));
+    }
+
+    /// Points the fixture's project and chat at a real merged repository.
+    fn use_merged_repo(
+        database: &Arc<Database>,
+        repo: &crate::git::pr_cleanup::test_repo::MergedRepo,
+    ) {
+        let conn = database.connection();
+        conn.execute(
+            "UPDATE projects SET repo_path = ?1 WHERE id = 'p1'",
+            [repo.main.display().to_string()],
+        )
+        .expect("project path");
+        conn.execute(
+            "UPDATE workspaces SET path = ?1, branch = 'fix-parser' WHERE id = 'w1'",
+            [repo.chat.display().to_string()],
+        )
+        .expect("workspace path");
+    }
+
+    fn merged_repo_pr(repo: &crate::git::pr_cleanup::test_repo::MergedRepo) -> WatchedPr {
+        WatchedPr {
+            head: Box::leak(repo.merged_head.clone().into_boxed_str()),
+            merge_commit: Box::leak(repo.merge_commit.clone().into_boxed_str()),
+            branch: "fix-parser",
+            state: "MERGED",
+            rollup: green_checks(),
+            ..Default::default()
+        }
+    }
+
+    /// Cleanup runs in the watch pass, so it finishes before archive on merge
+    /// (which waits for the watch to end), and its report rides the merged
+    /// notice.
+    #[tokio::test]
+    async fn watch_cleans_up_a_merged_pr_before_the_merged_notice_and_the_archive() {
+        use crate::git::pr_cleanup::test_repo::{git, merged_repo};
+        let repo = merged_repo(true).await;
+        let (_dir, database) = open_db();
+        fixture(&database);
+        use_merged_repo(&database, &repo);
+        settle_session(&database, "s1");
+        enable_archive_on_merge(&database);
+        crate::persistence::pr_watches::upsert_pr_watch(
+            &database.connection(),
+            "watch-1",
+            "s1",
+            "p1",
+            42,
+            true,
+            "",
+        )
+        .expect("watch with cleanup");
+        let runner = WatchRunner::new(merged_repo_pr(&repo));
+        let remote_at_archive = Arc::new(Mutex::new(Vec::new()));
+        let merged_hook: MergedPrHook = {
+            let remote_at_archive = Arc::clone(&remote_at_archive);
+            let main = repo.main.clone();
+            Arc::new(move |_| {
+                let listing = crate::git::exec::run_git_text_blocking(
+                    &main,
+                    ["ls-remote", "--heads", "origin", "fix-parser"],
+                    crate::git::exec::GIT_DEFAULT_TIMEOUT,
+                )
+                .expect("ls-remote");
+                remote_at_archive.lock().expect("archive").push(listing);
+            })
+        };
+        let (_notices, hook) = notice_recorder(&database);
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&runner).runner());
+        let poller = GhPoller::new(
+            GhPollerConfig::new(Arc::clone(&database), service)
+                .with_pr_merged_hook(merged_hook)
+                .with_watch_notice_hook(hook),
+        );
+
+        poller.tick_for_test().await.expect("merged tick");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        let head7 = &repo.merged_head[..7];
+        let merge7 = &repo.merge_commit[..7];
+        assert_eq!(
+            rows[0].1,
+            format!(
+                "PR #42 (Fix parser): merged as {merge7} (head {head7}).\nCleanup:\n\
+PR #42 merged as {merge7} (head {head7})\nRemote: origin/fix-parser deleted\n\
+Base: main fast-forwarded in {}\nLocal: fix-parser kept (checked out by this chat's worktree)\n\
+Chat: kept, checkout {} kept\nThis watch has ended.\n{PR_URL}",
+                repo.main.display(),
+                repo.chat.display()
+            )
+        );
+        assert!(
+            remote_at_archive.lock().expect("archive").is_empty(),
+            "archive waits"
+        );
+        assert_eq!(
+            git(&repo.main, &["rev-parse", "HEAD"]).await,
+            repo.merge_commit
+        );
+
+        poller.tick_for_test().await.expect("next tick");
+        assert_eq!(
+            *remote_at_archive.lock().expect("archive"),
+            vec![String::new()],
+            "the archive ran after cleanup deleted the remote branch"
+        );
+    }
+
+    #[tokio::test]
+    async fn watch_cleans_up_for_an_archived_chat_without_a_notice() {
+        use crate::git::pr_cleanup::test_repo::{git, merged_repo};
+        let repo = merged_repo(false).await;
+        let (_dir, database) = open_db();
+        fixture(&database);
+        use_merged_repo(&database, &repo);
+        complete_session_long_ago(&database, "s1");
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET state = 'archived' WHERE id = 'w1'",
+                [],
+            )
+            .expect("archive");
+        crate::persistence::pr_watches::upsert_pr_watch(
+            &database.connection(),
+            "watch-1",
+            "s1",
+            "p1",
+            42,
+            true,
+            "",
+        )
+        .expect("watch with cleanup");
+        let runner = WatchRunner::new(merged_repo_pr(&repo));
+        let (notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, hook)
+            .tick_for_test()
+            .await
+            .expect("merged tick");
+        assert!(notices.lock().expect("notices").is_empty());
+        assert!(watch_row(&database).is_none());
+        assert!(
+            git(
+                &repo.main,
+                &["ls-remote", "--heads", "origin", "fix-parser"]
+            )
+            .await
+            .is_empty(),
+            "cleanup still ran"
+        );
     }
 }

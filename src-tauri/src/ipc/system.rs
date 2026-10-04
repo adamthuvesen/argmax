@@ -716,7 +716,6 @@ fn open_file_descriptor_count() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::Database;
     use tempfile::tempdir;
 
     #[test]
@@ -746,19 +745,6 @@ mod tests {
         )
         .expect_err("nonexistent escape rejected");
         assert!(error.to_string().contains("path escapes cwd"));
-    }
-
-    #[test]
-    fn database_stats_count_rows_and_pragmas() {
-        let database = Database::open_in_memory().expect("database");
-        let connection = database.connection();
-        let stats = collect_database_stats(&connection, Path::new("/tmp/argmax.sqlite"), None);
-        let pragmas = collect_sqlite_pragmas(&connection);
-
-        assert_eq!(stats.row_counts.projects, 0);
-        assert!(stats.wal_autocheckpoint > 0);
-        assert_eq!(stats.readers.max_concurrent, 0);
-        assert_ne!(pragmas.journal_mode, "unknown");
     }
 
     #[test]

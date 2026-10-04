@@ -11,6 +11,7 @@ struct TranscriptMarkdown: View {
     let isThinking: Bool
     @Environment(\.transcriptWorkspacePath) private var workspacePath
     @Environment(\.foldedNarration) private var foldedNarration
+    @Environment(\.proseInkOverride) private var proseInkOverride
     let client: BridgeClient?
     let onOpenFile: (String) -> Void
 
@@ -163,7 +164,20 @@ struct TranscriptMarkdown: View {
     }
 
     private var proseInk: Color {
-        isThinking ? Theme.muted : foldedNarration ? Theme.mutedStrong : Theme.ink
+        proseInkOverride ?? (isThinking ? Theme.muted : foldedNarration ? Theme.mutedStrong : Theme.ink)
+    }
+}
+
+private struct ProseInkOverrideKey: EnvironmentKey {
+    static let defaultValue: Color? = nil
+}
+
+extension EnvironmentValues {
+    /// Set on a user message drawn over a solid accent fill, where the
+    /// default ink would be dark on blue.
+    var proseInkOverride: Color? {
+        get { self[ProseInkOverrideKey.self] }
+        set { self[ProseInkOverrideKey.self] = newValue }
     }
 }
 

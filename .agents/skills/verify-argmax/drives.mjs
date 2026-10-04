@@ -62,7 +62,7 @@ async function main() {
   }
   if (!["drive", "control"].includes(command)) throw new Error("unknown verification worker command");
   const { report } = await runVerification(parseVerifyArgs(["--scenario", feature, "--out", outputDir]));
-  const expected = command === "control" ? "complete" : ({ "chat-resume": "complete", "queued-restart": "complete", "session-move": "complete", cancellation: "cancelled", "provider-error": "failed" })[feature];
+  const expected = command === "control" ? "complete" : ({ "chat-resume": "complete", "queued-restart": "complete", "session-move": "complete", "composer-reference": "complete", "composer-editor": "complete", "fork-merge": "complete", "workspace-settings": "complete", cancellation: "cancelled", "provider-error": "failed" })[feature];
   const actual = report.session?.state;
   const requiredFiles = ["report.json", "timeline.ndjson", "database.json", ...(report.evidenceFiles ?? []).filter((file) => file.endsWith(".png"))];
   const missingFiles = requiredFiles.filter((file) => !existsSync(path.join(outputDir, file)));

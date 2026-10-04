@@ -9,12 +9,15 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+pub mod branch_names;
+pub mod inputs;
 pub mod lifecycle;
 pub mod orchestration;
 pub mod watcher;
 
 pub use orchestration::{
-    WorkspaceArchiveResult, WorkspaceService, WorkspaceServiceError, SCRATCH_PROJECT_ID,
+    ProjectCheckout, WorkspaceArchiveResult, WorkspaceService, WorkspaceServiceError,
+    SCRATCH_PROJECT_ID,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]

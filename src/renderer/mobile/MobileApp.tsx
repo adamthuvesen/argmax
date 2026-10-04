@@ -9,6 +9,7 @@ import {
 import {
   SCRATCH_PROJECT_ID,
   type AttentionState,
+  type ForkSessionOptions,
   type SessionState,
   type SessionSummary,
   type WorkspaceSummary
@@ -19,10 +20,11 @@ import { WorkingNest } from "../components/WorkingNest.js";
 import type { NewSessionSeed } from "../components/SessionComposer.js";
 import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { takeDeepLinkSessionId } from "./deepLink.js";
+import { chatReferencesAsTitles } from "../lib/composerContext.js";
 import { canSteerQueuedMessage } from "../lib/queuedSteer.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import { installNativeApi, isEmbedded, postToNative } from "./nativeHost.js";
-import { NewSessionScreen, type PickerKind } from "./NewSessionScreen.js";
+import type { PickerKind } from "./NewSessionScreen.js";
 import { useMobileBackNavigation } from "./useMobileBackNavigation.js";
 import { useVisualViewportInsets } from "./useVisualViewportInsets.js";
 import { useDashboardSession } from "../hooks/useDashboardSession.js";
@@ -84,6 +86,13 @@ const MobileReviewScreen = lazy(() =>
   }))
 );
 
+// Opening the launcher should pay for its controls, not every chat load.
+const NewSessionScreen = lazy(() =>
+  importChunk(async () => ({
+    default: (await import("./NewSessionScreen.js")).NewSessionScreen
+  }))
+);
+
 // Spoken names for the row's leading marker, matching the desktop row's
 // title suffix. The marker replaces the old text chips: which kind of
 // attention a row has is the Priority section's job to say, not the row's.
@@ -106,10 +115,9 @@ interface SessionListRow {
 }
 
 /**
- * Same gate the turn footer applies (SessionConversationTurn.tsx), mirroring
- * `fork_session` in orchestration.rs: only providers that can resume a copied
- * conversation, and never mid-turn — a running or waiting session would fork a
- * half-written transcript, so the backend refuses it.
+ * The whole-chat fork the row sheet offers: a running or waiting session would
+ * fork a half-written transcript, so the backend refuses it. The turn footer
+ * forks at a chosen finished turn instead (SessionConversationTurn.tsx).
  */
 function isForkable(session: SessionSummary | null): session is SessionSummary {
   return (
@@ -657,14 +665,14 @@ export function MobileApp(): JSX.Element {
     [closeSession, refresh, showToast]
   );
 
-  // Same fork flow as the desktop grid: new workspace, copied transcript,
-  // diverging provider conversation. Refresh first so openWorkspaceChat can
-  // resolve the forked row, then jump straight into it.
+  // Same fork flow as the desktop grid: a new chat with the copied history up
+  // to the chosen turn. Refresh first so openWorkspaceChat can resolve the
+  // forked row, then jump straight into it.
   const forkSession = useCallback(
-    async (sessionId: string): Promise<void> => {
+    async (sessionId: string, options?: ForkSessionOptions): Promise<void> => {
       if (!window.argmax) return;
       try {
-        const forked = await window.argmax.session.fork({ sessionId });
+        const forked = await window.argmax.session.fork({ sessionId, ...options });
         await refresh();
         openWorkspaceChat(forked.workspace.id);
       } catch (error) {
@@ -1017,7 +1025,9 @@ export function MobileApp(): JSX.Element {
         : [],
       queued: openSessionPending.map((entry) => ({
         id: entry.id,
-        text: entry.content,
+        // A chat reference reads as its title in the native row; the queued
+        // message itself keeps the link.
+        text: chatReferencesAsTitles(entry.content),
         canSteer: openSession !== null && canSteerQueuedMessage(openSession, entry)
       })),
       running: openSessionState === "running"
@@ -1389,6 +1399,7 @@ export function MobileApp(): JSX.Element {
         </div>
       ) : newSessionOpen ? (
         <div className="mobile-screen-overlay">
+          <Suspense fallback={<LinesSkeleton rows={6} label="Loading new chat" />}>
             <NewSessionScreen
               projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
               workspaces={snapshot.workspaces}
@@ -1401,6 +1412,7 @@ export function MobileApp(): JSX.Element {
               openSheet={newSessionSheet}
               onOpenSheetChange={setNewSessionSheet}
             />
+          </Suspense>
         </div>
       ) : reviewShown && selectedWorkspace ? (
         <div className="mobile-screen-overlay">

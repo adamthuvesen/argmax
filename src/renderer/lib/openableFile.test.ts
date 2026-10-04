@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi } from "../../shared/types.js";
 import { resolveOpenablePath } from "./openableFile.js";
 
-function apiWithFiles(files: string[], changed: string[] = []): ArgmaxApi {
+function apiWithFiles(files: string[], changed: string[] = [], externalPaths: string[] = []): ArgmaxApi {
   return {
     workspace: {
+      statExternalFile: vi.fn((path: string) =>
+        externalPaths.includes(path) ? Promise.resolve({ mtimeMs: 0, size: 1 }) : Promise.reject(new Error("missing"))
+      ),
       statFile: vi.fn().mockRejectedValue(new Error("outside workspace")),
       listFiles: vi.fn().mockResolvedValue(files.map((path) => ({ path })))
     },
@@ -45,5 +48,24 @@ describe("resolveOpenablePath", () => {
       resolveOpenablePath(apiWithFiles(files, ["apps/a/instructions.md", "apps/c/instructions.md"]), "workspace-1", "instructions.md")
     ).resolves.toBeNull();
   });
-});
 
+  it("keeps an existing file outside the workspace as an external path", async () => {
+    const api = apiWithFiles(["package.json"], [], [
+      "/Users/me/.local/share/dotfiles/package.json",
+      "~/.local/share/agent-secrets.json"
+    ]);
+
+    await expect(
+      resolveOpenablePath(api, "workspace-1", "/Users/me/.local/share/dotfiles/package.json")
+    ).resolves.toBe("/Users/me/.local/share/dotfiles/package.json");
+    await expect(
+      resolveOpenablePath(api, "workspace-1", "~/.local/share/agent-secrets.json")
+    ).resolves.toBe("~/.local/share/agent-secrets.json");
+  });
+
+  it("does not guess a workspace file for a missing home path", async () => {
+    await expect(
+      resolveOpenablePath(apiWithFiles(["agent-secrets.json"]), "workspace-1", "~/missing/agent-secrets.json")
+    ).resolves.toBeNull();
+  });
+});

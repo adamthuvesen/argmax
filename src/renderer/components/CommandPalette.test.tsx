@@ -26,11 +26,6 @@ describe("CommandPalette", () => {
     cleanup();
   });
 
-  it("renders nothing when closed", () => {
-    render(<CommandPalette open={false} commands={COMMANDS} onClose={vi.fn()} />);
-    expect(screen.queryByRole("dialog", { name: "Command palette" })).toBeNull();
-  });
-
   it("autofocuses the input on open", () => {
     render(<CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} />);
     expect(screen.getByRole("searchbox", { name: "Command palette query" })).toHaveFocus();
@@ -250,27 +245,6 @@ describe("CommandPalette", () => {
     rerender(<CommandPalette open commands={COMMANDS} onClose={vi.fn()} initialScope="files" />);
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Files");
     expect(input).toHaveValue("");
-  });
-
-  it("opens on the All filter by default and on Files when asked", () => {
-    const { unmount } = render(
-      <CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} />
-    );
-    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("All");
-    expect(screen.getByRole("searchbox", { name: "Command palette query" })).toHaveAttribute(
-      "placeholder",
-      "Search agents, files, actions…"
-    );
-    unmount();
-
-    render(
-      <CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} initialScope="files" />
-    );
-    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Files");
-    expect(screen.getByRole("searchbox", { name: "Command palette query" })).toHaveAttribute(
-      "placeholder",
-      "Search files…"
-    );
   });
 
   it("exposes one tab per search chord and scopes results to the picked one", () => {

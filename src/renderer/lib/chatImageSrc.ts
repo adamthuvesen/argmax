@@ -17,17 +17,14 @@ function decodePath(value: string): string {
   }
 }
 
-function pathInside(root: string, candidate: string): boolean {
-  const base = root.replace(/\/+$/, "");
-  return candidate === base || candidate.startsWith(`${base}/`);
-}
+const ATTACHMENT_PATH = /\/local-state\/attachments\//;
 
 /**
  * Resolve a chat Markdown image to a URL the webview may load, or null when
- * there is none. Workspace images use the workspace asset protocol (or remote
- * HTTP endpoint on mobile). Other absolute paths use the attachment protocol,
- * whose handler serves only files already stored in Argmax's attachment
- * directory.
+ * there is none. Absolute paths use the workspace asset protocol (or remote
+ * HTTP endpoint on mobile), whose handler serves images inside the checkout
+ * or an agent scratch dir. Paths in Argmax's attachment store use the
+ * attachment protocol.
  *
  * A remote `http(s)` image is never loadable. Loading one is a silent outbound
  * request the reader did not ask for, so a prompt-injected agent could name
@@ -49,9 +46,9 @@ export function resolveChatImageSrc(
 
   const decoded = decodePath(source);
   if (decoded.startsWith("/")) {
-    return workspacePath && pathInside(workspacePath, decoded)
-      ? workspaceAssetUrl(decoded)
-      : attachmentProtocolUrl(decoded);
+    // Only the attachment store goes through its own handler; every other
+    // absolute path (checkout, agent scratch dir) is the asset handler's call.
+    return ATTACHMENT_PATH.test(decoded) ? attachmentProtocolUrl(decoded) : workspaceAssetUrl(decoded);
   }
   if (!workspacePath) return null;
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BoundedMap } from "../../shared/boundedSet.js";
+import { isExternalFilePath } from "./reviewIpc.js";
 
 export interface FilePreviewData {
   snippet: string;
@@ -34,7 +35,9 @@ async function fetchFilePreview({
   const cached = previewCache.get(cacheKey);
   if (cached) return cached;
   if (!window.argmax) throw new Error("IPC bridge not available");
-  const result = await window.argmax.workspace.readFile({ kind: "workspace", id: workspaceId }, path);
+  const result = isExternalFilePath(path)
+    ? await window.argmax.workspace.readExternalFile(path)
+    : await window.argmax.workspace.readFile({ kind: "workspace", id: workspaceId }, path);
   if (result.kind !== "text") {
     const reason =
       result.reason === "binary"

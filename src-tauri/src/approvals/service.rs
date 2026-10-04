@@ -513,6 +513,7 @@ printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"d
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::ProviderDefaults,
             agent_mode: AgentMode::Auto,
             cols: 80,

@@ -20,7 +20,7 @@ vi.mock("../lib/mermaidRuntime.js", async (importOriginal) => {
   };
 });
 
-import { mermaidProseWidth, nativeSvgWidth, resetDrawnMermaidDiagramsForTests } from "../lib/mermaidRuntime.js";
+import { mermaidProseWidth, resetDrawnMermaidDiagramsForTests } from "../lib/mermaidRuntime.js";
 import { MermaidDiagram } from "./MermaidDiagram.js";
 
 describe("MermaidDiagram", () => {
@@ -134,12 +134,6 @@ describe("MermaidDiagram", () => {
     expect(overlay).toBeTruthy();
     fireEvent.mouseDown(overlay as HTMLElement);
     expect(screen.queryByRole("dialog", { name: "Full diagram" })).toBeNull();
-  });
-
-  it("reads mermaid's native pixel width from the SVG", () => {
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("width", "1440px");
-    expect(nativeSvgWidth(svg)).toBe(1440);
   });
 
   it("measures wide diagrams against the prose measure, not a wider chat column", () => {

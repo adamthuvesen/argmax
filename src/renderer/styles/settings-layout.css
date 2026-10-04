@@ -483,6 +483,12 @@
   box-shadow: var(--shadow-1);
 }
 
+/* Paper's white chip on the #eee track is ~1.07:1 and --shadow-1 is 4% ink,
+   so the selection vanished. A hairline edge and a real drop carry it. */
+:root:not([data-theme="dark"]) .settings-segmented-option[data-checked="true"]:not(:focus-within) {
+  box-shadow: 0 0 0 1px var(--line-strong), 0 1px 3px rgba(31, 28, 24, 0.16);
+}
+
 .settings-segmented-option[data-checked="true"] .settings-segmented-label {
   color: var(--text);
 }

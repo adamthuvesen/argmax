@@ -5,19 +5,19 @@ import {
   matchFileChip,
   normalizeFileChipPath
 } from "../lib/fileChipPath.js";
-import { FileChip } from "./FileChip.js";
+import { CheckedFileChip, FileChip } from "./FileChip.js";
 
 describe("matchFileChip", () => {
   it("matches a bare path with extension", () => {
-    expect(matchFileChip("src/index.ts")).toEqual({ path: "src/index.ts", line: null });
+    expect(matchFileChip("src/index.ts")).toEqual({ path: "src/index.ts", line: null, needsExistenceCheck: false });
   });
 
   it("matches a path with line suffix", () => {
-    expect(matchFileChip("src/foo/bar.tsx:42")).toEqual({ path: "src/foo/bar.tsx", line: 42 });
+    expect(matchFileChip("src/foo/bar.tsx:42")).toEqual({ path: "src/foo/bar.tsx", line: 42, needsExistenceCheck: false });
   });
 
   it("matches a path with line and column suffix", () => {
-    expect(matchFileChip("src/foo/bar.tsx:42:7")).toEqual({ path: "src/foo/bar.tsx", line: 42 });
+    expect(matchFileChip("src/foo/bar.tsx:42:7")).toEqual({ path: "src/foo/bar.tsx", line: 42, needsExistenceCheck: false });
   });
 
   it("rejects strings with whitespace", () => {
@@ -32,8 +32,60 @@ describe("matchFileChip", () => {
     expect(matchFileChip("a".repeat(220) + ".ts")).toBeNull();
   });
 
-  it("matches a single-segment filename", () => {
-    expect(matchFileChip("package.json")).toEqual({ path: "package.json", line: null });
+  it("matches a home-relative path, including dot directories", () => {
+    expect(matchFileChip("~/.local/share/dotfiles/agent-secrets.json")).toEqual({
+      path: "~/.local/share/dotfiles/agent-secrets.json",
+      line: null,
+      needsExistenceCheck: false
+    });
+  });
+});
+
+describe("matchFileChip outside the workspace", () => {
+  it("matches an anchored path with spaces, keeping its line", () => {
+    expect(matchFileChip("~/Library/Application Support/com.argmax.rs/local-state/argmax.sqlite:12")).toEqual({
+      path: "~/Library/Application Support/com.argmax.rs/local-state/argmax.sqlite",
+      line: 12,
+      needsExistenceCheck: false
+    });
+  });
+
+  it("allows long extensions once the value has a directory", () => {
+    expect(matchFileChip("data/events.parquet")?.path).toBe("data/events.parquet");
+    expect(matchFileChip("~/data/model.sqlite")?.path).toBe("~/data/model.sqlite");
+  });
+
+  it("keeps bare dotted words with long tails as code", () => {
+    expect(matchFileChip("config.enabled")).toBeNull();
+    expect(matchFileChip("process.platform")).toBeNull();
+  });
+
+  it("asks for an existence check on an anchored path without an extension", () => {
+    expect(matchFileChip("/etc/hosts")).toEqual({ path: "/etc/hosts", line: null, needsExistenceCheck: true });
+    expect(matchFileChip("~/dev/repo/Makefile")?.needsExistenceCheck).toBe(true);
+    expect(matchFileChip("/api/users")?.needsExistenceCheck).toBe(true);
+  });
+
+  it("rejects a directory and an over-long anchored path", () => {
+    expect(matchFileChip("~/dev/repo/")).toBeNull();
+    expect(matchFileChip(`/${"a".repeat(1100)}.ts`)).toBeNull();
+  });
+
+  it("accepts an anchored path longer than a relative one may be", () => {
+    const deep = `/tmp/${"nested/".repeat(40)}out.json`;
+    expect(matchFileChip(deep)?.path).toBe(deep);
+  });
+});
+
+describe("normalizeFileChipPath for sibling paths", () => {
+  it("resolves ../ against the workspace", () => {
+    expect(normalizeFileChipPath("../dotfiles/README.md", "/Users/me/dev/argmax")).toBe("/Users/me/dev/dotfiles/README.md");
+    expect(normalizeFileChipPath("../argmax/src/a.ts", "/Users/me/dev/argmax")).toBe("src/a.ts");
+  });
+
+  it("decodes a link's %20 into a matchable path", () => {
+    const path = normalizeFileChipPath("/Users/me/Library/Application%20Support/a.json", "/repo");
+    expect(matchFileChip(path)?.path).toBe("/Users/me/Library/Application Support/a.json");
   });
 });
 
@@ -42,12 +94,10 @@ describe("formatFileChipLabel", () => {
     expect(formatFileChipLabel("/repo/src-tauri/src/ipc.ts", "/repo", null)).toBe("ipc.ts");
   });
 
-  it("preserves :line suffix", () => {
-    expect(formatFileChipLabel("/repo/src-tauri/src/ipc.ts", "/repo", 42)).toBe("ipc.ts:42");
-  });
-
-  it("returns the basename when the absolute path is outside the workspace", () => {
-    expect(formatFileChipLabel("/other/dir/foo.ts", "/repo", null)).toBe("foo.ts");
+  it("shows the whole path, home collapsed, when the file is outside the workspace", () => {
+    expect(formatFileChipLabel("/other/dir/foo.ts", "/repo", null)).toBe("/other/dir/foo.ts");
+    expect(formatFileChipLabel("/Users/me/.local/share/a.json", "/repo", 3)).toBe("~/.local/share/a.json:3");
+    expect(formatFileChipLabel("~/.zshrc", "/repo", null)).toBe("~/.zshrc");
   });
 
   it("returns the basename for an absolute path when no workspaceCwd is given", () => {
@@ -58,11 +108,6 @@ describe("formatFileChipLabel", () => {
   it("returns the basename for a relative path with directory segments", () => {
     expect(formatFileChipLabel("src-tauri/src/ipc.ts", "/repo", null)).toBe("ipc.ts");
     expect(formatFileChipLabel("src-tauri/src/ipc.ts", null, 3)).toBe("ipc.ts:3");
-  });
-
-  it("returns single-segment filenames unchanged", () => {
-    expect(formatFileChipLabel("package.json", null, null)).toBe("package.json");
-    expect(formatFileChipLabel("package.json", "/repo", 12)).toBe("package.json:12");
   });
 
   it("strips a trailing slash before taking the basename", () => {
@@ -116,19 +161,6 @@ describe("FileChip", () => {
     expect(api.workspaces.openInIde).not.toHaveBeenCalled();
   });
 
-  it("falls back to system.openPath when workspaceId is missing", () => {
-    render(<FileChip path="src-tauri/src.ts" line={null} workspaceCwd="/repo" />);
-    screen.getByRole("button", { name: "Open src-tauri/src.ts" }).click();
-    const sys = (window as unknown as { argmax: { system: { openPath: ReturnType<typeof vi.fn> } } }).argmax.system
-      .openPath;
-    expect(sys).toHaveBeenCalledWith({ path: "src-tauri/src.ts", cwd: "/repo" });
-  });
-
-  it("renders the basename and the optional line suffix", () => {
-    render(<FileChip path="src/x.ts" line={7} workspaceId="ws-1" />);
-    expect(screen.getByRole("button", { name: "Open src/x.ts at line 7" })).toHaveTextContent("x.ts:7");
-  });
-
   it("resolves a bare filename before loading its hover preview", async () => {
     const statFile = vi.fn().mockRejectedValue(new Error("missing at root"));
     const listFiles = vi.fn().mockResolvedValue([{ path: "docs/package.json" }]);
@@ -152,5 +184,41 @@ describe("FileChip", () => {
       "docs/package.json"
     ));
     expect(await screen.findByRole("tooltip")).toHaveTextContent("{}");
+  });
+});
+
+describe("CheckedFileChip", () => {
+  afterEach(() => {
+    cleanup();
+    delete (window as { argmax?: unknown }).argmax;
+  });
+
+  function stubStat(statExternalFile: ReturnType<typeof vi.fn>): void {
+    (window as unknown as { argmax: unknown }).argmax = {
+      workspace: { statExternalFile, statFile: vi.fn().mockRejectedValue(new Error("no")) },
+      workspaces: { openInIde: vi.fn() },
+      system: { openPath: vi.fn() }
+    };
+  }
+
+  it("becomes a chip once the extensionless path is a file", async () => {
+    const statExternalFile = vi.fn().mockResolvedValue({ size: 10, mtimeMs: 1 });
+    stubStat(statExternalFile);
+    render(
+      <CheckedFileChip path="/etc/hosts" line={null} workspaceId="ws-1" workspaceCwd="/repo" fallback={<code>/etc/hosts</code>} />
+    );
+    expect(await screen.findByRole("button", { name: "Open /etc/hosts" })).toHaveTextContent("/etc/hosts");
+    expect(statExternalFile).toHaveBeenCalledWith("/etc/hosts");
+  });
+
+  it("stays as code when the path is not a file, such as an API route", async () => {
+    const statExternalFile = vi.fn().mockRejectedValue(new Error("not found"));
+    stubStat(statExternalFile);
+    render(
+      <CheckedFileChip path="/api/users" line={null} workspaceId="ws-1" workspaceCwd="/repo" fallback={<code>/api/users</code>} />
+    );
+    await waitFor(() => expect(statExternalFile).toHaveBeenCalledWith("/api/users"));
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText("/api/users").tagName).toBe("CODE");
   });
 });

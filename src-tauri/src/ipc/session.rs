@@ -237,18 +237,93 @@ pub async fn session_fork(
 }
 
 // Shared by the desktop command above and the remote dispatcher
-// (`remote/dispatch.rs`): `spawn_blocking`, not the `async` flag, because
-// forking copies a transcript (thousands of row inserts) — long enough to
-// park a worker shared with provider IO, the remote bridge, and the
-// `dashboard:delta` emit loop.
+// (`remote/dispatch.rs`). The transcript copy is thousands of row inserts, so
+// `fork_session_at` runs it on a blocking thread; an isolated fork also awaits
+// git.
 pub(crate) async fn session_fork_impl_async(
     state: &AppState,
     input: SessionForkInput,
 ) -> ArgmaxResult<SessionForkResult> {
     let workspaces = live_workspaces(state)?;
-    tauri::async_runtime::spawn_blocking(move || workspaces.fork_session(input.session_id.as_str()))
+    workspaces
+        .fork_session_at(crate::workspaces::orchestration::fork::ForkRequest {
+            session_id: input.session_id.as_str().to_string(),
+            boundary_event_id: input.boundary_event_id.map(|id| id.as_str().to_string()),
+            workspace: input.workspace.unwrap_or(ForkWorkspaceMode::Shared),
+        })
         .await
-        .map_err(|error| ArgmaxError::service("SESSION_FORK_JOIN", error.to_string()))?
+}
+
+#[tauri::command(rename = "session:fork-lineage")]
+#[specta::specta]
+pub async fn session_fork_lineage(
+    state: State<'_, AppState>,
+    input: SessionForkLineageInput,
+) -> ArgmaxResult<Option<crate::providers::fork_merge::ForkLineage>> {
+    session_fork_lineage_impl(&state, input).await
+}
+
+pub(crate) async fn session_fork_lineage_impl(
+    state: &AppState,
+    input: SessionForkLineageInput,
+) -> ArgmaxResult<Option<crate::providers::fork_merge::ForkLineage>> {
+    let database = live_database(state)?;
+    read_off_main(move || {
+        crate::providers::fork_merge::lineage(&database, input.session_id.as_str())
+    })
+    .await
+}
+
+#[tauri::command(rename = "session:fork-merge-preview")]
+#[specta::specta]
+pub async fn session_fork_merge_preview(
+    state: State<'_, AppState>,
+    input: SessionForkMergePreviewInput,
+) -> ArgmaxResult<crate::providers::fork_merge::ForkMergePreview> {
+    session_fork_merge_preview_impl(&state, input).await
+}
+
+pub(crate) async fn session_fork_merge_preview_impl(
+    state: &AppState,
+    input: SessionForkMergePreviewInput,
+) -> ArgmaxResult<crate::providers::fork_merge::ForkMergePreview> {
+    // Read-only: a claim that merge-back would withdraw is only left out of the
+    // answer. `session:fork-merge` does the withdrawing.
+    let database = live_database(state)?;
+    read_off_main(move || {
+        crate::providers::fork_merge::preview(&database, input.session_id.as_str())
+    })
+    .await
+}
+
+#[tauri::command(rename = "session:fork-merge")]
+#[specta::specta]
+pub async fn session_fork_merge(
+    state: State<'_, AppState>,
+    input: SessionForkMergeInput,
+) -> ArgmaxResult<crate::providers::fork_merge::ForkMergeResult> {
+    session_fork_merge_impl(&state, input).await
+}
+
+pub(crate) async fn session_fork_merge_impl(
+    state: &AppState,
+    input: SessionForkMergeInput,
+) -> ArgmaxResult<crate::providers::fork_merge::ForkMergeResult> {
+    let database = live_database(state)?;
+    let providers = state.providers.get().cloned().ok_or_else(|| {
+        ArgmaxError::service(
+            "PROVIDER_SERVICE_NOT_READY",
+            "provider service is not initialized",
+        )
+    })?;
+    crate::providers::fork_merge::confirm(
+        &database,
+        &providers,
+        input.session_id.as_str(),
+        input.through_event_id.as_str(),
+        crate::providers::fork_merge::ClaimOptions::default(),
+    )
+    .await
 }
 
 #[tauri::command(rename = "session:multitask")]
@@ -277,8 +352,10 @@ pub(crate) async fn session_multitask_impl(
         prompt: input.prompt.into_string(),
         worktree: input.worktree,
         task_label: input.task_label.map(|label| label.into_string()),
+        queued_settings: None,
     };
     match input.pending_message_id {
+        // A queued row keeps the author it was queued with.
         Some(message_id) => {
             crate::multitask::dispatch_queued(
                 request,
@@ -289,7 +366,12 @@ pub(crate) async fn session_multitask_impl(
             )
             .await
         }
-        None => crate::multitask::dispatch(request, database, workspaces, providers).await,
+        // A prompt typed into the composer's Multitask is fresh text from the person.
+        None => {
+            let author =
+                crate::persistence::authorship::PromptAuthor::person(super::attest_person());
+            crate::multitask::dispatch(request, author, database, workspaces, providers).await
+        }
     }
 }
 

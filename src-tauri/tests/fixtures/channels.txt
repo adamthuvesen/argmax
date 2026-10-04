@@ -10,6 +10,8 @@ projects:update-settings
 projects:list-branches
 projects:refresh-branch
 projects:switch-branch
+projects:list-checkouts
+workspaces:create-alongside
 workspaces:create-isolated
 workspaces:create-current
 workspaces:create-scratch
@@ -40,6 +42,9 @@ questions:resolve
 session:events-since
 session:agent-events
 session:fork
+session:fork-lineage
+session:fork-merge-preview
+session:fork-merge
 session:multitask
 session:clear
 session:suggest-follow-up
@@ -51,6 +56,9 @@ settings:set-routing-key
 settings:clear-routing-key
 settings:preview-chat-cleanup
 settings:delete-old-chats
+window-snapshot:status
+window-snapshot:configure
+window-snapshot:request-permission
 review:list-changed-files
 review:load-diff
 review:stage-file
@@ -80,9 +88,19 @@ workspace:list-files
 workspace:read-file
 workspace:write-file
 workspace:stat-file
+workspace:read-external-file
+workspace:stat-external-file
 workspace:grep-content
 checks:run
 skills:list
+linked-repos:list
+linked-repos:add
+linked-repos:set-enabled
+linked-repos:remove
+projects:set-branch-template
+settings:branch-template
+settings:set-branch-template
+workspaces:set-snoozed-until
 sources:list
 sources:add
 sources:update
@@ -121,6 +139,7 @@ prs:list-for-session
 prs:refresh
 prs:set-primary
 prs:dismiss
+prs:cleanup
 git:commit
 git:push
 git:create-branch

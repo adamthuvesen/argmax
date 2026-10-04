@@ -3,34 +3,13 @@ import type { UsageLimitWindow, UsageProviderRemaining, UsageRemaining } from ".
 import {
   getCachedUsageRemaining,
   requestUsageRemaining,
-  setCachedUsageRemaining
+  recordUsageRemainingFailure
 } from "../lib/ledgerPageState.js";
+import { fetchUsageRemaining, isUsageRemainingStale } from "../lib/usageRemainingLookup.js";
 import { LoadingLine } from "./LoadingLine.js";
 import { RemainingBar } from "./usage/RemainingBar.js";
 import { formatRemainingPercent, formatResetShort } from "./usage/usageFormat.js";
 import { providerLabel } from "./usage/usagePresentation.js";
-
-/**
- * How long a remaining read stands before an open refreshes it. The figures
- * come from provider accounts over the network and Claude's endpoint
- * rate-limits, so opening the menu twice in a minute must not fetch twice.
- */
-const STALE_AFTER_MS = 5 * 60_000;
-
-async function fetchRemaining(): Promise<UsageRemaining> {
-  const api = globalThis.window?.argmax;
-  if (api?.usage.remaining) return api.usage.remaining();
-  // No bridge (browser preview / screenshot harness): the demo fixture is
-  // dynamic-imported so it never reaches the packaged bundle.
-  const { demoUsageRemaining } = await import("../demoUsage.js");
-  return demoUsageRemaining();
-}
-
-function isStale(remaining: UsageRemaining | null, now: number): boolean {
-  if (!remaining) return true;
-  const fetchedAt = Date.parse(remaining.fetchedAt);
-  return !Number.isFinite(fetchedAt) || now - fetchedAt > STALE_AFTER_MS;
-}
 
 /** A provider is shown only where its account actually reported windows. */
 function hasWindows(row: UsageProviderRemaining): boolean {
@@ -70,15 +49,15 @@ export function IdentityPlans({ onOpenUsage }: { onOpenUsage: () => void }): JSX
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    if (!isStale(getCachedUsageRemaining(), Date.now())) return;
+    if (!isUsageRemainingStale(getCachedUsageRemaining(), Date.now())) return;
     let live = true;
-    void requestUsageRemaining(fetchRemaining).then(
+    void requestUsageRemaining(fetchUsageRemaining).then(
       (next) => {
         if (live) setRemaining(next);
       },
       (cause: unknown) => {
         const message = cause instanceof Error ? cause.message : "Could not read remaining usage.";
-        setCachedUsageRemaining(null, message);
+        recordUsageRemainingFailure(message, Date.now());
         if (live) setFailed(true);
       }
     );

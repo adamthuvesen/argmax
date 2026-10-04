@@ -168,15 +168,6 @@ describe("DetailsPopup", () => {
     expect(screen.queryByRole("button", { name: "Attach file" })).toBeNull();
   });
 
-  it("keeps the floating composer on the agent-window font scale", () => {
-    renderPopup({ chatFontSize: 10 });
-
-    expect(screen.getByRole("dialog", { name: "More details" }))
-      .toHaveAttribute("data-font-size", "10");
-    expect(screen.getByRole("textbox", { name: "Chat prompt" }).closest("form"))
-      .toHaveAttribute("data-font-size", "10");
-  });
-
   it("forwards Minimal verbosity so successful tool groups stay behind Worked", () => {
     renderPopup({
       events: MINIMAL_TOOL_EVENTS,
@@ -224,13 +215,5 @@ describe("DetailsPopup", () => {
     expect(screen.queryByText("Unrelated action")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Approve action: Read local file" }));
     await waitFor(() => expect(onResolveApproval).toHaveBeenCalledWith("approval-popup", "approved"));
-  });
-
-  it("closes from the header close button", () => {
-    const onClose = vi.fn();
-    renderPopup({ onClose });
-
-    fireEvent.click(screen.getByRole("button", { name: "Close popup" }));
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

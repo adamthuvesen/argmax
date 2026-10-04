@@ -35,8 +35,10 @@ use uuid::Uuid;
 use crate::arcs::member_preamble;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::arcs;
+use crate::persistence::authorship::PromptAuthor;
 use crate::persistence::events::{
-    latest_agent_message, persist_timeline_event, PersistTimelineEventInput, TimelineEvent,
+    latest_agent_message, persist_timeline_event, without_chat_link_brackets,
+    PersistTimelineEventInput, TimelineEvent,
 };
 use crate::persistence::session_messages::{
     insert_session_message, list_undelivered_messages_of_kind, mark_message_delivered,
@@ -47,8 +49,9 @@ use crate::persistence::sessions::{
 };
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::persistence::Database;
-use crate::providers::flush_queue::DashboardDelta;
+use crate::providers::flush_queue::{DashboardDelta, PendingMessage};
 use crate::providers::session_service::ProviderSessionService;
+use crate::providers::ProviderId;
 use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
 use crate::sessions::state::SessionState;
 use crate::workspaces::orchestration::WorkspaceService;
@@ -76,6 +79,34 @@ pub struct MultitaskRequest {
     /// The escape hatch for work you expect to collide.
     pub worktree: bool,
     pub task_label: Option<String>,
+    /// What a promoted queued follow-up was queued to run under. `None` for a
+    /// multitask typed as a prompt, which runs as the parent does.
+    pub queued_settings: Option<QueuedRunSettings>,
+}
+
+/// The provider, model, effort and fast-mode choice a queued follow-up
+/// carries. Each part left unset falls back to the parent chat's. A model and
+/// its effort travel together: an effort picked for one model means nothing on
+/// another, so the parent's effort is never mixed with a row's model.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct QueuedRunSettings {
+    pub provider: Option<ProviderId>,
+    pub model_label: Option<String>,
+    pub model_id: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
+}
+
+impl QueuedRunSettings {
+    fn from_pending_message(message: &PendingMessage) -> Self {
+        Self {
+            provider: message.provider,
+            model_label: message.model_label.clone(),
+            model_id: message.model_id.clone(),
+            reasoning_effort: message.reasoning_effort.clone(),
+            fast_mode: message.fast_mode,
+        }
+    }
 }
 
 /// The chat the multitask runs in, handed straight back to the composer so it
@@ -95,6 +126,7 @@ pub struct MultitaskLaunched {
 /// point of the feature.
 pub async fn dispatch(
     request: MultitaskRequest,
+    author: PromptAuthor,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
@@ -120,7 +152,7 @@ pub async fn dispatch(
     }
 
     let label = task_label(request.task_label.as_deref().unwrap_or(&request.prompt));
-    let provider = parse_json_enum(Some(parent.provider.as_str())).ok_or_else(|| {
+    let parent_provider = parse_json_enum(Some(parent.provider.as_str())).ok_or_else(|| {
         ArgmaxError::service(
             "MULTITASK_PROVIDER_UNKNOWN",
             format!(
@@ -129,6 +161,35 @@ pub async fn dispatch(
             ),
         )
     })?;
+    let queued = request.queued_settings.as_ref();
+    let provider = queued
+        .and_then(|settings| settings.provider)
+        .unwrap_or(parent_provider);
+    let (model_label, model_id, reasoning_effort) = match queued {
+        Some(QueuedRunSettings {
+            model_label: Some(label),
+            model_id: Some(id),
+            reasoning_effort,
+            ..
+        }) => (
+            label.clone(),
+            id.clone(),
+            parse_json_enum(reasoning_effort.as_deref()),
+        ),
+        Some(QueuedRunSettings {
+            reasoning_effort: Some(effort),
+            ..
+        }) => (
+            parent.model_label.clone(),
+            parent.model_id.clone(),
+            parse_json_enum(Some(effort.as_str())),
+        ),
+        _ => (
+            parent.model_label.clone(),
+            parent.model_id.clone(),
+            parse_json_enum(parent.reasoning_effort.as_deref()),
+        ),
+    };
 
     // A multitask dispatched from inside an Arc is Arc work too: it gets the
     // same member preamble an agent-launched session would, ahead of the
@@ -144,7 +205,6 @@ pub async fn dispatch(
     };
     let outcome = launch_with_spec(
         LaunchSpec {
-            project: None,
             // The chat this was dispatched from owns the checkout the person is
             // looking at. Its workspace is the project root only when that chat
             // is not in a worktree, and the guardrail preamble below names its
@@ -159,12 +219,13 @@ pub async fn dispatch(
             prompt,
             worktree: request.worktree,
             provider,
-            model_label: parent.model_label.clone(),
-            model_id: parent.model_id.clone(),
-            reasoning_effort: parse_json_enum(parent.reasoning_effort.as_deref()),
-            // Fast mode is a per-launch choice the composer makes, and a side
-            // fix is not where you spend it.
-            fast_mode: false,
+            model_label,
+            model_id,
+            reasoning_effort,
+            // Fast mode is a per-launch choice the composer makes. A typed
+            // multitask is a side fix, not where you spend it; a queued row
+            // keeps the choice it was queued with.
+            fast_mode: queued.is_some_and(|settings| settings.fast_mode),
             permission_mode: parse_json_enum(Some(parent.permission_mode.as_str()))
                 .unwrap_or(crate::providers::PermissionMode::ProviderDefaults),
             agent_mode: parse_json_enum(parent.agent_mode.as_deref())
@@ -172,7 +233,9 @@ pub async fn dispatch(
             task_label: Some(label.clone()),
             arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
             arc_is_coordinator_launch: false,
+            author,
         },
+        None,
         Arc::clone(&database),
         workspaces,
         Arc::clone(&providers),
@@ -242,7 +305,19 @@ pub async fn dispatch_queued(
     let message = providers
         .claim_queued_message_for_multitask(&request.parent_session_id, pending_message_id)?;
     request.prompt = message.content.clone();
-    match dispatch(request, database, workspaces, Arc::clone(&providers)).await {
+    request.queued_settings = Some(QueuedRunSettings::from_pending_message(&message));
+    // The child's opening prompt is the queued text, so it keeps the author the
+    // row had: a person's own row stays theirs, an agent's message never becomes
+    // one.
+    match dispatch(
+        request,
+        message.author,
+        database,
+        workspaces,
+        Arc::clone(&providers),
+    )
+    .await
+    {
         Ok(launched) => {
             if let Err(error) =
                 providers.finish_queued_message_multitask(&message.session_id, &message.id)
@@ -278,6 +353,10 @@ fn prompt_with_preamble(request: &MultitaskRequest, parent_label: &str, branch: 
     if request.worktree {
         return request.prompt.clone();
     }
+    // The label and branch are set by the parent chat's agent, and this prompt
+    // is stored as the person's: neither may carry a chat link.
+    let parent_label = without_chat_link_brackets(parent_label);
+    let branch = without_chat_link_brackets(branch);
     format!(
         "You are running alongside another agent in this same checkout (branch `{branch}`), \
 which is working on: {parent_label}. Both of you are editing the same files on disk right now.\n\
@@ -440,6 +519,7 @@ mod tests {
             prompt: prompt.to_string(),
             worktree,
             task_label: None,
+            queued_settings: None,
         }
     }
 
@@ -454,6 +534,22 @@ mod tests {
         assert!(prompt.contains("Rewrite auth"));
         assert!(prompt.contains("git stash"));
         assert!(prompt.ends_with("Fix the README typo"));
+    }
+
+    #[test]
+    fn the_preamble_cannot_carry_a_chat_link_but_the_typed_prompt_keeps_its_own() {
+        use crate::persistence::events::chat_reference_ids;
+
+        let typed = "compare with [Billing](argmax://chat/chat-y?v=1)";
+        let prompt = prompt_with_preamble(
+            &request(typed, false),
+            "[x](argmax://chat/chat-x)",
+            "feature/[y](argmax://chat/chat-z)",
+        );
+        // Only the person's chip is left, and the typed text is exact.
+        assert_eq!(chat_reference_ids(&prompt), vec!["chat-y".to_string()]);
+        assert!(prompt.ends_with(typed));
+        assert!(prompt.contains("(x)(argmax://chat/chat-x)"));
     }
 
     #[test]

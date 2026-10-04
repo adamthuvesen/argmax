@@ -6,6 +6,7 @@ import "@testing-library/jest-dom/vitest";
 // warnings in node.
 if (typeof window !== "undefined") {
   await import("./codemirrorMock.js");
+  await import("./composerEditorMock.js");
 }
 
 function installMemoryStorage(): void {

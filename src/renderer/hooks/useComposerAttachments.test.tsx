@@ -68,24 +68,32 @@ describe("useComposerAttachments — text paste stays native", () => {
     // markdown rebuilt from the HTML — list markers, code spans, emphasis —
     // instead of the marker-less slop the plain flavor carries.
     const setInput = vi.fn();
+    const target = {
+      value: "findings: ",
+      selectionStart: 10,
+      selectionEnd: 10,
+      setSelectionRange: vi.fn(),
+      focus: vi.fn(),
+      contains: vi.fn(),
+      closest: vi.fn()
+    };
     const { result } = renderHook(() =>
       useComposerAttachments({
         draftKey: "launch-a",
         workspacePath: null,
-        setInput
+        setInput,
+        fieldRef: { current: target }
       })
     );
 
     const html =
       "<ul><li><code>1. 2. 3.</code> gone — selecting rendered <code>&lt;ol&gt;</code> text</li>" +
       "<li><strong>bold</strong> and <em>italics</em> survive</li></ul>";
-    const target = { value: "findings: ", selectionStart: 10, selectionEnd: 10, setSelectionRange: vi.fn() };
     const paste = {
       clipboardData: {
         items: [{ kind: "string", type: "text/html" }],
         getData: vi.fn(() => html)
       },
-      currentTarget: target,
       preventDefault: vi.fn()
     };
 

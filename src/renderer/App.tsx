@@ -13,10 +13,9 @@ import {
 } from "react";
 import type {
   AgentMode,
-  ArgmaxApi,
   ComposerAttachment,
+  ForkSessionOptions,
   IdeId,
-  MenuCommand,
   ProjectSummary,
   RoutingSettings,
   SessionSummary,
@@ -36,6 +35,7 @@ import { useMotionPresence } from "./hooks/useMotionPresence.js";
 import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface, type LaunchedChat } from "./components/LaunchSurface.js";
+import type { LaunchCheckout } from "./lib/launchCheckout.js";
 import { PerfOverlay } from "./components/PerfOverlay.js";
 import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
@@ -46,12 +46,14 @@ import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { MAX_COLS, findSessionCell, focusedCell, terminalWorkspaceId } from "./lib/gridState.js";
 import { findSharedCheckoutWorkspace } from "./lib/projectCheckoutWorkspace.js";
 import { isEarlySessionStop } from "./lib/earlyStop.js";
+import { startWindowSnapshotInbox } from "./lib/windowSnapshotInbox.js";
 import { getWorkspaceTerminalState, requestTerminalVisible } from "./lib/terminalTabs.js";
-import { requestCloseActiveBrowserTab } from "./lib/browserPanel.js";
-import { requestCloseActiveReviewFileTab } from "./lib/reviewFilePanel.js";
-import { jumpToAdjacentChat, noteChatVisited } from "./lib/chatCycle.js";
-import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "./lib/sidebarOrder.js";
+import { noteChatVisited } from "./lib/chatCycle.js";
 import { useAppGridSelection } from "./hooks/useAppGridSelection.js";
+import { useAppDestinations } from "./hooks/useAppDestinations.js";
+import { useAppMenuCommands } from "./hooks/useAppMenuCommands.js";
+import { useWorkspaceActions } from "./hooks/useWorkspaceActions.js";
+import { useProjectActions } from "./hooks/useProjectActions.js";
 import { useDashboardSession } from "./hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "./hooks/useSessionTimeline.js";
 import { useSessionCommands } from "./hooks/useSessionCommands.js";
@@ -80,7 +82,6 @@ import {
   hideStandalonePage,
   showArcPage,
   showCommandPalette,
-  showKeyboardCheatSheet,
   showSchedulePage,
   showSettings,
   showActivityPage,
@@ -100,7 +101,6 @@ import {
   closePane,
   focusPane,
   openWorkspacePane,
-  prunePaneGrid,
   revertPaneToLauncher,
   restorePaneGrid,
   setLauncherPaneProject,
@@ -193,6 +193,11 @@ import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { isMultitaskSession, multitasksByParentSession } from "./lib/multitask.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
+import {
+  chatDirectoryFromSnapshot,
+  publishChatDirectory,
+  registerChatOpener
+} from "./state/chatDirectory.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
 import { useStandaloneBrowserLinks } from "./hooks/useStandaloneBrowserLinks.js";
 import {
@@ -203,7 +208,6 @@ import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta } from "./lib/snapshot.js";
 import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
 
-import { withToast } from "./lib/withToast.js";
 
 const APP_MIN_HEIGHT_PX = 640;
 const STATIC_APP_MIN_WIDTH_PX = 600;
@@ -739,65 +743,17 @@ export function App(): JSX.Element {
     [grid.rows.length, newSessionMode, openLauncherPaneInGrid]
   );
   const openNewSessionPane = useCallback((): void => openLauncherSurface(false), [openLauncherSurface]);
-  const handleMenuCommand = useCallback(
-    (command: MenuCommand): void => {
-      switch (command) {
-        case "open-settings":
-          if (isSettingsOpen) {
-            hideStandalonePage();
-            return;
-          }
-          showSettings();
-          return;
-        case "new-session":
-          hideCommandPalette();
-          hideStandalonePage();
-          closeWorkspacePages();
-          openNewSessionPane();
-          return;
-        case "next-chat":
-        case "previous-chat": {
-          const workspaceId = jumpToAdjacentChat(
-            command === "next-chat" ? 1 : -1,
-            listVisibleSidebarWorkspaceIds(),
-            selectedSidebarWorkspaceId()
-          );
-          if (!workspaceId) return;
-          hideStandalonePage();
-          hideFullLauncher();
-          closeWorkspacePages();
-          openWorkspaceChat(workspaceId, { ctrlOrMeta: false, alt: false });
-          return;
-        }
-        case "open-command-palette":
-          showCommandPalette("all");
-          return;
-        case "open-cheat-sheet":
-          showKeyboardCheatSheet();
-          return;
-        case "toggle-sidebar":
-          setRightPanelToggleSignal((signal) => signal + 1);
-          return;
-        case "toggle-left-sidebar":
-          toggleSidebarCollapsed();
-          return;
-        // Menu ⌘W. It only fires when the renderer didn't consume ⌘W first
-        // (useGlobalKeybindings preventDefaults after closing a pane), which
-        // in practice means focus was inside a native browser tab.
-        case "close-surface":
-          if (requestCloseActiveBrowserTab()) return;
-          if (requestCloseActiveReviewFileTab()) return;
-          closeFocusedSurface();
-          return;
-        case "toggle-debug-log":
-          setDebugLogToggleSignal((signal) => signal + 1);
-          return;
-        case "check-for-updates":
-          return;
-      }
-    },
-    [closeFocusedSurface, closeWorkspacePages, isSettingsOpen, openNewSessionPane, openWorkspaceChat]
-  );
+  const toggleRightPanel = useCallback((): void => setRightPanelToggleSignal((signal) => signal + 1), []);
+  const toggleDebugLog = useCallback((): void => setDebugLogToggleSignal((signal) => signal + 1), []);
+  const handleMenuCommand = useAppMenuCommands({
+    isSettingsOpen,
+    closeWorkspacePages,
+    openNewSessionPane,
+    openWorkspaceChat,
+    closeFocusedSurface,
+    toggleRightPanel,
+    toggleDebugLog
+  });
 
   // ⌘A / ⌘P / ⌘F / ⌘⇧F are all the ⌘K overlay; only the pre-selected filter differs.
   const openActionPalette = useCallback((): void => showCommandPalette("actions"), []);
@@ -813,19 +769,29 @@ export function App(): JSX.Element {
     },
     [closeWorkspacePages, openWorkspaceChat]
   );
-  // Fork the session into a new workspace (same checkout, copied transcript,
-  // diverging provider conversation) and jump into the fork.
+  // Fork the session at a finished turn into a new chat (copied history up to
+  // that turn, no provider conversation until its first message) and jump into
+  // it. Without a turn it forks the whole chat as it is now.
   const forkSession = useCallback(
-    async (sessionId: string): Promise<void> => {
+    async (sessionId: string, options?: ForkSessionOptions): Promise<void> => {
       if (!window.argmax) return;
       try {
-        const forked = await window.argmax.session.fork({ sessionId });
-        openWorkspaceChat(forked.workspace.id, { ctrlOrMeta: false, alt: false });
+        const forked = await window.argmax.session.fork({ sessionId, ...options });
+        // Same path as a launch: the fork's rows come with the response and are
+        // not in the dashboard snapshot yet, so seed them and open the pane
+        // directly. `openWorkspaceChat` looks the workspace up in a map that
+        // predates the fork and would return without opening anything.
+        registerLaunchedSession(forked.workspace, forked.session);
+        openWorkspacePane(
+          { sessionId: forked.session.id, workspaceId: forked.workspace.id },
+          { ctrlOrMeta: false, alt: false },
+          { maxColumns: maxGridColumnsPerRow }
+        );
       } catch (error) {
         showErrorToast(error instanceof Error ? error.message : "Couldn't fork the chat.");
       }
     },
-    [openWorkspaceChat]
+    [maxGridColumnsPerRow, registerLaunchedSession]
   );
 
   usePersistedSetting(PROVIDER_PERMISSION_MODES_KEY, JSON.stringify(permissionModes));
@@ -857,154 +823,14 @@ export function App(): JSX.Element {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isFullLauncherOpen]);
 
-  const handleArchiveWorkspace = useCallback(async (workspaceId: string): Promise<void> => {
-    const api = window.argmax;
-    if (!api) {
-      showErrorToast("Open Argmax on your Mac to archive workspaces.");
-      return;
-    }
-    const confirmDirtyArchive = (target: WorkspaceSummary): Promise<boolean> => {
-      const fileLabel = target.changedFiles === 1 ? "1 uncommitted change" : `${target.changedFiles} uncommitted changes`;
-      return api.system.confirm(
-        `${target.taskLabel} has ${fileLabel}. Archive this worktree and keep its files in recovery storage?`
-      );
-    };
-    // Shared workspaces leave the filesystem alone. Isolated worktrees move
-    // into recovery storage, but dirty ones still require explicit consent so
-    // an archive-failed retry cannot silently act on newer changes.
-    const workspace = workspacesById.get(workspaceId);
-    let force = false;
-    let result: Awaited<ReturnType<typeof api.workspaces.archive>>;
-    try {
-      if (workspace?.dirty && !workspace.sharedWorkspace) {
-        if (!(await confirmDirtyArchive(workspace))) return;
-        force = true;
-      }
-      result = await api.workspaces.archive({ workspaceId, force });
-    } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Could not archive the workspace.");
-      return;
-    }
-    // Without force a dirty worktree comes back as "kept" — the backend's
-    // fresh status check found changes our cached snapshot missed, so the
-    // confirm dialog above never showed. Re-prompt once with the real count
-    // and retry with force; declining leaves the row kept, as intended.
-    if (result.workspace.state === "kept" && !force && !result.workspace.sharedWorkspace) {
-      try {
-        if (!(await confirmDirtyArchive(result.workspace))) {
-          setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
-          return;
-        }
-        result = await api.workspaces.archive({ workspaceId, force: true });
-      } catch (error) {
-        showErrorToast(error instanceof Error ? error.message : "Could not archive the workspace.");
-        return;
-      }
-    }
-    setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [result.workspace] }));
-    if (result.workspace.state !== "archived") {
-      showInfoToast(
-        "Workspace has uncommitted changes — kept in sidebar. Commit or discard, then retry archive."
-      );
-      return;
-    }
-    if (selectedWorkspaceId === workspaceId) {
-      setSelectedWorkspaceId(null);
-      setSelectedSessionId(null);
-    }
-    prunePaneGrid((cell) => cell.kind === "launcher" || cell.workspaceId !== workspaceId);
-  }, [selectedWorkspaceId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot, workspacesById]);
-
-  const handleOpenInIde = useCallback(
-    async (workspaceId: string, ide: IdeId, options?: { pinAsDefault?: boolean }): Promise<void> => {
-      if (!window.argmax) {
-        showErrorToast("Open Argmax on your Mac to launch an IDE.");
-        return;
-      }
-      try {
-        await window.argmax.workspaces.openInIde({ workspaceId, ide });
-        if (options?.pinAsDefault) {
-          setDefaultIde(ide);
-        }
-      } catch (error) {
-        const ideLabel = detectedIdes.find((entry) => entry.id === ide)?.label ?? ide;
-        showErrorToast(
-          error instanceof Error
-            ? `Couldn't launch ${ideLabel}. ${error.message}`
-            : `Couldn't launch ${ideLabel}.`
-        );
-      }
-    },
-    [detectedIdes, setDefaultIde]
-  );
-
-  const addProject = useCallback(async (): Promise<void> => {
-    if (!window.argmax) {
-      showErrorToast("Open Argmax on your Mac to add a project.");
-      return;
-    }
-
-    try {
-      const result = await window.argmax.projects.pickFolder();
-      if (result.cancelled) {
-        return;
-      }
-
-      // Clear the workspace selection first: while a workspace stays selected,
-      // the selection-sync effect forces selectedProjectId back to that
-      // workspace's project, silently undoing the new pick.
-      setSelectedSessionId(null);
-      setSelectedWorkspaceId(null);
-      persistLaunchProjectId(result.project.id);
-      setSelectedProjectId(result.project.id);
-      clearPaneGrid();
-      setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
-      showInfoToast(`Added ${result.project.name}.`);
-    } catch (error) {
-      showErrorToast(
-        error instanceof Error ? error.message : "Argmax requires a local git repository."
-      );
-    }
-  }, [setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
-
-  const removeProject = useCallback(async (projectId: string): Promise<void> => {
-    if (!window.argmax) {
-      showErrorToast("Open Argmax on your Mac to remove a project.");
-      return;
-    }
-    const projectName = snapshot.projects.find((p) => p.id === projectId)?.name ?? "project";
-    try {
-      await window.argmax.projects.remove({ projectId });
-      // Drop the project + its workspaces + its sessions from the local snapshot
-      // so the sidebar re-renders before the next full refresh lands.
-      setSnapshot((current) => ({
-        ...current,
-        projects: current.projects.filter((p) => p.id !== projectId),
-        workspaces: current.workspaces.filter((w) => w.projectId !== projectId),
-        sessions: current.sessions.filter((s) =>
-          current.workspaces.some((w) => w.id === s.workspaceId && w.projectId !== projectId)
-        )
-      }));
-      if (selectedProject?.id === projectId) {
-        setSelectedProjectId(null);
-        setSelectedWorkspaceId(null);
-        setSelectedSessionId(null);
-        clearPaneGrid();
-      }
-      showInfoToast(`Removed ${projectName}.`);
-    } catch (error) {
-      showErrorToast(
-        error instanceof Error ? error.message : `Could not remove ${projectName}.`
-      );
-    }
-  }, [
-    snapshot.projects,
-    selectedProject?.id,
+  const { addProject, removeProject } = useProjectActions({
+    projects: snapshot.projects,
+    selectedProjectId: selectedProject?.id ?? null,
     setSelectedProjectId,
-    setSelectedSessionId,
     setSelectedWorkspaceId,
+    setSelectedSessionId,
     setSnapshot
-  ]);
+  });
 
   // Random session icons for sessions this renderer did not launch: agent-
   // driven session control and the mobile companion create workspaces
@@ -1035,96 +861,28 @@ export function App(): JSX.Element {
     }
   }, [loadState, snapshot.workspaces, randomSessionIconEnabled]);
 
-  // Every sidebar-row mutation is the same round trip: one workspaces call, a
-  // toast when the bridge is missing or the call fails, and a dashboard refresh
-  // once it lands.
-  const runRowCommand = useCallback(
-    (blockedMessage: string, failureMessage: string, call: (api: ArgmaxApi) => Promise<unknown>): void => {
-      const api = window.argmax;
-      if (!api) {
-        showErrorToast(blockedMessage);
-        return;
-      }
-      void withToast(() => call(api), showToast, failureMessage).then((ok) =>
-        ok ? refreshDashboardStatus() : undefined
-      );
-    },
-    [refreshDashboardStatus]
-  );
-  // Stable per-row callbacks so SidebarSessionRow's memo comparator (which
-  // checks reference equality on each prop) doesn't re-render every row on
-  // every dashboard:delta. Inline lambdas would be recreated each render and
-  // bust the memo.
-  const onToggleWorkspacePinnedRow = useCallback(
-    (workspaceId: string, pinned: boolean): void =>
-      runRowCommand("Open Argmax on your Mac to pin a chat.", "Could not toggle pin.", (api) =>
-        api.workspaces.setPinned({ workspaceId, pinned })),
-    [runRowCommand]
-  );
-  const onRenameWorkspaceRow = useCallback(
-    (workspaceId: string, taskLabel: string): void =>
-      runRowCommand("Open Argmax on your Mac to rename a chat.", "Could not rename chat.", (api) =>
-        api.workspaces.setLabel({ workspaceId, taskLabel })),
-    [runRowCommand]
-  );
-  const onRemoveFromPriorityRow = useCallback(
-    (workspaceId: string): void =>
-      runRowCommand(
-        "Open Argmax on your Mac to change priority.",
-        "Could not remove the chat from priority.",
-        (api) => api.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
-      ),
-    [runRowCommand]
-  );
-  const onAddToPriorityRow = useCallback(
-    (workspaceId: string): void =>
-      runRowCommand(
-        "Open Argmax on your Mac to change priority.",
-        "Could not add the chat to priority.",
-        (api) => api.workspaces.setPriorityAdded({ workspaceId, added: true })
-      ),
-    [runRowCommand]
-  );
-  // Bulk "Clear" on the Priority header. Dismissing also clears a manual add
-  // backend-side, so one call per row empties both flavors of entry. The rows
-  // drop back into their date bucket or project group.
-  const onClearPrioritySection = useCallback(
-    (workspaceIds: string[]): void =>
-      runRowCommand(
-        "Open Argmax on your Mac to change priority.",
-        "Could not clear priority.",
-        (api) =>
-          Promise.all(
-            workspaceIds.map((workspaceId) =>
-              api.workspaces.setPriorityDismissed({ workspaceId, dismissed: true })
-            )
-          )
-      ),
-    [runRowCommand]
-  );
-  const onSetWorkspaceIconRow = useCallback(
-    (workspaceId: string, icon: string | null, iconColor: string | null): void =>
-      runRowCommand(
-        "Open Argmax on your Mac to change a chat icon.",
-        "Could not change the chat icon.",
-        (api) => api.workspaces.setIcon({ workspaceId, icon, iconColor })
-      ),
-    [runRowCommand]
-  );
-  // Right-click "Sync now" on an imported sidebar row: one sweep covers every
-  // provider at once, and the sweep publishes fresh events as deltas, so the
-  // row's conversation updates without a reopen.
-  const onSyncNowWorkspaceRow = useCallback((): void => {
-    if (!window.argmax) {
-      showErrorToast("Open Argmax on your Mac to sync chats.");
-      return;
-    }
-    void withToast(
-      () => window.argmax!.sync.runNow(),
-      showToast,
-      "Could not run chat sync."
-    );
-  }, []);
+  const {
+    archive: handleArchiveWorkspace,
+    openInIde: handleOpenInIde,
+    togglePinned: onToggleWorkspacePinnedRow,
+    rename: onRenameWorkspaceRow,
+    removeFromPriority: onRemoveFromPriorityRow,
+    addToPriority: onAddToPriorityRow,
+    snooze: onSnoozeRow,
+    unsnooze: onUnsnoozeRow,
+    clearPriority: onClearPrioritySection,
+    setIcon: onSetWorkspaceIconRow,
+    syncNow: onSyncNowWorkspaceRow
+  } = useWorkspaceActions({
+    refreshDashboardStatus,
+    workspacesById,
+    selectedWorkspaceId,
+    setSelectedWorkspaceId,
+    setSelectedSessionId,
+    setSnapshot,
+    detectedIdes,
+    setDefaultIde
+  });
   const onAddProjectRow = useCallback((): void => {
     void addProject();
   }, [addProject]);
@@ -1170,71 +928,32 @@ export function App(): JSX.Element {
   );
   // Every explicit "open this repository" gesture exits side-chat mode, or
   // the launcher would ignore the repo the user just picked.
-  const openRepoProjectLauncher = useCallback(
-    (projectId: string): void => {
-      persistLaunchProjectId(projectId);
-      setLauncherSideChatMode(false);
-      openProjectLauncher(projectId);
-    },
-    [openProjectLauncher]
-  );
-  const onOpenProjectRow = useCallback(
-    (projectId: string): void => {
-      hideStandalonePage();
-      hideFullLauncher();
-      closeWorkspacePages();
-      clearPaneGrid();
-      openRepoProjectLauncher(projectId);
-    },
-    [closeWorkspacePages, openRepoProjectLauncher]
-  );
-  const onOpenWorkspaceChatRow = useCallback(
-    (workspaceId: string, modifiers: Parameters<typeof openWorkspaceChat>[1]): void => {
-      hideStandalonePage();
-      hideFullLauncher();
-      closeWorkspacePages();
-      openWorkspaceChat(workspaceId, modifiers);
-    },
-    [closeWorkspacePages, openWorkspaceChat]
-  );
-  const onOpenArcRow = useCallback(
-    (arcId: string): void => {
-      hideCommandPalette();
-      hideStandalonePage();
-      hideFullLauncher();
-      closeWorkspacePages();
-      showArcPage(arcId);
-    },
-    [closeWorkspacePages]
-  );
-  const onOpenBrowserRow = useCallback((): void => {
-    if (!hostsBrowserSurface()) return;
-    hideCommandPalette();
-    hideStandalonePage();
-    hideFullLauncher();
-    hideArcPage();
-    setIsBrowserPageOpen(true);
-  }, [setIsBrowserPageOpen]);
+  const {
+    openRepoProjectLauncher,
+    openProject: onOpenProjectRow,
+    openWorkspace: onOpenWorkspaceChatRow,
+    openArc: onOpenArcRow,
+    openBrowser: onOpenBrowserRow,
+    openSession: openSessionById
+  } = useAppDestinations({
+    sessions: snapshot.sessions,
+    closeWorkspacePages,
+    openProjectLauncher,
+    openWorkspaceChat,
+    setBrowserPageOpen: setIsBrowserPageOpen
+  });
   useStandaloneBrowserLinks({
     active: standalonePageOpen,
     onOpenInAppBrowser: onOpenBrowserRow
   });
-  // Focus another chat by session id: the sender named on an agent message's
-  // bubble, and the chat whose agent launched this one. A session that has
-  // since been pruned resolves to nothing and the click is a no-op.
-  const openSessionById = useCallback(
-    (sessionId: string): void => {
-      const target = snapshot.sessions.find((session) => session.id === sessionId);
-      if (!target) return;
-      hideStandalonePage();
-      hideFullLauncher();
-      closeWorkspacePages();
-      openWorkspaceChat(target.workspaceId, { ctrlOrMeta: false, alt: false });
-    },
-    [closeWorkspacePages, snapshot.sessions, openWorkspaceChat]
-  );
   const [notifiedSessionId, setNotifiedSessionId] = useState<string | null>(null);
   useEffect(() => window.argmax?.windows.onFocusSession(setNotifiedSessionId), []);
+  // Window snapshots from the global chord: errors toast here, captures go to
+  // the active composer through the inbox (lib/windowSnapshotInbox.ts).
+  useEffect(() => {
+    const api = window.argmax?.windowSnapshot;
+    return api ? startWindowSnapshotInbox(api) : undefined;
+  }, []);
   useEffect(() => {
     if (!notifiedSessionId || loadState !== "ready") return;
     const session = sessionsById.get(notifiedSessionId);
@@ -1596,6 +1315,9 @@ export function App(): JSX.Element {
         agentMode: AgentMode;
         attachments?: ComposerAttachment[] | undefined;
         goalCondition?: string | undefined;
+        /** Start the chat without moving the user: the new chat takes its
+         *  sidebar row and nothing else, and the launcher stays on screen. */
+        background?: boolean | undefined;
       }
     ): Promise<LaunchedChat> => {
       const api = window.argmax;
@@ -1639,16 +1361,18 @@ export function App(): JSX.Element {
         throw error;
       }
       registerLaunchedSession(workspace, launchedSession);
-      // Full-launcher mode is a hard context switch: the old grid was hidden
-      // while composing, so stale split panes (especially agent activity panes)
-      // should not reappear beside the fresh session after launch.
-      const launchedFromFullLauncher = isFullLauncherOpen;
-      hideFullLauncher();
       const cell = { sessionId: launchedSession.id, workspaceId: workspace.id };
-      if (launchedFromFullLauncher) {
-        showOnlyPane(cell);
-      } else {
-        openWorkspacePane(cell, { ctrlOrMeta: false, alt: false }, { maxColumns: maxGridColumnsPerRow });
+      if (!options.background) {
+        // Full-launcher mode is a hard context switch: the old grid was hidden
+        // while composing, so stale split panes (especially agent activity
+        // panes) should not reappear beside the fresh session after launch.
+        const launchedFromFullLauncher = isFullLauncherOpen;
+        hideFullLauncher();
+        if (launchedFromFullLauncher) {
+          showOnlyPane(cell);
+        } else {
+          openWorkspacePane(cell, { ctrlOrMeta: false, alt: false }, { maxColumns: maxGridColumnsPerRow });
+        }
       }
       void api.workspaces
         .autoTitle({
@@ -1671,6 +1395,28 @@ export function App(): JSX.Element {
     ]
   );
 
+  // Merge a fresh ProjectSummary (branch switch, settings save) into the
+  // snapshot without disturbing anything else.
+  const handleProjectUpdated = useCallback(
+    (updated: ProjectSummary): void => {
+      setSnapshot((s) => {
+        // Skip reallocation when nothing actually changed; `git switch` to the
+        // same branch is a no-op.
+        const existing = s.projects.find((p) => p.id === updated.id);
+        if (existing === updated) return s;
+        let mutated = false;
+        const projects = s.projects.map((p) => {
+          if (p.id !== updated.id) return p;
+          if (p === updated) return p;
+          mutated = true;
+          return updated;
+        });
+        return mutated ? { ...s, projects } : s;
+      });
+    },
+    [setSnapshot]
+  );
+
   const launchTask = useCallback(
     async (
       prompt: string,
@@ -1679,7 +1425,9 @@ export function App(): JSX.Element {
       projectIdOverride: string | undefined,
       workspaceMode: WorkspaceMode,
       attachments?: ComposerAttachment[],
-      goalCondition?: string
+      goalCondition?: string,
+      background?: boolean,
+      pickedCheckout?: LaunchCheckout
     ): Promise<LaunchedChat> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to launch local agents.");
@@ -1706,18 +1454,39 @@ export function App(): JSX.Element {
         );
       }
       const api = window.argmax;
+      // A branch picked in the launcher belongs to the project it was picked
+      // in. Project check can move the launch to another project, and a pick
+      // made there means nothing in this one.
+      const checkout = pickedCheckout?.projectId === projectId ? pickedCheckout : null;
+      const base = { projectId, taskLabel };
+      // No checkout has the picked branch: the project root takes it now, at
+      // launch, unless a worktree is being made from it. Git decides: the branch
+      // the root is on is a no-op, and one a worktree gained in the meantime is
+      // refused. The cached current branch can lag the disk, so it is not read.
+      if (checkout && !checkout.path && workspaceMode !== "worktree") {
+        handleProjectUpdated(await api.projects.switchBranch(projectId, checkout.branch));
+      }
+      // `git worktree add -b` works even when the base is checked out elsewhere.
+      // A branch already checked out is reached by running in that checkout; the
+      // host refuses it if it has moved to another branch since the picker listed it.
       const workspace =
         workspaceMode === "worktree"
           ? await api.workspaces.createIsolated({
-              projectId,
-              taskLabel,
-              baseRef: launchingProject?.currentBranch ?? null
+              ...base,
+              baseRef: checkout?.branch ?? launchingProject?.currentBranch ?? null
             })
-          : await api.workspaces.createCurrent({ projectId, taskLabel });
+          : checkout?.path
+            ? await api.workspaces.createAlongside({ ...base, path: checkout.path, branch: checkout.branch })
+            : await api.workspaces.createCurrent(base);
 
-      return startSessionInWorkspace(workspace, prompt, model, { agentMode, attachments, goalCondition });
+      return startSessionInWorkspace(workspace, prompt, model, {
+        agentMode,
+        attachments,
+        goalCondition,
+        background
+      });
     },
-    [selectedProject, snapshot.projects, startSessionInWorkspace]
+    [handleProjectUpdated, selectedProject, snapshot.projects, startSessionInWorkspace]
   );
 
   // Repo-less side chat: a scratch workspace instead of a project checkout,
@@ -1732,8 +1501,9 @@ export function App(): JSX.Element {
         agentMode?: AgentMode;
         attachments?: ComposerAttachment[];
         goalCondition?: string;
+        background?: boolean;
       }
-    ): Promise<void> => {
+    ): Promise<LaunchedChat> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to launch local agents.");
       }
@@ -1741,14 +1511,17 @@ export function App(): JSX.Element {
         taskLabel: titleFromPrompt(prompt),
         kind: null
       });
-      await startSessionInWorkspace(workspace, prompt, options?.model ?? launchModel, {
+      const launched = await startSessionInWorkspace(workspace, prompt, options?.model ?? launchModel, {
         agentMode: options?.agentMode ?? "auto",
         attachments: options?.attachments,
-        goalCondition: options?.goalCondition
+        goalCondition: options?.goalCondition,
+        background: options?.background
       });
       // The armed chat mode has served its purpose; the next plain new-session
-      // entry should open in project mode again.
-      setLauncherSideChatMode(false);
+      // entry should open in project mode again. A background send keeps the
+      // launcher where it is, in the mode it is in, for the next draft.
+      if (!options?.background) setLauncherSideChatMode(false);
+      return launched;
     },
     [launchModel, startSessionInWorkspace]
   );
@@ -2101,6 +1874,21 @@ export function App(): JSX.Element {
     [paletteSnapshot]
   );
 
+  // The chats a prompt can name, and how a chip opens one. Published for the
+  // composers, which sit far below this component (see state/chatDirectory.ts).
+  useEffect(() => {
+    publishChatDirectory(chatDirectoryFromSnapshot(paletteSnapshot));
+  }, [paletteSnapshot]);
+  useEffect(
+    () =>
+      registerChatOpener((entry) => {
+        hideStandalonePage();
+        closeWorkspacePages();
+        openWorkspaceChat(entry.workspaceId);
+      }),
+    [closeWorkspacePages, openWorkspaceChat]
+  );
+
   const loadPaletteFiles = useCallback(
     async (source: { kind: "workspace" | "project"; id: string }): Promise<string[]> => {
       const entries = await listFilesFor(source.kind, source.id);
@@ -2147,28 +1935,6 @@ export function App(): JSX.Element {
     [paletteFileContext?.source]
   );
 
-  // Merge a fresh ProjectSummary (branch switch, settings save) into the
-  // snapshot without disturbing anything else.
-  const handleProjectUpdated = useCallback(
-    (updated: ProjectSummary): void => {
-      setSnapshot((s) => {
-        // Skip reallocation when nothing actually changed; `git switch` to the
-        // same branch is a no-op.
-        const existing = s.projects.find((p) => p.id === updated.id);
-        if (existing === updated) return s;
-        let mutated = false;
-        const projects = s.projects.map((p) => {
-          if (p.id !== updated.id) return p;
-          if (p === updated) return p;
-          mutated = true;
-          return updated;
-        });
-        return mutated ? { ...s, projects } : s;
-      });
-    },
-    [setSnapshot]
-  );
-
   // Which projects have an agent working right now. The launcher's hero fox
   // reads it and switches to its thinking face, so the mark reflects real work
   // instead of decorating the page.
@@ -2205,10 +1971,10 @@ export function App(): JSX.Element {
         onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
         goalEnabled={goalEnabled}
-        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition, projectId) =>
-          launchTask(prompt, model, agentMode, projectId ?? project?.id, workspaceMode, attachments, goalCondition)}
-        onLaunchSideChat={(prompt, model, agentMode, attachments, goalCondition) =>
-          launchSideChat(prompt, { model, agentMode, attachments, goalCondition })}
+        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition, projectId, background, checkout) =>
+          launchTask(prompt, model, agentMode, projectId ?? project?.id, workspaceMode, attachments, goalCondition, background, checkout)}
+        onLaunchSideChat={(prompt, model, agentMode, attachments, goalCondition, background) =>
+          launchSideChat(prompt, { model, agentMode, attachments, goalCondition, background })}
         model={launchModel}
         autoRouting={autoRoutingEnabled}
         onModelChange={handleLaunchModelChange}
@@ -2473,6 +2239,8 @@ export function App(): JSX.Element {
           onRenameWorkspace={onRenameWorkspaceRow}
           onRemoveFromPriority={onRemoveFromPriorityRow}
           onAddToPriority={onAddToPriorityRow}
+          onSnoozeWorkspace={onSnoozeRow}
+          onUnsnoozeWorkspace={onUnsnoozeRow}
           onClearPriority={onClearPrioritySection}
           onSetWorkspaceIcon={onSetWorkspaceIconRow}
           onSyncNowWorkspace={onSyncNowWorkspaceRow}
@@ -2687,7 +2455,9 @@ export function App(): JSX.Element {
               onLoadSessionEvents={loadSessionEvents}
               onLoadAgentEvents={loadAgentEvents}
               onNewSession={openNewSessionPaneInGrid}
-              onOpenSideChat={launchSideChat}
+              onOpenSideChat={async (seedPrompt) => {
+                await launchSideChat(seedPrompt);
+              }}
               onOpenSession={openSessionById}
               onOpenDetails={launchDetailsPopup}
               defaultIde={defaultIde}

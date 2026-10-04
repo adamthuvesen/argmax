@@ -578,3 +578,70 @@
   color: var(--muted);
   font-size: var(--text-sm-plus);
 }
+
+/* Plan usage in the composer toolbar (see ComposerUsageChip). The chip is a
+   toolbar chip with a gauge and one figure; the popover is a readout like the
+   context ring's, one meter per limit window. */
+.composer-usage-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: var(--space-1);
+}
+
+/* The model and its effort outrank the plan figure under width: the chip goes
+   when either composer folds its toolbar (see the container queries in
+   chat-composer-chips.css), and the Usage page still has the figures. */
+@container (max-width: 600px) {
+  .session-input-toolbar .composer-usage-anchor {
+    display: none;
+  }
+}
+
+@container (max-width: 720px) {
+  .launcher-surface .composer-context-group--model .composer-usage-anchor {
+    display: none;
+  }
+}
+
+.composer-usage-chip {
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-usage-chip[data-low="true"] {
+  color: var(--rose);
+}
+
+.composer-usage-popover {
+  z-index: 40;
+  display: grid;
+  gap: var(--space-2);
+  width: max-content;
+  min-width: 220px;
+  max-width: 300px;
+  padding: 10px 12px 11px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+}
+
+.composer-usage-head {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+
+.composer-usage-plan {
+  color: var(--muted);
+}
+
+.composer-usage-windows {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

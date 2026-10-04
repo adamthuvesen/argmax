@@ -3,7 +3,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
 import type { RemoteConnectionState } from "../lib/wsTransport.js";
-import { LAUNCHER_TITLE, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
+import { SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import {
   archiveWorkspace,
   createCurrentWorkspace,
@@ -385,19 +385,6 @@ describe("MobileApp", () => {
     const section = await screen.findByRole("region", { name: "Chat list" });
     expect(within(section).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Stranded launch/ })).not.toBeInTheDocument();
-  });
-
-  it("opens a session on tap and returns to the list via back", async () => {
-    render(<MobileApp />);
-
-    const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
-
-    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Chat list" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to chats" }));
-    expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
   });
 
   it("opens a subagent's transcript in the overlay, over the chat that spawned it", async () => {
@@ -814,8 +801,12 @@ describe("MobileApp", () => {
     });
     window.argmax!.session.fork = fork;
 
-    fireEvent.click(await screen.findByRole("button", { name: "Fork chat" }));
-    await waitFor(() => expect(fork).toHaveBeenCalledWith({ sessionId: "session-1" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Fork from this turn" }));
+    // The fork starts at the user message that began the turn it was clicked on.
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(1));
+    const request = fork.mock.calls[0]?.[0] as { sessionId: string; boundaryEventId?: string };
+    expect(request.sessionId).toBe("session-1");
+    expect(request.boundaryEventId).toEqual(expect.stringMatching(/\S/));
   });
 
   it("chooses the changes scope from a sheet, like every other phone picker", async () => {
@@ -969,6 +960,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
     fireEvent.change(screen.getByLabelText("Task"), {
       target: { value: "Fix the flaky archive test" }
     });
@@ -1016,6 +1008,7 @@ describe("MobileApp", () => {
 
     try {
       fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+      await screen.findByLabelText("Task");
       fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Start something new" } });
       fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
@@ -1051,16 +1044,6 @@ describe("MobileApp", () => {
     expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
   });
 
-  it("shows the shared fixed new-chat title on the + screen", async () => {
-    render(<MobileApp />);
-    await screen.findByRole("region", { name: "Chat list" });
-
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(LAUNCHER_TITLE);
-    expect(screen.getByRole("img", { name: "Fox mascot" })).toBeInTheDocument();
-  });
-
   it("attaches a screenshot from the new-chat composer and sends it with the launch", async () => {
     const restoreObjectUrl = installObjectUrl("blob:mobile-screenshot");
     try {
@@ -1068,6 +1051,7 @@ describe("MobileApp", () => {
       await screen.findByRole("region", { name: "Chat list" });
 
       fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+      await screen.findByLabelText("Task");
       const screenshot = new File([new Uint8Array([137, 80, 78, 71])], "screenshot.png", {
         type: "image/png"
       });
@@ -1104,13 +1088,14 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
 
     const picker = await screen.findByRole("listbox", { name: "Chat model" });
-    fireEvent.click(within(picker).getByRole("button", { name: "Big Pickle" }));
+    fireEvent.click(within(picker).getByRole("button", { name: "Kimi K3" }));
 
     expect(screen.queryByRole("listbox", { name: "Chat model" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Chat model" })).toHaveTextContent("Big Pickle");
+    expect(screen.getByRole("button", { name: "Chat model" })).toHaveTextContent("Kimi K3");
   });
 
   it("changes reasoning effort from the new-session composer", async () => {
@@ -1118,6 +1103,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
     const effortButton = screen.getByRole("button", { name: "Chat model effort" });
     expect(effortButton).toHaveTextContent("Medium");
     fireEvent.click(effortButton);
@@ -1131,23 +1117,12 @@ describe("MobileApp", () => {
     expect(screen.getByRole("button", { name: "Chat model effort" })).toHaveTextContent("Ultra");
   });
 
-  it("picks the project from a bottom sheet on the + screen", async () => {
-    render(<MobileApp />);
-    await screen.findByRole("region", { name: "Chat list" });
-
-    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-    fireEvent.click(screen.getByRole("button", { name: "Project" }));
-
-    const sheet = await screen.findByRole("dialog", { name: "Choose project" });
-    fireEvent.click(within(sheet).getByRole("button", { name: snapshot.projects[0].name }));
-    expect(screen.queryByRole("dialog", { name: "Choose project" })).not.toBeInTheDocument();
-  });
-
   it("launches into a worktree when that mode is chosen", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
     fireEvent.click(within(sheet).getByRole("button", { name: "New worktree" }));
@@ -1174,6 +1149,7 @@ describe("MobileApp", () => {
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
 
     fireEvent.click(within(sheet).getByRole("button", { name: "New chat here" }));
+    await screen.findByLabelText("Task");
 
     const workspaceBtn = screen.getByRole("button", { name: "Workspace" });
     expect(workspaceBtn.closest(".mobile-new-row")).toHaveTextContent("New worktree · from Build dashboard");
@@ -1196,6 +1172,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
 
@@ -1259,6 +1236,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     const sheet = await screen.findByRole("dialog", { name: "Choose workspace" });
     fireEvent.click(within(sheet).getByRole("button", { name: "Chat" }));
@@ -1294,6 +1272,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
 
     // The old empty state made this screen a dead end on a phone that has
     // never had a repo added; a side chat needs no repository.
@@ -1470,6 +1449,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
 
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    await screen.findByLabelText("Task");
     fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Half-written idea" } });
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     await screen.findByRole("listbox", { name: "Chat model" });

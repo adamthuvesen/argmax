@@ -53,16 +53,16 @@ final class ProviderCatalogTests: XCTestCase {
     /// the model id in TypeScript. Grok Build's CLI rejects anything above
     /// Extra High, so the phone must not offer Max or Ultra.
     func testEffortLaddersAreThePerModelOnes() throws {
-        let grok = try XCTUnwrap(catalog.model(provider: "grok", modelId: "grok-4.6"))
+        let grok = try XCTUnwrap(catalog.model(provider: "grok", modelId: "grok-4.7"))
         XCTAssertEqual(grok.reasoningEfforts.map(\.rawValue), ["low", "medium", "high", "xhigh"])
 
-        let opus = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-opus-5"))
+        let opus = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-opus-5-5"))
         XCTAssertEqual(opus.reasoningEfforts.map(\.rawValue), ["low", "medium", "high", "xhigh", "max", "ultra"])
 
-        // A discrete ladder, not a prefix: the OpenCode Go variants expose
-        // only the levels their CLI takes.
-        let kimi = try XCTUnwrap(catalog.model(provider: "opencode", modelId: "opencode-go/kimi-k3"))
-        XCTAssertEqual(kimi.reasoningEfforts.map(\.rawValue), ["max"])
+        // A discrete ladder, not a prefix: the OpenCode variants expose only
+        // the levels their CLI takes.
+        let qwen = try XCTUnwrap(catalog.model(provider: "opencode", modelId: "openrouter/qwen/qwen3.8-flash"))
+        XCTAssertEqual(qwen.reasoningEfforts.map(\.rawValue), ["high", "max"])
     }
 
     func testAFastModelHasNoEffortControl() throws {
@@ -75,12 +75,12 @@ final class ProviderCatalogTests: XCTestCase {
     /// Switching model carries the effort down, never up: a Medium selection
     /// moving to a low/high/max ladder becomes Low.
     func testAnEffortClampsDownOntoTheNewModelsLadder() throws {
-        let glm = try XCTUnwrap(catalog.model(provider: "opencode", modelId: "opencode-go/glm-5.3"))
+        let glm = try XCTUnwrap(catalog.model(provider: "opencode", modelId: "openrouter/z-ai/glm-5.3"))
         XCTAssertEqual(glm.reasoningEfforts.map(\.rawValue), ["low", "high", "max"])
         XCTAssertEqual(catalog.resolveEffort(.medium, for: glm), .low)
         XCTAssertEqual(catalog.resolveEffort(.high, for: glm), .high)
 
-        let grok = try XCTUnwrap(catalog.model(provider: "grok", modelId: "grok-4.6"))
+        let grok = try XCTUnwrap(catalog.model(provider: "grok", modelId: "grok-4.7"))
         XCTAssertEqual(
             catalog.resolveEffort(ReasoningEffort(rawValue: "ultra"), for: grok),
             ReasoningEffort(rawValue: "xhigh"),
@@ -119,12 +119,13 @@ final class ProviderCatalogTests: XCTestCase {
         XCTAssertNil(catalog.preferredProvider(among: []))
     }
 
-    /// Cursor cannot fork a resumed conversation, and `fork_session` refuses
-    /// it host-side; the row's Fork action reads this.
+    /// Every provider can be forked: Cursor cannot resume one conversation from
+    /// two sessions, so its fork starts fresh from the copied history. The
+    /// row's Fork action reads this.
     func testForkCapabilityMatchesTheHostsGate() {
         XCTAssertEqual(
             catalog.providers.filter(\.forkCapable).map(\.id),
-            ["claude", "codex", "opencode", "grok"]
+            ["claude", "codex", "cursor", "opencode", "grok"]
         )
     }
 
@@ -132,7 +133,7 @@ final class ProviderCatalogTests: XCTestCase {
     /// `contextWindow`, or every row in the sheet loses the one number that
     /// tells two models with the same name apart.
     func testTheCatalogueCarriesContextWindows() throws {
-        let opus = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-opus-5"))
+        let opus = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-opus-5-5"))
         XCTAssertEqual(opus.contextWindow, 1_000_000)
         let sonnet = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-sonnet-5-5"))
         XCTAssertEqual(sonnet.contextWindow, 1_000_000)

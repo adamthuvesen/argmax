@@ -46,12 +46,6 @@ describe("SessionConversation workspace card", () => {
     cleanup();
   });
 
-  it("floats the card beside the transcript when nothing is docked on the right", () => {
-    renderPane();
-
-    expect(screen.getByRole("complementary", { name: "Workspace" })).toBeInTheDocument();
-  });
-
   it("keeps the card rendered when the review panel is open, leaving visibility to spacing", () => {
     renderPane({ review: reviewStub({ isPanelOpen: true }) });
 

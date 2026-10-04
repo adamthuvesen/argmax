@@ -158,8 +158,10 @@ impl GrokAcpSessions {
                         }
                     };
                     if !exists {
+                        // Nothing was sent to Grok yet, so a fresh start cannot
+                        // duplicate the turn.
                         return Err(ArgmaxError::service(
-                            "ACP_SESSION_UNAVAILABLE",
+                            crate::providers::continuity::RESUME_REJECTED,
                             format!("Grok ACP did not list session {session_id}"),
                         ));
                     }
@@ -1017,6 +1019,7 @@ done
                 fast_mode: false,
                 resume_conversation_id: Some("native-conversation".into()),
                 resume_fork: false,
+                continuity: None,
                 permission_mode: PermissionMode::ProviderDefaults,
                 agent_mode: AgentMode::Auto,
                 cols: 80,
@@ -1057,6 +1060,7 @@ done
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::ProviderDefaults,
             agent_mode: AgentMode::Auto,
             cols: 80,

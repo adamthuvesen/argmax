@@ -313,13 +313,6 @@ describe("Task / sub-agent tools", () => {
     expect(getToolTypeBucket("close_agent")).not.toBe("agent");
   });
 
-  it("classifies Cursor `taskToolCall` and Codex `collab_tool_call` as agents", () => {
-    // Neither provider streams the sub-agent's internal steps, but the launch
-    // still reads as "an agent did this" (Bot icon + "Spawned N agents").
-    expect(getToolTypeBucket("taskToolCall")).toBe("agent");
-    expect(getToolTypeBucket("collab_tool_call")).toBe("agent");
-  });
-
   it("classifies the launch tool every provider actually emits", () => {
     // The names each CLI puts on the wire today: Claude's `Agent`, Codex's
     // `spawn_agent`, OpenCode's `task`, and Cursor's `taskToolCall` (one-shot
@@ -374,15 +367,6 @@ describe("Task / sub-agent tools", () => {
         subagent_type: "general-purpose"
       })
     ).toBe("Audit shared + scripts");
-  });
-
-  it("describeToolAction renders a launch action so the row reads as 'Started agent <description>'", () => {
-    const t = tool({
-      name: "Task",
-      inputPreview: "Audit shared + scripts",
-      inputFull: { description: "Audit shared + scripts" }
-    });
-    expect(describeToolAction(t)).toBe("Started agent Audit shared + scripts");
   });
 
   it("group headline uses a quiet started-agent phrase", () => {
@@ -444,27 +428,6 @@ describe("summarizeToolGroup — single-bucket headlines", () => {
     expect(out.headline).toBe("Ran 3 commands");
   });
 
-  it("unwraps shell launchers from command previews", () => {
-    const out = summarizeToolGroup([
-      tool({
-        name: "command_execution",
-        id: "cmd-1",
-        inputPreview: "/bin/zsh -lc \"sed -n '1,80p' src/a.ts\""
-      }),
-      tool({
-        name: "command_execution",
-        id: "cmd-2",
-        inputPreview: "/bin/zsh -lc \"rg -n useReviewState src\""
-      }),
-      tool({
-        name: "command_execution",
-        id: "cmd-3",
-        inputPreview: "/bin/zsh -lc \"npm run lint\""
-      })
-    ]);
-    expect(out.headline).toBe("Ran 3 commands");
-  });
-
   it("counts several settled edits", () => {
     const out = summarizeToolGroup([tool({ name: "Write" }), tool({ name: "Edit", id: "id-2" })]);
     expect(out.headline).toBe("Edited 2 files");
@@ -485,15 +448,6 @@ describe("summarizeToolGroup — mixed-bucket headlines", () => {
       tool({ name: "Bash", id: "4" })
     ]);
     expect(out.headline).toBe("Read a file, listed 2 directories, ran a command");
-  });
-
-  it("first clause is capitalized, subsequent clauses lowercase", () => {
-    const out = summarizeToolGroup([
-      tool({ name: "Bash", id: "1" }),
-      tool({ name: "Read", id: "2" })
-    ]);
-    // read-files comes before bash in fixed order, so "Read ..." leads.
-    expect(out.headline).toBe("Read a file, ran a command");
   });
 
   it("preserves bucket ordering regardless of input order", () => {

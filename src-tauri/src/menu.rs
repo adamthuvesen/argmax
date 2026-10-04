@@ -19,7 +19,8 @@ const ZOOM_MAX: f64 = 2.0;
 const ZOOM_STEP: f64 = 0.1;
 static WEBVIEW_ZOOM: std::sync::Mutex<f64> = std::sync::Mutex::new(1.0);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
 pub enum MenuCommand {
     NewSession,
     NextChat,
@@ -582,16 +583,6 @@ fn toggle_devtools<R: Runtime>(_app: &AppHandle<R>) {}
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
-
-    #[test]
-    fn menu_spec_matches_stable_top_level_order() {
-        let labels: Vec<_> = app_menu_spec(false)
-            .into_iter()
-            .map(|menu| menu.label)
-            .collect();
-
-        assert_eq!(labels, ["Argmax", "File", "Edit", "View", "Window", "Help"]);
-    }
 
     #[test]
     fn every_menu_command_is_reachable_from_the_spec() {

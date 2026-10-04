@@ -10,7 +10,7 @@ import {
   patchUsageUiState,
   requestUsageRemaining,
   requestUsageSummary,
-  setCachedUsageRemaining,
+  recordUsageRemainingFailure,
   usageRemainingHasSettled
 } from "../../lib/ledgerPageState.js";
 import { SegmentedControl, SettingsListPicker } from "../settings/settingsPrimitives.js";
@@ -170,7 +170,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
       if (remainingRequestRef.current !== request) return;
       const message =
         cause instanceof Error ? cause.message : "Could not read remaining usage.";
-      setCachedUsageRemaining(null, message);
+      recordUsageRemainingFailure(message, Date.now());
       setRemainingError(message);
     }
   }, []);

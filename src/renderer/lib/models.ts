@@ -36,11 +36,13 @@ const AUTO_TIER_LABELS: Record<AutoTier, string> = {
   economy: "Router Cost"
 };
 
+// Prose copy of the routing grid in src-tauri/src/routing/table.rs; edit both
+// together, and docs/routing.md too.
 export const AUTO_TIER_DESCRIPTIONS: Record<AutoTier, string> = {
-  cost: "Sonnet and Composer; Opus only for reviews",
+  cost: "Sonnet and DeepSeek, reviews included",
   balanced: "Sonnet for everyday work, Opus for heavy work and reviews",
   intelligence: "Frontier models, deeper reasoning",
-  economy: "Luna for routine work, Sol for larger work; Opus for reviews"
+  economy: "DeepSeek for routine work, Sol for larger work; Sonnet for reviews"
 };
 
 /** Picker row and recency key for an Auto row, apart from every `provider:modelId`. */
@@ -80,8 +82,8 @@ type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort: boole
 export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[])
   .flatMap((provider) =>
     PROVIDER_MODELS[provider].map((model) => {
-      // Resolve the seed onto what the model actually offers: the OpenCode Go
-      // variant lists are discrete (Kimi K3 is `max`-only), so an unresolved
+      // Resolve the seed onto what the model actually offers: the OpenCode
+      // variant lists are discrete (Qwen3.8 Flash is high/max only), so an unresolved
       // "medium" would show Medium in the picker while the adapter launched a
       // different variant. The row seed is catalog-level, so it uses the
       // built-in default effort rather than the user's preference.
@@ -163,12 +165,11 @@ export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = [
   "grok"
 ];
 
-/** Last-resort launcher pick when no provider CLI is installed. OpenCode Zen
- *  Big Pickle, not the OpenCode Go default. */
+/** Last-resort launcher pick when no provider CLI is installed: OpenCode's
+ *  catalog default. */
 export const FALLBACK_LAUNCH_MODEL: ModelPickerSelection = {
   provider: "opencode",
-  label: "Big Pickle",
-  modelId: "opencode/big-pickle"
+  ...modelDefaultForProvider("opencode")
 };
 
 /** Unpersisted factory default: highest-priority provider's catalog default. */
@@ -195,7 +196,7 @@ export function preferredLaunchProvider(providers: DiscoveredProvider[]): Provid
 }
 
 /**
- * Catalog default for {@link preferredLaunchProvider}, or Big Pickle when no
+ * Catalog default for {@link preferredLaunchProvider}, or OpenCode's when no
  * provider is usable. Used to pre-fill the launcher when the stored global
  * preference is missing or points at an unusable provider.
  */

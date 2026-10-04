@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use rusqlite::{Connection, Row, Transaction};
 use serde::de::DeserializeOwned;
 
+use super::authorship::PromptAuthor;
 use super::{bool_to_i64, json_error, sqlite_error, time::now_iso};
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
@@ -112,9 +113,10 @@ pub fn list_session_pending_messages(
     let mut statement = connection
         .prepare_cached(
             r#"
-            SELECT id, session_id, content, agent_mode, model_label, model_id,
+            SELECT id, session_id, content, agent_mode, provider, model_label, model_id,
                    reasoning_effort, fast_mode, attachments_json,
-                   agent_references_json, origin_json, queued_at, delivery_state
+                   agent_references_json, origin_json, queued_at, delivery_state,
+                   prompt_author
             FROM pending_messages
             WHERE session_id = ? AND delivery_state <> 'launching'
             ORDER BY position
@@ -273,18 +275,19 @@ fn insert_message(
         .execute(
             r#"
             INSERT INTO pending_messages (
-                id, session_id, position, content, agent_mode, model_label,
+                id, session_id, position, content, agent_mode, provider, model_label,
                 model_id, reasoning_effort, fast_mode, attachments_json,
                 agent_references_json, origin_json, queued_at, delivery_state,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                updated_at, prompt_author
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
-            (
+            rusqlite::params![
                 message.id.as_str(),
                 message.session_id.as_str(),
                 position as i64,
                 message.content.as_str(),
                 message.agent_mode.as_str(),
+                message.provider.as_ref().map(|provider| provider.as_str()),
                 message.model_label.as_deref(),
                 message.model_id.as_deref(),
                 message.reasoning_effort.as_deref(),
@@ -295,7 +298,8 @@ fn insert_message(
                 message.queued_at.as_str(),
                 state,
                 now_iso(),
-            ),
+                message.author.as_column(),
+            ],
         )
         .map_err(sqlite_error)?;
     Ok(())
@@ -305,9 +309,10 @@ fn list_pending_messages_from(connection: &Connection) -> ArgmaxResult<Vec<Pendi
     let mut statement = connection
         .prepare_cached(
             r#"
-            SELECT id, session_id, content, agent_mode, model_label, model_id,
+            SELECT id, session_id, content, agent_mode, provider, model_label, model_id,
                    reasoning_effort, fast_mode, attachments_json,
-                   agent_references_json, origin_json, queued_at, delivery_state
+                   agent_references_json, origin_json, queued_at, delivery_state,
+                   prompt_author
             FROM pending_messages
             ORDER BY session_id, position
             "#,
@@ -336,6 +341,21 @@ fn row_to_pending_message(row: &Row<'_>) -> rusqlite::Result<PendingMessage> {
             let _: String = row.get("agent_mode")?;
             "auto".to_string()
         },
+        // NULL is every row queued before the column existed: the chat's
+        // current provider. A value this build does not know is surfaced, not
+        // quietly turned into "current".
+        provider: row
+            .get::<_, Option<String>>("provider")?
+            .map(|value| {
+                crate::providers::runtime::parse_provider(&value).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        4,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })
+            })
+            .transpose()?,
         model_label: row.get("model_label")?,
         model_id: row.get("model_id")?,
         reasoning_effort: row.get("reasoning_effort")?,
@@ -354,6 +374,9 @@ fn row_to_pending_message(row: &Row<'_>) -> rusqlite::Result<PendingMessage> {
             _ => None,
         },
         queued_at: row.get("queued_at")?,
+        author: PromptAuthor::from_column(
+            row.get::<_, Option<String>>("prompt_author")?.as_deref(),
+        ),
     })
 }
 
@@ -459,6 +482,7 @@ mod tests {
             session_id: "session-1".to_string(),
             content: content.to_string(),
             agent_mode: "auto".to_string(),
+            provider: None,
             model_label: Some("GPT".to_string()),
             model_id: Some("gpt-5".to_string()),
             reasoning_effort: Some("high".to_string()),
@@ -483,6 +507,7 @@ mod tests {
             }),
             recovery_status: None,
             queued_at: "2026-09-06T10:00:00.000Z".to_string(),
+            author: PromptAuthor::unattested(),
         }
     }
 

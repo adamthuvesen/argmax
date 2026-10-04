@@ -1,0 +1,86 @@
+[
+  {
+    "id": "claude-result",
+    "sessionId": "session-1",
+    "type": "command.completed",
+    "message": "Bash",
+    "payload": { "tool_use_id": "toolu_1", "id": "result-1", "name": "Bash", "is_error": true, "providerInvocationId": "turn-1" },
+    "semantic": {
+      "version": 1,
+      "context": { "parentToolUseId": null, "providerThreadId": null, "providerInvocationId": "turn-1", "providerChildSessionId": null, "providerParentConversationId": null, "agentRunId": null, "agentRootToolUseId": null, "agentCodename": null, "agentModelId": null, "agentReasoningEffort": null, "isRaw": false, "traceSuperseded": false, "traceImported": false },
+      "event": { "kind": "tool", "phase": "completed", "toolUseId": "toolu_1", "name": "Bash", "providerName": "Bash", "outcome": "failed", "running": false, "surface": null, "traceSyntheticLaunch": false }
+    },
+    "createdAt": "2026-09-05T10:00:00Z",
+    "rowCursor": 1
+  },
+  {
+    "id": "cursor-child-message",
+    "sessionId": "session-1",
+    "type": "message.delta",
+    "message": "Working",
+    "payload": { "item_type": "agent_message", "sender_thread_id": "child-thread", "parent_tool_use_id": "tool-1", "agentModelId": "gpt-6-astra" },
+    "semantic": {
+      "version": 1,
+      "context": { "parentToolUseId": "tool-1", "providerThreadId": "child-thread", "providerInvocationId": null, "providerChildSessionId": null, "providerParentConversationId": null, "agentRunId": null, "agentRootToolUseId": null, "agentCodename": null, "agentModelId": "gpt-6-astra", "agentReasoningEffort": null, "isRaw": false, "traceSuperseded": false, "traceImported": false },
+      "event": { "kind": "message", "role": "assistant", "phase": "delta", "content": "answer", "delivery": null, "rawStream": false, "cumulativeText": null }
+    },
+    "createdAt": "2026-09-05T10:00:01Z",
+    "rowCursor": 2
+  },
+  {
+    "id": "codex-cancelled",
+    "sessionId": "session-1",
+    "type": "command.completed",
+    "message": "command_execution",
+    "payload": { "id": "item-2", "name": "command_execution", "cancelled": true, "is_error": true },
+    "semantic": {
+      "version": 1,
+      "context": { "parentToolUseId": null, "providerThreadId": null, "providerInvocationId": null, "providerChildSessionId": null, "providerParentConversationId": null, "agentRunId": null, "agentRootToolUseId": null, "agentCodename": null, "agentModelId": null, "agentReasoningEffort": null, "isRaw": false, "traceSuperseded": false, "traceImported": false },
+      "event": { "kind": "tool", "phase": "completed", "toolUseId": "item-2", "name": "command_execution", "providerName": "command_execution", "outcome": "cancelled", "running": false, "surface": null, "traceSyntheticLaunch": false }
+    },
+    "createdAt": "2026-09-05T10:00:02Z",
+    "rowCursor": 3
+  },
+  {
+    "id": "native-agent-end",
+    "sessionId": "session-1",
+    "type": "agent.completed",
+    "message": "Scout finished",
+    "payload": { "agentRunId": "tool-2", "providerChildSessionId": "child-1", "status": "completed" },
+    "semantic": {
+      "version": 1,
+      "context": { "parentToolUseId": null, "providerThreadId": null, "providerInvocationId": null, "providerChildSessionId": "child-1", "providerParentConversationId": null, "agentRunId": "tool-2", "agentRootToolUseId": null, "agentCodename": null, "agentModelId": null, "agentReasoningEffort": null, "isRaw": false, "traceSuperseded": false, "traceImported": false },
+      "event": { "kind": "agent", "phase": "completed", "status": "completed" }
+    },
+    "createdAt": "2026-09-05T10:00:03Z",
+    "rowCursor": 4
+  },
+  {
+    "id": "multitask-launched",
+    "sessionId": "session-1",
+    "type": "multitask.launched",
+    "message": "Child launched",
+    "payload": { "childSessionId": "child-2", "taskLabel": "Explore", "prompt": "Check tests", "worktree": false },
+    "semantic": {
+      "version": 1,
+      "context": { "parentToolUseId": null, "providerThreadId": null, "providerInvocationId": null, "providerChildSessionId": null, "providerParentConversationId": null, "agentRunId": null, "agentRootToolUseId": null, "agentCodename": null, "agentModelId": null, "agentReasoningEffort": null, "isRaw": false, "traceSuperseded": false, "traceImported": false },
+      "event": { "kind": "multitask", "phase": "launched", "childSessionId": "child-2", "state": null, "taskLabel": "Explore", "prompt": "Check tests", "worktree": false, "answer": null }
+    },
+    "createdAt": "2026-09-05T10:00:04Z",
+    "rowCursor": 5
+  },
+  {
+    "id": "host-error",
+    "sessionId": "session-1",
+    "type": "error",
+    "message": "Delivery failed",
+    "payload": { "code": "delivery-failed", "operation": "send" },
+    "semantic": {
+      "version": 1,
+      "context": { "parentToolUseId": null, "providerThreadId": null, "providerInvocationId": null, "providerChildSessionId": null, "providerParentConversationId": null, "agentRunId": null, "agentRootToolUseId": null, "agentCodename": null, "agentModelId": null, "agentReasoningEffort": null, "isRaw": false, "traceSuperseded": false, "traceImported": false },
+      "event": { "kind": "error", "code": "delivery-failed", "operation": "send" }
+    },
+    "createdAt": "2026-09-05T10:00:05Z",
+    "rowCursor": 6
+  }
+]

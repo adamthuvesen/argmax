@@ -8,6 +8,8 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use specta::Type;
 
+use super::authorship::PromptAuthor;
+use super::timeline_semantics::{self, TimelineSemantics};
 use super::{json_error, sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
@@ -52,6 +54,7 @@ pub struct TimelineEvent {
     pub r#type: String,
     pub message: String,
     pub payload: Value,
+    pub semantic: TimelineSemantics,
     pub created_at: String,
     pub row_cursor: Option<i64>,
 }
@@ -634,14 +637,22 @@ pub fn persist_timeline_event(
     connection: &Connection,
     input: &PersistTimelineEventInput,
 ) -> ArgmaxResult<TimelineEvent> {
+    insert_timeline_event(connection, input, PromptAuthor::unattested())
+}
+
+fn insert_timeline_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+    author: PromptAuthor,
+) -> ArgmaxResult<TimelineEvent> {
     let created_at = input.created_at.clone().unwrap_or_else(now_iso);
     let payload = enrich_native_agent_event(connection, input)?;
     let payload_json = serde_json::to_string(&payload).map_err(json_error)?;
     let mut statement = connection
         .prepare_cached(
             r#"
-        INSERT INTO events (id, session_id, type, message, payload_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO events (id, session_id, type, message, payload_json, created_at, prompt_author)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         "#,
         )
         .map_err(sqlite_error)?;
@@ -653,6 +664,7 @@ pub fn persist_timeline_event(
             input.message.as_str(),
             payload_json.as_str(),
             created_at.as_str(),
+            author.as_column(),
         ))
         .map_err(sqlite_error)?;
     Ok(TimelineEvent {
@@ -660,10 +672,46 @@ pub fn persist_timeline_event(
         session_id: input.session_id.clone(),
         r#type: input.r#type.clone(),
         message: input.message.clone(),
+        semantic: timeline_semantics::derive(&input.r#type, &input.id, &payload),
         payload,
         created_at,
         row_cursor: Some(connection.last_insert_rowid()),
     })
+}
+
+/// Persist a `user.message` with the author it was written by. This and
+/// [`persist_copied_event`] are the only ways to store a person mark on a new
+/// event: [`persist_timeline_event`] always stores NULL, so the normalizer, sync
+/// import and every other writer cannot set it.
+pub fn persist_user_prompt(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+    author: PromptAuthor,
+) -> ArgmaxResult<TimelineEvent> {
+    insert_timeline_event(connection, input, author)
+}
+
+/// A fork or a move copies history rather than writing it: the copy keeps the
+/// author its source row had and never gains one.
+pub fn persist_copied_event(
+    connection: &Connection,
+    input: &PersistTimelineEventInput,
+    source_event_id: &str,
+) -> ArgmaxResult<TimelineEvent> {
+    let column: Option<String> = connection
+        .query_row(
+            "SELECT prompt_author FROM events WHERE id = ?1",
+            [source_event_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .flatten();
+    insert_timeline_event(
+        connection,
+        input,
+        PromptAuthor::from_column(column.as_deref()),
+    )
 }
 
 fn enrich_native_agent_event(
@@ -963,6 +1011,7 @@ pub fn persist_timeline_event_if_absent(
         session_id: input.session_id.clone(),
         r#type: input.r#type.clone(),
         message: input.message.clone(),
+        semantic: timeline_semantics::derive(&input.r#type, &input.id, &payload),
         payload,
         created_at,
         row_cursor: Some(connection.last_insert_rowid()),
@@ -1078,6 +1127,116 @@ pub fn find_event_by_id(
         .optional()
         .map_err(sqlite_error)
 }
+
+/// The chats a person attached to this session's prompts: every
+/// `[title](argmax://chat/<id>?v=1)` link the composer's chat chip writes in a
+/// prompt the person wrote. It is the only grant that crosses a project
+/// boundary, so what counts is narrow:
+///
+/// - The prompt must carry the positive person mark (`events.prompt_author`,
+///   written only for fresh text on a person IPC call; see
+///   `persistence/authorship.rs`). Everything else grants nothing: another
+///   session's message, a goal, a schedule, a move, a notice, an agent launch,
+///   an import, a legacy row, and any path that does not say who wrote it.
+/// - The link has to be one the composer would draw as a chip, in the
+///   renderer's own grammar (`composerContext.ts`): bracketed title, `v=1` or no
+///   version, and a delimiter right after the id, so a bare URL, another
+///   version, or a prefix of a longer id grants nothing.
+pub fn human_referenced_session_ids(
+    connection: &Connection,
+    session_id: &str,
+) -> ArgmaxResult<std::collections::HashSet<String>> {
+    let mut statement = connection
+        .prepare_cached(
+            r#"
+            SELECT e.message FROM events e
+            WHERE e.session_id = ?1
+              AND e.type = 'user.message'
+              AND e.prompt_author = 'person'
+              AND instr(e.message, ?2) > 0
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let messages = statement
+        .query_map((session_id, CHAT_REFERENCE_PREFIX), |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    let mut ids = std::collections::HashSet::new();
+    for message in &messages {
+        ids.extend(chat_reference_ids(message));
+    }
+    Ok(ids)
+}
+
+/// Session ids named by well-formed chat references in `text`.
+pub fn chat_reference_ids(text: &str) -> Vec<String> {
+    static REFERENCE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let pattern = REFERENCE.get_or_init(|| {
+        regex::Regex::new(
+            r"\[([^\[\]\n]+)\]\(argmax://chat/([A-Za-z0-9_-]{1,64})(?:\?([A-Za-z0-9_=&.-]*))?\)",
+        )
+        .expect("chat reference pattern")
+    });
+    pattern
+        .captures_iter(text)
+        .filter(|captures| {
+            // The renderer counts UTF-16 units.
+            let title_units = captures[1].encode_utf16().count();
+            (1..=120).contains(&title_units)
+                && chat_reference_query_ok(captures.get(3).map(|m| m.as_str()))
+        })
+        .map(|captures| captures[2].to_string())
+        .collect()
+}
+
+/// Metadata that an agent can set (a chat label, a branch, an Arc name) and that
+/// Argmax writes into a prompt a person is credited with must not be able to
+/// form a chat chip, because a chip in a person's prompt is a read grant. A chip
+/// needs `[title](argmax://chat/...)`, so removing the brackets removes the
+/// link. Only the person's own typed text is left untouched.
+pub fn without_chat_link_brackets(text: &str) -> String {
+    text.replace('[', "(").replace(']', ")")
+}
+
+/// `v` must be exactly `1` when present, and `e` an id when present. The first
+/// occurrence of a key wins, as `URLSearchParams.get` does.
+fn chat_reference_query_ok(query: Option<&str>) -> bool {
+    let Some(query) = query else {
+        return true;
+    };
+    let first = |key: &str| {
+        query
+            .split('&')
+            .filter_map(|pair| pair.split_once('=').or(Some((pair, ""))))
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| value)
+    };
+    let id_ok = |value: &str| {
+        (1..=64).contains(&value.len())
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    };
+    first("v").is_none_or(|version| version == "1") && first("e").is_none_or(id_ok)
+}
+
+/// Whether a person put a reference to `target_session_id` in one of this
+/// session's prompts. See [`human_referenced_session_ids`].
+pub fn human_prompt_references_session(
+    connection: &Connection,
+    session_id: &str,
+    target_session_id: &str,
+) -> ArgmaxResult<bool> {
+    Ok(human_referenced_session_ids(connection, session_id)?.contains(target_session_id))
+}
+
+/// The link prefix of a chat reference. The composer writes
+/// `[title](argmax://chat/<session id>)`; the renderer's `composerContext`
+/// owns the same constant.
+pub const CHAT_REFERENCE_PREFIX: &str = "argmax://chat/";
 
 /// Replace one event's payload, keeping its rowid so cursors and timeline
 /// ordering are untouched. Used when Argmax learns something about an event
@@ -2363,12 +2522,15 @@ fn event_row_to_timeline_event(row: &Row<'_>) -> rusqlite::Result<TimelineEvent>
     let event_type: String = row.get("type")?;
     let mut payload = parse_event_payload(&payload_json);
     crate::providers::tool_activity::enrich_tool_activity(&event_type, &mut payload);
+    let id: String = row.get("id")?;
+    let semantic = timeline_semantics::derive(&event_type, &id, &payload);
     Ok(TimelineEvent {
-        id: row.get("id")?,
+        id,
         session_id: row.get("session_id")?,
         r#type: event_type,
         message: row.get("message")?,
         payload,
+        semantic,
         created_at: row.get("created_at")?,
         row_cursor: Some(row.get("row_cursor")?),
     })
@@ -2627,7 +2789,14 @@ mod change_feed_tests {
         let mut connection = Connection::open_in_memory().expect("open database");
         run_migrations_with(&mut connection, &MIGRATIONS[..27]).expect("migrate through v27");
         seed_connection(&connection);
-        insert_event(&connection, "legacy", "s1", "before upgrade");
+        // Written the way a v27 database holds it: before `prompt_author` existed.
+        connection
+            .execute(
+                "INSERT INTO events (id, session_id, type, message, payload_json, created_at)
+                 VALUES ('legacy', 's1', 'message.completed', 'before upgrade', '{}', ?1)",
+                [TIME],
+            )
+            .expect("insert legacy event");
 
         run_migrations_with(&mut connection, MIGRATIONS).expect("apply v28");
         let backfilled = connection
@@ -3164,6 +3333,50 @@ mod change_feed_tests {
         );
     }
 
+    #[test]
+    fn historical_rows_gain_semantics_on_read_without_rewriting_payload() {
+        let database = seeded_database();
+        let connection = database.connection();
+        let payload = serde_json::json!({
+            "tool_use_id": "toolu_1", "id": "result-1", "status": "cancelled",
+            "providerInvocationId": "turn-1"
+        });
+        connection.execute(
+            "INSERT INTO events (id, session_id, type, message, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            ("old-result", "s1", "command.completed", "Bash", payload.to_string(), TIME),
+        ).expect("insert historical row");
+
+        let page = list_session_changes_since(&connection, "s1", None, None, None)
+            .expect("read historical row");
+        let event = page
+            .events
+            .iter()
+            .find(|event| event.id == "old-result")
+            .expect("historical row");
+        assert_eq!(
+            event.semantic.context.provider_invocation_id.as_deref(),
+            Some("turn-1")
+        );
+        assert!(matches!(&event.semantic.event,
+            crate::persistence::timeline_semantics::SemanticEvent::Tool {
+                tool_use_id: Some(id),
+                outcome: Some(crate::persistence::timeline_semantics::ToolOutcome::Cancelled),
+                ..
+            } if id == "toolu_1"
+        ));
+        let stored: String = connection
+            .query_row(
+                "SELECT payload_json FROM events WHERE id = 'old-result'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("stored payload");
+        assert_eq!(
+            serde_json::from_str::<Value>(&stored).expect("stored json"),
+            payload
+        );
+    }
+
     pub(super) fn seeded_database() -> Database {
         let database = Database::open_in_memory().expect("open database");
         let connection = database.connection();
@@ -3384,5 +3597,62 @@ mod goal_tail_tests {
             .text;
 
         assert_eq!(tail, "USER: go");
+    }
+}
+
+#[cfg(test)]
+mod chat_reference_tests {
+    use super::chat_reference_ids;
+
+    #[test]
+    fn reads_only_references_the_composer_would_draw() {
+        assert_eq!(
+            chat_reference_ids(
+                "a [Billing](argmax://chat/s-1?v=1&e=evt_2) b [Plain](argmax://chat/s2)"
+            ),
+            vec!["s-1", "s2"]
+        );
+    }
+
+    #[test]
+    fn a_bare_link_another_version_or_a_longer_id_grants_nothing() {
+        for text in [
+            "argmax://chat/s1",
+            "[x](argmax://chat/s1?v=2)",
+            "[x](argmax://chat/s1?v=)",
+            "[x](argmax://chat/s1?v=01)",
+            "[x](argmax://chat/s1extra!)",
+            "[x](argmax://chat/s1/more)",
+            "[](argmax://chat/s1)",
+            "[x]( argmax://chat/s1)",
+            "(argmax://chat/s1)",
+            "[x](argmax://chat/s1?e=bad id)",
+            "[x[y]](argmax://chat/s1)",
+            "[multi\nline](argmax://chat/s1)",
+        ] {
+            assert!(chat_reference_ids(text).is_empty(), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_id_must_end_at_the_delimiter_and_a_title_has_a_length_limit() {
+        // `s1` is a prefix of `s10`; a reference to `s10` is not one to `s1`.
+        assert_eq!(chat_reference_ids("[x](argmax://chat/s10)"), vec!["s10"]);
+        let long_title = "t".repeat(121);
+        assert!(chat_reference_ids(&format!("[{long_title}](argmax://chat/s1)")).is_empty());
+        let max_title = "t".repeat(120);
+        assert_eq!(
+            chat_reference_ids(&format!("[{max_title}](argmax://chat/s1)")),
+            vec!["s1"]
+        );
+    }
+
+    #[test]
+    fn the_first_version_key_wins_like_the_composers_parser() {
+        assert!(chat_reference_ids("[x](argmax://chat/s1?v=2&v=1)").is_empty());
+        assert_eq!(
+            chat_reference_ids("[x](argmax://chat/s1?v=1&v=2)"),
+            vec!["s1"]
+        );
     }
 }

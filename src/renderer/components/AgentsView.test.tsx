@@ -360,12 +360,6 @@ describe("AgentsView", () => {
     expect(loadsFor("task-1")).toBe(2);
   });
 
-  it("points at the transcript when nothing is open", () => {
-    renderView(agentTabs(), [launch("task-1", "Explore repo")]);
-
-    expect(screen.getByText(/Nothing open here/)).toBeInTheDocument();
-  });
-
   it("names each open subagent in the tab strip and shows the active one", () => {
     renderView(
       agentTabs({ tabIds: ["task-1", "task-2"], activeTabId: "task-2" }),

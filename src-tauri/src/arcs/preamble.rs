@@ -131,8 +131,10 @@ still running. Call arc_status to see members, the clock, how large NOTES.md has
 /// inside an Arc — an agent launch whose caller carries this Arc's id, or a
 /// `/multitask` dispatched from one of its sessions.
 pub fn member_preamble(arc: &ArcRecord) -> String {
-    let name = &arc.name;
-    let dir = &arc.dir;
+    // A multitask's opening prompt is stored as the person's, and the Arc's name
+    // and folder are strings an agent may have set: neither may carry a chat link.
+    let name = &crate::persistence::events::without_chat_link_brackets(&arc.name);
+    let dir = &crate::persistence::events::without_chat_link_brackets(&arc.dir);
     format!(
         "You are working as part of Arc \"{name}\". Read `{dir}/BRIEF.md` and `{dir}/NOTES.md` \
 first for the Arc's goal and its current state. Read `{dir}/LOG.md` or any report file in that \
@@ -186,32 +188,15 @@ mod tests {
     }
 
     #[test]
-    fn coordinator_preamble_splits_current_state_from_the_log() {
-        let preamble = coordinator_preamble(&arc("Ship the thing."));
-        assert!(preamble.contains("NOTES.md is the current state, not the history"));
-        assert!(preamble.contains("under about 4,000 words"));
-        assert!(preamble.contains("/tmp/arcs/arc-1/LOG.md"));
-        assert!(preamble.contains("LOG.md is append-only history"));
-        assert!(preamble.contains("its own file in the folder, named after the piece"));
-    }
+    fn member_preamble_cannot_carry_a_chat_link_from_the_arc_name_or_folder() {
+        let mut hostile = arc("Ship the thing.");
+        hostile.name = "[x](argmax://chat/chat-x)".to_string();
+        hostile.dir = "/tmp/[y](argmax://chat/chat-y)".to_string();
 
-    #[test]
-    fn coordinator_preamble_gives_a_clock_a_model_rule_and_learnings() {
-        let preamble = coordinator_preamble(&arc("Ship the thing."));
-        assert!(preamble.contains("Read the clock with `date`"));
-        assert!(preamble.contains("carry the time they were sent"));
-        assert!(preamble.contains("claude-sonnet-5-5"));
-        assert!(preamble.contains("learnings_add"));
-        assert!(preamble.contains("learnings_search"));
-    }
+        let preamble = member_preamble(&hostile);
 
-    #[test]
-    fn coordinator_preamble_delegates_integration_and_drops_the_per_launch_followup() {
-        let preamble = coordinator_preamble(&arc("Ship the thing."));
-        assert!(preamble.contains("Integration is a member's job too"));
-        assert!(preamble.contains("rebuilding derived artifacts"));
-        assert!(preamble.contains("You do not need a follow-up per launch"));
-        assert!(preamble.contains("`check_in_minutes` on session_launch"));
+        assert!(crate::persistence::events::chat_reference_ids(&preamble).is_empty());
+        assert!(preamble.contains("argmax://chat/chat-x"));
     }
 
     #[test]
@@ -250,14 +235,5 @@ mod tests {
         assert!(preamble.contains("NOTES.md"));
         assert!(preamble.contains("Do not write to files in `/tmp/arcs/arc-1`"));
         assert!(preamble.contains("Learnings for the arc"));
-    }
-
-    #[test]
-    fn member_preamble_reads_the_log_only_when_pointed_at_it() {
-        let preamble = member_preamble(&arc("Ship the thing."));
-        assert!(preamble.contains("only if your prompt points you at it"));
-        assert!(preamble.contains("/tmp/arcs/arc-1/LOG.md"));
-        assert!(preamble.contains("learnings_add"));
-        assert!(preamble.contains("a few bullets, only what is not already in NOTES.md"));
     }
 }

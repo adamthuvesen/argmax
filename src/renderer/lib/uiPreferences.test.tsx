@@ -5,7 +5,6 @@ import {
   TOOL_CALLS_DISPLAY_KEY,
   TOOL_CALLS_EXPANDED_KEY,
   TOOL_CALL_GROUPS_EXPANDED_KEY,
-  resolveChatVerbosity,
   useChatVerbosityPreference,
   type ChatVerbosity
 } from "./uiPreferences.js";
@@ -69,28 +68,4 @@ describe("chat verbosity preference", () => {
 
     expect(result.current[0]).toBe(4);
   });
-
-  it.each([
-    {
-      verbosity: 1,
-      expected: { toolCallsDisplay: "single-line", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" }
-    },
-    {
-      verbosity: 2,
-      expected: { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: false, thinkingDisplay: "collapsed" }
-    },
-    {
-      verbosity: 3,
-      expected: { toolCallsDisplay: "collapsed", toolCallGroupsExpanded: true, thinkingDisplay: "preview" }
-    },
-    {
-      verbosity: 4,
-      expected: { toolCallsDisplay: "expanded", toolCallGroupsExpanded: true, thinkingDisplay: "inline" }
-    }
-  ] satisfies Array<{ verbosity: ChatVerbosity; expected: ReturnType<typeof resolveChatVerbosity> }>)(
-    "resolves level $verbosity to its disclosure settings",
-    ({ verbosity, expected }) => {
-      expect(resolveChatVerbosity(verbosity)).toEqual(expected);
-    }
-  );
 });

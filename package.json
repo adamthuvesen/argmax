@@ -35,9 +35,13 @@
     "check:main-thread": "node scripts/check-main-thread-handlers.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:ios-fonts": "node scripts/check-ios-fonts.mjs",
-    "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit"
+    "check:provider-models": "node scripts/export-provider-models.mjs --check",
+    "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit",
+    "generate:contracts": "npm run generate:bindings && node scripts/export-remote-contracts.mjs && node scripts/export-swift-contracts.mjs",
+    "check:contracts": "node scripts/check-architecture.mjs && node scripts/export-remote-contracts.mjs --check && node scripts/export-swift-contracts.mjs --check"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-go": "^6.0.1",
     "@codemirror/lang-html": "^6.4.11",

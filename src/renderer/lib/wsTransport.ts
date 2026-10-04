@@ -1,3 +1,4 @@
+import type { PushPayloads } from "../../shared/bindings.js";
 /**
  * Remote bridge transport: the same `window.argmax` surface, served over one
  * WebSocket to the Rust host instead of Tauri IPC.
@@ -20,7 +21,7 @@
  *   only signal that the snapshot is now stale.
  */
 
-import type { IpcChannel } from "../../shared/ipcSchemas.js";
+import type { IpcChannel, IpcArguments, IpcOutput } from "../../shared/ipcSchemas.js";
 import type { EventSubscription } from "../../shared/types.js";
 import type { BridgeTransport } from "./tauriBridge.js";
 import { errorMessage } from "../../shared/error.js";
@@ -622,14 +623,15 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     socket = current;
   }
 
-  function invoke<T>(channel: IpcChannel, input: unknown = {}): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
+  function invoke<C extends IpcChannel>(channel: C, ...args: IpcArguments<C>): Promise<IpcOutput<C>> {
+    const input = args[0] ?? {};
+    return new Promise<IpcOutput<C>>((resolve, reject) => {
       const id = nextRequestId++;
       const operation = prepareRemoteOperation(channel, input, operationOwner);
       const request: PendingRequest = {
         id,
         frame: JSON.stringify({ type: "request", id, channel, input, operation }),
-        resolve: (value: unknown) => resolve(value as T),
+        resolve: (value: unknown) => resolve(value as IpcOutput<C>),
         reject,
         queueTimer: null,
         retryTimer: null,
@@ -652,7 +654,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     });
   }
 
-  function subscribe<T>(channel: string, listener: (payload: T) => void): EventSubscription {
+  function subscribe<C extends keyof PushPayloads>(channel: C, listener: (payload: PushPayloads[C]) => void): EventSubscription {
     // Payloads are host-typed per channel exactly as with Tauri's `listen`.
     const erased = listener as (payload: unknown) => void;
     let channelListeners = listeners.get(channel);

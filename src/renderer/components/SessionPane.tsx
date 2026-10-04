@@ -24,6 +24,7 @@ import type {
   CheckRun,
   ComposerAttachment,
   DetectedIde,
+  ForkSessionOptions,
   IdeId,
   NativeAgentIdentity,
   PendingMessage,
@@ -255,7 +256,7 @@ export function SessionPane({
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
-  onForkSession?: (sessionId: string) => Promise<void>;
+  onForkSession?: (sessionId: string, options?: ForkSessionOptions) => Promise<void>;
   project: ProjectSummary | null;
   rightPanelToggleSignal?: number;
   debugLogToggleSignal?: number;

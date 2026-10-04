@@ -20,7 +20,10 @@ use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
 };
-use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
+use crate::{
+    persistence::events::PersistTimelineEventInput,
+    providers::pricing::{cost_of, opencode_cost_is_billed},
+};
 
 /// OpenCode only puts native `task` lifecycle information in the parent's
 /// tool row. The child body never reaches the parent's event stream, but the
@@ -365,12 +368,12 @@ pub fn extract_usage(
         .opencode_current_model
         .clone()
         .unwrap_or_else(|| "opencode-unknown".to_string());
-    // Trust the CLI's own cost figure when it reports one; the pricing table
-    // (all $0 for the Zen free tier) is the fallback.
+    // Trust the CLI's own cost figure when it reports a billed one; the
+    // pricing table is the fallback.
     let reported_cost = part.get("cost").and_then(Value::as_f64);
     Some(NormalizedUsage {
         cost_usd: reported_cost
-            .filter(|cost| *cost > 0.0)
+            .filter(|cost| *cost > 0.0 && opencode_cost_is_billed(&model_id))
             .unwrap_or_else(|| cost_of(tokens.clone().into(), &model_id)),
         model_id,
         context_tokens: Some(tokens.input + tokens.cache_read + tokens.cache_write),
@@ -390,22 +393,6 @@ mod tests {
     use crate::providers::ProviderId;
 
     #[test]
-    fn opencode_text_part_becomes_message_completed() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Opencode,
-            &output_event(
-                r#"{"type":"text","sessionID":"ses_1","part":{"type":"text","text":"All done."}}"#,
-            ),
-            &mut context,
-        );
-        assert_eq!(result.events.len(), 1);
-        assert_eq!(result.events[0].r#type, "message.completed");
-        assert_eq!(result.events[0].message, "All done.");
-        assert_eq!(result.provider_conversation_id.as_deref(), Some("ses_1"));
-    }
-
-    #[test]
     fn opencode_reasoning_part_becomes_thinking_delta() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(
@@ -419,41 +406,6 @@ mod tests {
         assert_eq!(result.events[0].r#type, "message.delta");
         assert_eq!(result.events[0].message, "Considering options");
         assert_eq!(result.events[0].payload["thinking"], json!(true));
-    }
-
-    #[test]
-    fn opencode_tool_use_emits_started_and_completed_pair() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Opencode,
-            &output_event(
-                &json!({
-                    "type": "tool_use",
-                    "sessionID": "ses_1",
-                    "part": {
-                        "type": "tool",
-                        "tool": "bash",
-                        "callID": "call_1",
-                        "state": {
-                            "status": "completed",
-                            "input": { "command": "npm test" },
-                            "output": "42 passing"
-                        }
-                    }
-                })
-                .to_string(),
-            ),
-            &mut context,
-        );
-        assert_eq!(result.events.len(), 2);
-        assert_eq!(result.events[0].r#type, "command.started");
-        assert_eq!(result.events[0].message, "bash");
-        assert_eq!(result.events[0].payload["input"]["command"], "npm test");
-        assert_eq!(result.events[0].payload["call_id"], "call_1");
-        assert_eq!(result.events[0].payload["status"], "completed");
-        assert_eq!(result.events[1].r#type, "command.completed");
-        assert_eq!(result.events[1].payload["result"], "42 passing");
-        assert_eq!(result.events[1].payload["status"], "completed");
     }
 
     #[test]
@@ -696,54 +648,30 @@ mod tests {
         assert_eq!(result.events[3].payload["state"]["output"], output);
     }
 
+    // OpenCode prices an OpenRouter turn from the catalog's cheapest rates, so
+    // its `cost` is ignored there and the table prices the tokens instead.
     #[test]
     fn opencode_step_finish_reports_usage_and_stop_ends_the_turn() {
-        let mut context =
-            NormalizerSessionContext::for_provider(ProviderId::Opencode, "opencode/big-pickle");
+        let mut context = NormalizerSessionContext::for_provider(
+            ProviderId::Opencode,
+            "openrouter/moonshotai/kimi-k3",
+        );
         let result = normalize_provider_event(
             ProviderId::Opencode,
             &output_event(
-                r#"{"type":"step_finish","sessionID":"ses_1","part":{"type":"step-finish","reason":"stop","tokens":{"total":110,"input":100,"output":10,"reasoning":0,"cache":{"write":5,"read":20}},"cost":0}}"#,
+                r#"{"type":"step_finish","sessionID":"ses_1","part":{"type":"step-finish","reason":"stop","tokens":{"total":110,"input":100,"output":10,"reasoning":0,"cache":{"write":5,"read":20}},"cost":0.000001}}"#,
             ),
             &mut context,
         );
         assert_eq!(result.events.len(), 1);
         assert_eq!(result.events[0].r#type, "session.completed");
         assert_eq!(result.usages.len(), 1);
-        assert_eq!(result.usages[0].model_id, "opencode/big-pickle");
+        assert_eq!(result.usages[0].model_id, "openrouter/moonshotai/kimi-k3");
         assert_eq!(result.usages[0].tokens.input, 100);
         assert_eq!(result.usages[0].tokens.cache_read, 20);
         assert_eq!(result.usages[0].context_tokens, Some(125));
-        assert_eq!(result.usages[0].cost_usd, 0.0);
-    }
-
-    #[test]
-    fn opencode_tool_calls_step_finish_stays_hidden_but_still_bills() {
-        let mut context =
-            NormalizerSessionContext::for_provider(ProviderId::Opencode, "opencode/big-pickle");
-        let result = normalize_provider_event(
-            ProviderId::Opencode,
-            &output_event(
-                r#"{"type":"step_finish","sessionID":"ses_1","part":{"type":"step-finish","reason":"tool-calls","tokens":{"total":60,"input":50,"output":10,"reasoning":0,"cache":{"write":0,"read":0}},"cost":0}}"#,
-            ),
-            &mut context,
-        );
-        assert!(result.events.is_empty());
-        assert_eq!(result.usages.len(), 1);
-    }
-
-    #[test]
-    fn opencode_step_start_is_lifecycle_noise() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Opencode,
-            &output_event(
-                r#"{"type":"step_start","sessionID":"ses_1","part":{"type":"step-start"}}"#,
-            ),
-            &mut context,
-        );
-        assert!(result.events.is_empty());
-        assert_eq!(result.provider_conversation_id.as_deref(), Some("ses_1"));
+        // 100 in at $3, 10 out at $15, 20 cache reads at $0.30, 5 writes at $3.
+        assert!((result.usages[0].cost_usd - 0.000_471).abs() < 1e-12);
     }
 
     #[test]

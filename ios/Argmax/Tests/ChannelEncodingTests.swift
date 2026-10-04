@@ -67,6 +67,7 @@ final class ChannelEncodingTests: XCTestCase {
             "workspaces:set-label",
             "workspaces:archive",
             "session:fork",
+            "session:fork-merge",
             "git:view-or-create-pr",
             "remote:register-push-device",
             "remote:unregister-push-device",
@@ -176,6 +177,15 @@ final class ChannelEncodingTests: XCTestCase {
         )
         XCTAssertEqual(Set(body.keys), ["workspaceId", "provider", "modelId", "prompt"])
         XCTAssertEqual(body["modelId"] as? String, "claude-sonnet-5-5", "titles ride the cheap model, not the chat's")
+    }
+
+    func testUnsupportedWireEnumFailsBeforeSending() throws {
+        let unsupportedProvider = AutoTitleWorkspaceInput(
+            workspaceId: "w-1", provider: "future-provider", modelId: "model-1", prompt: "Title"
+        )
+        XCTAssertThrowsError(try JSONEncoder().encode(unsupportedProvider))
+        let unsupportedMime = ComposerAttachment(filePath: "/image.bmp", mimeType: "image/bmp", sizeBytes: 4)
+        XCTAssertThrowsError(try JSONEncoder().encode(unsupportedMime))
     }
 
     func testListBranches() throws {

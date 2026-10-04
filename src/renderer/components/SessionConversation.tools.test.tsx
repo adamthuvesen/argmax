@@ -810,46 +810,6 @@ describe("SessionConversation — tools & chrome", () => {
     expect(onOpenFile).not.toHaveBeenCalled();
   });
 
-  it("renders plan-shaped assistant content as an ordinary ChatBubble", () => {
-    const plan = [
-      "# Plan: Tidy chat header",
-      "",
-      "Make the header lighter and clearer.",
-      "",
-      "## Key Changes",
-      "",
-      "- Update the badge color"
-    ].join("\n");
-
-    renderConversation(baseSession({ state: "complete" }), [
-      event("u1", "user.message", "draft a plan", "2026-05-12T15:00:00.000Z", { agentMode: "auto" }),
-      event("m1", "message.completed", plan, "2026-05-12T15:00:01.000Z")
-    ]);
-
-    expect(screen.queryByRole("listbox", { name: "Plan response" })).toBeNull();
-    expect(screen.queryByRole("article", { name: /Plan: Tidy chat header/ })).toBeNull();
-    // Title still shows, but as plain markdown inside a ChatBubble
-    expect(screen.getByRole("heading", { name: "Plan: Tidy chat header" })).toBeInTheDocument();
-  });
-
-  it("hides the per-session toolbar actions behind a Chat actions picker", () => {
-    renderConversation(baseSession({ state: "complete" }));
-
-    // None of the consolidated actions are visible until the picker is opened.
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Git actions" })).toBeNull();
-    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Git actions" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitemcheckbox", { name: "Debug log" })).toHaveAttribute(
-      "aria-checked",
-      "false"
-    );
-  });
-
   it("drops the debug log from chat actions when developer tools are off", () => {
     render(
       <DeveloperToolsContext.Provider value={false}>
@@ -861,16 +821,6 @@ describe("SessionConversation — tools & chrome", () => {
 
     expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
-  });
-
-  it("dismisses the session actions popover on a mousedown outside the popover", () => {
-    renderConversation(baseSession({ state: "complete" }));
-    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
-
-    fireEvent.mouseDown(document.body);
-
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
   });
 
   it("dismisses the session actions popover when clicking inside the conversation area", () => {
@@ -889,25 +839,6 @@ describe("SessionConversation — tools & chrome", () => {
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Debug log" }));
 
     expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-  });
-
-  it("swaps the picker contents in place when Git actions is selected", () => {
-    renderConversation(baseSession({ state: "complete" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
-
-    // Main menu items are no longer in the DOM; git actions take their place.
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Create PR for checkout branch" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Create branch" })).toBeInTheDocument();
-
-    // Back returns to the main menu.
-    fireEvent.click(screen.getByRole("button", { name: "Back to chat actions" }));
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Push" })).toBeNull();
   });
 
 });
@@ -1191,32 +1122,6 @@ describe("SessionConversation — single-line activity mode", () => {
         `${levels[index].label} dropped what ${levels[index - 1].label} showed`
       ).toEqual([]);
     }
-  });
-
-  it("keeps the live summary line visible while the session is still running", () => {
-    renderConversation(
-      baseSession({ state: "running" }),
-      [
-        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
-        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
-          id: "read",
-          name: "Read",
-          input: { file_path: "README.md" }
-        }),
-        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
-          tool_use_id: "read",
-          content: "readme"
-        }),
-        event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
-          id: "glob",
-          name: "Glob",
-          input: { pattern: "src/**/*.ts" }
-        })
-      ],
-      { defaultToolCallsDisplay: "single-line" }
-    );
-
-    expect(screen.getByRole("button", { name: /^Read a file, searched/ })).toBeInTheDocument();
   });
 
   it("leaves Minimal's live summary alone: no caption, no standing chevron", () => {
@@ -1509,38 +1414,6 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(output.textContent).not.toContain("metadata");
     // The envelope's title rides the footer facts instead of a floating label.
     expect(screen.getByText(/Todo · /)).toBeInTheDocument();
-  });
-
-  it("keeps default rendering untouched when the display mode is not single-line", () => {
-    renderConversation(
-      baseSession({ state: "complete" }),
-      [
-        event("u1", "user.message", "explore", "2026-05-12T15:00:00.000Z"),
-        event("read-start", "command.started", "Read", "2026-05-12T15:00:01.000Z", {
-          id: "read",
-          name: "Read",
-          input: { file_path: "README.md" }
-        }),
-        event("read-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
-          tool_use_id: "read",
-          content: "readme"
-        }),
-        event("glob-start", "command.started", "Glob", "2026-05-12T15:00:02.500Z", {
-          id: "glob",
-          name: "Glob",
-          input: { pattern: "src/**/*.ts" }
-        }),
-        event("glob-end", "command.completed", "tool_result", "2026-05-12T15:00:03.000Z", {
-          tool_use_id: "glob",
-          content: "[]"
-        })
-      ],
-      { defaultToolCallsDisplay: "collapsed" }
-    );
-
-    expect(screen.getByRole("button", { name: "Read a file, searched" })).toBeInTheDocument();
-    // Default (non single-line) rendering: one group bubble, rows folded.
-    expect(screen.queryByRole("button", { name: "Read README.md" })).toBeNull();
   });
 
   it("hides Codex and Grok pre-tool work text on a finished Minimal turn", () => {

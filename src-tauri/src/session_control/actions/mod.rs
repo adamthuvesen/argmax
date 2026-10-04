@@ -1,15 +1,20 @@
 mod arc_tools;
+mod fork_findings;
 mod label;
 mod launch;
 mod messaging;
 mod move_archive;
+mod pr_watch;
 mod project_sources;
 mod project_tools;
 mod resume;
 mod wait;
 mod workspace_tools;
 
-pub(crate) use launch::{check_in_routine_id, launch_with_spec, AlongsideCheckout, LaunchSpec};
+pub(crate) use crate::application::session_launch::{task_label, AlongsideCheckout, LaunchSpec};
+#[cfg(test)]
+use crate::application::session_launch::{DEFAULT_TASK_LABEL, MAX_TASK_LABEL_BYTES};
+pub(crate) use launch::{check_in_routine_id, launch_with_spec};
 pub use resume::resume_after_turn_actions;
 
 use std::path::{Path, PathBuf};
@@ -24,6 +29,7 @@ use self::{
         stop_session,
     },
     move_archive::{schedule_session_move, schedule_workspace_archive},
+    pr_watch::{cleanup_pr, unwatch_pr, watch_pr},
     project_sources::{add_project_source, list_project_sources, read_project_source},
     project_tools::{
         add_learning, cancel_schedule, list_projects_action, list_schedules, resume_schedule,
@@ -43,8 +49,7 @@ use super::{
     },
     protocol_error,
     registry::{ParentLaunchSettings, SessionLaunchRegistry},
-    DEFAULT_TASK_LABEL, MAX_TASK_LABEL_BYTES, MAX_TASK_LABEL_CHARS, PROTOCOL_VERSION,
-    TASK_LABEL_ELLIPSIS,
+    PROTOCOL_VERSION,
 };
 use crate::{
     git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
@@ -96,8 +101,8 @@ pub(super) async fn handle_session_control(
         SessionControlAction::Message(action) => {
             message_session(action, parent, database, providers, registry).await
         }
-        SessionControlAction::Status(action) => session_status(action, database),
-        SessionControlAction::Read(action) => session_read(action, database),
+        SessionControlAction::Status(action) => session_status(action, parent, database),
+        SessionControlAction::Read(action) => session_read(action, parent, database),
         SessionControlAction::Stop(action) => {
             stop_session(action, parent, database, providers).await
         }
@@ -153,6 +158,9 @@ pub(super) async fn handle_session_control(
         SessionControlAction::ScheduleCancel(action) => cancel_schedule(action, parent, database),
         SessionControlAction::ScheduleResume(action) => resume_schedule(action, parent, database),
         SessionControlAction::ArcStatus(_) => arc_status(parent, database),
+        SessionControlAction::PrWatch(action) => watch_pr(action, parent, database),
+        SessionControlAction::PrUnwatch(action) => unwatch_pr(action, parent, database),
+        SessionControlAction::PrCleanup(action) => cleanup_pr(action, parent, database).await,
         SessionControlAction::Browser(request) => {
             let app = app.ok_or_else(|| {
                 protocol_error(
@@ -373,28 +381,6 @@ async fn canonical_string(path: &Path) -> String {
         .into_owned()
 }
 
-pub(crate) fn task_label(prompt: &str) -> String {
-    let first_line = prompt.lines().next().unwrap_or_default().trim();
-    if first_line.is_empty() {
-        return DEFAULT_TASK_LABEL.to_string();
-    }
-    if first_line.chars().count() <= MAX_TASK_LABEL_CHARS
-        && first_line.len() <= MAX_TASK_LABEL_BYTES
-    {
-        return first_line.to_string();
-    }
-    let max_prefix_chars = MAX_TASK_LABEL_CHARS - TASK_LABEL_ELLIPSIS.chars().count();
-    let max_prefix_bytes = MAX_TASK_LABEL_BYTES - TASK_LABEL_ELLIPSIS.len();
-    let mut prefix = String::new();
-    for character in first_line.chars().take(max_prefix_chars) {
-        if prefix.len() + character.len_utf8() > max_prefix_bytes {
-            break;
-        }
-        prefix.push(character);
-    }
-    format!("{prefix}{TASK_LABEL_ELLIPSIS}")
-}
-
 pub(super) fn terminal_cols(value: u16) -> Result<TerminalCols, SessionControlError> {
     serde_json::from_value(serde_json::json!(value)).map_err(|error| {
         protocol_error(
@@ -502,6 +488,7 @@ mod tests {
                 setup_command: String::new(),
                 check_commands: Vec::new(),
             },
+            branch_template: None,
             counts: ProjectCounts {
                 active: 0,
                 blocked: 0,

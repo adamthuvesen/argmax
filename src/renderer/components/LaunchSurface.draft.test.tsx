@@ -43,32 +43,37 @@ describe("launcher prompt across context changes", () => {
   it.each([
     "Your local changes would be overwritten by checkout.",
     { message: "Your local changes would be overwritten by checkout." }
-  ])("keeps the composer usable after a branch-switch rejection: %j", async (error) => {
+  ])("keeps the composer usable after a branch-switch rejection at launch: %j", async (error) => {
     vi.spyOn(window.argmax!.projects, "listBranches").mockResolvedValue(["main", "feature"]);
-    vi.spyOn(window.argmax!.projects, "switchBranch").mockRejectedValue(error);
+    const switchBranch = vi.spyOn(window.argmax!.projects, "switchBranch").mockRejectedValue(error);
     render(<App />);
     const prompt = await screen.findByLabelText("Task prompt");
     fireEvent.change(prompt, { target: { value: "Refactor the auth guard" } });
 
+    // Picking a branch checks nothing out: the checkout happens at launch.
     fireEvent.click(screen.getByRole("button", { name: "Switch branch" }));
     const listbox = await screen.findByRole("listbox", { name: "Select branch" });
     fireEvent.click(within(listbox).getByRole("button", { name: "feature" }));
+    expect(switchBranch).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent("feature");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
 
     await waitFor(() => expect(toastSnapshot()?.message).toBe(
       "Your local changes would be overwritten by checkout."
     ));
+    expect(switchBranch).toHaveBeenCalledWith("project-1", "feature");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(prompt).toHaveValue("Refactor the auth guard");
     expect(prompt).toBeEnabled();
-    expect(prompt).toHaveFocus();
-    expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent("main");
     expect(screen.getByRole("button", { name: "Start agent" })).toBeEnabled();
+    // The pick survives, so the next try needs no second pick.
+    expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent("feature");
 
     fireEvent.change(prompt, { target: { value: "Refactor the auth guard safely" } });
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(toastSnapshot()).toBeNull();
     expect(prompt).toHaveValue("Refactor the auth guard safely");
-    expect(prompt).toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Switch branch" }));
     expect(await screen.findByRole("listbox", { name: "Select branch" })).toBeVisible();

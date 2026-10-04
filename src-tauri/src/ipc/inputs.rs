@@ -8,12 +8,15 @@ use crate::{
     workspaces::WorkspaceTargetKind,
 };
 
+pub use crate::application::validation::{TerminalCols, TerminalRows};
+pub use crate::providers::inputs::*;
+pub use crate::workspaces::inputs::*;
+
 use super::validation::{
-    AgentMode, AttachmentMimeType, AttachmentPath, Base64ImageData, BaseRef, BranchName,
-    CommandText, DiffContextLines, FileContent, GitCommitMessage, NonEmptyString, OpenPath,
-    PermissionMode, ProjectId, Prompt, ProviderId, QuestionRequestId, ReasoningEffort,
-    RelativePath, RepoPath, SearchQuery, SessionId, StreamChunk, TaskLabel, TerminalId, ThemeMode,
-    WorkspaceId, ATTACHMENT_BYTE_CAP,
+    AttachmentMimeType, Base64ImageData, BranchName, CommandText, DiffContextLines, FileContent,
+    GitCommitMessage, NonEmptyString, OpenPath, PermissionMode, ProjectId, Prompt, ProviderId,
+    QuestionRequestId, ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId,
+    StreamChunk, TerminalId, ThemeMode, WorkspaceId,
 };
 
 macro_rules! empty_input {
@@ -364,6 +367,12 @@ pub struct ProjectsListBranchesInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsListCheckoutsInput {
+    pub project_id: ProjectId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsRefreshBranchInput {
     pub project_id: ProjectId,
 }
@@ -375,150 +384,9 @@ pub struct ProjectsSwitchBranchInput {
     pub branch: BranchName,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesCreateIsolatedInput {
-    pub project_id: ProjectId,
-    pub task_label: TaskLabel,
-    pub base_ref: Option<BaseRef>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesCreateCurrentInput {
-    pub project_id: ProjectId,
-    pub task_label: TaskLabel,
-}
-
-/// 'scratch' (the default) is a visible side chat; 'popup' is the ephemeral
-/// "More details" mini-session, excluded from the sidebar and prunable.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum ScratchWorkspaceKind {
-    Scratch,
-    Popup,
-}
-
-impl ScratchWorkspaceKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ScratchWorkspaceKind::Scratch => "scratch",
-            ScratchWorkspaceKind::Popup => "popup",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesCreateScratchInput {
-    pub task_label: TaskLabel,
-    pub kind: Option<ScratchWorkspaceKind>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesRefreshStatusInput {
-    pub workspace_id: WorkspaceId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesKeepInput {
-    pub workspace_id: WorkspaceId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesArchiveInput {
-    pub workspace_id: WorkspaceId,
-    pub force: Option<bool>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum OpenIdeChoice {
-    Default,
-    Vscode,
-    Cursor,
-    Windsurf,
-    Zed,
-    Terminal,
-    Iterm,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesOpenInIdeInput {
-    pub workspace_id: WorkspaceId,
-    pub ide: OpenIdeChoice,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesAutotitleInput {
-    pub workspace_id: WorkspaceId,
-    pub provider: ProviderId,
-    pub model_id: NonEmptyString,
-    pub prompt: Prompt,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceStatusInput {
-    pub workspace_ids: Option<Vec<WorkspaceId>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ComposerAttachmentInput {
-    pub file_path: AttachmentPath,
-    pub mime_type: AttachmentMimeType,
-    pub size_bytes: AttachmentSizeBytes,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
-#[serde(transparent)]
-pub struct AttachmentSizeBytes(u64);
-
-impl<'de> Deserialize<'de> for AttachmentSizeBytes {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = u64::deserialize(deserializer)?;
-        if value == 0 || value as usize > ATTACHMENT_BYTE_CAP {
-            Err(serde::de::Error::custom(format!(
-                "sizeBytes must be in 1..={ATTACHMENT_BYTE_CAP}"
-            )))
-        } else {
-            Ok(Self(value))
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
-#[serde(transparent)]
-pub struct TerminalCols(u16);
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
-#[serde(transparent)]
-pub struct TerminalRows(u16);
-
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
 #[serde(transparent)]
 pub struct Limit200(u16);
-
-impl TerminalCols {
-    pub fn get(self) -> u16 {
-        self.0
-    }
-}
-
-impl TerminalRows {
-    pub fn get(self) -> u16 {
-        self.0
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
 #[serde(transparent)]
@@ -553,34 +421,6 @@ impl SessionSearchQuery {
 impl Limit200 {
     pub fn get(self) -> u16 {
         self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for TerminalCols {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = u16::deserialize(deserializer)?;
-        if (20..=400).contains(&value) {
-            Ok(Self(value))
-        } else {
-            Err(serde::de::Error::custom("cols must be in 20..=400"))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for TerminalRows {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = u16::deserialize(deserializer)?;
-        if (5..=200).contains(&value) {
-            Ok(Self(value))
-        } else {
-            Err(serde::de::Error::custom("rows must be in 5..=200"))
-        }
     }
 }
 
@@ -644,115 +484,6 @@ impl<'de> Deserialize<'de> for SessionSearchQuery {
             Ok(Self(value))
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProvidersLaunchInput {
-    pub workspace_id: WorkspaceId,
-    pub provider: ProviderId,
-    pub prompt: Prompt,
-    pub model_label: NonEmptyString,
-    pub model_id: NonEmptyString,
-    pub reasoning_effort: Option<ReasoningEffort>,
-    #[serde(default)]
-    pub fast_mode: bool,
-    pub agent_mode: Option<AgentMode>,
-    pub permission_mode: Option<PermissionMode>,
-    pub cols: TerminalCols,
-    pub rows: TerminalRows,
-    pub attachments: Option<Vec<ComposerAttachmentInput>>,
-    pub goal_condition: Option<String>,
-    pub goal_max_turns: Option<u32>,
-    /// The Arc this session is attached to. Checked against the Arc's caps
-    /// and attached to the session row in the same write transaction as the
-    /// insert, so concurrent launches can't each pass the cap check before
-    /// either session existed to count against it. `None` for a launch with
-    /// no Arc — every renderer-initiated launch, which is why this defaults
-    /// rather than requiring every existing caller to pass it explicitly.
-    #[serde(default)]
-    pub arc_id: Option<String>,
-    /// Skips the active-member and daily-launch-budget checks; `ARC_DONE`
-    /// still applies. Only true for the one launch that must not count
-    /// against the caps it would otherwise be checked against: the Arc's
-    /// coordinator launching itself.
-    #[serde(default)]
-    pub arc_is_coordinator_launch: bool,
-    /// Let the router pick provider, model and effort from the prompt. The
-    /// provider/model/effort fields above are then only the fallback the
-    /// router overwrites. See docs/routing.md.
-    #[serde(default)]
-    pub auto_tier: Option<crate::routing::table::AutoTier>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProvidersSendInput {
-    pub session_id: SessionId,
-    pub input: Prompt,
-    /// Provider override for the next turn. When it differs from the session's
-    /// current provider, an idle follow-up relaunches under the new provider and
-    /// rebuilds context from the visible transcript — the native resume id is
-    /// dropped because Claude/Codex/Cursor ids don't translate. Requires
-    /// `model_label`/`model_id` for the new provider. Ignored while a turn runs:
-    /// the message queues under the session's current provider and the switch's
-    /// model metadata is dropped with it.
-    #[serde(default)]
-    pub provider: Option<ProviderId>,
-    pub model_label: Option<NonEmptyString>,
-    pub model_id: Option<NonEmptyString>,
-    pub reasoning_effort: Option<ReasoningEffort>,
-    #[serde(default)]
-    pub fast_mode: bool,
-    pub agent_mode: Option<AgentMode>,
-    pub attachments: Option<Vec<ComposerAttachmentInput>>,
-    #[serde(default)]
-    pub agent_references: Option<Vec<AgentReference>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AgentReference {
-    pub name: NonEmptyString,
-    pub provider_child_session_id: NonEmptyString,
-    pub provider_parent_conversation_id: NonEmptyString,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProvidersResizeInput {
-    pub session_id: SessionId,
-    pub cols: TerminalCols,
-    pub rows: TerminalRows,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProvidersTerminateInput {
-    pub session_id: SessionId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProvidersCancelQueuedMessageInput {
-    pub session_id: SessionId,
-    pub message_id: NonEmptyString,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProvidersSendQueuedMessageNowInput {
-    pub session_id: SessionId,
-    pub message_id: NonEmptyString,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub delivery: Option<QueuedMessageDelivery>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub enum QueuedMessageDelivery {
-    Interrupt,
-    Steer,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -848,6 +579,43 @@ pub struct SessionSuggestFollowUpInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionForkInput {
     pub session_id: SessionId,
+    /// The user message that started the finished turn to fork at. Omitted
+    /// forks the whole chat as it is now.
+    #[serde(default)]
+    pub boundary_event_id: Option<NonEmptyString>,
+    /// Where the fork works: the source's checkout, or an isolated worktree
+    /// that starts from the source's current files. Defaults to `shared`.
+    #[serde(default)]
+    pub workspace: Option<ForkWorkspaceMode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionForkLineageInput {
+    pub session_id: SessionId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionForkMergePreviewInput {
+    /// The fork whose findings would come back.
+    pub session_id: SessionId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionForkMergeInput {
+    /// The fork whose findings come back to its source.
+    pub session_id: SessionId,
+    /// The fork position the preview showed.
+    pub through_event_id: NonEmptyString,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ForkWorkspaceMode {
+    Shared,
+    Isolated,
 }
 
 /// Dispatch a multitask from a chat: a sibling session that runs alongside the
@@ -868,12 +636,6 @@ pub struct SessionMultitaskInput {
     pub worktree: bool,
     /// Sidebar label for the new chat. Falls back to the prompt's first line.
     pub task_label: Option<NonEmptyString>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SessionClearInput {
-    pub session_id: SessionId,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -930,6 +692,14 @@ pub struct WorkspaceStatFileInput {
     pub kind: WorkspaceTargetKind,
     pub id: WorkspaceTargetId,
     pub file_path: RelativePath,
+}
+
+/// A file outside every workspace. `OpenPath` already rejects `..`, null
+/// bytes, and a leading dash.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceExternalFileInput {
+    pub path: OpenPath,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -1065,90 +835,6 @@ pub struct SessionSearchInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesSetPinnedInput {
-    pub workspace_id: WorkspaceId,
-    pub pinned: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceViewedObservationInput {
-    pub workspace_id: WorkspaceId,
-    pub observed_activity_at: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesMarkViewedInput {
-    pub workspaces: Vec<WorkspaceViewedObservationInput>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesSetPriorityDismissedInput {
-    pub workspace_id: WorkspaceId,
-    pub dismissed: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesSetPriorityAddedInput {
-    pub workspace_id: WorkspaceId,
-    pub added: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesSetLabelInput {
-    pub workspace_id: WorkspaceId,
-    pub task_label: TaskLabel,
-}
-
-/// Custom sidebar glyph for a workspace row. Both fields null clears the glyph
-/// and returns the row to its live status marker.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspacesSetIconInput {
-    pub workspace_id: WorkspaceId,
-    pub icon: Option<SessionIconToken>,
-    pub icon_color: Option<SessionIconToken>,
-}
-
-/// A picker token (icon name or palette color name). The renderer owns the
-/// catalog; Rust only guarantees the value is a short slug so nothing arbitrary
-/// lands in the column.
-#[derive(Debug, Clone, PartialEq, Serialize, Type)]
-#[serde(transparent)]
-pub struct SessionIconToken(String);
-
-impl SessionIconToken {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for SessionIconToken {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        let valid_length = (1..=64).contains(&value.len());
-        let valid_charset = value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-        if valid_length && valid_charset {
-            Ok(Self(value))
-        } else {
-            Err(serde::de::Error::custom(
-                "icon tokens must be 1..=64 ASCII alphanumeric, hyphen, or underscore characters",
-            ))
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrsListForSessionInput {
     pub session_id: SessionId,
 }
@@ -1169,6 +855,13 @@ pub struct PrsSetPrimaryInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PrsDismissInput {
+    pub session_id: SessionId,
+    pub pr_number: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrsCleanupInput {
     pub session_id: SessionId,
     pub pr_number: i64,
 }

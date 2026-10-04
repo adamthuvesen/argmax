@@ -71,6 +71,12 @@ pub struct WorkspaceSummary {
     /// Manual entries need no attention and never age out; cleared by an
     /// explicit remove or a dismissal.
     pub priority_added_at: Option<String>,
+    /// When the sidebar's snooze shelf lets this workspace back into its
+    /// normal section. Display metadata only: snoozing never touches
+    /// `state`, the running session, or the gh poller. A value in the past is
+    /// an expired snooze, and the renderer treats it as none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snoozed_until: Option<String>,
     /// State of the displayed session's primary PR, filled in from canonical
     /// PR state and session evidence on every read path. The renderer merges
     /// workspace deltas by whole-object replacement, so a summary published
@@ -185,7 +191,15 @@ fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -
         .optional()
         .map_err(sqlite_error)?;
     if let Some(session_id) = session_id {
-        workspace.prs = list_session_prs(connection, &session_id)?;
+        workspace.prs = list_session_prs(connection, &session_id)?
+            .into_iter()
+            .filter(shows_on_chat)
+            .collect();
+        // The first shown row is the primary: rows arrive pinned first, then
+        // open worked PRs, then other worked PRs.
+        for (index, pr) in workspace.prs.iter_mut().enumerate() {
+            pr.is_primary = index == 0;
+        }
         workspace.pr_summary_state = aggregate_pr_state(&workspace.prs);
         if let Some(primary) = workspace.prs.iter().find(|pr| pr.is_primary) {
             workspace.pr_state = primary.pr_state.clone();
@@ -377,15 +391,16 @@ fn attach_latest_prs(
             continue;
         };
 
-        // Mirrors `list_session_prs`: the first row that is pinned, or whose
-        // relationship isn't "unverified", is the primary.
+        // Mirrors `attach_latest_pr`: only rows the chat shows, and the first
+        // of them is the primary.
         let mut primary_index = None;
         let mut primary_milestones: (Option<String>, Option<String>) = (None, None);
         let mut summaries = Vec::with_capacity(rows.len());
-        for (index, (summary, pr_created_at, pr_merged_at)) in rows.into_iter().enumerate() {
-            if primary_index.is_none()
-                && (summary.is_pinned || summary.relationship != "unverified")
-            {
+        let shown = rows
+            .into_iter()
+            .filter(|(summary, _, _)| shows_on_chat(summary));
+        for (index, (summary, pr_created_at, pr_merged_at)) in shown.enumerate() {
+            if primary_index.is_none() {
                 primary_index = Some(index);
                 primary_milestones = (pr_created_at, pr_merged_at);
             }
@@ -416,6 +431,14 @@ fn attach_latest_prs(
     }
 
     Ok(())
+}
+
+/// A PR belongs on the chat's card, menu, and sidebar row only when the chat
+/// created or changed it (`worked`) or the user pinned it. A PR the chat only
+/// viewed, or whose URL merely appeared, keeps its link for the poller and for
+/// repair but is not shown as the chat's PR.
+fn shows_on_chat(pr: &SessionPrSummary) -> bool {
+    pr.relationship == "worked" || pr.is_pinned
 }
 
 fn aggregate_pr_state(prs: &[SessionPrSummary]) -> Option<String> {
@@ -733,6 +756,54 @@ pub fn set_workspace_priority_added(
     find_workspace_by_id(connection, workspace_id)
 }
 
+/// A snooze reaches at most this far, so a forgotten one cannot hide a row
+/// for good.
+pub const MAX_SNOOZE_DAYS: i64 = 366;
+
+/// Sets or clears the snooze instant. `until` is an RFC 3339 timestamp in the
+/// future; `None` unsnoozes. Writes nothing else: execution state and
+/// attention are untouched.
+pub fn set_workspace_snoozed_until(
+    connection: &Connection,
+    workspace_id: &str,
+    until: Option<&str>,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let normalized = until.map(validate_snooze_until).transpose()?;
+    let timestamp = now_iso();
+    let changes = connection
+        .prepare_cached("UPDATE workspaces SET snoozed_until = ?, updated_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((normalized.as_deref(), timestamp.as_str(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("workspace", workspace_id));
+    }
+    find_workspace_by_id(connection, workspace_id)
+}
+
+/// Parses to UTC and stores the canonical millisecond form, so the renderer's
+/// string comparison against `now` and the stored value agree.
+fn validate_snooze_until(until: &str) -> ArgmaxResult<String> {
+    let invalid = |message: &str| {
+        ArgmaxError::invalid(crate::error::InvalidInputIssue::at(
+            vec!["until".to_owned()],
+            "SNOOZE_INVALID",
+            message.to_owned(),
+        ))
+    };
+    let parsed = chrono::DateTime::parse_from_rfc3339(until)
+        .map_err(|_| invalid("Snooze until must be an RFC 3339 timestamp."))?
+        .with_timezone(&chrono::Utc);
+    let now = chrono::Utc::now();
+    if parsed <= now {
+        return Err(invalid("Snooze until must be in the future."));
+    }
+    if parsed > now + chrono::Duration::days(MAX_SNOOZE_DAYS) {
+        return Err(invalid("A snooze lasts at most a year."));
+    }
+    Ok(parsed.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+}
+
 pub fn set_workspace_label(
     connection: &Connection,
     workspace_id: &str,
@@ -791,6 +862,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         pinned: row.get::<_, i64>("pinned")? == 1,
         priority_dismissed_at: row.get("priority_dismissed_at")?,
         priority_added_at: row.get("priority_added_at")?,
+        snoozed_until: row.get("snoozed_until")?,
         icon: row.get("icon")?,
         icon_color: row.get("icon_color")?,
         // PR fields are not workspace columns; attach_latest_pr fills them in
@@ -897,6 +969,84 @@ mod tests {
             pr_merged_at: None,
             head_ref_name: Some("feature/a".to_owned()),
         }
+    }
+
+    fn in_days(days: i64) -> String {
+        (chrono::Utc::now() + chrono::Duration::days(days))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    }
+
+    #[test]
+    fn snoozing_stores_the_instant_and_changes_no_execution_state() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_workspace(&connection, "p1", "w1");
+        add_session_at(&connection, "w1", "s1", "2025-06-01T00:00:00.000Z");
+        let before = find_workspace_by_id(&connection, "w1").expect("workspace");
+        assert_eq!(before.snoozed_until, None);
+
+        let until = in_days(2);
+        let snoozed = set_workspace_snoozed_until(&connection, "w1", Some(&until)).expect("snooze");
+        // Stored in the canonical millisecond form the renderer compares against.
+        assert_eq!(
+            snoozed.snoozed_until.as_deref(),
+            Some(until.replace('Z', ".000Z").as_str())
+        );
+        assert_eq!(
+            snoozed.state, before.state,
+            "a snooze is not a state change"
+        );
+        assert_eq!(snoozed.pinned, before.pinned);
+        assert_eq!(snoozed.last_activity_at, before.last_activity_at);
+        let session_state: String = connection
+            .query_row("SELECT state FROM sessions WHERE id = 's1'", [], |row| {
+                row.get(0)
+            })
+            .expect("session");
+        assert_eq!(session_state, "running");
+
+        let cleared = set_workspace_snoozed_until(&connection, "w1", None).expect("unsnooze");
+        assert_eq!(cleared.snoozed_until, None);
+    }
+
+    #[test]
+    fn a_snooze_must_be_a_future_instant_within_a_year() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_workspace(&connection, "p1", "w1");
+        for bad in ["not a time", "2020-01-01T00:00:00Z", &in_days(400)] {
+            match set_workspace_snoozed_until(&connection, "w1", Some(bad)) {
+                Err(ArgmaxError::InvalidInput { issues }) => {
+                    assert_eq!(issues[0].code, "SNOOZE_INVALID", "{bad}");
+                }
+                other => panic!("{bad}: expected SNOOZE_INVALID, got {other:?}"),
+            }
+        }
+        let missing = set_workspace_snoozed_until(&connection, "nope", Some(&in_days(1)));
+        assert!(matches!(missing, Err(ArgmaxError::RecordNotFound { .. })));
+        assert_eq!(
+            find_workspace_by_id(&connection, "w1")
+                .expect("workspace")
+                .snoozed_until,
+            None,
+            "a rejected snooze stores nothing"
+        );
+    }
+
+    #[test]
+    fn snooze_is_serialized_only_when_set() {
+        let database = Database::open_in_memory().expect("open db");
+        let connection = database.connection();
+        add_project(&connection, "p1");
+        add_workspace(&connection, "p1", "w1");
+        let plain = serde_json::to_value(find_workspace_by_id(&connection, "w1").unwrap()).unwrap();
+        assert!(plain.get("snoozedUntil").is_none());
+        let snoozed =
+            set_workspace_snoozed_until(&connection, "w1", Some(&in_days(1))).expect("snooze");
+        let value = serde_json::to_value(snoozed).unwrap();
+        assert!(value["snoozedUntil"].is_string());
     }
 
     /// Pins the batched `attach_latest_prs` path (used by `list_workspaces`)

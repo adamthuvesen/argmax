@@ -1,0 +1,75 @@
+/* ---- Forked chats ---- */
+
+/* A card in the composer lane (`.session-meta-cards`): where this chat came
+   from and the way back. It carries no color of its own — a fork is ordinary
+   work. */
+.fork-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1_5) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--muted-strong);
+  font-size: var(--text-xs);
+}
+
+.fork-bar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fork-bar-actions {
+  display: inline-flex;
+  gap: var(--space-1_5);
+  margin-left: auto;
+}
+
+.fork-bar-actions button {
+  min-height: 24px;
+  padding: 0 var(--space-2_5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--text-soft);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fork-merge-dialog {
+  width: min(640px, 92vw);
+}
+
+.fork-merge-summary,
+.fork-merge-note {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--muted-strong);
+}
+
+.fork-merge-note {
+  color: var(--muted);
+}
+
+/* The message exactly as the source receives it. */
+.fork-merge-text {
+  margin: 0;
+  overflow: auto;
+  max-height: 40vh;
+  padding: var(--space-2_5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel-sunken);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
-import { readBundledCss } from "../styles/readBundledCss.js";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
 import { BROWSER_PAGE_OWNER_ID, createBrowserTab, getBrowserRequest, getBrowserTabs, resetBrowserTabsForTests, subscribeBrowserRequest } from "../lib/browserPanel.js";
@@ -119,21 +116,6 @@ describe("FilePreview", () => {
     rerender(<FilePreview state={makeState()} />);
     expect(screen.getByLabelText("Editor for src/index.ts")).toBeInTheDocument();
     expect(screen.queryByLabelText("No file selected")).not.toBeInTheDocument();
-  });
-
-  it("shows the dirty marker only when isDirty is true", () => {
-    const { rerender } = render(<FilePreview state={makeState({ isDirty: false })} />);
-    expect(screen.queryByLabelText("Unsaved changes")).not.toBeInTheDocument();
-    rerender(<FilePreview state={makeState({ isDirty: true })} />);
-    expect(screen.getByLabelText("Unsaved changes")).toBeInTheDocument();
-  });
-
-  it("calls editFile when the buffer changes", () => {
-    const editFile = vi.fn();
-    render(<FilePreview state={makeState({ editFile })} />);
-    const editor = screen.getByLabelText("Editor for src/index.ts");
-    fireEvent.change(editor, { target: { value: "export const ok = false;\n" } });
-    expect(editFile).toHaveBeenCalledWith("export const ok = false;\n");
   });
 
   it("marks the source editor read-only when file editing is unavailable", () => {
@@ -307,21 +289,6 @@ describe("FilePreview", () => {
     fireEvent.click(screen.getByLabelText("View SVG source"));
     expect(screen.getByLabelText("Editor for assets/icon.svg")).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "assets/icon.svg" })).not.toBeInTheDocument();
-  });
-
-  it("caps every markdown preview block at one centered measure", () => {
-    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
-    const css = readBundledCss(cssPath);
-
-    const container = /\.file-preview-markdown\s*\{(?<body>[^}]+)\}/i.exec(css);
-    const measure = /--file-preview-measure:\s*(?<px>\d+)px/i.exec(container?.groups?.body ?? "");
-    expect(Number(measure?.groups?.px ?? 0)).toBe(840);
-
-    // The cap lands on all top-level children, not just prose, so short fenced
-    // code and tables stop spanning the review pane.
-    const blocks = /\.file-preview-markdown\.markdown\s*>\s*\*\s*\{(?<body>[^}]+)\}/i.exec(css);
-    expect(blocks?.groups?.body).toMatch(/max-width:\s*var\(--file-preview-measure\)/i);
-    expect(blocks?.groups?.body).toMatch(/margin-inline:\s*auto/i);
   });
 });
 

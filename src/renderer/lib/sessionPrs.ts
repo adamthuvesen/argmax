@@ -38,15 +38,15 @@ export function workspacePrSummaryState(workspace: WorkspaceSummary): string | n
  * state no PR in the session holds.
  *
  * Hosts that predate the `prs` projection keep the legacy scalar. With the
- * projection present only a flagged primary speaks: rows that are all
- * unverified discoveries stay in the card for repair and leave the row calm.
+ * projection present only a flagged primary speaks. The host already limits
+ * `prs` to PRs the chat worked on or the user pinned.
  */
 export function workspacePrimaryPrState(workspace: WorkspaceSummary): string | null {
   if (workspace.prs === undefined) return workspace.prState;
   return workspaceSessionPrs(workspace).find((pr) => pr.isPrimary)?.prState ?? null;
 }
 
-/** Unverified discoveries stay in the card for repair, but do not speak for the sidebar. */
+/** A pinned unverified discovery shows in the card, but does not speak for the sidebar. */
 export function verifiedWorkspacePrs(workspace: WorkspaceSummary): readonly WorkspaceSessionPr[] {
   return workspaceSessionPrs(workspace).filter((pr) => pr.relationship !== "unverified");
 }

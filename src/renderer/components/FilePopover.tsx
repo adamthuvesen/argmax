@@ -1,5 +1,7 @@
 import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
-import { useEffect, useRef, type JSX, type RefObject } from "react";
+import { MessageSquare } from "lucide-react";
+import { Fragment, useEffect, useRef, type JSX, type RefObject } from "react";
+import type { ComposerField } from "./composerEditor/composerField.js";
 import type { FileAutocompleteEntry, FileAutocompleteState } from "../hooks/useFileAutocomplete.js";
 import { scrollChildIntoNearest } from "../lib/scrollChildIntoNearest.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
@@ -7,6 +9,11 @@ import { PickerLead } from "./PickerLead.js";
 
 /** The row's two halves: the entry's own name, and the folder it sits in. */
 function splitEntryPath(entry: FileAutocompleteEntry): { name: string; folder: string } {
+  // A chat's name is its title, and the folder column carries where it lives
+  // or what matched, not a path to split.
+  if (entry.kind === "chat") {
+    return { name: entry.title, folder: entry.snippet ?? entry.projectName };
+  }
   const slash = entry.path.lastIndexOf("/");
   return {
     name: entry.path.slice(slash + 1),
@@ -19,7 +26,7 @@ export function FilePopover({
   inputRef
 }: {
   state: FileAutocompleteState;
-  inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  inputRef: RefObject<ComposerField | null>;
 }): JSX.Element | null {
   const selectedOptionRef = useRef<HTMLLIElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
@@ -50,15 +57,28 @@ export function FilePopover({
         const { name, folder } = splitEntryPath(entry);
         const label = entry.kind === "dir" ? `${name}/` : name;
         const key = `${entry.kind}:${entry.path}`;
+        const startsChats =
+          entry.kind === "chat" && state.filteredEntries[index - 1]?.kind !== "chat";
         return (
+          <Fragment key={key}>
+          {startsChats ? (
+            <li className="file-popover-heading" role="presentation">
+              Chats
+            </li>
+          ) : null}
           <li
-            key={key}
             ref={index === state.selectionIndex ? selectedOptionRef : undefined}
             role="option"
             aria-selected={index === state.selectionIndex}
             // The folder is aria-hidden so the row's visible name stays short;
             // the full path is the accessible name so two `mod.rs` rows differ.
-            aria-label={folder ? `${folder}/${label}` : label}
+            aria-label={
+              entry.kind === "chat"
+                ? `Chat: ${name}${entry.projectName ? ` in ${entry.projectName}` : ""}`
+                : folder
+                  ? `${folder}/${label}`
+                  : label
+            }
             data-kind={entry.kind}
             className={`file-popover-item${index === state.selectionIndex ? " is-selected" : ""}`}
             // Hover highlights the row by moving the shared selection index, so
@@ -80,7 +100,9 @@ export function FilePopover({
             }}
           >
             <PickerLead>
-              {entry.kind === "dir" ? (
+              {entry.kind === "chat" ? (
+                <MessageSquare size={14} aria-hidden="true" />
+              ) : entry.kind === "dir" ? (
                 <FolderIcon folderName={name} width={14} height={14} />
               ) : (
                 <FileIcon
@@ -99,6 +121,7 @@ export function FilePopover({
               </span>
             ) : null}
           </li>
+          </Fragment>
         );
       })}
     </ul>

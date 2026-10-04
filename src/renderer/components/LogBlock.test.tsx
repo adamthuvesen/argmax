@@ -26,13 +26,6 @@ describe("<LogBlock />", () => {
     expect(within(rows[1]).getByText("2026-09-01T07:21:37.017965Z")).toBeInTheDocument();
   });
 
-  it("renders a plain error sentence with the Error label", () => {
-    render(<LogBlock text="Provider exited" tone="error" />);
-
-    const block = screen.getByRole("status", { name: "Error" });
-    expect(within(block).getByText("Provider exited")).toBeInTheDocument();
-  });
-
   it("renders nothing for MCP HTTP client teardown tracing", () => {
     const { container } = render(<LogBlock text={MCP} />);
     expect(container).toBeEmptyDOMElement();

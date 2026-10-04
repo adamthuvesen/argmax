@@ -20,13 +20,11 @@ import {
   lazy,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
-  type JSX,
-  type KeyboardEvent as ReactKeyboardEvent
+  type JSX
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -35,9 +33,11 @@ import {
   type ComposerAttachment,
   type ProjectCheck,
   type ProjectCheckOutcome,
+  type ProjectCheckout,
   type ProjectSummary,
   type WorkspaceSummary
 } from "../../shared/types.js";
+import type { LaunchCheckout } from "../lib/launchCheckout.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import {
   cloudProviderName,
@@ -51,11 +51,21 @@ import {
   appendReferencesToPrompt,
   imageAttachmentReference
 } from "../lib/composerAttachments.js";
-import { clearDraft, launcherDraftKey, readDraft } from "../lib/composerDrafts.js";
+import { useBackgroundSendShortcut } from "../hooks/useBackgroundSendShortcut.js";
+import { useWindowSnapshotAttach } from "../hooks/useWindowSnapshotAttach.js";
+import { windowSnapshotLabel } from "../lib/windowSnapshotInbox.js";
+import {
+  clearDraft,
+  launcherDraftKey,
+  readDraft,
+  restoreDraft,
+  subscribeDraftRestore
+} from "../lib/composerDrafts.js";
+import { restoreDraftAttachments, restoreDraftText } from "../lib/draftRestore.js";
+import { formatChord, matchesChord } from "../lib/shortcutChord.js";
+import { titleFromPrompt } from "../lib/projects.js";
 import { parseGoalCommand } from "../lib/goalCommand.js";
 import type { PaletteSurfaceContext, PaletteSurfaceLive } from "../lib/paletteSearch.js";
-import { splitSkillTokens } from "../lib/slashHighlight.js";
-import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
@@ -100,6 +110,11 @@ import { collapseHome } from "../lib/pathDisplay.js";
 import { importChunk } from "../lib/importChunk.js";
 import { LaunchModelSelector } from "./ModelSelector.js";
 import { Mascot, type MascotMood } from "./Mascot.js";
+import { ComposerEditor } from "./ComposerEditor.js";
+import { ComposerUsageSlot } from "./ComposerUsageSlot.js";
+import type { ComposerField } from "./composerEditor/composerField.js";
+import { chatChipEnvironmentFor } from "../lib/chatChipEnvironment.js";
+import { openChat, useChatDirectory } from "../state/chatDirectory.js";
 // ReviewPanel pulls in shiki + diff utilities — heavy and only needed when
 // the right-side review pane is open. Lazy-mounted (ralph B4) so the
 // launcher's first paint doesn't ship the highlighter.
@@ -120,8 +135,6 @@ const WelcomePane = lazy(() =>
     default: (await import("./WelcomePane.js")).WelcomePane
   }))
 );
-
-const PROMPT_MAX_HEIGHT_PX = 168;
 
 // The fox dozes off after a long untouched stretch and wakes on the first
 // keystroke, click, or focus inside the surface. Ten pets in a row — each
@@ -150,6 +163,10 @@ interface PendingLaunch {
   workspaceMode: WorkspaceMode;
   attachments: ComposerAttachment[] | undefined;
   goalCondition: string | undefined;
+  /** The branch picked when the prompt was sent, not whatever is picked when the
+   *  launch gets to run: Project check's dialog, a background send and an Undo
+   *  all launch later than they were asked for. */
+  checkout: LaunchCheckout | undefined;
 }
 
 function isOptionButtonTarget(target: EventTarget | null): boolean {
@@ -208,15 +225,20 @@ export function LaunchSurface({
     workspaceMode: WorkspaceMode,
     attachments?: ComposerAttachment[],
     goalCondition?: string,
-    projectId?: string
+    projectId?: string,
+    /** Start the chat without moving to it. */
+    background?: boolean,
+    /** The branch picked in the launcher. Nothing is checked out until this launch runs. */
+    checkout?: LaunchCheckout
   ) => Promise<LaunchedChat | void>;
   onLaunchSideChat?: (
     prompt: string,
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[],
-    goalCondition?: string
-  ) => Promise<void>;
+    goalCondition?: string,
+    background?: boolean
+  ) => Promise<LaunchedChat | void>;
   onModelChange: (model: ModelPickerSelection) => void;
   onSelectProject: (id: string) => void;
   onSideChatModeChange?: (active: boolean) => void;
@@ -254,6 +276,12 @@ export function LaunchSurface({
     brief: string;
   } | null>(null);
   const activeProject = chatMode ? null : project;
+  // The branch picked for the next launch. Picking checks nothing out: this is
+  // held here and sent with the launch. It belongs to the project it was picked
+  // in, so another project shows its own current branch again.
+  const [pickedCheckout, setPickedCheckout] = useState<LaunchCheckout | null>(null);
+  const checkout = pickedCheckout?.projectId === activeProject?.id ? pickedCheckout : null;
+
   // The unsent prompt and its screenshots belong to the project they will be
   // launched in, not to the mounted launcher: a grid cell that retargets its
   // repo remounts, and the full launcher outlives an app restart. Side-chat
@@ -265,6 +293,7 @@ export function LaunchSurface({
       : null;
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const promptInputRef = useRef<ComposerField | null>(null);
   // Picking another project from the context picker is how the user aims a
   // prompt they are still writing, so the text follows the pick. Switching
   // to Chat uses the same carry so the draft survives the retarget.
@@ -285,14 +314,29 @@ export function LaunchSurface({
     onComposerPaste,
     onAttachmentInputChange,
     openFilePicker,
-    clearAttachments
+    clearAttachments,
+    restoreAttachments,
+    attachSavedAttachment,
+    attachmentLabels
   } = useComposerAttachments({
     draftKey,
-    workspacePath: activeProject?.repoPath ?? null,
+    // Where dropped files become relative references: the checkout the chat
+    // will run in, which is the picked one when a branch was picked.
+    workspacePath: checkout?.path ?? activeProject?.repoPath ?? null,
     setInput: setPrompt,
+    fieldRef: promptInputRef,
     carriedOnRetarget: promptCarriedOnRetarget,
     persist: !isSubmitting
   });
+  // A window capture goes to the draft the user is composing: this launcher is
+  // the focused surface and has a draft to attach to. Cloud tasks take text only.
+  useWindowSnapshotAttach(
+    isFocused && draftKey !== null && !isSubmitting && !cloudMode,
+    (snapshot) => {
+      attachSavedAttachment(snapshot.attachment, windowSnapshotLabel(snapshot));
+      promptInputRef.current?.focus();
+    }
+  );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   // Picking a project for this draft is a stronger signal than the launcher's
@@ -312,6 +356,7 @@ export function LaunchSurface({
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
+  const [checkouts, setCheckouts] = useState<ProjectCheckout[]>([]);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const [compactContextOpen, setCompactContextOpen] = useState(false);
@@ -327,7 +372,7 @@ export function LaunchSurface({
   // If the pre-filled selection points at a provider that isn't usable — CLI
   // not installed, or installed but not logged in — steer to the highest-
   // priority usable provider's default (Claude → Codex → Cursor → OpenCode,
-  // else Big Pickle) so the composer isn't stuck on an unlaunchable pick.
+  // else OpenCode's default) so the composer isn't stuck on an unlaunchable pick.
   // Skip an empty discovery result: that is "we learned nothing", not "nothing
   // is installed", and must not overwrite the factory seed. Runs once when
   // discovery resolves; picks the user makes afterwards are never overridden.
@@ -599,6 +644,7 @@ export function LaunchSurface({
 
   const chatAvailable = Boolean(onLaunchSideChat && onSideChatModeChange);
   const launcherMode: LauncherMode = chatMode ? "chat" : "auto";
+  const backgroundShortcut = useBackgroundSendShortcut();
 
   const toggleMode = useCallback((): void => {
     setCloudSelected(false);
@@ -628,6 +674,11 @@ export function LaunchSurface({
   // the branch actually moved.
   const projectId = activeProject?.id ?? null;
   const knownBranch = activeProject?.currentBranch ?? null;
+  // What the chip, the picker and the slash hint call the branch.
+  const shownBranch = checkout?.branch ?? knownBranch;
+  // A checkout other than the project's own: the chat runs there, not in the
+  // project root the Files, Changes and Terminal panels show.
+  const runsInLinkedCheckout = workspaceMode !== "worktree" && checkout?.path != null && !checkout.isMain;
   useEffect(() => {
     if (!window.argmax || !projectId) return undefined;
     let cancelled = false;
@@ -650,8 +701,12 @@ export function LaunchSurface({
     if (!window.argmax || !activeProject) return;
     setStatus(null);
     try {
-      const list = await window.argmax.projects.listBranches(activeProject.id);
+      const [list, checkoutList] = await Promise.all([
+        window.argmax.projects.listBranches(activeProject.id),
+        window.argmax.projects.listCheckouts(activeProject.id)
+      ]);
       setBranches(list);
+      setCheckouts(checkoutList);
       setBranchPickerOpen(true);
     } catch (error) {
       setBranchPickerOpen(false);
@@ -659,20 +714,27 @@ export function LaunchSurface({
     }
   }, [activeProject]);
 
-  const switchBranch = useCallback(async (branch: string): Promise<void> => {
-    if (!window.argmax || !activeProject) return;
-    setBranchPickerOpen(false);
-    setCompactContextOpen(false);
-    if (branch === activeProject.currentBranch) return;
-    setStatus(null);
-    try {
-      const updated = await window.argmax.projects.switchBranch(activeProject.id, branch);
-      onBranchSwitch(updated);
-    } catch (error) {
-      showErrorToast(errorMessage(error) || "Could not switch branch.");
-      if (isFocusedRef.current) promptInputRef.current?.focus();
-    }
-  }, [activeProject, onBranchSwitch]);
+  // Picking a branch changes nothing on disk. It is held in the launcher and
+  // sent with the launch, which decides what to do with it: run in the checkout
+  // that already has the branch, start a worktree from it, or (a branch no
+  // checkout has, with Worktree off) check it out in the project root at that
+  // point. Asking git to check out a branch another worktree holds fails, so
+  // nothing here asks it to.
+  const pickBranch = useCallback(
+    (branch: string): void => {
+      if (!activeProject) return;
+      setBranchPickerOpen(false);
+      setCompactContextOpen(false);
+      const holder = checkouts.find((candidate) => candidate.branch === branch);
+      setPickedCheckout({
+        projectId: activeProject.id,
+        branch,
+        path: holder?.path ?? null,
+        isMain: !!holder?.isMain
+      });
+    },
+    [activeProject, checkouts]
+  );
   // Typing into an open picker filters it through useTypeToFilter. The lists take
   // focus while open, so characters land here instead of in the prompt behind.
   const projectListRef = useRef<HTMLUListElement | null>(null);
@@ -690,6 +752,7 @@ export function LaunchSurface({
   const pickProject = useCallback(
     (candidate: ProjectSummary): void => {
       persistLaunchProjectId(candidate.id);
+      setPickedCheckout(null);
       onSideChatModeChange?.(false);
       onSelectProject(candidate.id);
       setProjectPickedByHand(true);
@@ -708,22 +771,20 @@ export function LaunchSurface({
     initialIndex: selectedProjectIndex >= 0 ? selectedProjectIndex : 0,
     onPick: pickProject
   });
-  const selectedBranchIndex = project ? branches.findIndex((b) => b === project.currentBranch) : -1;
+  const selectedBranchIndex = shownBranch ? branches.findIndex((b) => b === shownBranch) : -1;
   const branchFilter = useTypeToFilter({
     open: branchPickerOpen,
     items: branches,
     toLabel: (branch: string) => branch,
     listRef: branchListRef,
     initialIndex: selectedBranchIndex >= 0 ? selectedBranchIndex : 0,
-    onPick: (branch: string) => void switchBranch(branch)
+    onPick: pickBranch
   });
 
   const placeholderText = chatMode
     ? SIDE_CHAT_PLACEHOLDER
     : "Ask your agent to inspect, build, or fix something";
-  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
-  useAutoGrowTextArea(promptInputRef, prompt, PROMPT_MAX_HEIGHT_PX);
 
   // Read inside the auto-focus effect without widening its deps: whether a
   // picker is open decides nothing about *when* to refocus, only whether to.
@@ -864,7 +925,7 @@ export function LaunchSurface({
         {
           name: "branch",
           label: "Branch",
-          hint: `Start from a branch other than ${activeProject?.currentBranch ?? "the current one"}`,
+          hint: `Start from a branch other than ${shownBranch ?? "the current one"}`,
           icon: GitBranch,
           run: () => {
             setCompactContextOpen(true);
@@ -885,7 +946,6 @@ export function LaunchSurface({
     }
     return commands;
   }, [
-    activeProject,
     chatAvailable,
     chatMode,
     closeContextPickers,
@@ -895,6 +955,7 @@ export function LaunchSurface({
     openBranchPicker,
     openFilePicker,
     setPrompt,
+    shownBranch,
     toggleWorkspace,
     workspaceMode
   ]);
@@ -908,40 +969,29 @@ export function LaunchSurface({
     inputRef: promptInputRef
   });
 
+  const chatDirectory = useChatDirectory();
   const fileAutocomplete = useFileAutocomplete({
     input: cloudMode ? "" : prompt,
     setInput: setPrompt,
     inputRef: promptInputRef,
-    source: activeProject && !cloudMode ? { kind: "project", id: activeProject.id } : null
+    source: activeProject && !cloudMode ? { kind: "project", id: activeProject.id } : null,
+    chats: cloudMode ? undefined : chatDirectory
   });
-
-  // Same accent tint for `/skill` tokens as the session composer: a mirror
-  // div behind a transparent-text textarea (see chat-composer-chips.css).
-  const skillHighlight = useMemo(
-    () =>
-      splitSkillTokens(
-        prompt,
-        (name) =>
-          name === "mcp" ||
-          (goalEnabled && name === "goal") ||
-          slashAutocomplete.skillNames.has(name)
-      ),
-    [goalEnabled, prompt, slashAutocomplete.skillNames]
+  const chatChips = useMemo(
+    () => chatChipEnvironmentFor(chatDirectory, openChat),
+    [chatDirectory]
   );
-  // The mirror follows the textarea's scroll by transform, not by its own
-  // scrollTop: WebKit leaves the div's bottom padding out of its scroll range,
-  // so a long prompt scrolled to the end clamped the mirror a line short and
-  // the caret sat a line above the text it belongs to. Synced after every
-  // render as well, since the mirror mounts into an already-scrolled field.
-  const highlightTextRef = useRef<HTMLDivElement | null>(null);
-  const syncHighlightScroll = useCallback((): void => {
-    const text = highlightTextRef.current;
-    const field = promptInputRef.current;
-    if (text && field) text.style.transform = `translateY(${-field.scrollTop}px)`;
-  }, [promptInputRef]);
-  useLayoutEffect(syncHighlightScroll, [skillHighlight, syncHighlightScroll]);
 
-  const onPromptKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
+  // Same accent tint for `/skill` tokens as the session composer.
+  const isSkillToken = useCallback(
+    (name: string): boolean =>
+      name === "mcp" ||
+      (goalEnabled && name === "goal") ||
+      slashAutocomplete.skillNames.has(name),
+    [goalEnabled, slashAutocomplete.skillNames]
+  );
+
+  const onPromptKeyDown = (event: KeyboardEvent): void => {
     slashAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
@@ -951,13 +1001,18 @@ export function LaunchSurface({
       !event.ctrlKey &&
       !event.metaKey &&
       !event.altKey &&
-      !event.nativeEvent.isComposing
+      !event.isComposing
     ) {
       event.preventDefault();
       toggleMode();
       return;
     }
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (!event.isComposing && matchesChord(event, backgroundShortcut)) {
+      event.preventDefault();
+      void startInBackground();
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       formRef.current?.requestSubmit();
     }
@@ -965,10 +1020,41 @@ export function LaunchSurface({
 
   const hasSendableContent = prompt.trim().length > 0 || pendingAttachments.length > 0;
 
+  // The `/goal` slash command turns the draft into a condition the chat works
+  // toward; the launcher has no goal to clear and no empty one to set.
+  const resolveOpeningPrompt = (
+    trimmedPrompt: string
+  ): { goalCondition: string | undefined; openingPrompt: string } | { error: string } => {
+    const goalCommand = goalEnabled ? parseGoalCommand(trimmedPrompt) : null;
+    if (goalEnabled && (/^\/goal\s*$/i.test(trimmedPrompt) || goalCommand?.kind === "clear")) {
+      return {
+        error:
+          goalCommand?.kind === "clear"
+            ? "There is no goal to clear in a new chat."
+            : "Write a completion condition after /goal."
+      };
+    }
+    const goalCondition = goalCommand?.kind === "set" ? goalCommand.condition : undefined;
+    return { goalCondition, openingPrompt: goalCondition ?? trimmedPrompt };
+  };
+
+  // What the field holds right now; see SessionComposer's `liveInput`.
+  const livePrompt = (): string => promptInputRef.current?.value ?? prompt;
+
+  // A draft put back after a failed background send reaches this launcher
+  // while it shows that draft.
+  useEffect(() => {
+    if (!draftKey) return undefined;
+    return subscribeDraftRestore(draftKey, (draft) => {
+      setPrompt((current) => restoreDraftText(current, draft.text));
+      restoreAttachments((current) => restoreDraftAttachments(current, draft.attachments));
+    });
+  }, [draftKey, restoreAttachments, setPrompt]);
+
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
-    const trimmedPrompt = prompt.trim();
-    if (!hasSendableContent || isSubmitting) {
+    const trimmedPrompt = livePrompt().trim();
+    if ((trimmedPrompt.length === 0 && pendingAttachments.length === 0) || isSubmitting) {
       return;
     }
     if (!cloudMode && isMcpCommand(trimmedPrompt)) {
@@ -993,15 +1079,12 @@ export function LaunchSurface({
       return;
     }
 
-    const goalCommand = goalEnabled ? parseGoalCommand(trimmedPrompt) : null;
-    if (goalEnabled && (/^\/goal\s*$/i.test(trimmedPrompt) || goalCommand?.kind === "clear")) {
-      setStatus(goalCommand?.kind === "clear"
-        ? "There is no goal to clear in a new chat."
-        : "Write a completion condition after /goal.");
+    const resolved = resolveOpeningPrompt(trimmedPrompt);
+    if ("error" in resolved) {
+      setStatus(resolved.error);
       return;
     }
-    const goalCondition = goalCommand?.kind === "set" ? goalCommand.condition : undefined;
-    const openingPrompt = goalCondition ?? trimmedPrompt;
+    const { goalCondition, openingPrompt } = resolved;
     const refs = pendingAttachments.map((a) => imageAttachmentReference(a.filePath));
     const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
     const attachments = pendingAttachments.length > 0 ? pendingAttachments : undefined;
@@ -1026,7 +1109,14 @@ export function LaunchSurface({
       return;
     }
 
-    const launch: PendingLaunch = { prompt: finalPrompt, model, workspaceMode, attachments, goalCondition };
+    const launch: PendingLaunch = {
+      prompt: finalPrompt,
+      model,
+      workspaceMode,
+      attachments,
+      goalCondition,
+      checkout: checkout ?? undefined
+    };
     setIsSubmitting(true);
     setStatus(null);
     // The check reads the prompt as typed: attachment references say nothing
@@ -1060,17 +1150,93 @@ export function LaunchSurface({
         launch.workspaceMode,
         launch.attachments,
         launch.goalCondition,
-        projectId
+        projectId,
+        undefined,
+        launch.checkout
       );
       setPrompt("");
       clearAttachments();
       setProjectPickedByHand(false);
+      setPickedCheckout(null);
       return launched ?? undefined;
     } catch (error) {
       showErrorToast(errorMessage(error) || "Could not start agent.");
       return undefined;
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Send the draft and stay put. The prompt, its attachments and its stored
+  // draft are emptied at once so the next idea can start; the chat starts and
+  // takes its sidebar row without the app moving to it, and the toast offers
+  // the way in. If the start fails, the draft comes back above whatever has
+  // been typed since. It skips Project check on purpose: that check may open
+  // a dialog, and a send that asked to stay out of the way cannot.
+  const startInBackground = async (): Promise<void> => {
+    const sentPrompt = livePrompt();
+    const trimmedPrompt = sentPrompt.trim();
+    if (isSubmitting || (trimmedPrompt.length === 0 && pendingAttachments.length === 0)) return;
+    if (cloudMode) {
+      setStatus("Cloud tasks open a review first. Press Enter to review it.");
+      return;
+    }
+    if (isMcpCommand(trimmedPrompt)) return;
+    const resolved = resolveOpeningPrompt(trimmedPrompt);
+    if ("error" in resolved) {
+      setStatus(resolved.error);
+      return;
+    }
+    const { goalCondition, openingPrompt } = resolved;
+    const sentAttachments = pendingAttachments;
+    const refs = sentAttachments.map((a) => imageAttachmentReference(a.filePath));
+    const finalPrompt = refs.length > 0 ? appendReferencesToPrompt(openingPrompt, refs) : openingPrompt;
+    const attachments = sentAttachments.length > 0 ? sentAttachments : undefined;
+    // The draft this send emptied belongs to this key. By the time a start
+    // fails the person may have moved on, even left the launcher, so the way
+    // back is decided by where they are then, not where they were.
+    const sentKey = draftKey;
+
+    setStatus(null);
+    setPrompt("");
+    clearAttachments();
+    if (draftKey) clearDraft(draftKey);
+    try {
+      const launched =
+        chatMode && onLaunchSideChat
+          ? await onLaunchSideChat(finalPrompt, model, "auto", attachments, goalCondition, true)
+          : await onLaunchTask(
+              finalPrompt,
+              model,
+              "auto",
+              workspaceMode,
+              attachments,
+              goalCondition,
+              undefined,
+              true,
+              // Read now, at send: the person may pick again before this resolves.
+              checkout ?? undefined
+            );
+      showToast({
+        kind: "info",
+        message: `Started “${titleFromPrompt(openingPrompt)}” in the background.`,
+        durationMs: 6_000,
+        ...(launched ? { action: { label: "Open", run: () => void openChat(launched.sessionId) } } : {})
+      });
+    } catch (error) {
+      // A launcher showing this draft takes it back above what was typed since,
+      // this one or another opened in the meantime. With none on screen it goes
+      // to storage, where the next New chat for that project reads it.
+      const stillHere = sentKey
+        ? restoreDraft(sentKey, { text: sentPrompt, attachments: sentAttachments })
+        : false;
+      showErrorToast(
+        `${errorMessage(error) || "Could not start agent."} ${
+          stillHere
+            ? "Your draft is back in the composer."
+            : "Your draft was put back in its New chat."
+        }`
+      );
     }
   };
 
@@ -1120,7 +1286,9 @@ export function LaunchSurface({
               launch.workspaceMode,
               launch.attachments,
               launch.goalCondition,
-              fromProject.id
+              fromProject.id,
+              undefined,
+              launch.checkout
             )
           );
         }
@@ -1145,7 +1313,7 @@ export function LaunchSurface({
   const isReviewOpen =
     reviewState.isPanelOpen && (activeProject !== null || reviewState.layout.modes.includes("browser"));
   const contextSummary = project
-    ? `Project and branch: ${project.name}, ${project.currentBranch}`
+    ? `Project and branch: ${project.name}, ${shownBranch}`
     : "";
   const contextChipLabel = project?.name ?? "";
 
@@ -1215,8 +1383,12 @@ export function LaunchSurface({
                   <button
                     type="button"
                     className="attachment-open-button"
-                    aria-label="View attachment"
-                    title="View attachment"
+                    aria-label={
+                      attachmentLabels[attachment.filePath]
+                        ? `View window capture: ${attachmentLabels[attachment.filePath]}`
+                        : "View attachment"
+                    }
+                    title={attachmentLabels[attachment.filePath] ?? "View attachment"}
                     onClick={() => setLightboxSrc(src)}
                   >
                     <img src={src} alt="" />
@@ -1236,29 +1408,11 @@ export function LaunchSurface({
           </div>
         ) : null}
         <div className="composer-input">
-          {skillHighlight ? (
-            <div className="composer-highlight-backdrop" aria-hidden="true">
-              <div className="composer-highlight-text" ref={highlightTextRef}>
-                {skillHighlight.map((segment, index) =>
-                  segment.skill ? (
-                    <span key={index} className="skill-token">
-                      {segment.text}
-                    </span>
-                  ) : (
-                    segment.text
-                  )
-                )}
-                {/* Holds open the empty last line a trailing newline makes, as the textarea does. */}
-                {prompt.endsWith("\n") ? "\u200b" : null}
-              </div>
-            </div>
-          ) : null}
-          <textarea
-            className={skillHighlight ? "composer-input--highlighting" : undefined}
-            aria-label="Task prompt"
-            aria-autocomplete="list"
-            aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
-            aria-controls={
+          <ComposerEditor
+            ariaLabel="Task prompt"
+            documentKey={draftKey}
+            expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+            controls={
               slashAutocomplete.popoverOpen
                 ? "slash-menu"
                 : fileAutocomplete.popoverOpen
@@ -1266,25 +1420,21 @@ export function LaunchSurface({
                   : undefined
             }
             disabled={isSubmitting}
-            onChange={(event) => {
-              setPrompt(event.target.value);
-              fileAutocomplete.onSelectionChange(event);
-            }}
+            onChange={setPrompt}
+            onCaretChange={fileAutocomplete.onSelectionChange}
             onKeyDown={onPromptKeyDown}
             onPaste={(event) => {
               if (!cloudMode) return onComposerPaste(event);
-              if (event.clipboardData.files.length > 0) {
+              if ((event.clipboardData?.files.length ?? 0) > 0) {
                 event.preventDefault();
                 setStatus("Cloud tasks support text only. Switch to Local to attach files.");
               }
             }}
-            onScroll={syncHighlightScroll}
-            onSelect={fileAutocomplete.onSelectionChange}
-            onClick={fileAutocomplete.onSelectionChange}
             placeholder={placeholderText}
-            ref={promptInputRef}
+            fieldRef={promptInputRef}
             value={prompt}
-            rows={1}
+            isSkill={isSkillToken}
+            chats={chatChips}
           />
           <SlashCommandMenu state={slashAutocomplete} />
           <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
@@ -1294,6 +1444,11 @@ export function LaunchSurface({
             disabled={isSubmitting || !hasSendableContent}
             title={cloudMode ? "Review cloud task" : "Start agent"}
             aria-label={cloudMode ? "Review cloud task" : "Start agent"}
+            aria-description={
+              cloudMode
+                ? undefined
+                : `${formatChord(backgroundShortcut)} starts the agent in the background`
+            }
           >
             {cloudMode ? <ArrowRight size={15} aria-hidden="true" /> : <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
           </button>
@@ -1333,6 +1488,7 @@ export function LaunchSurface({
               onChange={onModelChange}
               onFastModeEnabledChange={onFastModeEnabledChange}
             />}
+            {cloudMode || model.autoTier ? null : <ComposerUsageSlot provider={model.provider} />}
           </div>
           {chatMode ? null : (
           <div
@@ -1455,11 +1611,20 @@ export function LaunchSurface({
               aria-label="Switch branch"
               aria-haspopup="listbox"
               aria-expanded={branchPickerOpen}
-              title={project.currentBranch}
+              title={
+                runsInLinkedCheckout
+                  ? `Runs in ${collapseHome(checkout?.path ?? "")}. Files, Changes and Terminal show the project checkout.`
+                  : shownBranch ?? undefined
+              }
               onClick={() => void openBranchPicker()}
             >
               <GitBranch size={14} aria-hidden="true" />
-              <span className="composer-context-chip-label">{project.currentBranch}</span>
+              <span
+                className="composer-context-chip-label"
+                data-in={runsInLinkedCheckout ? checkout?.path?.split("/").pop() : undefined}
+              >
+                {shownBranch}
+              </span>
             </button>
             {branchPickerOpen && (
               <ul
@@ -1483,26 +1648,31 @@ export function LaunchSurface({
                   totalCount={branches.length}
                 />
                 {branchFilter.matches.length > 0 ? (
-                  branchFilter.matches.map((b, index) => (
-                    <li
-                      key={b}
-                      role="option"
-                      aria-selected={b === project.currentBranch}
-                      data-active={index === branchFilter.activeIndex ? "true" : undefined}
-                    >
-                      <button
-                        type="button"
-                        className="project-picker-item"
-                        aria-pressed={b === project.currentBranch}
-                        onClick={() => void switchBranch(b)}
+                  branchFilter.matches.map((b, index) => {
+                    const holder = checkouts.find((candidate) => candidate.branch === b);
+                    return (
+                      <li
+                        key={b}
+                        role="option"
+                        aria-selected={b === shownBranch}
+                        data-active={index === branchFilter.activeIndex ? "true" : undefined}
                       >
-                        <PickerLead selected={b === project.currentBranch}>
-                          <GitBranch size={13} />
-                        </PickerLead>
-                        <span className="picker-label">{b}</span>
-                      </button>
-                    </li>
-                  ))
+                        <button
+                          type="button"
+                          className="project-picker-item"
+                          // Another checkout has it; the project's own is where a launch runs anyway.
+                          data-in={holder?.isMain === false ? holder.path.split("/").pop() : undefined}
+                          aria-pressed={b === shownBranch}
+                          onClick={() => pickBranch(b)}
+                        >
+                          <PickerLead selected={b === shownBranch}>
+                            <GitBranch size={13} />
+                          </PickerLead>
+                          <span className="picker-label">{b}</span>
+                        </button>
+                      </li>
+                    );
+                  })
                 ) : (
                   <li role="option" aria-selected={false} aria-disabled="true">
                     <button type="button" className="project-picker-item" disabled>

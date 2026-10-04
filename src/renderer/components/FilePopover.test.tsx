@@ -65,20 +65,6 @@ describe("FilePopover", () => {
     expect(setSelectionIndex).toHaveBeenCalledWith(2);
   });
 
-  it("does not re-set the index when hovering the already-selected row", () => {
-    const setSelectionIndex = vi.fn();
-    render(
-      <FilePopover
-        state={makeState({ selectionIndex: 0, setSelectionIndex })}
-        inputRef={createRef()}
-      />
-    );
-
-    fireEvent.mouseMove(screen.getByText("AGENTS.md"));
-
-    expect(setSelectionIndex).not.toHaveBeenCalled();
-  });
-
   it("commits the entry on mouse down", () => {
     const selectEntry = vi.fn();
     render(

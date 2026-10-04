@@ -18,6 +18,9 @@ struct TranscriptPendingMessage: Decodable, Hashable, Sendable, Identifiable {
     var id: String
     var sessionId: String
     var content: String
+    /// The provider this follow-up runs under once it drains. `nil` is the
+    /// chat's provider at that moment.
+    var provider: String? = nil
     var modelLabel: String?
     var modelId: String?
     var reasoningEffort: String?

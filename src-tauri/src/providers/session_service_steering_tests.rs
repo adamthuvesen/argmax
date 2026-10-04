@@ -6,6 +6,7 @@ use crate::ipc::inputs::{
     QueuedMessageDelivery,
 };
 use crate::ipc::validation::{NonEmptyString, SessionId};
+use crate::persistence::authorship::PromptAuthor;
 use crate::persistence::events::list_session_events_since;
 use crate::persistence::pending_messages::{list_session_pending_messages, replace_session_queue};
 use crate::persistence::session_messages::{
@@ -163,6 +164,61 @@ async fn successful_steer_persists_delivery_and_leaves_session_running() {
         find_session_by_id(&connection, "session-1").unwrap().state,
         SessionState::Running
     );
+}
+
+/// Steering a queued row delivers the text it was queued with, so the saved
+/// message keeps the author the row had: a person's stays theirs, another
+/// session's or an unattested one never becomes theirs.
+#[tokio::test]
+async fn steering_a_queued_row_keeps_its_author() {
+    for (author, expected) in [
+        (
+            PromptAuthor::person(crate::ipc::attest_person_for_tests()),
+            Some("person"),
+        ),
+        (PromptAuthor::unattested(), None),
+    ] {
+        let (service, _handle, _launcher) = steer_service(true, None);
+        let mut message = pending("row", "look at [x](argmax://chat/chat-x?v=1)");
+        message.author = author;
+        let message_id = seed_queue(&service, message);
+
+        steer_now(&service, &message_id).await.expect("steer");
+
+        let stored: Option<String> = service
+            .database
+            .connection()
+            .query_row(
+                "SELECT prompt_author FROM events WHERE session_id = 'session-1' AND type = 'user.message'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored.as_deref(), expected);
+    }
+}
+
+/// A failed steer puts the row back in the queue; the restored row is still the
+/// person's.
+#[tokio::test]
+async fn a_requeued_row_after_a_failed_steer_is_still_the_persons() {
+    let (service, _handle, _launcher) = steer_service(
+        true,
+        Some(ArgmaxError::service("STEER_REJECTED", "no")),
+    );
+    let mut message = pending("row", "look at [x](argmax://chat/chat-x?v=1)");
+    message.author = PromptAuthor::person(crate::ipc::attest_person_for_tests());
+    let message_id = seed_queue(&service, message);
+
+    steer_now(&service, &message_id).await.unwrap_err();
+
+    let restored =
+        list_session_pending_messages(&service.database.connection(), "session-1").unwrap();
+    assert_eq!(restored.len(), 1);
+    assert!(restored[0].author.is_person());
+    assert!(service.pending_messages_snapshot()["session-1"][0]
+        .author
+        .is_person());
 }
 
 #[tokio::test]
@@ -465,6 +521,21 @@ async fn unsupported_not_running_and_settings_mismatch_skip_steer() {
     let (service, handle, launcher) = steer_service(true, None);
     let mut message = pending("set", "model");
     message.model_id = Some("other-model".to_string());
+    let id = seed_queue(&service, message);
+    let error = steer_now(&service, &id).await.unwrap_err();
+    assert!(matches!(
+        error,
+        ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "STEER_SETTINGS_CHANGED"
+    ));
+    assert_eq!(handle.steer_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(launcher.launches.load(Ordering::SeqCst), 0);
+
+    // A row that names another provider cannot join the running turn.
+    let (service, handle, launcher) = steer_service(true, None);
+    let mut message = pending("provider", "switch");
+    message.provider = Some(crate::providers::ProviderId::Codex);
+    message.model_label = Some("GPT".to_string());
+    message.model_id = Some("gpt-5.6-sol".to_string());
     let id = seed_queue(&service, message);
     let error = steer_now(&service, &id).await.unwrap_err();
     assert!(matches!(

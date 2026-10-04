@@ -9,7 +9,15 @@ import {
   DEFAULT_USER_BUBBLE_TINT,
   USER_BUBBLE_TINT_STORAGE_KEY
 } from "../lib/userBubbleTint.js";
-import { listChangedFiles, loadDiff, mockDashboardSnapshot, setupAppTestMocks, snapshot } from "../../test/appTestHarness.js";
+import {
+  dashboardList,
+  dashboardListSnapshot,
+  listChangedFiles,
+  loadDiff,
+  mockDashboardSnapshot,
+  setupAppTestMocks,
+  snapshot
+} from "../../test/appTestHarness.js";
 import { startedAgentName } from "../../test/agentRowName.js";
 import { MobileApp } from "./MobileApp.js";
 import type { NativeMessage } from "./nativeHost.js";
@@ -155,6 +163,34 @@ describe("MobileApp embed mode", () => {
         queued: [],
         running: true
       })
+    );
+  });
+
+  // The native queue row is one line of text; a chat the desktop attached
+  // would otherwise read as its link markup.
+  it("reports a queued message's chat references by title, and keeps the link in the message", async () => {
+    dashboardList.mockResolvedValue({
+      ...dashboardListSnapshot(snapshot),
+      pendingMessages: {
+        "session-1": [
+          {
+            id: "pending-1",
+            sessionId: "session-1",
+            content: "compare with [Billing](argmax://chat/session-9?v=1) please",
+            agentMode: "auto",
+            queuedAt: "2026-10-04T08:00:00.000Z"
+          }
+        ]
+      }
+    });
+    await renderEmbedded();
+
+    act(() => window.argmaxNative?.openSession("session-1"));
+
+    await waitFor(() =>
+      expect(posted("composer").at(-1)?.queued?.map(({ id, text }) => ({ id, text }))).toEqual([
+        { id: "pending-1", text: "compare with Billing please" }
+      ])
     );
   });
 

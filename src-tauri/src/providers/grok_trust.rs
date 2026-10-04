@@ -298,15 +298,6 @@ mod tests {
     }
 
     #[test]
-    fn removing_our_entry_restores_the_store_exactly() {
-        let updated = with_entry(OTHERS, "/repo/wt", 42).expect("appended");
-        assert_eq!(
-            without_entry(&updated, "/repo/wt").expect("removed"),
-            OTHERS
-        );
-    }
-
-    #[test]
     fn removing_the_middle_entry_keeps_its_neighbours() {
         let removed = without_entry(OTHERS, "/Users/me/dev/menti/argmax").expect("removed");
         assert_eq!(

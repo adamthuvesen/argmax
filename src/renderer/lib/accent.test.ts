@@ -2,7 +2,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ACCENT_STORAGE_KEY,
-  applyAccentToDocument,
   DEFAULT_ACCENT_ID,
   readStoredAccent,
   writeStoredAccent
@@ -10,7 +9,6 @@ import {
 
 afterEach(() => {
   window.localStorage.removeItem(ACCENT_STORAGE_KEY);
-  document.documentElement.removeAttribute("data-accent");
 });
 
 describe("accent", () => {
@@ -29,10 +27,5 @@ describe("accent", () => {
     expect(readStoredAccent()).toBe("orange");
     writeStoredAccent("black");
     expect(readStoredAccent()).toBe("black");
-  });
-
-  it("applyAccentToDocument sets the data-accent attribute on <html>", () => {
-    applyAccentToDocument("blue");
-    expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
   });
 });

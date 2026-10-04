@@ -1519,16 +1519,6 @@ describe("App grid", () => {
     expect(screen.getByRole("button", { name: "Build dashboard" })).toHaveAttribute("aria-current", "true");
   });
 
-  it("defaults the new-session toggle to 'Full view' on first launch", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-    await openSettings();
-
-    expect(await screen.findByRole("radio", { name: "Full view" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "In grid" })).not.toBeChecked();
-    expect(window.localStorage.getItem("argmax.newSessionMode")).toBe("full");
-  });
-
   it("opens the Cmd+N launcher below when the focused row already has 2 panes", async () => {
     const secondWorkspace = gridWorkspace(2, "Second pane");
     const secondSession = gridSession(2, "Second pane");

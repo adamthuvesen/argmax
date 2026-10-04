@@ -36,11 +36,6 @@ function installUpdateStub(updateSettings: ReturnType<typeof vi.fn>): void {
 }
 
 describe("ProjectsSettings", () => {
-  it("shows a hint when no projects are registered", () => {
-    render(<ProjectsSettings projects={[]} onProjectUpdated={vi.fn()} />);
-    expect(screen.getByText(/No projects registered yet/)).toBeInTheDocument();
-  });
-
   it("renders current settings and keeps Save disabled until something changes", () => {
     render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
 

@@ -227,6 +227,11 @@ struct WorkspaceSummary: Codable, Hashable, Sendable, Identifiable {
     var pinned: Bool
     var priorityDismissedAt: String?
     var priorityAddedAt: String?
+    /// RFC 3339 instant the desktop's snooze shelf holds this row until. Display
+    /// metadata only — a snooze never changes the chat's state. Absent when the
+    /// host omits it (not snoozed, or a host older than the shelf). The phone
+    /// decodes it so the field survives a round trip; it does not shelve rows.
+    var snoozedUntil: String?
     var prState: String?
     var prNumber: Int?
     var prCheckState: String?

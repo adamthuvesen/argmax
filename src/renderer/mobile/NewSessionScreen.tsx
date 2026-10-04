@@ -240,6 +240,7 @@ export function NewSessionScreen({
     draftKey,
     workspacePath: sideChat ? null : project?.repoPath ?? null,
     setInput: setPrompt,
+    fieldRef: promptRef,
     carriedOnRetarget: promptCarriedOnRetarget,
     persist: !launching
   });
@@ -456,7 +457,7 @@ export function NewSessionScreen({
             // keyboard immediately is the expected next step, not a theft.
             autoFocus
             onChange={(event) => setPrompt(event.target.value)}
-            onPaste={onComposerPaste}
+            onPaste={(event) => onComposerPaste(event.nativeEvent)}
           />
           <div className="session-input-toolbar mobile-new-composer-toolbar">
             {/* The group is what holds model and effort together: "Opus 5 High"

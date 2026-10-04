@@ -29,6 +29,8 @@ use crate::util::gh_runner::{default_gh_runner, GhRunner};
 const PR_JSON_FIELDS: &str =
     "number,title,headRefOid,headRefName,headRepositoryOwner,state,statusCheckRollup,createdAt,mergedAt,url";
 const MAX_BRANCH_PRS: usize = 10;
+/// The refresh error stored when GitHub has no such pull request.
+pub(crate) const PR_UNAVAILABLE_ERROR: &str = "pull request is unavailable";
 /// Bound on extra `gh pr view <number>` calls per refresh, after the branch
 /// view. A session that accumulated many OPEN rows still finishes a tick.
 const MAX_OPEN_PR_NUMBER_VIEWS: usize = 8;
@@ -86,7 +88,7 @@ impl GhService {
     /// left, so without the number pass those rows stay OPEN forever and a PR
     /// the agent opened on another branch is never refreshed.
     pub async fn refresh(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
-        let (workspace_project_id, workspace_path, branch, cached_numbers, linked_numbers) = {
+        let (workspace_project_id, workspace_path, gh_cwd, branch, cached_numbers, linked_numbers) = {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
@@ -101,9 +103,11 @@ impl GhService {
                 .map(|pr| pr.pr_number)
                 .collect::<HashSet<_>>();
             let branch = pr_branch_for_session(&conn, session_id)?;
+            let gh_cwd = gh_working_directory(&conn, &workspace)?;
             (
                 workspace.project_id,
                 workspace.path,
+                gh_cwd,
                 branch,
                 cached_numbers,
                 linked_numbers,
@@ -134,10 +138,7 @@ impl GhService {
             let lock = refresh_lock(format!("{workspace_project_id}:branch:{branch}"));
             let _guard = lock.lock().await;
             let request_started_at = now_iso();
-            if let Ok(mut candidates) = self
-                .list_branch_prs(&workspace_path, &branch, session_id)
-                .await
-            {
+            if let Ok(mut candidates) = self.list_branch_prs(&gh_cwd, &branch, session_id).await {
                 candidates.retain(|candidate| {
                     matches_checkout_owner(candidate, checkout_owner.as_deref())
                 });
@@ -211,7 +212,7 @@ impl GhService {
                 continue;
             }
             match self
-                .view_pr(&workspace_path, Some(&pr_number.to_string()), session_id)
+                .view_pr(&gh_cwd, Some(&pr_number.to_string()), session_id)
                 .await
             {
                 Ok(Some(parsed)) => {
@@ -219,12 +220,7 @@ impl GhService {
                 }
                 Ok(None) => {
                     let conn = self.database.connection();
-                    record_pr_refresh_error(
-                        &conn,
-                        session_id,
-                        pr_number,
-                        "pull request is unavailable",
-                    )?;
+                    record_pr_refresh_error(&conn, session_id, pr_number, PR_UNAVAILABLE_ERROR)?;
                 }
                 Err(error) => {
                     let conn = self.database.connection();
@@ -299,11 +295,12 @@ impl GhService {
         session_id: &str,
         pr_number: i64,
     ) -> ArgmaxResult<Vec<GhPrRecord>> {
-        let (workspace_project_id, workspace_path) = {
+        let (workspace_project_id, workspace_path, gh_cwd) = {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
-            (workspace.project_id, workspace.path)
+            let gh_cwd = gh_working_directory(&conn, &workspace)?;
+            (workspace.project_id, workspace.path, gh_cwd)
         };
         if workspace_path.is_empty() {
             tracing::warn!(%session_id, "gh.refresh_pr_number: workspace path is empty; returning cached PR rows");
@@ -325,7 +322,7 @@ impl GhService {
             return self.list_for_session(session_id);
         }
         match self
-            .view_pr(&workspace_path, Some(&pr_number.to_string()), session_id)
+            .view_pr(&gh_cwd, Some(&pr_number.to_string()), session_id)
             .await
         {
             Ok(Some(parsed)) => {
@@ -333,12 +330,7 @@ impl GhService {
             }
             Ok(None) => {
                 let conn = self.database.connection();
-                record_pr_refresh_error(
-                    &conn,
-                    session_id,
-                    pr_number,
-                    "pull request is unavailable",
-                )?;
+                record_pr_refresh_error(&conn, session_id, pr_number, PR_UNAVAILABLE_ERROR)?;
             }
             Err(error) => {
                 let conn = self.database.connection();
@@ -439,6 +431,19 @@ impl GhService {
         }
         Ok(())
     }
+}
+
+/// `gh` finds the repository from its working directory. Archiving an
+/// isolated workspace moves its checkout away from `workspace.path`, and a PR
+/// watch keeps polling it, so `gh` then runs in the project's own checkout.
+pub(crate) fn gh_working_directory(
+    connection: &rusqlite::Connection,
+    workspace: &crate::persistence::workspaces::WorkspaceSummary,
+) -> ArgmaxResult<String> {
+    if workspace.path.is_empty() || std::path::Path::new(&workspace.path).is_dir() {
+        return Ok(workspace.path.clone());
+    }
+    Ok(crate::persistence::projects::require_project(connection, &workspace.project_id)?.repo_path)
 }
 
 fn canonical_successfully_refreshed_after(
@@ -1457,14 +1462,341 @@ impl PrListResponse {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct RollupEntry {
+/// One entry of `statusCheckRollup`: a check run (`name`, `detailsUrl`) or a
+/// commit status (`context`, `targetUrl`).
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct RollupEntry {
     #[serde(default)]
     state: Option<String>,
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
     conclusion: Option<String>,
+    #[serde(default, alias = "context")]
+    pub name: Option<String>,
+    #[serde(default, rename = "workflowName")]
+    pub workflow_name: Option<String>,
+    #[serde(default, rename = "detailsUrl", alias = "targetUrl")]
+    pub details_url: Option<String>,
+}
+
+/// What a PR watch reads about one PR beyond the poller's refresh: per-check
+/// names and links, feedback, and the merge commit.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrWatchView {
+    /// `OPEN`, `MERGED`, or `CLOSED`, as read in this pass.
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub head_ref_oid: Option<String>,
+    #[serde(default)]
+    pub status_check_rollup: Option<Vec<RollupEntry>>,
+    #[serde(default)]
+    pub reviews: Option<Vec<PrReview>>,
+    #[serde(default)]
+    pub comments: Option<Vec<PrComment>>,
+    #[serde(default)]
+    pub review_requests: Option<Vec<PrReviewRequest>>,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+    #[serde(default)]
+    pub merge_commit: Option<PrCommitRef>,
+    /// `MERGEABLE`, `CONFLICTING`, or `UNKNOWN` while GitHub recomputes.
+    #[serde(default)]
+    pub mergeable: Option<String>,
+    /// The branch the PR merges into, named in a conflict notice.
+    #[serde(default)]
+    pub base_ref_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct PrAuthor {
+    #[serde(default)]
+    pub login: String,
+    /// `Bot` or `User`; only GraphQL reads carry it.
+    #[serde(default, rename = "__typename")]
+    pub typename: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct PrCommitRef {
+    #[serde(default)]
+    pub oid: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrReview {
+    pub id: String,
+    #[serde(default)]
+    pub author: Option<PrAuthor>,
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub submitted_at: Option<String>,
+    /// The head the review was left on, so the agent can tell whether a bot
+    /// has reviewed the current one.
+    #[serde(default)]
+    pub commit: Option<PrCommitRef>,
+}
+
+/// A PR conversation comment, or a comment in a review thread.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrComment {
+    pub id: String,
+    #[serde(default)]
+    pub author: Option<PrAuthor>,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub viewer_did_author: Option<bool>,
+}
+
+/// A requested reviewer: a user (`login`) or a team (`name`, `slug`).
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct PrReviewRequest {
+    #[serde(default)]
+    pub login: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrReviewThread {
+    pub id: String,
+    #[serde(default)]
+    pub is_resolved: bool,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub line: Option<i64>,
+    #[serde(default)]
+    pub comments: GraphqlNodes<PrComment>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GraphqlNodes<T> {
+    #[serde(default = "Vec::new")]
+    pub nodes: Vec<T>,
+}
+
+impl<T> Default for GraphqlNodes<T> {
+    fn default() -> Self {
+        Self { nodes: Vec::new() }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ReviewThreadsResponse {
+    data: Option<ReviewThreadsData>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ReviewThreadsData {
+    repository: Option<ReviewThreadsRepository>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ReviewThreadsRepository {
+    #[serde(rename = "pullRequest")]
+    pull_request: Option<ReviewThreadsPullRequest>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ReviewThreadsPullRequest {
+    #[serde(rename = "reviewThreads")]
+    review_threads: GraphqlNodes<PrReviewThread>,
+    #[serde(default)]
+    reviews: GraphqlNodes<PrAuthored>,
+    #[serde(default)]
+    comments: GraphqlNodes<PrAuthored>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct PrAuthored {
+    #[serde(default)]
+    author: Option<PrAuthor>,
+}
+
+/// What the watch reads over GraphQL: review threads, and the logins of bot
+/// authors. `gh pr view` drops the author type, so a bot such as
+/// `chatgpt-codex-connector` is marked through this set.
+#[derive(Debug, Clone, Default)]
+pub struct PrFeedbackGraph {
+    pub threads: Vec<PrReviewThread>,
+    pub bot_logins: HashSet<String>,
+}
+
+/// The first 100 threads and 50 comments per thread, and the authors of the
+/// last 100 reviews and comments. A PR past that is rare, and the notice
+/// already ends long lists with "and N more".
+const REVIEW_THREADS_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){\
+repository(owner:$owner,name:$name){pullRequest(number:$number){\
+reviewThreads(first:100){nodes{id isResolved path line \
+comments(first:50){nodes{id author{login __typename} body url createdAt viewerDidAuthor}}}} \
+reviews(last:100){nodes{author{login __typename}}} \
+comments(last:100){nodes{author{login __typename}}}}}}";
+
+/// A failed watch read. The watch pass skips the PR for the tick either way;
+/// a rate limit is logged quietly because it clears on its own.
+#[derive(Debug)]
+pub struct GhFetchError {
+    pub rate_limited: bool,
+    pub message: String,
+}
+
+impl GhFetchError {
+    fn from_runner(error: &ArgmaxError) -> Self {
+        Self {
+            rate_limited: gh_error_category(error) == GhErrorCategory::RateLimit,
+            message: error.to_string(),
+        }
+    }
+
+    fn invalid(message: String) -> Self {
+        Self {
+            rate_limited: false,
+            message,
+        }
+    }
+}
+
+impl GhService {
+    /// `gh pr view <n>` with the poller's fields plus the feedback a watch
+    /// reports. Nothing here writes `gh_pull_requests`: the tick's refresh
+    /// fanout is that table's one writer.
+    pub async fn view_pr_for_watch(
+        &self,
+        cwd: &str,
+        pr_number: i64,
+    ) -> Result<PrWatchView, GhFetchError> {
+        let args = vec![
+            "pr".into(),
+            "view".into(),
+            pr_number.to_string(),
+            "--json".into(),
+            format!("{PR_JSON_FIELDS},reviews,comments,reviewRequests,updatedAt,mergeCommit,mergeable,baseRefName"),
+        ];
+        let stdout = (self.runner)(cwd.to_string(), args)
+            .await
+            .map_err(|error| GhFetchError::from_runner(&error))?;
+        serde_json::from_str(stdout.trim())
+            .map_err(|error| GhFetchError::invalid(format!("invalid gh pr view response: {error}")))
+    }
+
+    /// Review threads with their comments, which `gh pr view` does not
+    /// expose, and which feedback authors are bots.
+    pub async fn review_threads(
+        &self,
+        cwd: &str,
+        remote: &ProjectRemote,
+        pr_number: i64,
+    ) -> Result<PrFeedbackGraph, GhFetchError> {
+        let args = vec![
+            "api".into(),
+            "graphql".into(),
+            "-f".into(),
+            format!("query={REVIEW_THREADS_QUERY}"),
+            "-F".into(),
+            format!("owner={}", remote.owner),
+            "-F".into(),
+            format!("name={}", remote.name),
+            "-F".into(),
+            format!("number={pr_number}"),
+        ];
+        let stdout = (self.runner)(cwd.to_string(), args)
+            .await
+            .map_err(|error| GhFetchError::from_runner(&error))?;
+        let response: ReviewThreadsResponse =
+            serde_json::from_str(stdout.trim()).map_err(|error| {
+                GhFetchError::invalid(format!("invalid review threads response: {error}"))
+            })?;
+        response
+            .data
+            .and_then(|data| data.repository)
+            .and_then(|repository| repository.pull_request)
+            .map(|pull_request| {
+                let thread_authors = pull_request
+                    .review_threads
+                    .nodes
+                    .iter()
+                    .flat_map(|thread| thread.comments.nodes.iter())
+                    .filter_map(|comment| comment.author.as_ref());
+                let other_authors = pull_request
+                    .reviews
+                    .nodes
+                    .iter()
+                    .chain(pull_request.comments.nodes.iter())
+                    .filter_map(|item| item.author.as_ref());
+                let bot_logins = thread_authors
+                    .chain(other_authors)
+                    .filter(|author| author.typename.as_deref() == Some("Bot"))
+                    .map(|author| author.login.clone())
+                    .collect();
+                PrFeedbackGraph {
+                    threads: pull_request.review_threads.nodes,
+                    bot_logins,
+                }
+            })
+            .ok_or_else(|| {
+                GhFetchError::invalid("review threads response has no pull request".into())
+            })
+    }
+
+    /// `gh pr view <n>` with what PR cleanup needs. Read only: the poller's
+    /// tick stays the one writer of `gh_pull_requests`.
+    pub async fn view_pr_for_cleanup(
+        &self,
+        cwd: &str,
+        pr_number: i64,
+    ) -> ArgmaxResult<PrCleanupView> {
+        let args = vec![
+            "pr".into(),
+            "view".into(),
+            pr_number.to_string(),
+            "--json".into(),
+            "number,state,url,headRefOid,headRefName,baseRefName,headRepositoryOwner,mergeCommit"
+                .into(),
+        ];
+        let stdout = (self.runner)(cwd.to_string(), args).await?;
+        serde_json::from_str(stdout.trim()).map_err(|error| {
+            ArgmaxError::service(
+                "GH_INVALID_RESPONSE",
+                format!("invalid gh pr view response: {error}"),
+            )
+        })
+    }
+}
+
+/// What PR cleanup reads about one PR.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrCleanupView {
+    #[serde(default)]
+    pub state: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub head_ref_oid: Option<String>,
+    #[serde(default)]
+    pub head_ref_name: Option<String>,
+    #[serde(default)]
+    pub base_ref_name: Option<String>,
+    #[serde(default)]
+    pub head_repository_owner: Option<PrAuthor>,
+    #[serde(default)]
+    pub merge_commit: Option<PrCommitRef>,
 }
 
 // Error categorization distinguishes "no PR" from "transport broke" so the log
@@ -1482,6 +1814,7 @@ enum GhErrorCategory {
 fn gh_error_category(error: &ArgmaxError) -> GhErrorCategory {
     let text = error.to_string().to_lowercase();
     if text.contains("no pull requests")
+        || text.contains("could not resolve to a pullrequest")
         || text.contains("not a git repository")
         || text.contains("no commits between")
     {
@@ -1504,7 +1837,7 @@ fn gh_error_category(error: &ArgmaxError) -> GhErrorCategory {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GhCheckState {
+pub(crate) enum GhCheckState {
     Unknown,
     Pending,
     Success,
@@ -1536,21 +1869,19 @@ fn collapse_rollup(rollup: Option<&[RollupEntry]>) -> GhCheckState {
     }
     let mut has_pending = false;
     for entry in entries {
-        let state = entry_state(entry);
-        match state.as_str() {
-            "failure" | "failed" | "timed_out" | "action_required" => return GhCheckState::Failure,
-            "cancelled" | "cancel" => return GhCheckState::Cancelled,
-            "pending" | "in_progress" | "queued" | "waiting" => has_pending = true,
+        match entry_check_state(entry) {
+            GhCheckState::Failure => return GhCheckState::Failure,
+            GhCheckState::Cancelled => return GhCheckState::Cancelled,
+            GhCheckState::Pending => has_pending = true,
             _ => {}
         }
     }
     if has_pending {
         return GhCheckState::Pending;
     }
-    let all_skipped = entries.iter().all(|entry| {
-        let state = entry_state(entry);
-        state == "skipped" || state == "neutral"
-    });
+    let all_skipped = entries
+        .iter()
+        .all(|entry| entry_check_state(entry) == GhCheckState::Skipped);
     if all_skipped {
         GhCheckState::Skipped
     } else {
@@ -1558,12 +1889,27 @@ fn collapse_rollup(rollup: Option<&[RollupEntry]>) -> GhCheckState {
     }
 }
 
+/// One check's state. A value GitHub may add later counts as pending, so an
+/// unknown state never reads as green.
+pub(crate) fn entry_check_state(entry: &RollupEntry) -> GhCheckState {
+    match entry_state(entry).as_str() {
+        "success" => GhCheckState::Success,
+        "failure" | "failed" | "error" | "timed_out" | "action_required" | "startup_failure"
+        | "stale" => GhCheckState::Failure,
+        "cancelled" | "cancel" => GhCheckState::Cancelled,
+        "skipped" | "neutral" => GhCheckState::Skipped,
+        _ => GhCheckState::Pending,
+    }
+}
+
+/// `gh` prints an unfinished check run's conclusion as `""` beside its
+/// `IN_PROGRESS` status, so an empty value falls through to the next field.
 fn entry_state(entry: &RollupEntry) -> String {
-    entry
-        .conclusion
-        .clone()
-        .or_else(|| entry.state.clone())
-        .or_else(|| entry.status.clone())
+    [&entry.conclusion, &entry.state, &entry.status]
+        .into_iter()
+        .flatten()
+        .find(|value| !value.is_empty())
+        .cloned()
         .unwrap_or_default()
         .to_lowercase()
 }
@@ -2867,11 +3213,13 @@ printf 'saved\n'"#;
                 state: Some("PENDING".to_string()),
                 status: None,
                 conclusion: None,
+                ..Default::default()
             },
             RollupEntry {
                 state: None,
                 status: None,
                 conclusion: Some("FAILURE".to_string()),
+                ..Default::default()
             },
         ];
         assert_eq!(collapse_rollup(Some(&rollup)), GhCheckState::Failure);
@@ -2884,31 +3232,59 @@ printf 'saved\n'"#;
                 state: None,
                 status: None,
                 conclusion: Some("skipped".to_string()),
+                ..Default::default()
             },
             RollupEntry {
                 state: None,
                 status: None,
                 conclusion: Some("neutral".to_string()),
+                ..Default::default()
             },
         ];
         assert_eq!(collapse_rollup(Some(&rollup)), GhCheckState::Skipped);
+    }
+
+    // `gh` prints a running check's conclusion as an empty string.
+    #[test]
+    fn collapse_rollup_reads_an_empty_conclusion_as_unfinished() {
+        let rollup: Vec<RollupEntry> = serde_json::from_str(
+            r#"[{"name": "build", "conclusion": "", "status": "IN_PROGRESS"},
+                {"name": "lint", "conclusion": "SUCCESS", "status": "COMPLETED"}]"#,
+        )
+        .expect("rollup");
+        assert_eq!(collapse_rollup(Some(&rollup)), GhCheckState::Pending);
+    }
+
+    /// `error`, `startup_failure`, and `stale` are failures; `expected`,
+    /// `requested`, and anything unknown are not green yet.
+    #[test]
+    fn entry_check_state_reads_every_github_state() {
+        let state = |json: &str| {
+            let entry: RollupEntry = serde_json::from_str(json).expect("entry");
+            entry_check_state(&entry)
+        };
+        for failing in [
+            r#"{"state": "ERROR"}"#,
+            r#"{"conclusion": "STARTUP_FAILURE", "status": "COMPLETED"}"#,
+            r#"{"conclusion": "STALE", "status": "COMPLETED"}"#,
+        ] {
+            assert_eq!(state(failing), GhCheckState::Failure, "{failing}");
+        }
+        for pending in [
+            r#"{"state": "EXPECTED"}"#,
+            r#"{"conclusion": "", "status": "REQUESTED"}"#,
+            r#"{"conclusion": "SOMETHING_NEW"}"#,
+            r#"{}"#,
+        ] {
+            assert_eq!(state(pending), GhCheckState::Pending, "{pending}");
+        }
+        assert_eq!(state(r#"{"state": "SUCCESS"}"#), GhCheckState::Success);
     }
 
     #[test]
     fn collapse_rollup_empty_is_unknown() {
         assert_eq!(collapse_rollup(None), GhCheckState::Unknown);
         assert_eq!(collapse_rollup(Some(&[])), GhCheckState::Unknown);
-    }
-
-    #[test]
-    fn normalize_pr_state_passes_canonical_values() {
-        assert_eq!(normalize_pr_state(Some("open")).as_deref(), Some("OPEN"));
-        assert_eq!(
-            normalize_pr_state(Some("MERGED")).as_deref(),
-            Some("MERGED")
-        );
-        assert!(normalize_pr_state(Some("draft")).is_none());
-        assert!(normalize_pr_state(None).is_none());
     }
 
     #[test]

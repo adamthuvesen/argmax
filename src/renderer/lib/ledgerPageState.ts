@@ -1,4 +1,10 @@
-import type { ProviderId, UsageRemaining, UsageSummary, UsageWindow } from "../../shared/types.js";
+import type {
+  ProviderId,
+  UsageProviderRemaining,
+  UsageRemaining,
+  UsageSummary,
+  UsageWindow
+} from "../../shared/types.js";
 import type { ActivityMetric } from "../components/activity/activityPresentation.js";
 import type { ActivitySummary, ActivityWindow } from "../components/activity/activityContract.js";
 import type { UsageMetric } from "../components/usage/usagePresentation.js";
@@ -32,6 +38,8 @@ const usageSummaries = new Map<string, UsageSummary>();
 const usageSummaryRequests = new Map<string, Promise<UsageSummary>>();
 let usageRemaining: UsageRemaining | null = null;
 let usageRemainingError: string | null = null;
+/** When the last remaining read failed; cleared by the next success. */
+let usageRemainingFailedAt: number | null = null;
 let usageRemainingRequest: Promise<UsageRemaining> | null = null;
 /** Once the remaining read has settled once, later opens must not skeleton for it. */
 let usageRemainingSettled = false;
@@ -151,12 +159,33 @@ export function usageRemainingHasSettled(): boolean {
   return usageRemainingSettled;
 }
 
+/**
+ * The last plan windows each provider reported, with the read they came from.
+ * One account failing arrives as an `error` row inside a read that succeeded,
+ * which replaces that provider's row in the shared cache (the Usage page needs
+ * the message to explain the silence). The composer's chip keeps what it last
+ * knew from here instead, and says when it was.
+ */
+const lastGoodRows = new Map<ProviderId, { row: UsageProviderRemaining; fetchedAt: string }>();
+
+export function getLastGoodProviderRow(
+  provider: ProviderId
+): { row: UsageProviderRemaining; fetchedAt: string } | null {
+  return lastGoodRows.get(provider) ?? null;
+}
+
 export function setCachedUsageRemaining(
   remaining: UsageRemaining | null,
   error: string | null
 ): void {
   usageRemaining = remaining;
   usageRemainingError = error;
+  for (const row of remaining?.providers ?? []) {
+    if (row.kind === "subscription" && row.windows.length > 0) {
+      lastGoodRows.set(row.provider, { row, fetchedAt: remaining?.fetchedAt ?? "" });
+    }
+  }
+  if (remaining !== null) usageRemainingFailedAt = null;
   if (remaining !== null || error !== null) {
     usageRemainingSettled = true;
   }
@@ -182,6 +211,21 @@ export function requestUsageRemaining(
     }
   );
   return request;
+}
+
+/**
+ * A remaining read failed. The figures already held stay (they are minutes old,
+ * not wrong), the error is kept for the Usage page, and the time is kept so a
+ * composer that mounts next does not try the four accounts again at once.
+ */
+export function recordUsageRemainingFailure(message: string, at: number): void {
+  usageRemainingError = message;
+  usageRemainingFailedAt = at;
+  usageRemainingSettled = true;
+}
+
+export function getUsageRemainingFailedAt(): number | null {
+  return usageRemainingFailedAt;
 }
 
 export function markUsageRemainingHoldOver(): void {
@@ -244,6 +288,8 @@ export function resetLedgerPageStateForTests(): void {
   usageSummaryRequests.clear();
   usageRemaining = null;
   usageRemainingError = null;
+  usageRemainingFailedAt = null;
+  lastGoodRows.clear();
   usageRemainingRequest = null;
   usageRemainingSettled = false;
   activitySummaries.clear();

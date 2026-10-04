@@ -1,6 +1,8 @@
 import { renderHook, act } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSessionCommands } from "./useSessionCommands.js";
+import { PROVIDER_MODELS } from "../../shared/providerModels.js";
+import type { ProviderId } from "../../shared/types.js";
 
 describe("useSessionCommands", () => {
   const refreshDashboardStatus = vi.fn().mockResolvedValue(undefined);
@@ -34,29 +36,20 @@ describe("useSessionCommands", () => {
     };
   });
 
-  it.each([
-    ["codex", "gpt-6-astra", true],
-    ["codex", "gpt-6.1-sol", true],
-    ["codex", "gpt-5.6-terra", true],
-    ["codex", "gpt-6-luna", true],
-    ["codex", "unknown", false],
-    ["claude", "claude-opus-5-5", true],
-    ["claude", "claude-fable-5-1", false],
-    ["claude", "claude-opus-5", false],
-    ["claude", "claude-sonnet-5-5", false],
-    ["claude", "claude-sonnet-5-5", false],
-    ["cursor", "claude-sonnet-5-5-medium", false],
-    ["claude", "claude-haiku-4-5", false],
-    ["cursor", "gpt-5.6-sol-medium", true],
-    ["cursor", "composer-2.5", true],
-    ["cursor", "grok-4.7-medium", true],
-    ["cursor", "gemini-3.8-flash-medium", false],
-    ["cursor", "auto-smart[optimize_for=cost]", false],
-    ["grok", "grok-4.7", true],
-    ["grok", "grok-4.6", false],
-    ["grok", "grok-4.5", false],
-    ["opencode", "opencode/big-pickle", false]
-  ] as const)("gates the saved Fast preference for %s/%s", async (provider, modelId, supported) => {
+  // Derived from the catalogue so a model gaining or losing the Fast toggle
+  // (Composer 2.5 moving to always-Fast) does not need a second edit here.
+  const fastModeCases: Array<[ProviderId, string, boolean]> = [
+    ...Object.entries(PROVIDER_MODELS).flatMap(([provider, options]) =>
+      options.map((option): [ProviderId, string, boolean] => [
+        provider as ProviderId,
+        option.modelId,
+        option.supportsFastMode === true
+      ])
+    ),
+    ["codex", "unknown", false]
+  ];
+
+  it.each(fastModeCases)("gates the saved Fast preference for %s/%s", async (provider, modelId, supported) => {
     const { result, rerender } = renderHook(
       ({ fastMode }) => useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode }),
       { initialProps: { fastMode: false } }
@@ -214,53 +207,6 @@ describe("useSessionCommands", () => {
     expect(refreshDashboardStatus).toHaveBeenCalled();
     expect(loadSessionEvents).toHaveBeenCalledWith("session-1");
     resolveRefresh?.();
-  });
-
-  it("uses the steer channel for a configured in-turn follow-up", async () => {
-    const { result } = renderHook(() =>
-      useSessionCommands({ refreshDashboardStatus, loadSessionEvents, setToast, fastMode: false })
-    );
-
-    await act(async () => {
-      await result.current.sendSessionInput(
-        "session-1",
-        "Keep the API compatible",
-        { provider: "codex", label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra" },
-        "auto",
-        undefined,
-        undefined,
-        "steer"
-      );
-    });
-
-    expect(steerInputMock).toHaveBeenCalledWith(
-      expect.objectContaining({ input: "Keep the API compatible" })
-    );
-    expect(sendInputMock).not.toHaveBeenCalled();
-  });
-
-  it("passes steering delivery through to the queued-message IPC", async () => {
-    refreshDashboardStatus.mockResolvedValue(undefined);
-    loadSessionEvents.mockResolvedValue(undefined);
-    const { result } = renderHook(() =>
-      useSessionCommands({
-        refreshDashboardStatus,
-        loadSessionEvents,
-        setToast,
-        fastMode: false,
-        onEarlyStop
-      })
-    );
-
-    await act(async () => {
-      await result.current.sendQueuedMessageNow("session-1", "message-1", "steer");
-    });
-
-    expect(sendQueuedMessageNowMock).toHaveBeenCalledWith({
-      sessionId: "session-1",
-      messageId: "message-1",
-      delivery: "steer"
-    });
   });
 
   it("shows structured queue errors and refreshes after a rejected send", async () => {

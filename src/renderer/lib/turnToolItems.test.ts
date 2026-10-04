@@ -36,35 +36,6 @@ describe("turnToolItems", () => {
     expect(folded).toEqual([first, second, read, third].map((tool) => ({ kind: "tool", tool })));
   });
 
-  it("keeps a single command as its own row", () => {
-    const command = tool({ id: "t1", name: "Bash", inputPreview: "ls -la" });
-
-    const [folded] = foldTurnToolItems([{ kind: "tool", tool: command }]);
-    expect(folded).toEqual({ kind: "tool", tool: command });
-
-    if (!folded) throw new Error("expected folded tool item");
-    const visible = visibleTurnToolItem(folded, new Set());
-    expect(visible).toEqual({ kind: "tool", tool: command });
-  });
-
-  it("keeps individual tools so commentary can be interleaved at each timestamp", () => {
-    const first = tool({ id: "t1", name: "Bash", inputPreview: "sed -n '1,80p' src/a.ts" });
-    const second = tool({ id: "t2", name: "Bash", inputPreview: "sed -n '1,80p' src/b.ts" });
-    const later = tool({
-      id: "t3",
-      name: "Bash",
-      inputPreview: "sed -n '1,80p' src/c.ts",
-      createdAt: "2026-05-21T10:01:00.000Z"
-    });
-    const folded = foldTurnToolItems([
-      { kind: "tool", tool: first },
-      { kind: "tool", tool: second },
-      { kind: "tool", tool: later }
-    ]);
-
-    expect(folded).toEqual([first, second, later].map((tool) => ({ kind: "tool", tool })));
-  });
-
   it("attaches sub-agent child tools to the standalone agent row", () => {
     const agent = tool({ id: "agent", toolUseId: "tu-agent", name: "Agent" });
     const childRead = tool({

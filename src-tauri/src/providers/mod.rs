@@ -5,15 +5,21 @@ pub mod claude_control;
 pub mod cloud;
 pub mod codex_app_server;
 pub mod codex_cloud;
+mod completion_notices;
+pub mod continuity;
+#[cfg(test)]
+pub(crate) mod continuity_tests;
 pub mod cursor_acp;
 pub mod cursor_cloud;
 pub mod discovery;
 pub mod environment;
 pub mod flush_queue;
-mod follow_up;
+pub(crate) mod follow_up;
+pub mod fork_merge;
 pub mod grok_acp;
 pub mod grok_trust;
 mod heredoc_activity;
+pub mod inputs;
 pub mod mcp_injection;
 pub mod measured_diffs;
 pub mod normalizer;
@@ -34,7 +40,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-pub use crate::ipc::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+pub use crate::application::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 
 /// What Argmax can truthfully do with a provider's native permission gate.
 /// Observable-only means the CLI can emit a request, but this runtime does not
@@ -68,6 +74,37 @@ pub struct ProviderLaunchInput {
     pub agent_mode: AgentMode,
     pub cols: u16,
     pub rows: u16,
+    /// Native-continuity instructions for this launch; see `LaunchContinuity`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuity: Option<LaunchContinuity>,
+}
+
+/// What a launch needs beyond a resume id when it rejoins or forks a native
+/// conversation (docs/providers.md#native-continuity-and-forks).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchContinuity {
+    /// The conversation id a fresh Claude or Grok launch passes as
+    /// `--session-id`. Those CLIs refuse an id whose transcript already
+    /// exists, and Argmax's own session id is spent by the first conversation.
+    pub fresh_native_id: Option<String>,
+    /// The prompt for the one fresh retry, when the provider definitely
+    /// rejects the resume or fork before admitting the turn
+    /// (`PROVIDER_RESUME_REJECTED`). Built without the current message's own
+    /// transcript row, so the retry cannot send it twice.
+    pub fresh_fallback_prompt: Option<String>,
+    /// Codex only: fork the resumed thread through this turn, inclusive.
+    pub fork_last_turn_id: Option<String>,
+}
+
+impl ProviderLaunchInput {
+    /// The conversation id a fresh launch tells the CLI to create.
+    pub fn fresh_native_id(&self) -> &str {
+        self.continuity
+            .as_ref()
+            .and_then(|continuity| continuity.fresh_native_id.as_deref())
+            .unwrap_or(&self.session_id)
+    }
 }
 
 impl ProviderId {

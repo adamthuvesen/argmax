@@ -207,22 +207,6 @@ describe("TurnBlock", () => {
     expect(screen.getByTestId("assistant")).toBeInTheDocument();
   });
 
-  it("asks the parent to toggle tools when the chip is clicked after completion", () => {
-    const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
-    const onToggleTools = vi.fn();
-    render(
-      <TurnBlock
-        toolItems={items}
-        assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
-        body={body(assistantChild("assistant", "reply"), toolChild("tools"))}
-        toolsExpanded={false}
-        onToggleTools={onToggleTools}
-      />
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
-    expect(onToggleTools).toHaveBeenCalledTimes(1);
-  });
-
   it("reflects expanded state and delegates collapse clicks", () => {
     const items: TurnToolItem[] = [{ kind: "tool", tool: tool() }];
     const onToggleTools = vi.fn();

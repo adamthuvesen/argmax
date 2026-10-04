@@ -16,14 +16,14 @@ enum TranscriptProjection {
         )
         let todoAtEvent = todoSnapshots(events: events)
         let multitasks = foldedMultitasks(events: events)
-        let lastUserAt = events.last(where: { $0.type == "user.message" })?.createdAt ?? ""
+        let lastUserAt = events.last(where: \.isUserMessage)?.createdAt ?? ""
         var items: [TranscriptItem] = []
         var activeTurnID = session.map { "opening-\($0.id)" } ?? "opening"
         var answerSegment = 0
         var answerOpen = false
         var pickedLegacyQuestionInTurn = false
 
-        if !events.contains(where: { $0.type == "user.message" }),
+        if !events.contains(where: \.isUserMessage),
            !source.contains(where: { $0.type == "session.cleared" }),
            let session,
            !session.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -41,17 +41,14 @@ enum TranscriptProjection {
 
         for event in events {
             let payload = event.payloadObject
-            let isAnswer = event.type == "message.completed" || (
-                event.type == "message.delta" &&
-                    payload["thinking"]?.bool != true &&
-                    payload["stream"]?.string == nil
-            )
+            let isAnswer = event.isAssistantAnswer
             if !isAnswer, answerOpen {
                 answerSegment += 1
                 answerOpen = false
             }
-            if event.type == "user.message" {
-                let steering = payload["delivery"]?.string == "steer"
+            if event.isUserMessage {
+                let steering = event.messageMeaning.map { $0.delivery == "steer" }
+                    ?? (payload["delivery"]?.string == "steer")
                 if !steering {
                     activeTurnID = event.id
                     answerSegment = 0
@@ -71,8 +68,9 @@ enum TranscriptProjection {
                 continue
             }
 
-            if event.type == "message.delta" {
-                if payload["thinking"]?.bool == true {
+            if event.messageMeaning?.phase == "delta" ||
+                (event.messageMeaning == nil && event.type == "message.delta") {
+                if event.messageMeaning.map({ $0.content == "thinking" }) ?? (payload["thinking"]?.bool == true) {
                     appendThought(event, streaming: false, to: &items)
                 } else if let stream = payload["stream"]?.string,
                           stream == "stderr" || stream == "stdout" || stream == "pty" {
@@ -89,7 +87,8 @@ enum TranscriptProjection {
                 continue
             }
 
-            if event.type == "message.completed" {
+            if event.messageMeaning.map({ $0.phase == "completed" && $0.role == "assistant" })
+                ?? (event.type == "message.completed") {
                 appendAssistant(
                     event,
                     blockID: "\(activeTurnID)-\(answerSegment)",
@@ -100,7 +99,7 @@ enum TranscriptProjection {
                 continue
             }
 
-            if event.type == "command.started", let tool = toolStarts[event.id] {
+            if event.isToolStart, let tool = toolStarts[event.id] {
                 let normalized = normalizedToolName(tool.name)
                 if isQuestionTool(normalized) {
                     let requestID = tool.inputObject["requestId"]?.string
@@ -158,7 +157,7 @@ enum TranscriptProjection {
                 continue
             }
 
-            if event.type.hasPrefix("approval.") || event.type == "permission.blocked" {
+            if event.approvalMeaning != nil || event.type.hasPrefix("approval.") || event.type == "permission.blocked" {
                 if var approval = approval(from: event) {
                     if let index = items.firstIndex(where: { $0.id == "approval-\(approval.id)" }),
                        case .approval(let previous) = items[index] {
@@ -175,31 +174,36 @@ enum TranscriptProjection {
                 continue
             }
 
-            if event.type == "multitask.launched", let multitask = multitasks[event.id] {
+            if (event.multitaskMeaning?.phase == "launched" ||
+                (event.timelineMeaning == nil && event.type == "multitask.launched")),
+               let multitask = multitasks[event.id] {
                 items.append(.multitask(multitask))
                 continue
             }
 
-            if event.type == "multitask.finished" {
+            if event.multitaskMeaning?.phase == "finished" ||
+                (event.timelineMeaning == nil && event.type == "multitask.finished") {
                 if let multitask = multitasks[event.id] { items.append(.multitask(multitask)) }
                 continue
             }
 
             if let notice = notice(from: event) {
                 appendNotice(notice, to: &items)
-                if event.type == "session.moved" || event.type == "session.provider-changed" {
+                if ["moved", "provider-changed"].contains(event.lifecycleMeaning?.name ?? "") ||
+                    event.type == "session.moved" || event.type == "session.provider-changed" {
                     activeTurnID = "after-\(event.id)"
                 }
                 continue
             }
 
-            if event.type == "error", payload["truncatedEventId"] == nil,
+            if (event.errorMeaning != nil || (event.timelineMeaning == nil && event.type == "error")),
+               payload["truncatedEventId"] == nil,
                !TranscriptError.isRedundantProviderDiagnostic(event.message) {
                 items.append(.error(TranscriptError(
                     id: "error-\(event.id)",
                     message: event.message,
-                    code: payload["code"]?.string,
-                    operation: payload["operation"]?.string,
+                    code: event.errorMeaning?.code ?? (event.timelineMeaning == nil ? payload["code"]?.string : nil),
+                    operation: event.errorMeaning?.operation ?? (event.timelineMeaning == nil ? payload["operation"]?.string : nil),
                     createdAt: event.createdAt
                 )))
             }
@@ -236,18 +240,24 @@ enum TranscriptProjection {
         var byID: [String: TranscriptEvent] = [:]
         for event in source { byID[event.id] = event }
         var events = Array(byID.values).sorted(by: eventOrder)
-        if let clear = events.last(where: { $0.type == "session.cleared" }) {
+        if let clear = events.last(where: { $0.lifecycleMeaning?.name == "cleared" || $0.type == "session.cleared" }) {
             events.removeAll { compare($0, clear) != .orderedDescending }
         }
         events.removeAll { event in
             let payload = event.payloadObject
-            if payload["raw"]?.bool == true || payload["traceSyntheticSuperseded"]?.bool == true { return true }
+            if let meaning = event.timelineMeaning, case .unknown = meaning { return true }
+            if event.timelineContext?.isRaw ?? (payload["raw"]?.bool == true) { return true }
+            if event.timelineContext?.traceSuperseded ?? (payload["traceSyntheticSuperseded"]?.bool == true) { return true }
             if event.message == "turn.completed" { return true }
             if event.type == "error" && event.message == "event payload truncated" && payload["truncatedEventId"] != nil {
                 return true
             }
-            if event.type == "message.completed" || event.type == "message.delta" {
-                if !includingChildActivity && payload["parent_tool_use_id"]?.string != nil { return true }
+            if event.messageMeaning != nil || event.type == "message.completed" || event.type == "message.delta" {
+                if !includingChildActivity && event.semanticParentToolUseId != nil { return true }
+                if let context = event.timelineContext {
+                    if !includingChildActivity && context.providerThreadId != nil { return true }
+                    return false
+                }
                 let item = payload["item"]?.object
                 let isAgentMessage = payload["item_type"]?.string == "agent_message" || item?["type"]?.string == "agent_message"
                 if !includingChildActivity && isAgentMessage && (
@@ -268,15 +278,16 @@ enum TranscriptProjection {
         var pickedLegacyQuestion = false
         var activeBlockingQuestions = Set<String>()
         return events.filter { event in
-            if event.type == "user.message", event.payloadObject["delivery"]?.string != "steer" {
+            if event.isUserMessage,
+               (event.semanticDelivery) != "steer" {
                 cardStarted = false
                 pickedLegacyQuestion = false
                 activeBlockingQuestions.removeAll()
                 return true
             }
-            if event.type == "command.started" {
+            if event.isToolStart {
                 let payload = event.payloadObject
-                let name = normalizedToolName(toolName(payload))
+                let name = normalizedToolName(event.toolMeaning?.name ?? toolName(payload))
                 let input = isQuestionTool(name)
                     ? mergedInput(payload, completions[event.id]?.payloadObject ?? [:])
                     : [:]
@@ -287,7 +298,7 @@ enum TranscriptProjection {
                         ?? payload["delivery"]?.string
                     if requestID != nil {
                         if delivery == "blocking" {
-                            activeBlockingQuestions.insert(string(payload, keys: ["id", "call_id"]) ?? event.id)
+                            activeBlockingQuestions.insert(event.semanticToolUseId ?? event.id)
                         }
                     } else if !pickedLegacyQuestion {
                         pickedLegacyQuestion = true
@@ -296,16 +307,14 @@ enum TranscriptProjection {
                 }
                 return true
             }
-            if event.type == "command.completed" {
-                let payload = event.payloadObject
-                if let toolUseID = string(payload, keys: ["tool_use_id", "id", "call_id"]) {
+            if event.isToolCompletion {
+                if let toolUseID = event.semanticToolUseId {
                     activeBlockingQuestions.remove(toolUseID)
                 }
                 return true
             }
             if (cardStarted || !activeBlockingQuestions.isEmpty),
-               (event.type == "message.completed" || event.type == "message.delta"),
-               event.payloadObject["thinking"]?.bool != true {
+               event.isAssistantAnswer {
                 return false
             }
             return true
@@ -324,7 +333,8 @@ enum TranscriptProjection {
         var retained: [TranscriptEvent] = []
         for event in events.reversed() {
             let payload = event.payloadObject
-            if event.type == "message.delta", payload["thinking"]?.bool != true {
+            if (event.messageMeaning?.phase == "delta" && event.messageMeaning?.content == "answer") ||
+                (event.messageMeaning == nil && event.type == "message.delta" && payload["thinking"]?.bool != true) {
                 let superseded: Bool
                 switch boundary {
                 case .completed: superseded = true
@@ -336,11 +346,11 @@ enum TranscriptProjection {
                 if superseded { continue }
             }
             retained.append(event)
-            if event.type == "user.message", payload["delivery"]?.string != "steer" {
+            if event.isUserMessage, (event.semanticDelivery) != "steer" {
                 boundary = .user
-            } else if event.type == "message.completed" {
+            } else if event.messageMeaning.map({ $0.role == "assistant" && $0.phase == "completed" }) ?? (event.type == "message.completed") {
                 boundary = .completed(event.message)
-            } else if event.type == "command.started", payload["parent_tool_use_id"]?.string == nil {
+            } else if event.isToolStart, event.semanticParentToolUseId == nil {
                 if case .completed(let text) = boundary { boundary = .tool(text) }
             }
         }
@@ -599,7 +609,8 @@ enum TranscriptProjection {
             }
         }
         var nativeAgentLifecycles: [String: NativeAgentLifecycle] = [:]
-        for event in events where event.type == "agent.started" || event.type == "agent.completed" {
+        for event in events where event.agentMeaning != nil ||
+            event.type == "agent.started" || event.type == "agent.completed" {
             let payload = event.payloadObject
             guard let runID = payload["agentRunId"]?.string else { continue }
             let key = nativeAgentLifecycleKey(
@@ -609,9 +620,9 @@ enum TranscriptProjection {
             var metadata = nativeAgentLifecycles[key]?.metadata ?? [:]
             for (field, value) in payload where value != .null { metadata[field] = value }
             nativeAgentLifecycles[key] = NativeAgentLifecycle(
-                phase: event.type == "agent.completed" ? "completed" : "started",
+                phase: event.agentMeaning?.phase ?? (event.type == "agent.completed" ? "completed" : "started"),
                 createdAt: event.createdAt,
-                status: payload["status"]?.string,
+                status: event.agentMeaning?.status ?? payload["status"]?.string,
                 metadata: metadata
             )
         }
@@ -624,12 +635,11 @@ enum TranscriptProjection {
             )
         }
         var result: [String: ProjectedTool] = [:]
-        for start in events where start.type == "command.started" {
+        for start in events where start.isToolStart {
             let payload = start.payloadObject
-            let toolUseID = string(payload, keys: ["id", "call_id"]) ?? start.id
-            let invocation = payload["providerInvocationId"]?.string
+            let toolUseID = start.semanticToolUseId ?? start.id
+            let invocation = start.semanticProviderInvocationId
             let completion = completions[start.id]
-            let endPayload = completion?.payloadObject ?? [:]
             let facts = toolFacts(start: start, completion: completion, workspacePath: workspacePath)
             let input = facts.input
             let name = facts.name
@@ -684,11 +694,11 @@ enum TranscriptProjection {
                     : (lifecycle?.phase == "completed"
                         ? lifecycle?.createdAt
                         : (lifecycle?.phase == "started" ? sessionEndAt : completion?.createdAt)),
-                parentToolUseId: payload["parent_tool_use_id"]?.string,
-                surface: payload["surface"]?.string,
-                providerChildSessionId: payload["providerChildSessionId"]?.string
+                parentToolUseId: start.semanticParentToolUseId,
+                surface: start.toolMeaning?.surface ?? payload["surface"]?.string,
+                providerChildSessionId: start.semanticProviderChildSessionId
                     ?? metadata["providerChildSessionId"]?.string,
-                providerParentConversationId: payload["providerParentConversationId"]?.string
+                providerParentConversationId: start.semanticProviderParentConversationId
                     ?? metadata["providerParentConversationId"]?.string,
                 agentCodename: string(payload, keys: ["agentCodename", "agentNickname"])
                     ?? string(metadata, keys: ["agentCodename", "agentNickname"]),
@@ -760,7 +770,7 @@ enum TranscriptProjection {
             let payload = start.payloadObject
             let endPayload = completion?.payloadObject ?? [:]
             let input = mergedInput(payload, endPayload)
-            let name = toolName(payload)
+            let name = start.toolMeaning?.name ?? toolName(payload)
             let activity = mergedActivity(
                 start: decodedActivity(payload["activity"]),
                 end: decodedActivity(endPayload["activity"])
@@ -778,9 +788,10 @@ enum TranscriptProjection {
                 inputText: formatted(displayInput(input, name: name)),
                 output: displayOutput(output(endPayload), name: name),
                 failureText: displayOutput(error(endPayload), name: name),
-                failed: isFailed(endPayload),
+                failed: completion?.toolMeaning?.outcome.map { $0 == "failed" } ?? isFailed(endPayload),
                 activity: activity,
-                completionStatus: completionStatus(endPayload),
+                completionStatus: completion?.toolMeaning?.outcome == "cancelled"
+                    ? "cancelled" : completionStatus(endPayload),
                 preview: preview(name: name, input: input, workspacePath: workspacePath),
                 filePath: filePath,
                 fileLabel: filePath.map { relativePath($0, workspacePath: workspacePath) },
@@ -799,18 +810,16 @@ enum TranscriptProjection {
             let invocation: String?
         }
         var queues: [Pair: [TranscriptEvent]] = [:]
-        for event in events where event.type == "command.completed" {
-            let payload = event.payloadObject
-            guard let endID = string(payload, keys: ["tool_use_id", "id", "call_id"]) else { continue }
-            queues[Pair(toolUseID: endID, invocation: payload["providerInvocationId"]?.string), default: []]
+        for event in events where event.isToolCompletion {
+            guard let endID = event.semanticToolUseId else { continue }
+            queues[Pair(toolUseID: endID, invocation: event.semanticProviderInvocationId), default: []]
                 .append(event)
         }
         var claimed: [Pair: Int] = [:]
         var result: [String: TranscriptEvent] = [:]
-        for start in events where start.type == "command.started" {
-            let payload = start.payloadObject
-            let pair = Pair(toolUseID: string(payload, keys: ["id", "call_id"]) ?? start.id,
-                            invocation: payload["providerInvocationId"]?.string)
+        for start in events where start.isToolStart {
+            let pair = Pair(toolUseID: start.semanticToolUseId ?? start.id,
+                            invocation: start.semanticProviderInvocationId)
             let next = claimed[pair, default: 0]
             guard let queue = queues[pair], next < queue.count else { continue }
             result[start.id] = queue[next]
@@ -1470,18 +1479,18 @@ enum TranscriptProjection {
     private static func approval(from event: TranscriptEvent) -> TranscriptApproval? {
         let payload = event.payloadObject
         let status: TranscriptApprovalStatus
-        switch event.type {
-        case "approval.requested": status = .pending
-        case "permission.blocked": status = .blocked
+        switch event.approvalMeaning?.phase ?? event.type {
+        case "requested", "approval.requested": status = .pending
+        case "blocked", "permission.blocked": status = .blocked
         default:
-            status = TranscriptApprovalStatus(rawValue: string(payload, keys: ["status", "resolution"]) ?? "") ?? .cancelled
+            status = TranscriptApprovalStatus(rawValue: event.semanticApprovalResolution ?? "") ?? .cancelled
         }
-        let id = payload["approvalId"]?.string ?? event.id
+        let id = event.semanticApprovalId ?? event.id
         let command = payload["command"]?.string ?? event.message
         guard !command.isEmpty else { return nil }
         return TranscriptApproval(
             id: id,
-            provider: payload["provider"]?.string,
+            provider: event.semanticApprovalProvider,
             command: command,
             workingDirectory: payload["cwd"]?.string,
             riskLevel: payload["riskLevel"]?.string,
@@ -1493,19 +1502,22 @@ enum TranscriptProjection {
     private static func foldedMultitasks(events: [TranscriptEvent]) -> [String: TranscriptMultitask] {
         var anchorByChild: [String: String] = [:]
         var result: [String: TranscriptMultitask] = [:]
-        for event in events where event.type == "multitask.launched" || event.type == "multitask.finished" {
+        for event in events where event.multitaskMeaning != nil ||
+            (event.timelineMeaning == nil && (event.type == "multitask.launched" || event.type == "multitask.finished")) {
             let payload = event.payloadObject
-            let child = payload["childSessionId"]?.string ?? event.id
+            let meaning = event.multitaskMeaning
+            let childID = meaning == nil ? payload["childSessionId"]?.string : meaning?.childSessionId
+            let child = childID ?? event.id
             let anchor = anchorByChild[child] ?? event.id
             anchorByChild[child] = anchor
             let previous = result[anchor]
             result[anchor] = TranscriptMultitask(
                 id: "multitask-\(anchor)",
-                childSessionId: payload["childSessionId"]?.string ?? previous?.childSessionId,
-                taskLabel: payload["taskLabel"]?.string ?? previous?.taskLabel ?? event.message,
-                prompt: payload["prompt"]?.string ?? previous?.prompt,
-                answer: payload["answer"]?.string ?? previous?.answer,
-                state: payload["state"]?.string ?? previous?.state,
+                childSessionId: childID ?? previous?.childSessionId,
+                taskLabel: (meaning == nil ? payload["taskLabel"]?.string : meaning?.taskLabel) ?? previous?.taskLabel ?? event.message,
+                prompt: (meaning == nil ? payload["prompt"]?.string : meaning?.prompt) ?? previous?.prompt,
+                answer: (meaning == nil ? payload["answer"]?.string : meaning?.answer) ?? previous?.answer,
+                state: (meaning == nil ? payload["state"]?.string : meaning?.state) ?? previous?.state,
                 createdAt: previous?.createdAt ?? event.createdAt
             )
         }
@@ -1514,8 +1526,8 @@ enum TranscriptProjection {
 
     private static func notice(from event: TranscriptEvent) -> TranscriptNotice? {
         let payload = event.payloadObject
-        switch event.type {
-        case "session.compacting", "session.compacted":
+        switch event.lifecycleMeaning?.name ?? event.type {
+        case "compacting", "compacted", "session.compacting", "session.compacted":
             return TranscriptNotice(
                 id: "compaction-\(event.id)",
                 text: event.message.isEmpty ? "Context compacted" : event.message,
@@ -1525,7 +1537,7 @@ enum TranscriptProjection {
                 ),
                 createdAt: event.createdAt
             )
-        case "session.provider-changed":
+        case "provider-changed", "session.provider-changed":
             let to = payload["provider"]?.string ?? event.message
             return TranscriptNotice(
                 id: "provider-\(event.id)",
@@ -1537,7 +1549,7 @@ enum TranscriptProjection {
                 ),
                 createdAt: event.createdAt
             )
-        case "session.moved":
+        case "moved", "session.moved":
             return TranscriptNotice(
                 id: "move-\(event.id)",
                 text: event.message,
@@ -1547,7 +1559,7 @@ enum TranscriptProjection {
                 ),
                 createdAt: event.createdAt
             )
-        case "session.note":
+        case "note", "session.note":
             return TranscriptNotice(
                 id: "note-\(event.id)",
                 text: event.message,

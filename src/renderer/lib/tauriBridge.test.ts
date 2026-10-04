@@ -271,7 +271,7 @@ describe("tauriBridge", () => {
 
     expect(mocks.createWsTransport).toHaveBeenCalledTimes(1);
     expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(mocks.remoteInvoke).toHaveBeenCalledWith("health:ping", {});
+    expect(mocks.remoteInvoke).toHaveBeenCalledWith("health:ping");
     expect(result).toEqual({ ok: true, timestamp: "2026-08-28T00:00:00Z" });
     // Remembered so a reload without the query string stays remote.
     expect(window.localStorage.getItem("argmax.remote")).toBe("1");

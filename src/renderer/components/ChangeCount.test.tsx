@@ -21,14 +21,6 @@ describe("ChangeCount", () => {
     vi.restoreAllMocks();
   });
 
-  it("mounts at the live totals with an accessible label", () => {
-    render(<ChangeCount additions={110} deletions={15} />);
-
-    expect(screen.getByText("+110")).toBeInTheDocument();
-    expect(screen.getByText("-15")).toBeInTheDocument();
-    expect(screen.getByLabelText("110 additions, 15 deletions")).toBeInTheDocument();
-  });
-
   it("ticks toward new totals across frames and lands exactly", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);

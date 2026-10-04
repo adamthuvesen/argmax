@@ -28,12 +28,6 @@ describe("composer drafts", () => {
     });
   });
 
-  it("remembers a screenshot with no text typed beside it", () => {
-    writeDraftAttachments("session-a", [screenshot("/att/a.png")]);
-
-    expect(readDraft("session-a").attachments).toEqual([screenshot("/att/a.png")]);
-  });
-
   it("drops the entry once neither text nor screenshots are left", () => {
     writeDraftText("session-a", "look at this");
     writeDraftAttachments("session-a", [screenshot("/att/a.png")]);
@@ -93,5 +87,41 @@ describe("composer drafts", () => {
     expect(readDraft("session-0").text).toBe("");
     expect(readDraft("session-1").text).toBe("draft 1");
     expect(readDraft("session-50").text).toBe("draft 50");
+  });
+
+  it("stamps the draft version and round-trips a chat reference as plain text", () => {
+    const text = "compare with [Billing rewrite](argmax://chat/session-9?v=1) please";
+    writeDraftText("session-a", text);
+    writeDraftAttachments("session-a", [screenshot("/att/a.png")]);
+
+    expect(stored()).toEqual({
+      "session-a": { v: 2, text, attachments: [screenshot("/att/a.png")] }
+    });
+    expect(readDraft("session-a")).toEqual({ text, attachments: [screenshot("/att/a.png")] });
+  });
+
+  it("reads an unversioned object draft and skips one written by a newer build", () => {
+    window.localStorage.setItem(
+      DRAFTS_KEY,
+      JSON.stringify({
+        "session-a": { text: "unversioned", attachments: [] },
+        "session-b": { v: 3, text: "from the future", attachments: [] }
+      })
+    );
+
+    expect(readDraft("session-a").text).toBe("unversioned");
+    expect(readDraft("session-b")).toEqual({ text: "", attachments: [] });
+  });
+
+  it("keeps a draft from a newer build in storage when this build writes another draft", () => {
+    const future = { v: 3, text: "from the future", attachments: [], extra: { shape: "new" } };
+    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify({ "session-b": future }));
+
+    writeDraftText("session-a", "mine");
+
+    expect(stored()).toEqual({
+      "session-b": future,
+      "session-a": { v: 2, text: "mine", attachments: [] }
+    });
   });
 });

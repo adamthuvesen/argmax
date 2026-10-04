@@ -16,46 +16,174 @@ Argmax uses plain CSS in [src/renderer/styles.css](../src/renderer/styles.css) w
 
 Keep individual surface files under 1,000 lines. Aggregator files should only contain imports.
 
-`background-intensity.css` and `sidebar-intensity.css` follow `tokens.css` and derive neutral surface colors from independent 0–100 numbers (`--background-intensity` and `--sidebar-intensity`, set on `<html>` by the matching library modules) with `calc()` and nested `color-mix()`. Keep the original palette in `tokens.css` so dark 70, the default, and any page without the attribute, retains its exact colors.
+`background-intensity.css` and `sidebar-intensity.css` follow `tokens.css` and derive neutral
+surface colors from independent 0–100 numbers (`--background-intensity` and `--sidebar-intensity`,
+set on `<html>` by the matching library modules) with `calc()` and nested `color-mix()`. Keep the
+original palette in `tokens.css` so dark 70, the default, and any page without the attribute,
+retains its exact colors.
 
 ## Core Design Constraints
 
-- **Connected timeline:** `chat-timeline.css` owns the activity connector and the shared mark column. It joins consecutive activity rows, breaks at prose, and contracts when a plan or agent is absent. The connector uses theme tokens and the container's surface, including the Agents pane. It never measures layout in JavaScript or animates its geometry. Plan items and expanded details are inset from the spine. Stable keyed row wrappers preserve open disclosures while streaming changes the surrounding content.
+- **Connected timeline:** `chat-timeline.css` owns the activity connector and the shared mark
+  column. It joins consecutive activity rows, breaks at prose, and contracts when a plan or agent is
+  absent. The connector uses theme tokens and the container's surface, including the Agents pane. It
+  never measures layout in JavaScript or animates its geometry. Plan items and expanded details are
+  inset from the spine. Stable keyed row wrappers preserve open disclosures while streaming changes
+  the surrounding content.
 
-- **Action errors:** Failed user actions use the shared toast in `state/toast.ts`, anchored 16px from the bottom-right of the window above dialogs. Errors remain until dismissed or resolved. Info toasts dismiss after four seconds. Do not also render the failure above a composer or inside a card. Field validation stays beside the input, and ongoing failure states such as unavailable content, unsaved changes, or uncertain delivery stay in the affected surface. The mobile renderer subscribes to the same store and lifts the toast above the keyboard and safe area.
+- **Action errors:** Failed user actions use the shared toast in `state/toast.ts`, anchored 16px
+  from the bottom-right of the window above dialogs. Errors remain until dismissed or resolved. Info
+  toasts dismiss after four seconds. Do not also render the failure above a composer or inside a
+  card. Field validation stays beside the input, and ongoing failure states such as unavailable
+  content, unsaved changes, or uncertain delivery stay in the affected surface. The mobile renderer
+  subscribes to the same store and lifts the toast above the keyboard and safe area.
 
 - **Themes:** Light, Dark, and System modes. Dark is the default. Tokens are declared in `:root` (light) and `:root[data-theme="dark"]` in [tokens.css](../src/renderer/styles/tokens.css). Theme choice persists in `localStorage.argmax.theme.mode` and `userData/theme.json`.
-  - In light mode both sidebars use warm paper slightly darker than the main view. The review file tree sits one step darker still. Sidebar intensity adjusts these three surfaces independently of background intensity.
+  - In light mode both sidebars use neutral light gray slightly darker than the main view. The review file tree sits one step darker still. Sidebar intensity adjusts these three surfaces independently of background intensity.
   - In dark mode the palette is neutral charcoal: `--bg` is `#141414`, both sidebars (`--sidebar` and `--review-panel`) are slightly lighter at `#171717`, and cards (`--panel`) sit above them at `#1a1a1a`. These are the default colors at background and sidebar intensity 70.
-  - `--composer-surface` backs both composers (`.composer` in the launcher, `.session-input` in a session). In dark it sits a step *above* `--panel` so the field the user types into reads as the live surface; on paper `--panel` is already the brightest thing on screen, so it aliases to it and `--composer-edge` draws a `--line` hairline instead — carried as an inset ring inside the existing `box-shadow` so it costs no layout. Dark sets `--composer-edge: transparent`: the surface lift already reads as an edge there, and a line on top of it reads as a double border. Queued follow-ups live outside that card on `.session-composer-stack`, on the `--composer-tray` tone, so they read as a tab tucked behind the input. Multitasks are not on that tab: they sit in a card of their own in the checks lane above it (`.multitask-group` in multitask.css).
-  - `--composer-chip` / `--composer-chip-hover` fill every control on a composer's bottom row — the model pill, the project and branch chips, the glyph buttons (+, …, the context ring), and a behavior toggle at rest. One mix off `--composer-surface`, so both themes follow from one declaration. The row is a *chip floor*: pills for labels, circles for glyphs, one 6px gap between all of them, one height per row (28px in the launcher, 26px in a session, 36px on the phone, set as `--composer-chip-height`). None of them carries a caret — a filled control already reads as a control. The two exceptions are a pressed toggle, which keeps its `--accent-soft` fill because on/off is the one state in the row worth shouting, and the halves of the model pill, which stay bare because the cluster around them carries the fill. This is the phone composer's `composerChipSurface` / `composerGlyphSurface` ([Controls.swift](../ios/Argmax/Sources/Design/Controls.swift)) on the desktop.
+  - `--composer-surface` backs both composers (`.composer` in the launcher, `.session-input` in a
+    session). In dark it sits a step *above* `--panel` so the field the user types into reads as the
+    live surface; on paper `--panel` is already the brightest thing on screen, so it aliases to it
+    and `--composer-edge` draws a `--line` hairline instead — carried as an inset ring inside the
+    existing `box-shadow` so it costs no layout. Dark sets `--composer-edge: transparent`: the
+    surface lift already reads as an edge there, and a line on top of it reads as a double border.
+    Queued follow-ups live outside that card on `.session-composer-stack`, on the `--composer-tray`
+    tone, so they read as a tab tucked behind the input. Multitasks are not on that tab: they sit in
+    a card of their own in the checks lane above it (`.multitask-group` in multitask.css).
+  - `--composer-chip` / `--composer-chip-hover` fill every control on a composer's bottom row — the
+    model pill, the project and branch chips, the glyph buttons (+, …, the context ring), and a
+    behavior toggle at rest. One mix off `--composer-surface`, so both themes follow from one
+    declaration. The row is a *chip floor*: pills for labels, circles for glyphs, one 6px gap
+    between all of them, one height per row (28px in the launcher, 26px in a session, 36px on the
+    phone, set as `--composer-chip-height`). None of them carries a caret — a filled control already
+    reads as a control. The two exceptions are a pressed toggle, which keeps its `--accent-soft`
+    fill because on/off is the one state in the row worth shouting, and the halves of the model
+    pill, which stay bare because the cluster around them carries the fill. This is the phone
+    composer's `composerChipSurface` / `composerGlyphSurface`
+    ([Controls.swift](../ios/Argmax/Sources/Design/Controls.swift)) on the desktop.
   - `--review-sidebar` (the review panel's file-tree column) steps *down* from `--review-panel` on paper and *up* in dark, the same inversion `--tool-block-surface` uses. Do not reach for `--panel-sunken` here: in dark it is the darkest surface in the app, and a column set from it reads as a hole punched in the panel.
   - Ink uses `#e3e0d8` rather than pure white to avoid bloom on dark backgrounds.
-  - `--chip-ink` is the ink for the composers' secondary chips (project, branch, permission mode, workspace mode, effort). Light composers locally deepen `--muted` to `#716c63` and `--muted-strong` to `#49463f`, with both still following ink strength. Static placeholder text and utility controls use the former, while model-suggested follow-ups use `--composer-suggestion` to stay visually secondary. The model label uses the latter wherever it stands bare (settings), and secondary chips mix them at 65% muted. Inside the composers' model pill the model label takes `--text` instead: it is the headline of the only filled control in the row, and `--muted-strong` on a fill reads recessed. This improves readability across both composers without changing the rest of the app's palette. Dark aliases chip ink to `--muted`, which already clears 4.5:1 on `--composer-surface`.
-  - Rendered prose is the exception: `--prose-ink` / `--prose-ink-strong` (agent answers and file previews) run *brighter* than `--text` in dark, because bloom is a weight problem at label size and prose already offsets it with `--weight-prose` and an open line box. `--prose-ink-strong` must stay on the far side of `--prose-ink` from the page in both themes, or bold prose reads dimmer than the body around it. Both dark values sit one step off paper-white (`#ebe9e4` / `#f5f3ed`, OKLCH C 0.008 / H 90) rather than at it; the levels were compared side by side in `docs/design/prose-ink`. Agent paragraphs are painted by `.chat-bubble p`, which beats the inherited `.markdown` ink, so both rules name the same token.
-- **Accent Tints:** Settings → Appearance (desktop) and the Remote menu (phone) allow selecting `green`, `teal`, `purple`, `neutral`, `black`, `orange`, `blue`, or `coral` (`<html data-accent="...">`, stored in `localStorage.argmax.accent.tint`). The phone keeps its own copy: appearance is per browser, not synced from the desktop. `coral` uses a warm red hue, while errors retain their rose tint. Color alone does not distinguish risk from accent chrome. `black` is high-contrast ink, distinct from the quiet gray of `neutral`: black on paper and cream on charcoal, so chrome stays visible in both themes. Use `--accent`, `--accent-soft`, and `--accent-deep` for interactive highlights, focus rings, brand chrome, and running indicators (`WorkingNest`). A running sidebar row with a custom icon is the exception: its nest uses the icon's `--session-icon-*` color so the temporary animation keeps the row's identity. User-message bubbles read `--user-message-bg` / `--user-message-fg`: in dark, green/purple/orange/blue/coral/neutral use a deeper fill with white ink so `--accent` can stay lifted for chrome. Black fills the bubble with the cream accent and charcoal ink.
-  - Teal, purple, orange, blue, and coral use restrained saturation with deeper accents on paper and lifted accents on charcoal. Dark message fills stay separate from small highlights. Appearance swatches follow the theme. The family shares one OKLCH lightness per role (light accents L 0.50, dark accents L 0.71, dark bubbles L 0.44–0.47, deeps a step past the accent in each theme's contrast direction, green's dark deep included) and varies only chroma and hue, so no tint is the loud column. Orange is the one exception: at the family lightness it is brown, so it runs at the top of the sRGB orange gamut (L 0.56 on paper, white ink at 4.9:1) and is allowed to be the warmest column; coral sits at hue 32, a step off rose, so a coral bubble and a failed check never share a colour. The seven are compared side by side in `docs/design/accents`. This follows the role separation in [Radix Colors](https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale) and [Atlassian color tokens](https://atlassian.design/foundations/color).
-- **User bubble tint:** Settings → Appearance → Your message bubbles (desktop) and the Remote menu's matching control (phone) take user bubbles off the accent (`<html data-user-bubble="accent" | "neutral">`, stored in `localStorage.argmax.chat.bubbleTint`). `neutral` fills with `--panel-sunken` on paper and `--panel-soft` in dark, so an un-tinted bubble sits one surface step off the page rather than carrying a fill of its own. The two `[data-user-bubble="neutral"]` blocks must stay last in [tokens.css](../src/renderer/styles/tokens.css) — they tie the dark per-accent blocks on specificity, so source order is what makes the opt-out win. Filled transcript cards share `--radius-2xl` with `.session-input` and `.composer`: `.chat-bubble.user` and the subagent instructions/result cards. The live question is a different case: `.question-dock` is rendered with `.session-input` on the same element, so it is the composer's surface exactly rather than a lookalike, and only the panel's contents are styled separately. Its rows cannot use `--row-selected`: that token is tuned for rows on `--panel`, and the composer surface is already a step above `--panel`, so in dark the two land one value apart (`#212121` on `#202020`) and the selection disappears. `--question-dock-row` takes the same step measured from `--composer-surface` instead.
+  - `--chip-ink` is the ink for the composers' secondary chips (project, branch, permission mode,
+    workspace mode, effort). Light composers locally deepen `--muted` to `#716c63` and
+    `--muted-strong` to `#49463f`, with both still following ink strength. Static placeholder text
+    and utility controls use the former, while model-suggested follow-ups use
+    `--composer-suggestion` to stay visually secondary. The model label uses the latter wherever it
+    stands bare (settings), and secondary chips mix them at 65% muted. Inside the composers' model
+    pill the model label takes `--text` instead: it is the headline of the only filled control in
+    the row, and `--muted-strong` on a fill reads recessed. This improves readability across both
+    composers without changing the rest of the app's palette. Dark aliases chip ink to `--muted`,
+    which already clears 4.5:1 on `--composer-surface`.
+  - Rendered prose is the exception: `--prose-ink` / `--prose-ink-strong` (agent answers and file
+    previews) run *brighter* than `--text` in dark, because bloom is a weight problem at label size
+    and prose already offsets it with `--weight-prose` and an open line box. `--prose-ink-strong`
+    must stay on the far side of `--prose-ink` from the page in both themes, or bold prose reads
+    dimmer than the body around it. Both dark values sit one step off paper-white (`#ebe9e4` /
+    `#f5f3ed`, OKLCH C 0.008 / H 90) rather than at it; the levels were compared side by side in
+    `docs/design/prose-ink`. Agent paragraphs are painted by `.chat-bubble p`, which beats the
+    inherited `.markdown` ink, so both rules name the same token.
+- **Accent Tints:** Settings → Appearance (desktop) and the Remote menu (phone) allow selecting
+  `green`, `teal`, `purple`, `neutral`, `black`, `orange`, `blue`, or `coral` (`<html
+  data-accent="...">`, stored in `localStorage.argmax.accent.tint`). The phone keeps its own copy:
+  appearance is per browser, not synced from the desktop. `coral` uses a warm red hue, while errors
+  retain their rose tint. Color alone does not distinguish risk from accent chrome. `black` is
+  high-contrast ink, distinct from the quiet gray of `neutral`: black on paper and cream on
+  charcoal, so chrome stays visible in both themes. Use `--accent`, `--accent-soft`, and
+  `--accent-deep` for interactive highlights, focus rings, brand chrome, and running indicators
+  (`WorkingNest`). A running sidebar row with a custom icon is the exception: its nest uses the
+  icon's `--session-icon-*` color so the temporary animation keeps the row's identity. User-message
+  bubbles read `--user-message-bg` / `--user-message-fg`: in dark,
+  green/purple/orange/blue/coral/neutral use a deeper fill with white ink so `--accent` can stay
+  lifted for chrome. Black fills the bubble with the cream accent and charcoal ink.
+  - Teal, purple, orange, blue, and coral use restrained saturation with deeper accents on paper and
+    lifted accents on charcoal. Dark message fills stay separate from small highlights. Appearance
+    swatches follow the theme. The family shares one OKLCH lightness per role (light accents L 0.50,
+    dark accents L 0.71, dark bubbles L 0.44–0.47, deeps a step past the accent in each theme's
+    contrast direction, green's dark deep included) and varies only chroma and hue, so no tint is
+    the loud column. Orange is the one exception: at the family lightness it is brown, so it runs at
+    the top of the sRGB orange gamut (L 0.56 on paper, white ink at 4.9:1) and is allowed to be the
+    warmest column; coral sits at hue 32, a step off rose, so a coral bubble and a failed check
+    never share a colour. The seven are compared side by side in `docs/design/accents`. This follows
+    the role separation in [Radix
+    Colors](https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale) and
+    [Atlassian color tokens](https://atlassian.design/foundations/color).
+- **User bubble tint:** Settings → Appearance → Your message bubbles (desktop) and the Remote menu's
+  matching control (phone) take user bubbles off the accent (`<html data-user-bubble="accent" |
+  "neutral">`, stored in `localStorage.argmax.chat.bubbleTint`). `neutral` fills with
+  `--panel-sunken` on paper and `--panel-soft` in dark, so an un-tinted bubble sits one surface step
+  off the page rather than carrying a fill of its own. The two `[data-user-bubble="neutral"]` blocks
+  must stay last in [tokens.css](../src/renderer/styles/tokens.css) — they tie the dark per-accent
+  blocks on specificity, so source order is what makes the opt-out win. Filled transcript cards
+  share `--radius-2xl` with `.session-input` and `.composer`: `.chat-bubble.user` and the subagent
+  instructions/result cards. The live question is a different case: `.question-dock` is rendered
+  with `.session-input` on the same element, so it is the composer's surface exactly rather than a
+  lookalike, and only the panel's contents are styled separately. Its rows cannot use
+  `--row-selected`: that token is tuned for rows on `--panel`, and the composer surface is already a
+  step above `--panel`, so in dark the two land one value apart (`#212121` on `#202020`) and the
+  selection disappears. `--question-dock-row` takes the same step measured from `--composer-surface`
+  instead.
 - **Typography:**
   - Chrome: `--font-ui` (Geist Sans default).
   - The System Sans (SF Pro) option uses the native OS sans font for UI and prose, with system mono for the terminal. It needs no font download. Removed picker choices fall back to Geist Sans when read from saved preferences.
   - Prose: `--font-prose`.
-  - Code & Editor: `--font-code` (Geist Mono / system mono). The font picker rewrites `--font-ui` and `--font-mono` only, so `--font-code` names Geist Mono whatever is picked — `loadFontAssets` therefore loads the Geist Mono bundle alongside every choice. It used to ship only with the two Geist options, which left every code surface on a non-Geist font silently rendering the `ui-monospace` fallback.
+  - Code & Editor: `--font-code` (Geist Mono / system mono). The font picker rewrites `--font-ui`
+    and `--font-mono` only, so `--font-code` names Geist Mono whatever is picked — `loadFontAssets`
+    therefore loads the Geist Mono bundle alongside every choice. It used to ship only with the two
+    Geist options, which left every code surface on a non-Geist font silently rendering the
+    `ui-monospace` fallback.
   - Terminal: `--font-mono`.
   - The iPhone app has no CSS and cannot read these tokens: it bundles Geist as TrueType and resolves roles through `ios/Argmax/Sources/Design/Typography.swift`, keyed by the same ids under the same `argmax.font.family` key. See [ios/Argmax/README.md](../ios/Argmax/README.md#type).
-  - **Programming ligatures are off wherever the app renders text it did not author** (tool output, command lines, diffs, log output, markdown code, terminal transcript) via `font-feature-settings: var(--code-font-features)`. A pytest banner's run of `=` otherwise fuses into a solid bar that reads as struck-through output. Reach for that token, not `font-variant-ligatures: none`: `:root` enables `calt` through `font-feature-settings` for the UI sans, and that property is step 5 of [font feature resolution](https://drafts.csswg.org/css-fonts-3/#feature-precedence) against font-variant's step 3, so only the same property reaches the `calt`-based fonts (Fira Code, JetBrains Mono). Geist Mono ligates through `liga`. Pinned by `accentTokens.test.ts`.
-  - Mono blocks in the transcript sit a step under the prose they interrupt (`--text-xs` against the `--text-base` answer): diff cards, tool output, and command lines. Geist Mono is drawn on the same x-height as Geist Sans, so equal point sizes do not read as equal — mono spans 1.30em of ink to the sans 1.14em and carries a wider advance, and a block set at the prose size looks a size larger than it is.
+  - **Programming ligatures are off wherever the app renders text it did not author** (tool output,
+    command lines, diffs, log output, markdown code, terminal transcript) via
+    `font-feature-settings: var(--code-font-features)`. A pytest banner's run of `=` otherwise fuses
+    into a solid bar that reads as struck-through output. Reach for that token, not
+    `font-variant-ligatures: none`: `:root` enables `calt` through `font-feature-settings` for the
+    UI sans, and that property is step 5 of [font feature
+    resolution](https://drafts.csswg.org/css-fonts-3/#feature-precedence) against font-variant's
+    step 3, so only the same property reaches the `calt`-based fonts (Fira Code, JetBrains Mono).
+    Geist Mono ligates through `liga`. Pinned by `accentTokens.test.ts`.
+  - Mono blocks in the transcript sit a step under the prose they interrupt (`--text-xs` against the
+    `--text-base` answer): diff cards, tool output, and command lines. Geist Mono is drawn on the
+    same x-height as Geist Sans, so equal point sizes do not read as equal — mono spans 1.30em of
+    ink to the sans 1.14em and carries a wider advance, and a block set at the prose size looks a
+    size larger than it is.
   - Text weights use `--weight-ui` (`:root`) and `--weight-prose` (chat bubbles and `.markdown`). Variable font stacks run slightly lighter in dark mode (`380`/`390`) to compensate for dark-background bloom.
-- **Font heaviness:** Settings → Appearance and the command palette offer levels 1–10, saved per browser in `argmax.font.heaviness`. Level 5 preserves the designed weights. Each step adds 25 through `--font-weight-offset`, from −100 to +125, to body, label, and heading weights, including the dark theme adjustment for variable fonts. Geist Sans and IBM Plex Sans start at their original rendered 400 face in both themes. Ink strength remains independent. Every sans pick loads a variable face (Geist, IBM Plex Sans, Inter, DM Sans), and WebKit renders the system font and SF Mono on a continuous axis, so every level is a real step. IBM Plex Mono is the one static family: it loads 300/400/500/700 plus a vendored Text face (`src/renderer/fonts/IBMPlexMono`) claimed for 450–499, so `--weight-medium` and small offsets land between 400 and 500 instead of snapping up. Native iPhone typography, embedded web pages, and the terminal canvas have separate font rendering.
+- **Font heaviness:** Settings → Appearance and the command palette offer levels 1–10, saved per
+  browser in `argmax.font.heaviness`. Level 5 preserves the designed weights. Each step adds 25
+  through `--font-weight-offset`, from −100 to +125, to body, label, and heading weights, including
+  the dark theme adjustment for variable fonts. Geist Sans and IBM Plex Sans start at their original
+  rendered 400 face in both themes. Ink strength remains independent. Every sans pick loads a
+  variable face (Geist, IBM Plex Sans, Inter, DM Sans), and WebKit renders the system font and SF
+  Mono on a continuous axis, so every level is a real step. IBM Plex Mono is the one static family:
+  it loads 300/400/500/700 plus a vendored Text face (`src/renderer/fonts/IBMPlexMono`) claimed for
+  450–499, so `--weight-medium` and small offsets land between 400 and 500 instead of snapping up.
+  Native iPhone typography, embedded web pages, and the terminal canvas have separate font
+  rendering.
 - **Type Scale:** Controlled via `[data-font-size="1"]` through `="10"` on `:root` and `.session-multigrid`. App font size (`argmax.font.scale`) and agent window font size (`argmax.font.scale.chat`) scale independently.
   - The workspace card and review panel use `data-type-scale="chrome"` so control chips and sidebars stay at app-chrome scale.
   - Desktop composers follow the agent-window scale. Session composers inherit it from `.session-multigrid`, while the standalone launcher writes the same value onto its form. The mobile composer keeps its own intentional step above its surrounding scale.
   - Terminal surfaces resolve `--text-terminal` in pixels via helpers in `src/renderer/lib/fonts.ts` using `@property` length registrations.
 - **Focus Rings:** Global focus uses `outline: none` and `box-shadow: inset 0 0 0 1.5px var(--line-strong)`. Specific controls use `var(--ring)`.
 
-- **Background intensity:** Settings → Appearance offers a 0–100 slider, stored per browser in `argmax.background.level` (the old 1–10 `argmax.background.intensity` carries over as level × 10) and applied through `<html data-background-intensity>` plus `--background-intensity`. Light mode runs from soft gray at 0 through warm paper at 10 to pure white at 100. Dark mode keeps 70 as the shipped palette, lifts toward a lighter charcoal down to 0, and darkens to a deep near-black at 100. It controls the page, cards, composers, code, terminal, overlays, lines, and scrollbars. Sidebar surfaces have their own preference. Both follow the resolved theme in System mode and work alongside ink strength.
-- **Sidebar intensity:** The adjacent 0–100 slider adjusts both side panels and the review file tree, stored in `argmax.sidebar.level` and applied through `<html data-sidebar-intensity>` plus `--sidebar-intensity`. At the default 70, sidebars are slightly darker than the default page in light mode and slightly brighter in dark mode. The review tree keeps one extra step of separation. Higher levels move toward white in light mode and deeper charcoal in dark mode. Background intensity does not change these colors.
-- **Contrast:** Settings → Appearance offers a 0–100 slider, stored in `argmax.contrast.level` and applied through `<html data-contrast>` plus `--contrast`. It moves only `--line`, `--line-soft`, and `--line-strong`, on top of what background intensity produced (each is built from a `-at-intensity` base in `background-intensity.css`). 50 is the shipped line color and a no-op; below it lines fade toward `--bg` (up to 70%), above it they mix toward black in light (up to 40%) or white in dark (up to 30%). It exists mainly for high background intensity in light mode, where lines are the only thing left drawing panel edges. Text weight stays with ink strength.
+- **Background intensity:** Settings → Appearance offers a 0–100 slider, stored per browser in
+  `argmax.background.level` (the old 1–10 `argmax.background.intensity` carries over as level × 10)
+  and applied through `<html data-background-intensity>` plus `--background-intensity`. Light mode
+  runs from soft gray at 0 through neutral light gray at 10 to pure white at 100. Dark mode keeps 70 as the
+  shipped palette, lifts toward a lighter charcoal down to 0, and darkens to a deep near-black at 100. It controls the page, cards, composers, code, terminal, overlays, lines, and scrollbars.
+  Sidebar surfaces have their own preference. Both follow the resolved theme in System mode and work
+  alongside ink strength.
+- **Sidebar intensity:** The adjacent 0–100 slider adjusts both side panels and the review file
+  tree, stored in `argmax.sidebar.level` and applied through `<html data-sidebar-intensity>` plus
+  `--sidebar-intensity`. At the default 70, sidebars are slightly darker than the default page in
+  light mode and slightly brighter in dark mode. The review tree keeps one extra step of separation.
+  Higher levels move toward white in light mode and deeper charcoal in dark mode. Background
+  intensity does not change these colors.
+- **Contrast:** Settings → Appearance offers a 0–100 slider, stored in `argmax.contrast.level` and
+  applied through `<html data-contrast>` plus `--contrast`. It moves only `--line`, `--line-soft`,
+  and `--line-strong`, on top of what background intensity produced (each is built from a
+  `-at-intensity` base in `background-intensity.css`). 50 is the shipped line color and a no-op;
+  below it lines fade toward `--bg` (up to 70%), above it they mix toward black in light (up to 40%)
+  or white in dark (up to 30%). It exists mainly for high background intensity in light mode, where
+  lines are the only thing left drawing panel edges. Text weight stays with ink strength.
 
 ## Tokens
 
@@ -77,34 +205,301 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
 ## Component Patterns
 
 - **Attribute-Driven Styling:** Use `data-status`, `data-state`, and `data-risk` attributes for state styles instead of dynamic JSX class names.
-- **Settings is one row shape.** Every setting is a `SettingRow` — label, optional one-line description, control on the right — stacked inside a `SettingGroup`'s card ([settingsPrimitives.tsx](../src/renderer/components/settings/settingsPrimitives.tsx)). Add a setting by adding a row, not by inventing a layout: no per-control legend, no caption block under a control, no section eyebrow. A control that needs full width (a path, a command list) is a `.settings-field` inside the same card and borrows `.settings-row-label`'s typography. `.settings-card > *` carries the row inset, so any block dropped into a card is aligned automatically — never add horizontal padding of your own. Wide controls wrap onto their own line under the label (the row is `flex-wrap: wrap` with `justify-content: space-between`), so a five-option segmented never crushes the description beside it.
-- **Settings owns the sidebar column.** Opening settings swaps `Sidebar` for `SettingsRail`; the grid's first column becomes `--settings-rail-width` and the sidebar toggle is hidden. Schedule, Usage, Activity, and Arc pages open in the workspace with the app sidebar kept, so the current chat is always a click away. Usage and Activity are one Hacking entry with a switch in the title slot (`LedgerSwitch`).
-- **The window is transparent; every surface paints its own ground.** [tauri.conf.json](../src-tauri/tauri.conf.json) sets `transparent` with the macOS `sidebar` window effect behind the webview, so a region the page leaves unpainted shows the desktop through the system's vibrancy blur. Only the translucent-window opt-in (Settings → Appearance, or ⌘K "Enable translucent window") uses that. [lib/windowTranslucency.ts](../src/renderer/lib/windowTranslucency.ts) sets `data-window-translucent` and `--window-translucency` on `<html>` beside the theme attributes, and [window-translucency.css](../src/renderer/styles/window-translucency.css) owns everything the mode does. It works on tokens: inside `.app-shell` the grounds (`--bg`, `--sidebar`, `--review-panel`, `--review-sidebar`) and the raised surfaces (`--panel` family, composer, chips, selection, blocks, user bubble) are rebound to thinned copies of `*-solid` values captured on `:root`, so any page that paints from a token follows without knowing about the mode. Light thins grounds 1.25x; surfaces thin 1.4x the ground (capped at 90%), because they stack on the ground's film: at 50% a card shows about 65% opaque over a 50% page. The window effect state is `active`, so the vibrancy holds while another app has focus. Four lists in that file cover what a token cannot: solid islands (menus, dialogs, tooltips, and the Browser page itself, whose chrome goes translucent), layers that clear (a full-bleed box on the same ground would double the film), frosted chrome (sticky headers and floating cards blur what scrolls under them) and scroll edges (scrims become masks). A new surface that paints from a token needs nothing; a new menu or full-bleed pane needs one line in the matching list, and a token derived on `:root` from a thinned one must be added to the token list, since it inherits already resolved. `.workspace` keeps an empty `linear-gradient` as its background image in this mode: with a plain colour WebKit's compositor fills a scrolling page's layer with the ground a second time, which computed styles cannot show. xterm follows the attribute and draws a zero-alpha background. Nothing else may rely on body's background, and the theme flip no longer sets an NSWindow background colour, since an opaque one would sit in front of the material.
-- **The shell reflows by script, not by media query.** [useSidebarResize.ts](../src/renderer/hooks/useSidebarResize.ts) sizes the shell's grid columns inline: from the pane's 400px floor (`COMPOSER_MIN_WIDTH_PX`) the sidebar squeezes from its saved width down to 220px, then folds at 620px (`data-sidebar-collapsed`, the same overlay-and-peek the toggle uses) and unfolds 24px later so the edge does not flicker, while the native window floor is 600px so the folded layout always fits. Inside the pane the composer folds its chips behind `…` at the 720px container width. `body` therefore has no `min-width`, and no stylesheet may hide `.sidebar` or re-template `.app-shell` at a viewport width: a `display: none` on the sidebar leaves the inline grid's column standing as an empty band, and a `body` floor wider than the window clips the composer instead of letting the pane give way.
-- **Usage is a dashboard, so it widens the page measure.** It reuses the standalone-page chrome (rail, empty `.settings-topbar`, `.settings-page-title`) but swaps `--settings-measure` for `--usage-measure` (1180px): a row of five provider tiles and a 30-day chart do not fit a form's column. The page is one column of cards top to bottom — a summary band (the total with its small print beside it, then the ranked provider tiles across the card), then the chart, then the token flow, then the table, then remaining on your plans. Nothing shares a row with the chart: a 30-day curve in half a window is a smear, and `.usage-chart` states its own height (`clamp(190px, 24vh, 260px)`) rather than stretching to whatever a column beside it happens to be. Every card on the page is one shape, drawn once in `usage-page.css`: a bordered `--panel` with its title top-left and its control top-right, the breakdown table included (it bleeds to the card's edges so the first column sits under the title). The header's provider and range controls are `SettingsListPicker`s, the same trigger and `project-picker-popover` menu the settings page and the launcher chips use, with the provider's series dot as the row icon; the two-way Cost/Tokens and Model/Day switches stay segmented. Every figure on the page is `font-variant-numeric: tabular-nums`, set once on `.usage-main`.
-- **Subagent emblems ride the session icon palette, and their colour is never a status.** [agent-emblems.css](../src/renderer/styles/agent-emblems.css) maps one `data-hue` to `--emblem-face` for both the mark and any container that tints the working nest with it, then derives `--emblem-deep` and `--emblem-light` from that one token with `color-mix`, so a theme switch or a palette tweak repaints all 108 marks at once (paper pulls both mixes toward the face: on a light ground a 68% rim vanishes under it and a 50% sheet blows out). The bevel is three passes over the same path rather than a gradient — one emblem appears in the launch row, the dock tab, the masthead and the workspace card at the same time, and a `<defs>` gradient would make every copy share one id. Geometry stays in SVG attributes ([AgentEmblem.tsx](../src/renderer/components/AgentEmblem.tsx)), like the usage chart. Failure greys `--emblem-face` to `--muted` and adds a `--rose` corner dot, the pattern `.session-custom-icon-overlay` already uses; it never recolours the hue, which names the agent.
-- **A provider's colour follows its identity, not its rank.** `.usage-series[data-provider="…"]` sets `--usage-series` once, and the dot, the chart stroke and fill, the pressed row's tint, the tooltip dot, and the share meter all read that one token — so a window that reorders the rows never repaints them. The five values were picked against `--bg` and `--panel` in both themes with the `dataviz` skill's validator: worst all-pairs CVD ΔE 8.8 light / 8.3 dark (≥8 target), normal-vision ΔE 16.7 / 16.4 (≥15 floor), every slot ≥3:1 on both surfaces. Claude carries Anthropic's terracotta, in the same hue family as `--fox-fur`. **`--usage-codex` is a deliberate exception:** Codex is the neutral ink, so it sits under the validator's chroma floor (and, in dark, above its lightness band) on purpose. It pays for that with three other identity channels — the dot, the name, and the chart's hidden table. There are no provider glyphs: colour and the name carry identity on their own.
-- **The usage chart is hand-rolled SVG with no inline styles.** Geometry goes in SVG attributes (`d`, `transform`, `width`) and everything visual stays in `usage-chart.css`, which is why the marks, the tooltip, and the grid can be restyled without touching the component. It is measured with a `ResizeObserver` rather than scaled with `preserveAspectRatio`, so text stays crisp and stroke weight stays honest at any width, and the plot takes whatever height its card has left over (200–560px). Curves use monotone cubic (Fritsch–Carlson) interpolation, which is shape-preserving: a quiet day between two busy ones can never be drawn dipping below zero. The axis rounds up to a "nice" step, choosing among 4, 5, and 6 intervals whichever wastes the least headroom. `role="img"` plus an `aria-label` sentence describes it; the numbers themselves live in a `.usage-visually-hidden` table, which is clipped rather than `display: none` so it stays in the accessibility tree.
+- **Settings is one row shape.** Every setting is a `SettingRow` — label, optional one-line
+  description, control on the right — stacked inside a `SettingGroup`'s card
+  ([settingsPrimitives.tsx](../src/renderer/components/settings/settingsPrimitives.tsx)). Add a
+  setting by adding a row, not by inventing a layout: no per-control legend, no caption block under
+  a control, no section eyebrow. A control that needs full width (a path, a command list) is a
+  `.settings-field` inside the same card and borrows `.settings-row-label`'s typography.
+  `.settings-card > *` carries the row inset, so any block dropped into a card is aligned
+  automatically — never add horizontal padding of your own. Wide controls wrap onto their own line
+  under the label (the row is `flex-wrap: wrap` with `justify-content: space-between`), so a
+  five-option segmented never crushes the description beside it.
+- **Settings owns the sidebar column.** Opening settings swaps `Sidebar` for `SettingsRail`; the
+  grid's first column becomes `--settings-rail-width` and the sidebar toggle is hidden. Schedule,
+  Usage, Activity, and Arc pages open in the workspace with the app sidebar kept, so the current
+  chat is always a click away. Usage and Activity are one Hacking entry with a switch in the title
+  slot (`LedgerSwitch`).
+- **The window is transparent; every surface paints its own ground.**
+  [tauri.conf.json](../src-tauri/tauri.conf.json) sets `transparent` with the macOS `sidebar` window
+  effect behind the webview, so a region the page leaves unpainted shows the desktop through the
+  system's vibrancy blur. Only the translucent-window opt-in (Settings → Appearance, or ⌘K "Enable
+  translucent window") uses that.
+  [lib/windowTranslucency.ts](../src/renderer/lib/windowTranslucency.ts) sets
+  `data-window-translucent` and `--window-translucency` on `<html>` beside the theme attributes, and
+  [window-translucency.css](../src/renderer/styles/window-translucency.css) owns everything the mode
+  does. It works on tokens: inside `.app-shell` the grounds (`--bg`, `--sidebar`, `--review-panel`,
+  `--review-sidebar`) and the raised surfaces (`--panel` family, composer, chips, selection, blocks,
+  user bubble) are rebound to thinned copies of `*-solid` values captured on `:root`, so any page
+  that paints from a token follows without knowing about the mode. Light thins grounds 1.25x;
+  surfaces thin 1.4x the ground (capped at 90%), because they stack on the ground's film: at 50% a
+  card shows about 65% opaque over a 50% page. The window effect state is `active`, so the vibrancy
+  holds while another app has focus. Four lists in that file cover what a token cannot: solid
+  islands (menus, dialogs, tooltips, and the Browser page itself, whose chrome goes translucent),
+  layers that clear (a full-bleed box on the same ground would double the film), frosted chrome
+  (sticky headers and floating cards blur what scrolls under them) and scroll edges (scrims become
+  masks). A new surface that paints from a token needs nothing; a new menu or full-bleed pane needs
+  one line in the matching list, and a token derived on `:root` from a thinned one must be added to
+  the token list, since it inherits already resolved. `.workspace` keeps an empty `linear-gradient`
+  as its background image in this mode: with a plain colour WebKit's compositor fills a scrolling
+  page's layer with the ground a second time, which computed styles cannot show. xterm follows the
+  attribute and draws a zero-alpha background. Nothing else may rely on body's background, and the
+  theme flip no longer sets an NSWindow background colour, since an opaque one would sit in front of
+  the material.
+- **The shell reflows by script, not by media query.**
+  [useSidebarResize.ts](../src/renderer/hooks/useSidebarResize.ts) sizes the shell's grid columns
+  inline: from the pane's 400px floor (`COMPOSER_MIN_WIDTH_PX`) the sidebar squeezes from its saved
+  width down to 220px, then folds at 620px (`data-sidebar-collapsed`, the same overlay-and-peek the
+  toggle uses) and unfolds 24px later so the edge does not flicker, while the native window floor is
+  600px so the folded layout always fits. Inside the pane the composer folds its chips behind `…` at
+  the 720px container width. `body` therefore has no `min-width`, and no stylesheet may hide
+  `.sidebar` or re-template `.app-shell` at a viewport width: a `display: none` on the sidebar
+  leaves the inline grid's column standing as an empty band, and a `body` floor wider than the
+  window clips the composer instead of letting the pane give way.
+- **Usage is a dashboard, so it widens the page measure.** It reuses the standalone-page chrome
+  (rail, empty `.settings-topbar`, `.settings-page-title`) but swaps `--settings-measure` for
+  `--usage-measure` (1180px): a row of five provider tiles and a 30-day chart do not fit a form's
+  column. The page is one column of cards top to bottom — a summary band (the total with its small
+  print beside it, then the ranked provider tiles across the card), then the chart, then the token
+  flow, then the table, then remaining on your plans. Nothing shares a row with the chart: a 30-day
+  curve in half a window is a smear, and `.usage-chart` states its own height (`clamp(190px, 24vh,
+  260px)`) rather than stretching to whatever a column beside it happens to be. Every card on the
+  page is one shape, drawn once in `usage-page.css`: a bordered `--panel` with its title top-left
+  and its control top-right, the breakdown table included (it bleeds to the card's edges so the
+  first column sits under the title). The header's provider and range controls are
+  `SettingsListPicker`s, the same trigger and `project-picker-popover` menu the settings page and
+  the launcher chips use, with the provider's series dot as the row icon; the two-way Cost/Tokens
+  and Model/Day switches stay segmented. Every figure on the page is `font-variant-numeric:
+  tabular-nums`, set once on `.usage-main`.
+- **Subagent emblems ride the session icon palette, and their colour is never a status.**
+  [agent-emblems.css](../src/renderer/styles/agent-emblems.css) maps one `data-hue` to
+  `--emblem-face` for both the mark and any container that tints the working nest with it, then
+  derives `--emblem-deep` and `--emblem-light` from that one token with `color-mix`, so a theme
+  switch or a palette tweak repaints all 108 marks at once (paper pulls both mixes toward the face:
+  on a light ground a 68% rim vanishes under it and a 50% sheet blows out). The bevel is three
+  passes over the same path rather than a gradient — one emblem appears in the launch row, the dock
+  tab, the masthead and the workspace card at the same time, and a `<defs>` gradient would make
+  every copy share one id. Geometry stays in SVG attributes
+  ([AgentEmblem.tsx](../src/renderer/components/AgentEmblem.tsx)), like the usage chart. Failure
+  greys `--emblem-face` to `--muted` and adds a `--rose` corner dot, the pattern
+  `.session-custom-icon-overlay` already uses; it never recolours the hue, which names the agent.
+- **A provider's colour follows its identity, not its rank.** `.usage-series[data-provider="…"]`
+  sets `--usage-series` once, and the dot, the chart stroke and fill, the pressed row's tint, the
+  tooltip dot, and the share meter all read that one token — so a window that reorders the rows
+  never repaints them. The five values were picked against `--bg` and `--panel` in both themes with
+  the `dataviz` skill's validator: worst all-pairs CVD ΔE 8.8 light / 0.9 dark (≥8 target),
+  normal-vision ΔE 15.1 light / 10.4 dark (≥15 floor), every slot ≥3:1 on both surfaces. Dark misses
+  on one pair: Grok `#a47de8` against Cursor `#6199ed`. Re-measure with `node
+  scripts/validate_palette.js "<five hex>" --mode light|dark --pairs all` from the `dataviz` skill
+  whenever a `--usage-*` value changes. Claude carries Anthropic's terracotta, in the same hue
+  family as `--fox-fur`. **`--usage-codex` is a deliberate exception:** Codex is black ink
+  (near-black in light, light gray in dark so it stays visible on charcoal), so it sits under the
+  validator's chroma floor (and, in dark, above its lightness band) on purpose. It pays for that
+  with three other identity channels — the dot, the name, and the chart's hidden table. There are no
+  provider glyphs: colour and the name carry identity on their own.
+- **The usage chart is hand-rolled SVG with no inline styles.** Geometry goes in SVG attributes
+  (`d`, `transform`, `width`) and everything visual stays in `usage-chart.css`, which is why the
+  marks, the tooltip, and the grid can be restyled without touching the component. It is measured
+  with a `ResizeObserver` rather than scaled with `preserveAspectRatio`, so text stays crisp and
+  stroke weight stays honest at any width, and the plot takes whatever height its card has left over
+  (200–560px). Curves use monotone cubic (Fritsch–Carlson) interpolation, which is shape-preserving:
+  a quiet day between two busy ones can never be drawn dipping below zero. The axis rounds up to a
+  "nice" step, choosing among 4, 5, and 6 intervals whichever wastes the least headroom.
+  `role="img"` plus an `aria-label` sentence describes it; the numbers themselves live in a
+  `.usage-visually-hidden` table, which is clipped rather than `display: none` so it stays in the
+  accessibility tree.
 - **A table's numeric columns must out-specify its cell reset.** `.usage-table th, .usage-table td { text-align: left }` scores (0,1,1) and silently beats a bare `.usage-table-num` (0,1,0), leaving every figure left-aligned and uncomparable down its column. The right-align rule names both element and class. Same trap as the markdown heading reset above.
-- **Scrollers dissolve, they do not clip.** Long lists use `.scroll-fade` on a wrapper *outside* the overflow box ([scroll-fade.css](../src/renderer/styles/scroll-fade.css)): the transcript, the sidebar session list, the settings rail, and the settings/usage/schedule page (a sibling overlay, because `.workspace::before` is already taken). The inner scroller's end padding matches `--scroll-edge-fade` so at rest the fade lands on empty space. `--scroll-edge-fade-color` is the fill the wrapper sits on (`--bg`, `--sidebar`, `--panel`) — a mismatch paints a band of the wrong surface across the edge. Do not mask the scroller itself: sticky chrome inside it (scroll-to-latest, `.rail-heading`) would fade with the rows. Do not put `.scroll-fade` on a node that already has a `::before` / `::after`.
-- **Waiting has three shapes and one block.** [loading.css](../src/renderer/styles/loading.css) holds the whole vocabulary: [SkeletonPane](../src/renderer/components/SkeletonPane.tsx) for a panel whose code chunk or first payload is on the way, [LinesSkeleton](../src/renderer/components/LinesSkeleton.tsx) for text or code (ragged `:nth-child` widths, so it reads as prose rather than a bar), and [LoadingLine](../src/renderer/components/LoadingLine.tsx) — the working nest alone — for everything smaller than a pane. No shape shows a "Loading…" phrase: the mark says *wait* on its own, and a phrase reads as content (five such strings had once drifted into five sizes and colours). Every shape takes a `label` ("Loading settings", "Loading usage"), because `role="status"` is all a screen reader gets and it does not take its name from content — hence the explicit `aria-label`. All of them are built from `.loading-block`: one `--overlay-med` box with one `--overlay-strong` sweep across it, on `transform` so it stays on the compositor, opting into the hidden-document pause like every other loop. That is the app's only loading motion; a second one drawn by hand is how the codebase ended up with two `@keyframes skeleton-shimmer` in different files, where the last in document order silently won for both. A page with a strong shape of its own draws that shape instead of the generic pane — `.usage-skeleton` lays out total, provider tiles, chart, token flow, table in the page's own order, and the chart block is `clip-path`ed into a rising silhouette because at 240px a plain rectangle reads as a hole in the page. There is no delayed-appearance tier: an entrance with a fill mode is exactly what motion.css forbids.
-- **Motion:** Shared interaction transitions live in [motion.css](../src/renderer/styles/motion.css). Use `--motion-fast` (120ms), `--motion-base` (180ms), and `--motion-slow` (240ms), and keep the existing `prefers-reduced-motion` overrides intact. A surface that animates out stays mounted through `useMotionPresence`; an anchored popover reads `--popover-transform-origin` from `useAnchoredPopover`; and tablists with unequal labels use `SlidingTabIndicator` so the indicator follows the selected tab's measured position and width.
-- **The activity mark is one shape with five styles.** Settings → Appearance → Activity mark is a list picker. Each option carries a live mark as its glyph because the motion is what the user chooses. The styles are `nest` (four dots relaying round a 2x2), `cascade` (a wave down a 3x3 field), `meter` (three bars on unrelated periods), `orbit` (a comet on a track), and `halo` (a still core with a breathing ring). The choice is stored in localStorage and selected off `[data-mark]` in [working-nest.css](../src/renderer/styles/working-nest.css). Every style shares the box, the settle, and `--working-nest-lead` / `--working-nest-rest`, so a surface with its own identity colour ([agent-emblems.css](../src/renderer/styles/agent-emblems.css), [shell-session-icons.css](../src/renderer/styles/shell-session-icons.css)) keeps tinting all five. The value lives in a store ([activityMark.ts](../src/renderer/lib/activityMark.ts)) rather than in appearance props because the mark renders in about ten leaf components. A caller's `size` arrives as `--working-nest-size`. A stylesheet that needs the mark to track a type scale sets `--working-nest-size-override`, which is read first because an inline dimension would outrank every rule that tried.
-- **Transcript activity icons have one color-mode gate.** Settings → Appearance → Activity icons chooses semantic Color, the default, or muted Monochrome. The semantic palette is stable rather than following the selected accent: blue for information retrieval across local files and the web, coral for file changes, green for Git, orange for execution, purple for agents and coordination work, dedicated gold for skill activation, and red for destructive or failed work. The persisted value lives in [activityIconColorMode.ts](../src/renderer/lib/activityIconColorMode.ts) and reaches `<html data-activity-icon-color>` before the first render. [tool-activity.css](../src/renderer/styles/tool-activity.css) uses that one gate for tool-kind glyphs and integration marks, including flattening multicolor brand layers to `currentColor`. The mascot is the exception, because flattening a drawing with an outline, a fur mass, and a cream muzzle leaves a solid lump. [serverIcons.ts](../src/renderer/lib/serverIcons.ts) tags each of its layers with a `ServerIconTone`, and the CSS turns those into depths of the one ink. That ramp is `SERVER_ICON_TONE_DEPTH`, per theme and inverted between them. It has to run away from the row the icon sits on, since the ink is the dark end on a light row and the light end on a dark one. The iPhone flattens the same drawing for the same reason, tinting by alpha under `renderingMode(.template)`, so [export-ios-tool-icons.mjs](../scripts/export-ios-tool-icons.mjs) gives a tone-tagged mark a second `-mono` image set with that ramp baked into alpha per appearance, and `TranscriptToolIcon` swaps to it in Monochrome. It does not recolor navigation, status, sidebar, or header icons.
-- **A running sidebar row can draw a light under its text.** Settings → Appearance → Running row underline, off by default. One translated gradient in [shell-sessions.css](../src/renderer/styles/shell-sessions.css), phased per row from the workspace id so a column of running sessions reads as flow rather than strobing together. Gated in CSS off `<html data-session-underline>` rather than in the component, so the row markup is identical either way; the clip is scoped to `[data-status="running"]`, so no other row state pays for it.
+- **Scrollers dissolve, they do not clip.** Long lists use `.scroll-fade` on a wrapper *outside* the
+  overflow box ([scroll-fade.css](../src/renderer/styles/scroll-fade.css)): the transcript, the
+  sidebar session list, the settings rail, and the settings/usage/schedule page (a sibling overlay,
+  because `.workspace::before` is already taken). The inner scroller's end padding matches
+  `--scroll-edge-fade` so at rest the fade lands on empty space. `--scroll-edge-fade-color` is the
+  fill the wrapper sits on (`--bg`, `--sidebar`, `--panel`) — a mismatch paints a band of the wrong
+  surface across the edge. Do not mask the scroller itself: sticky chrome inside it
+  (scroll-to-latest, `.rail-heading`) would fade with the rows. Do not put `.scroll-fade` on a node
+  that already has a `::before` / `::after`.
+- **Waiting has three shapes and one block.** [loading.css](../src/renderer/styles/loading.css)
+  holds the whole vocabulary: [SkeletonPane](../src/renderer/components/SkeletonPane.tsx) for a
+  panel whose code chunk or first payload is on the way,
+  [LinesSkeleton](../src/renderer/components/LinesSkeleton.tsx) for text or code (ragged
+  `:nth-child` widths, so it reads as prose rather than a bar), and
+  [LoadingLine](../src/renderer/components/LoadingLine.tsx) — the working nest alone — for
+  everything smaller than a pane. No shape shows a "Loading…" phrase: the mark says *wait* on its
+  own, and a phrase reads as content (five such strings had once drifted into five sizes and
+  colours). Every shape takes a `label` ("Loading settings", "Loading usage"), because
+  `role="status"` is all a screen reader gets and it does not take its name from content — hence the
+  explicit `aria-label`. All of them are built from `.loading-block`: one `--overlay-med` box with
+  one `--overlay-strong` sweep across it, on `transform` so it stays on the compositor, opting into
+  the hidden-document pause like every other loop. That is the app's only loading motion; a second
+  one drawn by hand is how the codebase ended up with two `@keyframes skeleton-shimmer` in different
+  files, where the last in document order silently won for both. A page with a strong shape of its
+  own draws that shape instead of the generic pane — `.usage-skeleton` lays out total, provider
+  tiles, chart, token flow, table in the page's own order, and the chart block is `clip-path`ed into
+  a rising silhouette because at 240px a plain rectangle reads as a hole in the page. There is no
+  delayed-appearance tier: an entrance with a fill mode is exactly what motion.css forbids.
+- **Motion:** Shared interaction transitions live in
+  [motion.css](../src/renderer/styles/motion.css). Use `--motion-fast` (120ms), `--motion-base`
+  (180ms), and `--motion-slow` (240ms), and keep the existing `prefers-reduced-motion` overrides
+  intact. A surface that animates out stays mounted through `useMotionPresence`; an anchored popover
+  reads `--popover-transform-origin` from `useAnchoredPopover`; and tablists with unequal labels use
+  `SlidingTabIndicator` so the indicator follows the selected tab's measured position and width.
+- **The activity mark is one shape with five styles.** Settings → Appearance → Activity mark is a
+  list picker. Each option carries a live mark as its glyph because the motion is what the user
+  chooses. The styles are `nest` (four dots relaying round a 2x2), `cascade` (a wave down a 3x3
+  field), `meter` (three bars on unrelated periods), `orbit` (a comet on a track), and `halo` (a
+  still core with a breathing ring). The choice is stored in localStorage and selected off
+  `[data-mark]` in [working-nest.css](../src/renderer/styles/working-nest.css). Every style shares
+  the box, the settle, and `--working-nest-lead` / `--working-nest-rest`, so a surface with its own
+  identity colour ([agent-emblems.css](../src/renderer/styles/agent-emblems.css),
+  [shell-session-icons.css](../src/renderer/styles/shell-session-icons.css)) keeps tinting all five.
+  The value lives in a store ([activityMark.ts](../src/renderer/lib/activityMark.ts)) rather than in
+  appearance props because the mark renders in about ten leaf components. A caller's `size` arrives
+  as `--working-nest-size`. A stylesheet that needs the mark to track a type scale sets
+  `--working-nest-size-override`, which is read first because an inline dimension would outrank
+  every rule that tried.
+- **Transcript activity icons have one color-mode gate.** Settings → Appearance → Activity icons
+  chooses semantic Color, the default, or muted Monochrome. The semantic palette is stable rather
+  than following the selected accent: blue for information retrieval across local files and the web,
+  coral for file changes, green for Git, orange for execution, purple for agents and coordination
+  work, dedicated gold for skill activation, and red for destructive or failed work. The persisted
+  value lives in [activityIconColorMode.ts](../src/renderer/lib/activityIconColorMode.ts) and
+  reaches `<html data-activity-icon-color>` before the first render.
+  [tool-activity.css](../src/renderer/styles/tool-activity.css) uses that one gate for tool-kind
+  glyphs and integration marks, including flattening multicolor brand layers to `currentColor`. The
+  mascot is the exception, because flattening a drawing with an outline, a fur mass, and a cream
+  muzzle leaves a solid lump. [serverIcons.ts](../src/renderer/lib/serverIcons.ts) tags each of its
+  layers with a `ServerIconTone`, and the CSS turns those into depths of the one ink. That ramp is
+  `SERVER_ICON_TONE_DEPTH`, per theme and inverted between them. It has to run away from the row the
+  icon sits on, since the ink is the dark end on a light row and the light end on a dark one. The
+  iPhone flattens the same drawing for the same reason, tinting by alpha under
+  `renderingMode(.template)`, so [export-ios-tool-icons.mjs](../scripts/export-ios-tool-icons.mjs)
+  gives a tone-tagged mark a second `-mono` image set with that ramp baked into alpha per
+  appearance, and `TranscriptToolIcon` swaps to it in Monochrome. It does not recolor navigation,
+  status, sidebar, or header icons.
+- **A running sidebar row can draw a light under its text.** Settings → Appearance → Running row
+  underline, off by default. One translated gradient in
+  [shell-sessions.css](../src/renderer/styles/shell-sessions.css), phased per row from the workspace
+  id so a column of running sessions reads as flow rather than strobing together. Gated in CSS off
+  `<html data-session-underline>` rather than in the component, so the row markup is identical
+  either way; the clip is scoped to `[data-status="running"]`, so no other row state pays for it.
 - **Ordinary turns settle quietly.** The working nest lands over 220ms. The optional PR milestone sweep is controlled by Appearance → Celebrate PR milestones, off by default. It only plays for a confirmed creation or merge newer than the current chat watch, never for ordinary turn completion or reopened history. See [chat-cards.md](chat-cards.md).
-- **Pixel effects share primitives.** `lib/pixelField.ts` holds the reusable recipe: `mosaicWeight` (two contrast-stretched octaves of scrolling value noise), per-cell jitter, the `--accent` → `--accent-deep` crest, the `CELL` pitch, and live token reads. The effort rail uses that recipe, while the transient PR milestone sweep keeps its own animation constants. A new accent texture should reach for the shared module rather than inventing another shader.
-- **Markdown:** Assistant messages render via `react-markdown` inside `.markdown` containers. Prose blocks are constrained to a readable measure while code blocks, tables, and mermaid diagrams expand to full width of that column. A fenced block only keeps a language header in flow when the fence names a language ([CodeBlock.tsx](../src/renderer/components/CodeBlock.tsx)). Untagged and plaintext fences overlay the copy button, because a blank 30px strip left a one-line block sitting in the bottom of its frame. A `mermaid` / `mmd` fence is not a code block: [MermaidDiagram.tsx](../src/renderer/components/MermaidDiagram.tsx) draws the SVG on the transcript with mermaid's `neo` look. A flowchart wider than the fixed 780px prose measure breaks out symmetrically by at most 20% per side. The component measures both available sides and writes the safe pixel value to `--diagram-breakout`, including the transcript's card-aware right edge, before filling the resulting box; Expand opens a native-size overlay. A table renders inside a `.markdown-table-scroll` block ([MarkdownTable.tsx](../src/renderer/components/MarkdownTable.tsx)) because a table is sized by its content: `width: 100%` is a floor, not a cap, so a wide one otherwise overflows the column and the transcript's own scroller starts moving sideways with every message in it. `.conversation-list` scrolls on the vertical axis only, and mobile allows `pan-x` on it so the boxed table can still be dragged across — `touch-action` intersects down the ancestor chain, so a `pan-y` lock above would veto the child's sideways scroll. Math equations (LaTeX syntax `\[...\]`, `\(...\)`, `$$...$$`, `$...$`, bare Greek commands `\tau`, and `\begin{align}` environments) render via `remark-math` and `rehype-katex` with KaTeX styles, with `.katex-display` boxed with `overflow-x: auto` so wide formulas scroll cleanly without blowing out column width. Currency amounts (`$50`, `$1.25/1M in and $4.25`) and shell variables (`$PATH and $HOME`) are disambiguated so they remain plain text; see [chat-cards.md](chat-cards.md).
-- **The markdown ink/weight ladder must stay monotonic.** `h1`–`h3` on `--prose-ink-strong` at 600–660, `strong` at 590 on the same ink, body on `--prose-ink` at `--weight-prose` (380 dark, 400 light). Geist loads as a variable font, so these numbers render as written. Bold needs two clear steps over the body to show inside a paragraph, and one clear step under the headings so a bullet list of bold lead-ins never outweighs the heading above it; `--weight-medium` (470) stays the tier for chrome labels and titles. Painting headings from `--text-soft`/`--muted` puts them *behind* the paragraphs they introduce and lets bold body text win the page, which reads as one flat river in a heading-heavy answer. Size does real work: `h3` is `--text-md-plus`, a fifth over the body, which is the step that finally separated it from a bold lead-in at body size; `h2` and `h1` take one token each above it. Heading space is asymmetric and set in the heading's own em (1.4 above, 0.45 below) so the section break scales with the type step, with `:is(h1, h2, h3, h4) + *` zeroing the following block's top margin. `h4` is the only small-caps step. A leading `h1` (the answer titling itself) drops the rule and takes `0.3em` above, since the rule is the chapter-break mark and the first-child reset would otherwise pin the title flush under the meta line. A paragraph that is nothing but one bold run (the agent's heading written without `###`) is promoted to `h3` by `isBoldOnlyLine` in [StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx), with `.markdown h3 strong` inheriting the heading's weight and ink; a bold ending in a colon or longer than 80 characters is a lead-in or emphasis and stays a paragraph. The phone mirrors it in `TranscriptMarkdownDocument`. Pinned by `accentTokens.test.ts`; mockups and the decision in `docs/design/prose-rhythm`.
-- **Markdown vertical rhythm is one system.** Body leading 1.65; paragraphs 1.2em apart, so the gap between two paragraphs is visibly wider than the gap between two lines inside one (at 1.74 and 15px the two were within 5px and blocks stopped reading as blocks). A lead-in tightens to 0.4em and marks its list by proximity alone (a weight lift there reads as a wall of semibold heavier than the real heading above it). List rows carry no margin of their own — `li + li` sets 7px, nested 6px — because a row's gap has to beat its own 20.5px leading or a wrapped continuation reads as the next bullet, while staying under the paragraph gap so a list has a tighter texture than prose. `pre`, `blockquote` and `.markdown-table-scroll` share one 18px gap. List gutters are **em-based**: `--type-step` runs the body from 10px to 19px, and a px gutter sized for `11.` at 13px is overflowed at 19px.
-- **A blockquote is a hairline, not a callout.** `.markdown blockquote` draws nothing but a 2px `--line-strong` rule as a `::before`, inset `0.3em` top and bottom so it spans the text rather than the padding box, with a 16px indent and the quoted text left on `--prose-ink`. It carries no fill and no accent: `pre` is the one filled block because code is not prose, and the accent rule belongs to the *live* question, where it means "waiting on you". Agents reach for `>` to mean "here is the verbatim text", not "someone said this", so the quoted sentence is the payload and must not be dimmed. Nested quotes are the same rule one step in, and a quote holding a list keeps its bullets. The candidates were compared side by side in `docs/design/blockquote`.
+- **Pixel effects share primitives.** `lib/pixelField.ts` holds the reusable recipe: `mosaicWeight`
+  (two contrast-stretched octaves of scrolling value noise), per-cell jitter, the `--accent` →
+  `--accent-deep` crest, the `CELL` pitch, and live token reads. The effort rail uses that recipe,
+  while the transient PR milestone sweep keeps its own animation constants. A new accent texture
+  should reach for the shared module rather than inventing another shader.
+- **Markdown:** Assistant messages render via `react-markdown` inside `.markdown` containers. Prose
+  blocks are constrained to a readable measure while code blocks, tables, and mermaid diagrams
+  expand to full width of that column. A fenced block only keeps a language header in flow when the
+  fence names a language ([CodeBlock.tsx](../src/renderer/components/CodeBlock.tsx)). Untagged and
+  plaintext fences overlay the copy button, because a blank 30px strip left a one-line block sitting
+  in the bottom of its frame. A `mermaid` / `mmd` fence is not a code block:
+  [MermaidDiagram.tsx](../src/renderer/components/MermaidDiagram.tsx) draws the SVG on the
+  transcript with mermaid's `neo` look. A flowchart wider than the fixed 780px prose measure breaks
+  out symmetrically by at most 20% per side. The component measures both available sides and writes
+  the safe pixel value to `--diagram-breakout`, including the transcript's card-aware right edge,
+  before filling the resulting box; Expand opens a native-size overlay. A table renders inside a
+  `.markdown-table-scroll` block ([MarkdownTable.tsx](../src/renderer/components/MarkdownTable.tsx))
+  because a table is sized by its content: `width: 100%` is a floor, not a cap, so a wide one
+  otherwise overflows the column and the transcript's own scroller starts moving sideways with every
+  message in it. `.conversation-list` scrolls on the vertical axis only, and mobile allows `pan-x`
+  on it so the boxed table can still be dragged across — `touch-action` intersects down the ancestor
+  chain, so a `pan-y` lock above would veto the child's sideways scroll. Math equations (LaTeX
+  syntax `\[...\]`, `\(...\)`, `$$...$$`, `$...$`, bare Greek commands `\tau`, and `\begin{align}`
+  environments) render via `remark-math` and `rehype-katex` with KaTeX styles, with `.katex-display`
+  boxed with `overflow-x: auto` so wide formulas scroll cleanly without blowing out column width.
+  Currency amounts (`$50`, `$1.25/1M in and $4.25`) and shell variables (`$PATH and $HOME`) are
+  disambiguated so they remain plain text; see [chat-cards.md](chat-cards.md).
+- **The markdown ink/weight ladder must stay monotonic.** `h1`–`h3` on `--prose-ink-strong` at
+  600–660, `strong` at 590 on the same ink, body on `--prose-ink` at `--weight-prose` (380 dark, 400
+  light). Geist loads as a variable font, so these numbers render as written. Bold needs two clear
+  steps over the body to show inside a paragraph, and one clear step under the headings so a bullet
+  list of bold lead-ins never outweighs the heading above it; `--weight-medium` (470) stays the tier
+  for chrome labels and titles. Painting headings from `--text-soft`/`--muted` puts them *behind*
+  the paragraphs they introduce and lets bold body text win the page, which reads as one flat river
+  in a heading-heavy answer. Size does real work: `h3` is `--text-md-plus`, a fifth over the body,
+  which is the step that finally separated it from a bold lead-in at body size; `h2` and `h1` take
+  one token each above it. Heading space is asymmetric and set in the heading's own em (1.4 above,
+  0.45 below) so the section break scales with the type step, with `:is(h1, h2, h3, h4) + *` zeroing
+  the following block's top margin. `h4` is the only small-caps step. A leading `h1` (the answer
+  titling itself) drops the rule and takes `0.3em` above, since the rule is the chapter-break mark
+  and the first-child reset would otherwise pin the title flush under the meta line. A paragraph
+  that is nothing but one bold run (the agent's heading written without `###`) is promoted to `h3`
+  by `isBoldOnlyLine` in [StreamingMarkdown.tsx](../src/renderer/components/StreamingMarkdown.tsx),
+  with `.markdown h3 strong` inheriting the heading's weight and ink; a bold ending in a colon or
+  longer than 80 characters is a lead-in or emphasis and stays a paragraph. The phone mirrors it in
+  `TranscriptMarkdownDocument`. Pinned by `accentTokens.test.ts`; mockups and the decision in
+  `docs/design/prose-rhythm`.
+- **Markdown vertical rhythm is one system.** Body leading 1.65; paragraphs 1.2em apart, so the gap
+  between two paragraphs is visibly wider than the gap between two lines inside one (at 1.74 and
+  15px the two were within 5px and blocks stopped reading as blocks). A lead-in tightens to 0.4em
+  and marks its list by proximity alone (a weight lift there reads as a wall of semibold heavier
+  than the real heading above it). List rows carry no margin of their own — `li + li` sets 7px,
+  nested 6px — because a row's gap has to beat its own 20.5px leading or a wrapped continuation
+  reads as the next bullet, while staying under the paragraph gap so a list has a tighter texture
+  than prose. `pre`, `blockquote` and `.markdown-table-scroll` share one 18px gap. List gutters are
+  **em-based**: `--type-step` runs the body from 10px to 19px, and a px gutter sized for `11.` at
+  13px is overflowed at 19px.
+- **A blockquote is a hairline, not a callout.** `.markdown blockquote` draws nothing but a 2px
+  `--line-strong` rule as a `::before`, inset `0.3em` top and bottom so it spans the text rather
+  than the padding box, with a 16px indent and the quoted text left on `--prose-ink`. It carries no
+  fill and no accent: `pre` is the one filled block because code is not prose, and the accent rule
+  belongs to the *live* question, where it means "waiting on you". Agents reach for `>` to mean
+  "here is the verbatim text", not "someone said this", so the quoted sentence is the payload and
+  must not be dimmed. Nested quotes are the same rule one step in, and a quote holding a list keeps
+  its bullets. The candidates were compared side by side in `docs/design/blockquote`.
 - **The table's gap belongs to `.markdown-table-scroll`, never to `table`.** The wrapper is a BFC (`overflow-x: auto`), so a margin on the table adds inside the box instead of collapsing out of it.
 - **Zero-specificity resets silently lose.** `.markdown :where(h1, h2, h3, h4) + *` scores (0,1,0) and is beaten by `.markdown pre` (0,1,1), so it does nothing. The heading reset uses `:is()` with an explicit target list — (0,1,2) — and leaves headings out of that list so a subheading keeps its own space under its parent.
-- **Reasoning follows chat detail.** Steps shows a muted three-line preview of the latest live thought, with full reasoning behind a disclosure. Detailed uses `--prose-ink` for full inline reasoning and keeps its heading visible. Collapsible reasoning keeps its muted color. `.thought-block-body .markdown` re-inherits that body color for headings and for the single-item-`ol` pseudo-heading, which otherwise paint their own ink.
-- **Every dropdown is one picker primitive.** `.project-picker-popover` + `.project-picker-item` in [chat-chrome.css](../src/renderer/styles/chat-chrome.css) back the launcher's model, project and branch menus, the settings list pickers (`SettingsListPicker`), the review scope menu, and the action menus (chat actions, git actions, sidebar sort, project actions, identity, right-click). Rows are 28px at `--text-sm` inside a 5px inset and a 10px corner, so the 6px row corner is concentric with the panel's. The chosen row is marked by weight and a check in its 16px lead cell ([PickerLead.tsx](../src/renderer/components/PickerLead.tsx)), never by a fill — a fill is what hover and the keyboard cursor use, and the two must not look alike. Every listbox row renders the lead cell (glyph, check, or empty) and an action row's first `<svg>` is sized into the same cell, so labels sit on one column across all of them. `.project-picker-group-label` is the one group header; its `::before` cell keeps the name on the label column and, given `data-provider`, draws the provider's Usage-page dot. In the model picker those headers are sticky, so a list that always scrolls (35 rows) always says which CLI the row under the cursor belongs to. `.picker-meta` is the trailing column: a model's context window, a project's parent folder, or the amber "needs login" advisory. Long lists cap at `min(440px, 60dvh)`; the launcher's cap is `calc(100dvh - 96px)` instead, because its menus open into `.work-scroll`. The slash and `@file` autocomplete menus in the composer are a sibling family: full-width in the input's slot, with the same 16px lead cell in [chat-composer-chips.css](../src/renderer/styles/chat-composer-chips.css). File autocomplete keeps 28px rows and 14px/4px/10px nesting. The slash menu uses 36px rows, 20px/6px/14px nesting, regular-weight labels, and descriptions directly beside them. Its sentence-case Skills heading and trailing source column separate commands from skills without heavy type. The panel uses the composer surface and caps at the smaller of 400px or 55dvh. A file row is the type-coloured glyph the review tree uses, the file's name, then its folder muted beside it; the full path is the row's accessible name, so two `mod.rs` rows differ. Mockups and the decision: `docs/design/pickers`.
-- **Command Palette:** The search modal (`.command-palette-overlay`) is centered on the window, like the commit dialog — search is app-wide, so it is not offset past the sidebar onto the work area. ⌘K opens All, ⌘P on Files, ⌘F on Messages, ⌘⇧F on Contents. The Settings group lists the panel's sections. Actions includes direct changes from [settingCommands.ts](../src/renderer/lib/settingCommands.ts) for theme, accent, font family, chat detail, chat width, both font sizes, font heaviness, ink strength, background intensity, sidebar intensity, files panel side, notifications, keep-awake, fast mode, changed-file expansion, and the composer context indicator. These apply the same saved preferences as Settings. Toggle rows name the action they will take, such as "Enable fast mode" when it is off. The larger/smaller text rows set `keepOpen` and leave the dialog up between steps. It sits on `--overlay-panel` and marks the active row and filter pill with `--overlay-panel-raised`: in dark the dialog is darker than `--panel` and the active row is the raised one, in light both invert. Result rows set `data-group`, which picks the `--palette-icon-hue` their glyph reads; file rows drop the hue and render the type-colored `@react-symbols` glyph the review file tree uses.
+- **Reasoning follows chat detail.** Steps shows a muted three-line preview of the latest live
+  thought, with full reasoning behind a disclosure. Detailed uses `--prose-ink` for full inline
+  reasoning and keeps its heading visible. Collapsible reasoning keeps its muted color.
+  `.thought-block-body .markdown` re-inherits that body color for headings and for the
+  single-item-`ol` pseudo-heading, which otherwise paint their own ink.
+- **Every dropdown is one picker primitive.** `.project-picker-popover` + `.project-picker-item` in
+  [chat-chrome.css](../src/renderer/styles/chat-chrome.css) back the launcher's model, project and
+  branch menus, the settings list pickers (`SettingsListPicker`), the review scope menu, and the
+  action menus (chat actions, git actions, sidebar sort, project actions, identity, right-click).
+  Rows are 28px at `--text-sm` inside a 5px inset and a 10px corner, so the 6px row corner is
+  concentric with the panel's. The chosen row is marked by weight and a check in its 16px lead cell
+  ([PickerLead.tsx](../src/renderer/components/PickerLead.tsx)), never by a fill — a fill is what
+  hover and the keyboard cursor use, and the two must not look alike. Every listbox row renders the
+  lead cell (glyph, check, or empty) and an action row's first `<svg>` is sized into the same cell,
+  so labels sit on one column across all of them. `.project-picker-group-label` is the one group
+  header; its `::before` cell keeps the name on the label column and, given `data-provider`, draws
+  the provider's Usage-page dot. In the model picker those headers are sticky, so a list that always
+  scrolls (35 rows) always says which CLI the row under the cursor belongs to. `.picker-meta` is the
+  trailing column: a model's context window, a project's parent folder, or the amber "needs login"
+  advisory. Long lists cap at `min(440px, 60dvh)`; the launcher's cap is `calc(100dvh - 96px)`
+  instead, because its menus open into `.work-scroll`. The slash and `@file` autocomplete menus in
+  the composer are a sibling family: full-width in the input's slot, with the same 16px lead cell in
+  [chat-composer-chips.css](../src/renderer/styles/chat-composer-chips.css). File autocomplete keeps
+  28px rows and 14px/4px/10px nesting. The slash menu uses 36px rows, 20px/6px/14px nesting,
+  regular-weight labels, and descriptions directly beside them. Its sentence-case Skills heading and
+  trailing source column separate commands from skills without heavy type. The panel uses the
+  composer surface and caps at the smaller of 400px or 55dvh. A file row is the type-coloured glyph
+  the review tree uses, the file's name, then its folder muted beside it; the full path is the row's
+  accessible name, so two `mod.rs` rows differ. Mockups and the decision: `docs/design/pickers`.
+- **Command Palette:** The search modal (`.command-palette-overlay`) is centered on the window, like
+  the commit dialog — search is app-wide, so it is not offset past the sidebar onto the work area.
+  ⌘K opens All, ⌘P on Files, ⌘F on Messages, ⌘⇧F on Contents. The Settings group lists the panel's
+  sections. Actions includes direct changes from
+  [settingCommands.ts](../src/renderer/lib/settingCommands.ts) for theme, accent, font family, chat
+  detail, chat width, both font sizes, font heaviness, ink strength, background intensity, sidebar
+  intensity, files panel side, notifications, keep-awake, fast mode, changed-file expansion, and the
+  composer context indicator. These apply the same saved preferences as Settings. Toggle rows name
+  the action they will take, such as "Enable fast mode" when it is off. The larger/smaller text rows
+  set `keepOpen` and leave the dialog up between steps. It sits on `--overlay-panel` and marks the
+  active row and filter pill with `--overlay-panel-raised`: in dark the dialog is darker than
+  `--panel` and the active row is the raised one, in light both invert. Result rows set
+  `data-group`, which picks the `--palette-icon-hue` their glyph reads; file rows drop the hue and
+  render the type-colored `@react-symbols` glyph the review file tree uses.
 
-Search includes the full available chat and project catalog before limiting visible rows. Exact names lead prefixes and word matches, followed by typo matches. Titles take priority over secondary text, but queries can combine a title and project name. Mixed search orders groups by their strongest match. Filename queries favor basenames, while queries containing a slash rank the full path. Settings uses the same matching rules. Slash skills keep exact names ahead of prefixes and substring matches.
+Search includes the full available chat and project catalog before limiting visible rows. Exact
+names lead prefixes and word matches, followed by typo matches. Titles take priority over secondary
+text, but queries can combine a title and project name. Mixed search orders groups by their
+strongest match. Filename queries favor basenames, while queries containing a slash rank the full
+path. Settings uses the same matching rules. Slash skills keep exact names ahead of prefixes and
+substring matches.
 
 ⌘A opens Actions outside text fields. Inputs, editors, terminals, and native browser pages retain Select All. Search keeps an explicitly selected result stable as asynchronous results arrive, clears obsolete results when the query or file source changes, and leaves Enter to active IME composition.
 

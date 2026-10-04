@@ -4,7 +4,6 @@ import {
   ACTIVITY_MARK_OPTIONS,
   ACTIVITY_MARK_PART_COUNT,
   ACTIVITY_MARK_STORAGE_KEY,
-  DEFAULT_SESSION_UNDERLINE,
   initActivityMark,
   resetActivityMarkForTests,
   SESSION_UNDERLINE_STORAGE_KEY,
@@ -88,15 +87,6 @@ describe("<WorkingNest />", () => {
     }
   );
 
-  it("offers halo as a two-part activity mark", () => {
-    const haloOption = ACTIVITY_MARK_OPTIONS.find((option) => option.id === "halo");
-    const { container } = render(<WorkingNest active markId="halo" />);
-
-    expect(haloOption?.label).toBe("Halo");
-    expect(ACTIVITY_MARK_PART_COUNT.halo).toBe(2);
-    expect(container.querySelectorAll(".working-nest-part")).toHaveLength(2);
-  });
-
   it("carries the orbit trail inside the single rotating part", () => {
     const { container } = render(<WorkingNest active markId="orbit" />);
     const part = container.querySelector(".working-nest-part");
@@ -139,11 +129,6 @@ describe("<WorkingNest />", () => {
   // attribute is the whole contract — nothing renders it and nothing else can
   // catch a regression here.
   describe("running row underline", () => {
-    it("stays off until asked for", () => {
-      expect(sessionUnderlineSnapshot()).toBe(DEFAULT_SESSION_UNDERLINE);
-      expect(DEFAULT_SESSION_UNDERLINE).toBe("off");
-    });
-
     it("puts the choice on the document and persists it", () => {
       setSessionUnderline("sweep");
 

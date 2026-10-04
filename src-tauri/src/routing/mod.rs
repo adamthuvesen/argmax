@@ -168,7 +168,12 @@ pub(crate) fn with_available_provider(
             route.difficulty == Some(Difficulty::Heavy) && route.kind != Some(TaskKind::Mechanical);
         Some(RoutedModel {
             model: if heavy { &table::OPUS } else { &table::SONNET },
-            effort: route.effort,
+            // DeepSeek's low and high mean nothing to Sonnet: use medium.
+            effort: if route.model_id == table::DEEPSEEK.model_id {
+                Some(crate::ipc::validation::ReasoningEffort::Medium)
+            } else {
+                route.effort
+            },
         })
     } else {
         route
@@ -387,17 +392,32 @@ mod tests {
 
     #[test]
     fn an_uninstalled_grid_pick_moves_to_an_installed_provider() {
-        // Light mechanical work is the Speed cell that still launches Cursor.
+        // Light mechanical work is the Speed cell that still launches OpenCode.
         let route = decide(
             AutoTier::Cost,
             &classification(TaskKind::Mechanical, 1.0, 0.2, 0.9),
         );
-        assert_eq!(route.provider, ProviderId::Cursor);
-        assert_eq!(route.model_id, "composer-2.5");
+        assert_eq!(route.provider, ProviderId::Opencode);
+        assert_eq!(route.model_id, "openrouter/deepseek/deepseek-v4.1-flash");
         let moved = with_available_provider(route, &[ProviderId::Claude]);
         assert_eq!(moved.provider, ProviderId::Claude);
         assert_eq!(moved.model_id, "claude-sonnet-5-5");
-        assert!(moved.reason.contains("cursor unavailable"));
+        assert!(moved.reason.contains("opencode unavailable"));
+    }
+
+    #[test]
+    fn a_cost_deepseek_pick_without_opencode_runs_sonnet_at_medium() {
+        let route = decide(
+            AutoTier::Economy,
+            &classification(TaskKind::Question, 1.0, 0.2, 0.9),
+        );
+        assert_eq!(route.provider, ProviderId::Opencode);
+        let moved = with_available_provider(route, &[ProviderId::Claude]);
+        assert_eq!(moved.model_id, "claude-sonnet-5-5");
+        assert_eq!(
+            moved.effort,
+            Some(crate::ipc::validation::ReasoningEffort::Medium)
+        );
     }
 
     #[test]

@@ -29,41 +29,76 @@ pub fn trim_for_remote(result: &mut SessionEventsSinceResult) {
 /// checks the final envelope and redirects oversized replies to HTTP.
 pub const REMOTE_PAGE_BUDGET_BYTES: usize = 768 * 1024;
 
-/// Cut a row-cursor page to the byte budget, oldest rows first.
+/// Cut a row-cursor page to the byte budget, oldest rows first. Events fill
+/// the budget before raw outputs do.
 ///
 /// A cut page owes the rest through the row cursors: `has_more` sends the
-/// client back with `eventCursor` and no `changeCursor`, which
-/// `list_session_events_since` answers page by page until the last one
+/// client back with `eventCursor` and `rawOutputCursor` and no `changeCursor`,
+/// which `list_session_events_since` answers page by page until the last one
 /// carries the change cursor. Mutation pages (`changeCursor` in the request)
 /// are budgeted while consuming the feed instead: cutting their hydrated
 /// event rows here would discard the sequence needed for continuation.
 pub fn fit_to_budget(result: &mut SessionEventsSinceResult, budget: usize) {
     let mut spent = 0usize;
-    let mut kept = 0usize;
+    let mut kept_events = 0usize;
+    let mut kept_outputs = 0usize;
+    // One row always goes so the page advances. The final WS size gate sends
+    // an oversized row through the authenticated HTTP retry.
     for event in &result.events {
-        let bytes = serde_json::to_vec(event)
-            .map(|json| json.len())
-            .unwrap_or(0);
-        // One row always goes so the page advances. The final WS size gate
-        // sends an oversized row through the authenticated HTTP retry.
-        if kept > 0 && spent + bytes > budget {
+        let bytes = json_len(event);
+        if kept_events > 0 && spent + bytes > budget {
             break;
         }
         spent += bytes;
-        kept += 1;
+        kept_events += 1;
     }
-    if kept == result.events.len() {
+    let events_cut = kept_events < result.events.len();
+    // A page whose events were cut owes them first; its raw outputs wait.
+    if !events_cut {
+        for output in &result.raw_outputs {
+            let bytes = json_len(output);
+            if kept_events + kept_outputs > 0 && spent + bytes > budget {
+                break;
+            }
+            spent += bytes;
+            kept_outputs += 1;
+        }
+    }
+    let outputs_cut = kept_outputs < result.raw_outputs.len();
+    if !events_cut && !outputs_cut {
         return;
     }
-    result.events.truncate(kept);
-    result.event_cursor = result
-        .events
-        .iter()
-        .filter_map(|event| event.row_cursor)
-        .max()
-        .unwrap_or(result.event_cursor);
+    if events_cut {
+        result.events.truncate(kept_events);
+        result.event_cursor = result
+            .events
+            .iter()
+            .filter_map(|event| event.row_cursor)
+            .max()
+            .unwrap_or(result.event_cursor);
+    }
+    // The next read starts after the raw cursor, so it sits just below the
+    // first output not sent: at the last one sent, or below the whole page
+    // when events used the budget and no output went.
+    if let Some(first_owed) = result
+        .raw_outputs
+        .get(kept_outputs)
+        .and_then(|output| output.row_cursor)
+    {
+        result.raw_outputs.truncate(kept_outputs);
+        result.raw_output_cursor = result
+            .raw_outputs
+            .iter()
+            .filter_map(|output| output.row_cursor)
+            .max()
+            .unwrap_or(first_owed - 1);
+    }
     result.change_cursor = None;
     result.has_more = true;
+}
+
+fn json_len<T: serde::Serialize>(row: &T) -> usize {
+    serde_json::to_vec(row).map(|json| json.len()).unwrap_or(0)
 }
 
 /// Payload weight only. The subagent peek (`session:agent-events`) renders
@@ -251,12 +286,15 @@ mod tests {
     use super::*;
 
     fn event(cursor: i64, kind: &str, message: &str, payload: Value) -> TimelineEvent {
+        let id = format!("event-{cursor}");
+        let semantic = crate::persistence::timeline_semantics::derive(kind, &id, &payload);
         TimelineEvent {
-            id: format!("event-{cursor}"),
+            id,
             session_id: "session-1".to_owned(),
             r#type: kind.to_owned(),
             message: message.to_owned(),
             payload,
+            semantic,
             created_at: format!("2026-09-11T00:00:{cursor:02}Z"),
             row_cursor: Some(cursor),
         }
@@ -326,6 +364,218 @@ mod tests {
         fit_to_budget(&mut result, 16);
         assert_eq!(ids(&result), vec!["event-1"]);
         assert!(result.has_more);
+    }
+
+    fn raw_output(cursor: i64, content: &str) -> crate::persistence::events::RawProviderOutput {
+        crate::persistence::events::RawProviderOutput {
+            id: format!("raw-{cursor}"),
+            session_id: "session-1".to_owned(),
+            stream: "stdout".to_owned(),
+            content: content.to_owned(),
+            created_at: "2026-10-04T00:00:00Z".to_owned(),
+            row_cursor: Some(cursor),
+        }
+    }
+
+    #[test]
+    fn raw_outputs_count_against_the_budget_and_owe_the_rest_by_their_cursor() {
+        let filler = "x".repeat(400);
+        let mut result = page(vec![event(1, "user.message", "Go", json!({}))]);
+        result.raw_outputs = (10..14).map(|cursor| raw_output(cursor, &filler)).collect();
+        result.raw_output_cursor = 13;
+        result.change_cursor = Some(99);
+        let budget = json_len(&result.events[0]) + 2 * json_len(&result.raw_outputs[0]);
+
+        fit_to_budget(&mut result, budget);
+
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.raw_outputs.len(), 2);
+        assert_eq!(result.raw_output_cursor, 11);
+        assert_eq!(result.change_cursor, None);
+        assert!(result.has_more);
+    }
+
+    #[test]
+    fn a_page_whose_events_used_the_budget_sends_no_raw_output_and_rewinds_its_cursor() {
+        let filler = "x".repeat(400);
+        let mut result = page(vec![
+            event(1, "user.message", "Go", json!({ "text": filler })),
+            event(2, "message.completed", "answer", json!({ "text": filler })),
+        ]);
+        result.raw_outputs = vec![raw_output(10, "a"), raw_output(11, "b")];
+        result.event_cursor = 2;
+        result.raw_output_cursor = 11;
+
+        let first_event = json_len(&result.events[0]);
+        fit_to_budget(&mut result, first_event);
+
+        assert_eq!(ids(&result), vec!["event-1"]);
+        assert!(result.raw_outputs.is_empty());
+        // Reading after 9 serves both outputs again; none is skipped.
+        assert_eq!(result.raw_output_cursor, 9);
+        assert_eq!(result.event_cursor, 1);
+    }
+
+    #[test]
+    fn a_first_raw_output_over_budget_still_goes_when_no_event_did() {
+        let mut result = page(Vec::new());
+        result.raw_outputs = vec![raw_output(5, &"x".repeat(4000)), raw_output(6, "tail")];
+        result.raw_output_cursor = 6;
+
+        fit_to_budget(&mut result, 16);
+
+        assert_eq!(result.raw_outputs.len(), 1);
+        assert_eq!(result.raw_output_cursor, 5);
+        assert!(result.has_more);
+    }
+
+    /// The phone's whole backfill, driven the way `TranscriptStore` drives it:
+    /// an authoritative tail, then row-cursor pages while `has_more`. Every
+    /// row arrives once, in order, and the last page carries the change cursor.
+    #[test]
+    fn a_backfill_larger_than_the_budget_pages_without_losing_or_repeating_a_row() {
+        use crate::persistence::events::{
+            list_session_changes_since, list_session_events_since, persist_raw_output,
+            persist_timeline_event, PersistRawOutputInput, PersistTimelineEventInput,
+        };
+        let database = crate::persistence::Database::open_in_memory().expect("database");
+        seed_session(&database);
+        let connection = database.connection();
+        let filler = "é漢".repeat(7_000); // ~70 KB per row, multi-byte on purpose
+        for index in 0..24 {
+            persist_timeline_event(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: format!("e{index:02}"),
+                    session_id: "s1".to_owned(),
+                    r#type: "command.completed".to_owned(),
+                    message: "done".to_owned(),
+                    payload: json!({ "output": filler }),
+                    created_at: None,
+                },
+            )
+            .expect("event");
+            persist_raw_output(
+                &connection,
+                &PersistRawOutputInput {
+                    id: format!("r{index:02}"),
+                    session_id: "s1".to_owned(),
+                    stream: "stdout".to_owned(),
+                    content: filler.clone(),
+                    created_at: None,
+                },
+            )
+            .expect("raw output");
+        }
+
+        let budget = REMOTE_PAGE_BUDGET_BYTES;
+        let mut page =
+            list_session_changes_since(&connection, "s1", None, None, None).expect("tail");
+        let (mut event_ids, mut raw_ids) = (Vec::new(), Vec::new());
+        let mut pages = 0;
+        let mut raw_only_pages = 0;
+        loop {
+            trim_for_remote(&mut page);
+            fit_to_budget(&mut page, budget);
+            let bytes: usize = page.events.iter().map(json_len).sum::<usize>()
+                + page.raw_outputs.iter().map(json_len).sum::<usize>();
+            assert!(bytes <= budget, "page {pages} carried {bytes} bytes");
+            event_ids.extend(page.events.iter().map(|event| event.id.clone()));
+            raw_ids.extend(page.raw_outputs.iter().map(|output| output.id.clone()));
+            pages += 1;
+            if page.events.is_empty() && !page.raw_outputs.is_empty() {
+                raw_only_pages += 1;
+            }
+            if !page.has_more {
+                assert!(
+                    page.change_cursor.is_some(),
+                    "the last page hands over the change feed"
+                );
+                break;
+            }
+            assert!(
+                page.change_cursor.is_none(),
+                "a cut page must not skip the rows it owes"
+            );
+            assert!(pages < 100, "paging did not converge");
+            page = list_session_events_since(
+                &connection,
+                "s1",
+                Some(page.event_cursor),
+                Some(page.raw_output_cursor),
+            )
+            .expect("next page");
+        }
+
+        let expected_events: Vec<String> = (0..24).map(|index| format!("e{index:02}")).collect();
+        let expected_raw: Vec<String> = (0..24).map(|index| format!("r{index:02}")).collect();
+        assert_eq!(event_ids, expected_events);
+        assert_eq!(raw_ids, expected_raw);
+        assert!(
+            pages > 2,
+            "the fixture should need several pages, got {pages}"
+        );
+        assert!(
+            raw_only_pages > 0,
+            "raw outputs must still page once every event is delivered"
+        );
+    }
+
+    fn seed_session(database: &crate::persistence::Database) {
+        use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
+        use crate::persistence::sessions::{persist_session, PersistSessionInput};
+        use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+        let connection = database.connection();
+        persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "p1".to_owned(),
+                name: "Argmax".to_owned(),
+                repo_path: "/tmp/repo".to_owned(),
+                current_branch: "main".to_owned(),
+                default_branch: Some("main".to_owned()),
+                settings: ProjectSettings {
+                    archive_on_merge: false,
+                    worktree_location: "~/.argmax".to_owned(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                },
+            },
+        )
+        .expect("project");
+        persist_workspace(
+            &connection,
+            &PersistWorkspaceInput {
+                id: "w1".to_owned(),
+                project_id: "p1".to_owned(),
+                task_label: "t".to_owned(),
+                branch: "b".to_owned(),
+                base_ref: "main".to_owned(),
+                path: "/tmp/repo/w1".to_owned(),
+                state: "running".to_owned(),
+                shared_workspace: false,
+                kind: "git".to_owned(),
+                dirty: false,
+                changed_files: 0,
+            },
+        )
+        .expect("workspace");
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: "s1".to_owned(),
+                workspace_id: "w1".to_owned(),
+                provider: "codex".to_owned(),
+                model_label: "GPT".to_owned(),
+                model_id: "gpt-5.5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: None,
+                agent_mode: None,
+                prompt: "p".to_owned(),
+                state: crate::sessions::state::SessionState::Running,
+            },
+        )
+        .expect("session");
     }
 
     #[test]

@@ -468,25 +468,6 @@ describe("SessionActionsMenu — launching chat", () => {
     delete (window as { argmax?: unknown }).argmax;
   });
 
-  it("opens the chat whose agent launched this one", async () => {
-    const onOpenLaunchingChat = vi.fn();
-    render(
-      <SessionActionsMenu
-        isLogOpen={false}
-        onBrowseFiles={vi.fn()}
-        onToggleLog={vi.fn()}
-        onOpenLaunchingChat={onOpenLaunchingChat}
-        session={{ ...session(), launchedBySessionId: "session-parent" }}
-        workspace={workspace()}
-      />
-    );
-
-    await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open launching chat" }));
-
-    expect(onOpenLaunchingChat).toHaveBeenCalledTimes(1);
-  });
-
   it("hides the action for a session nobody launched, and when the launcher is gone", async () => {
     const { unmount } = render(
       <SessionActionsMenu

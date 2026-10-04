@@ -23,9 +23,10 @@
 // and shared by every workspace pointing at it; `watch` and `close_watcher`
 // are this module's public surface and stay workspace-scoped.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use serde_json::json;
@@ -37,17 +38,11 @@ use crate::approvals::service::ApprovalService;
 use crate::checks::service::{CheckService, RunWorkspaceCheckInput};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, run_git_text_blocking, GIT_DEFAULT_TIMEOUT};
-use crate::ipc::inputs::{
-    OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
-    WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
-    WorkspacesKeepInput, WorkspacesMarkViewedInput, WorkspacesOpenInIdeInput,
-    WorkspacesSetIconInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
-    WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
-};
 use crate::persistence::arcs::{get_arc, set_arc_coordinator_session};
 use crate::persistence::database::Database;
 use crate::persistence::events::{
-    list_all_session_events, persist_timeline_event, PersistTimelineEventInput, TimelineEvent,
+    list_all_session_events, persist_copied_event, persist_timeline_event,
+    PersistTimelineEventInput, TimelineEvent,
 };
 use crate::persistence::projects::{
     find_project_by_id, list_projects, persist_project, require_project, PersistProjectInput,
@@ -61,9 +56,9 @@ use crate::persistence::sessions::{
 use crate::persistence::workspaces::{
     find_workspace_by_id, mark_workspaces_viewed, persist_workspace, set_workspace_icon,
     set_workspace_label, set_workspace_label_auto, set_workspace_pinned,
-    set_workspace_priority_added, set_workspace_priority_dismissed, update_workspace_state,
-    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
-    WorkspaceViewedObservation,
+    set_workspace_priority_added, set_workspace_priority_dismissed, set_workspace_snoozed_until,
+    update_workspace_state, update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
+    WorkspaceSummary, WorkspaceViewedObservation,
 };
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
@@ -72,12 +67,37 @@ use crate::sessions::state::SessionState;
 use crate::terminal::service::TerminalService;
 use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
+use crate::workspaces::branch_names::{
+    render_branch_step, BranchNameParts, BranchStep, DEFAULT_BRANCH_TEMPLATE,
+};
+use crate::workspaces::inputs::{
+    OpenIdeChoice, ScratchWorkspaceKind, WorkspacesArchiveInput, WorkspacesAutotitleInput,
+    WorkspacesCreateCurrentInput, WorkspacesCreateInCheckoutInput, WorkspacesCreateIsolatedInput,
+    WorkspacesCreateScratchInput, WorkspacesKeepInput, WorkspacesMarkViewedInput,
+    WorkspacesOpenInIdeInput, WorkspacesSetIconInput, WorkspacesSetLabelInput,
+    WorkspacesSetPinnedInput, WorkspacesSetPriorityAddedInput, WorkspacesSetPriorityDismissedInput,
+    WorkspacesSetSnoozedUntilInput,
+};
 
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionForkResult {
     pub workspace: WorkspaceSummary,
     pub session: SessionSummary,
+    pub fork: fork::ForkInfo,
+}
+
+pub mod fork;
+
+/// A checkout a new chat can run in: one entry of the project's
+/// `git worktree list` that has a branch checked out.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectCheckout {
+    pub branch: String,
+    pub path: String,
+    /// The project's own checkout, the first entry git lists.
+    pub is_main: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -229,8 +249,8 @@ pub struct WorkspaceService {
 /// newtype. Unlike `create_current` that path is not the project root, because a
 /// chat in a worktree shares that worktree, not the repo.
 pub struct WorkspacesCreateAlongsideInput {
-    pub project_id: crate::ipc::validation::ProjectId,
-    pub task_label: crate::ipc::validation::TaskLabel,
+    pub project_id: crate::application::validation::ProjectId,
+    pub task_label: crate::application::validation::TaskLabel,
     pub path: String,
     pub branch: String,
     pub base_ref: String,
@@ -624,9 +644,12 @@ impl WorkspaceService {
         self: &Arc<Self>,
         input: WorkspacesCreateIsolatedInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
-        let project = {
+        let (project, global_branch_template) = {
             let connection = self.database.connection();
-            require_project(&connection, input.project_id.as_str())?
+            (
+                require_project(&connection, input.project_id.as_str())?,
+                crate::persistence::app_settings::branch_template(&connection),
+            )
         };
         let base_ref = input
             .base_ref
@@ -646,21 +669,23 @@ impl WorkspaceService {
         // Naming stays local so chat startup never waits for title generation.
         let name_id = Uuid::new_v4();
         let name = WORKTREE_NAMES[usize::from(name_id.as_bytes()[15]) % WORKTREE_NAMES.len()];
-        let branch = format!("argmax/{name}-{}", &name_id.simple().to_string()[..8]);
-
-        // Two independent ref reads: the base ref's validity has nothing to do
-        // with whether the freshly generated branch name collides, so probe
-        // both at once instead of paying two sequential git round-trips.
-        // `branch_exists` never itself returns `Err` (a failed probe reads as
-        // "not taken"), so the only error either future can surface is
-        // `assert_valid_ref`'s — evaluating `branch_taken` below, after the
-        // destination-path check, keeps that error's precedence over the
-        // branch-collision one exactly as it was when the calls were
-        // sequential.
-        let (_, branch_taken) = tokio::try_join!(
-            assert_valid_ref(&project.repo_path, &base_ref),
-            branch_exists(&project.repo_path, &branch),
-        )?;
+        // The project's template wins over the app-wide one, which wins over
+        // the built-in `argmax/{word}-{id}`. Rendering is local; see
+        // `branch_names`.
+        let branch_template = project
+            .branch_template
+            .clone()
+            .or(global_branch_template)
+            .unwrap_or_else(|| DEFAULT_BRANCH_TEMPLATE.to_string());
+        let name_parts = BranchNameParts::new(
+            task_label,
+            name,
+            &name_id.simple().to_string()[..8],
+            &chrono::Utc::now().format("%Y%m%d").to_string(),
+        );
+        // The base ref's validity has nothing to do with the branch name, and
+        // the name is claimed atomically below, so there is no probe to run.
+        assert_valid_ref(&project.repo_path, &base_ref).await?;
 
         let worktree_location = project.settings.worktree_location.clone();
         if !Path::new(&worktree_location).is_absolute() {
@@ -687,33 +712,75 @@ impl WorkspaceService {
                     "Confirm the configured worktree location is accessible.",
                 )
             })?;
-        let worktree_path = worktree_root.join(branch.replace('/', "-"));
-        match tokio::fs::symlink_metadata(&worktree_path).await {
-            Ok(_) => {
-                return Err(invalid_workspace(
-                    format!(
-                        "Worktree destination already exists: {}",
-                        worktree_path.display()
-                    ),
-                    "Retry to generate a new worktree name.",
-                ))
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(invalid_workspace(
-                    format!("Could not inspect worktree destination: {error}"),
-                    "Confirm the configured worktree location is accessible.",
-                ))
-            }
-        }
 
-        // Pre-flight branch-collision check so the error names what to retry.
-        if branch_taken {
-            return Err(invalid_workspace(
-                format!("Branch {branch} already exists"),
-                "Retry to generate a new worktree name.",
-            ));
-        }
+        // Claim a free name. A template without `{id}` can render a name that
+        // is taken (two chats with one label, even at the same moment), so each
+        // candidate is claimed atomically and only what this call created is
+        // ever removed:
+        //   1. `create_dir` makes the worktree directory, and fails if anything
+        //      is there. The branch with `/` replaced by `-` is the directory
+        //      name, so `a/b-c` and `a-b/c` share one and the second one loses.
+        //   2. `git branch` creates the branch ref under git's own lock, and
+        //      fails if the name is taken or a parent or child ref blocks it.
+        //   3. `git worktree add` then checks out the branch we own into the
+        //      directory we own.
+        // A loser at step 1 or 2 undoes nothing but its own empty directory and
+        // tries the next name: `-2`, `-3`, …, then the name plus the launch's
+        // random id, then the built-in `argmax/` name. A parent/child conflict
+        // (an existing branch `adam/fix` blocks every `adam/fix/…`) skips
+        // straight to that last name, because no suffix leaves the prefix.
+        // The claim and the add are one group under the registry lock: a launch
+        // that has claimed a branch must not have its `worktree add` overlap
+        // another launch's. The directory claim in the loop is a plain
+        // filesystem call and needs no lock.
+        let registry_guard = lock_worktree_registry(Path::new(&project.repo_path)).await;
+        let steps = BranchStep::all();
+        let mut next_step = 0;
+        let mut last_conflict = String::new();
+        let (branch, worktree_path, branch_oid) = loop {
+            let Some(step) = steps.get(next_step).copied() else {
+                return Err(invalid_workspace(
+                    format!("Could not find a free branch name. {last_conflict}"),
+                    "Change the branch template in Settings, or retry.",
+                ));
+            };
+            next_step += 1;
+            let branch = render_branch_step(&branch_template, &name_parts, step);
+            let candidate = worktree_root.join(branch.replace('/', "-"));
+            match tokio::fs::create_dir(&candidate).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    last_conflict = format!("{} already exists.", candidate.display());
+                    continue;
+                }
+                Err(error) => {
+                    return Err(invalid_workspace(
+                        format!("Could not create worktree destination: {error}"),
+                        "Confirm the configured worktree location is accessible.",
+                    ))
+                }
+            }
+            match claim_branch(&project.repo_path, &branch, &base_ref).await {
+                Ok(oid) => break (branch, candidate, oid),
+                Err(failure) => {
+                    // Ours and empty: `remove_dir` refuses anything else.
+                    let _ = tokio::fs::remove_dir(&candidate).await;
+                    match failure {
+                        BranchClaimFailure::Taken(reason) => last_conflict = reason,
+                        BranchClaimFailure::BlockedPrefix(reason) => {
+                            last_conflict = reason;
+                            next_step = next_step.max(steps.len() - 1);
+                        }
+                        BranchClaimFailure::Other(reason) => {
+                            return Err(invalid_workspace(
+                                format!("Could not create worktree for {branch}. {reason}"),
+                                "Choose another base ref or branch name and retry.",
+                            ))
+                        }
+                    }
+                }
+            }
+        };
 
         // Only the checkout runs here. The repository's post-checkout hook is
         // replayed by `finish_worktree_in_background` once the row exists:
@@ -726,20 +793,27 @@ impl WorkspaceService {
                 HOOKS_DISABLED,
                 "worktree",
                 "add",
-                "-b",
-                &branch,
                 &worktree_path.display().to_string(),
-                &base_ref,
+                &branch,
             ],
             Duration::from_millis(GIT_TIMEOUT_MS),
         )
         .await;
+        // Released before any cleanup, which takes the same lock itself, and
+        // before the row, the watcher and the background hook replay.
+        drop(registry_guard);
 
         if let Err(error) = add_result {
-            // Cleanup partial worktree registration so a future archive can
-            // reach it. See TS comment for the failure modes this guards
-            // against (disk full, ref races, lock contention).
-            discard_worktree(Path::new(&project.repo_path), &worktree_path, &branch).await;
+            // The directory and the branch are both ours, so undoing them is
+            // safe: nothing else can have been given either. This is the only
+            // cleanup in the launch that runs after a git failure.
+            discard_worktree(
+                Path::new(&project.repo_path),
+                &worktree_path,
+                &branch,
+                Some(branch_oid.as_str()),
+            )
+            .await;
             return Err(invalid_workspace(
                 format!("Could not create worktree for {branch}. {error}"),
                 "Choose another base ref or branch name and retry.",
@@ -779,7 +853,13 @@ impl WorkspaceService {
         let workspace = match persisted {
             Ok(workspace) => workspace,
             Err(error) => {
-                discard_worktree(Path::new(&project.repo_path), &worktree_path, &branch).await;
+                discard_worktree(
+                    Path::new(&project.repo_path),
+                    &worktree_path,
+                    &branch,
+                    Some(branch_oid.as_str()),
+                )
+                .await;
                 return Err(error);
             }
         };
@@ -932,6 +1012,155 @@ impl WorkspaceService {
         Ok(workspace)
     }
 
+    /// The checkouts of a project that a new chat may run in, each with the
+    /// branch checked out there. A launcher uses this to say which branches are
+    /// already checked out, so picking one runs the chat in that checkout
+    /// instead of asking git to check the branch out a second time.
+    ///
+    /// Left out: a detached or bare entry (no branch to record), one git marks
+    /// prunable or whose directory is gone, and anything that is being or has
+    /// been archived into recovery storage, because that directory is about to
+    /// be deleted.
+    pub async fn list_checkouts(&self, project_id: &str) -> ArgmaxResult<Vec<ProjectCheckout>> {
+        let repo_path = {
+            let connection = self.database.read_connection();
+            require_project(&connection, project_id)?.repo_path
+        };
+        let stdout = run_git_text(
+            Path::new(&repo_path),
+            ["worktree", "list", "--porcelain"],
+            Duration::from_millis(GIT_TIMEOUT_MS),
+        )
+        .await
+        .map_err(|error| {
+            invalid_workspace(
+                format!("Could not inspect git worktrees: {error}"),
+                "Verify the project repository and retry.",
+            )
+        })?;
+        let retired = self.retired_checkout_paths()?;
+        Ok(parse_worktree_checkouts(&stdout)
+            .into_iter()
+            .filter(|checkout| checkout_is_attachable(checkout, &retired))
+            .map(|checkout| ProjectCheckout {
+                branch: checkout.branch.unwrap_or_default(),
+                path: checkout.path,
+                is_main: checkout.is_main,
+            })
+            .collect())
+    }
+
+    /// A workspace in an existing checkout of the project, for a launcher that
+    /// picked a branch another worktree has checked out. The same validation an
+    /// agent's `session_launch` path gets: the directory must be one `git
+    /// worktree list` reports, and it must still be on the branch the person
+    /// picked. A checkout that has moved on is refused, never retargeted.
+    pub async fn create_in_checkout(
+        self: &Arc<Self>,
+        input: WorkspacesCreateInCheckoutInput,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        // The checkout's owner may start archiving while this launch validates
+        // and inserts. Archive closes admission, drains the admissions already
+        // held, and only then looks for rows sharing the tree. Holding an
+        // admission on the owner from before the first look until the row exists
+        // makes one of two things true: the archive began first and this is
+        // refused, or this row exists before the archive scans for it and goes
+        // down with the owner.
+        let _owner_admission = match self.checkout_owner_id(Path::new(input.path.as_str()))? {
+            Some(owner_id) => Some(self.lifecycle.admit(&owner_id)?),
+            None => None,
+        };
+        let project = {
+            let connection = self.database.read_connection();
+            require_project(&connection, input.project_id.as_str())?
+        };
+        let (path, branch) =
+            resolve_registered_checkout(&project.repo_path, input.path.as_str()).await?;
+        if branch != input.branch.as_str() {
+            return Err(ArgmaxError::service(
+                "CHECKOUT_BRANCH_CHANGED",
+                format!(
+                    "{path} is on '{branch}', not '{}'. Pick the branch again.",
+                    input.branch.as_str()
+                ),
+            ));
+        }
+        if self
+            .retired_checkout_paths()?
+            .iter()
+            .any(|retired| comparable_worktree_path(Path::new(&path)).starts_with(retired))
+        {
+            return Err(invalid_workspace(
+                format!("{path} is being archived."),
+                "Pick another checkout.",
+            ));
+        }
+        self.create_alongside(WorkspacesCreateAlongsideInput {
+            project_id: input.project_id,
+            task_label: input.task_label,
+            path,
+            branch,
+            // Review compares against this, the same as `create_current`.
+            base_ref: project.default_branch.unwrap_or(project.current_branch),
+        })
+    }
+
+    /// The workspace that owns the tree at `path`: the live row that is not a
+    /// shared one, since only it is licensed to move or remove the checkout.
+    /// Paths compare the way `git worktree list` output does.
+    fn checkout_owner_id(&self, path: &Path) -> ArgmaxResult<Option<String>> {
+        let target = comparable_worktree_path(path);
+        let connection = self.database.read_connection();
+        let mut statement = connection
+            .prepare_cached(
+                "SELECT id, path FROM workspaces
+                 WHERE shared_workspace = 0 AND state != 'archived'",
+            )
+            .map_err(crate::persistence::sqlite_error)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(crate::persistence::sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(crate::persistence::sqlite_error)?;
+        Ok(rows
+            .into_iter()
+            .find(|(_, owner_path)| comparable_worktree_path(Path::new(owner_path)) == target)
+            .map(|(id, _)| id))
+    }
+
+    /// Directories a new chat must not attach to: archive recovery storage, and
+    /// the checkout of any row that owns its tree and is mid-archive or failed to
+    /// archive. A shared row owns nothing, so its archive removes no checkout and
+    /// must not hide a live one. A failed read is an error, not "nothing retired": attaching to a tree that
+    /// is about to be deleted is worse than refusing the launch.
+    fn retired_checkout_paths(&self) -> ArgmaxResult<Vec<PathBuf>> {
+        let mut retired: Vec<PathBuf> = self
+            .archive_recovery_root
+            .iter()
+            .map(|root| comparable_worktree_path(root))
+            .collect();
+        let connection = self.database.read_connection();
+        let mut statement = connection
+            .prepare_cached(
+                "SELECT path FROM workspaces
+                 WHERE state IN ('archiving', 'archive-failed') AND shared_workspace = 0",
+            )
+            .map_err(crate::persistence::sqlite_error)?;
+        let paths = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(crate::persistence::sqlite_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(crate::persistence::sqlite_error)?;
+        retired.extend(
+            paths
+                .iter()
+                .map(|path| comparable_worktree_path(Path::new(path))),
+        );
+        Ok(retired)
+    }
+
     /// The workspace that hosts one imported session (see `crate::sync`).
     /// Same shape as `create_current`, but the delta waits: the session row is
     /// created next, and shipping both together stops the sidebar from
@@ -1053,120 +1282,6 @@ impl WorkspaceService {
                 .is_some_and(|service| service.has_running_workspace_check(workspace_id))
     }
 
-    /// Fork a finished session: a new sidebar workspace at the same checkout
-    /// whose session carries a copy of the transcript and the source's
-    /// provider conversation id, flagged so its first resumed turn diverges
-    /// (`--fork-session`) instead of appending to the original conversation.
-    ///
-    /// Not for Cursor: its CLI/ACP has no fork-on-resume, so two sessions
-    /// sharing one conversation id would write into the same provider
-    /// session. Claude diverges via `--fork-session`, Codex via `exec fork`,
-    /// OpenCode via `run --fork`. The fork always points at the source
-    /// workspace's directory as a shared checkout — archiving the fork never
-    /// tears down a worktree it does not own.
-    pub fn fork_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<SessionForkResult> {
-        let connection = self.database.connection();
-        let source_session = find_session_by_id(&connection, session_id)?;
-        if source_session.provider == "cursor" {
-            return Err(invalid_workspace(
-                "Cursor chats can't be forked: cursor-agent has no way to fork a resumed conversation.",
-                "Fork a Claude, Codex, or OpenCode chat instead.",
-            ));
-        }
-        if matches!(source_session.state.as_str(), "running" | "waiting") {
-            return Err(invalid_workspace(
-                "This chat is still working; forking mid-turn would copy a partial transcript.",
-                "Wait for the turn to finish, then fork.",
-            ));
-        }
-        let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
-        // One transaction for the whole fork. The transcript copy is a row per
-        // event, and `events` carries an FTS5 insert trigger, so committing
-        // each one separately blocked the app's single connection for the
-        // length of the history — and a mid-copy failure left the workspace and
-        // session rows standing with a truncated transcript.
-        let transaction = connection
-            .unchecked_transaction()
-            .map_err(crate::persistence::sqlite_error)?;
-        let workspace = persist_workspace(
-            &transaction,
-            &PersistWorkspaceInput {
-                id: Uuid::new_v4().to_string(),
-                project_id: source_workspace.project_id.clone(),
-                task_label: format!("{} (fork)", source_workspace.task_label),
-                branch: source_workspace.branch.clone(),
-                base_ref: source_workspace.base_ref.clone(),
-                path: source_workspace.path.clone(),
-                state: "complete".to_string(),
-                shared_workspace: true,
-                kind: source_workspace.kind.clone(),
-                dirty: source_workspace.dirty,
-                changed_files: source_workspace.changed_files,
-            },
-        )?;
-        let session = persist_session(
-            &transaction,
-            &PersistSessionInput {
-                id: Uuid::new_v4().to_string(),
-                workspace_id: workspace.id.clone(),
-                provider: source_session.provider.clone(),
-                model_label: source_session.model_label.clone(),
-                model_id: source_session.model_id.clone(),
-                reasoning_effort: source_session.reasoning_effort.clone(),
-                permission_mode: Some(source_session.permission_mode.clone()),
-                agent_mode: source_session.agent_mode.clone(),
-                prompt: source_session.prompt.clone(),
-                state: SessionState::Complete,
-            },
-        )?;
-        // Order matters: setting the conversation id clears resume_fork, so
-        // the flag goes on afterwards.
-        let session = match source_session.provider_conversation_id.as_deref() {
-            Some(conversation_id) => {
-                let session = update_session_provider_conversation_id(
-                    &transaction,
-                    &session.id,
-                    conversation_id,
-                )?;
-                set_session_resume_fork(&transaction, &session.id)?;
-                session
-            }
-            // No conversation to resume yet (nothing ever ran): the fork is
-            // just a transcript copy that starts fresh on its first message.
-            None => session,
-        };
-        // Copy the transcript so the fork opens with the full history. Raw
-        // provider output and usage stay with the original — they describe
-        // work the fork did not perform.
-        for event in list_all_session_events(&transaction, session_id)? {
-            persist_timeline_event(
-                &transaction,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: session.id.clone(),
-                    r#type: event.r#type,
-                    message: event.message,
-                    payload: event.payload,
-                    created_at: Some(event.created_at),
-                },
-            )?;
-        }
-        transaction
-            .commit()
-            .map_err(crate::persistence::sqlite_error)?;
-        self.publish(DashboardDelta {
-            projects: list_projects(&connection)?,
-            workspaces: vec![workspace.clone()],
-            sessions: vec![session.clone()],
-            ..DashboardDelta::default()
-        });
-        drop(connection);
-        if let Err(error) = self.watch(&workspace.id) {
-            tracing::warn!(workspace_id = %workspace.id, ?error, "workspace watcher failed to start");
-        }
-        Ok(SessionForkResult { workspace, session })
-    }
-
     /// The task label of a live isolated workspace whose worktree is `path`, if
     /// there is one. Paths are compared the way `git worktree list` output is,
     /// so a symlinked or non-canonical spelling still matches.
@@ -1240,14 +1355,15 @@ impl WorkspaceService {
         };
 
         let project_id =
-            crate::ipc::validation::ProjectId::try_from(destination_project.id.clone())
+            crate::application::validation::ProjectId::try_from(destination_project.id.clone())
                 .map_err(ArgmaxError::invalid)?;
-        let task_label =
-            crate::ipc::validation::TaskLabel::try_from(source_workspace.task_label.clone())
-                .map_err(ArgmaxError::invalid)?;
+        let task_label = crate::application::validation::TaskLabel::try_from(
+            source_workspace.task_label.clone(),
+        )
+        .map_err(ArgmaxError::invalid)?;
         let destination_workspace = match &destination {
             MoveDestination::Project { worktree: true, .. } => {
-                let base_ref = crate::ipc::validation::BaseRef::try_from(
+                let base_ref = crate::application::validation::BaseRef::try_from(
                     destination_project.current_branch.clone(),
                 )
                 .map_err(ArgmaxError::invalid)?;
@@ -1418,19 +1534,30 @@ impl WorkspaceService {
                         }
                         None => (destination_session, false),
                     };
+                let mut copied_ids = Vec::new();
                 for event in list_all_session_events(&transaction, source_session_id)? {
-                    persist_timeline_event(
+                    let copy_id = Uuid::new_v4().to_string();
+                    copied_ids.push((event.id.clone(), copy_id.clone()));
+                    persist_copied_event(
                         &transaction,
                         &PersistTimelineEventInput {
-                            id: Uuid::new_v4().to_string(),
+                            id: copy_id,
                             session_id: destination_session.id.clone(),
                             r#type: event.r#type,
                             message: event.message,
                             payload: event.payload,
                             created_at: Some(event.created_at),
                         },
+                        &event.id,
                     )?;
                 }
+                // A moved fork stays a fork.
+                fork::carry_lineage_on_move(
+                    &transaction,
+                    source_session_id,
+                    &destination_session.id,
+                    &copied_ids,
+                )?;
                 let seam = persist_timeline_event(
                     &transaction,
                     &PersistTimelineEventInput {
@@ -1482,7 +1609,7 @@ impl WorkspaceService {
                 Err(error) => {
                     let cleanup = self
                         .archive(WorkspacesArchiveInput {
-                            workspace_id: crate::ipc::validation::WorkspaceId::try_from(
+                            workspace_id: crate::application::validation::WorkspaceId::try_from(
                                 destination_workspace.id.clone(),
                             )
                             .map_err(ArgmaxError::invalid)?,
@@ -1522,7 +1649,7 @@ impl WorkspaceService {
         } else {
             match self
                 .archive(WorkspacesArchiveInput {
-                    workspace_id: crate::ipc::validation::WorkspaceId::try_from(
+                    workspace_id: crate::application::validation::WorkspaceId::try_from(
                         source_workspace.id.clone(),
                     )
                     .map_err(ArgmaxError::invalid)?,
@@ -2083,18 +2210,22 @@ impl WorkspaceService {
                 }
             }
             let recovery_text = recovery_path.to_string_lossy().to_string();
-            if let Err(error) = run_git_text(
-                Path::new(&project.repo_path),
-                &[
-                    "worktree",
-                    "move",
-                    workspace.path.as_str(),
-                    recovery_text.as_str(),
-                ],
-                Duration::from_millis(GIT_TIMEOUT_MS),
-            )
-            .await
-            {
+            let move_result = {
+                // The move rewrites the same registry a concurrent launch reads.
+                let _registry = lock_worktree_registry(Path::new(&project.repo_path)).await;
+                run_git_text(
+                    Path::new(&project.repo_path),
+                    &[
+                        "worktree",
+                        "move",
+                        workspace.path.as_str(),
+                        recovery_text.as_str(),
+                    ],
+                    Duration::from_millis(GIT_TIMEOUT_MS),
+                )
+                .await
+            };
+            if let Err(error) = move_result {
                 self.mark_archive_failed(&workspace_id);
                 lease.finish(ArchiveOutcome::Failed);
                 return Err(invalid_workspace(
@@ -2802,6 +2933,23 @@ impl WorkspaceService {
         Ok(workspace)
     }
 
+    pub fn set_snoozed_until(
+        self: &Arc<Self>,
+        input: WorkspacesSetSnoozedUntilInput,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let connection = self.database.connection();
+        let workspace = set_workspace_snoozed_until(
+            &connection,
+            input.workspace_id.as_str(),
+            input.until.as_deref(),
+        )?;
+        self.publish(DashboardDelta {
+            workspaces: vec![workspace.clone()],
+            ..DashboardDelta::default()
+        });
+        Ok(workspace)
+    }
+
     pub fn set_label(
         self: &Arc<Self>,
         input: WorkspacesSetLabelInput,
@@ -3125,11 +3273,14 @@ fn repair_archived_worktree(
     if retained_branch.trim() != branch {
         return Err(ArgmaxError::service("ARCHIVE_RECOVERY_INVALID", "Retained worktree is on a different branch. Inspect its files before retrying archive."));
     }
-    run_git_text_blocking(
-        repo_path,
-        ["worktree", "repair", &recovery_path.to_string_lossy()],
-        GIT_DEFAULT_TIMEOUT,
-    )?;
+    {
+        let _registry = lock_worktree_registry_blocking(repo_path);
+        run_git_text_blocking(
+            repo_path,
+            ["worktree", "repair", &recovery_path.to_string_lossy()],
+            GIT_DEFAULT_TIMEOUT,
+        )?;
+    }
     if !worktree_is_registered_blocking(repo_path, recovery_path)? {
         return Err(ArgmaxError::service(
             "ARCHIVE_RECOVERY_INVALID",
@@ -3172,11 +3323,15 @@ fn worktree_common_dir(checkout: &Path) -> Option<PathBuf> {
 fn remove_archived_checkout(checkout: &Path, repo_path: Option<&Path>) -> ArgmaxResult<()> {
     if let Some(repo_path) = repo_path {
         let checkout_arg = checkout.to_string_lossy();
-        match run_git_text_blocking(
-            repo_path,
-            ["worktree", "remove", "--force", checkout_arg.as_ref()],
-            ARCHIVE_EXPIRY_GIT_TIMEOUT,
-        ) {
+        let removed = {
+            let _registry = lock_worktree_registry_blocking(repo_path);
+            run_git_text_blocking(
+                repo_path,
+                ["worktree", "remove", "--force", checkout_arg.as_ref()],
+                ARCHIVE_EXPIRY_GIT_TIMEOUT,
+            )
+        };
+        match removed {
             Ok(_) if !checkout.exists() => return Ok(()),
             Ok(_) => {}
             Err(error) => tracing::warn!(
@@ -3189,9 +3344,11 @@ fn remove_archived_checkout(checkout: &Path, repo_path: Option<&Path>) -> Argmax
     std::fs::remove_dir_all(checkout)
         .map_err(|error| ArgmaxError::service("ARCHIVE_EXPIRY_REMOVE_FAILED", error.to_string()))?;
     if let Some(repo_path) = repo_path {
-        if let Err(error) =
+        let pruned = {
+            let _registry = lock_worktree_registry_blocking(repo_path);
             run_git_text_blocking(repo_path, ["worktree", "prune"], GIT_DEFAULT_TIMEOUT)
-        {
+        };
+        if let Err(error) = pruned {
             tracing::warn!(repo = %repo_path.display(), ?error, "git worktree prune failed after removing an expired archive");
         }
     }
@@ -3207,6 +3364,59 @@ async fn worktree_is_registered(repo_path: String, worktree_path: PathBuf) -> Ar
     })
     .await
     .map_err(|error| ArgmaxError::service("WORKTREE_LIST_JOIN", error.to_string()))?
+}
+
+/// One entry of `git worktree list --porcelain`.
+struct ListedCheckout {
+    path: String,
+    /// `None` for a detached HEAD or a bare repository.
+    branch: Option<String>,
+    prunable: bool,
+    is_main: bool,
+}
+
+/// Entries are blank-line separated blocks of `key value` lines. Git lists the
+/// repository's own checkout first.
+fn parse_worktree_checkouts(stdout: &str) -> Vec<ListedCheckout> {
+    stdout
+        .split("\n\n")
+        .filter_map(|block| {
+            let mut path = None;
+            let mut branch = None;
+            let mut prunable = false;
+            let mut bare = false;
+            for line in block.lines() {
+                if let Some(value) = line.strip_prefix("worktree ") {
+                    path = Some(value.to_string());
+                } else if let Some(value) = line.strip_prefix("branch refs/heads/") {
+                    branch = Some(value.to_string());
+                } else if line == "bare" {
+                    bare = true;
+                } else if line == "prunable" || line.starts_with("prunable ") {
+                    prunable = true;
+                }
+            }
+            Some(ListedCheckout {
+                path: path?,
+                branch: if bare { None } else { branch },
+                prunable,
+                is_main: false,
+            })
+        })
+        .enumerate()
+        .map(|(index, mut checkout)| {
+            checkout.is_main = index == 0;
+            checkout
+        })
+        .collect()
+}
+
+fn checkout_is_attachable(checkout: &ListedCheckout, retired: &[PathBuf]) -> bool {
+    if checkout.branch.is_none() || checkout.prunable || !Path::new(&checkout.path).is_dir() {
+        return false;
+    }
+    let path = comparable_worktree_path(Path::new(&checkout.path));
+    !retired.iter().any(|retired| path.starts_with(retired))
 }
 
 /// Whether `git worktree list` in `repo_path` reports `worktree_path`. True for
@@ -3239,7 +3449,7 @@ fn worktree_is_registered_blocking(repo_path: &Path, worktree_path: &Path) -> Ar
         .any(|path| path == target))
 }
 
-fn comparable_worktree_path(path: &Path) -> PathBuf {
+pub(crate) fn comparable_worktree_path(path: &Path) -> PathBuf {
     let normalized = normalize(path);
     if let Ok(canonical) = normalized.canonicalize() {
         return canonical;
@@ -3267,46 +3477,198 @@ fn comparable_worktree_path(path: &Path) -> PathBuf {
     canonical
 }
 
+// `git worktree add`, `remove`, `move`, `repair` and `prune` all read or
+// rewrite the repository's `.git/worktrees/` registry, and git does not lock it
+// against itself: an `add` that scans the registry while another `add` is
+// mid-write fails with "failed to read .git/worktrees/<name>/commondir". The
+// name claim in `create_isolated` makes concurrent launches pick distinct
+// names, but it cannot stop two git processes from overlapping, so every
+// Argmax call that writes the registry takes one lock per repository, keyed by
+// the canonical git common dir. The main checkout and every linked checkout of
+// a repository, and every spelling of their paths, share one registry and so
+// one lock.
+//
+// It is a leaf lock: it is held for the git subprocess (and, in
+// `create_isolated`, for the branch claim that precedes the add) and nothing
+// else is acquired while it is held, so it cannot take part in a cycle. The
+// background hook replay and setup command run after the launch has released
+// it. Another process running git on the same repository is not covered; there
+// the failing call reports its error and cleans up only what it created.
+static WORKTREE_REGISTRY_LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+type RegistryGuard = tokio::sync::OwnedMutexGuard<()>;
+
+/// The canonical git common dir for `repo_path`, from `git rev-parse
+/// --git-common-dir` (relative to `repo_path` when git prints it that way). A
+/// repository git cannot be asked about is keyed by its canonical path.
+fn worktree_registry_key(repo_path: &Path, common_dir: Option<&str>) -> PathBuf {
+    let candidate = match common_dir.map(str::trim).filter(|dir| !dir.is_empty()) {
+        Some(dir) => repo_path.join(dir),
+        None => repo_path.to_path_buf(),
+    };
+    std::fs::canonicalize(&candidate).unwrap_or(candidate)
+}
+
+fn registry_lock_for(key: PathBuf) -> Arc<tokio::sync::Mutex<()>> {
+    Arc::clone(
+        WORKTREE_REGISTRY_LOCKS
+            .lock_or_recover("worktree registry locks")
+            .entry(key)
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+    )
+}
+
+async fn lock_worktree_registry(repo_path: &Path) -> RegistryGuard {
+    let common_dir = run_git_text(
+        repo_path,
+        ["rev-parse", "--git-common-dir"],
+        Duration::from_millis(GIT_TIMEOUT_MS),
+    )
+    .await
+    .ok();
+    let key = worktree_registry_key(repo_path, common_dir.as_deref());
+    registry_lock_for(key).lock_owned().await
+}
+
+/// For the synchronous writers (startup recovery, the expiry sweep). The wait
+/// runs on a plain thread because `blocking_lock` panics on a runtime thread,
+/// and these callers may be on either kind.
+fn lock_worktree_registry_blocking(repo_path: &Path) -> RegistryGuard {
+    let common_dir = run_git_text_blocking(
+        repo_path,
+        ["rev-parse", "--git-common-dir"],
+        GIT_DEFAULT_TIMEOUT,
+    )
+    .ok();
+    let lock = registry_lock_for(worktree_registry_key(repo_path, common_dir.as_deref()));
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| lock.clone().blocking_lock_owned())
+            .join()
+            .expect("worktree registry lock thread panicked")
+    })
+}
+
 /// Undo a `git worktree add -b` that must not survive: deregister the
 /// worktree, delete its directory, and drop the branch it created. Every step
 /// is best-effort — this only ever runs on an error path, where a second
 /// failure has nothing left to report to.
-async fn discard_worktree(repo_path: &Path, worktree_path: &Path, branch: &str) {
-    let _ = run_git_text(
-        repo_path,
-        &[
-            "worktree",
-            "remove",
-            "--force",
-            &worktree_path.display().to_string(),
-        ],
-        Duration::from_millis(GIT_TIMEOUT_MS),
-    )
-    .await;
+/// Removes a worktree directory and its branch. Call it only for resources the
+/// caller created: it deletes without asking. With `branch_oid` the branch is
+/// deleted only while it still points there, so a branch someone has moved on
+/// since survives; without it the branch is deleted unconditionally.
+async fn discard_worktree(
+    repo_path: &Path,
+    worktree_path: &Path,
+    branch: &str,
+    branch_oid: Option<&str>,
+) {
+    {
+        let _registry = lock_worktree_registry(repo_path).await;
+        let _ = run_git_text(
+            repo_path,
+            &[
+                "worktree",
+                "remove",
+                "--force",
+                &worktree_path.display().to_string(),
+            ],
+            Duration::from_millis(GIT_TIMEOUT_MS),
+        )
+        .await;
+    }
     let _ = tokio::fs::remove_dir_all(worktree_path).await;
     // After the worktree is gone the branch is unreferenced; without this it
     // stays behind and collides with the next workspace on the same label.
-    let _ = run_git_text(
-        repo_path,
-        &["branch", "-D", branch],
-        Duration::from_millis(GIT_TIMEOUT_MS),
-    )
-    .await;
+    let reference = format!("refs/heads/{branch}");
+    let _ = match branch_oid {
+        Some(oid) => {
+            run_git_text(
+                repo_path,
+                &["update-ref", "-d", &reference, oid],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await
+        }
+        None => {
+            run_git_text(
+                repo_path,
+                &["branch", "-D", branch],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await
+        }
+    };
 }
 
-async fn branch_exists(repo_path: &str, branch: &str) -> ArgmaxResult<bool> {
-    let res = run_git_text(
+/// Why a branch could not be claimed.
+enum BranchClaimFailure {
+    /// The name is taken, or git was holding its lock. The next suffix may work.
+    Taken(String),
+    /// An existing branch is a path prefix of this one, or the reverse. No
+    /// suffix on this prefix can help.
+    BlockedPrefix(String),
+    /// Anything else, such as a base ref that does not resolve.
+    Other(String),
+}
+
+/// Reads git's "cannot lock ref 'refs/heads/NEW': 'refs/heads/OTHER' exists;
+/// cannot create 'refs/heads/NEW'" and says whether OTHER is a parent of
+/// `branch`. When the message cannot be read, assume the worse case, a parent:
+/// the launch then leaves the template's prefix instead of trying more suffixes.
+fn blocker_is_our_parent(message: &str, branch: &str) -> bool {
+    let quoted: Vec<&str> = message.split('\'').skip(1).step_by(2).collect();
+    match quoted
+        .get(1)
+        .and_then(|other| other.strip_prefix("refs/heads/"))
+    {
+        Some(other) => branch.starts_with(&format!("{other}/")),
+        None => true,
+    }
+}
+
+/// Creates `branch` at `base_ref` and returns the commit it points at. Git
+/// creates a ref under its own lock and refuses an existing one, so of two
+/// launches racing for a name exactly one succeeds. That makes success proof of
+/// ownership. The commit is kept so a later cleanup can delete the branch only
+/// while it still points there.
+async fn claim_branch(
+    repo_path: &str,
+    branch: &str,
+    base_ref: &str,
+) -> Result<String, BranchClaimFailure> {
+    let timeout = Duration::from_millis(GIT_TIMEOUT_MS);
+    if let Err(error) =
+        run_git_text(Path::new(repo_path), &["branch", branch, base_ref], timeout).await
+    {
+        let reason = error.to_string();
+        let lower = reason.to_ascii_lowercase();
+        return Err(if lower.contains("exists; cannot create") {
+            if blocker_is_our_parent(&reason, branch) {
+                BranchClaimFailure::BlockedPrefix(reason)
+            } else {
+                // An existing branch `adam/fix/x` blocks a new `adam/fix`, but
+                // `adam/fix-2` is a different ref, so the next suffix can work.
+                BranchClaimFailure::Taken(reason)
+            }
+        } else if lower.contains("already exists")
+            || lower.contains("file exists")
+            || lower.contains("cannot lock ref")
+        {
+            BranchClaimFailure::Taken(reason)
+        } else {
+            BranchClaimFailure::Other(reason)
+        });
+    }
+    run_git_text(
         Path::new(repo_path),
-        &[
-            "show-ref",
-            "--verify",
-            "--quiet",
-            &format!("refs/heads/{branch}"),
-        ],
-        Duration::from_millis(GIT_TIMEOUT_MS),
+        &["rev-parse", &format!("refs/heads/{branch}")],
+        timeout,
     )
-    .await;
-    Ok(res.is_ok())
+    .await
+    .map(|oid| oid.trim().to_string())
+    .map_err(|error| BranchClaimFailure::Other(error.to_string()))
 }
 
 async fn assert_valid_ref(repo_path: &str, reference: &str) -> ArgmaxResult<()> {
@@ -3429,7 +3791,7 @@ mod tests {
         .await;
         assert!(worktree.exists());
 
-        discard_worktree(&repo, &worktree, "argmax/doomed").await;
+        discard_worktree(&repo, &worktree, "argmax/doomed", None).await;
 
         assert!(!worktree.exists(), "worktree directory should be gone");
         let listed = git(&repo, &["worktree", "list"]).await;
@@ -3439,6 +3801,117 @@ mod tests {
         );
         let branches = git(&repo, &["branch", "--list", "argmax/doomed"]).await;
         assert!(branches.trim().is_empty(), "branch survived: {branches}");
+    }
+
+    // Every checkout and every spelling of a repository's path must share one
+    // registry lock, and the blocking and async writers must exclude each other.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_worktree_registry_lock_is_shared_across_checkouts_spellings_and_sync_callers() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).expect("repo dir");
+        async fn git(cwd: &Path, args: &[&str]) -> String {
+            run_git_text(cwd, args, GIT_DEFAULT_TIMEOUT)
+                .await
+                .unwrap_or_else(|error| panic!("git {args:?} failed: {error}"))
+        }
+        git(&repo, &["init", "-q", "."]).await;
+        git(&repo, &["config", "user.email", "t@example.com"]).await;
+        git(&repo, &["config", "user.name", "t"]).await;
+        std::fs::write(repo.join("f.txt"), "x\n").expect("write");
+        git(&repo, &["add", "-A"]).await;
+        git(&repo, &["commit", "-qm", "base"]).await;
+        let linked = dir.path().join("linked");
+        git(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "other",
+                &linked.display().to_string(),
+            ],
+        )
+        .await;
+        let alias = dir.path().join("alias");
+        std::os::unix::fs::symlink(&repo, &alias).expect("symlink");
+
+        let key = |path: &Path| {
+            let common =
+                run_git_text_blocking(path, ["rev-parse", "--git-common-dir"], GIT_DEFAULT_TIMEOUT)
+                    .ok();
+            worktree_registry_key(path, common.as_deref())
+        };
+        assert_eq!(
+            key(&repo),
+            key(&linked),
+            "a linked checkout shares the main one's registry"
+        );
+        assert_eq!(
+            key(&repo),
+            key(&alias),
+            "a symlinked spelling shares it too"
+        );
+
+        // A synchronous holder (called here from an async worker, which is the
+        // case `blocking_lock` would panic on) excludes the async path.
+        let held = lock_worktree_registry_blocking(&repo);
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let waiting = tokio::spawn({
+            let linked = linked.clone();
+            async move {
+                let _guard = lock_worktree_registry(&linked).await;
+                let _ = entered_tx.send(());
+            }
+        });
+        let mut entered_rx = entered_rx;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut entered_rx)
+                .await
+                .is_err(),
+            "the async writer must wait for the synchronous one"
+        );
+        drop(held);
+        tokio::time::timeout(Duration::from_secs(5), entered_rx)
+            .await
+            .expect("async writer proceeds once the lock is released")
+            .expect("entered");
+        waiting.await.expect("waiter");
+    }
+
+    // The other direction: an async holder (the `create_isolated` shape) must
+    // keep a `spawn_blocking` writer, such as the expiry sweep, waiting.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_async_registry_holder_blocks_a_spawn_blocking_writer_until_release() {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).expect("repo dir");
+        run_git_text(&repo, &["init", "-q", "."], GIT_DEFAULT_TIMEOUT)
+            .await
+            .expect("git init");
+
+        let held = lock_worktree_registry(&repo).await;
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let waiter = tokio::task::spawn_blocking({
+            let repo = repo.clone();
+            move || {
+                let _guard = lock_worktree_registry_blocking(&repo);
+                let _ = entered_tx.send(());
+            }
+        });
+        let mut entered_rx = entered_rx;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(150), &mut entered_rx)
+                .await
+                .is_err(),
+            "the blocking writer must wait for the async holder"
+        );
+        drop(held);
+        tokio::time::timeout(Duration::from_secs(5), entered_rx)
+            .await
+            .expect("blocking writer proceeds once the lock is released")
+            .expect("entered");
+        waiter.await.expect("waiter");
     }
 
     #[test]

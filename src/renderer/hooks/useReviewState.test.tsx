@@ -66,6 +66,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   let writeWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFile"]>>;
   let statWorkspaceFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["statFile"]>>;
   let readProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readFile"]>>;
+  let readExternalFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["readExternalFile"]>>;
   let writeProjectFile: ReturnType<typeof vi.fn<ArgmaxApi["workspace"]["writeFile"]>>;
 
   it("remembers each session's panel visibility after leaving and returning", () => {
@@ -241,6 +242,9 @@ describe("useReviewState — IPC fan-out resistance", () => {
     readProjectFile = vi
       .fn<ArgmaxApi["workspace"]["readFile"]>()
       .mockResolvedValue({ kind: "text", content: "project\n", size: 8, mtimeMs: 10 });
+    readExternalFile = vi
+      .fn<ArgmaxApi["workspace"]["readExternalFile"]>()
+      .mockResolvedValue({ kind: "text", content: "outside\n", size: 8, mtimeMs: 5 });
     writeProjectFile = vi
       .fn<ArgmaxApi["workspace"]["writeFile"]>()
       .mockResolvedValue({ ok: "true", mtimeMs: 11, size: 0 });
@@ -269,6 +273,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
             ? writeProjectFile(target, path, content, mtime)
             : writeWorkspaceFile(target, path, content, mtime),
           statFile: statWorkspaceFile,
+          readExternalFile: readExternalFile,
+          statExternalFile: vi.fn().mockResolvedValue({ mtimeMs: 1, size: 5 }),
           grepContent: vi.fn().mockResolvedValue({ files: [], truncated: false })
         }
       } satisfies Partial<ArgmaxApi>
@@ -735,6 +741,27 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(result.current.workspaceFiles.buffer).toBe("one edited\n");
     expect(result.current.workspaceFiles.isDirty).toBe(true);
     expect(readWorkspaceFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens a file outside the workspace read-only through the external channel", async () => {
+    const { result } = renderHook(
+      ({ ws }: { ws: WorkspaceSummary }) => useReviewState(workspaceSource(ws)),
+      { initialProps: { ws: makeWorkspace() } }
+    );
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.openInFilesView("/Users/me/.local/share/notes.json");
+    });
+    await waitFor(() => expect(result.current.workspaceFiles.buffer).toBe("outside\n"));
+
+    expect(readExternalFile).toHaveBeenCalledWith("/Users/me/.local/share/notes.json");
+    expect(readWorkspaceFile).not.toHaveBeenCalled();
+    expect(result.current.workspaceFiles.canEdit).toBe(false);
+    act(() => {
+      result.current.workspaceFiles.editFile("changed\n");
+    });
+    expect(result.current.workspaceFiles.isDirty).toBe(false);
   });
 
   it("focuses existing tabs without refetching the file", async () => {

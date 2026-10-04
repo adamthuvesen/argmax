@@ -99,6 +99,17 @@ pub const ASTRA: RouteModel = RouteModel {
     label: "GPT-6 Astra",
     efforts: CODEX_EFFORTS,
 };
+/// Mechanical edits on every tier that used Composer. It runs on OpenCode
+/// through OpenRouter. Its CLI takes low, high and max, so the medium that
+/// mechanical work asks for clamps down to low.
+pub const DEEPSEEK: RouteModel = RouteModel {
+    provider: ProviderId::Opencode,
+    model_id: "openrouter/deepseek/deepseek-v4.1-flash",
+    label: "DeepSeek V4.1 Flash",
+    efforts: &[Low, High, Max],
+};
+/// No longer a grid cell. Kept for chats already on Cursor, which follow up and
+/// escalate inside their own conversation.
 pub const COMPOSER: RouteModel = RouteModel {
     provider: ProviderId::Cursor,
     model_id: "composer-2.5",
@@ -129,6 +140,7 @@ pub const ROUTE_MODELS: &[&RouteModel] = &[
     &SOL,
     &LUNA,
     &ASTRA,
+    &DEEPSEEK,
     &COMPOSER,
     &CURSOR_OPUS,
     &GROK,
@@ -154,11 +166,12 @@ fn cell(kind: TaskKind, column: Column) -> &'static RouteModel {
         // 45.3 s, and CursorBench scores it 55.5% against 27.7%.
         (TaskKind::Coding, Column::Cheap) => &SONNET,
         (TaskKind::Coding, _) => &OPUS,
-        // Renames stay on Composer: inside Argmax, with Cursor's warm ACP
-        // pool, it finished four turns in 42 s against 58 s for Opus medium
-        // (2026-09-27), and the work does not repay Sonnet's price.
-        (TaskKind::Mechanical, Column::Cheap) => &COMPOSER,
-        (TaskKind::Mechanical, Column::Value) => &COMPOSER,
+        // Renames stay on a cheap, fast model, since the work does not repay
+        // Sonnet's price. DeepSeek V4.1 Flash replaced Composer here
+        // (2026-10-04): 0.66 s to first token against Composer's 8.3 s through
+        // its CLI, at $0.15 / $0.60 per million tokens. Only raw API speed is
+        // measured; no agent-task quality comparison exists yet.
+        (TaskKind::Mechanical, Column::Cheap | Column::Value) => &DEEPSEEK,
         (TaskKind::Mechanical, Column::Frontier) => &OPUS,
         (TaskKind::Research, Column::Cheap) => &SONNET,
         (TaskKind::Research, _) => &OPUS,
@@ -190,9 +203,10 @@ fn column_and_effort(tier: AutoTier, difficulty: Difficulty) -> (Column, Reasoni
     }
 }
 
-/// Grok's effort follows the task's difficulty, so a chat already on Grok
-/// can climb low → medium → high. The launch grid no longer picks Grok.
-fn grok_effort(difficulty: Difficulty) -> ReasoningEffort {
+/// Effort that follows the task's difficulty: low → medium → high. A chat
+/// already on Grok uses it (the launch grid no longer picks Grok), and so do
+/// Sonnet reviews on Speed and Cost.
+fn difficulty_effort(difficulty: Difficulty) -> ReasoningEffort {
     match difficulty {
         Difficulty::Light => Low,
         Difficulty::Standard => Medium,
@@ -200,15 +214,24 @@ fn grok_effort(difficulty: Difficulty) -> ReasoningEffort {
     }
 }
 
-/// Cost minimizes API-equivalent completion cost. Reviews retain Opus until
-/// we have evidence for a cheaper reviewer. Mechanical edits stop at medium.
+/// When a cell in `cost_route` or `speed_route` changes, also update the tier
+/// blurbs in `AUTO_TIER_DESCRIPTIONS` (`src/renderer/lib/models.ts`) and the
+/// tables in `docs/routing.md`. Nothing checks them against this file.
+///
+/// Cost minimizes API-equivalent completion cost. Reviews run on Sonnet, half
+/// Opus's per-token price; a reported-wrong review still climbs the Cost
+/// ladder. Standard questions edit nothing, so they take Luna at 1/20 of
+/// Sol's price. Mechanical edits stop at medium.
 fn cost_route(kind: TaskKind, difficulty: Difficulty) -> RoutedModel {
     let (model, effort) = match (kind, difficulty) {
-        (TaskKind::Review, Difficulty::Light) => (&OPUS, Low),
-        (TaskKind::Review, Difficulty::Standard) => (&OPUS, Medium),
-        (TaskKind::Review, Difficulty::Heavy) => (&OPUS, High),
-        (_, Difficulty::Light) | (TaskKind::Mechanical, Difficulty::Standard) => (&LUNA, Medium),
-        (_, Difficulty::Standard) | (TaskKind::Mechanical, Difficulty::Heavy) => (&SOL, Medium),
+        (TaskKind::Review, _) => (&SONNET, difficulty_effort(difficulty)),
+        // DeepSeek V4.1 Flash took every Luna cell and the heavy mechanical
+        // cell (2026-10-04): it bills cache reads at $0.003 per million, which
+        // is most of an agent turn's tokens. Mechanical edits run at low, the
+        // rest at high, the levels its CLI offers.
+        (TaskKind::Mechanical, _) => (&DEEPSEEK, Low),
+        (_, Difficulty::Light) | (TaskKind::Question, Difficulty::Standard) => (&DEEPSEEK, High),
+        (_, Difficulty::Standard) => (&SOL, Medium),
         (_, Difficulty::Heavy) => (&SOL, High),
     };
     RoutedModel {
@@ -217,9 +240,9 @@ fn cost_route(kind: TaskKind, difficulty: Difficulty) -> RoutedModel {
     }
 }
 
-/// `ui` marks visual UI or design work. The Composer cell left on Balance is
+/// `ui` marks visual UI or design work. The DeepSeek cell left on Balance is
 /// light mechanical work, and that UI work goes to Opus 5.5 low: Composer's
-/// UI tweaks were the chats most often reported wrong (3 of 22 escalated,
+/// UI tweaks (the model DeepSeek replaced) were the chats most often reported wrong (3 of 22 escalated,
 /// 2026-09-28).
 pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -> RoutedModel {
     if tier == AutoTier::Economy {
@@ -231,7 +254,7 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         effort = Medium;
     }
     // A missed bug costs more than a slower review, so the cheap review cell is
-    // Opus at low rather than Composer: on CursorBench 4.0 Opus low scores
+    // Opus at low rather than a cheap model: on CursorBench 4.0 Opus low scores
     // 43.7% against Composer's 27.7% at about 1.7x the cost per task, and it
     // reviewed faster in-app (15 s vs 35 s, 2026-09-27).
     if kind == TaskKind::Review && column == Column::Cheap {
@@ -245,19 +268,33 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         // (56.0% vs 49.2%); Fable is the step after Opus high on its ladder.
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Research) => &ASTRA,
         (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Question) => &FABLE,
-        // Frontier light is the value column, which is Composer for a
+        // Frontier light is the value column, which is DeepSeek for a
         // rename. A small mechanical edit there still gets Sonnet medium.
         (AutoTier::Intelligence, Difficulty::Light, TaskKind::Mechanical) => &SONNET,
+        // Speed reviews run on Sonnet with effort by difficulty: Sonnet high
+        // finishes about as fast as Opus low (17 s vs 19 s on Artificial
+        // Analysis, 2026-10-02) at half the per-token price.
+        (AutoTier::Cost, _, TaskKind::Review) => {
+            effort = difficulty_effort(difficulty);
+            &SONNET
+        }
+        // Light questions and research edit nothing, so a weak answer is cheap
+        // to catch. DeepSeek V4.1 Flash answers first (0.66 s to first token
+        // against Sonnet's 1.19 s, 2026-10-04). Light coding stays on Sonnet.
+        (AutoTier::Cost, Difficulty::Light, TaskKind::Research | TaskKind::Question) => {
+            effort = High;
+            &DEEPSEEK
+        }
         // Speed's heavy column is Opus. Sonnet medium finished the same two
         // small tasks faster than Opus medium and at about half the price
-        // (2026-09-28). Reviews stay on Opus.
+        // (2026-09-28).
         (
             AutoTier::Cost,
             Difficulty::Heavy,
             TaskKind::Coding | TaskKind::Research | TaskKind::Question,
         ) => &SONNET,
-        // Balance's mechanical value cell is Composer. Standard and heavy
-        // edits go to Sonnet; light renames stay on Composer.
+        // Balance's mechanical value cell is DeepSeek. Standard and heavy
+        // edits go to Sonnet; light renames stay on DeepSeek.
         (AutoTier::Balanced, Difficulty::Standard | Difficulty::Heavy, TaskKind::Mechanical) => {
             &SONNET
         }
@@ -269,7 +306,7 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         }
         _ => cell(kind, column),
     };
-    let (model, effort) = if tier == AutoTier::Balanced && ui && model == &COMPOSER {
+    let (model, effort) = if tier == AutoTier::Balanced && ui && model == &DEEPSEEK {
         (&OPUS, Low)
     } else {
         (model, effort)
@@ -282,7 +319,7 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
 
 /// Follow-ups stay within the native conversation's provider. This is a
 /// capability policy, independent of list price and of the launch grid.
-/// `None` for a provider the grid never launches (OpenCode).
+/// `None` for OpenCode: a DeepSeek chat keeps its model on follow-ups.
 pub fn follow_up_target(
     provider: ProviderId,
     tier: AutoTier,
@@ -292,8 +329,24 @@ pub fn follow_up_target(
 ) -> Option<RoutedModel> {
     if tier == AutoTier::Economy {
         let target = cost_route(kind, difficulty);
+        // Native Codex and Claude chats never ran DeepSeek's low or high, so a
+        // DeepSeek cell maps to the medium they used before it.
+        let native_effort = if target.model == &DEEPSEEK {
+            Some(Medium)
+        } else {
+            target.effort
+        };
         match provider {
             ProviderId::Codex => {
+                // A budget DeepSeek cell keeps a Codex chat on its cheap native
+                // model at Luna's usual medium effort. Heavy mechanical work
+                // in a Codex chat goes to Sol.
+                if target.model == &DEEPSEEK && difficulty != Difficulty::Heavy {
+                    return Some(RoutedModel {
+                        model: &LUNA,
+                        effort: Some(Medium),
+                    });
+                }
                 return Some(RoutedModel {
                     // Keep the native Codex conversation for a review. A reported
                     // wrong answer can cross to Opus through the Cost ladder.
@@ -302,21 +355,17 @@ pub fn follow_up_target(
                     } else {
                         &SOL
                     },
-                    effort: target.effort,
+                    effort: native_effort,
                 });
             }
             ProviderId::Claude => {
-                // Cost work substituted onto Claude stays on Sonnet, as the
-                // launch does; only reviews and heavy non-mechanical work
-                // take Opus.
-                let heavy = difficulty == Difficulty::Heavy && kind != TaskKind::Mechanical;
+                // Cost work on Claude stays on Sonnet, reviews included, as
+                // the launch does; only heavy non-mechanical work takes Opus.
+                let heavy = difficulty == Difficulty::Heavy
+                    && !matches!(kind, TaskKind::Mechanical | TaskKind::Review);
                 return Some(RoutedModel {
-                    model: if kind == TaskKind::Review || heavy {
-                        &OPUS
-                    } else {
-                        &SONNET
-                    },
-                    effort: target.effort,
+                    model: if heavy { &OPUS } else { &SONNET },
+                    effort: native_effort,
                 });
             }
             _ => {}
@@ -340,17 +389,14 @@ pub fn follow_up_target(
                 && kind == TaskKind::Question
             {
                 &FABLE
-            } else if tier == AutoTier::Cost && kind != TaskKind::Review {
-                // A Speed chat launched on Sonnet stays there. A review is the
-                // harder cell and moves to Opus, matching the launch grid.
+            } else if tier == AutoTier::Cost {
+                // A Speed chat stays on Sonnet. A review takes its effort from
+                // difficulty, matching the launch grid.
+                if kind == TaskKind::Review {
+                    effort = difficulty_effort(difficulty);
+                }
                 &SONNET
             } else {
-                if tier == AutoTier::Cost
-                    && kind == TaskKind::Review
-                    && difficulty != Difficulty::Heavy
-                {
-                    effort = Low;
-                }
                 &OPUS
             }
         }
@@ -383,7 +429,7 @@ pub fn follow_up_target(
         }
         ProviderId::Opencode => return None,
         ProviderId::Grok => {
-            effort = grok_effort(difficulty);
+            effort = difficulty_effort(difficulty);
             &GROK
         }
     };
@@ -397,7 +443,11 @@ pub fn follow_up_target(
 /// retained, never assigned a capability based on their price.
 pub(crate) fn capability(model_id: &str) -> Option<usize> {
     match model_id {
-        "composer-2.5" | "grok-4.7" | "claude-sonnet-5-5" | "gpt-6-luna" => Some(0),
+        "composer-2.5"
+        | "openrouter/deepseek/deepseek-v4.1-flash"
+        | "grok-4.7"
+        | "claude-sonnet-5-5"
+        | "gpt-6-luna" => Some(0),
         "claude-opus-5-5" | "claude-opus-5-5-medium" | "gpt-6.1-sol" | "gpt-6-sol" => Some(1),
         "claude-fable-5-1" | "gpt-6-astra" => Some(2),
         _ => None,
@@ -511,8 +561,8 @@ mod tests {
                 Mechanical,
                 Light,
                 [
-                    "Composer 2.5 (Cursor)",
-                    "Composer 2.5 (Cursor)",
+                    "DeepSeek V4.1 Flash · low",
+                    "DeepSeek V4.1 Flash · low",
                     "Sonnet 5.5 · medium",
                 ],
             ),
@@ -520,7 +570,7 @@ mod tests {
                 Mechanical,
                 Standard,
                 [
-                    "Composer 2.5 (Cursor)",
+                    "DeepSeek V4.1 Flash · low",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -529,7 +579,7 @@ mod tests {
                 Mechanical,
                 Heavy,
                 [
-                    "Composer 2.5 (Cursor)",
+                    "DeepSeek V4.1 Flash · low",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -538,7 +588,7 @@ mod tests {
                 Research,
                 Light,
                 [
-                    "Sonnet 5.5 · low",
+                    "DeepSeek V4.1 Flash · high",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -564,23 +614,27 @@ mod tests {
             (
                 Review,
                 Light,
-                ["Opus 5.5 · low", "Opus 5.5 · low", "Opus 5.5 · medium"],
+                ["Sonnet 5.5 · low", "Opus 5.5 · low", "Opus 5.5 · medium"],
             ),
             (
                 Review,
                 Standard,
-                ["Opus 5.5 · low", "Opus 5.5 · medium", "GPT-6 Astra · high"],
+                [
+                    "Sonnet 5.5 · medium",
+                    "Opus 5.5 · medium",
+                    "GPT-6 Astra · high",
+                ],
             ),
             (
                 Review,
                 Heavy,
-                ["Opus 5.5 · medium", "Opus 5.5 · high", "GPT-6 Astra · high"],
+                ["Sonnet 5.5 · high", "Opus 5.5 · high", "GPT-6 Astra · high"],
             ),
             (
                 Question,
                 Light,
                 [
-                    "Sonnet 5.5 · low",
+                    "DeepSeek V4.1 Flash · high",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -616,9 +670,14 @@ mod tests {
         use Difficulty::{Heavy, Light, Standard};
         use TaskKind::{Coding, Mechanical, Question, Research, Review};
         for kind in [Coding, Research, Question] {
+            let standard = if kind == Question {
+                "DeepSeek V4.1 Flash · high"
+            } else {
+                "GPT-6.1 Sol · medium"
+            };
             for (difficulty, expected) in [
-                (Light, "GPT-6 Luna · medium"),
-                (Standard, "GPT-6.1 Sol · medium"),
+                (Light, "DeepSeek V4.1 Flash · high"),
+                (Standard, standard),
                 (Heavy, "GPT-6.1 Sol · high"),
             ] {
                 assert_eq!(
@@ -628,12 +687,12 @@ mod tests {
             }
         }
         for (kind, difficulty, expected) in [
-            (Mechanical, Light, "GPT-6 Luna · medium"),
-            (Mechanical, Standard, "GPT-6 Luna · medium"),
-            (Mechanical, Heavy, "GPT-6.1 Sol · medium"),
-            (Review, Light, "Opus 5.5 · low"),
-            (Review, Standard, "Opus 5.5 · medium"),
-            (Review, Heavy, "Opus 5.5 · high"),
+            (Mechanical, Light, "DeepSeek V4.1 Flash · low"),
+            (Mechanical, Standard, "DeepSeek V4.1 Flash · low"),
+            (Mechanical, Heavy, "DeepSeek V4.1 Flash · low"),
+            (Review, Light, "Sonnet 5.5 · low"),
+            (Review, Standard, "Sonnet 5.5 · medium"),
+            (Review, Heavy, "Sonnet 5.5 · high"),
         ] {
             assert_eq!(
                 cell_text(route(AutoTier::Economy, kind, difficulty, false)),
@@ -704,7 +763,7 @@ mod tests {
                 )
                 .unwrap()
             ),
-            "Opus 5.5 · high"
+            "Sonnet 5.5 · high"
         );
         // Work substituted onto Claude stays on Sonnet, as the launch does.
         for (kind, difficulty, expected) in [
@@ -747,16 +806,19 @@ mod tests {
         use TaskKind::{Coding, Mechanical, Question};
         let balanced =
             |kind, difficulty, ui| cell_text(route(AutoTier::Balanced, kind, difficulty, ui));
-        // Light mechanical is the Composer cell left on Balance.
+        // Light mechanical is the DeepSeek cell left on Balance.
         assert_eq!(balanced(Mechanical, Light, true), "Opus 5.5 · low");
-        assert_eq!(balanced(Mechanical, Light, false), "Composer 2.5 (Cursor)");
+        assert_eq!(
+            balanced(Mechanical, Light, false),
+            "DeepSeek V4.1 Flash · low"
+        );
         assert_eq!(balanced(Mechanical, Heavy, true), "Sonnet 5.5 · medium");
         assert_eq!(balanced(Coding, Light, true), "Sonnet 5.5 · medium");
         assert_eq!(balanced(Question, Light, true), "Sonnet 5.5 · medium");
-        // Speed keeps Composer for mechanical work, including UI work.
+        // Speed keeps DeepSeek for mechanical work, including UI work.
         assert_eq!(
             cell_text(route(AutoTier::Cost, Mechanical, Light, true)),
-            "Composer 2.5 (Cursor)"
+            "DeepSeek V4.1 Flash · low"
         );
         let cursor = follow_up_target(ProviderId::Cursor, AutoTier::Balanced, Coding, Light, true);
         assert_eq!(
@@ -797,7 +859,7 @@ mod tests {
     }
 
     #[test]
-    fn speed_follow_ups_stay_on_sonnet_until_a_review() {
+    fn speed_follow_ups_stay_on_sonnet() {
         let target = |kind, difficulty| {
             follow_up_target(ProviderId::Claude, AutoTier::Cost, kind, difficulty, false)
                 .map(cell_text)
@@ -812,11 +874,11 @@ mod tests {
         );
         assert_eq!(
             target(TaskKind::Review, Difficulty::Standard).as_deref(),
-            Some("Opus 5.5 · low")
+            Some("Sonnet 5.5 · medium")
         );
         assert_eq!(
             target(TaskKind::Review, Difficulty::Heavy).as_deref(),
-            Some("Opus 5.5 · medium")
+            Some("Sonnet 5.5 · high")
         );
         assert_eq!(
             follow_up_target(
@@ -829,16 +891,6 @@ mod tests {
             .map(cell_text)
             .as_deref(),
             Some("Opus 5.5 · low")
-        );
-    }
-
-    #[test]
-    fn fallback_follows_the_tier() {
-        assert_eq!(cell_text(fallback(AutoTier::Cost)), "Sonnet 5.5 · medium");
-        assert_eq!(cell_text(fallback(AutoTier::Balanced)), "Opus 5.5 · medium");
-        assert_eq!(
-            cell_text(fallback(AutoTier::Intelligence)),
-            "Opus 5.5 · medium"
         );
     }
 }

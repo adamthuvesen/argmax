@@ -30,6 +30,12 @@
   background: var(--bg);
 }
 
+/* Paper's --row-hover is a white wash, which reads as nothing on the pale
+   sidebar. Rows here darken on hover instead, one step short of selected. */
+:root:not([data-theme="dark"]) .sidebar {
+  --row-hover: rgba(31, 28, 24, 0.045);
+}
+
 .sidebar {
   position: relative;
   display: flex;
@@ -160,7 +166,7 @@
   color: var(--text-soft);
   text-align: left;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);

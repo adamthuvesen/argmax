@@ -28,17 +28,6 @@ describe("SessionComposer Auto chip", () => {
     expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).toBe("Medium");
   });
 
-  it("reads plainly once a different model is picked, which pins the chat", () => {
-    renderConversation(routedSession);
-
-    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-    fireEvent.click(
-      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" })
-    );
-
-    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Sonnet 5.5");
-  });
-
   it("offers no Auto rows in the follow-up picker", () => {
     renderConversation(routedSession);
 

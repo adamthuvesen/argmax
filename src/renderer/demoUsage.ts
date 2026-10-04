@@ -129,7 +129,7 @@ const MODELS: ReadonlyArray<{ provider: ProviderId; modelId: string; weight: num
   { provider: "claude", modelId: "claude-haiku-4-5", weight: 0.34 },
   { provider: "codex", modelId: "gpt-5.6-terra", weight: 0.81 },
   { provider: "codex", modelId: "codex-auto-review", weight: 0.19, unpriced: true },
-  { provider: "opencode", modelId: "opencode-go/qwen3-coder", weight: 1 },
+  { provider: "opencode", modelId: "openrouter/z-ai/glm-5.3-flash", weight: 1 },
   { provider: "grok", modelId: "grok-code-fast-1", weight: 1 },
   { provider: "cursor", modelId: "composer-2.5", weight: 0.72 },
   // Cursor's Auto bills whichever model it picked, so it has no rate.
@@ -366,12 +366,8 @@ export function demoUsageRemaining(): UsageRemaining {
       {
         provider: "opencode",
         kind: "subscription",
-        planLabel: "OpenCode Go",
-        windows: [
-          { id: "five_hour", label: "5-hour", remainingPercent: 96, resetsAt: "2026-09-06T16:27:38Z" },
-          { id: "seven_day", label: "Weekly", remainingPercent: 97, resetsAt: "2026-09-13T00:00:00Z" },
-          { id: "monthly", label: "Monthly", remainingPercent: 99, resetsAt: "2026-10-01T00:00:00Z" }
-        ],
+        planLabel: "OpenRouter",
+        windows: [{ id: "credit", label: "Credit, $24.58 of $125.00", remainingPercent: 20, resetsAt: null }],
         message: null,
         messageUrl: null
       },

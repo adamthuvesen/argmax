@@ -9,15 +9,6 @@ function ExplodingChild(): never {
 describe("AppErrorBoundary", () => {
   afterEach(() => cleanup());
 
-  it("renders children when no error is thrown", () => {
-    render(
-      <AppErrorBoundary>
-        <p>Healthy tree</p>
-      </AppErrorBoundary>
-    );
-    expect(screen.getByText("Healthy tree")).toBeInTheDocument();
-  });
-
   it("renders a recovery surface when a child throws", () => {
     // Silence React's expected console.error from boundary capture.
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);

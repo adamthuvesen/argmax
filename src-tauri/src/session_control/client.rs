@@ -141,6 +141,9 @@ pub fn send_session_control(
         }
         (SessionControlAction::ScheduleResume(_), SessionControlResult::ScheduleResumed(_)) => true,
         (SessionControlAction::ArcStatus(_), SessionControlResult::ArcStatus(_)) => true,
+        (SessionControlAction::PrWatch(_), SessionControlResult::PrWatch(_)) => true,
+        (SessionControlAction::PrUnwatch(_), SessionControlResult::PrUnwatch(_)) => true,
+        (SessionControlAction::PrCleanup(_), SessionControlResult::PrCleanup(_)) => true,
         _ => false,
     };
     if !matches_action {

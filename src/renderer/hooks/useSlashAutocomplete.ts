@@ -1,13 +1,7 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type RefObject
-} from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import type { ProviderId, SkillSummary } from "../../shared/types.js";
+import type { ComposerField } from "../components/composerEditor/composerField.js";
 import type { ComposerCommand } from "../lib/composerCommands.js";
 
 /**
@@ -44,7 +38,7 @@ interface UseSlashAutocompleteArgs {
   workspaceId: string | null;
   /** Composer actions listed above the skills. Memoize at the call site. */
   commands?: ComposerCommand[];
-  inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  inputRef: RefObject<ComposerField | null>;
 }
 
 export interface SlashAutocompleteState {
@@ -64,7 +58,7 @@ export interface SlashAutocompleteState {
   /** Close the menu without touching the draft — a click landing outside it.
       The next keystroke brings it back. */
   dismiss: () => void;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onKeyDown: (event: KeyboardEvent) => void;
 }
 
 export function useSlashAutocomplete({
@@ -220,7 +214,7 @@ export function useSlashAutocomplete({
     item.command.run();
   };
 
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>): void => {
+  const onKeyDown = (event: KeyboardEvent): void => {
     if (!popoverOpen) {
       return;
     }

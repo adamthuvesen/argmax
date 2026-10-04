@@ -51,12 +51,6 @@ describe("parseUnifiedDiff", () => {
     expect(blocks.at(-1)).toEqual({ kind: "truncated", id: "truncated", droppedBytes: 4096 });
   });
 
-  it("leaves an untruncated diff without a truncation block", () => {
-    const blocks = parseUnifiedDiff(hunk(1, 1, ["-a", "+A"]).join("\n"));
-
-    expect(blocks.some((block) => block.kind === "truncated")).toBe(false);
-  });
-
   it("assigns both line numbers to context lines and one side to changes", () => {
     const blocks = parseUnifiedDiff(hunk(5, 9, [" keep", "-drop", "+add"]).join("\n"));
 

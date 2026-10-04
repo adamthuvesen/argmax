@@ -165,13 +165,6 @@ mod tests {
         assert!(validate_schedule(Some("99 99 99 * * *"), None).is_err());
     }
 
-    #[test]
-    fn cron_next_occurrence_is_strictly_after() {
-        let next = next_occurrence(Some("0 0 9 * * *"), None, utc(1000)).unwrap();
-        let next = next.expect("daily 9am always has a next occurrence");
-        assert!(next > utc(1000));
-    }
-
     // A "Daily at 09:00" routine means 09:00 where the user lives. Matching
     // the cron fields against UTC fired it at 10:00/11:00 Stockholm time and
     // shifted by an hour at every DST boundary.

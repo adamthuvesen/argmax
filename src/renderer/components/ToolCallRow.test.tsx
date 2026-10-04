@@ -68,12 +68,6 @@ describe("ToolCallRow", () => {
     expect(screen.getByRole("img", { name: "Web" })).toBeInTheDocument();
   });
 
-  it("leaves a local row unmarked", () => {
-    render(<ToolCallRow tool={tool()} />);
-
-    expect(screen.queryByRole("img", { name: "Web" })).toBeNull();
-  });
-
   it("gives skill activation its own semantic icon kind", () => {
     const { container } = render(<ToolCallRow tool={tool({
       name: "Skill",

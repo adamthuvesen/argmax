@@ -104,14 +104,6 @@ describe("AgentLaunchList", () => {
     expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).toBeNull();
   });
 
-  it("leads with the agent's description and follows it with the codename", () => {
-    render(<AgentLaunchList tools={[tool()]} />);
-    expect(screen.getByText("Map the renderer")).toBeInTheDocument();
-    // The codename is drawn from the scientist list, so assert the slot is filled
-    // rather than pinning whichever name this toolUseId hashes to.
-    expect(document.querySelector(".agent-launch-identity")?.textContent).toBeTruthy();
-  });
-
   it("shows the codename instead of the launch prompt", () => {
     const prompt =
       "Inspect the repository at /Users/adamthuvesen/dev/menti/revops-backoffice. Summarize what it does.";

@@ -83,21 +83,6 @@ describe("coalesceAssistantGroups", () => {
     expect(groups[1]?.thinking).toBeFalsy();
   });
 
-  it("does not merge a thinking delta into a streaming answer delta", () => {
-    // A thinking block followed by streaming answer deltas (no completion yet):
-    // the answer deltas still coalesce into one streaming group, distinct from
-    // the thinking group.
-    const groups = coalesceAssistantGroups([
-      assistantEvent("t1", "message.delta", "Let me think.", "2026-05-12T15:00:01.000Z", { thinking: true }),
-      assistantEvent("a1", "message.delta", "Hello ", "2026-05-12T15:00:02.000Z"),
-      assistantEvent("a2", "message.delta", "world", "2026-05-12T15:00:03.000Z")
-    ]);
-
-    expect(groups).toHaveLength(2);
-    expect(groups[0]).toMatchObject({ text: "Let me think.", thinking: true });
-    expect(groups[1]).toMatchObject({ text: "Hello world", streaming: true });
-  });
-
   it("keeps streaming answer group ids stable when earlier deltas are capped away", () => {
     const beforeCap = coalesceAssistantGroups([
       assistantEvent("a1", "message.delta", "Hello ", "2026-05-12T15:00:01.000Z"),

@@ -165,20 +165,30 @@ pub async fn linked_repos_summarize(
     })
     .await?;
     let context = repository_summary_context(&repo).await?;
-    let provider = state.provider_discovery.available_providers().await.into_iter().next()
-        .ok_or_else(|| ArgmaxError::service(
+    let providers = state.provider_discovery.available_providers().await;
+    if providers.is_empty() {
+        return Err(ArgmaxError::service(
             "LINKED_REPO_SUMMARY_UNAVAILABLE",
             "No available provider can generate the repository summary. Connect a provider and retry.",
-        ))?;
-    let summary =
-        one_shot::summarize_repository(provider, one_shot::helper_model(provider), &context)
-            .await
-            .ok_or_else(|| {
-                ArgmaxError::service(
-                    "LINKED_REPO_SUMMARY_UNAVAILABLE",
-                    "The provider could not generate a repository summary. Retry to try again.",
-                )
-            })?;
+        ));
+    }
+    // Discovery order is fixed, so stopping at the first failure would make
+    // Retry repeat the same broken provider while another could answer.
+    let mut summary = None;
+    for provider in providers {
+        summary =
+            one_shot::summarize_repository(provider, one_shot::helper_model(provider), &context)
+                .await;
+        if summary.is_some() {
+            break;
+        }
+    }
+    let summary = summary.ok_or_else(|| {
+        ArgmaxError::service(
+            "LINKED_REPO_SUMMARY_UNAVAILABLE",
+            "No provider could generate a repository summary. Retry to try again.",
+        )
+    })?;
     read_off_main(move || {
         linked_repos::set_linked_repo_summary(&database.connection(), &project_id, &id, &summary)
     })

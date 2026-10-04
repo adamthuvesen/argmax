@@ -668,14 +668,23 @@ fn extract_answer(provider: ProviderId, raw: &str) -> Option<String> {
     }
 }
 
-/// Pulls the title or suggestion out of a Grok `--output-format json` object.
-/// Prefers `--json-schema` `structuredOutput.title` (the CLI's camelCase; the
-/// docs also mention snake_case) so a tool-loop preamble in `text` cannot
-/// become the sidebar label. When `text` is itself `{"title":"..."}`, unwrap it.
+/// Pulls the answer out of a Grok `--output-format json` object.
+/// Prefers `--json-schema` `structuredOutput` (the CLI's camelCase; the docs
+/// also mention snake_case) so a tool-loop preamble in `text` cannot become
+/// the answer. A `title` schema yields the bare title; any other schema yields
+/// the object as JSON for the caller's parser. When `text` is itself
+/// `{"title":"..."}`, unwrap it.
 fn extract_grok_text(raw: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(raw.trim()).ok()?;
     if let Some(title) = grok_structured_title(&value) {
         return Some(title);
+    }
+    if let Some(structured) = value
+        .get("structuredOutput")
+        .or_else(|| value.get("structured_output"))
+        .filter(|structured| structured.is_object())
+    {
+        return Some(structured.to_string());
     }
     let text = value
         .get("text")
@@ -1091,6 +1100,16 @@ mod tests {
         assert_eq!(
             extract_grok_text(snake).as_deref(),
             Some("Snake Case Title")
+        );
+    }
+
+    #[test]
+    fn grok_extraction_keeps_non_title_structured_output() {
+        let raw = r#"{"text":"preamble","structuredOutput":{"summary":"A Rust CLI for logs."}}"#;
+        let answer = extract_grok_text(raw).expect("structured output");
+        assert_eq!(
+            parse_repository_summary(&answer).as_deref(),
+            Some("A Rust CLI for logs.")
         );
     }
 

@@ -54,7 +54,7 @@ export function ForkBar({
         ) : null}
         {/* A deleted source has nothing to receive findings. */}
         {lineage.sourceSessionId ? (
-          <button type="button" onClick={() => setMerging(true)}>
+          <button className="fork-bar-return" type="button" onClick={() => setMerging(true)}>
             Bring findings back
           </button>
         ) : null}

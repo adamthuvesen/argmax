@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { baseSession, event, renderConversation, rerenderConversation } from "../../test/sessionConversationTestHarness.js";
+import { baseSession, event, renderConversation, rerenderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
 
 const questionEvents = [
   event("user", "user.message", "Investigate", "2026-05-12T15:30:00.000Z"),
@@ -93,7 +93,7 @@ describe("SessionComposer focus during background updates", () => {
     let resolveSend!: () => void;
     const sendComplete = new Promise<void>((resolve) => { resolveSend = resolve; });
     renderConversation(baseSession({ state: "running" }), [], {
-      onSendSessionInput: () => sendComplete
+      onSendSessionInput: () => sendComplete.then(() => STARTED_TURN)
     });
     const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", { name: "Chat prompt" });
     expect(prompt).toHaveFocus();
@@ -112,7 +112,7 @@ describe("SessionComposer focus during background updates", () => {
     let resolveSend!: () => void;
     const sendComplete = new Promise<void>((resolve) => { resolveSend = resolve; });
     const first = renderConversation(baseSession({ state: "running" }), [], {
-      onSendSessionInput: () => sendComplete
+      onSendSessionInput: () => sendComplete.then(() => STARTED_TURN)
     });
     const prompt = within(first.container).getByRole("textbox", { name: "Chat prompt" });
     fireEvent.change(prompt, { target: { value: "Send this follow-up" } });

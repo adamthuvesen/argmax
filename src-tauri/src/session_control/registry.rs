@@ -127,6 +127,7 @@ pub struct LinkedRoot {
     pub name: String,
     /// The canonical root, still resolving to itself when the launch was built.
     pub path: PathBuf,
+    pub summary: Option<String>,
 }
 
 pub struct SessionLaunchProcessConfig {
@@ -239,6 +240,7 @@ fn linked_roots_for_session(database: &Database, session_id: &str) -> Vec<Linked
                     Ok(current) if current == path => Some(LinkedRoot {
                         name: repo.name,
                         path,
+                        summary: repo.summary,
                     }),
                     _ => {
                         tracing::warn!(
@@ -624,7 +626,8 @@ mod tests {
     #[test]
     fn every_issue_reads_the_projects_enabled_linked_roots_from_the_database() {
         use crate::persistence::linked_repos::{
-            add_linked_repo, list_linked_repos, set_linked_repo_enabled, LinkedRepoInput,
+            add_linked_repo, list_linked_repos, set_linked_repo_enabled, set_linked_repo_summary,
+            LinkedRepoInput,
         };
         let database = database_with_sessions(&["session-1"]);
         let (_server, registry) = SessionLaunchServer::bind(Arc::clone(&database)).unwrap();
@@ -658,6 +661,25 @@ mod tests {
             .into_iter()
             .find(|repo| repo.name == "docs")
             .unwrap();
+        assert_eq!(docs.summary, None);
+        set_linked_repo_summary(
+            &database.connection(),
+            "project-1",
+            &docs.id,
+            "API reference docs",
+        )
+        .unwrap();
+        let next_launch = registry.issue(&launch_input("session-1"));
+        assert_eq!(
+            next_launch
+                .linked_roots()
+                .iter()
+                .find(|root| root.name == "docs")
+                .unwrap()
+                .summary
+                .as_deref(),
+            Some("API reference docs")
+        );
         set_linked_repo_enabled(&database.connection(), "project-1", &docs.id, false).unwrap();
         assert_eq!(names(&registry), vec!["api"]);
 

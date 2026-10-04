@@ -80,6 +80,18 @@ describe("SessionConversation project source session note", () => {
     ).toBeTruthy();
   });
 
+  it("does not draw linked-repository read notes in the chat", () => {
+    renderConversation(baseSession({ state: "complete" }), [
+      event("note", "session.note", "Read linked repository file: shared/README.md", "2026-05-12T15:02:00.000Z", {
+        operation: "linked-repo", action: "read", linkedRepo: "shared", path: "README.md"
+      }),
+      event("answer", "message.completed", "Done", "2026-05-12T15:00:01.000Z")
+    ]);
+
+    expect(screen.getByText("Done")).toBeTruthy();
+    expect(screen.queryByText(/Read linked repository file/)).toBeNull();
+  });
+
   it("falls back to a generic message when project source payload lacks source id", () => {
     renderConversation(baseSession({ state: "complete" }), [
       event(

@@ -7,6 +7,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import type { AgentTabsState } from "../hooks/useAgentTabs.js";
 import { buildAgentActivity } from "../lib/agentActivity.js";
 import { agentStripLimit } from "../lib/agentStripLimit.js";
@@ -44,6 +45,7 @@ function slotPriority(entry: AgentRosterEntry, activeId: string | null): number 
  *  commands; these keep the optional props honest without a crash if one is
  *  ever missing. */
 const noop = async (): Promise<void> => {};
+const sendNothing = (): Promise<SendInputResult> => Promise.resolve({ ok: true, queued: false });
 
 interface DockTab {
   id: string;
@@ -127,7 +129,7 @@ export function AgentsView({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   onTerminateSession?: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
 }): JSX.Element {
   const { tabIds, activeTabId } = agentTabs;
@@ -493,7 +495,7 @@ export function AgentsView({
                   onLoadSessionEvents={onLoadSessionEvents}
                   onOpenFullChat={onOpenFullChat}
                   onSendQueuedMessageNow={onSendQueuedMessageNow ?? noop}
-                  onSendSessionInput={onSendSessionInput ?? noop}
+                  onSendSessionInput={onSendSessionInput ?? sendNothing}
                   onTerminateSession={onTerminateSession ?? noop}
                 />
               ) : (

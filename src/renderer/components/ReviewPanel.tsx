@@ -48,6 +48,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { MultitaskChild } from "../lib/multitask.js";
@@ -118,7 +119,7 @@ interface AgentsPanelContext {
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   onTerminateSession?: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
 }
 

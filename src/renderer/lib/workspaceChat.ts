@@ -3,7 +3,7 @@ import type { SessionSummary } from "../../shared/types.js";
 /**
  * The one session a workspace shows as its chat.
  *
- * A workspace holds exactly one session by design (CONTEXT.md), but the schema
+ * A workspace holds exactly one session by design (GLOSSARY.md), but the schema
  * permits more and reality produces them — two peers launched into the same
  * checkout, an import landing beside a live chat. When that happens every
  * reader has to name the *same* one, or a row describes one chat and opens

@@ -14,7 +14,7 @@ import { checkoutFingerprint, delay, fileSha256, runChecked, terminateRunningCom
 import { copyIfPresent, listEvidenceFiles, redact, redactEvidenceTextFiles, writeJson, writeNdjson } from "./verification/evidence.mjs";
 import { verifySessionMove } from "./verification/session-move.mjs";
 import { verifyStagedPreservingRevert } from "./verification/workspace-recovery.mjs";
-import { verifyComposerEditor, verifyComposerReference, verifyForkMergeBack, verifyWorkspaceSettings, workflowDiagnostics, workflowProgress } from "./verification/workflows.mjs";
+import { verifyBrowserFocus, verifyComposerEditor, verifyComposerReference, verifyForkMergeBack, verifyWorkspaceSettings, workflowDiagnostics, workflowProgress } from "./verification/workflows.mjs";
 import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
@@ -47,12 +47,13 @@ const scenarioDefinitionKeys = Object.freeze({
   "staged-revert": "providerError",
   "composer-reference": "composerSource",
   "composer-editor": "composerSource",
+  "browser-focus": "composerSource",
   "fork-merge": "forkTurnOne",
   "workspace-settings": "workspaceSettings",
 });
 // Scenarios that drive the New chat launcher, composer chips, or fork and merge
 // through the native window and so have no remote-browser fallback.
-const nativeOnlyScenarios = ["queued-restart", "session-move", "staged-revert", "composer-reference", "composer-editor", "fork-merge", "workspace-settings"];
+const nativeOnlyScenarios = ["queued-restart", "session-move", "staged-revert", "composer-reference", "composer-editor", "browser-focus", "fork-merge", "workspace-settings"];
 
 function providerForScenario(scenario) {
   if (scenario === "persistent-codex-subagent" || scenario === "codex-user-input") return VERIFICATION_CODEX_PROVIDER;
@@ -95,7 +96,7 @@ export function parseVerifyArgs(argv) {
   if (!['required', 'auto', 'off'].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
   }
-  if (["session-move", "staged-revert", "composer-reference", "composer-editor", "fork-merge", "workspace-settings"].includes(options.scenario)
+  if (["session-move", "staged-revert", "composer-reference", "composer-editor", "browser-focus", "fork-merge", "workspace-settings"].includes(options.scenario)
       && options.native !== "required") {
     throw new Error(`${options.scenario} requires native verification`);
   }
@@ -346,6 +347,7 @@ async function runScenario({
   const workflows = {
     "composer-reference": verifyComposerReference,
     "composer-editor": verifyComposerEditor,
+    "browser-focus": verifyBrowserFocus,
     "fork-merge": verifyForkMergeBack,
     "workspace-settings": verifyWorkspaceSettings,
   };
@@ -767,6 +769,7 @@ function expectedPersistenceTexts(scenario) {
     return [VERIFICATION_SCENARIOS.forkTurnOne.visibleText, VERIFICATION_SCENARIOS.forkMerge.visibleText];
   }
   if (scenario === "workspace-settings") return [VERIFICATION_SCENARIOS.workspaceSettings.visibleText];
+  if (scenario === "browser-focus") return [VERIFICATION_SCENARIOS.composerSource.visibleText];
   if (scenario === "session-move") {
     return [VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText, VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText];
   }

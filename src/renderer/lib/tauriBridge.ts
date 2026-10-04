@@ -528,6 +528,8 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     linkedRepos: {
       list: (input) => invokeCommand("linked-repos:list", input),
       add: (input) => invokeCommand("linked-repos:add", input),
+      pickFolder: (input) => invokeCommand("linked-repos:pick-folder", input),
+      summarize: (input) => invokeCommand("linked-repos:summarize", input),
       setEnabled: (input) => invokeCommand("linked-repos:set-enabled", input),
       remove: (input) => invokeCommand("linked-repos:remove", input).then(() => undefined)
     },

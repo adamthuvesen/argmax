@@ -11,13 +11,16 @@
 //   fork-merge          a portable fork at a selected finished turn, and the
 //                       fork's findings merged back into a running source
 //                       exactly once
+//   browser-focus       a page in a hidden agent browser tab focusing its own
+//                       field leaves the New chat composer with the keyboard
 //
 // Both run in the disposable app `scripts/verify.mjs` builds, against the
 // scripted Claude fixture. Keys, clicks and visible text go through the native
 // WebView; IPC and SQLite are the second read. Nothing here mocks a production
-// path.
+// path except native folder selection, whose result is scripted below.
 
 import { access, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import path from "node:path";
 
 import { delay, runChecked } from "./common.mjs";
@@ -908,7 +911,7 @@ export async function verifyWorkspaceSettings({
   }));
 
   // 1. Snooze shelf: snooze from the row menu, find it on the collapsed shelf, unsnooze.
-  const rowSelector = `[data-workspace-id="${workspace.id}"] button[title]`;
+  const rowSelector = `[data-workspace-id="${workspace.id}"] button[data-open][title]`;
   diagnose("snooze-contextmenu", await openContextMenu(browser, rowSelector));
   await clickByText(browser, "Snooze for 1 hour", 10_000);
   const snoozedUntil = await waitForSnooze(bridge, workspace.id, (value) => value !== null, 10_000, "snooze");
@@ -924,7 +927,9 @@ export async function verifyWorkspaceSettings({
   await hideShelf.waitForExist({ timeout: 10_000, timeoutMsg: "The Snoozed shelf did not open for the selected snoozed chat" });
   const shelfNow = await describeSnoozeShelf(browser, workspace.id);
   diagnose("shelf-after-snooze", shelfNow);
-  check(assertions, "shelf-opens-for-the-selected-snoozed-chat", (await hideShelf.getAttribute("aria-expanded")) === "true" && (await (await browser.$(rowSelector)).isDisplayed()), shelfNow);
+  const openedSnoozed = await browser.$(rowSelector);
+  await openedSnoozed.waitForDisplayed({ timeout: 10_000, timeoutMsg: "The selected snoozed chat did not become visible" });
+  check(assertions, "shelf-opens-for-the-selected-snoozed-chat", (await hideShelf.getAttribute("aria-expanded")) === "true" && (await openedSnoozed.isDisplayed()), shelfNow);
   screenshots.push(await screenshot(browser, evidenceDir, "snooze-shelf-expanded"));
   await hideShelf.click();
   const showShelf = await browser.$('[aria-label="Show Snoozed chats"]');
@@ -958,26 +963,42 @@ export async function verifyWorkspaceSettings({
   screenshots.push(await screenshot(browser, evidenceDir, "settings-branch-names"));
 
   const linkedCard = "#settings-linked-repos";
-  const pathField = await browser.$(`${linkedCard} form input[required]`);
   const linkedDir = path.join(path.dirname(repoPath), "linked-docs");
   await mkdir(linkedDir, { recursive: true });
-  await writeFile(path.join(linkedDir, "NOTES.md"), "# Linked docs\n");
+  await writeFile(path.join(linkedDir, "README.md"), "# Shared API\n\nShared API contracts and types for the application.\n");
   const canonicalLinked = await realpath(linkedDir);
   const linkedRows = () => sqliteRows(databasePath, "SELECT * FROM project_linked_repos");
+  check(assertions, "linked-repository-has-no-path-input", !(await (await browser.$(`${linkedCard} input[type=\"text\"]`)).isExisting()));
   for (const [bad, expected] of [
     ["relative/dir", "must be absolute"],
     [repoPath, "cannot be, contain, or sit inside"],
   ]) {
-    await setInputValue(browser, pathField, bad);
-    await clickByText(browser, "Link repository", 5_000);
-    await waitForText(browser, `${linkedCard} [role="alert"]`, expected, 10_000);
-    check(assertions, `linked-repository-rejects:${expected}`, (await linkedRows()).length === 0);
+    const error = await browser.execute(async (projectId, candidate) => {
+      try {
+        await window.argmax.linkedRepos.add({ projectId, repo: { name: null, path: candidate } });
+        return "";
+      } catch (reason) {
+        return JSON.stringify(reason);
+      }
+    }, project.id, bad);
+    check(assertions, `linked-repository-rejects:${expected}`, error.includes(expected) && (await linkedRows()).length === 0, error);
   }
-  await setInputValue(browser, pathField, linkedDir);
-  await clickByText(browser, "Link repository", 5_000);
+  // This driver controls the webview, not the OS folder sheet. Script only that
+  // selection result and keep persistence, helper generation, and row actions real.
+  await browser.execute(() => { window.argmax.linkedRepos.pickFolder = async () => null; });
+  await clickByText(browser, "Connect repository…", 5_000);
+  check(assertions, "linked-repository-picker-cancellation-keeps-list-empty", (await linkedRows()).length === 0);
+  await browser.execute((candidate) => {
+    window.argmax.linkedRepos.pickFolder = ({ projectId: owner }) =>
+      window.argmax.linkedRepos.add({ projectId: owner, repo: { name: null, path: candidate } });
+  }, linkedDir);
+  await clickByText(browser, "Connect repository…", 5_000);
   await waitForText(browser, `${linkedCard} strong`, "linked-docs", 10_000);
+  const expectedSummary = "Shared API contracts and types for the application.";
+  await waitForText(browser, linkedCard, expectedSummary, 20_000);
   const added = (await linkedRows()).find((row) => Object.values(row).includes(canonicalLinked));
   check(assertions, "linked-repository-stores-canonical-root", Boolean(added) && added.enabled === 1, added);
+  check(assertions, "linked-repository-summary-generated-and-persisted", added.summary === expectedSummary, added);
   screenshots.push(await screenshot(browser, evidenceDir, "settings-linked-repository"));
   await (await browser.$('[aria-label="Enable linked repository linked-docs"]')).click();
   await browser.waitUntil(async () => (await linkedRows())[0]?.enabled === 0, {
@@ -1528,6 +1549,109 @@ export async function verifyComposerEditor({
     session: done,
     workspace: sentWorkspace,
     records: (await readAllEvents(bridge, done.id)).map((event) => ({ kind: "event", ...event })),
+    browser: phases,
+    assertions,
+  };
+}
+
+// WebKit hands a hidden tab's WKWebView the window's keyboard when its page
+// focuses one of its own fields, while the page's `document.hasFocus()` still
+// reads false. What the person feels is the app document losing focus: their
+// keystrokes stop landing in the composer until they click it again.
+export async function verifyBrowserFocus({ bridge, browser, source, workspace, outputDir, timeoutMs, verifyUi }) {
+  const evidenceDir = path.join(outputDir, "native");
+  await mkdir(evidenceDir, { recursive: true });
+  const assertions = (progress.assertions = []);
+  const phases = [];
+  const screenshots = [];
+
+  await waitForCompleted(bridge, source.id, timeoutMs, "browser focus source chat");
+  phases.push(await verifyUi({
+    name: "focus-source",
+    expectedTexts: [VERIFICATION_SCENARIOS.composerSource.visibleText],
+    expectIdle: true,
+  }));
+
+  const page = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end('<!doctype html><title>Focus probe</title><input id="probe" aria-label="Probe field">');
+  });
+  await new Promise((resolve) => page.listen(0, "127.0.0.1", resolve));
+  let result;
+  try {
+    const field = await openLauncher(browser, timeoutMs);
+    await typeIntoComposer(browser, field, "keep typing");
+    // The renderer drives the tab itself: while the window holds a child webview,
+    // Tauri stops listing it as a webview window, so WebDriver cannot reach it
+    // until the tab closes.
+    await browser.execute(function probeHiddenTabFocus(sessionId, url, label) {
+      const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const focusState = () => {
+        const composer = document.querySelector(`[aria-label="${label}"]`);
+        return {
+          documentHasFocus: document.hasFocus(),
+          composerActive: composer !== null && composer.contains(document.activeElement),
+          blurs: window.__verifyBlurs,
+        };
+      };
+      const evaluate = async (tabId, script) => {
+        const { resultJson } = await window.argmax.browser.evaluate({ tabId, script, timeoutMs: 5_000 });
+        const value = JSON.parse(resultJson);
+        return typeof value === "string" ? JSON.parse(value) : value;
+      };
+      window.__verifyBlurs = 0;
+      window.__verifyFocusProbe = null;
+      window.addEventListener("blur", () => { window.__verifyBlurs += 1; });
+      void (async () => {
+        const before = focusState();
+        let tabId = null;
+        try {
+          // The path an agent's browser_open takes: a hidden tab owned by the chat.
+          ({ tabId } = await window.argmax.browser.openForSession({ sessionId, url }));
+          for (let attempt = 0; ; attempt += 1) {
+            if (await evaluate(tabId, 'JSON.stringify(document.getElementById("probe") !== null)').catch(() => false)) break;
+            if (attempt === 100) throw new Error("The hidden tab never loaded its probe page");
+            await pause(200);
+          }
+          const opened = focusState();
+          const probe = await evaluate(tabId, `JSON.stringify((() => {
+            const input = document.getElementById("probe");
+            input.focus();
+            return { focused: document.activeElement === input, pageHasFocus: document.hasFocus() };
+          })())`);
+          // WebKit asks the window for first responder a few milliseconds later.
+          await pause(750);
+          window.__verifyFocusProbe = { tabId, before, opened, probe, after: focusState() };
+        } catch (error) {
+          window.__verifyFocusProbe = { tabId, error: String(error?.message ?? error) };
+        } finally {
+          if (tabId) await window.argmax.browser.close(tabId).catch(() => undefined);
+        }
+      })();
+    }, source.id, `http://127.0.0.1:${page.address().port}/`, LAUNCHER_PROMPT_LABEL);
+    result = await browser.waitUntil(
+      () => browser.execute(function readFocusProbe() { return window.__verifyFocusProbe; }).catch(() => null),
+      { timeout: timeoutMs, interval: 250, timeoutMsg: "The hidden tab focus probe never finished" },
+    );
+    if (result.error) throw new Error(result.error);
+
+    check(assertions, "composer-has-the-keyboard-before-the-page-moves-focus",
+      [result.before, result.opened].every((state) => state.documentHasFocus && state.composerActive), { before: result.before, opened: result.opened });
+    // Positive control: the page did move its own focus, so the pass below is not vacuous.
+    check(assertions, "hidden-page-focused-its-field", result.probe.focused === true, result.probe);
+    check(assertions, "composer-keeps-the-keyboard-after-the-page-moves-focus",
+      result.after.documentHasFocus && result.after.composerActive && result.after.blurs === 0, result.after);
+    check(assertions, "composer-text-is-untouched", (await readComposerText(browser, field)) === "keep typing");
+    screenshots.push(await screenshot(browser, evidenceDir, "focus-launcher-after-probe"));
+  } finally {
+    page.close();
+  }
+
+  await writeJson(path.join(evidenceDir, "browser-focus.json"), { sourceSessionId: source.id, tabId: result?.tabId ?? null, screenshots, assertions });
+  return {
+    session: await waitForCompleted(bridge, source.id, 5_000, "browser focus source chat"),
+    workspace,
+    records: (await readAllEvents(bridge, source.id)).map((event) => ({ kind: "event", ...event })),
     browser: phases,
     assertions,
   };

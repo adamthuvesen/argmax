@@ -1,25 +1,63 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useEffect, useRef, useState, type JSX } from "react";
 import type { LinkedRepo } from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 import { showErrorToast } from "../../state/toast.js";
 import { Toggle } from "./settingsPrimitives.js";
 
-/**
- * Settings → Projects → Linked repositories. Each entry is a named, canonical
- * directory the project's agents may read and edit. It is separate from the project's
- * sources, which are project-relative files and URLs.
- *
- * Claude Code receives the directories with `--add-dir` for read and edit access.
- */
+// Requests outlive Settings so a returning panel can observe the same generation.
+const pendingSummaries = new Map<string, Promise<LinkedRepo>>();
+
 export function LinkedReposPanel({ projectId }: { projectId: string }): JSX.Element {
+  return <ProjectLinkedRepos key={projectId} projectId={projectId} />;
+}
+
+function ProjectLinkedRepos({ projectId }: { projectId: string }): JSX.Element {
   const [repos, setRepos] = useState<LinkedRepo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [name, setName] = useState("");
-  const [path, setPath] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [summarizing, setSummarizing] = useState<Set<string>>(new Set());
+  const [summaryErrors, setSummaryErrors] = useState<Record<string, string | undefined>>({});
+  const mounted = useRef(true);
   const api = window.argmax?.linkedRepos;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const summarize = useCallback(async (repo: LinkedRepo): Promise<void> => {
+    if (!api) return;
+    if (mounted.current) {
+      setSummarizing((current) => new Set(current).add(repo.id));
+      setSummaryErrors((current) => ({ ...current, [repo.id]: undefined }));
+    }
+    try {
+      let request = pendingSummaries.get(repo.id);
+      if (!request) {
+        request = api.summarize({ projectId, id: repo.id }).finally(() => {
+          pendingSummaries.delete(repo.id);
+        });
+        pendingSummaries.set(repo.id, request);
+      }
+      const updated = await request;
+      if (!mounted.current) return;
+      setRepos((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (reason) {
+      if (mounted.current) {
+        setSummaryErrors((current) => ({ ...current, [repo.id]: validationMessage(reason) }));
+      }
+    } finally {
+      if (mounted.current) {
+        setSummarizing((current) => {
+          const remaining = new Set(current);
+          remaining.delete(repo.id);
+          return remaining;
+        });
+      }
+    }
+  }, [api, projectId]);
 
   useEffect(() => {
     let active = true;
@@ -27,13 +65,15 @@ export function LinkedReposPanel({ projectId }: { projectId: string }): JSX.Elem
       setLoading(false);
       return;
     }
-    setLoading(true);
     void api
       .list({ projectId })
       .then((result) => {
         if (!active) return;
         setRepos(result);
         setLoadError(null);
+        for (const repo of result) {
+          if (pendingSummaries.has(repo.id)) void summarize(repo);
+        }
       })
       .catch((reason: unknown) => {
         if (active) setLoadError(validationMessage(reason));
@@ -41,62 +81,54 @@ export function LinkedReposPanel({ projectId }: { projectId: string }): JSX.Elem
       .finally(() => {
         if (active) setLoading(false);
       });
-    return () => {
-      active = false;
-    };
-  }, [api, projectId]);
+    return () => { active = false; };
+  }, [api, projectId, summarize]);
 
-  const add = useCallback(async (): Promise<void> => {
+  async function connect(): Promise<void> {
     if (!api) return;
     setBusy(true);
-    setFormError(null);
+    setConnectError(null);
     try {
-      const created = await api.add({
-        projectId,
-        repo: { name: name.trim() === "" ? null : name.trim(), path: path.trim() }
-      });
-      setRepos((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
-      setName("");
-      setPath("");
+      const created = await api.pickFolder({ projectId });
+      if (!created) return;
+      if (mounted.current) {
+        setRepos((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+      void summarize(created);
     } catch (reason) {
-      // The reason names the rule that failed, so it belongs beside the form.
-      setFormError(validationMessage(reason));
+      if (mounted.current) setConnectError(validationMessage(reason));
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
-  }, [api, name, path, projectId]);
+  }
 
-  const toggle = useCallback(
-    async (repo: LinkedRepo, enabled: boolean): Promise<void> => {
-      if (!api) return;
-      setBusy(true);
-      try {
-        const updated = await api.setEnabled({ projectId, id: repo.id, enabled });
+  async function toggle(repo: LinkedRepo, enabled: boolean): Promise<void> {
+    if (!api) return;
+    setBusy(true);
+    try {
+      const updated = await api.setEnabled({ projectId, id: repo.id, enabled });
+      if (mounted.current) {
         setRepos((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      } catch (reason) {
-        showErrorToast(validationMessage(reason));
-      } finally {
-        setBusy(false);
       }
-    },
-    [api, projectId]
-  );
+    } catch (reason) {
+      if (mounted.current) showErrorToast(validationMessage(reason));
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
 
-  const remove = useCallback(
-    async (repo: LinkedRepo): Promise<void> => {
-      if (!api) return;
-      setBusy(true);
-      try {
-        await api.remove({ projectId, id: repo.id });
-        setRepos((current) => current.filter((item) => item.id !== repo.id));
-      } catch (reason) {
-        showErrorToast(validationMessage(reason));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [api, projectId]
-  );
+  async function remove(repo: LinkedRepo): Promise<void> {
+    if (!api) return;
+    setBusy(true);
+    try {
+      await api.remove({ projectId, id: repo.id });
+      if (mounted.current) setRepos((current) => current.filter((item) => item.id !== repo.id));
+    } catch (reason) {
+      if (mounted.current) showErrorToast(validationMessage(reason));
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
 
   return (
     <section
@@ -106,93 +138,79 @@ export function LinkedReposPanel({ projectId }: { projectId: string }): JSX.Elem
     >
       <h3>Linked repositories</h3>
       <p className="settings-note">
-        Other checkouts on this Mac that agents can read and edit as needed for your task. Claude
-        Code gets them as extra directories and loads their CLAUDE.md files. Agents can use Argmax
-        source tools to read files and their normal file or shell tools to edit them, subject to
-        session permissions. Argmax reads these folders on demand and never watches them.
+        Connect other repositories on this Mac that agents can read and edit for your task.
+        Argmax generates a concise summary to include in agent context. It reads these folders
+        on demand and never watches them.
       </p>
       {!api ? <p className="settings-note">Open the Argmax app to manage linked repositories.</p> : null}
-      {loadError ? (
-        <p role="alert" className="settings-note">
-          {loadError}
-        </p>
-      ) : null}
+      {loadError ? <p role="alert" className="settings-note">{loadError}</p> : null}
       {loading ? (
-        <p role="status" className="settings-note">
-          Loading linked repositories…
-        </p>
+        <p role="status" className="settings-note">Loading linked repositories…</p>
       ) : null}
       {!loading && !loadError && repos.length === 0 && api ? (
         <p className="settings-note">No linked repositories yet.</p>
       ) : null}
       {repos.length > 0 ? (
         <ul className="project-source-list">
-          {repos.map((repo) => (
-            <li key={repo.id}>
-              <strong>{repo.name}</strong>
-              <code>{repo.rootPath}</code>
-              <div className="project-source-actions">
-                <Toggle
-                  ariaLabel={`Enable linked repository ${repo.name}`}
-                  checked={repo.enabled}
-                  onChange={(enabled) => void toggle(repo, enabled)}
-                />
-                <button
-                  type="button"
-                  className="settings-button"
-                  disabled={busy}
-                  aria-label={`Remove linked repository ${repo.name}`}
-                  onClick={() => void remove(repo)}
-                >
-                  Remove
-                </button>
-              </div>
-            </li>
-          ))}
+          {repos.map((repo) => {
+            const generating = summarizing.has(repo.id);
+            const error = summaryErrors[repo.id];
+            return (
+              <li key={repo.id}>
+                <strong>{repo.name}</strong>
+                <code>{repo.rootPath}</code>
+                {repo.summary ? <p className="settings-note">{repo.summary}</p> : null}
+                {generating ? <p role="status" className="settings-note">Generating summary…</p> : null}
+                {error ? (
+                  <p role="alert" className="settings-note">
+                    Repository connected. Summary unavailable. {error}
+                  </p>
+                ) : null}
+                <div className="project-source-actions">
+                  <Toggle
+                    ariaLabel={`Enable linked repository ${repo.name}`}
+                    checked={repo.enabled}
+                    disabled={busy || generating}
+                    onChange={(enabled) => void toggle(repo, enabled)}
+                  />
+                  <button
+                    type="button"
+                    className="settings-button"
+                    disabled={busy || generating || !repo.enabled}
+                    aria-label={`${error ? "Retry summary" : repo.summary ? "Regenerate summary" : "Generate summary"} for ${repo.name}`}
+                    onClick={() => void summarize(repo)}
+                  >
+                    {error ? "Retry summary" : repo.summary ? "Regenerate summary" : "Generate summary"}
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-button"
+                    disabled={busy || generating}
+                    aria-label={`Remove linked repository ${repo.name}`}
+                    onClick={() => void remove(repo)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
       {api ? (
-        <form
-          className="project-source-form"
-          aria-label="Link a repository"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void add();
-          }}
-        >
-          <label className="settings-field">
-            Absolute path
-            <input
-              className="settings-text-input"
-              required
-              spellCheck={false}
-              placeholder="/Users/you/code/shared-docs"
-              value={path}
-              onChange={(event) => setPath(event.target.value)}
-            />
-          </label>
-          <label className="settings-field">
-            Name (optional)
-            <input
-              className="settings-text-input"
-              maxLength={40}
-              spellCheck={false}
-              placeholder="shared-docs"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          {formError ? (
-            <p role="alert" className="settings-note">
-              {formError}
-            </p>
-          ) : null}
+        <>
+          {connectError ? <p role="alert" className="settings-note">{connectError}</p> : null}
           <div className="project-source-actions">
-            <button className="settings-button" type="submit" disabled={busy || path.trim() === ""}>
-              {busy ? "Linking…" : "Link repository"}
+            <button
+              className="settings-button"
+              type="button"
+              disabled={busy || loading || Boolean(loadError)}
+              onClick={() => void connect()}
+            >
+              Connect repository…
             </button>
           </div>
-        </form>
+        </>
       ) : null}
     </section>
   );

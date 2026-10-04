@@ -1329,6 +1329,10 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
 
   const prompt = await promptFrom(args);
   const workflow = workflowTurn(prompt);
+  if (args.includes("text") && prompt.includes("REPOSITORY SAMPLE:")) {
+    process.stdout.write(JSON.stringify({ summary: "Shared API contracts and types for the application." }) + "\n");
+    return;
+  }
   // A one-shot title request quotes the prompt; it gets a title, not a turn.
   if (args.includes("text") && (!prompt.includes("[argmax-verification:") || workflow)) {
     process.stdout.write("Argmax Verification Chat\n");

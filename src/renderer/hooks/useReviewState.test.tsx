@@ -2,6 +2,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, ProjectSummary, WorkspaceSummary } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "./useReviewState.js";
+import { resetTerminalTabsForTests, setTerminalShowing } from "../lib/terminalTabs.js";
 
 function workspaceSource(workspace: WorkspaceSummary): ReviewSource {
   return { kind: "workspace", workspace };
@@ -201,6 +202,26 @@ describe("useReviewState — IPC fan-out resistance", () => {
       activeIndex: 0,
       ratio: 0.6
     });
+  });
+
+  it.each([false, true])("starts a launcher closed with checkout terminal visibility %s", (showing) => {
+    resetTerminalTabsForTests();
+    setTerminalShowing("workspace-1", showing);
+    window.localStorage.setItem(
+      "argmax.reviewPanel.layout.launcher",
+      JSON.stringify({ modes: ["changes"], activeIndex: 0, ratio: 0.5 })
+    );
+
+    const { result, unmount } = renderHook(() => useReviewState(projectSource(makeProject()), null, {
+      terminalWorkspaceId: "workspace-1"
+    }));
+
+    expect(result.current.isPanelOpen).toBe(false);
+    act(() => result.current.togglePanel());
+    expect(result.current.isPanelOpen).toBe(true);
+    expect(result.current.mode).toBe("changes");
+    unmount();
+    resetTerminalTabsForTests();
   });
 
   it("keeps an explicitly open mobile-style review surface unsplit", () => {

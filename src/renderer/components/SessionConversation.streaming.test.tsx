@@ -15,7 +15,8 @@ import {
   renderConversation,
   rerenderConversation,
   reviewStub,
-  workspace
+  workspace,
+  STARTED_TURN
 } from "../../test/sessionConversationTestHarness.js";
 
 describe("SessionConversation — streaming & composer", () => {
@@ -1201,7 +1202,7 @@ describe("SessionConversation — streaming & composer", () => {
     // That used to silence the indicator on every later turn. The window
     // between a send and the provider's first event is a floor, so no leftover
     // state can leave it with nothing on screen.
-    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
     // The cue's own show/hide timeouts are the only clock this needs, so the
     // post-send window is advanced rather than waited out.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -1241,7 +1242,7 @@ describe("SessionConversation — streaming & composer", () => {
     // `failed`; the next follow-up relaunches it with --resume, which can take
     // twenty seconds to say anything. The pre-send state is not a dead turn, so
     // the cue has to stay up rather than blink out after its minimum window.
-    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
     // The cue's own show/hide timeouts are the only clock this needs, so the
     // post-send window is advanced rather than waited out.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -1993,7 +1994,7 @@ describe("SessionConversation — streaming & composer", () => {
     const send = vi.fn(
       () => new Promise<void>((resolve) => {
         resolveSend = resolve;
-      })
+      }).then(() => STARTED_TURN)
     );
     const { rerender } = render(
       <SessionConversation
@@ -2066,7 +2067,7 @@ describe("SessionConversation — streaming & composer", () => {
           event("u1", "user.message", "do a thing", "2026-05-12T15:00:00.000Z")
         ]}
         isLogOpen={false}
-        onSendSessionInput={vi.fn(() => new Promise<void>(() => {}))}
+        onSendSessionInput={vi.fn(() => new Promise<never>(() => {}))}
         onTerminateSession={vi.fn().mockResolvedValue(undefined)}
         onClearSession={vi.fn().mockResolvedValue(undefined)}
         onToggleLog={vi.fn()}
@@ -2090,7 +2091,7 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   it("reconciles identical optimistic follow-ups with persisted rows one at a time", async () => {
-    const send = vi.fn().mockResolvedValue(undefined);
+    const send = vi.fn().mockResolvedValue(STARTED_TURN);
     const session = baseSession({ provider: "codex", state: "complete" });
     const previousTurn = [
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
@@ -2128,6 +2129,32 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getAllByText("continue")).toHaveLength(2);
   });
 
+  // A waiting session can still hold a live turn (an approval, a question),
+  // so the backend queues the input. It shows as a queue chip and never lands
+  // as this send's user.message, so an echo would never reconcile.
+  it("drops the echo and the start cue when a send to a waiting session is queued", async () => {
+    vi.useFakeTimers();
+    const send = vi.fn().mockResolvedValue({ ok: true, queued: true });
+    renderConversation(
+      baseSession({ provider: "opencode", state: "waiting" }),
+      [
+        event("m1", "message.completed", "Which scope?", "2026-05-12T15:00:01.000Z"),
+        event("u1", "user.message", "clean up old worktrees", "2026-05-12T15:00:00.000Z")
+      ],
+      { onSendSessionInput: send }
+    );
+    fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "all good, thanks" } });
+    fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Enter" });
+
+    // Past the cue's reveal delay, so a cue left counting would be on screen.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(send).toHaveBeenCalledOnce();
+    expect(screen.queryByText("all good, thanks")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
+  });
+
   it("yields the post-send Thinking state to the first visible assistant text", () => {
     vi.useFakeTimers();
     const previousTurn = [
@@ -2136,7 +2163,7 @@ describe("SessionConversation — streaming & composer", () => {
     ];
     const baseProps = {
       isLogOpen: false,
-      onSendSessionInput: vi.fn(() => new Promise<void>(() => {})),
+      onSendSessionInput: vi.fn(() => new Promise<never>(() => {})),
       onTerminateSession: vi.fn().mockResolvedValue(undefined),
       onClearSession: vi.fn().mockResolvedValue(undefined),
       onToggleLog: vi.fn(),

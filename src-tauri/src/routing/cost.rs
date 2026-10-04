@@ -142,7 +142,8 @@ pub fn router_cost(
             } else {
                 price_measured_turns(connection, route, until, &mut turns)?;
             }
-            turns.retain(|turn| turn.answered());
+            // A cancelled turn is left out entirely, cost included.
+            turns.retain(|turn| turn.answered() && !turn.cancelled);
             if turns.is_empty() {
                 continue;
             }
@@ -174,6 +175,7 @@ const TURN_END_EVENTS: [&str; 2] = ["session.completed", "session.cancelled"];
 struct RouteTurn {
     start_at: String,
     ended_at: Option<String>,
+    cancelled: bool,
     first_answer_at: Option<String>,
     has_usage: bool,
     cost: TurnCost,
@@ -185,6 +187,7 @@ impl RouteTurn {
         Self {
             start_at,
             ended_at: None,
+            cancelled: false,
             first_answer_at: None,
             has_usage: false,
             cost: None,
@@ -255,6 +258,7 @@ fn turns_in_route(
         } else if kind == completed || kind == cancelled {
             if turn.ended_at.is_none() {
                 turn.ended_at = Some(at);
+                turn.cancelled = kind == cancelled;
             }
         } else if turn.first_answer_at.is_none() {
             turn.first_answer_at = Some(at);
@@ -762,7 +766,15 @@ mod tests {
             None
         );
 
-        // Answered, then cancelled before any usage landed: billed, so unpriced.
+        // Answered, then cancelled: the turn is left out of the card, even
+        // when usage landed.
+        usage(
+            &connection,
+            "cut",
+            "2026-09-27T11:00:05.000Z",
+            "grok-4.7",
+            100,
+        );
         route(
             &connection,
             "cut",
@@ -777,6 +789,37 @@ mod tests {
             "e2",
             "cut",
             "2026-09-27T11:00:03.000Z",
+            "message.delta",
+            40,
+        );
+        event(
+            &connection,
+            "e3",
+            "cut",
+            "2026-09-27T11:00:04.000Z",
+            "session.cancelled",
+            0,
+        );
+        assert_eq!(
+            router_cost(&connection, UsageWindow::Past24h, now()).unwrap(),
+            None
+        );
+
+        // Answered and finished with no usage recorded: still unpriced.
+        route(
+            &connection,
+            "done",
+            "2026-09-27T12:00:00.000Z",
+            "balanced",
+            "grok",
+            "grok-4.7",
+            "launch",
+        );
+        event(
+            &connection,
+            "e4",
+            "done",
+            "2026-09-27T12:00:03.000Z",
             "message.delta",
             40,
         );

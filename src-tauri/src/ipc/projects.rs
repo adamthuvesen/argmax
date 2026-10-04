@@ -94,7 +94,7 @@ pub async fn projects_pick_folder(
     state: State<'_, AppState>,
     _input: ProjectsPickFolderInput,
 ) -> ArgmaxResult<ProjectFolderPickResult> {
-    let Some(path) = pick_project_folder(app).await? else {
+    let Some(path) = pick_project_folder(app, "Add Project").await? else {
         return Ok(ProjectFolderPickResult::Cancelled { cancelled: true });
     };
 
@@ -341,11 +341,14 @@ struct GitMetadata {
     remote: Option<ProjectRemote>,
 }
 
-async fn pick_project_folder(app: AppHandle) -> ArgmaxResult<Option<PathBuf>> {
+pub(crate) async fn pick_project_folder(
+    app: AppHandle,
+    title: &str,
+) -> ArgmaxResult<Option<PathBuf>> {
     let (sender, receiver) = oneshot::channel();
     app.dialog()
         .file()
-        .set_title("Add Project")
+        .set_title(title)
         .pick_folder(move |folder| {
             let _ = sender.send(folder);
         });

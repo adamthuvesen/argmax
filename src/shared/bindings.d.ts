@@ -802,6 +802,22 @@ async linkedReposAdd(input: LinkedReposAddInput) : Promise<Result<LinkedRepo, Ar
     else return { status: "error", error: e  as any };
 }
 },
+async linkedReposPickFolder(input: LinkedReposListInput) : Promise<Result<LinkedRepo | null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("linked_repos_pick_folder", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async linkedReposSummarize(input: LinkedReposSummarizeInput) : Promise<Result<LinkedRepo, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("linked_repos_summarize", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async linkedReposSetEnabled(input: LinkedReposSetEnabledInput) : Promise<Result<LinkedRepo, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("linked_repos_set_enabled", { input }) };
@@ -2286,7 +2302,7 @@ name: string;
 /**
  * Canonical absolute directory, resolved when the root was added.
  */
-rootPath: string; enabled: boolean; createdAt: string; updatedAt: string }
+rootPath: string; summary?: string | null; enabled: boolean; createdAt: string; updatedAt: string }
 export type LinkedRepoInput = {
 /**
  * Defaults to the directory's name.
@@ -2296,6 +2312,7 @@ export type LinkedReposAddInput = { projectId: ProjectId; repo: LinkedRepoInput 
 export type LinkedReposListInput = { projectId: ProjectId }
 export type LinkedReposRemoveInput = { projectId: ProjectId; id: NonEmptyString }
 export type LinkedReposSetEnabledInput = { projectId: ProjectId; id: NonEmptyString; enabled: boolean }
+export type LinkedReposSummarizeInput = { projectId: ProjectId; id: NonEmptyString }
 export type LogEntry = {
 /**
  * Monotonic, process-lifetime sequence number. The debug panel polls with

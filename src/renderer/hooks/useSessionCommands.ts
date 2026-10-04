@@ -8,6 +8,7 @@ import type {
   ProviderId,
   QueuedMessageDelivery
 } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import type { FollowUpDelivery } from "../lib/uiPreferences.js";
 import { modelSupportsFastMode, type ModelPickerSelection } from "../lib/models.js";
 import { withToast, type ToastMessage } from "../lib/withToast.js";
@@ -38,7 +39,7 @@ interface SessionCommands {
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
     delivery?: FollowUpDelivery
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   cancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   sendQueuedMessageNow: (
     sessionId: string,
@@ -70,7 +71,7 @@ export function useSessionCommands({
       attachments?: ComposerAttachment[],
       agentReferences?: AgentReference[],
       delivery: FollowUpDelivery = "queue"
-    ): Promise<void> => {
+    ): Promise<SendInputResult> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to send input to a live chat.");
       }
@@ -101,9 +102,10 @@ export function useSessionCommands({
       // chip arrives via dashboard:delta, and a stale empty page would race it.
       if (result.queued) {
         void refreshDashboardStatus();
-        return;
+        return result;
       }
       void Promise.allSettled([refreshDashboardStatus(), loadSessionEvents(sessionId)]);
+      return result;
     },
     [refreshDashboardStatus, loadSessionEvents, fastMode]
   );

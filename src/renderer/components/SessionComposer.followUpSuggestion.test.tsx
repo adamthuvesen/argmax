@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import { baseSession, renderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
 import { SETTLE_MS } from "../hooks/useFollowUpSuggestion.js";
 
 /**
@@ -63,7 +63,7 @@ describe("SessionComposer follow-up suggestion", () => {
 
   it("accepts the suggestion with Tab so Enter sends it", async () => {
     stubSuggestion(() => Promise.resolve({ suggestion: "Add a test for the empty case" }));
-    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
     renderConversation(baseSession(finishedTurn()), [], { onSendSessionInput });
 
     const input = await screen.findByPlaceholderText("Add a test for the empty case");

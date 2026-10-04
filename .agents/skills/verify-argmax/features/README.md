@@ -29,7 +29,7 @@ Unmapped:
   require the remote-browser path and separate live-provider support proof.
 - `scenario:staged-revert`: native Review and index recovery, beyond the initial map.
 
-Settings, schedules, arcs, browser, terminal, mobile,
+Settings, schedules, arcs, browser (beyond `browser-focus`), terminal, mobile,
 and account integrations have no native entry point here. `ui` can show how
 their renderer looks against demo data, not that they work. Their unit tests or
 other scenarios do not make them verified by this skill.
@@ -57,6 +57,7 @@ scenario and persistence checks must still pass.
 | Move chat to another checkout | [session-move.md](session-move.md) | scenario:session-move | 2026-10-04 pass at cb42e859 |
 | Chat reference chip and background send | [composer-reference.md](composer-reference.md) | scenario:composer-reference | 2026-10-04 pass at cb42e859 |
 | CodeMirror composer behavior | [composer-editor.md](composer-editor.md) | scenario:composer-editor | 2026-10-04 pass at cb42e859 |
+| Hidden browser tab keeps off the keyboard | [browser-focus.md](browser-focus.md) | scenario:browser-focus | 2026-10-04 pass at 90d0c4a1 |
 | Fork at a finished turn and merge back | [fork-merge.md](fork-merge.md) | scenario:fork-merge | 2026-10-04 pass at cb42e859 |
 | Branch names, linked repositories, snooze shelf | [workspace-settings.md](workspace-settings.md) | scenario:workspace-settings | 2026-10-04 pass at cb42e859 |
 | Stop chat | [cancellation.md](cancellation.md) | scenario:cancellation | 2026-10-04 pass at cb42e859 |

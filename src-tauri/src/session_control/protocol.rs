@@ -634,6 +634,8 @@ pub struct LinkedRepoRecord {
     /// that is advice to the agent, not something Argmax enforces on a
     /// provider that was given the directory.
     pub root: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]

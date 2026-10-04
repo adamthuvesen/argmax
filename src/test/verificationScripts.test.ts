@@ -423,7 +423,7 @@ describe("verification script arguments", () => {
     expect(() => parseVerifyArgs(["--scenario", "staged-revert", "--native", "off"])).toThrow(
       /requires native verification/,
     );
-    for (const scenario of ["composer-reference", "composer-editor", "fork-merge", "workspace-settings"]) {
+    for (const scenario of ["composer-reference", "composer-editor", "browser-focus", "fork-merge", "workspace-settings"]) {
       expect(parseVerifyArgs(["--scenario", scenario])).toMatchObject({ scenario, native: "required" });
       expect(() => parseVerifyArgs(["--scenario", scenario, "--native", "off"])).toThrow(/requires native verification/);
     }

@@ -101,6 +101,8 @@ export const IPC_CHANNELS = [
   "skills:list",
   "linked-repos:list",
   "linked-repos:add",
+  "linked-repos:pick-folder",
+  "linked-repos:summarize",
   "linked-repos:set-enabled",
   "linked-repos:remove",
   "projects:set-branch-template",
@@ -298,6 +300,8 @@ export interface IpcCommands {
   "skills:list": Commands["skillsList"];
   "linked-repos:list": Commands["linkedReposList"];
   "linked-repos:add": Commands["linkedReposAdd"];
+  "linked-repos:pick-folder": Commands["linkedReposPickFolder"];
+  "linked-repos:summarize": Commands["linkedReposSummarize"];
   "linked-repos:set-enabled": Commands["linkedReposSetEnabled"];
   "linked-repos:remove": Commands["linkedReposRemove"];
   "projects:set-branch-template": Commands["projectsSetBranchTemplate"];

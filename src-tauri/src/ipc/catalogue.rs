@@ -644,6 +644,12 @@ command_catalogue! {
     "linked-repos:add" => linked_repos::linked_repos_add, desktop,
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 
+    "linked-repos:pick-folder" => linked_repos::linked_repos_pick_folder, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "linked-repos:summarize" => linked_repos::linked_repos_summarize, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
     "linked-repos:set-enabled" => linked_repos::linked_repos_set_enabled, desktop,
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 

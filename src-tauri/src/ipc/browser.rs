@@ -841,6 +841,7 @@ fn open_tab_with_url(
     // main thread, and the navigation started above cannot produce a document
     // until the run loop turns again.
     crate::browser::user_scripts::replace(&created, &page_scripts(owned, false))?;
+    crate::browser::focus_guard::install();
     let browser_theme = *app
         .state::<AppState>()
         .browser_theme

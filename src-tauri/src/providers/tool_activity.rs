@@ -431,6 +431,9 @@ fn classify(payload: &Map<String, Value>) -> Option<Activity> {
             None,
         ));
     }
+    if let Some(activity) = linked_repo_activity(name, input, payload) {
+        return Some(activity);
+    }
     if let Some(kind) = argmax_tool_kind(name, payload) {
         return Some(activity(kind, Evidence::Tool, payload, None));
     }
@@ -697,6 +700,44 @@ fn argmax_tool_name<'a>(name: &'a str, payload: &Map<String, Value>) -> Option<&
         .or_else(|| {
             (payload.get("server").and_then(Value::as_str) == Some("argmax")).then_some(name)
         })
+}
+
+/// `sources_read` and `sources_list` on a linked repository are file work, so
+/// they join the turn's reads and listings instead of reading as "Used a tool".
+/// The target keeps the repository name in front of the path, because the path
+/// alone would name a file in the session's own checkout.
+fn linked_repo_activity(
+    name: &str,
+    input: Option<&Value>,
+    payload: &Map<String, Value>,
+) -> Option<Activity> {
+    let kind = match argmax_tool_name(name, payload)? {
+        "sources_read" => ActivityKind::Read,
+        "sources_list" => ActivityKind::List,
+        _ => return None,
+    };
+    let fields = input?.as_object()?;
+    let repo = fields.get("linked_repo")?.as_str()?.trim();
+    if repo.is_empty() {
+        return None;
+    }
+    let path = fields
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default();
+    let target = if path.is_empty() {
+        repo.to_owned()
+    } else {
+        format!("{repo}/{path}")
+    };
+    Some(Activity {
+        kind,
+        evidence: Evidence::Tool,
+        targets: vec![target],
+        operation: None,
+        tool_count: None,
+    })
 }
 
 fn argmax_tool_kind(name: &str, payload: &Map<String, Value>) -> Option<ActivityKind> {
@@ -2902,6 +2943,31 @@ mod tests {
             payload
         };
         assert_eq!(historical["activity"]["kind"], "agent-message");
+    }
+
+    #[test]
+    fn linked_repository_reads_are_file_activity() {
+        // Codex names the tool bare and puts the server beside it; the row
+        // persisted before this rule carries the generic `tool` kind.
+        let mut read = json!({
+            "name":"sources_read","server":"argmax",
+            "input":{"linked_repo":"dbt-transform","path":"models/sv__maru.sql"},
+            "activity":{"version":1,"kind":"tool","evidence":"tool","targets":[]}
+        });
+        enrich_tool_activity("command.started", &mut read);
+        assert_eq!(read["activity"]["kind"], "read");
+        assert_eq!(
+            read["activity"]["targets"],
+            json!(["dbt-transform/models/sv__maru.sql"])
+        );
+        let listing = activity(json!({
+            "name":"mcp__argmax__sources_list","input":{"linked_repo":"dbt-transform"}
+        }));
+        assert_eq!(listing["kind"], "list");
+        assert_eq!(listing["targets"], json!(["dbt-transform"]));
+        // A registered source is not a file in a linked repository.
+        let source = activity(json!({"name":"mcp__argmax__sources_read","input":{"id":"s1"}}));
+        assert_eq!(source["kind"], "tool");
     }
 
     #[test]

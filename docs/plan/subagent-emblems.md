@@ -138,7 +138,7 @@ Multitask entries in the tab strip and the card keep Split and the hashed colour
 
 ### Phase 3: Docs
 
-**Files.** `CONTEXT.md` (glossary: *Emblem*: the shape-and-hue mark tied to a subagent's codename; avoid avatar, icon, badge), `docs/chat-cards.md` (launch row mark, dock tab, masthead), `docs/styling.md` (emblem tones ride the session icon palette; decorative, never status), `docs/multitask.md` one line (multitasks keep Split).
+**Files.** `GLOSSARY.md` (glossary: *Emblem*: the shape-and-hue mark tied to a subagent's codename; avoid avatar, icon, badge), `docs/chat-cards.md` (launch row mark, dock tab, masthead), `docs/styling.md` (emblem tones ride the session icon palette; decorative, never status), `docs/multitask.md` one line (multitasks keep Split).
 
 ## Decisions
 

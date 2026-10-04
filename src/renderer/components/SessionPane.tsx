@@ -13,6 +13,7 @@ import {
 import { FileDiff, FolderTree, GitCommitVertical, Globe } from "lucide-react";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 import type { MultitaskChild } from "../lib/multitask.js";
@@ -237,7 +238,7 @@ export function SessionPane({
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
     delivery?: FollowUpDelivery
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (
     sessionId: string,

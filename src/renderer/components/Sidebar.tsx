@@ -598,8 +598,6 @@ export function Sidebar({
     workingWorkspaces
   );
 
-  // Repo-less chats are conversational by nature — they never escalate into
-  // the Priority triage list.
   // An unread reply ages out 30 minutes after it lands, so the section has to
   // move without a delta to prompt it. Rather than poll a clock, arm one timer
   // for the exact moment the next listed row crosses that line. Rows held by
@@ -610,7 +608,7 @@ export function Sidebar({
     () =>
       showPriority
         ? computePriorityEntries(
-            sidebarWorkspaces.filter((workspace) => workspace.kind === "git"),
+            sidebarWorkspaces,
             snapshot.sessions,
             priorityNow,
             unreadWorkspaces

@@ -1000,6 +1000,15 @@
   padding: 0;
 }
 
+.composer-editor .cm-cursor {
+  border-left-color: var(--text);
+}
+
+.composer-editor .cm-editor .cm-selectionBackground,
+.composer-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+  background: var(--selection-bg);
+}
+
 .composer-editor .cm-placeholder {
   color: var(--muted);
 }

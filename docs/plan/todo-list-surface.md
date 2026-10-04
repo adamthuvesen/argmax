@@ -180,7 +180,7 @@ keep true. Record the gap in `docs/chat-cards.md`.
    Cursor empty payload arriving mid-list.
 4. **TodoCard**, hidden-row suppression, `HIDDEN_TOOL_NAMES` removal, bucket
    exclusion.
-5. **Docs** — `docs/chat-cards.md`, `docs/providers.md`, `CONTEXT.md` if
+5. **Docs** — `docs/chat-cards.md`, `docs/providers.md`, `GLOSSARY.md` if
    "todo list" earns a glossary line, and the Decision section of
    `docs/design/todo-list/README.md`.
 

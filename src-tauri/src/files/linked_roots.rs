@@ -244,6 +244,7 @@ mod tests {
             project_id: "p1".to_owned(),
             name: "docs".to_owned(),
             root_path: root.canonicalize().unwrap().to_string_lossy().into_owned(),
+            summary: None,
             enabled: true,
             created_at: String::new(),
             updated_at: String::new(),

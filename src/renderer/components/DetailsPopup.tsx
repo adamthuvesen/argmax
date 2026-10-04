@@ -11,6 +11,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
@@ -100,7 +101,7 @@ export function DetailsPopup({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;

@@ -31,7 +31,10 @@ function isConversationVisible(event: TimelineEvent): boolean {
       (canonical.name === "compacting" ||
         canonical.name === "compacted" ||
         canonical.name === "moved" ||
-        canonical.name === "note" ||
+        // A linked-repository read note is a durable record, not chat: the
+        // agent's own `sources_read` row already shows the read, and a burst
+        // of reads stacked one centred line per file under the turn.
+        (canonical.name === "note" && canonical.operation !== "linked-repo") ||
         canonical.name === "provider-changed"));
   return (
     !canonical.isRaw &&

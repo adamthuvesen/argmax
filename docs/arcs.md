@@ -1,6 +1,6 @@
 # Arcs
 
-An Arc is a long-lived body of work: a feature, a migration, an app. It outlives any one chat and may span several projects. Argmax keeps it thin on purpose. The Arc names the work, holds its shared context, and points at a coordinator chat; the coordinator does the planning, and Argmax only launches, limits, and wakes it. See [CONTEXT.md](../CONTEXT.md) for Arc, Coordinator, Member, and Arc folder.
+An Arc is a long-lived body of work: a feature, a migration, an app. It outlives any one chat and may span several projects. Argmax keeps it thin on purpose. The Arc names the work, holds its shared context, and points at a coordinator chat; the coordinator does the planning, and Argmax only launches, limits, and wakes it. See [GLOSSARY.md](../GLOSSARY.md) for Arc, Coordinator, Member, and Arc folder.
 
 ## Using one
 

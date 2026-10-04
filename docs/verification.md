@@ -22,6 +22,7 @@ npm run verify -- --scenario session-move
 npm run verify -- --scenario staged-revert
 npm run verify -- --scenario composer-reference
 npm run verify -- --scenario composer-editor
+npm run verify -- --scenario browser-focus
 npm run verify -- --scenario fork-merge
 npm run verify -- --scenario workspace-settings
 ```
@@ -89,6 +90,12 @@ Backspace, copy and cut payloads, an empty selection cutting nothing, and Enter
 right after a menu pick sending the full text. It describes correct behavior, so
 it fails on a build with those defects. This scenario requires native verification.
 
+`browser-focus` opens a hidden agent browser tab for the seeded chat, types in
+the New chat composer, and has the tab's page focus its own input. The app
+document must keep `document.hasFocus()`, the composer must keep the active
+element, and the window must see no `blur`: WebKit otherwise hands the hidden
+tab the window's keyboard. This scenario requires native verification.
+
 `fork-merge` clicks "Fork from this turn" on turn one of a two-turn chat and
 checks the boundary in SQLite, sends the fork's first message from the native
 composer, and checks that the fresh provider conversation was told turn one and
@@ -100,8 +107,7 @@ SQLite are the second read. This scenario requires native verification.
 `workspace-settings` snoozes and unsnoozes the seeded chat from its sidebar
 row, then uses Settings → Projects: an unknown branch placeholder is rejected,
 a project template saves, a relative path and the project's own checkout are
-rejected as linked repositories, and a sibling directory is stored as its
-canonical root, toggled off, and removed. Two worktree chats created over IPC
+rejected through linked-repository IPC. The native panel connects a sibling directory from a scripted folder selection, automatically generates and saves a summary through the provider fixture, toggles the link off, and removes it. The OS folder sheet is not driven by this scenario. Two worktree chats created over IPC
 then show `adam/feat-hello-world` and `adam/feat-hello-world-2`. This scenario
 requires native verification.
 

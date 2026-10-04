@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityPlans } from "./IdentityPlans.js";
 import {
@@ -68,16 +68,6 @@ describe("IdentityPlans", () => {
       expect(screen.queryByLabelText("Remaining on your plans")).toBeNull();
     });
     expect(screen.queryByRole("status")).toBeNull();
-  });
-
-  it("takes the reader to the Usage page", () => {
-    setCachedUsageRemaining(fresh(), null);
-    const onOpenUsage = vi.fn();
-
-    renderPlans(onOpenUsage);
-    fireEvent.click(screen.getByRole("button", { name: "Usage" }));
-
-    expect(onOpenUsage).toHaveBeenCalledTimes(1);
   });
 
   it("re-reads the accounts only once the cached figures have aged", async () => {

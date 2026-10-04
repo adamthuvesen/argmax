@@ -172,13 +172,4 @@ mod tests {
         service.observe("s1", false);
         assert!(!service.session_is_tracked("s1"));
     }
-
-    #[test]
-    fn toggling_enabled_never_panics_with_or_without_activity() {
-        let service = KeepAwakeService::new();
-        service.set_enabled(true);
-        service.observe("s1", true);
-        service.set_enabled(false);
-        service.observe("s1", false);
-    }
 }

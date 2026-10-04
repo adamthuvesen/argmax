@@ -7,7 +7,7 @@ use std::{
 use chrono::{Duration, Utc};
 
 use super::super::{
-    argmax_protocol_error, invalid_input_error,
+    argmax_protocol_error,
     protocol::{
         LaunchAction, LaunchProjectCheck, LaunchedSession, SessionControlError,
         SessionControlResponse, SessionControlResult,
@@ -18,20 +18,15 @@ use super::super::{
 };
 use super::{
     project_tools::{schedule_same_session_wake, SameSessionWake},
-    resolve_or_register_project, task_label, terminal_cols, terminal_rows,
+    resolve_or_register_project, task_label, LaunchSpec,
 };
 use crate::{
+    application::session_launch::{child_permission_mode, LaunchOutcome, LaunchReceiptTicket},
     arcs::member_preamble,
-    ipc::{
-        inputs::{
-            ProvidersLaunchInput, WorkspacesArchiveInput, WorkspacesCreateCurrentInput,
-            WorkspacesCreateIsolatedInput,
-        },
-        validation::{BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, WorkspaceId},
-    },
     persistence::{
         arcs::{self, ArcRecord},
         database::Database,
+        launch_receipts::{self, Claim, LaunchReceipt, ReceiptStatus},
         sessions::{
             find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
         },
@@ -39,10 +34,7 @@ use crate::{
     },
     providers::session_service::ProviderSessionService,
     util::sync::LockOrRecover,
-    workspaces::{
-        orchestration::{resolve_registered_checkout, WorkspacesCreateAlongsideInput},
-        WorkspaceService,
-    },
+    workspaces::{orchestration::resolve_registered_checkout, WorkspaceService},
 };
 
 /// One lock per budget, held from the launch caps check until the launch is
@@ -60,206 +52,51 @@ fn launch_budget_lock(key: String) -> Arc<tokio::sync::Mutex<()>> {
     Arc::clone(locks.entry(key).or_default())
 }
 
-/// Everything needed to launch a top-level session. The session-launch
-/// socket derives it from a parent session's settings; the scheduled-task
-/// scheduler derives it from a stored routine row.
-pub(crate) struct LaunchSpec {
-    pub project: Option<String>,
-    /// Run in an existing checkout rather than the project's own. A multitask
-    /// shares the checkout of the chat that dispatched it, which is not the
-    /// project root whenever that chat is itself in a worktree. Ignored when
-    /// `worktree` is set, which asks for an isolated tree by definition.
-    pub alongside: Option<AlongsideCheckout>,
-    /// Existing checkout of the target project, from `git worktree list`.
-    /// Mutually exclusive with `worktree`. Ignored when `alongside` is set.
-    pub path: Option<String>,
-    /// Git ref the new session should work from. With `worktree`, the isolated
-    /// worktree forks from this ref. With `path`, the checkout must already be
-    /// on this branch. Never switches another checkout's branch by itself.
-    pub branch: Option<String>,
-    pub prompt: String,
-    pub worktree: bool,
-    pub provider: crate::providers::ProviderId,
-    pub model_label: String,
-    pub model_id: String,
-    pub reasoning_effort: Option<crate::providers::ReasoningEffort>,
-    pub fast_mode: bool,
-    pub permission_mode: crate::providers::PermissionMode,
-    pub agent_mode: crate::providers::AgentMode,
-    /// Sidebar label for the new workspace. Falls back to the prompt's first
-    /// line, which is what every launch used before agents could name one.
-    pub task_label: Option<String>,
-    /// The Arc this session is attached to. Checked against the Arc's caps
-    /// and attached to the session row inside the same write transaction as
-    /// the insert (see `ProviderSessionService::launch`), rather than by a
-    /// follow-up update once this call returns — closing the race where two
-    /// concurrent launches could each pass the cap check before either
-    /// session existed to count against it.
-    pub arc_id: Option<String>,
-    /// True only for the coordinator launching itself: `ARC_DONE` still
-    /// applies, but the active-member and daily-launch-budget caps do not —
-    /// the coordinator plans and delegates, it does not occupy a slot in the
-    /// work it is delegating.
-    pub arc_is_coordinator_launch: bool,
-}
-
-/// The checkout a session is asked to run beside, taken from the workspace of
-/// the chat it was dispatched from.
-pub(crate) struct AlongsideCheckout {
-    pub path: String,
-    pub branch: String,
-    pub base_ref: String,
-}
-
-pub(crate) struct LaunchOutcome {
-    pub session_id: String,
-    pub workspace_id: String,
-    pub project_id: String,
-    pub project_name: String,
-    pub path: String,
-    pub branch: String,
-}
-
-/// Resolve the project, create the workspace, and launch the provider —
-/// the shared tail of every programmatic session launch.
+/// Resolve the session-control project selector before the shared launch operation.
 pub(crate) async fn launch_with_spec(
     spec: LaunchSpec,
+    project_selector: Option<&str>,
     database: Arc<Database>,
     workspaces: Arc<WorkspaceService>,
     providers: Arc<ProviderSessionService>,
     fallback_project_id: &str,
 ) -> Result<LaunchOutcome, SessionControlError> {
-    let prompt = Prompt::try_from(spec.prompt).map_err(invalid_input_error)?;
-    let label = spec
-        .task_label
-        .as_deref()
-        .map(task_label)
-        .unwrap_or_else(|| task_label(prompt.as_str()));
-    let task_label = TaskLabel::try_from(label).map_err(invalid_input_error)?;
-    let project =
-        resolve_or_register_project(&database, spec.project.as_deref(), fallback_project_id)
-            .await?;
-    let project_id = ProjectId::try_from(project.id.clone()).map_err(invalid_input_error)?;
-    let model_label = NonEmptyString::try_from(spec.model_label).map_err(invalid_input_error)?;
-    let model_id = NonEmptyString::try_from(spec.model_id).map_err(invalid_input_error)?;
-    let cols = terminal_cols(120)?;
-    let rows = terminal_rows(32)?;
-
-    if spec.worktree && spec.path.is_some() {
-        return Err(protocol_error(
-            "LAUNCH_WORKTREE_WITH_PATH",
-            "worktree creates a new worktree; path launches into one that exists. Pass only one.",
-        ));
-    }
-    if spec.branch.is_some() && !spec.worktree && spec.path.is_none() {
-        return Err(protocol_error(
-            "LAUNCH_BRANCH_NEEDS_DESTINATION",
-            "Pass worktree to fork an isolated worktree from this branch, or path to a checkout that already has it. Launch will not switch another checkout's branch.",
-        ));
-    }
-
-    let workspace = if spec.worktree {
-        let base_ref = match spec.branch.as_deref() {
-            Some(branch) => Some(BaseRef::try_from(branch.to_string()).map_err(invalid_input_error)?),
-            None => Some(
-                BaseRef::try_from(project.current_branch.clone()).map_err(invalid_input_error)?,
-            ),
-        };
-        workspaces
-            .create_isolated(WorkspacesCreateIsolatedInput {
-                project_id,
-                task_label,
-                base_ref,
-            })
-            .await
-    } else if let Some(requested) = spec.path.as_deref() {
-        let (path, branch) = resolve_registered_checkout(&project.repo_path, requested)
-            .await
-            .map_err(argmax_protocol_error)?;
-        if let Some(expected) = spec.branch.as_deref() {
-            if expected != branch {
-                return Err(protocol_error(
-                    "LAUNCH_BRANCH_MISMATCH",
-                    format!(
-                        "{path} is on '{branch}', not '{expected}'. Check out that branch there first, or omit branch to use '{branch}'."
-                    ),
-                ));
-            }
-        }
-        workspaces.create_alongside(WorkspacesCreateAlongsideInput {
-            project_id,
-            task_label,
-            path,
-            branch,
-            base_ref: project
-                .default_branch
-                .clone()
-                .unwrap_or_else(|| project.current_branch.clone()),
-        })
-    } else if let Some(checkout) = spec.alongside {
-        // The dispatching chat's own checkout, which is the project root only
-        // when that chat is not in a worktree. Taking the project's instead put
-        // the work in a different tree on a different branch than the one the
-        // person was looking at, while both agents were told they shared it.
-        workspaces.create_alongside(WorkspacesCreateAlongsideInput {
-            project_id,
-            task_label,
-            path: checkout.path,
-            branch: checkout.branch,
-            base_ref: checkout.base_ref,
-        })
-    } else {
-        workspaces.create_current(WorkspacesCreateCurrentInput {
-            project_id,
-            task_label,
-        })
-    }
-    .map_err(argmax_protocol_error)?;
-
-    let workspace_id = WorkspaceId::try_from(workspace.id.clone()).map_err(invalid_input_error)?;
-    let launch_result = providers
-        .launch(ProvidersLaunchInput {
-            workspace_id,
-            provider: spec.provider,
-            prompt,
-            model_label,
-            model_id,
-            reasoning_effort: spec.reasoning_effort,
-            fast_mode: spec.fast_mode,
-            agent_mode: Some(spec.agent_mode),
-            permission_mode: Some(spec.permission_mode),
-            cols,
-            rows,
-            attachments: None,
-            goal_condition: None,
-            goal_max_turns: None,
-            arc_id: spec.arc_id,
-            arc_is_coordinator_launch: spec.arc_is_coordinator_launch,
-            auto_tier: None,
-        })
-        .await;
-    let session = match launch_result {
-        Ok(session) => session,
-        Err(error) => {
-            let _ = workspaces
-                .archive(WorkspacesArchiveInput {
-                    workspace_id: WorkspaceId::try_from(workspace.id.clone())
-                        .map_err(invalid_input_error)?,
-                    force: Some(false),
-                })
-                .await;
-            return Err(argmax_protocol_error(error));
-        }
-    };
-    Ok(LaunchOutcome {
-        session_id: session.id,
-        workspace_id: workspace.id,
-        project_id: project.id,
-        project_name: project.name,
-        path: workspace.path,
-        branch: workspace.branch,
-    })
+    launch_with_spec_and_receipt(
+        spec,
+        project_selector,
+        database,
+        workspaces,
+        providers,
+        fallback_project_id,
+        None,
+    )
+    .await
 }
+
+async fn launch_with_spec_and_receipt(
+    spec: LaunchSpec,
+    project_selector: Option<&str>,
+    database: Arc<Database>,
+    workspaces: Arc<WorkspaceService>,
+    providers: Arc<ProviderSessionService>,
+    fallback_project_id: &str,
+    receipt: Option<LaunchReceiptTicket>,
+) -> Result<LaunchOutcome, SessionControlError> {
+    let spec = spec.validate().map_err(argmax_protocol_error)?;
+    let project =
+        resolve_or_register_project(&database, project_selector, fallback_project_id).await?;
+    crate::application::session_launch::launch_with_receipt(
+        spec, project, workspaces, providers, receipt,
+    )
+    .await
+    .map_err(argmax_protocol_error)
+}
+
+/// How long a retry waits for the first call with its key to finish before it
+/// answers that the launch is still in flight.
+const RECEIPT_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+const RECEIPT_POLL: std::time::Duration = std::time::Duration::from_millis(200);
+const MAX_CLIENT_REQUEST_ID_CHARS: usize = 128;
 
 pub(super) async fn launch_session(
     action: LaunchAction,
@@ -269,6 +106,292 @@ pub(super) async fn launch_session(
     providers: Arc<ProviderSessionService>,
     data_dir: Option<PathBuf>,
 ) -> Result<SessionControlResponse, SessionControlError> {
+    // Before the receipt: a request that can never launch should not take a key.
+    check_in_minutes(action.check_in_minutes)?;
+    let Some(client_request_id) = action.client_request_id.clone() else {
+        let launched = launch_once(
+            action, parent, database, workspaces, providers, data_dir, None,
+        )
+        .await?;
+        return Ok(launched_response(launched));
+    };
+    if client_request_id.trim().is_empty()
+        || client_request_id.chars().count() > MAX_CLIENT_REQUEST_ID_CHARS
+        || client_request_id.chars().any(char::is_control)
+    {
+        return Err(protocol_error(
+            "INVALID_INPUT",
+            format!(
+                "clientRequestId must be 1 to {MAX_CLIENT_REQUEST_ID_CHARS} printable characters."
+            ),
+        ));
+    }
+    let request_hash = launch_request_hash(&action).map_err(argmax_protocol_error)?;
+    // The id is chosen now so every receipt status, even `uncertain`, names it.
+    let new_session_id = uuid::Uuid::new_v4().to_string();
+    let claim = {
+        let mut connection = database.connection();
+        launch_receipts::claim_receipt(
+            &mut connection,
+            &parent.session_id,
+            &client_request_id,
+            &request_hash,
+            &new_session_id,
+        )
+        .map_err(argmax_protocol_error)?
+    };
+    let receipt = match claim {
+        Claim::Claimed(receipt) => receipt,
+        Claim::Existing(existing) => {
+            return answer_retry(&database, existing, &request_hash).await;
+        }
+    };
+
+    let mut guard = ReceiptGuard::new(
+        Arc::clone(&database),
+        parent.session_id.clone(),
+        client_request_id.clone(),
+    );
+    let ticket = LaunchReceiptTicket {
+        database: Arc::clone(&database),
+        caller_session_id: parent.session_id.clone(),
+        client_request_id: client_request_id.clone(),
+        session_id: receipt.session_id.clone(),
+    };
+    let result = launch_once(
+        action,
+        parent.clone(),
+        Arc::clone(&database),
+        workspaces,
+        providers,
+        data_dir,
+        Some(ticket),
+    )
+    .await;
+    // Only a receipt that settled is let go. If the write failed, the guard
+    // marks it `uncertain` on drop, so a retry is told so at once rather than
+    // waiting on a launch that is already over.
+    if settle_receipt(
+        &database,
+        &parent.session_id,
+        &client_request_id,
+        &receipt,
+        &result,
+    ) {
+        guard.disarm();
+    }
+    Ok(launched_response(result?))
+}
+
+fn launched_response(launched: LaunchedSession) -> SessionControlResponse {
+    SessionControlResponse::new(SessionControlResult::Launched(launched))
+}
+
+/// Digest of the request a key was first used with, minus the key itself, so a
+/// retry is recognised by what it asks for.
+fn launch_request_hash(action: &LaunchAction) -> crate::error::ArgmaxResult<String> {
+    use sha2::{Digest, Sha256};
+    let mut canonical = serde_json::to_value(action)
+        .map_err(|error| crate::error::ArgmaxError::service("JSON", error.to_string()))?;
+    if let Some(fields) = canonical.as_object_mut() {
+        fields.remove("clientRequestId");
+    }
+    Ok(Sha256::digest(canonical.to_string().as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+/// Record how the launch ended, and say whether the receipt now holds it. A
+/// launch that failed before its session row existed started no provider, so
+/// its key may be retried; one that failed after the session was written may
+/// have started one, and is `uncertain`, with its lineage repaired so the
+/// caller can still reach it.
+fn settle_receipt(
+    database: &Database,
+    caller_session_id: &str,
+    client_request_id: &str,
+    receipt: &LaunchReceipt,
+    result: &Result<LaunchedSession, SessionControlError>,
+) -> bool {
+    let connection = database.connection();
+    let settled = match result {
+        Ok(launched) => serde_json::to_string(launched)
+            .map_err(|error| crate::error::ArgmaxError::service("JSON", error.to_string()))
+            .and_then(|json| {
+                launch_receipts::complete_receipt(
+                    &connection,
+                    caller_session_id,
+                    client_request_id,
+                    &json,
+                )
+            }),
+        Err(_) if find_session_by_id(&connection, &receipt.session_id).is_ok() => {
+            launch_receipts::mark_receipt_uncertain(
+                &connection,
+                caller_session_id,
+                client_request_id,
+            )
+            .and_then(|()| launch_receipts::reconcile_uncertain_lineage(&connection).map(drop))
+        }
+        Err(error) => launch_receipts::fail_receipt(
+            &connection,
+            caller_session_id,
+            client_request_id,
+            &error.code,
+            &error.message,
+        ),
+    };
+    match settled {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(
+                client_request_id,
+                ?error,
+                "could not settle the launch receipt"
+            );
+            false
+        }
+    }
+}
+
+/// Marks a receipt `uncertain` if its launch is dropped before it settles —
+/// the caller hung up, or the task was cancelled — since the provider may have
+/// started by then.
+struct ReceiptGuard {
+    database: Arc<Database>,
+    caller_session_id: String,
+    client_request_id: String,
+    armed: bool,
+}
+
+impl ReceiptGuard {
+    fn new(database: Arc<Database>, caller_session_id: String, client_request_id: String) -> Self {
+        Self {
+            database,
+            caller_session_id,
+            client_request_id,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ReceiptGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let connection = self.database.connection();
+        if let Err(error) = launch_receipts::mark_receipt_uncertain(
+            &connection,
+            &self.caller_session_id,
+            &self.client_request_id,
+        )
+        .and_then(|()| launch_receipts::reconcile_uncertain_lineage(&connection).map(drop))
+        {
+            tracing::warn!(?error, "could not mark an abandoned launch uncertain");
+        }
+    }
+}
+
+/// The answer to a call whose key was already taken.
+async fn answer_retry(
+    database: &Database,
+    mut receipt: LaunchReceipt,
+    request_hash: &str,
+) -> Result<SessionControlResponse, SessionControlError> {
+    if receipt.request_hash != request_hash {
+        return Err(protocol_error(
+            "LAUNCH_REQUEST_ID_MISMATCH",
+            format!(
+                "clientRequestId '{}' was already used in this session with different arguments. Use a new key for a different launch.",
+                receipt.client_request_id
+            ),
+        ));
+    }
+    let deadline = tokio::time::Instant::now() + RECEIPT_WAIT;
+    loop {
+        match receipt.status {
+            ReceiptStatus::Completed => {
+                let json = receipt.result_json.as_deref().unwrap_or("{}");
+                let mut launched: LaunchedSession =
+                    serde_json::from_str(json).map_err(|error| {
+                        protocol_error(
+                            "LAUNCH_RECEIPT_UNREADABLE",
+                            format!("The first launch's answer could not be read: {error}"),
+                        )
+                    })?;
+                launched.replayed = true;
+                return Ok(launched_response(launched));
+            }
+            ReceiptStatus::Failed => {
+                return Err(protocol_error(
+                    receipt
+                        .error_code
+                        .unwrap_or_else(|| "LAUNCH_FAILED".to_string()),
+                    receipt.error_message.unwrap_or_default(),
+                ));
+            }
+            ReceiptStatus::Uncertain => {
+                // A launch interrupted after its session was written still
+                // gets the lineage that lets its launcher read it.
+                if let Err(error) =
+                    launch_receipts::reconcile_uncertain_lineage(&database.connection())
+                {
+                    tracing::warn!(?error, "could not repair launch lineage");
+                }
+                return Err(protocol_error(
+                    "LAUNCH_OUTCOME_UNCERTAIN",
+                    format!(
+                        "The first launch with this clientRequestId stopped before it reported back, so it may have started session {}{}. It is not repeated. Check it with session_status; if it is not there, launch again with a new clientRequestId.",
+                        receipt.session_id,
+                        receipt
+                            .workspace_id
+                            .as_deref()
+                            .map(|id| format!(" in workspace {id}"))
+                            .unwrap_or_default(),
+                    ),
+                ));
+            }
+            ReceiptStatus::Pending => {
+                if tokio::time::Instant::now() >= deadline {
+                    return Err(protocol_error(
+                        "LAUNCH_IN_PROGRESS",
+                        format!(
+                            "The first launch with this clientRequestId is still starting session {}. Ask again with the same key in a moment.",
+                            receipt.session_id
+                        ),
+                    ));
+                }
+                tokio::time::sleep(RECEIPT_POLL).await;
+                let connection = database.read_connection();
+                receipt = launch_receipts::find_receipt(
+                    &connection,
+                    &receipt.caller_session_id,
+                    &receipt.client_request_id,
+                )
+                .map_err(argmax_protocol_error)?
+                .ok_or_else(|| {
+                    protocol_error("LAUNCH_RECEIPT_MISSING", "The launch receipt was removed.")
+                })?;
+            }
+        }
+    }
+}
+
+async fn launch_once(
+    action: LaunchAction,
+    parent: ParentLaunchSettings,
+    database: Arc<Database>,
+    workspaces: Arc<WorkspaceService>,
+    providers: Arc<ProviderSessionService>,
+    data_dir: Option<PathBuf>,
+    receipt: Option<LaunchReceiptTicket>,
+) -> Result<LaunchedSession, SessionControlError> {
     // Before the workspace, the worktree and the provider process: a bad
     // check-in is worth refusing while nothing has been spent on it.
     let check_in_minutes = check_in_minutes(action.check_in_minutes)?;
@@ -284,10 +407,15 @@ pub(super) async fn launch_session(
     };
     let launch_budget_lock = launch_budget_lock(budget_key);
     let launch_budget_turn = launch_budget_lock.lock().await;
-    let (parent_project_id, lineage, parent_arc, parent_auto_tier) = {
+    let (parent_project_id, lineage, parent_arc, parent_auto_tier, parent_permission_mode) = {
         let connection = database.connection();
         let parent_session =
             find_session_by_id(&connection, &parent.session_id).map_err(argmax_protocol_error)?;
+        // The session row is the record of the mode the caller runs under;
+        // the token's copy was taken when the turn started.
+        let parent_permission_mode =
+            serde_json::from_value(serde_json::json!(parent_session.permission_mode))
+                .unwrap_or(parent.permission_mode);
         let project_id = find_workspace_by_id(&connection, &parent_session.workspace_id)
             .map_err(argmax_protocol_error)?
             .project_id;
@@ -299,8 +427,15 @@ pub(super) async fn launch_session(
             }
             None => None,
         };
-        (project_id, lineage, parent_arc, parent_session.auto_tier)
+        (
+            project_id,
+            lineage,
+            parent_arc,
+            parent_session.auto_tier,
+            parent_permission_mode,
+        )
     };
+    let permission_mode = child_permission_mode(parent_permission_mode, action.permission_mode);
     let depth = lineage.depth + 1;
     if depth > MAX_LAUNCH_DEPTH {
         return Err(protocol_error(
@@ -317,7 +452,13 @@ pub(super) async fn launch_session(
     let is_current_coordinator = parent_arc.as_ref().is_some_and(|arc| {
         arc.coordinator_session_id.as_deref() == Some(parent.session_id.as_str())
     });
-    if !is_current_coordinator && lineage.launched >= MAX_LAUNCHES_PER_SESSION {
+    // A launch that stopped after its session was written but before its
+    // lineage was recorded still holds a slot. Launches waiting on this lock
+    // do not: the lock keeps the check and the lineage write in one step.
+    let reserved_launches =
+        launch_receipts::count_unrecorded_launches(&database.read_connection(), &parent.session_id)
+            .map_err(argmax_protocol_error)?;
+    if !is_current_coordinator && lineage.launched + reserved_launches >= MAX_LAUNCHES_PER_SESSION {
         return Err(protocol_error(
             "LAUNCH_LIMIT_REACHED",
             format!(
@@ -432,13 +573,12 @@ pub(super) async fn launch_session(
         check,
     )
     .await;
-    let outcome = launch_with_spec(
+    let outcome = launch_with_spec_and_receipt(
         LaunchSpec {
             // An agent-launched session is its own piece of work, not a chat
             // running beside this one: it takes the project's checkout, or its
             // own worktree.
             alongside: None,
-            project: aimed_launch.project,
             path: aimed_launch.path,
             branch: aimed_launch.branch,
             prompt,
@@ -452,16 +592,20 @@ pub(super) async fn launch_session(
             reasoning_effort: action.reasoning.or(reasoning_effort),
             // A routed launch never runs Fast: the grid's cells never ask for it.
             fast_mode: parent.fast_mode && auto_route.is_none(),
-            permission_mode: action.permission_mode.unwrap_or(parent.permission_mode),
+            permission_mode,
             agent_mode: parent.agent_mode,
             task_label: action.task_label,
             arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
             arc_is_coordinator_launch: false,
+            // An agent wrote this prompt: a chat reference in it grants nothing.
+            author: crate::persistence::authorship::PromptAuthor::unattested(),
         },
+        aimed_launch.project.as_deref(),
         Arc::clone(&database),
         workspaces.clone(),
         providers,
         &parent_project_id,
+        receipt,
     )
     .await?;
     if let Some(route) = &auto_route {
@@ -506,17 +650,20 @@ pub(super) async fn launch_session(
             minutes,
         )?;
     }
-    Ok(SessionControlResponse::new(SessionControlResult::Launched(
-        LaunchedSession {
-            session_id: outcome.session_id,
-            workspace_id: outcome.workspace_id,
-            project_id: outcome.project_id,
-            project_name: outcome.project_name,
-            path: outcome.path,
-            branch: outcome.branch,
-            project_check: aimed_launch.project_check,
-        },
-    )))
+    Ok(LaunchedSession {
+        session_id: outcome.session_id,
+        workspace_id: outcome.workspace_id,
+        project_id: outcome.project_id,
+        project_name: outcome.project_name,
+        path: outcome.path,
+        branch: outcome.branch,
+        project_check: aimed_launch.project_check,
+        permission_mode: Some(permission_mode),
+        permission_mode_requested: action
+            .permission_mode
+            .filter(|requested| *requested != permission_mode),
+        replayed: false,
+    })
 }
 
 /// Where a `session_launch` should actually start, after project check.

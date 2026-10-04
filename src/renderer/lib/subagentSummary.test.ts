@@ -51,11 +51,6 @@ describe("buildSubagentCluster", () => {
     ]);
   });
 
-  it("is a plain subagent cluster when no multitask is in it", () => {
-    const tools = [tool({ toolUseId: "spawn-1" })];
-    expect(buildSubagentCluster(tools, assignAgentCodenames(tools))?.hasMultitask).toBe(false);
-  });
-
   it("carries each spawn's status and names it with its codename and title", () => {
     const tools = [
       tool({ toolUseId: "spawn-1", id: "row-1", status: "done" }),

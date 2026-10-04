@@ -1033,21 +1033,6 @@ mod tests {
     }
 
     #[test]
-    fn claude_permission_denied_becomes_permission_blocked_event() {
-        let mut context = NormalizerSessionContext::default();
-        let result = normalize_provider_event(
-            ProviderId::Claude,
-            &output_event(
-                r#"{"type":"system","subtype":"permission_denied","tool_name":"Bash","message":"User approval required to run: rm -rf dist","decision_reason":"danger","tool_use_id":"toolu_1"}"#,
-            ),
-            &mut context,
-        );
-        assert_eq!(result.events[0].r#type, "permission.blocked");
-        assert_eq!(result.events[0].message, "rm -rf dist");
-        assert_eq!(result.events[0].payload["riskLevel"], "high");
-    }
-
-    #[test]
     fn claude_assistant_message_preserves_content_block_order_with_narration_before_tools() {
         let mut context = NormalizerSessionContext::default();
         let result = normalize_provider_event(

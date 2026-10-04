@@ -8,7 +8,6 @@
 
 use std::{sync::Arc, time::Instant};
 
-use serde::Serialize;
 use tauri::Emitter;
 
 use super::super::{
@@ -319,10 +318,10 @@ pub(super) fn spawn_terminal(
         if let Err(error) = app.emit_to(
             target_window.as_str(),
             "terminal:agent-open",
-            AgentTerminalOpen {
-                terminal_id: &spawned.terminal_id,
-                workspace_id: &target.workspace.id,
-                command: command.as_deref(),
+            crate::ipc::events::TerminalAgentOpenEvent {
+                terminal_id: spawned.terminal_id.clone(),
+                workspace_id: target.workspace.id.clone(),
+                command: command.clone(),
             },
         ) {
             tracing::warn!(?error, "could not show an agent terminal in the renderer");
@@ -342,14 +341,6 @@ pub(super) fn spawn_terminal(
             command,
         }),
     ))
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AgentTerminalOpen<'a> {
-    terminal_id: &'a str,
-    workspace_id: &'a str,
-    command: Option<&'a str>,
 }
 
 pub(super) fn read_terminal(

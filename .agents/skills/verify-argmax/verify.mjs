@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkoutFingerprint, uniqueRunId } from "../../../scripts/verification/common.mjs";
+import { checkoutFingerprint, uniqueRunId, writeTripwires } from "../../../scripts/verification/common.mjs";
 import { redact } from "../../../scripts/verification/evidence.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -14,7 +14,7 @@ const worker = path.join(root, ".agents/skills/verify-argmax/drives.mjs");
 const helper = "node .agents/skills/verify-argmax/verify.mjs";
 const target = "native-local";
 const tripwires = ["launchctl", "defaults", "brew", "security", "op", "crontab", "systemctl"];
-const features = ["chat-resume", "queued-restart", "session-move", "cancellation", "provider-error"];
+const features = ["chat-resume", "queued-restart", "session-move", "composer-reference", "composer-editor", "fork-merge", "workspace-settings", "cancellation", "provider-error"];
 const controlVariables = new Set(["DOTFILES_SKIP_SECRETS", "DOTFILES_SECRETS_LOADED", "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS"]);
 const secretValues = Object.entries(process.env).filter(([key, value]) => /KEY|TOKEN|SECRET|PASSWORD/i.test(key) && !controlVariables.has(key) && value).map(([, value]) => value);
 function sanitize(value) {
@@ -142,8 +142,7 @@ async function main() {
     const runDir = path.join(root, ".verify/runs", `${uniqueRunId()}-${source.head.slice(0, 7)}${source.dirty ? "-dirty" : ""}`);
     for (const dir of [runDir, stateDir, ...["home", "tmp", "tripwire", "profile"].map((name) => path.join(stateDir, name))]) mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(stateDir, "tripwire.log"), "");
-    const logPath = `'${path.join(stateDir, "tripwire.log").replaceAll("'", "'\\''")}'`;
-    for (const name of tripwires) writeFileSync(path.join(stateDir, "tripwire", name), `#!/bin/sh\nprintf '%s\\n' '${name}' >> ${logPath}\nexit 97\n`, { mode: 0o755 });
+    await writeTripwires(path.join(stateDir, "tripwire"), path.join(stateDir, "tripwire.log"), tripwires);
     // -d and -f prevent login startup files from replacing the isolated PATH.
     writeFileSync(path.join(stateDir, "shell"), '#!/bin/sh\nexec /bin/zsh -df "$@"\n', { mode: 0o755 });
     const state = { stateDir, runDir, source, ready: false, cargoHome: process.env.CARGO_HOME ?? path.join(homedir(), ".cargo"), rustupHome: process.env.RUSTUP_HOME ?? path.join(homedir(), ".rustup") };

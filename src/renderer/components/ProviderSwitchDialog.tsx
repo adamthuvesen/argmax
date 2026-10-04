@@ -8,29 +8,30 @@ import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 /**
  * Confirmation for handing an idle session to a different provider.
  *
- * The switch itself works for every provider pair, but the new agent starts
- * without the old one's native conversation — it reads the capped text
- * transcript `compose_follow_up_prompt` builds instead (providers/follow_up.rs).
- * That is a real loss of context, so the dialog says so and offers the better
- * path first: a new session, which starts the new provider clean instead of
- * half-informed.
+ * The switch works for every provider pair. The new agent resumes its own
+ * earlier conversation in this chat when it has one and reads what it missed;
+ * otherwise it starts from the capped visible transcript
+ * (providers/continuity.rs, providers/follow_up.rs). The dialog cannot tell
+ * which, so the copy names both. A chat with no native conversation to leave
+ * (a fork child, a cleared chat) skips the dialog: nothing is lost.
  */
 export function ProviderSwitchDialog({
-  from,
   to,
+  afterTurn = false,
   onCancel,
   onStartNewSession,
   onSwitch
 }: {
-  from: ProviderId;
   to: ProviderId;
+  /** The chat is mid-turn: the follow-up queues, and the switch happens when
+      the turn ends rather than on send. */
+  afterTurn?: boolean;
   onCancel: () => void;
   /** Absent when the pane can't open the launcher; the dialog drops the action
       rather than offering a button that does nothing. */
   onStartNewSession?: () => void;
   onSwitch: () => void;
 }): JSX.Element {
-  const fromName = PROVIDER_DISPLAY_NAMES[from];
   const toName = PROVIDER_DISPLAY_NAMES[to];
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const primaryRef = useRef<HTMLButtonElement | null>(null);
@@ -68,8 +69,11 @@ export function ProviderSwitchDialog({
       <div ref={dialogRef} className="provider-switch-dialog motion-modal-surface">
         <h2>Switch to {toName}?</h2>
         <p>
-          {`${toName} can't resume ${fromName}'s chat. It starts fresh from a short summary of this chat.`}
+          {`${toName} continues this chat. If it worked on it before, it resumes that conversation and reads what it missed. Otherwise it starts from a short summary of the visible chat.`}
         </p>
+        {afterTurn ? (
+          <p>{`Your follow-up waits for the current turn, then runs on ${toName}.`}</p>
+        ) : null}
         <p className="provider-switch-recommendation">A new chat usually works better.</p>
         <div className="provider-switch-actions">
           <button type="button" onClick={onCancel}>

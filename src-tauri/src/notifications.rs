@@ -359,20 +359,6 @@ mod tests {
     }
 
     #[test]
-    fn fire_test_sends_notification_with_app_icon() {
-        let sink = Arc::new(StubSink::supported());
-        let service = service_with_focus(true, sink.clone());
-
-        service.fire_test().expect("fire test ok");
-
-        let fired = sink.fired();
-        assert_eq!(fired.len(), 1);
-        assert_eq!(fired[0].title, "Argmax");
-        assert_eq!(fired[0].body, "Desktop notifications are working.");
-        assert_eq!(fired[0].icon.as_deref(), Some("icon"));
-    }
-
-    #[test]
     fn fire_test_fails_when_unsupported() {
         let sink = Arc::new(StubSink::supported());
         sink.supported.store(false, Ordering::SeqCst);

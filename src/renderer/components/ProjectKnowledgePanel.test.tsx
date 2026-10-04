@@ -58,7 +58,7 @@ describe("ProjectKnowledgePanel", () => {
           })
         )
       );
-    deleteSpy = vi.fn<ArgmaxApi["learnings"]["delete"]>().mockResolvedValue({ ok: true });
+    deleteSpy = vi.fn<ArgmaxApi["learnings"]["delete"]>().mockResolvedValue(null);
     window.argmax = {
       ...originalArgmax,
       learnings: {

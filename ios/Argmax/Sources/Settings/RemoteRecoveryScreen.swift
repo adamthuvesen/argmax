@@ -71,6 +71,7 @@ struct RemoteRecoveryScreen: View {
         case "workspaces:archive": return "Archive chat"
         case "session:multitask": return "Dispatch a chat"
         case "session:fork": return "Fork chat"
+        case "session:fork-merge": return "Bring fork findings back"
         case "questions:resolve": return "Answer question"
         case "git:view-or-create-pr": return "Open pull request"
         case "attachments:save-image": return "Save image"

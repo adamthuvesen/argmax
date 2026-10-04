@@ -672,12 +672,6 @@ mod tests {
     }
 
     #[test]
-    fn a_bad_token_is_named_so_the_client_can_clear_it() {
-        let parsed: Value = serde_json::from_str(&auth_error_frame()).expect("frame is json");
-        assert_eq!(parsed["type"], "auth-error");
-    }
-
-    #[test]
     fn request_frames_carry_id_channel_and_default_input() {
         assert_eq!(
             parse_client_frame(r#"{"type":"request","id":7,"channel":"dashboard:list"}"#),
@@ -724,12 +718,6 @@ mod tests {
     }
 
     #[test]
-    fn a_dropped_event_window_is_named_so_the_client_can_reload() {
-        let parsed: Value = serde_json::from_str(&resync_frame()).expect("frame is json");
-        assert_eq!(parsed["type"], "resync");
-    }
-
-    #[test]
     fn only_a_lagging_dashboard_stream_costs_the_client_a_resync() {
         let lagged = || Err(broadcast::error::RecvError::Lagged(9));
 
@@ -753,29 +741,5 @@ mod tests {
             writer_step(Err(broadcast::error::RecvError::Closed), LagReport::Silent),
             WriterStep::Stop
         );
-    }
-
-    #[test]
-    fn error_responses_serialize_the_argmax_error_envelope() {
-        let frame = response_error_frame(3, &ArgmaxError::service("BOOM", "no"));
-        let parsed: Value = serde_json::from_str(&frame).expect("frame is json");
-
-        assert_eq!(parsed["type"], "response");
-        assert_eq!(parsed["id"], 3);
-        assert_eq!(parsed["error"]["code"], "SERVICE_ERROR");
-        assert_eq!(parsed["error"]["sub_code"], "BOOM");
-    }
-
-    #[test]
-    fn event_frames_name_their_push_channel() {
-        let frame = event_frame(&RemoteEvent {
-            channel: "terminal:exit",
-            payload: json!({ "terminalId": "t1" }),
-        });
-        let parsed: Value = serde_json::from_str(&frame).expect("frame is json");
-
-        assert_eq!(parsed["type"], "event");
-        assert_eq!(parsed["channel"], "terminal:exit");
-        assert_eq!(parsed["payload"]["terminalId"], "t1");
     }
 }

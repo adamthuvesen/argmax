@@ -1295,6 +1295,7 @@ mod tests {
                     check_commands: Vec::new(),
                     archive_on_merge: false,
                 },
+                branch_template: None,
                 counts: crate::persistence::projects::ProjectCounts {
                     active: 0,
                     blocked: 0,

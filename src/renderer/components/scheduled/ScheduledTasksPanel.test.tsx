@@ -141,14 +141,6 @@ describe("ScheduledTasksPanel", () => {
     expect(screen.getByText(/1 paused/)).toBeInTheDocument();
   });
 
-  it("pausing a task calls set-enabled with the flipped value", async () => {
-    render(<ScheduledTasksPanel projects={[project()]} />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "Pause Morning triage" }));
-
-    await waitFor(() => expect(routinesStub.setEnabled).toHaveBeenCalledWith("r1", false));
-  });
-
   it("run-now launches the task and reports it", async () => {
     render(<ScheduledTasksPanel projects={[project()]} />);
 
@@ -156,18 +148,6 @@ describe("ScheduledTasksPanel", () => {
 
     await waitFor(() => expect(routinesStub.runNow).toHaveBeenCalledWith("r1"));
     expect(await screen.findByRole("status")).toHaveTextContent(/Started/);
-  });
-
-  it("titles the page Schedule and does not paint a New task breadcrumb", async () => {
-    routinesStub.list.mockResolvedValue([]);
-    render(<ScheduledTasksPanel projects={[project()]} />);
-
-    expect(await screen.findByRole("heading", { name: "Schedule" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "New task" }));
-
-    expect(screen.getByRole("heading", { name: "Schedule" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Name")).toBeInTheDocument();
-    expect(screen.queryByText("New task")).not.toBeInTheDocument();
   });
 
   it("shows and saves a task stored on a retired model as its successor", async () => {

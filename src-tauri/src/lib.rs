@@ -9,6 +9,7 @@ use std::sync::{
 use tauri::{Emitter, Manager};
 
 pub mod activity;
+pub mod application;
 pub mod approvals;
 pub mod arcs;
 pub mod attachments;
@@ -46,6 +47,7 @@ pub mod terminal;
 pub mod updater;
 pub mod usage;
 pub mod util;
+pub mod window_snapshot;
 pub mod windows;
 pub mod workspace_assets;
 pub mod workspaces;
@@ -393,6 +395,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Serve `argmax-attachment://file/<abs-path>` image URLs from the
         // on-disk attachment store. Without this, pasted-image previews in the
@@ -464,6 +467,7 @@ pub fn run() {
             },
         )
         .manage(state::AppState::with_startup_timer(timer.clone()))
+        .manage(window_snapshot::shortcut::WindowSnapshotState::default())
         // `window.ready-to-show`: the budgeted end of cold start (see
         // docs/performance.md). Marked once — a later reload must not restamp.
         .on_page_load(|webview, payload| {
@@ -592,6 +596,12 @@ pub fn run() {
                             let database = Arc::new(database);
                             let state = tauri::Manager::state::<state::AppState>(app);
                             let _ = state.db.set(Arc::clone(&database));
+                            // Off by default; registers the saved chord only if
+                            // the user turned window snapshots on.
+                            window_snapshot::shortcut::install(
+                                app.handle(),
+                                &database.read_connection(),
+                            );
                             let usage_scanner = Arc::new(usage::scanner::UsageScanner::new(
                                 Arc::clone(&database),
                                 sync::home_dir(),
@@ -877,6 +887,13 @@ pub fn run() {
                             }
                             providers.set_checkpoint_service(checkpoints);
                             let _ = state.providers.set(Arc::clone(&providers));
+                            // Last of the boot recovery: a recovered wake starts a
+                            // turn, which must find the checkpoint service (the
+                            // pre-turn mark) and the session-control registry
+                            // already in place, and rewinds already settled.
+                            if let Err(error) = providers.recover_completion_wakes() {
+                                tracing::warn!(?error, "failed to recover completion wakes");
+                            }
                             // Terminal pushes take the same shape as
                             // `dashboard:delta`: a FIFO queue and one worker
                             // that conflates what piled up into a single
@@ -1046,6 +1063,24 @@ pub fn run() {
                                         }
                                     });
                                 });
+                            // Awaited inside the tick: the watch pass moves
+                            // its cursors only once the message row exists.
+                            let watch_providers = Arc::clone(&providers);
+                            let watch_notice_hook: gh::watch::PrWatchNoticeHook =
+                                Arc::new(move |notice: gh::watch::PrWatchNotice| {
+                                    let providers = Arc::clone(&watch_providers);
+                                    Box::pin(async move {
+                                        providers
+                                            .send_system_notice(
+                                                notice.message_id,
+                                                &notice.session_id,
+                                                notice.session_id.clone(),
+                                                format!("PR #{} watch", notice.pr_number),
+                                                notice.body,
+                                            )
+                                            .await
+                                    })
+                                });
                             let gh_delta_tx = delta_tx.clone();
                             let publish_delta = move |delta| {
                                 gh_delta_tx.send(delta);
@@ -1058,7 +1093,8 @@ pub fn run() {
                                 .with_delta_publisher(Arc::new(publish_delta))
                                 .with_check_failure_hook(failure_hook)
                                 .with_pr_merged_hook(merged_hook)
-                                .with_arc_event_hook(arc_event_hook),
+                                .with_arc_event_hook(arc_event_hook)
+                                .with_watch_notice_hook(watch_notice_hook),
                             );
                             // Defer start() onto the Tauri runtime — calling it
                             // synchronously here panics with "there is no
@@ -1092,6 +1128,13 @@ pub fn run() {
                             workspaces.set_grok_acp(grok_acp);
                             let workspaces_for_watchers = Arc::clone(&workspaces);
                             let _ = state.workspaces.set(workspaces);
+                            tauri::async_runtime::spawn(routines::scheduler::run(routines::scheduler::SchedulerDependencies {
+                                database: Arc::clone(&database),
+                                workspaces: Arc::clone(&workspaces_for_watchers),
+                                providers: Arc::clone(&providers),
+                                runs: Arc::clone(&state.routine_runs),
+                                app_data_dir: user_data.clone(),
+                            }));
                             if let Some(server) = session_launch_server {
                                 match server.start(
                                     Some(app.handle().clone()),
@@ -1204,10 +1247,6 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 archive_expiry_loop(archive_expiry_app).await;
             });
-            // Scheduled tasks ("routines") fire stored prompts on a schedule.
-            // The loop pulls services from state per tick, so starting it
-            // here — before the database may have opened — is safe.
-            routines::scheduler::spawn(app.handle().clone());
             if app.get_window("main").is_some() {
                 timer.mark("window.create");
             }
@@ -1587,7 +1626,7 @@ pub fn provider_defaults(provider: &str) -> ProviderDefaults {
         },
         "opencode" => ProviderDefaults {
             model_label: "GLM-5.3-Flash",
-            model_id: "opencode-go/glm-5.3-flash",
+            model_id: "openrouter/z-ai/glm-5.3-flash",
             reasoning_effort: Some("high"),
         },
         "grok" => ProviderDefaults {
@@ -1677,8 +1716,9 @@ pub fn render_ipc_channels() -> String {
 
 pub fn render_ipc_schemas() -> String {
     let mut schemas = String::from(
-        "// Generated from `ipc::REGISTERED_CHANNELS` by `export-bindings`.\n\
-         // Runtime validation lives in Rust input newtypes and command structs.\n\n\
+        "// Generated from `ipc::catalogue` by `export-bindings`.\n\
+         // Rust owns channel names, signatures, and transport availability.\n\n\
+         import type { commands } from './bindings.js';\n\n\
          export const IPC_CHANNELS = [\n",
     );
     for channel in ipc::REGISTERED_CHANNELS {
@@ -1687,6 +1727,30 @@ pub fn render_ipc_schemas() -> String {
         schemas.push_str("\",\n");
     }
     schemas.push_str("] as const;\n\nexport type IpcChannel = (typeof IPC_CHANNELS)[number];\n");
+    schemas.push_str("\ntype Commands = typeof commands;\nexport interface IpcCommands {\n");
+    for contract in ipc::catalogue::COMMAND_CONTRACTS {
+        let mut parts = contract.method.split('_');
+        let mut method = parts.next().unwrap_or_default().to_owned();
+        for part in parts {
+            let mut chars = part.chars();
+            if let Some(first) = chars.next() {
+                method.extend(first.to_uppercase());
+                method.extend(chars);
+            }
+        }
+        schemas.push_str(&format!(
+            "  \"{}\": Commands[\"{method}\"];\n",
+            contract.channel
+        ));
+    }
+    schemas.push_str("}\n\n\
+        type OptionalNullable<T> = { [K in keyof T as null extends T[K] ? never : K]: T[K] } &\n\
+          { [K in keyof T as null extends T[K] ? K : never]?: T[K] };\n\
+        export type IpcInput<C extends IpcChannel> = Parameters<IpcCommands[C]> extends [] ? Record<string, never> : OptionalNullable<Parameters<IpcCommands[C]>[0]>;\n\
+        type UnwrapResult<T> = T extends { status: 'ok'; data: infer D } ? D :\n\
+          T extends { status: 'error'; error: unknown } ? never : T;\n\
+        export type IpcOutput<C extends IpcChannel> = UnwrapResult<Awaited<ReturnType<IpcCommands[C]>>>;\n\
+        export type IpcArguments<C extends IpcChannel> = Record<string, never> extends IpcInput<C> ? [input?: IpcInput<C>] : [input: IpcInput<C>];\n");
     schemas
 }
 
@@ -1789,12 +1853,14 @@ mod tests {
         session_id: &str,
         event_type: &str,
     ) -> persistence::events::TimelineEvent {
+        let payload = serde_json::json!({ "text": "payload" });
         persistence::events::TimelineEvent {
             id: id.to_string(),
             session_id: session_id.to_string(),
             r#type: event_type.to_string(),
             message: "payload".to_string(),
-            payload: serde_json::json!({ "text": "payload" }),
+            semantic: persistence::timeline_semantics::derive(event_type, id, &payload),
+            payload,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             row_cursor: Some(1),
         }

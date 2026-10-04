@@ -17,10 +17,6 @@ use crate::persistence::database::Database;
 use crate::persistence::sqlite_error;
 
 static RUN_ID: LazyLock<String> = LazyLock::new(|| Uuid::new_v4().to_string());
-static READ_CHANNELS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    serde_json::from_str(include_str!("../../../src/shared/remoteReadChannels.json"))
-        .expect("remote read channel manifest")
-});
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -30,7 +26,13 @@ pub struct OperationId {
 }
 
 pub fn is_read(channel: &str) -> bool {
-    READ_CHANNELS.iter().any(|read| read == channel)
+    channel == "dashboard:changes"
+        || crate::ipc::catalogue::COMMAND_CONTRACTS
+            .iter()
+            .any(|entry| {
+                entry.channel == channel
+                    && entry.remote == crate::ipc::catalogue::RemoteAccess::Read
+            })
 }
 
 enum Admission {

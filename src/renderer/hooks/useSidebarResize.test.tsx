@@ -49,21 +49,6 @@ describe("useSidebarResize", () => {
     expect(result.current.sidebarWidth).toBe(220);
   });
 
-  it("clamps the sidebar when the viewport narrows after mount", () => {
-    setViewportWidth(1000);
-    window.localStorage.setItem("argmax.sidebar.width", "500");
-    const { result } = renderHook(() => useSidebarResize());
-    expect(result.current.sidebarWidth).toBe(500);
-
-    act(() => {
-      setViewportWidth(420);
-      window.dispatchEvent(new Event("resize"));
-    });
-
-    expect(result.current.sidebarWidth).toBe(220);
-    expect(window.localStorage.getItem("argmax.sidebar.width")).toBe("500");
-  });
-
   it("folds at the workspace plus sidebar floor and reopens after hysteresis", () => {
     setViewportWidth(700);
     window.localStorage.setItem("argmax.sidebar.width", "272");

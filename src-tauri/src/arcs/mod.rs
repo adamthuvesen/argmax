@@ -78,7 +78,6 @@ pub async fn launch_coordinator(
 
     let outcome = launch_with_spec(
         LaunchSpec {
-            project: Some(arc.home_project_id.clone()),
             // The home project's own checkout, shared rather than isolated:
             // the coordinator's members work in the same tree a person
             // looking at this Arc would open.
@@ -103,7 +102,9 @@ pub async fn launch_coordinator(
             // delegating.
             arc_id: Some(arc.id.clone()),
             arc_is_coordinator_launch: true,
+            author: crate::persistence::authorship::PromptAuthor::unattested(),
         },
+        Some(&arc.home_project_id),
         StdArc::clone(&database),
         workspaces,
         providers,

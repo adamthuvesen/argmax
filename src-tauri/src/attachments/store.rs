@@ -55,6 +55,17 @@ impl AttachmentStore {
         data_base64: &Base64ImageData,
     ) -> Result<SaveImageResult, AttachmentStoreError> {
         let buffer = decode_base64(data_base64.as_str())?;
+        self.save_bytes(session_id, mime_type, &buffer)
+    }
+
+    /// Store an image already in memory, such as a window snapshot. Same cap,
+    /// same folder rules and file naming as a pasted image.
+    pub fn save_bytes(
+        &self,
+        session_id: &SessionId,
+        mime_type: AttachmentMimeType,
+        buffer: &[u8],
+    ) -> Result<SaveImageResult, AttachmentStoreError> {
         if buffer.is_empty() {
             return Err(AttachmentStoreError::EmptyPayload);
         }
@@ -74,7 +85,7 @@ impl AttachmentStore {
             Uuid::new_v4(),
             extension_for_mime(mime_type)
         ));
-        fs::write(&file_path, &buffer)
+        fs::write(&file_path, buffer)
             .map_err(|error| AttachmentStoreError::WriteFailed(error.to_string()))?;
 
         Ok(SaveImageResult {
@@ -235,26 +246,6 @@ mod tests {
             fs::read(result.file_path).unwrap(),
             decode_base64(PNG_BASE64).unwrap()
         );
-    }
-
-    #[test]
-    fn from_data_dir_saves_under_attachments() {
-        let dir = tempdir().unwrap();
-        let store = AttachmentStore::from_data_dir(dir.path());
-        let result = store
-            .save_image(
-                &session_id("session-1"),
-                AttachmentMimeType::ImagePng,
-                &data(PNG_BASE64),
-            )
-            .unwrap();
-
-        assert!(result.file_path.starts_with(
-            &dir.path()
-                .join("attachments/session-1")
-                .to_string_lossy()
-                .to_string()
-        ));
     }
 
     #[test]

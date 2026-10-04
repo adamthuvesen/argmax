@@ -29,9 +29,12 @@ use uuid::Uuid;
 
 use super::{
     adapters::get_provider_definition,
+    completion_notices::{CompletionNotice, CompletionNoticePolicy, COMPLETION_BATCH_WINDOW},
+    continuity,
     flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
     follow_up::{
-        agent_reference_prompt, compose_follow_up_prompt, ensure_agent_references_supported,
+        agent_reference_prompt, compose_follow_up_prompt, compose_follow_up_prompt_since,
+        ensure_agent_references_supported,
     },
     measured_diffs::{
         capture_opening_mark, merge_measured_diffs, paths_awaiting_diff, MeasuredDiff,
@@ -46,30 +49,27 @@ use super::{
         RealProviderProcessLauncher,
     },
     subagent_trace::reconcile_session_subagent_traces,
-    AgentMode, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
+    AgentMode, ApprovalSupport, LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
 };
 use crate::sessions::state::SessionState;
 use crate::{
+    application::validation::{NonEmptyString, Prompt, SessionId},
     approvals::service::ApprovalService,
     checkpoints::service::{CheckpointService, CreateCheckpointInput},
     error::{ArgmaxError, ArgmaxResult},
     gh::service::{pr_numbers_from_command_event, GhService},
     git::ops::checkout_write_lock,
     goals::service::GoalService,
-    ipc::inputs::{
-        ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
-        ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
-        ProvidersTerminateInput, QueuedMessageDelivery, SessionClearInput,
-    },
-    ipc::validation::{NonEmptyString, Prompt, SessionId},
+    ipc::PersonAttestation,
     persistence::{
         arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
         arcs,
+        authorship::PromptAuthor,
         database::Database,
         events::{
-            find_event_by_id, latest_agent_answer, latest_agent_message, latest_user_message_id,
-            list_session_events_since, persist_raw_output, persist_timeline_event,
-            update_event_payload, PersistRawOutputInput, PersistTimelineEventInput, TimelineEvent,
+            find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
+            persist_timeline_event, persist_user_prompt, update_event_payload,
+            PersistRawOutputInput, PersistTimelineEventInput, TimelineEvent,
         },
         pending_messages::{
             clear_session_queue, delete_message as delete_pending_message,
@@ -80,17 +80,22 @@ use crate::{
         projects::list_projects,
         session_messages::{
             delete_undelivered_session_message, insert_session_message, is_message_delivered,
-            mark_message_delivered, NewSessionMessage, COMPLETION_KIND, MESSAGE_KIND,
+            mark_message_delivered, NewSessionMessage, MESSAGE_KIND,
         },
         sessions::{
             clear_session_conversation, find_session_by_id, persist_session, record_session_arc,
-            session_launch_kind, session_resume_fork, update_session_agent_mode,
-            update_session_model, update_session_provider, update_session_provider_conversation_id,
-            update_session_state, PersistSessionInput, SessionAgentModeInput, SessionModelInput,
-            SessionProviderInput, SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
+            session_launch_kind, update_session_agent_mode, update_session_model,
+            update_session_provider, update_session_provider_conversation_id, update_session_state,
+            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
+            SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
         },
         time::now_iso,
         workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
+    },
+    providers::inputs::{
+        ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
+        ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
+        ProvidersTerminateInput, QueuedMessageDelivery, SessionClearInput,
     },
     session_control::{AfterTurn, SessionLaunchRegistry},
     workspaces::lifecycle::{WorkspaceAdmission, WorkspaceLifecycle},
@@ -118,23 +123,6 @@ const STREAM_BATCH_FLUSH_MS: u64 = 25;
 /// Flush it only after output pauses so arbitrary PTY chunk boundaries cannot
 /// split or trim its text. Process exit and cancellation force the same flush.
 const STREAM_IDLE_FLUSH_MS: u64 = 16;
-/// How much of a child's final answer a completion notice carries. The notice
-/// is a summary handed back through the inbox, which has its own reply ceiling
-/// — a whole transcript-length answer belongs to `session_read`.
-const NOTICE_ANSWER_CHARS: usize = 4 * 1024;
-/// How much of the learnings section a capped notice keeps. The head already
-/// spent the budget; this is the tail that made the answer worth reading.
-const NOTICE_LEARNINGS_CHARS: usize = 2 * 1024;
-/// The section an Arc member is asked to end its final answer with. The
-/// coordinator is the only writer of the arc folder, so the notice is the one
-/// channel a member's learnings travel on — a cap that drops it costs the Arc
-/// the whole point of the turn. See docs/arcs.md.
-const LEARNINGS_HEADING: &str = "Learnings for the arc";
-/// How long a launched chat the user is talking to in its own tab must stay
-/// quiet before its launcher hears about it, as one digest rather than a turn
-/// per reply.
-const USER_TURN_DIGEST_QUIET_SECS: u64 = 900;
-
 fn ensure_permission_mode_supported(
     provider: ProviderId,
     permission_mode: PermissionMode,
@@ -175,140 +163,6 @@ fn has_steering_context_headroom(session: &SessionSummary) -> bool {
     };
     session.context_tokens.saturating_mul(100)
         < context_window.saturating_mul(CODEX_STEER_MAX_CONTEXT_PERCENT)
-}
-
-/// The head of a long answer plus, when the answer ends with one, its
-/// learnings section. A member's most valuable paragraph is its last, and a
-/// plain head cut threw it away: over the first real Arc only 31 of 86
-/// notices still carried the section the member wrote it for.
-fn cap_notice_answer(answer: &str) -> String {
-    if answer.chars().count() <= NOTICE_ANSWER_CHARS {
-        return answer.to_string();
-    }
-    let cut = char_offset(answer, NOTICE_ANSWER_CHARS);
-    // Cut on a line boundary so the head does not end mid-sentence.
-    let head = answer[..cut]
-        .rfind('\n')
-        .map(|end| &answer[..end])
-        .unwrap_or(&answer[..cut])
-        .trim_end();
-    match learnings_offset(answer, cut) {
-        Some(start) => format!(
-            "{head}\n\n(… middle truncated …)\n\n{}",
-            cap_learnings_section(&answer[start..])
-        ),
-        None => format!("{head}\n\n(truncated)"),
-    }
-}
-
-/// Where the learnings section starts, if it starts past `after` — a heading
-/// already inside the head needs no second copy.
-fn learnings_offset(answer: &str, after: usize) -> Option<usize> {
-    let mut start = 0;
-    for line in answer.split_inclusive('\n') {
-        if start >= after && is_learnings_heading(line) {
-            return Some(start);
-        }
-        start += line.len();
-    }
-    None
-}
-
-/// `## Learnings for the arc`, `**Learnings for the arc**`, or the bare line —
-/// members write all three.
-fn is_learnings_heading(line: &str) -> bool {
-    let line = line.trim();
-    let line = line.trim_start_matches('#').trim();
-    let line = line.trim_start_matches("**").trim_end_matches("**").trim();
-    let line = line.trim_end_matches([':', '.']).trim();
-    line.eq_ignore_ascii_case(LEARNINGS_HEADING)
-}
-
-fn cap_learnings_section(section: &str) -> String {
-    if section.chars().count() <= NOTICE_LEARNINGS_CHARS {
-        return section.to_string();
-    }
-    let cut = char_offset(section, NOTICE_LEARNINGS_CHARS);
-    format!("{}\n\n(truncated)", section[..cut].trim_end())
-}
-
-/// The byte offset of the `chars`th character, or the end of the string.
-fn char_offset(text: &str, chars: usize) -> usize {
-    text.char_indices()
-        .nth(chars)
-        .map(|(index, _)| index)
-        .unwrap_or(text.len())
-}
-
-/// The sentence the launcher reads above the answer. The two shapes differ
-/// only here, so the lookups that fill them stay in one place.
-fn notice_body(
-    shape: &NoticeShape,
-    session_id: &str,
-    label: &str,
-    state: SessionState,
-    at: &str,
-    answer: &str,
-) -> String {
-    let when = notice_local_time(at);
-    match shape {
-        NoticeShape::Finished { direct_exchanges } => {
-            let aside = direct_exchanges
-                .as_ref()
-                .map(|exchanges| {
-                    format!(
-                        " (the user also had {} direct exchange(s) with it since {})",
-                        exchanges.count, exchanges.since
-                    )
-                })
-                .unwrap_or_default();
-            format!(
-                "Session {session_id} ({label}) finished with state {state} at {when}.{aside} Final answer:\n{answer}"
-            )
-        }
-        NoticeShape::UserTurnDigest(exchanges) => format!(
-            "Session {session_id} ({label}) answered the user directly {} time(s) since {} and has been quiet for {} minutes; latest answer at {when}:\n{answer}",
-            exchanges.count,
-            exchanges.since,
-            USER_TURN_DIGEST_QUIET_SECS / 60,
-        ),
-    }
-}
-
-/// Whether the newest `user.message` is one the person typed in the chat's own
-/// tab: a turn from another session carries an `origin`, a Goal's or the
-/// scheduler's carries a `starter`, and the session's first message is the
-/// prompt its launcher sent.
-fn turn_was_user_driven(latest_payload: &Value, is_first: bool) -> bool {
-    !is_first && latest_payload.get("origin").is_none() && latest_payload.get("starter").is_none()
-}
-
-/// Every prompt the session has ever taken, clear boundaries included — only
-/// the very first one can be the launch prompt.
-fn count_user_messages(connection: &rusqlite::Connection, session_id: &str) -> ArgmaxResult<i64> {
-    connection
-        .prepare_cached(
-            "SELECT COUNT(*) FROM events WHERE session_id = ? AND type = 'user.message'",
-        )
-        .map_err(sqlite_error)?
-        .query_row([session_id], |row| row.get::<_, i64>(0))
-        .map_err(sqlite_error)
-}
-
-/// The moment a notice reports, in the machine's zone. A coordinator reads
-/// its members' notices with no clock of its own and dates its notes from
-/// them; over a multi-day Arc that drifted by hours. chrono's `Local` offset
-/// carries no zone name, so this prints the numeric offset rather than an
-/// abbreviation like `CEST`.
-fn notice_local_time(at: &str) -> String {
-    chrono::DateTime::parse_from_rfc3339(at)
-        .map(|moment| {
-            moment
-                .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d %H:%M %:z")
-                .to_string()
-        })
-        .unwrap_or_else(|_| at.to_string())
 }
 
 /// Whether a send may fall into the chat's follow-up queue.
@@ -403,15 +257,19 @@ pub struct MessageOrigin {
 }
 
 /// Who started a turn that carries no [`MessageOrigin`]: the person at the
-/// composer, a Goal's evaluator, or the scheduler. The two automatic ones are
-/// written onto the `user.message` payload as `starter`, so the completion
-/// notice path can tell a wake apart from the person typing into a launched
-/// chat — the payloads are otherwise identical.
+/// composer, a Goal's evaluator, the scheduler, or a session move. The
+/// automatic ones are written onto the `user.message` payload as `starter`, so
+/// the completion notice path can tell a wake apart from the person typing
+/// into a launched chat — the payloads are otherwise identical — and so a
+/// chat reference in them is never read as the person's own (see
+/// `human_prompt_references_session`). A move's prompt is written by the agent
+/// that asked for the move.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TurnStarter {
     Person,
     Goal,
     Schedule,
+    Move,
 }
 
 /// Where a turn's prompt came from, for the `user.message` payload: another
@@ -420,6 +278,9 @@ enum TurnStarter {
 struct TurnAuthorship<'a> {
     origin: Option<&'a MessageOrigin>,
     starter: TurnStarter,
+    /// Whether a person wrote the text (see `persistence/authorship.rs`). The
+    /// only thing that makes a chat reference in it a read grant.
+    author: PromptAuthor,
 }
 
 impl TurnStarter {
@@ -428,44 +289,9 @@ impl TurnStarter {
             TurnStarter::Person => None,
             TurnStarter::Goal => Some("goal"),
             TurnStarter::Schedule => Some("schedule"),
+            TurnStarter::Move => Some("move"),
         }
     }
-}
-
-/// A recorded completion notice, on its way to the launching session as a
-/// turn. The row is already in `session_messages`; this is the delivery.
-struct CompletionNotice {
-    message_id: String,
-    to_session_id: String,
-    body: String,
-    origin: MessageOrigin,
-}
-
-/// What a completion notice is reporting, which is the one thing that differs
-/// between the two bodies the launcher can receive.
-enum NoticeShape {
-    /// A turn the launcher itself set off. `direct_exchanges` folds in a
-    /// digest the user's own replies had opened and this turn cancels.
-    Finished {
-        direct_exchanges: Option<DirectExchanges>,
-    },
-    /// The user had been replying in the launched chat's own tab, and it has
-    /// now been quiet for `USER_TURN_DIGEST_QUIET_SECS`.
-    UserTurnDigest(DirectExchanges),
-}
-
-/// Turns the person drove in a launched chat themselves, since `since`.
-#[derive(Debug, Clone, PartialEq)]
-struct DirectExchanges {
-    count: u32,
-    since: String,
-}
-
-/// A launched chat's open quiet window. `token` is unique per scheduling, so
-/// the timer that wakes to a replaced or cancelled window does nothing.
-struct UserTurnDigest {
-    token: String,
-    exchanges: DirectExchanges,
 }
 
 /// A session's state as it was just written. Broadcast in-process so a blocked
@@ -540,10 +366,7 @@ pub struct ProviderSessionService {
     /// Installed by `GoalService::new`. Kept weak because the Goal service
     /// owns this provider service while its driver is alive.
     goals: OnceLock<Weak<GoalService>>,
-    /// Launched chats the user is talking to in their own tab, with the turns
-    /// counted so far. Each such turn restarts a quiet window instead of
-    /// waking the launcher; see `schedule_user_turn_digest`.
-    user_turn_digests: Arc<Mutex<HashMap<String, UserTurnDigest>>>,
+    completion_notices: Arc<CompletionNoticePolicy>,
     /// Per-turn git marks, for providers that report a file write without
     /// saying what changed. See `measured_diffs`.
     measured_diffs: Arc<MeasuredDiffs>,
@@ -551,7 +374,12 @@ pub struct ProviderSessionService {
     session_states: broadcast::Sender<SessionStateChange>,
     #[cfg(test)]
     send_input_test_gate: Arc<Mutex<Option<Arc<SendInputTestGate>>>>,
+    #[cfg(test)]
+    after_lifecycle_marker_check: Arc<Mutex<Option<LifecycleMarkerHook>>>,
 }
+
+#[cfg(test)]
+type LifecycleMarkerHook = Arc<dyn Fn() + Send + Sync>;
 
 #[cfg(test)]
 #[derive(Default)]
@@ -652,35 +480,62 @@ impl ProviderSessionService {
             recover_pending_messages(&mut connection)
                 .expect("durable pending-message journal must be readable")
         };
-        Arc::new(Self {
-            database,
-            launcher,
-            publish_delta: Arc::new(publish_delta),
-            handles: Arc::new(Mutex::new(HashMap::new())),
-            queues: Arc::new(Mutex::new(recovered_queues)),
-            queue_promotions: Arc::new(Mutex::new(HashSet::new())),
-            flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
-            output_events: Arc::new(AtomicU64::new(0)),
-            batch_flush_generation: Arc::new(Mutex::new(HashMap::new())),
-            batch_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
-            idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
-            idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
-            subagent_reconciliations: Arc::new(Mutex::new(HashMap::new())),
-            terminating: Arc::new(Mutex::new(HashSet::new())),
-            send_generations: Arc::new(Mutex::new(HashMap::new())),
-            termination_jobs: Arc::new(Mutex::new(HashMap::new())),
-            user_turn_digests: Arc::new(Mutex::new(HashMap::new())),
-            lifecycle,
-            approvals,
-            questions: OnceLock::new(),
-            provider_discovery: OnceLock::new(),
-            session_control: OnceLock::new(),
-            checkpoints: OnceLock::new(),
-            goals: OnceLock::new(),
-            measured_diffs: Arc::new(MeasuredDiffs::default()),
-            session_states: broadcast::channel(SESSION_STATE_BROADCAST_CAPACITY).0,
-            #[cfg(test)]
-            send_input_test_gate: Arc::new(Mutex::new(None)),
+        Arc::new_cyclic(|weak: &Weak<Self>| {
+            let weak_service = weak.clone();
+            let completion_notices = CompletionNoticePolicy::new(
+                Arc::clone(&database),
+                COMPLETION_BATCH_WINDOW,
+                {
+                    let weak_service = weak_service.clone();
+                    move |launcher_id| {
+                        if let Some(service) = weak_service.upgrade() {
+                            if let Some(registry) = service.session_control.get() {
+                                registry.notify_inbox(launcher_id);
+                            }
+                        }
+                    }
+                },
+                move |notice| {
+                    let weak_service = weak_service.clone();
+                    Box::pin(async move {
+                        if let Some(service) = weak_service.upgrade() {
+                            service.deliver_notice(notice).await;
+                        }
+                    })
+                },
+            );
+            Self {
+                completion_notices,
+                database,
+                launcher,
+                publish_delta: Arc::new(publish_delta),
+                handles: Arc::new(Mutex::new(HashMap::new())),
+                queues: Arc::new(Mutex::new(recovered_queues)),
+                queue_promotions: Arc::new(Mutex::new(HashSet::new())),
+                flush_queue: Arc::new(Mutex::new(ProviderEventFlushQueue::new())),
+                output_events: Arc::new(AtomicU64::new(0)),
+                batch_flush_generation: Arc::new(Mutex::new(HashMap::new())),
+                batch_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
+                idle_flush_generation: Arc::new(Mutex::new(HashMap::new())),
+                idle_flush_tasks: Arc::new(Mutex::new(HashMap::new())),
+                subagent_reconciliations: Arc::new(Mutex::new(HashMap::new())),
+                terminating: Arc::new(Mutex::new(HashSet::new())),
+                send_generations: Arc::new(Mutex::new(HashMap::new())),
+                termination_jobs: Arc::new(Mutex::new(HashMap::new())),
+                lifecycle,
+                approvals,
+                questions: OnceLock::new(),
+                provider_discovery: OnceLock::new(),
+                session_control: OnceLock::new(),
+                checkpoints: OnceLock::new(),
+                goals: OnceLock::new(),
+                measured_diffs: Arc::new(MeasuredDiffs::default()),
+                session_states: broadcast::channel(SESSION_STATE_BROADCAST_CAPACITY).0,
+                #[cfg(test)]
+                send_input_test_gate: Arc::new(Mutex::new(None)),
+                #[cfg(test)]
+                after_lifecycle_marker_check: Arc::new(Mutex::new(None)),
+            }
         })
     }
 
@@ -794,6 +649,11 @@ impl ProviderSessionService {
             Value::String(reason.to_string()),
         );
         event.payload = Value::Object(payload);
+        event.semantic = crate::persistence::timeline_semantics::derive(
+            &event.r#type,
+            &event.id,
+            &event.payload,
+        );
         update_event_payload(&connection, turn_boundary, &event.payload)?;
         Ok(Some(event))
     }
@@ -949,9 +809,33 @@ impl ProviderSessionService {
         )
     }
 
+    /// A launch whose prompt no person typed (check-failure follow-ups, tests).
+    /// Its chat references grant nothing.
     pub async fn launch(
         self: &Arc<Self>,
         input: ProvidersLaunchInput,
+    ) -> ArgmaxResult<SessionSummary> {
+        self.launch_with_session_id(input, None, PromptAuthor::unattested())
+            .await
+    }
+
+    /// The composer's launch: the opening prompt is the person's own.
+    pub async fn launch_as_person(
+        self: &Arc<Self>,
+        input: ProvidersLaunchInput,
+        attestation: PersonAttestation,
+    ) -> ArgmaxResult<SessionSummary> {
+        self.launch_with_session_id(input, None, PromptAuthor::person(attestation))
+            .await
+    }
+
+    /// `session_id` is for a caller that recorded the id before launching (a
+    /// launch receipt), so a crash leaves a record that names the session.
+    pub async fn launch_with_session_id(
+        self: &Arc<Self>,
+        input: ProvidersLaunchInput,
+        session_id: Option<String>,
+        author: PromptAuthor,
     ) -> ArgmaxResult<SessionSummary> {
         let initial_goal = match input.goal_condition.as_deref() {
             Some(condition) => {
@@ -972,7 +856,7 @@ impl ProviderSessionService {
             }
             None => None,
         };
-        let session_id = Uuid::new_v4().to_string();
+        let session_id = session_id.unwrap_or_else(|| Uuid::new_v4().to_string());
         let agent_mode = input.agent_mode.unwrap_or(AgentMode::Auto);
         let permission_mode = input
             .permission_mode
@@ -1065,7 +949,7 @@ impl ProviderSessionService {
                 &workspace.id,
                 SessionState::Running,
             )?;
-            let user_message = persist_timeline_event(
+            let user_message = persist_user_prompt(
                 &transaction,
                 &PersistTimelineEventInput {
                     id: Uuid::new_v4().to_string(),
@@ -1075,6 +959,7 @@ impl ProviderSessionService {
                     payload: composer_payload(agent_mode, input.attachments.as_deref()),
                     created_at: None,
                 },
+                author,
             )?;
             let session_started = persist_timeline_event(
                 &transaction,
@@ -1141,6 +1026,7 @@ impl ProviderSessionService {
             fast_mode: input.fast_mode,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode,
             agent_mode,
             cols: input.cols.get(),
@@ -1189,6 +1075,10 @@ impl ProviderSessionService {
             let _admission = admission;
             let event_service = Arc::clone(&service);
             let callback_invocation_id = provider_invocation_id.clone();
+            // One fresh retry exists only for a native resume or fork the
+            // provider definitely refused before it admitted the turn.
+            let fresh_retry = continuity::fresh_retry_input(&launch_input);
+            let rejected_conversation = launch_input.resume_conversation_id.clone();
             let launch_result = async {
                 service.capture_before_provider_turn(&session_id).await?;
                 if !matches!(
@@ -1200,17 +1090,33 @@ impl ProviderSessionService {
                         "The turn was cancelled before launch.",
                     ));
                 }
-                service
+                let on_event: crate::providers::runtime::EventCallback = Arc::new(move |event| {
+                    let event_service = Arc::clone(&event_service);
+                    event_service.handle_provider_event(event, callback_invocation_id.clone());
+                });
+                match service
                     .launcher
-                    .launch(
-                        launch_input,
-                        Arc::new(move |event| {
-                            let event_service = Arc::clone(&event_service);
-                            event_service
-                                .handle_provider_event(event, callback_invocation_id.clone());
-                        }),
-                    )
+                    .launch(launch_input, Arc::clone(&on_event))
                     .await
+                {
+                    Err(error) if continuity::is_definite_rejection(&error) => {
+                        let (Some(retry), Some(rejected)) = (fresh_retry, rejected_conversation)
+                        else {
+                            return Err(error);
+                        };
+                        tracing::warn!(
+                            session_id = %session_id,
+                            "provider rejected the native resume; retrying once fresh"
+                        );
+                        continuity::record_resume_rejected(
+                            &service.database.connection(),
+                            &retry,
+                            &rejected,
+                        )?;
+                        service.launcher.launch(retry, on_event).await
+                    }
+                    other => other,
+                }
             }
             .await;
             let handle = match launch_result {
@@ -1303,19 +1209,24 @@ impl ProviderSessionService {
         });
     }
 
+    /// A follow-up no person typed into the composer (internal callers, tests).
+    /// Its chat references grant nothing.
     pub async fn send_input(
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
-        self.send_input_scoped(
-            input,
-            None,
-            None,
-            TurnStarter::Person,
-            Queueing::Allowed,
-            MidTurnDelivery::Queue,
-        )
-        .await
+        self.send_input_authored(input, None, PromptAuthor::unattested())
+            .await
+    }
+
+    /// The composer's follow-up: fresh text the person wrote.
+    pub async fn send_input_as_person(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        attestation: PersonAttestation,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_authored(input, None, PromptAuthor::person(attestation))
+            .await
     }
 
     /// Deliver a composer follow-up as guidance inside an active turn. This
@@ -1326,6 +1237,24 @@ impl ProviderSessionService {
         self: &Arc<Self>,
         input: ProvidersSendInput,
     ) -> ArgmaxResult<SendInputResult> {
+        self.steer_input_authored(input, PromptAuthor::unattested())
+            .await
+    }
+
+    pub async fn steer_input_as_person(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        attestation: PersonAttestation,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.steer_input_authored(input, PromptAuthor::person(attestation))
+            .await
+    }
+
+    async fn steer_input_authored(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        author: PromptAuthor,
+    ) -> ArgmaxResult<SendInputResult> {
         self.send_input_scoped(
             input,
             None,
@@ -1333,6 +1262,7 @@ impl ProviderSessionService {
             TurnStarter::Person,
             Queueing::Allowed,
             MidTurnDelivery::Steer,
+            author,
         )
         .await
     }
@@ -1347,6 +1277,19 @@ impl ProviderSessionService {
         input: ProvidersSendInput,
         origin: Option<MessageOrigin>,
     ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_authored(input, origin, PromptAuthor::unattested())
+            .await
+    }
+
+    /// Deliver a queued row (drain, Send now): it keeps the origin and the
+    /// author the sender had when it was queued, so none of those actions can
+    /// make an agent's text a person's or the reverse.
+    async fn send_input_authored(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+        origin: Option<MessageOrigin>,
+        author: PromptAuthor,
+    ) -> ArgmaxResult<SendInputResult> {
         self.send_input_scoped(
             input,
             origin,
@@ -1354,6 +1297,7 @@ impl ProviderSessionService {
             TurnStarter::Person,
             Queueing::Allowed,
             MidTurnDelivery::Queue,
+            author,
         )
         .await
     }
@@ -1375,6 +1319,7 @@ impl ProviderSessionService {
             TurnStarter::Person,
             Queueing::Allowed,
             MidTurnDelivery::SteerOrQueue,
+            PromptAuthor::unattested(),
         )
         .await
     }
@@ -1391,6 +1336,26 @@ impl ProviderSessionService {
             TurnStarter::Goal,
             Queueing::Refused,
             MidTurnDelivery::Queue,
+            PromptAuthor::unattested(),
+        )
+        .await
+    }
+
+    /// The turn a session move starts in its destination: the prompt the moving
+    /// agent wrote, queued like any follow-up. Tagged so it is not mistaken for
+    /// something the person typed.
+    pub async fn send_moved_input(
+        self: &Arc<Self>,
+        input: ProvidersSendInput,
+    ) -> ArgmaxResult<SendInputResult> {
+        self.send_input_scoped(
+            input,
+            None,
+            None,
+            TurnStarter::Move,
+            Queueing::Allowed,
+            MidTurnDelivery::Queue,
+            PromptAuthor::unattested(),
         )
         .await
     }
@@ -1409,6 +1374,7 @@ impl ProviderSessionService {
             TurnStarter::Schedule,
             Queueing::Refused,
             MidTurnDelivery::Queue,
+            PromptAuthor::unattested(),
         )
         .await
     }
@@ -1585,6 +1551,8 @@ impl ProviderSessionService {
         )))
     }
 
+    // The send's whole shape is one call; grouping the knobs would only move them.
+    #[allow(clippy::too_many_arguments)]
     async fn send_input_scoped(
         self: &Arc<Self>,
         input: ProvidersSendInput,
@@ -1593,7 +1561,17 @@ impl ProviderSessionService {
         starter: TurnStarter,
         queueing: Queueing,
         mid_turn_delivery: MidTurnDelivery,
+        author: PromptAuthor,
     ) -> ArgmaxResult<SendInputResult> {
+        // A message another session sent is never the person's own text, so a
+        // send that claims both is a bug in the caller, not something to
+        // quietly downgrade.
+        if author.is_person() && (origin.is_some() || !matches!(starter, TurnStarter::Person)) {
+            return Err(ArgmaxError::service(
+                "PROMPT_AUTHOR_CONFLICT",
+                "A person's prompt cannot carry another session's origin or a system starter.",
+            ));
+        }
         let session_id = input.session_id.as_str().to_string();
         let message = input.input.as_str().trim().to_string();
         if message.is_empty() {
@@ -1748,6 +1726,7 @@ impl ProviderSessionService {
                     queued_agent_mode,
                     &input,
                     origin,
+                    author,
                 )?
                 else {
                     return Ok(SendInputResult {
@@ -1797,6 +1776,7 @@ impl ProviderSessionService {
                 input.agent_mode.unwrap_or(AgentMode::Auto),
                 input.attachments.as_deref(),
                 origin.as_ref(),
+                author,
             )?;
             drop(send_generation_guard);
             drop(admission);
@@ -1825,6 +1805,7 @@ impl ProviderSessionService {
                 queued_agent_mode,
                 &input,
                 origin,
+                author,
             )?
             else {
                 return Ok(SendInputResult {
@@ -1951,12 +1932,13 @@ impl ProviderSessionService {
             let provider = parse_provider(&session.provider)?;
             let permission_mode = parse_permission_mode(&session.permission_mode)?;
             ensure_permission_mode_supported(provider, permission_mode)?;
-            let mut resume_conversation_id = session.provider_conversation_id.clone();
-            // A just-switched session always starts the new provider fresh; never
-            // resurrect a stale Cursor resume id from an earlier Cursor segment.
+            // A just-switched session starts the new provider fresh, or rejoins
+            // the conversation it parked there; never resurrect a stale Cursor
+            // resume id from an earlier Cursor segment.
             if switch_event.is_none()
                 && provider == ProviderId::Cursor
-                && resume_conversation_id.is_none()
+                && session.provider_conversation_id.is_none()
+                && continuity::may_infer_cursor_conversation(&connection, &session_id)?
             {
                 if let Some(provider_conversation_id) =
                     infer_cursor_provider_conversation_id(&connection, &session_id)?
@@ -1966,33 +1948,48 @@ impl ProviderSessionService {
                         &session_id,
                         &provider_conversation_id,
                     )?;
-                    resume_conversation_id = session.provider_conversation_id.clone();
                 }
             }
-            // A provider switch NULLs the resume id, so this same flag also
-            // carries the switched-agent case: no rollout on the other side,
-            // rebuild the context from the visible transcript.
-            let launch_prompt = compose_follow_up_prompt(
+            let mut plan = continuity::plan_launch(
+                &connection,
+                &mut session,
+                provider,
+                std::path::Path::new(&workspace.path),
+                switch_event.is_some(),
+            )?;
+            // A switch NULLs the resume id, so a missing id also carries the
+            // switched-agent case: no rollout on the other side, rebuild the
+            // context from the visible transcript. A binding rejoined after a
+            // switch sends only what it missed.
+            let launch_prompt = compose_follow_up_prompt_since(
                 &connection,
                 &session_id,
                 &message,
-                resume_conversation_id.is_some(),
+                plan.resume_conversation_id.is_some(),
+                plan.since_event_id.as_deref(),
             )?;
-            let launch_prompt = agent_reference_prompt(
-                &connection,
-                &session_id,
-                &launch_prompt,
-                input.agent_references.as_deref().unwrap_or_default(),
-            )?;
+            let agent_references = input.agent_references.as_deref().unwrap_or_default();
+            let launch_prompt =
+                agent_reference_prompt(&connection, &session_id, &launch_prompt, agent_references)?;
+            // Composed before the current message is persisted, so the retry
+            // prompt cannot carry it twice. Native agent references only make
+            // sense inside the native conversation, so they get no retry.
+            let fallback_prompt = (plan.needs_fallback_prompt && agent_references.is_empty())
+                .then(|| compose_follow_up_prompt(&connection, &session_id, &message, false))
+                .transpose()?;
             // A multitask that finished while this session was busy is told to
             // the agent here, on the front of the prompt — never as a turn of
             // its own. The person's own message is persisted unchanged: the
             // timeline already carries the finish marker.
             let pending_results = crate::multitask::results_preamble(&connection, &session_id)?;
-            let launch_prompt = match &pending_results {
-                Some(results) => format!("{}\n\n{launch_prompt}", results.block),
-                None => launch_prompt,
+            let (launch_prompt, fallback_prompt) = match &pending_results {
+                Some(results) => (
+                    format!("{}\n\n{launch_prompt}", results.block),
+                    fallback_prompt.map(|prompt| format!("{}\n\n{prompt}", results.block)),
+                ),
+                None => (launch_prompt, fallback_prompt),
             };
+            plan.continuity.fresh_fallback_prompt = fallback_prompt;
             let user_message = self.persist_user_message_locked(
                 &connection,
                 &session_id,
@@ -2002,6 +1999,7 @@ impl ProviderSessionService {
                 TurnAuthorship {
                     origin: origin.as_ref(),
                     starter,
+                    author,
                 },
             )?;
             let running_session = update_session_state(
@@ -2036,13 +2034,14 @@ impl ProviderSessionService {
                 // A forked session's first resume must diverge into a new
                 // provider conversation; the flag is cleared once the new
                 // conversation id lands.
-                resume_fork: resume_conversation_id.is_some()
-                    && session_resume_fork(&connection, &session_id)?,
-                resume_conversation_id,
+                resume_fork: plan.resume_fork,
+                resume_conversation_id: plan.resume_conversation_id,
                 permission_mode,
                 agent_mode,
                 cols: STRUCTURED_LAUNCH_COLS,
                 rows: STRUCTURED_LAUNCH_ROWS,
+                continuity: (plan.continuity != LaunchContinuity::default())
+                    .then_some(plan.continuity),
             };
             (provider, launch_input, pending_results)
         };
@@ -2754,7 +2753,13 @@ impl ProviderSessionService {
                 return Err(error);
             }
         };
-        let result = match self.send_input(send_input).await {
+        // The row keeps the origin it was queued with: an agent's message sent
+        // now must still read "From <agent>" and must not become a person's
+        // prompt, which would let it grant chat references.
+        let result = match self
+            .send_input_authored(send_input, message.origin.clone(), message.author)
+            .await
+        {
             Ok(result) => result,
             Err(error) => {
                 // send_input can reject before the message is persisted as a
@@ -2829,9 +2834,12 @@ impl ProviderSessionService {
                 ));
             }
             if message
-                .model_id
-                .as_deref()
-                .is_some_and(|id| id != session.model_id)
+                .provider
+                .is_some_and(|provider| provider.as_str() != session.provider)
+                || message
+                    .model_id
+                    .as_deref()
+                    .is_some_and(|id| id != session.model_id)
                 || message
                     .reasoning_effort
                     .as_deref()
@@ -2930,7 +2938,7 @@ impl ProviderSessionService {
                 payload["origin"] =
                     serde_json::to_value(origin).map_err(crate::persistence::json_error)?;
             }
-            let event = persist_timeline_event(
+            let event = persist_user_prompt(
                 &transaction,
                 &PersistTimelineEventInput {
                     id: Uuid::new_v4().to_string(),
@@ -2940,6 +2948,7 @@ impl ProviderSessionService {
                     payload,
                     created_at: Some(created_at),
                 },
+                message.author,
             )?;
             delete_pending_message(&transaction, session_id, &message.id)?;
             transaction.commit().map_err(sqlite_error)?;
@@ -2962,7 +2971,24 @@ impl ProviderSessionService {
         })
     }
 
+    /// Boot: wake launchers whose completion wake was waiting out its
+    /// coalescing window when the app stopped. Runs after orphan recovery, so
+    /// a notice that recovery just wrote is already held and is not duplicated.
+    pub fn recover_completion_wakes(self: &Arc<Self>) -> ArgmaxResult<usize> {
+        self.completion_notices.recover_pending_wakes()
+    }
+
     pub fn recover_orphaned_sessions(&self) -> ArgmaxResult<usize> {
+        // A launch that was in flight when the app stopped started nothing if
+        // its session was never written, and may have started its provider if
+        // it was. Its receipt says which; the second kind is never repeated.
+        match crate::persistence::launch_receipts::recover_orphaned_receipts(
+            &mut self.database.connection(),
+        ) {
+            Ok(recovered) if recovered == Default::default() => {}
+            Ok(recovered) => tracing::info!(?recovered, "in-flight launches recovered"),
+            Err(error) => tracing::warn!(?error, "could not recover launch receipts"),
+        }
         let (recovered, cleanup_sessions) = {
             let connection = self.database.connection();
             let read_sessions = |sql: &str| -> ArgmaxResult<Vec<RecoveredProviderSession>> {
@@ -3013,21 +3039,22 @@ impl ProviderSessionService {
             // re-lock the writer this thread may still be holding.
             let (session, workspace, event, is_multitask, projects) = {
                 let connection = self.database.connection();
+                let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
                 let session = update_session_state(
-                    &connection,
+                    &transaction,
                     session_id,
                     &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
                 )?;
                 // Mirror the session terminal-state onto the workspace so the
                 // dashboard doesn't keep showing a `running` workspace whose
                 // session was just marked `failed`.
-                let workspace = update_workspace_state_for_session_state(
-                    &connection,
+                let workspace = update_workspace_state_for_session_state_within_transaction(
+                    &transaction,
                     &session.workspace_id,
                     SessionState::Failed,
                 )?;
                 let event = persist_timeline_event(
-                    &connection,
+                    &transaction,
                     &PersistTimelineEventInput {
                         id: Uuid::new_v4().to_string(),
                         session_id: session_id.clone(),
@@ -3037,9 +3064,10 @@ impl ProviderSessionService {
                         created_at: None,
                     },
                 )?;
-                let is_multitask = session_launch_kind(&connection, session_id)
+                let is_multitask = session_launch_kind(&transaction, session_id)
                     .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
-                let projects = list_projects(&connection)?;
+                let projects = list_projects(&transaction)?;
+                transaction.commit().map_err(sqlite_error)?;
                 (session, workspace, event, is_multitask, projects)
             };
             self.publish(DashboardDelta {
@@ -3146,6 +3174,11 @@ impl ProviderSessionService {
             session_id = %trace_session,
             "handle_output_event: acquired flush queue; queuing event",
         );
+        // Kept before the line is consumed: it names the turn a Codex run began.
+        let turn_started_line = event
+            .message
+            .contains("\"thread.started\"")
+            .then(|| event.message.clone());
         let mut result = flush_queue.queue_output_event(
             &mut connection,
             &provider_invocation_id,
@@ -3172,6 +3205,23 @@ impl ProviderSessionService {
                 .get_or_insert_with(DashboardDelta::default)
                 .sessions
                 .push(session);
+        }
+        // Output proves the conversation holds what a rejoin owed it.
+        if let Some(delta) = &result.delta {
+            if let Err(error) = continuity::note_provider_output(
+                &connection,
+                &event.session_id,
+                delta.events.iter().map(|event| event.r#type.as_str()),
+            ) {
+                tracing::warn!(session_id = %event.session_id, ?error, "could not settle a rejoined conversation");
+            }
+        }
+        if let Some(line) = turn_started_line {
+            if let Err(error) =
+                continuity::observe_provider_line(&connection, &event.session_id, &line)
+            {
+                tracing::warn!(session_id = %event.session_id, ?error, "could not record provider turn");
+            }
         }
         drop(flush_queue);
         drop(connection);
@@ -3232,6 +3282,14 @@ impl ProviderSessionService {
             .terminating
             .lock_or_recover("terminating")
             .contains(&event.session_id);
+        #[cfg(test)]
+        if let Some(hook) = self
+            .after_lifecycle_marker_check
+            .lock_or_recover("lifecycle test hook")
+            .clone()
+        {
+            hook();
+        }
         self.flush_trailing(&event.session_id, !is_terminating)?;
         // If the user already initiated terminate(), let cancel_session
         // own the state transition. Writing `failed`/`complete` here
@@ -3248,7 +3306,14 @@ impl ProviderSessionService {
             return Ok(());
         }
         self.capture_pr_branch(&event.session_id);
+        // Stop sets the marker before disposal. Keep this lock through commit
+        // so an exit that passed the first check cannot overwrite Stop.
+        let terminating = self.terminating.lock_or_recover("terminating");
+        if terminating.contains(&event.session_id) {
+            return Ok(());
+        }
         let connection = self.database.connection();
+        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
         let succeeded =
             event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0);
         let state = if succeeded {
@@ -3258,7 +3323,7 @@ impl ProviderSessionService {
         };
         let completed_at = event.created_at.clone();
         let raw_output = persist_raw_output(
-            &connection,
+            &transaction,
             &PersistRawOutputInput {
                 id: Uuid::new_v4().to_string(),
                 session_id: event.session_id.clone(),
@@ -3268,12 +3333,15 @@ impl ProviderSessionService {
             },
         )?;
         let session = update_session_state(
-            &connection,
+            &transaction,
             &event.session_id,
             &SessionStateInput::transition(state).finished_at(event.created_at.clone()),
         )?;
-        let workspace =
-            update_workspace_state_for_session_state(&connection, &session.workspace_id, state)?;
+        let workspace = update_workspace_state_for_session_state_within_transaction(
+            &transaction,
+            &session.workspace_id,
+            state,
+        )?;
         // For successful exits, persist `session.completed` with an empty
         // message — the wait-thread's raw text ("X structured probe exited
         // with code 0") is debug noise that was leaking into the chat
@@ -3290,14 +3358,14 @@ impl ProviderSessionService {
         // count the turn twice.
         let already_completed = succeeded
             && crate::persistence::events::turn_completion_recorded(
-                &connection,
+                &transaction,
                 &event.session_id,
             )?;
         let timeline_events = if already_completed {
             Vec::new()
         } else {
             vec![persist_timeline_event(
-                &connection,
+                &transaction,
                 &PersistTimelineEventInput {
                     id: Uuid::new_v4().to_string(),
                     session_id: event.session_id.clone(),
@@ -3308,22 +3376,26 @@ impl ProviderSessionService {
                 },
             )?]
         };
+        let mut delta = DashboardDelta {
+            projects: list_projects(&transaction)?,
+            workspaces: vec![workspace],
+            sessions: vec![session],
+            events: timeline_events,
+            raw_outputs: vec![raw_output],
+            ..DashboardDelta::default()
+        };
+        transaction.commit().map_err(sqlite_error)?;
+        drop(terminating);
         self.handles
             .lock_or_recover("handles")
             .remove(&event.session_id);
         self.flush_queue
             .lock_or_recover("flush queue")
             .delete_session(&event.session_id);
-        if !succeeded {
-            self.pause_queue_with_connection(&connection, &event.session_id)?;
-        }
-        let mut delta = DashboardDelta {
-            projects: list_projects(&connection)?,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            events: timeline_events,
-            raw_outputs: vec![raw_output],
-            ..DashboardDelta::default()
+        let queue_paused = if succeeded {
+            Ok(())
+        } else {
+            self.pause_queue_with_connection(&connection, &event.session_id)
         };
         drop(connection);
         self.append_reconciled_subagent_events(&event.session_id, &mut delta);
@@ -3337,30 +3409,11 @@ impl ProviderSessionService {
         if succeeded {
             self.drain_queue_after_complete(event.session_id);
         }
-        interactions_cancelled
+        interactions_cancelled.and(queue_paused)
     }
 
-    /// One completion notice per turn end, addressed to whoever launched this
-    /// session.
-    ///
-    /// The notice is both an inbox row (what `inbox_read` and `session_wait`
-    /// read) and an ordinary turn in the launching session, delivered through
-    /// the same queue-until-idle path a person's follow-up takes — so an idle
-    /// parent wakes up on its child finishing.
-    ///
-    /// Why this cannot ping-pong: `launched_by_session_id` is a strict tree
-    /// rooted at the sessions a person or a routine started, and a launch is
-    /// capped at depth 2. A session with no launcher emits nothing, so a
-    /// notice climbs at most two hops and never comes back down. That is also
-    /// the answer to "does the parent's completion-triggered turn notify the
-    /// grandparent?" — it does, but only when the parent was itself launched,
-    /// because otherwise it has no launcher to notify.
-    ///
-    /// A turn the person drove in the launched chat's own tab is the one that
-    /// does not wake the launcher at once. Over the first real Arc that cost
-    /// 93 notices for 57 launches — one member alone produced 18 coordinator
-    /// turns because the user was talking to it. Those fold into a single
-    /// digest once the chat has been quiet; see `schedule_user_turn_digest`.
+    /// Arc and multitask writes are lifecycle effects. Ordinary completion
+    /// notices are independent policy and may fail without blocking the queue.
     fn notify_launcher_of_turn_end(
         self: &Arc<Self>,
         session_id: &str,
@@ -3374,145 +3427,19 @@ impl ProviderSessionService {
                 "failed to record the arc timeline row for a turn end"
             );
         }
-        // A multitask is the one launch whose finish must not wake its parent:
-        // the person dispatched it while watching another turn, and a turn that
-        // says "noted" costs a provider relaunch to interrupt what they were
-        // reading. Its result lands in the parent's timeline and inbox instead,
-        // and rides along on the next thing they type. See crate::multitask.
-        let is_multitask = matches!(
+        if matches!(
             session_launch_kind(&self.database.connection(), session_id).as_deref(),
             Ok(LAUNCH_KIND_MULTITASK)
-        );
-        if is_multitask {
+        ) {
             self.record_multitask_finish(session_id, state, at);
             return;
         }
-        // Nothing below has anyone to tell. Checking here also keeps every
-        // ordinary chat out of the digest bookkeeping.
-        if !self.session_has_launcher(session_id) {
-            return;
-        }
-        if self.turn_was_driven_by_the_user(session_id) {
-            self.schedule_user_turn_digest(session_id, state, at);
-            return;
-        }
-        let direct_exchanges = self.take_user_turn_digest(session_id);
-        self.emit_completion_notice(
-            session_id,
-            state,
-            at,
-            NoticeShape::Finished { direct_exchanges },
-        );
-    }
-
-    fn session_has_launcher(&self, session_id: &str) -> bool {
-        let connection = self.database.read_connection();
-        find_session_by_id(&connection, session_id).is_ok_and(|session| {
-            session
-                .launched_by_session_id
-                .is_some_and(|parent| parent != session_id)
-        })
-    }
-
-    /// Whether the turn that just ended is one the person typed in this
-    /// chat's own tab. The launch prompt is the session's first `user.message`
-    /// and belongs to the launcher; every later automatic turn — an agent's
-    /// `session_message`, a completion notice — carries an `origin`. What is
-    /// left is the person.
-    fn turn_was_driven_by_the_user(&self, session_id: &str) -> bool {
-        let connection = self.database.read_connection();
-        let latest = latest_user_message_id(&connection, session_id)
-            .ok()
-            .flatten()
-            .and_then(|id| find_event_by_id(&connection, &id).ok().flatten());
-        let Some(latest) = latest else {
-            return false;
-        };
-        let is_first = match count_user_messages(&connection, session_id) {
-            Ok(count) => count <= 1,
-            Err(_) => return false,
-        };
-        turn_was_user_driven(&latest.payload, is_first)
-    }
-
-    /// Restart the launched chat's quiet window. Only the timer that still
-    /// owns the window delivers, so a burst of replies costs the launcher one
-    /// turn rather than one per reply.
-    fn schedule_user_turn_digest(
-        self: &Arc<Self>,
-        session_id: &str,
-        state: SessionState,
-        at: &str,
-    ) {
-        let token = Uuid::new_v4().to_string();
-        let exchanges = {
-            let mut digests = self.user_turn_digests.lock_or_recover("user turn digests");
-            let digest = digests
-                .entry(session_id.to_string())
-                .or_insert_with(|| UserTurnDigest {
-                    token: token.clone(),
-                    exchanges: DirectExchanges {
-                        count: 0,
-                        since: notice_local_time(at),
-                    },
-                });
-            digest.token = token.clone();
-            digest.exchanges.count = digest.exchanges.count.saturating_add(1);
-            digest.exchanges.clone()
-        };
-        let service = Arc::clone(self);
-        let session_id = session_id.to_string();
-        let at = at.to_string();
-        tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(USER_TURN_DIGEST_QUIET_SECS)).await;
-            {
-                let mut digests = service
-                    .user_turn_digests
-                    .lock_or_recover("user turn digests");
-                if digests.get(&session_id).map(|digest| digest.token.as_str()) != Some(&token) {
-                    return;
-                }
-                digests.remove(&session_id);
-            }
-            service.emit_completion_notice(
-                &session_id,
-                state,
-                &at,
-                NoticeShape::UserTurnDigest(exchanges),
-            );
-        });
-    }
-
-    /// Close an open quiet window, so the turn that closed it reports the
-    /// user's exchanges rather than leaving a second notice behind.
-    fn take_user_turn_digest(&self, session_id: &str) -> Option<DirectExchanges> {
-        self.user_turn_digests
-            .lock_or_recover("user turn digests")
-            .remove(session_id)
-            .map(|digest| digest.exchanges)
-    }
-
-    fn emit_completion_notice(
-        self: &Arc<Self>,
-        session_id: &str,
-        state: SessionState,
-        at: &str,
-        shape: NoticeShape,
-    ) {
-        match self.build_completion_notice(session_id, state, at, shape) {
-            Ok(Some(notice)) => {
-                if let Some(registry) = self.session_control.get() {
-                    registry.notify_inbox(&notice.to_session_id);
-                }
-                let service = Arc::clone(self);
-                tauri::async_runtime::spawn(async move { service.deliver_notice(notice).await });
-            }
-            Ok(None) => {}
-            Err(error) => tracing::warn!(
+        if let Err(error) = self.completion_notices.turn_ended(session_id, state, at) {
+            tracing::warn!(
                 session_id,
                 ?error,
-                "failed to record the completion notice for the launching session"
-            ),
+                "failed to prepare the completion notice"
+            );
         }
     }
 
@@ -3627,72 +3554,6 @@ impl ProviderSessionService {
             events: vec![event],
             ..DashboardDelta::default()
         });
-    }
-
-    fn build_completion_notice(
-        &self,
-        session_id: &str,
-        state: SessionState,
-        at: &str,
-        shape: NoticeShape,
-    ) -> ArgmaxResult<Option<CompletionNotice>> {
-        let connection = self.database.connection();
-        let session = find_session_by_id(&connection, session_id)?;
-        let Some(parent_id) = session.launched_by_session_id.clone() else {
-            return Ok(None);
-        };
-        if parent_id == session_id {
-            return Ok(None);
-        }
-        let Ok(parent) = find_session_by_id(&connection, &parent_id) else {
-            return Ok(None);
-        };
-        let parent_workspace = find_workspace_by_id(&connection, &parent.workspace_id)?;
-        if matches!(
-            parent_workspace.state.as_str(),
-            "archiving" | "archive-failed" | "archived"
-        ) {
-            return Ok(None);
-        }
-        let label = find_workspace_by_id(&connection, &session.workspace_id)
-            .map(|workspace| workspace.task_label)
-            .unwrap_or_else(|_| session_id.to_string());
-        let answer = latest_agent_answer(&connection, session_id)?
-            .filter(|text| !text.trim().is_empty())
-            .map(|text| cap_notice_answer(&text))
-            .unwrap_or_else(|| "(the session produced no assistant message)".to_string());
-        let body = notice_body(&shape, session_id, &label, state, at, &answer);
-        // A check-in wake exists to poke a chat that has not reported back.
-        // This one just did, so the routine has nothing left to ask.
-        if let Err(error) = crate::persistence::routines::delete_routine(
-            &connection,
-            &crate::session_control::check_in_routine_id(session_id),
-        ) {
-            tracing::debug!(session_id, ?error, "no check-in routine to clear");
-        }
-        let message = NewSessionMessage {
-            // Deterministic, so a retry of the same turn end writes the same
-            // row rather than a second notice.
-            id: format!("completion:{session_id}:{at}"),
-            from_session_id: Some(session_id.to_string()),
-            to_session_id: parent_id.clone(),
-            body: body.clone(),
-            kind: COMPLETION_KIND.to_string(),
-        };
-        if !insert_session_message(&connection, &message)? {
-            return Ok(None);
-        }
-        Ok(Some(CompletionNotice {
-            message_id: message.id.clone(),
-            to_session_id: parent_id,
-            body,
-            origin: MessageOrigin {
-                session_id: session_id.to_string(),
-                label,
-                kind: COMPLETION_KIND.to_string(),
-                message_id: Some(message.id),
-            },
-        }))
     }
 
     async fn deliver_notice(self: Arc<Self>, notice: CompletionNotice) {
@@ -3844,23 +3705,21 @@ impl ProviderSessionService {
         provider: ProviderId,
         error: ArgmaxError,
     ) -> ArgmaxResult<()> {
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
         let connection = self.database.connection();
+        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
         let completed_at = now_iso();
         let session = update_session_state(
-            &connection,
+            &transaction,
             session_id,
             &SessionStateInput::transition(SessionState::Failed).finished_at(completed_at.clone()),
         )?;
-        let workspace = update_workspace_state_for_session_state(
-            &connection,
+        let workspace = update_workspace_state_for_session_state_within_transaction(
+            &transaction,
             &session.workspace_id,
             SessionState::Failed,
         )?;
         let event = persist_timeline_event(
-            &connection,
+            &transaction,
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
                 session_id: session_id.to_string(),
@@ -3870,14 +3729,20 @@ impl ProviderSessionService {
                 created_at: None,
             },
         )?;
-        self.pause_queue_with_connection(&connection, session_id)?;
         let delta = DashboardDelta {
-            projects: list_projects(&connection)?,
+            projects: list_projects(&transaction)?,
             workspaces: vec![workspace],
             sessions: vec![session],
             events: vec![event],
             ..DashboardDelta::default()
         };
+        transaction.commit().map_err(sqlite_error)?;
+        self.flush_queue
+            .lock_or_recover("flush queue")
+            .delete_session(session_id);
+        let pause_error = self
+            .pause_queue_with_connection(&connection, session_id)
+            .err();
         // The writer connection is dropped before publishing: the delta's
         // push body reads through `read_connection`, whose fallback would
         // re-lock the writer this thread is still holding.
@@ -3889,30 +3754,34 @@ impl ProviderSessionService {
         // the transcript lives, since the finish row it falls back to was never
         // written.
         self.notify_launcher_of_turn_end(session_id, SessionState::Failed, &completed_at);
-        Ok(())
+        match pause_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
     }
 
     fn cancel_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
         self.capture_pr_branch(session_id);
         let connection = self.database.connection();
-        let current = find_session_by_id(&connection, session_id)?;
+        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+        let current = find_session_by_id(&transaction, session_id)?;
         if !current.state.is_active() {
             return Ok(());
         }
         let completed_at = now_iso();
         let session = update_session_state(
-            &connection,
+            &transaction,
             session_id,
             &SessionStateInput::transition(SessionState::Cancelled)
                 .finished_at(completed_at.clone()),
         )?;
-        let workspace = update_workspace_state_for_session_state(
-            &connection,
+        let workspace = update_workspace_state_for_session_state_within_transaction(
+            &transaction,
             &session.workspace_id,
             SessionState::Cancelled,
         )?;
         let event = persist_timeline_event(
-            &connection,
+            &transaction,
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
                 session_id: session_id.to_string(),
@@ -3922,16 +3791,17 @@ impl ProviderSessionService {
                 created_at: Some(completed_at.clone()),
             },
         )?;
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
         let delta = DashboardDelta {
-            projects: list_projects(&connection)?,
+            projects: list_projects(&transaction)?,
             workspaces: vec![workspace],
             sessions: vec![session],
             events: vec![event],
             ..DashboardDelta::default()
         };
+        transaction.commit().map_err(sqlite_error)?;
+        self.flush_queue
+            .lock_or_recover("flush queue")
+            .delete_session(session_id);
         drop(connection);
         self.publish(delta);
         self.notify_launcher_of_turn_end(session_id, SessionState::Cancelled, &completed_at);
@@ -3967,6 +3837,7 @@ impl ProviderSessionService {
         agent_mode: AgentMode,
         attachments: Option<&[ComposerAttachmentInput]>,
         origin: Option<&MessageOrigin>,
+        author: PromptAuthor,
     ) -> ArgmaxResult<()> {
         let connection = self.database.connection();
         let event = self.persist_user_message_locked(
@@ -3978,6 +3849,7 @@ impl ProviderSessionService {
             TurnAuthorship {
                 origin,
                 starter: TurnStarter::Person,
+                author,
             },
         )?;
         self.publish(DashboardDelta {
@@ -4003,7 +3875,7 @@ impl ProviderSessionService {
         if let Some(marker) = authorship.starter.payload_marker() {
             payload["starter"] = json!(marker);
         }
-        persist_timeline_event(
+        persist_user_prompt(
             connection,
             &PersistTimelineEventInput {
                 id: Uuid::new_v4().to_string(),
@@ -4013,6 +3885,7 @@ impl ProviderSessionService {
                 payload,
                 created_at: None,
             },
+            authorship.author,
         )
     }
 
@@ -4023,13 +3896,8 @@ impl ProviderSessionService {
         agent_mode: AgentMode,
         input: &ProvidersSendInput,
         origin: Option<MessageOrigin>,
+        author: PromptAuthor,
     ) -> ArgmaxResult<Option<PendingMessage>> {
-        // A drained follow-up always keeps the session's current provider (see
-        // pending_message_to_send_input), so when this send asked for a
-        // different provider its model metadata belongs to that switch and
-        // must not survive the queue either — persisting it would write e.g. a
-        // Codex model id onto a Claude session and relaunch with a foreign
-        // --model flag.
         let mut connection = self.database.connection();
         // The inbox is visible before send_input can acquire the checkout lock.
         // Collection may therefore finish before there is a queue copy to remove.
@@ -4044,43 +3912,6 @@ impl ProviderSessionService {
             }
         }
         let session = find_session_by_id(&connection, session_id)?;
-        let switches_provider = input
-            .provider
-            .is_some_and(|requested| session.provider != requested.as_str());
-        // Only a model or effort the user actually picked is kept. A send that
-        // merely echoes the chat's current model would, once drained after the
-        // router (or a goal) moved the chat, read as a pin to the old model.
-        let picks_model = input
-            .model_id
-            .as_ref()
-            .is_some_and(|model_id| model_id.as_str() != session.model_id)
-            || input.reasoning_effort.is_some_and(|effort| {
-                Some(effort)
-                    != session
-                        .reasoning_effort
-                        .as_deref()
-                        .and_then(parse_reasoning_effort)
-            });
-        let (model_label, model_id, reasoning_effort, fast_mode) = if switches_provider {
-            (None, None, None, false)
-        } else if !picks_model {
-            (None, None, None, input.fast_mode)
-        } else {
-            (
-                input
-                    .model_label
-                    .as_ref()
-                    .map(|value| value.as_str().to_string()),
-                input
-                    .model_id
-                    .as_ref()
-                    .map(|value| value.as_str().to_string()),
-                input
-                    .reasoning_effort
-                    .map(|value| value.as_str().to_string()),
-                input.fast_mode,
-            )
-        };
         self.ensure_no_pending_after_turn(session_id)?;
         let mut queues = self.queues.lock_or_recover("queues");
         let mut queue = queues.get(session_id).cloned().unwrap_or_default();
@@ -4090,11 +3921,78 @@ impl ProviderSessionService {
                 format!("Pending follow-up queue is full ({MAX_PENDING_QUEUE})."),
             ));
         }
+        // A provider the sender named is kept on its row whatever the chat or
+        // the rows ahead of it are on. Rows drain in order and can be removed
+        // or reordered first, so a row that said "Codex" must still say it
+        // when the one that switched to Codex is gone. `None` therefore means
+        // the sender named no provider.
+        let (provider, model_label, model_id, reasoning_effort, fast_mode) =
+            if let Some(requested) = input.provider {
+                // Refused now, while the sender is still looking, rather than
+                // when the row drains with nobody watching.
+                let (Some(label), Some(model)) =
+                    (input.model_label.as_ref(), input.model_id.as_ref())
+                else {
+                    return Err(ArgmaxError::service(
+                        "SWITCH_PROVIDER_REQUIRES_MODEL",
+                        "Naming a provider requires a model for it.",
+                    ));
+                };
+                ensure_permission_mode_supported(
+                    requested,
+                    parse_permission_mode(&session.permission_mode)?,
+                )?;
+                (
+                    Some(requested),
+                    Some(label.as_str().to_string()),
+                    Some(model.as_str().to_string()),
+                    input
+                        .reasoning_effort
+                        .map(|value| value.as_str().to_string()),
+                    input.fast_mode,
+                )
+            } else {
+                // No provider named: only a model or effort the user actually
+                // picked is kept. A send that merely echoes the chat's current
+                // model would, once drained after the router (or a goal) moved
+                // the chat, read as a pin to the old model.
+                let picks_model = input
+                    .model_id
+                    .as_ref()
+                    .is_some_and(|model_id| model_id.as_str() != session.model_id)
+                    || input.reasoning_effort.is_some_and(|effort| {
+                        Some(effort)
+                            != session
+                                .reasoning_effort
+                                .as_deref()
+                                .and_then(parse_reasoning_effort)
+                    });
+                if picks_model {
+                    (
+                        None,
+                        input
+                            .model_label
+                            .as_ref()
+                            .map(|value| value.as_str().to_string()),
+                        input
+                            .model_id
+                            .as_ref()
+                            .map(|value| value.as_str().to_string()),
+                        input
+                            .reasoning_effort
+                            .map(|value| value.as_str().to_string()),
+                        input.fast_mode,
+                    )
+                } else {
+                    (None, None, None, None, input.fast_mode)
+                }
+            };
         let pending = PendingMessage {
             id: Uuid::new_v4().to_string(),
             session_id: session_id.to_string(),
             content: content.to_string(),
             agent_mode: agent_mode.as_str().to_string(),
+            provider,
             model_label,
             model_id,
             reasoning_effort,
@@ -4104,6 +4002,7 @@ impl ProviderSessionService {
             origin,
             recovery_status: None,
             queued_at: now_iso(),
+            author,
         };
         queue.push_back(pending.clone());
         replace_session_queue(&mut connection, session_id, &queue)?;
@@ -4272,6 +4171,7 @@ impl ProviderSessionService {
                 return;
             }
             let origin = next.origin.clone();
+            let author = next.author;
             let inbox_row = origin.as_ref().and_then(|origin| origin.message_id.clone());
             let send_input = match pending_message_to_send_input(session_id, next) {
                 Ok(input) => input,
@@ -4294,7 +4194,10 @@ impl ProviderSessionService {
                     return;
                 }
             };
-            match service.send_input_with_origin(send_input, origin).await {
+            match service
+                .send_input_authored(send_input, origin, author)
+                .await
+            {
                 // The queue's whole reason to exist is that the recipient was
                 // busy; this is the moment the wait ends. Closing the inbox row
                 // here is what the immediate path already does on its own
@@ -4514,19 +4417,28 @@ impl ProviderSessionService {
         self.capture_pr_branch(session_id);
         let completed_at = now_iso();
         let (session, workspace, projects) = {
+            let terminating = self.terminating.lock_or_recover("terminating");
+            if terminating.contains(session_id) {
+                return Ok(());
+            }
             let connection = self.database.connection();
+            let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+            if find_session_by_id(&transaction, session_id)?.state != SessionState::Running {
+                return Ok(());
+            }
             let session = update_session_state(
-                &connection,
+                &transaction,
                 session_id,
                 &SessionStateInput::transition(SessionState::Complete)
                     .finished_at(completed_at.clone()),
             )?;
-            let workspace = update_workspace_state_for_session_state(
-                &connection,
+            let workspace = update_workspace_state_for_session_state_within_transaction(
+                &transaction,
                 &session.workspace_id,
                 SessionState::Complete,
             )?;
-            let projects = list_projects(&connection)?;
+            let projects = list_projects(&transaction)?;
+            transaction.commit().map_err(sqlite_error)?;
             (session, workspace, projects)
         };
 
@@ -5119,9 +5031,10 @@ fn pending_message_to_send_input(
             .then_some(message.agent_references),
         session_id,
         input,
-        // Queued follow-ups never switch provider — provider switching is gated to
-        // idle sessions, so a drained message keeps the session's current provider.
-        provider: None,
+        // `None` keeps the chat's provider at drain time; a row that picked
+        // another provider switches to it when it drains, after the turn it
+        // waited behind has ended.
+        provider: message.provider,
         model_label: pending_model_metadata(
             &queued_session_id,
             &message_id,
@@ -5364,12 +5277,407 @@ mod tests {
         database
     }
 
+    #[test]
+    fn lifecycle_completion_rolls_back_if_its_event_cannot_be_written() {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        database
+            .connection()
+            .execute_batch(
+                "CREATE TRIGGER reject_completion BEFORE INSERT ON events
+                 WHEN NEW.type = 'session.completed'
+                 BEGIN SELECT RAISE(ABORT, 'completion event refused'); END;",
+            )
+            .expect("install fault");
+        let event = ProviderRuntimeEvent {
+            session_id: "session-1".to_string(),
+            r#type: ProviderRuntimeEventType::Exit,
+            stream: super::super::normalizer::ProviderOutputStream::System,
+            message: "provider exited".to_string(),
+            exit_code: Some(0),
+            created_at: "2026-10-03T10:00:00.000Z".to_string(),
+        };
+        assert!(service.handle_lifecycle_event(event.clone()).is_err());
+        {
+            let connection = database.connection();
+            assert_eq!(
+                find_session_by_id(&connection, "session-1").unwrap().state,
+                SessionState::Running
+            );
+            assert_eq!(
+                find_workspace_by_id(&connection, "workspace-1")
+                    .unwrap()
+                    .state,
+                "running"
+            );
+            let raw_count: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM raw_outputs WHERE session_id = 'session-1'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(raw_count, 0);
+        }
+        database
+            .connection()
+            .execute_batch("DROP TRIGGER reject_completion")
+            .unwrap();
+        service
+            .handle_lifecycle_event(event)
+            .expect("retry after fault");
+        let connection = database.connection();
+        assert_eq!(
+            find_session_by_id(&connection, "session-1").unwrap().state,
+            SessionState::Complete
+        );
+        assert_eq!(
+            find_workspace_by_id(&connection, "workspace-1")
+                .unwrap()
+                .state,
+            "complete"
+        );
+    }
+
+    #[test]
+    fn cancellation_rolls_back_if_its_event_cannot_be_written() {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        database
+            .connection()
+            .execute_batch(
+                "CREATE TRIGGER reject_cancellation BEFORE INSERT ON events
+             WHEN NEW.type = 'session.cancelled'
+             BEGIN SELECT RAISE(ABORT, 'cancellation event refused'); END;",
+            )
+            .unwrap();
+        assert!(service.cancel_session("session-1").is_err());
+        {
+            let connection = database.connection();
+            assert_eq!(
+                find_session_by_id(&connection, "session-1").unwrap().state,
+                SessionState::Running
+            );
+            assert_eq!(
+                find_workspace_by_id(&connection, "workspace-1")
+                    .unwrap()
+                    .state,
+                "running"
+            );
+        }
+        database
+            .connection()
+            .execute_batch("DROP TRIGGER reject_cancellation")
+            .unwrap();
+        service.cancel_session("session-1").unwrap();
+        let connection = database.connection();
+        assert_eq!(
+            find_session_by_id(&connection, "session-1").unwrap().state,
+            SessionState::Cancelled
+        );
+        assert_eq!(
+            find_workspace_by_id(&connection, "workspace-1")
+                .unwrap()
+                .state,
+            "cancelled"
+        );
+    }
+
+    #[test]
+    fn provider_exit_during_stop_keeps_the_cancelled_state() {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        {
+            let connection = database.connection();
+            update_session_state(
+                &connection,
+                "session-1",
+                &SessionStateInput::transition(SessionState::Cancelled),
+            )
+            .unwrap();
+        }
+        service
+            .terminating
+            .lock_or_recover("terminating")
+            .insert("session-1".to_string());
+        service
+            .handle_lifecycle_event(ProviderRuntimeEvent {
+                session_id: "session-1".to_string(),
+                r#type: ProviderRuntimeEventType::Exit,
+                stream: super::super::normalizer::ProviderOutputStream::System,
+                message: "provider exited".to_string(),
+                exit_code: Some(0),
+                created_at: "2026-10-03T10:00:00.000Z".to_string(),
+            })
+            .unwrap();
+        let connection = database.connection();
+        assert_eq!(
+            find_session_by_id(&connection, "session-1").unwrap().state,
+            SessionState::Cancelled
+        );
+        let completion_count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM events WHERE session_id = 'session-1' AND type = 'session.completed'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(completion_count, 0);
+    }
+
+    #[test]
+    fn stop_marked_during_exit_flush_prevents_completion_commit() {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        let reached_flush = Arc::new(std::sync::Barrier::new(2));
+        let resume_flush = Arc::new(std::sync::Barrier::new(2));
+        let reached = Arc::clone(&reached_flush);
+        let resume = Arc::clone(&resume_flush);
+        *service
+            .after_lifecycle_marker_check
+            .lock_or_recover("lifecycle test hook") = Some(Arc::new(move || {
+            reached.wait();
+            resume.wait();
+        }));
+        let service_for_exit = Arc::clone(&service);
+        let exit = std::thread::spawn(move || {
+            service_for_exit.handle_lifecycle_event(ProviderRuntimeEvent {
+                session_id: "session-1".to_string(),
+                r#type: ProviderRuntimeEventType::Exit,
+                stream: super::super::normalizer::ProviderOutputStream::System,
+                message: "provider exited".to_string(),
+                exit_code: Some(0),
+                created_at: "2026-10-03T10:00:00.000Z".to_string(),
+            })
+        });
+        reached_flush.wait();
+        service
+            .terminating
+            .lock_or_recover("terminating")
+            .insert("session-1".to_string());
+        resume_flush.wait();
+        exit.join().unwrap().unwrap();
+        let connection = database.connection();
+        assert_eq!(
+            find_session_by_id(&connection, "session-1").unwrap().state,
+            SessionState::Running
+        );
+        let completion_count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM events WHERE session_id = 'session-1' AND type = 'session.completed'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(completion_count, 0);
+    }
+
+    /// The app stopped while a completion wake waited out its window. After the
+    /// restart the idle launcher is woken from the durable row.
+    #[tokio::test]
+    async fn boot_wakes_an_idle_launcher_for_a_completion_whose_window_died() {
+        let database = database_with_running_session();
+        let checkout = tempfile::tempdir().unwrap();
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET path = ? WHERE id = 'workspace-1'",
+                [checkout.path().display().to_string()],
+            )
+            .unwrap();
+        let launcher = Arc::new(CountingFailureLauncher::default());
+        let service =
+            ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
+        {
+            let connection = database.connection();
+            crate::persistence::sessions::persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: "launcher-session".to_string(),
+                    workspace_id: "workspace-1".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Sonnet 5.5".to_string(),
+                    model_id: "claude-sonnet-5-5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "launch".to_string(),
+                    state: SessionState::Waiting,
+                },
+            )
+            .unwrap();
+            crate::persistence::sessions::record_session_launch(
+                &connection,
+                "session-1",
+                "launcher-session",
+                1,
+                "agent",
+            )
+            .unwrap();
+            insert_session_message(
+                &connection,
+                &NewSessionMessage {
+                    id: "completion:session-1:t".to_string(),
+                    from_session_id: Some("session-1".to_string()),
+                    to_session_id: "launcher-session".to_string(),
+                    body: "Session session-1 finished.".to_string(),
+                    kind: "completion".to_string(),
+                },
+            )
+            .unwrap();
+            crate::persistence::session_messages::mark_wake_due(
+                &connection,
+                "completion:session-1:t",
+            )
+            .unwrap();
+        }
+
+        assert_eq!(service.recover_completion_wakes().unwrap(), 1);
+        // The wake is attempted once its window closes, whatever the send does
+        // with it, and the attempt clears the durable mark.
+        for _ in 0..80 {
+            if crate::persistence::session_messages::list_due_wakes(&database.connection())
+                .unwrap()
+                .is_empty()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(
+            crate::persistence::session_messages::list_due_wakes(&database.connection())
+                .unwrap()
+                .is_empty(),
+            "the recovered wake must be attempted"
+        );
+        assert!(
+            launcher.launches.load(Ordering::SeqCst) > 0,
+            "the idle launcher is started for the unread completion"
+        );
+        // The turn it starts carries its origin, so nothing downstream can read
+        // an automatic wake as something the person typed.
+        let events = crate::persistence::events::list_session_events_since(
+            &database.connection(),
+            "launcher-session",
+            None,
+            None,
+        )
+        .unwrap()
+        .events;
+        let wake = events
+            .iter()
+            .rev()
+            .find(|event| {
+                event.r#type == "user.message" && event.message.contains("session-1 finished")
+            })
+            .expect("the wake is persisted as a user message");
+        assert_eq!(wake.payload["origin"]["kind"], "completion");
+        assert_eq!(wake.payload["origin"]["sessionId"], "session-1");
+    }
+
+    #[tokio::test]
+    async fn failed_completion_notice_does_not_strand_a_pending_message() {
+        let database = database_with_running_session();
+        let published = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+        let published_copy = Arc::clone(&published);
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            move |delta| {
+                published_copy
+                    .lock_or_recover("published deltas")
+                    .push(delta)
+            },
+        );
+        {
+            let connection = database.connection();
+            crate::persistence::sessions::persist_session(
+                &connection,
+                &PersistSessionInput {
+                    id: "launcher-session".to_string(),
+                    workspace_id: "workspace-1".to_string(),
+                    provider: "claude".to_string(),
+                    model_label: "Sonnet 5.5".to_string(),
+                    model_id: "claude-sonnet-5-5".to_string(),
+                    reasoning_effort: None,
+                    permission_mode: Some("auto-approve".to_string()),
+                    agent_mode: Some("auto".to_string()),
+                    prompt: "launch".to_string(),
+                    state: SessionState::Waiting,
+                },
+            )
+            .unwrap();
+            crate::persistence::sessions::record_session_launch(
+                &connection,
+                "session-1",
+                "launcher-session",
+                1,
+                "agent",
+            )
+            .unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TRIGGER reject_notice BEFORE INSERT ON session_messages
+                 WHEN NEW.kind = 'completion'
+                 BEGIN SELECT RAISE(ABORT, 'notice refused'); END;",
+                )
+                .unwrap();
+        }
+        let input = serde_json::from_value(json!({
+            "sessionId": "session-1", "input": "next", "fastMode": false
+        }))
+        .unwrap();
+        service
+            .enqueue_pending_message(
+                "session-1",
+                "next",
+                AgentMode::Auto,
+                &input,
+                None,
+                PromptAuthor::unattested(),
+            )
+            .unwrap();
+        service
+            .handle_lifecycle_event(ProviderRuntimeEvent {
+                session_id: "session-1".to_string(),
+                r#type: ProviderRuntimeEventType::Exit,
+                stream: super::super::normalizer::ProviderOutputStream::System,
+                message: "provider exited".to_string(),
+                exit_code: Some(0),
+                created_at: "2026-10-03T10:00:00.000Z".to_string(),
+            })
+            .expect("notice failure cannot fail completion");
+        let drained = published
+            .lock_or_recover("published deltas")
+            .iter()
+            .any(|delta| {
+                delta
+                    .pending_messages
+                    .as_ref()
+                    .is_some_and(|messages| messages.get("session-1").is_some_and(Vec::is_empty))
+            });
+        assert!(drained, "queue drain published an empty composer queue");
+    }
+
     fn pending_message(id: &str, session_id: &str, content: &str) -> PendingMessage {
         PendingMessage {
             id: id.to_string(),
             session_id: session_id.to_string(),
             content: content.to_string(),
             agent_mode: AgentMode::Auto.as_str().to_string(),
+            provider: None,
             model_label: None,
             model_id: None,
             reasoning_effort: None,
@@ -5379,6 +5687,7 @@ mod tests {
             origin: None,
             recovery_status: None,
             queued_at: now_iso(),
+            author: PromptAuthor::unattested(),
         }
     }
 
@@ -5555,6 +5864,7 @@ mod tests {
                     kind: "message".to_string(),
                     message_id: Some("inbox-1".to_string()),
                 }),
+                PromptAuthor::unattested(),
             )
             .unwrap();
         assert!(service
@@ -5570,170 +5880,6 @@ mod tests {
             .unwrap()
             .is_empty()
         );
-    }
-
-    fn long_answer(marker: &str) -> String {
-        let mut answer = String::new();
-        while answer.chars().count() <= NOTICE_ANSWER_CHARS {
-            answer.push_str(marker);
-            answer.push('\n');
-        }
-        answer
-    }
-
-    #[test]
-    fn a_notice_answer_within_the_cap_is_untouched() {
-        let answer = "Done.\n\n## Learnings for the arc\n\n- The hook runs twice.\n";
-        assert_eq!(cap_notice_answer(answer), answer);
-    }
-
-    #[test]
-    fn a_long_answer_without_learnings_keeps_the_head() {
-        let capped = cap_notice_answer(&long_answer("body line"));
-        assert!(capped.starts_with("body line\n"));
-        assert!(capped.ends_with("\n\n(truncated)"));
-        assert!(!capped.contains("(… middle truncated …)"));
-        // The head stops on a line boundary rather than mid-word.
-        assert!(capped.trim_end_matches("\n\n(truncated)").ends_with("line"));
-    }
-
-    #[test]
-    fn a_long_answer_keeps_a_learnings_section_past_the_cut() {
-        let answer = format!(
-            "{}## Learnings for the arc\n\n- Worktrees vanish mid-task.\n- The hook runs twice.\n",
-            long_answer("body line")
-        );
-        let capped = cap_notice_answer(&answer);
-        assert!(capped.starts_with("body line\n"));
-        assert!(capped.contains("(… middle truncated …)"));
-        assert!(capped.contains("## Learnings for the arc"));
-        assert!(capped.contains("- Worktrees vanish mid-task."));
-        assert!(capped.ends_with("- The hook runs twice.\n"));
-    }
-
-    #[test]
-    fn a_bold_learnings_heading_past_the_cut_counts() {
-        let answer = format!(
-            "{}**learnings for the arc**\n\n- Grok announces then acts.\n",
-            long_answer("body line")
-        );
-        let capped = cap_notice_answer(&answer);
-        assert!(capped.contains("**learnings for the arc**"));
-        assert!(capped.contains("- Grok announces then acts."));
-    }
-
-    #[test]
-    fn learnings_already_inside_the_head_are_not_repeated() {
-        let answer = format!(
-            "## Learnings for the arc\n\n- Said once.\n{}",
-            long_answer("body line")
-        );
-        let capped = cap_notice_answer(&answer);
-        assert_eq!(capped.matches("Learnings for the arc").count(), 1);
-        assert_eq!(capped.matches("- Said once.").count(), 1);
-        assert!(capped.ends_with("\n\n(truncated)"));
-    }
-
-    #[test]
-    fn an_overlong_learnings_section_is_itself_capped() {
-        let mut learnings = String::from("## Learnings for the arc\n");
-        while learnings.chars().count() <= NOTICE_LEARNINGS_CHARS {
-            learnings.push_str("- one more thing\n");
-        }
-        let capped = cap_notice_answer(&format!("{}{learnings}", long_answer("body line")));
-        assert!(capped.contains("## Learnings for the arc"));
-        assert!(capped.ends_with("\n\n(truncated)"));
-        assert!(capped.chars().count() < NOTICE_ANSWER_CHARS + NOTICE_LEARNINGS_CHARS + 64);
-    }
-
-    #[test]
-    fn a_composer_turn_after_the_launch_prompt_is_user_driven() {
-        let composer = json!({ "source": "composer", "agentMode": "auto" });
-        assert!(turn_was_user_driven(&composer, false));
-        // The launch prompt looks the same and belongs to the launcher.
-        assert!(!turn_was_user_driven(&composer, true));
-    }
-
-    #[test]
-    fn a_turn_with_an_origin_is_not_user_driven() {
-        let from_agent = json!({
-            "source": "composer",
-            "agentMode": "auto",
-            "origin": { "sessionId": "parent", "label": "Coordinator", "kind": "message" },
-        });
-        assert!(!turn_was_user_driven(&from_agent, false));
-    }
-
-    #[test]
-    fn a_scheduled_or_goal_wake_is_not_user_driven() {
-        let from_schedule =
-            json!({ "source": "composer", "agentMode": "auto", "starter": "schedule" });
-        let from_goal = json!({ "source": "composer", "agentMode": "auto", "starter": "goal" });
-        assert!(!turn_was_user_driven(&from_schedule, false));
-        assert!(!turn_was_user_driven(&from_goal, false));
-    }
-
-    #[test]
-    fn a_finished_notice_carries_the_local_time() {
-        let body = notice_body(
-            &NoticeShape::Finished {
-                direct_exchanges: None,
-            },
-            "session-1",
-            "Fix the cap",
-            SessionState::Complete,
-            "2026-09-20T12:32:10.123Z",
-            "All done.",
-        );
-        assert!(
-            body.starts_with("Session session-1 (Fix the cap) finished with state complete at ")
-        );
-        assert!(body.contains("2026-09-20 ") || body.contains("2026-09-19 "));
-        assert!(body.ends_with(". Final answer:\nAll done."));
-    }
-
-    #[test]
-    fn a_finished_notice_folds_in_the_users_own_exchanges() {
-        let body = notice_body(
-            &NoticeShape::Finished {
-                direct_exchanges: Some(DirectExchanges {
-                    count: 3,
-                    since: "2026-09-20 09:05 +02:00".to_string(),
-                }),
-            },
-            "session-1",
-            "Fix the cap",
-            SessionState::Complete,
-            "2026-09-20T12:32:10.123Z",
-            "All done.",
-        );
-        assert!(body.contains(
-            " (the user also had 3 direct exchange(s) with it since 2026-09-20 09:05 +02:00) Final answer:"
-        ));
-    }
-
-    #[test]
-    fn a_digest_notice_names_the_count_and_the_quiet_window() {
-        let body = notice_body(
-            &NoticeShape::UserTurnDigest(DirectExchanges {
-                count: 18,
-                since: "2026-09-20 09:05 +02:00".to_string(),
-            }),
-            "session-1",
-            "Fix the cap",
-            SessionState::Complete,
-            "2026-09-20T12:32:10.123Z",
-            "All done.",
-        );
-        assert!(body.starts_with(
-            "Session session-1 (Fix the cap) answered the user directly 18 time(s) since 2026-09-20 09:05 +02:00 and has been quiet for 15 minutes; latest answer at "
-        ));
-        assert!(body.ends_with(":\nAll done."));
-    }
-
-    #[test]
-    fn an_unparseable_turn_end_time_falls_back_to_the_raw_stamp() {
-        assert_eq!(notice_local_time("not a time"), "not a time");
     }
 
     #[test]
@@ -5778,7 +5924,14 @@ mod tests {
             }))
             .unwrap();
             service
-                .enqueue_pending_message("session-1", "next", AgentMode::Auto, &input, None)
+                .enqueue_pending_message(
+                    "session-1",
+                    "next",
+                    AgentMode::Auto,
+                    &input,
+                    None,
+                    PromptAuthor::unattested(),
+                )
                 .unwrap()
                 .expect("queued")
         };
@@ -5799,20 +5952,189 @@ mod tests {
         );
     }
 
+    fn queued_provider_service() -> (Arc<Database>, Arc<ProviderSessionService>) {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::with_launcher(
+            Arc::clone(&database),
+            Arc::new(CountingFailureLauncher::default()),
+            |_| {},
+        );
+        (database, service)
+    }
+
+    fn enqueue_with_provider(
+        service: &ProviderSessionService,
+        provider: Option<&str>,
+        model_id: &str,
+    ) -> ArgmaxResult<Option<PendingMessage>> {
+        let mut value = json!({
+            "sessionId": "session-1", "input": "next", "fastMode": false,
+            "modelLabel": "Some model", "modelId": model_id,
+        });
+        if let Some(provider) = provider {
+            value["provider"] = json!(provider);
+        }
+        let input = serde_json::from_value(value).unwrap();
+        service.enqueue_pending_message(
+            "session-1",
+            "next",
+            AgentMode::Auto,
+            &input,
+            None,
+            PromptAuthor::unattested(),
+        )
+    }
+
+    fn durable_providers(database: &Database) -> Vec<Option<ProviderId>> {
+        crate::persistence::pending_messages::list_session_pending_messages(
+            &database.connection(),
+            "session-1",
+        )
+        .unwrap()
+        .into_iter()
+        .map(|message| message.provider)
+        .collect()
+    }
+
+    /// The chat is on Claude. A row that names a provider keeps it whether or
+    /// not it matches the chat's, so it survives the removal of any row ahead.
     #[test]
-    fn queued_follow_up_keeps_native_agent_references() {
-        let references = serde_json::from_value(json!([{
-            "name": "Gauss",
-            "providerChildSessionId": "child-1",
-            "providerParentConversationId": "parent-1"
-        }]))
-        .expect("references");
-        let mut message = pending_message("queued-reference", "s1", "Ask Gauss again");
-        message.agent_references = references;
-        let expected = message.agent_references.clone();
-        let input = pending_message_to_send_input("s1".to_string(), message).expect("queued input");
-        assert_eq!(input.input.as_str(), "Ask Gauss again");
-        assert_eq!(input.agent_references.as_deref(), Some(expected.as_slice()));
+    fn a_named_provider_is_kept_on_every_queued_row_even_when_it_matches_the_chat() {
+        let (database, service) = queued_provider_service();
+        let same = enqueue_with_provider(&service, Some("claude"), "claude-sonnet-5-5")
+            .unwrap()
+            .unwrap();
+        assert_eq!(same.provider, Some(ProviderId::Claude));
+        assert_eq!(same.model_id.as_deref(), Some("claude-sonnet-5-5"));
+        let omitted = enqueue_with_provider(&service, None, "claude-sonnet-5-5")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            omitted.provider, None,
+            "no provider named means none stored"
+        );
+        let switched = enqueue_with_provider(&service, Some("codex"), "gpt-5.6-sol")
+            .unwrap()
+            .unwrap();
+        assert_eq!(switched.provider, Some(ProviderId::Codex));
+        assert_eq!(switched.model_id.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(
+            durable_providers(&database),
+            vec![Some(ProviderId::Claude), None, Some(ProviderId::Codex)]
+        );
+    }
+
+    #[test]
+    fn removing_or_reordering_an_earlier_switch_leaves_later_rows_on_their_own_provider() {
+        let (database, service) = queued_provider_service();
+        let first = enqueue_with_provider(&service, Some("codex"), "gpt-5.6-sol")
+            .unwrap()
+            .unwrap();
+        // The same explicit choice as the row ahead of it: it must not lean on it.
+        enqueue_with_provider(&service, Some("codex"), "gpt-5.6-sol").unwrap();
+        enqueue_with_provider(&service, Some("claude"), "claude-opus-5-5").unwrap();
+        assert_eq!(
+            durable_providers(&database),
+            vec![
+                Some(ProviderId::Codex),
+                Some(ProviderId::Codex),
+                Some(ProviderId::Claude)
+            ]
+        );
+
+        service
+            .cancel_queued_message(
+                serde_json::from_value(json!({ "sessionId": "session-1", "messageId": first.id }))
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            durable_providers(&database),
+            vec![Some(ProviderId::Codex), Some(ProviderId::Claude)]
+        );
+        let in_memory = service.pending_messages_snapshot()["session-1"].clone();
+        assert_eq!(in_memory[0].provider, Some(ProviderId::Codex));
+        assert_eq!(in_memory[0].model_id.as_deref(), Some("gpt-5.6-sol"));
+
+        // Reorder the way the composer does: replace the whole queue.
+        let reversed: VecDeque<_> = in_memory.into_iter().rev().collect();
+        replace_session_queue(&mut database.connection(), "session-1", &reversed).unwrap();
+        assert_eq!(
+            durable_providers(&database),
+            vec![Some(ProviderId::Claude), Some(ProviderId::Codex)]
+        );
+    }
+
+    #[test]
+    fn naming_a_provider_without_a_model_is_refused_when_queued() {
+        let (database, service) = queued_provider_service();
+        let input = serde_json::from_value(json!({
+            "sessionId": "session-1", "input": "next", "fastMode": false, "provider": "codex"
+        }))
+        .unwrap();
+        let error = service
+            .enqueue_pending_message(
+                "session-1",
+                "next",
+                AgentMode::Auto,
+                &input,
+                None,
+                PromptAuthor::unattested(),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "SWITCH_PROVIDER_REQUIRES_MODEL"
+        ));
+        assert!(durable_providers(&database).is_empty());
+    }
+
+    #[test]
+    fn a_provider_that_cannot_answer_approvals_is_refused_in_ask_each_time() {
+        let (database, service) = queued_provider_service();
+        database
+            .connection()
+            .execute(
+                "UPDATE sessions SET permission_mode = 'ask-each-time' WHERE id = 'session-1'",
+                [],
+            )
+            .unwrap();
+        let unsupported = [
+            ProviderId::Claude,
+            ProviderId::Codex,
+            ProviderId::Cursor,
+            ProviderId::Opencode,
+            ProviderId::Grok,
+        ]
+        .into_iter()
+        .find(|provider| {
+            ensure_permission_mode_supported(*provider, PermissionMode::AskEachTime).is_err()
+        });
+        let Some(provider) = unsupported else {
+            return;
+        };
+        let error =
+            enqueue_with_provider(&service, Some(provider.as_str()), "some-model").unwrap_err();
+        assert!(matches!(
+            error,
+            ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "PROVIDER_APPROVAL_UNSUPPORTED"
+        ));
+        assert!(durable_providers(&database).is_empty());
+    }
+
+    #[test]
+    fn a_drained_row_carries_its_provider_into_the_send_and_a_legacy_row_carries_none() {
+        let mut row = pending_message("m1", "session-1", "next");
+        row.provider = Some(ProviderId::Codex);
+        row.model_label = Some("GPT".to_string());
+        row.model_id = Some("gpt-5.6-sol".to_string());
+        let input = pending_message_to_send_input("session-1".to_string(), row).unwrap();
+        assert_eq!(input.provider, Some(ProviderId::Codex));
+        assert_eq!(input.model_id.as_ref().unwrap().as_str(), "gpt-5.6-sol");
+
+        let legacy = pending_message("m2", "session-1", "next");
+        let input = pending_message_to_send_input("session-1".to_string(), legacy).unwrap();
+        assert_eq!(input.provider, None);
     }
 
     #[tokio::test]
@@ -5872,6 +6194,11 @@ mod tests {
                 r#type: "command.started".to_string(),
                 message: "wait".to_string(),
                 payload: json!({}),
+                semantic: crate::persistence::timeline_semantics::derive(
+                    "command.started",
+                    "wait",
+                    &json!({}),
+                ),
                 created_at: now_iso(),
                 row_cursor: Some(1),
             }],
@@ -6144,6 +6471,50 @@ mod tests {
         .expect("durable queue");
         assert_eq!(durable.len(), 1, "the row is visible to the composer again");
         assert_eq!(durable[0].content, "stopped mid-promotion");
+    }
+
+    /// A person's prompt never carries another session's origin or a system
+    /// starter: a send that claims both is refused, not quietly downgraded.
+    #[tokio::test]
+    async fn a_person_prompt_with_an_origin_is_refused() {
+        let database = database_with_running_session();
+        let service = ProviderSessionService::new(database);
+        let input: ProvidersSendInput = serde_json::from_value(json!({
+            "sessionId": "session-1", "input": "hello", "fastMode": false
+        }))
+        .unwrap();
+        let person = PromptAuthor::person(crate::ipc::attest_person_for_tests());
+        let origin = MessageOrigin {
+            session_id: "peer".to_string(),
+            label: "Peer".to_string(),
+            kind: "message".to_string(),
+            message_id: None,
+        };
+
+        let error = service
+            .send_input_authored(input.clone(), Some(origin), person)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "PROMPT_AUTHOR_CONFLICT"
+        ));
+        let error = service
+            .send_input_scoped(
+                input,
+                None,
+                None,
+                TurnStarter::Move,
+                Queueing::Allowed,
+                MidTurnDelivery::Queue,
+                person,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            ArgmaxError::ServiceError { ref sub_code, .. } if sub_code == "PROMPT_AUTHOR_CONFLICT"
+        ));
     }
 
     #[test]

@@ -15,11 +15,11 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `session_list` | `project?`, `all?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows |
-| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?`, `checkInMinutes?` | `{sessionId, workspaceId, projectId, projectName, path, branch, projectCheck?}`. `projectId`, `projectName`, and `path` are the checkout the session started in. `projectCheck` (`decision` of `suggest` or `switch`, `suggestedProjectId`, `suggestedProjectName`, `reasons`) is present when project check had an opinion; a `switch` means those checkout fields are the suggested project, not the one the caller passed. `checkInMinutes` (1 to 1440, else `CHECK_IN_OUT_OF_RANGE`) schedules a `same_session` wake for the caller, routine id `check-in:<sessionId>`, that Argmax deletes when the launched session's completion notice is built, so it fires only while the session is still running. |
-| `session_message` | `session`, `message` | `{sessionId, queued}` — `queued` is true when the target was mid-turn and could not be steered |
+| `session_list` | `project?`, `all?`, `query?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?, unreadable?, matched?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows. `unreadable` marks a session the caller may not read. With `query`, only readable sessions are kept: task-label hits first (`matched.source` `title`), then conversation hits (`content`, with `itemId` and a plain `snippet`) |
+| `session_launch` | `prompt`, `project?`, `path?`, `branch?`, `provider?`, `model?`, `worktree?`, `taskLabel?`, `reasoning?`, `permissionMode?`, `checkInMinutes?`, `clientRequestId?` | `{sessionId, workspaceId, projectId, projectName, path, branch, permissionMode, permissionModeRequested?, replayed?, projectCheck?}`. `permissionMode` is the mode the session runs under; `permissionModeRequested` appears only when the caller asked for a looser one than it may hand out. `replayed: true` marks a retry that was answered from the first launch's receipt. `projectId`, `projectName`, and `path` are the checkout the session started in. `projectCheck` (`decision` of `suggest` or `switch`, `suggestedProjectId`, `suggestedProjectName`, `reasons`) is present when project check had an opinion; a `switch` means those checkout fields are the suggested project, not the one the caller passed. `checkInMinutes` (1 to 1440, else `CHECK_IN_OUT_OF_RANGE`) schedules a `same_session` wake for the caller, routine id `check-in:<sessionId>`, that Argmax deletes when the launched session's completion notice is built, so it fires only while the session is still running. |
+| `session_message` | `session`, `message`, `forkFindings?` | `{sessionId, queued}` — `queued` is true when the target was mid-turn and could not be steered. With `forkFindings`, from a chat forked from `session`: sends that chat the fork's new findings with `message` as the note, queued rather than steered, and only the work no earlier call carried (`FORK_NOTHING_NEW` when there is none) |
 | `session_status` | `session` | `{sessionId, taskLabel, provider, modelId, state, attention, turnAgeSeconds?, lastActivityAt, lastAssistantText?, unreadInbox, launchedBySessionId?, launchDepth}` |
-| `session_read` | `session`, `cursor?`, `maxChars?` | `{sessionId, entries: [{at, kind, text}], nextCursor, truncated}` |
+| `session_read` | `session`, `cursor?`, `maxChars?`, `itemId?`, `offset?` | `{sessionId, entries: [{id, at, kind, text, clipped?}], nextCursor, truncated}`, or with `itemId`, `{sessionId, item: {id, at, kind, text, offset, nextOffset?, totalBytes}, truncated}` |
 | `session_stop` | `session` | `{sessionId, state}` |
 | `session_rename` | `taskLabel` | `{sessionId, workspaceId, taskLabel, previousTaskLabel}` — renames this session's sidebar row only |
 | `inbox_read` | — | `{messages: [{fromSessionId?, fromLabel?, kind, body, createdAt}]}` |
@@ -33,8 +33,8 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `workspace_diff` | `session?`, `filePath?`, `comparison?`, `maxChars?` | Bounded changed-file list and diff text with `truncated` |
 | `learnings_add` | `kind`, `summary`, `project?` | The stored project learning |
 | `learnings_search` | `query?`, `project?`, `limit?` | Ranked project learnings with `truncated` |
-| `sources_list` | `offset?`, `limit?` | Registered source metadata with `nextOffset` and `truncated` |
-| `sources_read` | `id`, `maxChars?` | Live file or URL text, actual read location and title, read time, warning, and `truncated` |
+| `sources_list` | `offset?`, `limit?`, `linked_repo?`, `path?` | Registered source metadata with `nextOffset` and `truncated`, the project's enabled `linkedRepos`, or with `linked_repo` one directory of a linked repository |
+| `sources_read` | `id?`, `linked_repo?`, `path?`, `maxChars?` | Live file or URL text, actual read location and title, read time, warning, and `truncated`; with `linked_repo` and `path`, a file from a linked repository |
 | `sources_add` | `title`, `location`, `guidance` | The registered source and whether it was newly added |
 | `terminal_spawn` | `session?`, `command?` | `{terminalId, sessionId, workspaceId, path, command?}` |
 | `terminal_read` | `terminalId?`, `session?`, `maxChars?` | A terminal tail, or the terminals known for a workspace |
@@ -45,6 +45,9 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 | `schedule_list` | `project?` | `{projectId, schedules: [{scheduleId, name, prompt, enabled, cronExpr?, runOnceAt?, runTarget, createdBy, sessionId?, nextRunAt?, lastRunAt?, lastError?}], truncated}` |
 | `schedule_cancel` | `scheduleId`, `disable?` | `{scheduleId, name, deleted}` |
 | `schedule_resume` | `scheduleId` | `{scheduleId, name, nextRunAt?}` |
+| `pr_watch` | `pr?`, `cleanupOnMerge?` | `{projectId, prNumber, url?, headSha?, watching}` — wakes this session about the PR until it merges or closes |
+| `pr_unwatch` | `pr?` | `{removed}` |
+| `pr_cleanup` | `pr?` | `{prNumber, branch, baseBranch, mergedHead, mergeCommit, remote, base, local, checkoutPath, text}`; each step is `{outcome, detail}`. Git cleanup after a merge. Never archives the chat. |
 | `arc_status` | — | The caller's Arc: `{arcId, name, state, dir, brief, briefTruncated, coordinatorSessionId?, callerIsCoordinator, members: [{sessionId, taskLabel, projectName, state, prNumber?, prState?}], truncated, launchesLast24h, limits: {maxActiveMembers, maxLaunchesPerDay}, now, notesBytes?, notesApproxTokens?, notesOversized, logBytes?}`. `now` is the local clock; `notesOversized` is true above 24 KB of `NOTES.md`. `NOT_IN_ARC` if the caller is not attached to one. |
 
 A goal makes this session keep working until a separate evaluator judges the
@@ -65,6 +68,58 @@ provider, model and effort from the prompt; it needs a saved Jev key, and an
 explicit `reasoning` still wins. A caller on Auto that omits both `model` and
 `provider` inherits its Auto tier rather than the model its last turn ran on.
 See [routing.md](routing.md).
+
+**A launch never gets a looser permission mode than its caller.** From strictest
+to loosest the modes are `ask-each-time`, `provider-defaults`, `auto-approve`.
+A request at or below the caller's own mode is honoured. A request above it is
+replaced by the caller's mode, and the reply says so: `permissionMode` is what
+the session runs under, and `permissionModeRequested` is what was asked for. An
+`ask-each-time` caller therefore launches only `ask-each-time` sessions, a
+`provider-defaults` caller launches `provider-defaults` or `ask-each-time`, and
+an `auto-approve` caller may launch any. The caller's mode is read from its
+session row. The ceiling is `child_permission_mode` in
+[session_launch.rs](../src-tauri/src/application/session_launch.rs). It does not
+ban any provider: a provider that cannot answer approvals is still refused by
+`ensure_permission_mode_supported` when the launch asks for `ask-each-time`.
+
+### Retrying a launch
+
+`session_launch` takes an optional `clientRequestId`: 1 to 128 printable
+characters the caller chooses, scoped to the calling session. It makes the call
+safe to repeat after a timeout or a lost reply.
+
+- **Receipt first.** The receipt row ([data.md](data.md), `launch_receipts`) is
+  written before the budget lock, the router, project check, the worktree or
+  the provider. It holds the canonical request (a SHA-256 of the action without
+  the key and before any Arc preamble is added) and the session id the launch
+  will use. The session id is chosen up front, and the checkout is written onto
+  the receipt before the provider starts.
+- **Same key, same arguments** replays the first launch's reply with
+  `replayed: true`: same session, workspace and checkout, and no second
+  provider process. **Same key, other arguments** is `LAUNCH_REQUEST_ID_MISMATCH`.
+- **Two copies in flight together** start one session. The second waits up to
+  30 seconds for the first to settle, then answers `LAUNCH_IN_PROGRESS` with
+  the session id. The claim is one SQLite write, so the budget lock, which is
+  per process and comes later, is not what prevents the duplicate.
+- **`pending`** is a launch in flight. **`completed`** replays. **`failed`**
+  means the launch was refused or failed before its session row was written. No
+  provider started. The router and project check may already have run. The same
+  key may be tried again and takes a new session id. **`uncertain`** means the
+  launch stopped after its session row was written (the app quit, the call was
+  dropped, the receipt could not be settled, or a step after the launch
+  failed). The provider may be running. The key is never launched again: a retry
+  gets `LAUNCH_OUTCOME_UNCERTAIN` naming the session and workspace, and the
+  caller checks it with `session_status`.
+- **Restart.** At boot a `pending` receipt becomes `failed` if its session was
+  never written (the provider starts only after that row commits) and
+  `uncertain` if it was. An `uncertain` receipt's session also gets the lineage
+  the interrupted launch never recorded (`launched_by_session_id`, depth, kind
+  `agent`), so the launcher can still read, wait on and count it, in any
+  project, without a second launch.
+- **The cap.** An `uncertain` launch whose session exists but has no lineage
+  yet holds one of the caller's slots until it does. A receipt with no session
+  holds none, and a call waiting on the budget lock does not count against the
+  call that holds it.
 
 `project` accepts a repository Argmax has never opened. A name or id must
 already be registered, but an absolute path is taken at face value: the
@@ -132,9 +187,9 @@ and `LAUNCH_DEPTH_EXCEEDED`:
   rolling 24 hours, coordinator launches included. Wait for the window to
   roll forward.
 - The Arc's *current* coordinator (the caller's own id matches
-  `coordinatorSessionId`) is exempt from the ordinary ten-launches-per-session
+  `coordinatorSessionId`) is exempt from the ordinary twenty-launches-per-session
   cap — it plans and delegates for the whole Arc, so its own lifetime count
-  must not run out after ten pieces of work. Every other session, coordinator
+  must not run out after twenty pieces of work. Every other session, coordinator
   or not, still counts against it. A relaunched coordinator's old session
   keeps its own count; the exemption follows whichever session currently
   holds the pointer.
@@ -194,6 +249,23 @@ the session's Argmax browser, wait for the page, and return rendered text with
 the final URL and page title. Text defaults to 24,576 characters and is capped
 at 40,960. Empty, binary, oversized, missing, and failed reads return errors
 and are not recorded as successful reads.
+
+Agents may read and edit linked repositories as needed for the task, following each repository's instructions and session permissions. Use normal file or shell tools for edits.
+
+Linked repositories ([memory.md](memory.md#linked-repositories)) ride the same
+two tools. `sources_list` always returns the enabled roots as
+`linkedRepos: [{ name, root }]`. Passing `linked_repo` (and optionally `path`, a
+directory relative to the root) lists that directory instead, up to 500 entries
+a page with `nextOffset`, hiding `.git`. `sources_read` takes exactly one of `id`
+or `linked_repo` with `path`. A `path` without `linked_repo` is refused with
+`SOURCE_PATH_REQUIRES_LINKED_REPO` on both tools instead of being ignored. A
+directory page stays inside the same 48 KiB budget as the plain listing, counted
+over the encoded entries, and `nextOffset` names the first entry not returned. A path that is absolute, contains `..`, touches
+`.git`, or resolves outside the root through a symlink is refused with
+`LINKED_REPO_PATH_ESCAPES`, `LINKED_REPO_PATH_ABSOLUTE`, or
+`LINKED_REPO_PATH_FORBIDDEN`; a switched-off repository is
+`LINKED_REPO_DISABLED`. A successful linked read adds a `session.note`
+(`operation: "linked-repo"`) and has no `source` in its result.
 
 Every successful read adds a durable `session.note` timeline event naming the
 source, time, actual operation, and whether the returned text was truncated.
@@ -270,6 +342,36 @@ tool is called mid-turn, its time usually passes while the calling turn is
 still running; the scheduler then leaves the task due and wakes the chat on the
 first tick after it settles, rather than queueing the prompt behind what the
 user has typed. See [scheduled-tasks.md](scheduled-tasks.md).
+
+### PR watches
+
+`pr_watch` asks Argmax to wake this session about one pull request, so the
+agent ends its turn instead of polling GitHub in a shell. `pr` defaults to the
+session's primary PR. The gh poller then reads the PR on its 60 second tick
+and sends one watch notice whenever there is something to act on: failing
+checks, new reviews and comments, checks green on the head, or the PR merged or
+closed. A merge or close ends the watch. See [gh.md](gh.md#pr-watch) for the
+events, the notice text, and dedupe.
+
+Calling `pr_watch` again for the same PR keeps the watch and its cursors and
+updates the options. With `cleanupOnMerge`, the watch runs `pr_cleanup` when
+the PR merges and puts its report in the merged notice. A PR number Argmax has not read yet is accepted, and the
+poller views it by number on the next tick. Errors are `PR_NOT_FOUND` (no `pr`
+and no primary PR), `PR_NOT_OPEN` (already merged or closed), and
+`PROJECT_NOT_ALLOWED` (a side chat). `pr_unwatch` removes a watch and returns
+whether there was one.
+
+`pr_cleanup` does the git cleanup after a merge, with no shell steps. `pr`
+defaults to the session's primary PR. It deletes the remote branch only while
+it still points at the merged head, fast-forwards the base where it is checked
+out, deletes the local branch only when nothing owns it, and prunes. It never
+archives or hides the chat. Errors are `PR_NOT_MERGED`, `PR_NOT_FOUND`, and
+`PROJECT_NOT_ALLOWED`. See [workspaces.md](workspaces.md#pr-cleanup).
+
+A notice arrives through the inbox like any other system notice, so the
+behavior is the same for every provider. The agent decides what to do. In
+particular, Argmax reports checks green with the unresolved threads and
+requested reviewers, and the agent applies the merge gate.
 
 ### Browser
 
@@ -482,6 +584,83 @@ and each entry is capped at 2 000 characters, so one enormous tool result
 cannot spend the whole budget. A page either cap cut short comes back with
 `truncated: true`; read again from `nextCursor` for the rest.
 
+An entry the cap cut carries `clipped: true` and a stable `id` (the event id).
+Pass that id as `itemId` to read the whole entry, and `nextOffset` as `offset`
+to continue. The unit is bytes, everywhere: `maxChars` is a byte budget and
+`offset`, `nextOffset`, and `totalBytes` are byte offsets into the entry's
+UTF-8 text. A slice never ends inside a character, so `nextOffset` is always
+a character boundary. An `offset` that is not one is refused (`OFFSET_INVALID`)
+instead of served mangled. An item read shows what the page hides: a tool call's
+whole input and a tool result's whole output. Rows the chat hides (subagent
+traces, streaming deltas) have no readable id (`ITEM_NOT_FOUND`).
+
+### Who may read whom
+
+`session_read` and `session_status` take the caller, and refuse
+(`READ_FORBIDDEN`) a session the caller may not read. An agent reads:
+
+- its own project's sessions. A scratch Chat has no project to share, so each
+  Chat is its own boundary;
+- its launch lineage, up and down and across projects, so a parent still reads
+  a child it launched into another project, and the child its launcher;
+- a chat a person attached to one of its prompts. The composer writes a chat
+  chip as `[title](argmax://chat/<session id>?v=1)` into the prompt, and a
+  person's prompt in the caller's transcript that holds such a link is the
+  grant. The grant is for that one session. The transcript is the durable
+  authority, so there is no grant table to keep in step.
+
+  What counts as the person's prompt is narrow, because an agent can put any
+  text in a prompt it writes. A `user.message` grants only when it carries the
+  positive person mark, the `events.prompt_author = 'person'` column
+  ([persistence/authorship.rs](../src-tauri/src/persistence/authorship.rs)).
+  Only fresh text from the person's own composer gets it: the backend writes it
+  for `providers:launch` (the opening prompt), `providers:send-input`,
+  `providers:steer-input`, and a prompt typed into Multitask, on the desktop
+  webview and on the paired phone alike. Those four handlers in `crate::ipc`
+  are the only code that can build the `PersonAttestation` token a person
+  author needs, and a test lists the call sites. The marker is a column, never
+  payload JSON, and no input type carries it, so a client, a tool argument, a
+  transcript file or a synced provider event cannot supply it.
+
+  Everything else is unattested and grants nothing: another session's message,
+  a goal turn, a scheduled follow-up, a session move, a completion notice, an
+  MCP `session_launch`, a routine or check-failure launch, a fork merge, a
+  sync import, a legacy row, and a path nobody remembered to update. Missing
+  the mark fails closed. A queued row keeps the author it was queued with
+  through drain, Send now, steer, requeue and Multitask. A fork or a move copies
+  each prompt's author and never changes it. A person's prompt that also carries
+  an origin or a starter is refused (`PROMPT_AUTHOR_CONFLICT`). Text Argmax
+  adds to a person's prompt from strings an agent can set (a typed Multitask's
+  preamble names the parent chat's label and branch and the Arc's name and
+  folder) has its square brackets turned into parentheses first, so only the
+  person's own typed chip can form a link. The link has to
+  be one the composer would draw as a chip, in the renderer's grammar
+  (`composerContext.ts`, mirrored by `chat_reference_ids`): a bracketed title of
+  1 to 120 characters, `argmax://chat/`, an id of up to 64 of `A-Za-z0-9_-`
+  ending at `?` or `)`, and a `v` of exactly `1` or none. A bare URL, a longer
+  or shorter id, or another version grants nothing.
+
+  The mark stops text that an agent or another process wrote from becoming a
+  cross-project read grant when Argmax itself routes that text: MCP and socket
+  tools, routines, CI logs, sync files and provider output. It is not a
+  boundary against an agent with shell access, which can already read the SQLite
+  file or the bridge token. The same limit holds for every other local data
+  path. The paired remote device counts as the person.
+
+The app's own UI is not scoped: it browses every project. `session_list`
+with `all` still lists other projects, marking the ones the caller cannot read.
+`query` searches the conversation text of readable sessions only, in SQL, so
+sessions the caller may not read cannot crowd out the ones it may. It keeps the
+best line of each chat before it applies the limit, so one chat with a hundred
+matches cannot fill the list. The list runs on a read connection, with the
+caller's attached chats read by one query.
+
+Tool arguments are snake_case (`item_id`, `max_chars`); results are camelCase
+(`itemId`, `nextOffset`). `session_read` and `session_list` refuse an argument
+they do not know, so a misspelled `itemId` is an error and not a quiet page read.
+A tool row is `clipped` only when its line left something out: an argument other
+than the one shown, a cut at the cap, or output the `-> ok` summary dropped.
+
 `session_status` answers the cheaper question — is it still working, how long
 has this turn been running, what did it last say, is anyone waiting on it — in
 one row, without paging a transcript.
@@ -514,7 +693,8 @@ failed steer stays queued as unsent so they decide what to do with it; an
 agent's message goes back to the ordinary queue and drains when the turn ends,
 since nobody is there to retry it. A steer whose acknowledgement was lost stays
 delivery-unknown and is never resent, the same as the composer's. Completion
-notices and Arc and PR notices (`send_system_notice`) use the same delivery.
+notices, Arc PR notices, and PR watch notices (`send_system_notice`) use the
+same delivery.
 
 Two caps keep a hand-over bounded, since a row is marked collected by the same
 call that carries it and a reply the client refuses would take the messages
@@ -616,6 +796,43 @@ turn** carrying its child's answer, the way Claude Code's Agent Teams
 idle-notification works. A notice that queued behind the launcher's running
 turn is not delivered, and stays collectable from its inbox.
 
+**Siblings that finish together wake the launcher once.** The row is written,
+and a blocked `session_wait` is woken, the moment the turn ends. Only the
+automatic wake waits: it is held for a 2 second window (`COMPLETION_BATCH_WINDOW`,
+fixed from the first notice, per launcher). When the window closes, the wake
+covers the notices the launcher has not already collected:
+
+- none: no wake. `session_wait` or `inbox_read` already handed them over.
+- one: the notice is delivered unchanged.
+- several: one batch notice, `completion-batch:<launcher>:<first notice id>`,
+  carries each result whole under its own `--- n/N ---` heading, with the finish
+  time each child wrote. A batch holds at most 20 results (the launch cap); a
+  larger pile is several batches. A result that would push the row past the
+  16 KB inbox cap is replaced by a pointer line to `session_read` rather than
+  cut. Every pointer is bounded (its label is capped at 80 characters and each
+  result reserves 400 characters for it), so 20 results with the longest labels
+  still fit one row with every session named. The batch row and the closing of
+  the individual rows commit in one transaction. The individual rows stay in
+  `session_messages` with their own body and time as the durable record, and the
+  batch row is what the launcher still has to collect if its wake never lands.
+  `session_wait` with explicit `sessions` is unaffected: it reports the named
+  sessions' states and hands over the caller's inbox, which now holds the batch
+  row with every result.
+
+**A restart does not strand the launcher.** The window is in memory, so the
+durable mark is `session_messages.wake_due_at` (v64): set when a completion row
+or batch row is written, cleared once its wake has been attempted. At boot,
+after orphan recovery, `recover_completion_wakes` rebuilds the wakes from the
+rows that are still marked and unread. Individual rows go through a fresh window
+so siblings still coalesce, and a batch row is delivered as it is. Delivery then
+follows the ordinary rule: an idle launcher gets a turn, a running one queues
+it. Not woken for: rows already collected, rows with a copy in the follow-up
+journal (the composer shows them as paused or unsent, and the person or the queue
+sends them), rows from before the mark existed, and a launcher whose workspace is
+archiving or archived. A wake that crashed mid-attempt is repeated once, which
+is safe because delivery marks the row delivered and the queue drops a copy the
+launcher already collected.
+
 **A turn the person started in the launched chat's own tab does not wake the
 launcher at once.** The `user.message` that started the turn tells them apart:
 one from another session carries `origin`, one from a Goal or the scheduler
@@ -715,7 +932,7 @@ passes through:
 - **Depth ≤ 2.** A session the user started is depth 0. It may launch (depth 1),
   and that session may launch (depth 2). A launch from depth 2 is refused with
   `LAUNCH_DEPTH_EXCEEDED`.
-- **Ten launches per session**, refused with `LAUNCH_LIMIT_REACHED`.
+- **Twenty launches per session** (`MAX_LAUNCHES_PER_SESSION`), refused with `LAUNCH_LIMIT_REACHED`. A launch that stopped after its session was written but before the launch was recorded still holds a slot until the session carries its lineage (see retrying a launch).
 
 A session cannot message itself (`MESSAGE_SELF`) or stop its own turn
 (`STOP_SELF`). `session_rename` has no target argument — only the caller's own
@@ -832,7 +1049,7 @@ not used — it would ungate the repo's hooks too.
 
 ## What the surface costs
 
-55 tools and ~47 KB of schema and server instructions, and a turn pays for all
+61 tools and ~54 KB of schema and server instructions, and a turn pays for all
 of it whether or not it calls one — tool definitions render ahead of the system
 prompt and the transcript, so they sit at the front of every cached prefix.
 
@@ -863,11 +1080,13 @@ described in the schema, do not need restating in a tool description.
 ### Turning the browser tools off
 
 Removing a tool is the lever trimming prose cannot match, and the browser tools
-are the only group a user can do without and still have Argmax: 27 of the 55,
-and about 37% of the bytes. Settings → Agents → Tools → **Browser tools** drops
-them — 46,628 bytes to 29,300, measured at 12,573 prefix tokens per turn down
-to 7,665. The Browser panel is untouched; what goes is an agent's ability to
-drive it.
+are the only group a user can do without and still have Argmax: 27 of the 61,
+and about 35% of the bytes. Settings → Agents → Tools → **Browser tools** drops
+them — 52,562 bytes to 34,242 (the serialized tool list plus the instructions,
+with `pr_watch` and `pr_unwatch` adding 1,323 of each, measured before
+`pr_cleanup`, which adds 793 bytes and lengthens `pr_watch` by about 180). At the 55-tool surface
+that was measured at 12,573 prefix tokens per turn down to 7,665. The Browser
+panel is untouched; what goes is an agent's ability to drive it.
 
 The decision is the launch's. `SessionLaunchRegistry::issue` reads the setting
 from [app_settings.rs](../src-tauri/src/persistence/app_settings.rs) and stamps

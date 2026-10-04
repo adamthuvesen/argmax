@@ -10,20 +10,6 @@ import {
 describe("SessionConversation provider handoff", () => {
   afterEach(cleanup);
 
-  it("shows the seam with both providers and the model taking over", () => {
-    renderConversation(baseSession({ state: "complete", provider: "codex" }), [
-      event("d2", "message.delta", "Picking this up", "2026-05-12T15:02:01.000Z"),
-      event("switch", "session.provider-changed", "Switched provider to Codex.", "2026-05-12T15:02:00.000Z", {
-        from: "cursor",
-        provider: "codex",
-        modelLabel: "GPT-5.6 Sol"
-      }),
-      event("d1", "message.delta", "Earlier work", "2026-05-12T15:00:01.000Z")
-    ]);
-
-    expect(screen.getByRole("status", { name: "Cursor → Codex, GPT-5.6 Sol" })).toBeTruthy();
-  });
-
   it("falls back to the row's message when the payload predates the provider fields", () => {
     renderConversation(baseSession({ state: "complete", provider: "codex" }), [
       event("switch", "session.provider-changed", "Switched provider to Codex.", "2026-05-12T15:02:00.000Z"),

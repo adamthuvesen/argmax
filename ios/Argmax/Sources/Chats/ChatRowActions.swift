@@ -92,9 +92,9 @@ final class ChatRowActionCenter: ObservableObject {
 
     // MARK: - Gates
 
-    /// The same gate `fork_session` applies host-side: a provider whose CLI
-    /// can resume a copied conversation, and never mid-turn — forking a
-    /// half-written transcript is what the backend refuses.
+    /// The same gate the host applies to a whole-chat fork: a forkable
+    /// provider, and never mid-turn — forking a half-written transcript is
+    /// what the backend refuses.
     static func isForkable(_ row: ChatRow) -> Bool {
         let capable = ProviderCatalog.bundled.provider(row.session.provider)?.forkCapable ?? false
         return capable && row.session.state != .running && row.session.state != .waiting

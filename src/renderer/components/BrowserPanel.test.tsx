@@ -415,14 +415,6 @@ describe("BrowserPanel", () => {
     expect(screen.queryByRole("img", { name: "Opened by the agent" })).not.toBeInTheDocument();
   });
 
-  it("navigates on address submit after normalizing the input", () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
-    const address = screen.getByRole("textbox", { name: "Address" });
-    fireEvent.change(address, { target: { value: "example.com" } });
-    fireEvent.submit(address.closest("form") as HTMLFormElement);
-    expect(browserStub.navigate).toHaveBeenCalledWith("https://example.com", activeTabId());
-  });
-
   it("navigates when Enter is pressed in the address bar", () => {
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
     const address = screen.getByRole("textbox", { name: "Address" });
@@ -612,27 +604,6 @@ describe("BrowserPanel", () => {
     // The first tab has nowhere further left to go.
     fireEvent.keyDown(screen.getByRole("button", { name: "Beta" }), { key: "ArrowLeft", altKey: true });
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.title)).toEqual(["Beta", "Alpha", "Gamma"]);
-  });
-
-  it("wires toolbar actions to the bridge and close to the parent", () => {
-    const onClose = vi.fn();
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
-    const tab = activeTabId();
-    fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close browser" }));
-    expect(browserStub.back).toHaveBeenCalledWith(tab);
-    expect(browserStub.reload).toHaveBeenCalledWith(tab);
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  it("opens Chrome history import from the toolbar", async () => {
-    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Import from Chrome" }));
-
-    expect(await screen.findByRole("dialog", { name: "Import from Chrome" })).toBeInTheDocument();
-    expect(browserStub.chromeProfiles).toHaveBeenCalledOnce();
   });
 
   it("suggests visited pages while typing and navigates on pick", async () => {

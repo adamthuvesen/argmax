@@ -78,6 +78,12 @@ pub struct ProjectSummary {
     pub current_branch: String,
     pub default_branch: Option<String>,
     pub settings: ProjectSettings,
+    /// This project's branch template for new isolated workspaces, overriding
+    /// the app-wide one. Kept beside `settings` rather than inside it: the
+    /// settings form saves through `projects:update-settings`, and this value
+    /// has its own validated channel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_template: Option<String>,
     pub counts: ProjectCounts,
     pub latest_activity_at: Option<String>,
 }
@@ -208,6 +214,26 @@ pub fn update_project_settings(
             "@updated_at": now_iso(),
         })
         .map_err(sqlite_error)?;
+    require_project(connection, project_id)
+}
+
+/// Sets or clears the project's branch template after validating it.
+pub fn set_project_branch_template(
+    connection: &Connection,
+    project_id: &str,
+    template: Option<&str>,
+) -> ArgmaxResult<ProjectSummary> {
+    if let Some(template) = template {
+        crate::workspaces::branch_names::validate_branch_template(template)?;
+    }
+    let changes = connection
+        .prepare_cached("UPDATE projects SET branch_template = ?, updated_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((template, now_iso(), project_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("project", project_id));
+    }
     require_project(connection, project_id)
 }
 
@@ -459,6 +485,7 @@ fn project_summary_from_row(
             check_commands: parse_string_array(row.get("check_commands_json")?),
             archive_on_merge: row.get("archive_on_merge")?,
         },
+        branch_template: row.get("branch_template")?,
         counts,
         latest_activity_at,
     })
@@ -513,5 +540,58 @@ mod tests {
         );
         assert_eq!(parse_github_remote("git@gitlab.com:menti/argmax.git"), None);
         assert_eq!(parse_github_remote(""), None);
+    }
+
+    #[test]
+    fn a_project_branch_template_is_validated_on_save_and_can_be_cleared() {
+        let database = crate::persistence::Database::open_in_memory().expect("db");
+        let connection = database.connection();
+        let project = persist_project(
+            &connection,
+            &PersistProjectInput {
+                id: "p1".to_owned(),
+                name: "p1".to_owned(),
+                repo_path: "/tmp/p1".to_owned(),
+                current_branch: "main".to_owned(),
+                default_branch: Some("main".to_owned()),
+                settings: ProjectSettings {
+                    worktree_location: "/tmp/w".to_owned(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                    archive_on_merge: false,
+                },
+            },
+        )
+        .expect("project");
+        assert_eq!(project.branch_template, None);
+
+        let saved = set_project_branch_template(&connection, "p1", Some("adam/{type}-{slug}"))
+            .expect("valid template");
+        assert_eq!(saved.branch_template.as_deref(), Some("adam/{type}-{slug}"));
+
+        for bad in [
+            "adam/{nope}",
+            "adam/{slug",
+            "adam//{slug}",
+            " ",
+            "-x/{slug}",
+        ] {
+            assert!(
+                set_project_branch_template(&connection, "p1", Some(bad)).is_err(),
+                "{bad}"
+            );
+        }
+        assert_eq!(
+            require_project(&connection, "p1")
+                .unwrap()
+                .branch_template
+                .as_deref(),
+            Some("adam/{type}-{slug}"),
+            "a rejected template leaves the saved one"
+        );
+
+        let cleared = set_project_branch_template(&connection, "p1", None).expect("clear");
+        assert_eq!(cleared.branch_template, None);
+        assert!(set_project_branch_template(&connection, "missing", None).is_err());
     }
 }

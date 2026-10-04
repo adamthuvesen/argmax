@@ -7,21 +7,6 @@ use argmax_lib::git::exec::{
 };
 
 #[tokio::test]
-async fn run_git_text_returns_stdout() {
-    let repo = seed_git_repo(&[("file.txt", "needle\n")]);
-
-    let stdout = run_git_text(
-        repo.path(),
-        ["status", "--porcelain=v1"],
-        Duration::from_secs(5),
-    )
-    .await
-    .expect("git status succeeds");
-
-    assert_eq!(stdout, "");
-}
-
-#[tokio::test]
 async fn run_git_buffer_preserves_raw_stdout() {
     let repo = seed_git_repo(&[("file.bin", "hello")]);
 

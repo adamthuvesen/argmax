@@ -69,6 +69,9 @@ table (`PRICING_AS_OF` in [usage/mod.rs](../src-tauri/src/usage/mod.rs)). A
 model the table does not know is counted in tokens and marked *unpriced*,
 never shown as $0. Grok Build and OpenCode keep their own dollar figure in
 their logs; those win over the table and are marked *provider reported*.
+OpenCode's figure for an `openrouter/` model is the exception. It is the
+catalog's cheapest rate per field, not what the host billed, so the table
+prices those turns ([providers.md](providers.md#opencode)).
 Cursor's figures, tokens and dollars alike, are estimates and read "≈"; when
 they are part of a larger total, the hero says how much ("≈$12.40 estimated
 for Cursor", from `UsageSummary::estimated_cost_usd` / `estimated_tokens`).
@@ -177,7 +180,10 @@ it.
   ledger's table, matched by model family so an effort alias
   (`grok-4.7-medium`) prices as its family. Cursor's Auto
   (`auto-smart[...]`) bills whatever model it routed each request to, so it
-  has no rate: its tokens are counted and marked *unpriced*.
+  has no rate: its tokens are counted and marked *unpriced*. Composer 2.5 is
+  the exception to Standard: Argmax runs it on Fast since
+  2026-10-02T18:00Z, so calls from then price at Fast's $3 / $0.50 / $15
+  (input / cache read / output) and earlier calls keep Standard's rate.
 - **Which chats.** A chat counts when it is on Cursor now or has a Cursor
   Router row. Each call takes its provider and model from the chat's latest
   Router row at or before it; without one, from the chat's provider switches,
@@ -207,14 +213,17 @@ it.
 | Cursor | Argmax's own `events` rows for the chats it ran | none: estimated, see [Cursor estimate](#cursor-estimate) |
 
 Remaining usage is a second, live read. It does not go through `usage_hourly`.
-Verification mode disables its network, Keychain, and Codex app-server reads.
+Verification mode disables its network, Keychain, and Codex app-server reads. A build with
+the `verification` Cargo feature answers instead from a scripted source
+(`usage/remaining/verification.rs`): the Claude adapter reads fixed windows (37% used
+in the 5-hour window, 12% weekly) through its real parser, and no other read succeeds.
 
 | Provider | Remaining source | Notes |
 |---|---|---|
 | Claude | `GET https://api.anthropic.com/api/oauth/usage` with Claude Code OAuth (Keychain / `.credentials.json` / `CLAUDE_CODE_OAUTH_TOKEN`). Plan from `~/.claude.json` `oauthAccount`. | Undocumented; the same endpoint Claude Code uses for `/usage`. Reports the 5-hour session, weekly (all models), and Fable weekly (`limits[]` → `weekly_scoped`). Rate-limited if polled hard. Keychain service is namespaced per config dir — see below. |
 | Codex | `codex app-server` `account/rateLimits/read`, else the newest `rate_limits` object in a local rollout. | Official JSON-RPC. Windows are labeled from duration — Pro may report weekly on `primary` with no 5-hour window. |
 | Grok | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits` with `~/.grok/auth.json`. | Same call Grok Build's `/usage` makes. |
-| OpenCode | `GET https://opencode.ai/zen/go/v1/usage` when an OpenCode Go key is present. | Zen / BYOK have no OpenCode subscription quota. |
+| OpenCode | `GET https://openrouter.ai/api/v1/key` with `OPENROUTER_API_KEY` or the `openrouter` key in OpenCode's `auth.json`. | A key with a credit limit shows one meter, "Credit, $X of $Y". A key without a limit shows the dollars spent. |
 | Cursor | Local `cli-config.json` `authInfo` only. | Teams/Enterprise is a label. Remaining numbers need unofficial dashboard APIs; the card links to the [Spending dashboard](https://cursor.com/dashboard/spending). |
 
 **Claude's keychain item is named after the config dir.** Claude Code stores

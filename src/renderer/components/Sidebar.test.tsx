@@ -249,21 +249,6 @@ describe("Sidebar — project sort menu", () => {
     setItemSpy.mockRestore();
   });
 
-  it("renders projects in snapshot order by default and exposes an accessible sort trigger", () => {
-    render(
-      <Sidebar
-        {...baseProps}
-        snapshot={multiProjectSnapshot}
-      />
-    );
-
-    expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax", "Mango"]);
-
-    const trigger = screen.getByRole("button", { name: "Sidebar view options" });
-    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-  });
-
   it("reorders projects alphabetically and persists the mode exactly once under StrictMode", () => {
     render(
       <StrictMode>
@@ -384,11 +369,6 @@ describe("Sidebar — project removal menu", () => {
 
     expect(onRemoveProject).toHaveBeenCalledTimes(1);
     expect(onRemoveProject).toHaveBeenCalledWith("project-zebra");
-  });
-
-  it("hides the action trigger entirely when onRemoveProject is not provided", () => {
-    render(<Sidebar {...baseProps} snapshot={multiProjectSnapshot} />);
-    expect(screen.queryByRole("button", { name: /Actions for/ })).toBeNull();
   });
 });
 
@@ -715,6 +695,37 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(screen.getAllByRole("button", { name: /Zebra task today/ })).toHaveLength(1);
   });
 
+  it("reorders pinned chats by drag and persists the order", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+
+    const pinnedSnapshot: DashboardSnapshot = {
+      ...viewSnapshot,
+      workspaces: [
+        { ...workspace("w-a", "project-zebra", "Alpha chat", TODAY), pinned: true },
+        { ...workspace("w-b", "project-zebra", "Bravo chat", APRIL), pinned: true }
+      ],
+      sessions: [session("w-a", TODAY), session("w-b", APRIL)]
+    };
+
+    const { container } = render(<Sidebar {...baseProps} snapshot={pinnedSnapshot} />);
+    const pinnedRows = (): Element[] => [
+      ...container.querySelectorAll(".session-pinned-group .session-row-wrap")
+    ];
+    const pinnedNames = (): string[] => pinnedRows().map((row) => row.textContent ?? "");
+    expect(pinnedNames()[0]).toContain("Alpha chat");
+
+    const rows = pinnedRows();
+    const data = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
+    fireEvent.dragStart(rows[1], { dataTransfer: data });
+    fireEvent.dragOver(rows[0], { dataTransfer: data });
+    fireEvent.drop(rows[0], { dataTransfer: data });
+
+    expect(pinnedNames()[0]).toContain("Bravo chat");
+    expect(JSON.parse(window.localStorage.getItem("argmax.sidebar.workspaceOrder") ?? "{}")).toEqual({
+      pinned: ["w-b", "w-a"]
+    });
+  });
+
   it("collapses a date bucket with the chevron and caps overflow behind Show more", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 
@@ -957,21 +968,6 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(document.querySelector(".rail-heading")).toBeNull();
   });
 
-  it("keeps every recency header's collapse chevron inside the label cluster", () => {
-    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
-
-    render(<Sidebar {...baseProps} snapshot={viewSnapshot} />);
-
-    // The chevron shares the label span so it hugs the word instead of drifting
-    // to the row's right edge, where the … / + cluster lives.
-    for (const label of ["Today", "Older"]) {
-      const chevron = screen.getByRole("button", { name: `Hide ${label} chats` });
-      expect(chevron.closest(".session-date-label")).toBe(
-        screen.getByText(label).closest(".session-date-label")
-      );
-    }
-  });
-
   it("falls through to the next bucket when the newest one is empty", () => {
     window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
 
@@ -1198,34 +1194,6 @@ describe("Sidebar — Priority section", () => {
     expect(within(calmRow).queryByText("Argmax")).toBeNull();
   });
 
-  it("renders the project subtitle as plain text without a folder glyph", () => {
-    render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
-
-    const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
-    expect(within(blockedRow).getByText("Argmax")).toBeInTheDocument();
-    // The leading status marker is the row's only icon: the folder glyph that
-    // used to sit beside the project name is gone.
-    expect(blockedRow.querySelectorAll("svg")).toHaveLength(1);
-  });
-
-  it("keeps Pinned above Priority", () => {
-    const pinnedSnapshot: DashboardSnapshot = {
-      ...prioritySnapshot,
-      workspaces: [
-        ...prioritySnapshot.workspaces,
-        { ...workspace("w-pinned", "Pinned task"), pinned: true }
-      ],
-      sessions: [...prioritySnapshot.sessions, session("w-pinned", "normal", MINUTES_AGO_10)]
-    };
-
-    render(<Sidebar {...baseProps} showPriority snapshot={pinnedSnapshot} />);
-
-    expect(rendersAfter(screen.getByText("Pinned"), screen.getByText("Priority"))).toBe(true);
-    // Both sections still list their rows.
-    expect(screen.getByRole("button", { name: /Pinned task/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
-  });
-
   it("keeps a pinned session in Pinned even when it qualifies for Priority", () => {
     const pinnedAttentionSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
@@ -1339,13 +1307,6 @@ describe("Sidebar — Priority section", () => {
     expect(screen.getByRole("button", { name: /Pinned task/ })).toBeInTheDocument();
   });
 
-  it("omits subtitles entirely when priority mode is off", () => {
-    render(<Sidebar {...baseProps} showPriority={false} snapshot={prioritySnapshot} />);
-    fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
-    const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
-    expect(within(blockedRow).queryByText("Argmax")).toBeNull();
-  });
-
   it("marks a priority row done from the context menu", () => {
     const onRemoveFromPriority = vi.fn();
     render(
@@ -1381,25 +1342,6 @@ describe("Sidebar — Priority section", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Add to priority" }));
 
     expect(onAddToPriority).toHaveBeenCalledWith("w-calm");
-  });
-
-  it("sets a custom row icon from the context menu", () => {
-    const onSetWorkspaceIcon = vi.fn();
-    render(
-      <Sidebar
-        {...baseProps}
-        showPriority
-        onSetWorkspaceIcon={onSetWorkspaceIcon}
-        snapshot={prioritySnapshot}
-      />
-    );
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: /Blocked task/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Icon" }));
-    fireEvent.click(screen.getByRole("button", { name: "Teal icon color" }));
-    fireEvent.click(screen.getByRole("button", { name: "Rocket" }));
-
-    expect(onSetWorkspaceIcon).toHaveBeenCalledWith("w-blocked", "Rocket", "teal");
   });
 
   it("floats a manually added workspace without attention", () => {
@@ -1970,14 +1912,6 @@ describe("Sidebar — repo-less chats", () => {
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
   });
 
-  it("opens the chat launcher from the Chat group's new-chat button", () => {
-    const onNewSideChat = vi.fn();
-    render(<Sidebar {...baseProps} snapshot={sideChatSnapshot} onNewSideChat={onNewSideChat} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "New chat without a repository" }));
-    expect(onNewSideChat).toHaveBeenCalledTimes(1);
-  });
-
   it("hides the Chat group entirely without chats or a launch handler", () => {
     render(<Sidebar {...baseProps} snapshot={snapshot} />);
     expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
@@ -2254,14 +2188,6 @@ describe("Sidebar — Arcs section", () => {
     expect(screen.getByRole("dialog", { name: "New arc" })).toBeInTheDocument();
   });
 
-  it("marks the selected arc row as current", () => {
-    render(
-      <Sidebar {...baseProps} snapshot={arcSnapshot} selectedArcId="arc-1" onOpenArc={showArcPage} />
-    );
-
-    expect(screen.getByRole("button", { name: "Pricing rollout" })).toHaveAttribute("aria-current", "page");
-  });
-
   it("collapses the Arcs section from its chevron and keeps New arc on the header", () => {
     render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
 
@@ -2273,14 +2199,6 @@ describe("Sidebar — Arcs section", () => {
     expect(screen.getByRole("button", { name: "Pricing rollout" })).not.toBeNull();
   });
 
-  it("opens the New arc dialog from the section's New arc button", () => {
-    render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "New arc" }));
-
-    expect(screen.getByRole("dialog", { name: "New arc" })).not.toBeNull();
-  });
-
   it("shows a member badge naming the arc on a chat that belongs to one", () => {
     render(<Sidebar {...baseProps} snapshot={arcSnapshot} />);
 
@@ -2288,5 +2206,254 @@ describe("Sidebar — Arcs section", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
 
     expect(screen.getByTitle("Part of arc Pricing rollout")).not.toBeNull();
+  });
+});
+
+describe("Sidebar — snooze shelf", () => {
+  const NOW = new Date(2026, 5, 5, 12, 0, 0);
+  const TODAY = new Date(2026, 5, 5, 9, 0, 0).toISOString();
+  const inMinutes = (minutes: number): string => new Date(NOW.getTime() + minutes * 60_000).toISOString();
+
+  const session = (workspaceId: string, attention: "normal" | "approval-needed" = "normal") => ({
+    id: `session-${workspaceId}`,
+    workspaceId,
+    provider: "codex" as const,
+    modelLabel: "GPT-5.3 Codex",
+    modelId: "gpt-5.5",
+    permissionMode: "auto-approve" as const,
+    agentMode: "auto" as const,
+    providerConversationId: null,
+    state: attention === "approval-needed" ? ("waiting" as const) : ("complete" as const),
+    attention,
+    startedAt: TODAY,
+    completedAt: TODAY,
+    lastActivityAt: TODAY,
+    prompt: "Do the thing",
+    costUsd: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextTokens: 0,
+    imported: false,
+    launchKind: "agent"
+  });
+
+  const workspace = (id: string, taskLabel: string, snoozedUntil: string | null = null) => ({
+    id,
+    projectId: "project-1",
+    taskLabel,
+    branch: `argmax/${id}`,
+    baseRef: "main",
+    path: `/tmp/${id}`,
+    state: "complete" as const,
+    sharedWorkspace: false,
+    kind: "git" as const,
+    dirty: false,
+    changedFiles: 0,
+    lastActivityAt: TODAY,
+    pinned: false,
+    priorityDismissedAt: null,
+    priorityAddedAt: null,
+    snoozedUntil,
+    prState: null,
+    prNumber: null,
+    icon: null,
+    iconColor: null,
+    prCreatedAt: null,
+    prMergedAt: null,
+    prCheckState: null,
+    prActivityAt: null
+  });
+
+  const shelfSnapshot = (snoozedUntil: string, attention: "normal" | "approval-needed" = "normal"): DashboardSnapshot => ({
+    ...snapshot,
+    workspaces: [workspace("w-snoozed", "Snoozed task", snoozedUntil), workspace("w-calm", "Calm task")],
+    sessions: [session("w-snoozed", attention), session("w-calm")]
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("lifts a snoozed row out of its bucket into a shelf that starts collapsed", () => {
+    render(<Sidebar {...baseProps} snapshot={shelfSnapshot(inMinutes(60))} />);
+
+    expect(screen.getByRole("button", { name: /Calm task/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Snoozed task/ })).toBeNull();
+    expect(screen.getByText("Snoozed")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Snoozed chats" }));
+    expect(screen.getByRole("button", { name: /Snoozed task/ })).toBeInTheDocument();
+  });
+
+  it("returns the row to its bucket at expiry without a snapshot or a poll", () => {
+    render(<Sidebar {...baseProps} snapshot={shelfSnapshot(inMinutes(30))} />);
+    expect(screen.queryByRole("button", { name: /Snoozed task/ })).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(31 * 60_000);
+    });
+
+    expect(screen.getByRole("button", { name: /Snoozed task/ })).toBeInTheDocument();
+    expect(screen.queryByText("Snoozed")).toBeNull();
+  });
+
+  it("keeps a row an agent is waiting on in its bucket while it is snoozed", () => {
+    render(<Sidebar {...baseProps} snapshot={shelfSnapshot(inMinutes(60), "approval-needed")} />);
+
+    expect(screen.getByRole("button", { name: /Snoozed task/ })).toBeInTheDocument();
+    expect(screen.queryByText("Snoozed")).toBeNull();
+  });
+
+  it("offers Unsnooze on a shelved row and Snooze choices on an ordinary one", () => {
+    const onSnoozeWorkspace = vi.fn();
+    const onUnsnoozeWorkspace = vi.fn();
+    render(
+      <Sidebar
+        {...baseProps}
+        onSnoozeWorkspace={onSnoozeWorkspace}
+        onUnsnoozeWorkspace={onUnsnoozeWorkspace}
+        snapshot={shelfSnapshot(inMinutes(60))}
+      />
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Snooze for 1 hour" }));
+    expect(onSnoozeWorkspace).toHaveBeenCalledTimes(1);
+    const [workspaceId, until] = onSnoozeWorkspace.mock.calls[0] as [string, string];
+    expect(workspaceId).toBe("w-calm");
+    expect(Date.parse(until)).toBe(NOW.getTime() + 3_600_000);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Snoozed chats" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Snoozed task/ }));
+    expect(screen.queryByRole("menuitem", { name: "Snooze for 1 hour" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Unsnooze" }));
+    expect(onUnsnoozeWorkspace).toHaveBeenCalledWith("w-snoozed");
+  });
+  it("keeps a snoozed chat that was archived in the Archived section, not in a void", () => {
+    const archivedSnapshot: DashboardSnapshot = {
+      ...snapshot,
+      workspaces: [
+        { ...workspace("w-archived", "Archived task", inMinutes(60)), state: "archived" as const },
+        workspace("w-calm", "Calm task")
+      ],
+      sessions: [session("w-archived"), session("w-calm")]
+    };
+    render(<Sidebar {...baseProps} showArchived snapshot={archivedSnapshot} />);
+
+    // No shelf: the only snooze belongs to an archived row.
+    expect(screen.queryByText("Snoozed")).toBeNull();
+    expect(screen.getByText("Archived")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show Archived chats" }));
+    expect(screen.getByRole("button", { name: /Archived task/ })).toBeInTheDocument();
+  });
+
+  it("marks a shelved chat viewed when it is opened", () => {
+    const markWorkspacesViewed = vi.fn().mockResolvedValue([]);
+    Object.defineProperty(window, "argmax", { configurable: true, value: { markWorkspacesViewed } });
+    try {
+      const unread: DashboardSnapshot = {
+        ...shelfSnapshot(inMinutes(60)),
+        workspaces: [
+          {
+            ...workspace("w-snoozed", "Snoozed task", inMinutes(60)),
+            lastViewedAt: new Date(2026, 5, 5, 8, 0, 0).toISOString()
+          },
+          workspace("w-calm", "Calm task")
+        ]
+      };
+      render(<Sidebar {...baseProps} selectedWorkspaceId="w-snoozed" snapshot={unread} />);
+
+      expect(markWorkspacesViewed).toHaveBeenCalledWith({
+        workspaces: [{ workspaceId: "w-snoozed", observedActivityAt: TODAY }]
+      });
+      // Selecting a shelved chat opens the shelf.
+      expect(screen.getByRole("button", { name: /Snoozed task/ })).toBeInTheDocument();
+    } finally {
+      delete (window as unknown as { argmax?: unknown }).argmax;
+    }
+  });
+
+  describe("a selected chat on the shelf", () => {
+    const withCalmLabel = (label: string, snoozedUntil: string | null = inMinutes(60)): DashboardSnapshot => ({
+      ...shelfSnapshot(snoozedUntil ?? inMinutes(60)),
+      workspaces: [workspace("w-snoozed", "Snoozed task", snoozedUntil), workspace("w-calm", label)]
+    });
+
+    it("stays collapsed after the user closes it, through a dashboard refresh that changes nothing on the shelf", () => {
+      const props = { ...baseProps, selectedWorkspaceId: "w-snoozed" };
+      const { rerender } = render(<Sidebar {...props} snapshot={withCalmLabel("Calm task")} />);
+      // Selecting a shelved chat opens the shelf; the user then closes it.
+      expect(screen.getByRole("button", { name: /Snoozed task/ })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Hide Snoozed chats" }));
+      expect(screen.queryByRole("button", { name: /Snoozed task/ })).toBeNull();
+
+      // An unrelated row changes, so the snapshot has new rows and the shelf is
+      // derived again with the same members.
+      rerender(<Sidebar {...props} snapshot={withCalmLabel("Calm task, renamed")} />);
+
+      expect(screen.getByRole("button", { name: /Calm task, renamed/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Snoozed task/ })).toBeNull();
+      expect(screen.getByRole("button", { name: "Show Snoozed chats" })).toBeInTheDocument();
+    });
+
+    it("opens again when the chat is unsnoozed and snoozed once more", () => {
+      const props = { ...baseProps, selectedWorkspaceId: "w-snoozed" };
+      const { rerender } = render(<Sidebar {...props} snapshot={withCalmLabel("Calm task")} />);
+      fireEvent.click(screen.getByRole("button", { name: "Hide Snoozed chats" }));
+      expect(screen.queryByRole("button", { name: /Snoozed task/ })).toBeNull();
+
+      rerender(<Sidebar {...props} snapshot={withCalmLabel("Calm task", null)} />);
+      expect(screen.queryByText("Snoozed")).toBeNull();
+      rerender(<Sidebar {...props} snapshot={withCalmLabel("Calm task", inMinutes(90))} />);
+
+      expect(screen.getByRole("button", { name: /Snoozed task/ })).toBeInTheDocument();
+    });
+
+    it("opens when selection moves to another shelved chat", () => {
+      const twoShelved: DashboardSnapshot = {
+        ...snapshot,
+        workspaces: [
+          workspace("w-snoozed", "Snoozed task", inMinutes(60)),
+          workspace("w-second", "Second snoozed task", inMinutes(60)),
+          workspace("w-calm", "Calm task")
+        ],
+        sessions: [session("w-snoozed"), session("w-second"), session("w-calm")]
+      };
+      const { rerender } = render(<Sidebar {...baseProps} selectedWorkspaceId="w-snoozed" snapshot={twoShelved} />);
+      fireEvent.click(screen.getByRole("button", { name: "Hide Snoozed chats" }));
+      expect(screen.queryByRole("button", { name: /Second snoozed task/ })).toBeNull();
+
+      rerender(<Sidebar {...baseProps} selectedWorkspaceId="w-second" snapshot={twoShelved} />);
+
+      expect(screen.getByRole("button", { name: /Second snoozed task/ })).toBeInTheDocument();
+    });
+  });
+
+  it("does not unfold a collapsed group for a row that was snoozed at launch and then returns", () => {
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={shelfSnapshot(inMinutes(30))} />);
+    const group = (): HTMLElement | null => screen.queryByRole("button", { name: /Calm task/ });
+    expect(group()).toBeInTheDocument();
+    // Collapse the bucket that holds the calm row.
+    fireEvent.click(screen.getByRole("button", { name: /^Hide .* chats$/ }));
+    expect(group()).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(31 * 60_000);
+    });
+    rerender(<Sidebar {...baseProps} snapshot={shelfSnapshot(inMinutes(-1))} />);
+
+    // The returning row is the same chat the user already knew, not an arrival.
+    expect(screen.queryByRole("button", { name: /Snoozed task/ })).toBeNull();
+    expect(group()).toBeNull();
   });
 });

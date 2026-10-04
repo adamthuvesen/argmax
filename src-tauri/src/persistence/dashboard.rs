@@ -497,7 +497,8 @@ mod tests {
         let snapshot = list_dashboard(&connection).unwrap();
         assert_eq!(snapshot.workspaces[0].pr_number, None);
         assert_eq!(snapshot.workspaces[0].pr_summary_state, None);
-        assert_eq!(snapshot.workspaces[0].prs.len(), 1);
+        // A discovered URL is not the chat's PR, so the card does not list it.
+        assert!(snapshot.workspaces[0].prs.is_empty());
         super::super::gh::dismiss_session_pr(&connection, "s1", 5).unwrap();
         super::super::gh::record_session_pr_evidence(
             &connection,
@@ -511,6 +512,56 @@ mod tests {
         let snapshot = list_dashboard(&connection).unwrap();
         assert_eq!(snapshot.workspaces[0].pr_number, None);
         assert!(snapshot.workspaces[0].prs.is_empty());
+    }
+
+    #[test]
+    fn only_prs_the_chat_worked_on_or_pinned_reach_its_card_and_marker() {
+        let database = Database::open_in_memory().unwrap();
+        let connection = database.connection();
+        seed_dashboard(&connection);
+        // An older chat in the workspace created #7; s1, the chat the
+        // workspace shows, created #8 and then only viewed #7.
+        seed_session(&connection, "s0", "w1", "2026-05-23T10:00:00.000Z");
+        seed_gh_pr(&connection, "s0", 7, "OPEN", "2026-05-24T10:00:00.000Z");
+        seed_gh_pr(&connection, "s1", 8, "MERGED", "2026-05-24T10:00:00.000Z");
+        super::super::gh::record_session_pr_evidence(
+            &connection,
+            "s1",
+            8,
+            "worked",
+            "create-8",
+            "2026-05-24T10:01:00.000Z",
+        )
+        .unwrap();
+        super::super::gh::record_session_pr_evidence(
+            &connection,
+            "s1",
+            7,
+            "referenced",
+            "view-7",
+            "2026-05-24T10:02:00.000Z",
+        )
+        .unwrap();
+        let snapshot = list_dashboard(&connection).unwrap();
+        let workspace = &snapshot.workspaces[0];
+        let shown: Vec<i64> = workspace.prs.iter().map(|pr| pr.pr_number).collect();
+        assert_eq!(shown, vec![8]);
+        assert_eq!(workspace.pr_number, Some(8));
+        assert_eq!(workspace.pr_state.as_deref(), Some("MERGED"));
+        // An open PR the chat only viewed must not keep the row in "open work".
+        assert_eq!(workspace.pr_summary_state.as_deref(), Some("MERGED"));
+
+        // Pinning is an explicit choice, so a pinned reference shows and leads.
+        super::super::gh::set_session_pr_selection(&connection, "s1", Some(7)).unwrap();
+        let snapshot = list_dashboard(&connection).unwrap();
+        let workspace = &snapshot.workspaces[0];
+        let shown: Vec<(i64, bool)> = workspace
+            .prs
+            .iter()
+            .map(|pr| (pr.pr_number, pr.is_primary))
+            .collect();
+        assert_eq!(shown, vec![(7, true), (8, false)]);
+        assert_eq!(workspace.pr_number, Some(7));
     }
 
     fn seed_gh_pr(

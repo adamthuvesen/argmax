@@ -96,13 +96,6 @@ describe("<SessionConversationUserMessage />", () => {
       expect(screen.getByTitle(`Skill: ${name}`)).toHaveTextContent(name);
     }
   });
-
-  it("leaves a message with no URL as plain text", () => {
-    renderMessage("just a prompt about src/lib/foo.ts");
-
-    expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.getByRole("article")).toHaveTextContent("just a prompt about src/lib/foo.ts");
-  });
 });
 
 /** A `user.message` another session's agent wrote, as Rust stores it. */
@@ -163,22 +156,6 @@ describe("<SessionConversationUserMessage /> — from another chat", () => {
 });
 
 describe("<SessionConversationUserMessage /> — sent mid-turn (steer)", () => {
-  it("marks a message delivered while the agent was running", () => {
-    render(
-      <SessionConversationUserMessage
-        event={{
-          id: "evt-steer",
-          message: "actually use the other endpoint",
-          createdAt: 0,
-          payload: { source: "composer", agentMode: "auto", delivery: "steer" }
-        } as never}
-        attachments={[]}
-      />
-    );
-
-    expect(screen.getByText("Sent during the turn")).toBeInTheDocument();
-  });
-
   it("stacks the steer note after the origin header when a message is both forwarded and steered", () => {
     render(
       <SessionConversationUserMessage

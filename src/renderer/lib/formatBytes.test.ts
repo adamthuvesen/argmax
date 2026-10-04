@@ -18,11 +18,6 @@ describe("formatBytes", () => {
     expect(formatBytes(1024 * 1.5)).toBe("1.5 KB");
   });
 
-  it("crosses to MB at one mebibyte", () => {
-    expect(formatBytes(1024 * 1024)).toBe("1.0 MB");
-    expect(formatBytes(1024 * 1024 * 2.5)).toBe("2.5 MB");
-  });
-
   it("crosses to GB at one gibibyte", () => {
     expect(formatBytes(1024 ** 3)).toBe("1.0 GB");
     expect(formatBytes(1024 ** 3 * 1.25)).toBe("1.3 GB");

@@ -162,6 +162,99 @@ pub fn prepend_routing_instruction(prompt: &str) -> String {
     }
 }
 
+/// Opens and closes the block that lists a project's linked repositories at
+/// the head of a provider-facing prompt. Like the routing instruction it is
+/// never persisted with the user's prompt, and [`strip_instruction`] removes it
+/// from imported transcripts.
+const LINKED_REPOSITORIES_OPEN: &str = "<argmax-linked-repositories>";
+const LINKED_REPOSITORIES_CLOSE: &str = "</argmax-linked-repositories>";
+
+/// The environment variable that makes Claude Code load `CLAUDE.md` from the
+/// directories passed with `--add-dir`. Per Claude Code's memory docs it is
+/// off by default, so without it `--add-dir` grants file access only. This is
+/// the one mechanism that brings a linked repository's instructions in: Argmax
+/// never reads those files into the prompt itself, so they cannot load twice.
+pub const CLAUDE_ADDITIONAL_DIRECTORIES_CLAUDE_MD_ENV: &str =
+    "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD";
+
+/// `--add-dir <root>` once per enabled linked repository. Claude only: the
+/// flag grants the directory to the session, and it grants edit access along
+/// with read access. Built for every Claude launch
+/// shape (fresh, resumed, control channel) through `claude_common_args`.
+pub fn claude_linked_root_args(config: Option<&SessionLaunchProcessConfig>) -> Vec<String> {
+    config
+        .into_iter()
+        .flat_map(|config| config.linked_roots())
+        .flat_map(|root| {
+            [
+                "--add-dir".to_string(),
+                root.path.to_string_lossy().into_owned(),
+            ]
+        })
+        .collect()
+}
+
+/// The provider environment a Claude launch needs for its linked roots.
+/// Empty when there are none, so a project with no linked repositories keeps
+/// Claude's default of not loading extra `CLAUDE.md` files.
+pub fn claude_linked_root_env(
+    config: Option<&SessionLaunchProcessConfig>,
+) -> Vec<(String, String)> {
+    match config {
+        Some(config) if !config.linked_roots().is_empty() => {
+            vec![(
+                CLAUDE_ADDITIONAL_DIRECTORIES_CLAUDE_MD_ENV.to_string(),
+                "1".to_string(),
+            )]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Puts the linked-repository listing ahead of the user's prompt. Every
+/// provider gets the names and roots; they read them with `sources_list` and
+/// `sources_read`. Claude is also given the directories themselves
+/// ([`claude_linked_root_args`]), the other providers are not, and the text
+/// says which applies. Slash commands stay at byte zero, as for the routing
+/// instruction.
+pub fn prepend_linked_repositories(
+    provider: ProviderId,
+    prompt: &str,
+    config: Option<&SessionLaunchProcessConfig>,
+) -> String {
+    let Some(config) = config.filter(|config| !config.linked_roots().is_empty()) else {
+        return prompt.to_string();
+    };
+    if prompt.starts_with('/') || prompt.starts_with(LINKED_REPOSITORIES_OPEN) {
+        return prompt.to_string();
+    }
+    let roots = config
+        .linked_roots()
+        .iter()
+        .map(|root| format!("- {}: {}", root.name, root.path.display()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let access = if provider == ProviderId::Claude {
+        "Claude Code has these directories added, so you can read and edit them directly, and their CLAUDE.md files are loaded as context."
+    } else {
+        "These paths are not added as native workspace roots. Use your normal file or shell tools to edit them, subject to your session permissions. Read them with `sources_read` using `linked_repo` and `path`, and list a directory with `sources_list` using `linked_repo`."
+    };
+    format!(
+        "{LINKED_REPOSITORIES_OPEN}\nThis project links other repositories you can read and edit as needed for the task. Follow each repository's instructions.\n{roots}\n{access}\n{LINKED_REPOSITORIES_CLOSE}\n\n{prompt}"
+    )
+}
+
+/// Removes a leading linked-repositories block, and the blank line after it.
+fn strip_linked_repositories(prompt: &str) -> &str {
+    let Some(rest) = prompt.strip_prefix(LINKED_REPOSITORIES_OPEN) else {
+        return prompt;
+    };
+    match rest.split_once(LINKED_REPOSITORIES_CLOSE) {
+        Some((_, after)) => after.strip_prefix("\n\n").unwrap_or(after),
+        None => prompt,
+    }
+}
+
 /// What a launch used to glue in front of the user's prompt. No launch
 /// prepends this any more. It survives only so [`strip_instruction`] still
 /// recognises it at the head of a prompt recorded or imported before the
@@ -182,7 +275,7 @@ pub const LEGACY_SHELL_COMMAND_INSTRUCTION: &str = r#"Argmax session controls ar
 /// these any more (same pattern as [`LEGACY_SHELL_COMMAND_INSTRUCTION`]).
 pub fn strip_instruction(prompt: &str) -> &str {
     if let Some(rest) = prompt.strip_prefix(ARGMAX_ROUTING_INSTRUCTION) {
-        return rest.strip_prefix("\n\n").unwrap_or(rest);
+        return strip_linked_repositories(rest.strip_prefix("\n\n").unwrap_or(rest));
     }
 
     if let Some(rest) = prompt.strip_prefix(&historical_prompt_instruction()) {
@@ -1110,40 +1203,6 @@ mod tests {
     }
 
     #[test]
-    fn routing_instruction_precedes_generic_automation_and_stays_general() {
-        let instruction = ARGMAX_ROUTING_INSTRUCTION;
-        let argmax = instruction.find("Argmax MCP tools").expect("Argmax route");
-        let generic = instruction
-            .find("generic UI automation")
-            .expect("generic automation fallback");
-
-        assert!(instruction.contains("running inside Argmax"));
-        assert!(instruction.contains("session, task, and workspace management"));
-        assert!(argmax < generic);
-        assert!(instruction.contains("discover and use"));
-        assert!(instruction.contains("Do not control Argmax itself through Computer Use"));
-        assert!(!instruction.contains("session_launch"));
-    }
-
-    #[test]
-    fn agent_tool_instruction_prefers_in_chat_delegation() {
-        let instruction = agent_tools_instruction(true);
-
-        assert!(instruction.contains(AGENT_TOOLS_INSTRUCTION));
-        assert!(instruction.contains(CHECKOUT_MOVE_INSTRUCTION));
-        assert!(instruction.contains(PROJECT_SOURCES_INSTRUCTION));
-        assert!(instruction.contains(OWN_SHELL_INSTRUCTION));
-        assert!(instruction.contains(DIAGRAM_INSTRUCTION));
-        assert!(instruction.contains("mermaid"));
-        assert!(instruction.contains("classDef"));
-        assert!(instruction.contains("Markdown image"));
-        // The shell-command era's wording must not come back with it.
-        assert!(!instruction
-            .to_ascii_lowercase()
-            .contains("on your own initiative"));
-    }
-
-    #[test]
     fn agent_tool_instruction_without_browser_still_teaches_mermaid() {
         let instruction = agent_tools_instruction(false);
         assert!(instruction.contains(DIAGRAM_INSTRUCTION));
@@ -1545,5 +1604,80 @@ mod tests {
             files.restore();
         }
         assert_eq!(acp_mcp_servers(None), json!([]));
+    }
+
+    fn config_with_roots() -> SessionLaunchProcessConfig {
+        config().with_linked_roots(vec![crate::session_control::LinkedRoot {
+            name: "docs".to_string(),
+            path: std::path::PathBuf::from("/work/docs"),
+        }])
+    }
+
+    #[test]
+    fn linked_roots_set_the_claude_md_variable_exactly_when_there_are_roots() {
+        assert_eq!(
+            claude_linked_root_env(Some(&config_with_roots())),
+            vec![(
+                "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD".to_string(),
+                "1".to_string()
+            )]
+        );
+        assert!(claude_linked_root_env(Some(&config())).is_empty());
+        assert!(claude_linked_root_env(None).is_empty());
+    }
+
+    #[test]
+    fn linked_listing_is_added_for_every_provider_and_says_what_each_can_do() {
+        let config = config_with_roots();
+        let claude = prepend_linked_repositories(ProviderId::Claude, "Do the thing", Some(&config));
+        assert!(claude.contains("- docs: /work/docs"), "{claude}");
+        assert!(claude.contains("CLAUDE.md files are loaded"), "{claude}");
+        assert!(claude.ends_with("\n\nDo the thing"));
+        let codex = prepend_linked_repositories(ProviderId::Codex, "Do the thing", Some(&config));
+        assert!(codex.contains("- docs: /work/docs"), "{codex}");
+        assert!(codex.contains("sources_read"), "{codex}");
+        for prompt in [&claude, &codex] {
+            assert!(prompt.contains("read and edit as needed for the task"));
+            assert!(!prompt.contains("read-only"));
+            assert!(!prompt.contains("do not edit"));
+        }
+        assert!(!codex.contains("CLAUDE.md"), "{codex}");
+    }
+
+    #[test]
+    fn linked_listing_leaves_slash_commands_and_unlinked_projects_alone() {
+        let unlinked = config();
+        let config = config_with_roots();
+        assert_eq!(
+            prepend_linked_repositories(ProviderId::Claude, "/review the branch", Some(&config)),
+            "/review the branch"
+        );
+        assert_eq!(
+            prepend_linked_repositories(ProviderId::Claude, "plain", Some(&unlinked)),
+            "plain"
+        );
+        assert_eq!(
+            prepend_linked_repositories(ProviderId::Claude, "plain", None),
+            "plain"
+        );
+        // Applying it twice never stacks a second block.
+        let once = prepend_linked_repositories(ProviderId::Claude, "Do it", Some(&config));
+        assert_eq!(
+            prepend_linked_repositories(ProviderId::Claude, &once, Some(&config)),
+            once
+        );
+    }
+
+    #[test]
+    fn imported_transcripts_lose_the_routing_instruction_and_the_linked_listing() {
+        let config = config_with_roots();
+        let listed = prepend_linked_repositories(ProviderId::Claude, "Fix the bug", Some(&config));
+        let routed = prepend_routing_instruction(&listed);
+        assert_eq!(strip_instruction(&routed), "Fix the bug");
+        // A prompt that only ever had the routing instruction still strips.
+        assert_eq!(
+            strip_instruction(&prepend_routing_instruction("Fix the bug")),
+            "Fix the bug"
+        );
     }
 }

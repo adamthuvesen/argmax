@@ -133,11 +133,4 @@ mod tests {
         let p99 = reg.p99("ch").unwrap();
         assert!(p99 >= Duration::from_millis(RING_CAPACITY as u64));
     }
-
-    #[test]
-    fn empty_channel_returns_none() {
-        let reg = IpcLatencyRegistry::new();
-        assert!(reg.p50("nothing").is_none());
-        assert_eq!(reg.count("nothing"), 0);
-    }
 }

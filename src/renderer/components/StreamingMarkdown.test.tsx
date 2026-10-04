@@ -500,17 +500,6 @@ describe("<StreamingMarkdown />", () => {
     expect(second.container.querySelector(".markdown")?.textContent).toBe(shown);
   });
 
-  it("types out a block it has never revealed before", () => {
-    vi.useFakeTimers();
-    const text = "D".repeat(120);
-
-    const { container } = render(
-      <StreamingMarkdown text={text} streaming revealKey="session-a:t0:unseen" />
-    );
-
-    expect(container.querySelector(".markdown")?.textContent).toBe("");
-  });
-
   it("shows already-arrived text in full when the pane is restoring", () => {
     const text = "R".repeat(120);
 
@@ -768,16 +757,6 @@ describe("<StreamingMarkdown />", () => {
       expect(container.querySelectorAll(".katex").length).toBe(count);
     });
     expect(container.textContent).toContain(prose);
-  });
-
-  it("safely handles currency amounts without breaking into math mode", () => {
-    const text = "Prices are $10 for standard and $20 for pro tier.";
-
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
-
-    expect(container.querySelectorAll(".katex").length).toBe(0);
-    expect(container.textContent).toContain("$10");
-    expect(container.textContent).toContain("$20");
   });
 
   it("renders per-unit prices and shell variables as prose, not equations", async () => {

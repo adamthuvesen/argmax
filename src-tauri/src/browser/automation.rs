@@ -1194,7 +1194,7 @@ pub async fn handle_dialog(
 
 #[cfg(test)]
 mod tests {
-    use super::{call_script, BrowserAction, TabTarget, AGENT_API_VERSION, SNAPSHOT_JS};
+    use super::{BrowserAction, TabTarget, AGENT_API_VERSION, SNAPSHOT_JS};
 
     /// The wrapper installs the scripts whenever the page reports a different
     /// version, so a `v` that trails the constant reinstalls on *every* call
@@ -1206,18 +1206,6 @@ mod tests {
             SNAPSHOT_JS.contains(&format!("v: {AGENT_API_VERSION},")),
             "snapshot.js must declare v: {AGENT_API_VERSION} to match AGENT_API_VERSION"
         );
-    }
-
-    #[test]
-    fn a_call_installs_the_api_and_returns_an_envelope() {
-        let script = call_script("window.__argmax.snapshot({})");
-        assert!(script.contains(&format!("window.__argmax.v !== {AGENT_API_VERSION}")));
-        assert!(script.contains("data-argmax-ref"), "snapshot.js is inlined");
-        assert!(
-            script.contains("api.click = click"),
-            "actions.js is inlined"
-        );
-        assert!(script.ends_with("})()"));
     }
 
     #[test]

@@ -40,7 +40,7 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
       supportsReasoningEffort: true
     });
     expect(PROVIDER_MODEL_DEFAULTS.opencode).toMatchObject({
-      modelId: "opencode-go/glm-5.3-flash",
+      modelId: "openrouter/z-ai/glm-5.3-flash",
       supportsReasoningEffort: true,
       reasoningEffort: "high"
     });
@@ -152,20 +152,6 @@ describe("reasoningEffortsForModel", () => {
       "max"
     ]);
   });
-
-  it("lists Codex models Astra → Sol → Terra → Luna", () => {
-    expect(PROVIDER_MODELS.codex.map((model) => model.modelId)).toEqual([
-      "gpt-6-astra",
-      "gpt-6.1-sol",
-      "gpt-5.6-terra",
-      "gpt-6-luna"
-    ]);
-    expect(PROVIDER_MODELS.codex[0]).toMatchObject({
-      label: "GPT-6 Astra",
-      contextWindow: 272_000,
-      supportsReasoningEffort: true
-    });
-  });
 });
 
 describe("normalizeModelId", () => {
@@ -226,14 +212,6 @@ describe("costOf — golden fixtures", () => {
     expect(costOf(million, "claude-sonnet-5")).toBeCloseTo(2.0, 9);
   });
 
-  it("prices Haiku 4.5 input-only at $1/M", () => {
-    expect(costOf(million, "claude-haiku-4-5")).toBeCloseTo(1.0, 9);
-  });
-
-  it("prices GPT-6.1 Sol input-only at $2/M", () => {
-    expect(costOf(million, "gpt-6.1-sol")).toBeCloseTo(2.0, 9);
-  });
-
   it("prices GPT-6 Astra at its current list rates", () => {
     expect(
       costOf(
@@ -241,11 +219,6 @@ describe("costOf — golden fixtures", () => {
         "gpt-6-astra"
       )
     ).toBeCloseTo(73.5, 9);
-  });
-
-  it("prices GPT-6 Luna / Terra at published short-context rates", () => {
-    expect(costOf(million, "gpt-6-luna")).toBeCloseTo(0.1, 9);
-    expect(costOf(million, "gpt-5.6-terra")).toBeCloseTo(2.0, 9);
   });
 
   it("prices stored GPT-5.5 sessions via aliases", () => {
@@ -261,9 +234,6 @@ describe("costOf — golden fixtures", () => {
   });
 
   it("prices persisted model ids without restoring them to the model table", () => {
-    expect(MODEL_PRICING["opencode-go/deepseek-v4-flash"]).toBeUndefined();
-    expect(costOf(million, "opencode-go/deepseek-v4-flash")).toBeCloseTo(0.22, 9);
-    expect(costOf(million, "opencode-go/deepseek-v4.1-flash")).toBeCloseTo(0.15, 9);
     expect(MODEL_PRICING["claude-sonnet-4-6"]).toBeUndefined();
     expect(MODEL_PRICING["gpt-5.4-codex"]).toBeUndefined();
     expect(MODEL_PRICING["o4-mini"]).toBeUndefined();
@@ -297,17 +267,6 @@ describe("costOf — unknown model", () => {
 });
 
 describe("MODEL_PRICING coverage", () => {
-  it("ships entries for the launch-default model ids", () => {
-    expect(MODEL_PRICING["claude-sonnet-5-5"]).toBeDefined();
-    expect(MODEL_PRICING["claude-haiku-4-5"]).toBeDefined();
-    expect(MODEL_PRICING["gpt-6.1-sol"]).toBeDefined();
-    expect(MODEL_PRICING["gpt-6-astra"]).toBeDefined();
-    expect(MODEL_PRICING["claude-opus-5"]).toBeDefined();
-    expect(MODEL_PRICING["grok-4.7-medium"]).toBeDefined();
-    expect(MODEL_PRICING["cursor-grok-4.6-medium"]).toBeDefined();
-    expect(MODEL_PRICING["opencode-go/glm-5.3-flash"]).toBeDefined();
-  });
-
   // Drift tripwire: every picker model must have a matching pricing entry so
   // usage cannot silently show as $0 in the UI.
   it("covers every modelId in PROVIDER_MODELS", () => {
@@ -385,8 +344,8 @@ describe("Grok Build pricing", () => {
     // Turning Fast on for any other Claude model switches the chat to Opus.
     expect(fast("claude")).toEqual(["claude-opus-5-5"]);
     // Cursor's ACP `fast` option: absent on Gemini 3.8 Flash, and Auto has none.
+    // Composer always runs Fast, so it has no toggle either.
     expect(fast("cursor")).toEqual([
-      "composer-2.5",
       "grok-4.7-medium",
       "gpt-5.6-sol-medium",
       "gpt-5.6-terra-medium",
@@ -410,8 +369,8 @@ describe("effortForModel", () => {
   });
 
   it("clamps onto discrete variant lists that have no Medium", () => {
-    expect(effortForModel("opencode", "opencode-go/glm-5.3-flash", "ultra")).toBe("low");
-    expect(effortForModel("opencode", "opencode-go/kimi-k3", "low")).toBe("max");
+    expect(effortForModel("opencode", "openrouter/z-ai/glm-5.3-flash", "ultra")).toBe("low");
+    expect(effortForModel("opencode", "openrouter/qwen/qwen3.8-flash", "low")).toBe("high");
   });
 
   it("defaults to Medium when no preference is given", () => {

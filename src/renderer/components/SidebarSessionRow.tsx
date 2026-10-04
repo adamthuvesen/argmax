@@ -13,6 +13,8 @@ import {
   MessageCircle,
   Palette,
   Pencil,
+  AlarmClock,
+  AlarmClockOff,
   Pin,
   PinOff,
   RefreshCw,
@@ -42,6 +44,7 @@ import {
   workspacePrimaryPrState
 } from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
+import { snoozeChoices } from "../lib/snooze.js";
 import { stableHash32 } from "../lib/stableHash.js";
 import {
   beginWorkspacePointerDrag,
@@ -117,6 +120,10 @@ type SidebarSessionRowProps = {
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Non-priority rows — right-click "Add to priority" floats the row manually. */
   onAddToPriority?: (workspaceId: string) => void;
+  /** Right-click "Snooze …" — moves the row to the snooze shelf until `until`. */
+  onSnooze?: (workspaceId: string, until: string) => void;
+  /** Right-click "Unsnooze" on a shelved row — returns it to its section now. */
+  onUnsnooze?: (workspaceId: string) => void;
   /** Right-click "Edit Icon" — both values null clears the custom glyph. */
   onSetIcon?: (workspaceId: string, icon: string | null, iconColor: string | null) => void;
   /** Right-click "Copy ids" puts this block on the clipboard: the session,
@@ -255,6 +262,8 @@ function SidebarSessionRowInner({
   hasUnreadResponse,
   onRemoveFromPriority,
   onAddToPriority,
+  onSnooze,
+  onUnsnooze,
   onSetIcon,
   onSyncNow,
   copyableIds
@@ -787,6 +796,42 @@ function SidebarSessionRowInner({
                   </button>
                 </li>
               ) : null}
+              {onUnsnooze ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onUnsnooze(workspace.id);
+                    }}
+                  >
+                    <AlarmClockOff size={13} aria-hidden="true" />
+                    Unsnooze
+                  </button>
+                </li>
+              ) : null}
+              {onSnooze
+                ? snoozeChoices(new Date()).map((choice) => (
+                    <li role="none" key={choice.key}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          closeContextMenu();
+                          onSnooze(workspace.id, choice.until);
+                        }}
+                      >
+                        <AlarmClock size={13} aria-hidden="true" />
+                        {choice.label}
+                      </button>
+                    </li>
+                  ))
+                : null}
             </ul>,
             document.body
           )
@@ -840,6 +885,8 @@ export function sidebarSessionRowEqual(
   if (prev.hasUnreadResponse !== next.hasUnreadResponse) return false;
   if (prev.onRemoveFromPriority !== next.onRemoveFromPriority) return false;
   if (prev.onAddToPriority !== next.onAddToPriority) return false;
+  if (prev.onSnooze !== next.onSnooze) return false;
+  if (prev.onUnsnooze !== next.onUnsnooze) return false;
   if (prev.onSetIcon !== next.onSetIcon) return false;
   if (prev.onSyncNow !== next.onSyncNow) return false;
   if (prev.copyableIds !== next.copyableIds) return false;
@@ -856,6 +903,7 @@ export function sidebarSessionRowEqual(
     pw.path !== nw.path ||
     pw.lastActivityAt !== nw.lastActivityAt ||
     pw.pinned !== nw.pinned ||
+    pw.snoozedUntil !== nw.snoozedUntil ||
     pw.prState !== nw.prState ||
     pw.prNumber !== nw.prNumber ||
     !sidebarPrsEqual(verifiedWorkspacePrs(pw), verifiedWorkspacePrs(nw)) ||

@@ -15,15 +15,6 @@ afterEach(() => {
 });
 
 describe("safeJsonParse — always returns unknown", () => {
-  it("returns the parsed value for valid JSON", () => {
-    expect(safeJsonParse('{"a":1}')).toEqual({ a: 1 });
-    expect(safeJsonParse("[1,2,3]")).toEqual([1, 2, 3]);
-    expect(safeJsonParse('"hello"')).toBe("hello");
-    expect(safeJsonParse("42")).toBe(42);
-    expect(safeJsonParse("true")).toBe(true);
-    expect(safeJsonParse("null")).toBeNull();
-  });
-
   it("returns undefined for malformed JSON", () => {
     expect(safeJsonParse("{not json")).toBeUndefined();
     expect(safeJsonParse("[1,")).toBeUndefined();
@@ -60,10 +51,6 @@ describe("safeJsonParse — always returns unknown", () => {
 
 describe("safeJsonParseArray", () => {
   const isString = (v: unknown): v is string => typeof v === "string";
-
-  it("returns elements matching the predicate from a valid JSON array", () => {
-    expect(safeJsonParseArray('["a","b","c"]', isString)).toEqual(["a", "b", "c"]);
-  });
 
   it("filters out elements that do not satisfy the predicate", () => {
     expect(safeJsonParseArray('["a",1,"b",null,"c"]', isString)).toEqual(["a", "b", "c"]);

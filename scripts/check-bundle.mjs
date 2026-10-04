@@ -26,9 +26,23 @@ const DIST = join(ROOT, "dist/renderer");
 // and translucency styles joined the first-paint stylesheet. Measured
 // 2026-09-28 at 1.79 MiB. Mobile is tighter: it ships over the tailnet to a
 // phone, not off local disk.
+// Mobile is 1.62 after chat file chips learned anchored paths with spaces,
+// long extensions, and an existence check (+1.2 KB). Measured 2026-10-03 at
+// 1,689,334 bytes; the 1.61 budget had 76 bytes left.
+// Desktop is 1.83 after the composers' chat references, background send, usage
+// chip and window-capture receiver (+14.2 KB eager: 1,891,115 to 1,905,285
+// bytes, lane B alone on b0a921ce). With the runtime, workspace and capture
+// lanes integrated the desktop entry measures 1,911,148 bytes (2026-10-04),
+// over 1.82 MiB (1,908,408) and 7.7 KB under 1.83 MiB (1,918,894). The prompt
+// editor itself, CodeMirror and its commands, is hundreds of kilobytes of
+// script and stays out of the eager graph: ComposerEditor.tsx loads it as its
+// own chunk and shows a textarea until then.
+// Desktop is 1.84 after new chats learned to start in an existing worktree
+// (1,918,933 bytes, 39 over 1.83 MiB) and OpenCode's catalog moved to
+// `openrouter/<vendor>/<model>` ids (+148 bytes, 1,919,081, 2026-10-04).
 const ENTRIES = [
-  { html: "index.html", label: "desktop", budgetBytes: 1.81 * 1024 * 1024 },
-  { html: "mobile.html", label: "mobile", budgetBytes: 1.61 * 1024 * 1024 }
+  { html: "index.html", label: "desktop", budgetBytes: 1.84 * 1024 * 1024 },
+  { html: "mobile.html", label: "mobile", budgetBytes: 1.62 * 1024 * 1024 }
 ];
 
 function fail(message) {

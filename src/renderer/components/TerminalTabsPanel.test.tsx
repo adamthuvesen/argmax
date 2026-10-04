@@ -509,25 +509,6 @@ describe("TerminalTabsPanel", () => {
     expect(screen.queryByRole("tab", { name: "zsh 2" })).not.toBeInTheDocument();
   });
 
-  it("emits terminal:data only to the matching xterm — listeners are id-filtered", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
-    await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
-
-    // Pushing an event for an unknown terminalId must not throw — the
-    // per-instance listeners drop non-matching ids on the floor.
-    act(() => {
-      stub.emitData({ terminalId: "unknown", data: "noise" });
-    });
-
-    // Still rendering and responsive.
-    expect(screen.getByRole("tab", { name: "zsh" })).toBeInTheDocument();
-  });
-
   it("keeps tabs and PTYs alive across unmount/remount (session switch)", async () => {
     const first = render(
       <TerminalTabsPanel

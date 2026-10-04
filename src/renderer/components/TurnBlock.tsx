@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Copy, GitFork, X } from "lucide-react";
+import { Check, ChevronRight, Copy, GitBranch, GitFork, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -79,6 +79,7 @@ export function TurnBlock({
   brief,
   changes,
   onFork,
+  onForkIsolated,
   revert
 }: {
   toolItems: TurnToolItem[];
@@ -131,8 +132,10 @@ export function TurnBlock({
   // turn settles. A summary of a turn still in progress would be a moving
   // number, so the parent only supplies it for a finished turn.
   changes?: JSX.Element | null;
-  // Fork the session this turn belongs to (provider-gated by the parent).
+  // Fork the session at this turn (provider-gated by the parent).
   onFork?: () => void;
+  // The same fork, in an isolated checkout that starts from the current files.
+  onForkIsolated?: () => void;
   /** "Revert to here", when this turn has a before-turn checkpoint. */
   revert?: JSX.Element;
 }): JSX.Element {
@@ -343,6 +346,7 @@ export function TurnBlock({
         <TurnFooter
           {...(turnMarkdown ? { turnMarkdown } : {})}
           {...(onFork ? { onFork } : {})}
+          {...(onForkIsolated ? { onForkIsolated } : {})}
           {...(revert ? { revert } : {})}
         />
       ) : null}
@@ -354,10 +358,12 @@ export function TurnBlock({
 function TurnFooter({
   turnMarkdown,
   onFork,
+  onForkIsolated,
   revert
 }: {
   turnMarkdown?: string;
   onFork?: () => void;
+  onForkIsolated?: () => void;
   /** "Revert to here", when this turn has a before-turn checkpoint. */
   revert?: JSX.Element;
 }): JSX.Element {
@@ -390,14 +396,24 @@ function TurnFooter({
         <button
           type="button"
           className="turn-block-footer-action"
-          aria-label="Fork chat"
-          // Not a fork from THIS turn: `fork_session` copies the whole
-          // transcript and resumes the session's latest conversation, so
-          // "from here" would be a promise the backend does not keep.
-          title="Fork chat — copy it into a new chat and continue there"
+          aria-label="Fork from this turn"
+          // The new chat opens with the history up to the end of this turn and
+          // works in the same checkout. Files are not rewound.
+          title="Fork from this turn — a new chat with the history up to here, in this checkout"
           onClick={onFork}
         >
           <GitFork size={13} aria-hidden />
+        </button>
+      ) : null}
+      {onForkIsolated ? (
+        <button
+          type="button"
+          className="turn-block-footer-action"
+          aria-label="Fork from this turn into an isolated checkout"
+          title="Fork from this turn into an isolated checkout — starts from the current files, not the files at this turn"
+          onClick={onForkIsolated}
+        >
+          <GitBranch size={13} aria-hidden />
         </button>
       ) : null}
       {revert ?? null}

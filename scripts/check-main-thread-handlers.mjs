@@ -63,6 +63,7 @@ const MAIN_THREAD_ALLOWLIST = new Map([
   ["workspaces:set-pinned", "single-row write"],
   ["workspaces:set-priority-added", "single-row write"],
   ["workspaces:set-priority-dismissed", "single-row write"],
+  ["workspaces:set-snoozed-until", "single-row write"],
   ["workspaces:set-label", "single-row write"],
   ["workspaces:set-icon", "single-row write"]
 ]);

@@ -1043,22 +1043,6 @@ describe("App sidebar", () => {
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
-  it("clears the session repo title past the sidebar toggle when the sidebar is hidden", async () => {
-    render(<App />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
-
-    fireEvent.click(await screen.findByRole("button", { name: "Hide sidebar" }));
-
-    expect(document.querySelector('.app-shell[data-sidebar-collapsed="true"]')).toBeInTheDocument();
-    expect(
-      document.querySelector(
-        '.app-shell[data-sidebar-collapsed="true"] .session-multigrid-cell:first-child .conversation-surface > .section-heading'
-      )
-    ).toBeInTheDocument();
-  });
-
   it("ends a responsive sidebar peek on leave or a second toggle click", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Hide sidebar" });

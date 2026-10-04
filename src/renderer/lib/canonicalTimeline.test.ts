@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import type { TimelineEvent as WireTimelineEvent } from "../../shared/bindings.js";
 import type { TimelineEvent } from "../../shared/types.js";
-import { decodeTimelineEvent } from "./canonicalTimeline.js";
+import { decodeTimelineEvent, decodeWireTimelineEvent } from "./canonicalTimeline.js";
 import { projectMoveNoticeFor } from "./projectMove.js";
 
 function event(
@@ -20,6 +22,51 @@ function event(
 }
 
 describe("decodeTimelineEvent", () => {
+  it("uses the Rust semantic contract for the shared provider fixtures", () => {
+    const fixtures = JSON.parse(readFileSync(
+      new URL("../../shared/timelineSemanticFixtures.json", import.meta.url), "utf8"
+    )) as TimelineEvent[];
+    expect(decodeTimelineEvent(fixtures[0])).toMatchObject({
+      kind: "tool", toolUseId: "toolu_1", invocationId: "turn-1", outcome: "failed"
+    });
+    expect(decodeTimelineEvent(fixtures[1])).toMatchObject({
+      kind: "message", providerThreadId: "child-thread", parentToolUseId: "tool-1", childProse: true
+    });
+    expect(decodeTimelineEvent(fixtures[2])).toMatchObject({
+      kind: "tool", toolUseId: "item-2", outcome: "cancelled"
+    });
+    expect(decodeTimelineEvent(fixtures[3])).toMatchObject({
+      kind: "agent", phase: "completed", providerChildSessionId: "child-1", agentRunId: "tool-2"
+    });
+    expect(decodeTimelineEvent(fixtures[4])).toMatchObject({
+      kind: "multitask", phase: "launched", childSessionId: "child-2", taskLabel: "Explore"
+    });
+    expect(decodeTimelineEvent(fixtures[5])).toMatchObject({
+      kind: "error", code: "delivery-failed", operation: "send"
+    });
+
+    const authoritative = { ...fixtures[0], payload: { name: "Bash", id: "wrong", status: "completed" } };
+    expect(decodeTimelineEvent(authoritative)).toMatchObject({ toolUseId: "toolu_1", outcome: "failed" });
+
+    const absentIdentity = structuredClone(fixtures[0]);
+    if (absentIdentity.semantic?.event.kind !== "tool") throw new Error("tool fixture missing semantics");
+    absentIdentity.semantic.event.toolUseId = null;
+    absentIdentity.semantic.context.parentToolUseId = null;
+    absentIdentity.payload = { id: "wrong", parent_tool_use_id: "wrong-parent" };
+    expect(decodeTimelineEvent(absentIdentity)).toMatchObject({ toolUseId: null, parentToolUseId: null });
+
+    const unknown = structuredClone(fixtures[1]);
+    if (!unknown.semantic) throw new Error("message fixture missing semantics");
+    unknown.semantic.event = { kind: "unknown", reason: "unsupported-type" };
+    expect(decodeTimelineEvent(unknown)).toMatchObject({ kind: "unknown", reason: "unsupported-type" });
+
+    const cumulative = structuredClone(fixtures[1]);
+    if (cumulative.semantic?.event.kind !== "message") throw new Error("message fixture missing semantics");
+    cumulative.semantic.event.cumulativeText = "host normalized";
+    cumulative.payload = { type: "assistant", message: { content: [{ text: "raw protocol" }] } };
+    expect(decodeTimelineEvent(cumulative)).toMatchObject({ kind: "message", cumulativeText: "host normalized" });
+  });
+
   it.each([
     {
       provider: "Claude",
@@ -203,6 +250,14 @@ describe("decodeTimelineEvent", () => {
       reason: "invalid-payload",
       raw: malformed
     });
+  });
+
+  it("keeps an invalid wire payload readable as diagnostic JSON", () => {
+    const wire = { ...event("message.completed"), payload: ["unexpected", 42], rowCursor: null } as WireTimelineEvent;
+    const decoded = decodeWireTimelineEvent(wire);
+    expect(decoded.payload).toEqual({ __argmaxInvalidPayload: true, rawPayload: ["unexpected", 42] });
+    expect(decodeTimelineEvent(decoded)).toMatchObject({ kind: "unknown", reason: "invalid-payload" });
+    expect(JSON.parse(JSON.stringify(decoded.payload))).toEqual({ __argmaxInvalidPayload: true, rawPayload: ["unexpected", 42] });
   });
 
   it("returns the same decoded object for the same raw object", () => {

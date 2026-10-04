@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceFilePreview } from "../../shared/types.js";
 import { BoundedMap } from "../../shared/boundedSet.js";
-import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
-import type { ReviewSourceKind } from "../lib/reviewIpc.js";
+import { isExternalFilePath, type ReviewIpcDispatch, type ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
 import { showErrorToast } from "../state/toast.js";
 import type {
@@ -156,7 +155,7 @@ function readStoredOpenFiles(storageKey: string | null): StoredOpenFiles {
 }
 
 function isWorkspaceFileTabDirty(tab: WorkspaceFileTabState | null, canEdit: boolean): boolean {
-  return Boolean(canEdit && tab && hasDirtyBuffer(tab));
+  return Boolean(canEdit && tab && !isExternalFilePath(tab.path) && hasDirtyBuffer(tab));
 }
 
 export function useFilePreview(args: {
@@ -489,7 +488,7 @@ export function useFilePreview(args: {
     (content: string): void => {
       if (!listenerStateRef.current.canEdit) return;
       const filePath = listenerStateRef.current.workspaceActiveFilePath;
-      if (!filePath) return;
+      if (!filePath || isExternalFilePath(filePath)) return;
       updateTab(filePath, (tab) => ({
         ...tab,
         buffer: content,
@@ -550,7 +549,9 @@ export function useFilePreview(args: {
       const kind = listenerStateRef.current.sourceKind;
       const tab =
         listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
-      if (!id || !kind || !tab || !listenerStateRef.current.canEdit) return "aborted";
+      if (!id || !kind || !tab || !listenerStateRef.current.canEdit || isExternalFilePath(filePath)) {
+        return "aborted";
+      }
       const token = ++workspaceSaveSeq.current;
       workspaceSaveTokens.current.set(filePath, token);
       workspaceStatTokens.current.delete(filePath);
@@ -776,7 +777,7 @@ export function useFilePreview(args: {
     externalChange: activeTab?.externalChange ?? false,
     saveState: activeTab?.saveState ?? "idle",
     saveError: activeTab?.saveError ?? null,
-    canEdit,
+    canEdit: canEdit && !isExternalFilePath(activeTab?.path ?? ""),
     editFile,
     saveFile,
     reloadFile,

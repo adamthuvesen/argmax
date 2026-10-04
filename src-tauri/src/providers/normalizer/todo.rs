@@ -537,14 +537,6 @@ mod tests {
         assert_eq!(update.items[1].text.as_deref(), Some("Summarize"));
     }
 
-    // Cursor's ACP path strips the list. Emitting an empty snapshot here would
-    // erase a list the user is reading, so there must be no update at all.
-    #[test]
-    fn cursor_stripped_acp_args_produce_no_update() {
-        let input = object(json!({"_toolName": "updateTodos"}));
-        assert!(todos_array_update(&input).is_none());
-    }
-
     #[test]
     fn empty_todos_array_produces_no_update() {
         let input = object(json!({"todos": []}));

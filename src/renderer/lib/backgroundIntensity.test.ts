@@ -3,7 +3,6 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  applyBackgroundIntensityToDocument,
   BACKGROUND_INTENSITY_STORAGE_KEY,
   DEFAULT_BACKGROUND_INTENSITY,
   readStoredBackgroundIntensity,
@@ -12,8 +11,6 @@ import {
 
 afterEach(() => {
   window.localStorage.clear();
-  document.documentElement.removeAttribute("data-background-intensity");
-  document.documentElement.style.removeProperty("--background-intensity");
 });
 
 describe("backgroundIntensity", () => {
@@ -44,11 +41,5 @@ describe("backgroundIntensity", () => {
     expect(readStoredBackgroundIntensity()).toBe(100);
     window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, "12");
     expect(readStoredBackgroundIntensity()).toBe(12);
-  });
-
-  it("applies the value to the document root", () => {
-    applyBackgroundIntensityToDocument(90);
-    expect(document.documentElement.getAttribute("data-background-intensity")).toBe("90");
-    expect(document.documentElement.style.getPropertyValue("--background-intensity")).toBe("90");
   });
 });

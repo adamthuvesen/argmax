@@ -29,7 +29,7 @@ Unmapped:
   require the remote-browser path and separate live-provider support proof.
 - `scenario:staged-revert`: native Review and index recovery, beyond the initial map.
 
-The New chat launcher, settings, schedules, arcs, browser, terminal, mobile,
+Settings, schedules, arcs, browser, terminal, mobile,
 and account integrations have no native entry point here. `ui` can show how
 their renderer looks against demo data, not that they work. Their unit tests or
 other scenarios do not make them verified by this skill.
@@ -51,9 +51,17 @@ scenario and persistence checks must still pass.
 
 | Feature | File | Inventory ids | Last verified |
 |---|---|---|---|
-| Renderer look | [ui.md](ui.md) | scripts/ui-screenshot.mjs | 2026-09-26 captured at 5fd5ecc, cold read |
-| Follow-up turn | [chat-resume.md](chat-resume.md) | scenario:chat-resume | 2026-09-26 pass at 5fd5ecc |
-| Queued follow-up across restart | [queued-restart.md](queued-restart.md) | scenario:queued-restart | 2026-09-26 pass at 5fd5ecc |
-| Move chat to another checkout | [session-move.md](session-move.md) | scenario:session-move | 2026-09-26 pass at 5fd5ecc, cold read |
-| Stop chat | [cancellation.md](cancellation.md) | scenario:cancellation | 2026-09-26 pass at 5fd5ecc |
-| Provider failure | [provider-error.md](provider-error.md) | scenario:provider-error | 2026-09-26 pass at 5fd5ecc |
+| Renderer look | [ui.md](ui.md) | scripts/ui-screenshot.mjs | 2026-10-04 captured at 6ad82aa, cold read |
+| Follow-up turn | [chat-resume.md](chat-resume.md) | scenario:chat-resume | 2026-10-04 pass at cb42e859 |
+| Queued follow-up across restart | [queued-restart.md](queued-restart.md) | scenario:queued-restart | 2026-10-04 pass at cb42e859 |
+| Move chat to another checkout | [session-move.md](session-move.md) | scenario:session-move | 2026-10-04 pass at cb42e859 |
+| Chat reference chip and background send | [composer-reference.md](composer-reference.md) | scenario:composer-reference | 2026-10-04 pass at cb42e859 |
+| CodeMirror composer behavior | [composer-editor.md](composer-editor.md) | scenario:composer-editor | 2026-10-04 pass at cb42e859 |
+| Fork at a finished turn and merge back | [fork-merge.md](fork-merge.md) | scenario:fork-merge | 2026-10-04 pass at cb42e859 |
+| Branch names, linked repositories, snooze shelf | [workspace-settings.md](workspace-settings.md) | scenario:workspace-settings | 2026-10-04 pass at cb42e859 |
+| Stop chat | [cancellation.md](cancellation.md) | scenario:cancellation | 2026-10-04 pass at cb42e859 |
+| Provider failure | [provider-error.md](provider-error.md) | scenario:provider-error | 2026-10-04 pass at cb42e859 |
+
+Native evidence: `.verify/runs/2026-10-04T09-16-13-773Z-073201eb-cb42e85/manifest.txt` (local artifact).
+All nine scenarios passed without retries. The negative control returned `fail-observed`, and the command tripwire was empty.
+These runs use scripted providers and synthetic key events. Screen Recording and Accessibility were missing, so OS capture and physical shortcut delivery remain unverified.

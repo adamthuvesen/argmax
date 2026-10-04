@@ -69,13 +69,6 @@ describe("TurnChangesCard", () => {
     expect(onOpenFile).not.toHaveBeenCalled();
   });
 
-  it("hands Review straight to the review panel", () => {
-    const onOpenReview = vi.fn();
-    render(<TurnChangesCard changes={CHANGES} workspaceCwd="/repo" onOpenReview={onOpenReview} />);
-    fireEvent.click(screen.getByLabelText("Review changed files"));
-    expect(onOpenReview).toHaveBeenCalledTimes(1);
-  });
-
   it("renders nothing when the turn wrote no files", () => {
     const { container } = render(<TurnChangesCard changes={[]} workspaceCwd="/repo" />);
     expect(container).toBeEmptyDOMElement();

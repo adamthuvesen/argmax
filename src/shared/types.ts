@@ -3,6 +3,9 @@ import type * as Bindings from "./bindings.js";
 // `ArgmaxApi` and renderer-only domain shapes remain hand-written below.
 export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
+export type WindowSnapshotAttach = Bindings.WindowSnapshotAttach;
+export type WindowSnapshotFailure = Bindings.SnapshotFailure;
+export type WindowSnapshotStatus = Bindings.WindowSnapshotStatus;
 export type DatabaseStats = Bindings.DatabaseStats;
 export type AgentToolsSettings = Bindings.AgentToolsSettings;
 export type RoutingSettings = Bindings.RoutingSettings;
@@ -136,6 +139,8 @@ export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
 export type UpdateProjectSettingsInput = Bindings.ProjectsUpdateSettingsInput;
 export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
 export type CreateCurrentWorkspaceInput = Bindings.WorkspacesCreateCurrentInput;
+export type CreateAlongsideWorkspaceInput = Bindings.WorkspacesCreateInCheckoutInput;
+export type ProjectCheckout = Bindings.ProjectCheckout;
 export type CreateScratchWorkspaceInput = Bindings.WorkspacesCreateScratchInput;
 export type AutotitleWorkspaceInput = Bindings.WorkspacesAutotitleInput;
 export type WorkspacesMarkViewedInput = Bindings.WorkspacesMarkViewedInput;
@@ -195,11 +200,32 @@ export type SessionAgentEventsInput = OptionalNullable<
   Bindings.SessionAgentEventsInput,
   "providerParentConversationId" | "providerChildSessionId"
 >;
-export type SessionForkInput = Bindings.SessionForkInput;
+export type SessionForkInput = OptionalNullable<
+  Bindings.SessionForkInput,
+  "boundaryEventId" | "workspace"
+>;
+export type SessionForkLineageInput = Bindings.SessionForkLineageInput;
+export type SessionForkMergePreviewInput = Bindings.SessionForkMergePreviewInput;
+export type SessionForkMergeInput = Bindings.SessionForkMergeInput;
+export type ForkInfo = Bindings.ForkInfo;
+export type ForkLineage = Bindings.ForkLineage;
+export type ForkMergePreview = Bindings.ForkMergePreview;
+export type ForkMergeResult = Bindings.ForkMergeResult;
+export type ForkWorkspaceMode = Bindings.ForkWorkspaceMode;
+/** What a turn's Fork action asks for: the finished turn to fork at (the user
+ *  message that started it) and where the fork works. */
+export interface ForkSessionOptions {
+  boundaryEventId?: string;
+  workspace?: ForkWorkspaceMode;
+}
 export type SessionClearInput = Bindings.SessionClearInput;
 export type SessionSuggestFollowUpInput = Bindings.SessionSuggestFollowUpInput;
 export type FollowUpSuggestion = Bindings.FollowUpSuggestion;
-export type SessionForkResult = Bindings.SessionForkResult;
+/** A fork arrives with its rows, in the narrowed shapes the dashboard holds. */
+export type SessionForkResult = Retype<
+  Bindings.SessionForkResult,
+  { workspace: WorkspaceSummary; session: SessionSummary }
+>;
 export type MultitaskLaunched = Bindings.MultitaskLaunched;
 export type SessionCostSummaryInput = Bindings.SessionCostSummaryInput;
 export type WorkspaceStatusInput = OptionalNullable<Bindings.WorkspaceStatusInput, "workspaceIds">;
@@ -207,22 +233,11 @@ export type TerminalSpawnInput = Bindings.TerminalSpawnInput;
 export type TerminalWriteInput = Bindings.TerminalWriteInput;
 export type TerminalResizeInput = Bindings.TerminalResizeInput;
 
-export interface TerminalDataEvent {
-  terminalId: string;
-  data: string;
-}
+export type TerminalDataEvent = Bindings.TerminalChunk;
 
-export interface TerminalAgentOpenEvent {
-  terminalId: string;
-  workspaceId: string;
-  command?: string | null;
-}
+export type TerminalAgentOpenEvent = OptionalNullable<Bindings.TerminalAgentOpenEvent, "command">;
 
-export interface TerminalExitEvent {
-  terminalId: string;
-  exitCode: number;
-  signal: number | null;
-}
+export type TerminalExitEvent = Bindings.TerminalExitInfo;
 
 export type EventSubscription = (() => void) & {
   ready?: Promise<void>;
@@ -291,6 +306,7 @@ export type SkillSource = Bindings.SkillSource;
 export type SkillSummary = Bindings.SkillSummary;
 export type ConnectionSummary = Bindings.ConnectionSummary;
 export type ProjectSummary = Bindings.ProjectSummary;
+export type LinkedRepo = Bindings.LinkedRepo;
 
 /** Untagged on the wire, so the binding has `cancelled: boolean` on both arms. */
 export type ProjectFolderPickResult = WireSubtype<
@@ -337,6 +353,8 @@ export type WorkspaceSummary = Retype<
     prCheckState: GhCheckState | null;
     /** Absent on snapshots from hosts predating shared read state. */
     lastViewedAt?: string | null;
+    /** The snooze shelf holds the row until this instant. Past or absent means not snoozed. */
+    snoozedUntil?: string | null;
   }
 >;
 
@@ -368,6 +386,10 @@ export interface PendingMessage {
   modelLabel?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort;
+  /** The provider this follow-up runs on once it drains. Absent or null is the
+   *  chat's own provider at drain time, which is what every row queued before
+   *  a provider could be chosen means. */
+  provider?: ProviderId | null;
   fastMode?: boolean;
   attachments?: ComposerAttachment[];
   recoveryStatus?: "unsent" | "delivery-unknown";
@@ -384,13 +406,15 @@ export type TimelineEvent = Retype<
   Bindings.TimelineEvent,
   {
     type: EventType;
+    /** Older hosts omit semantics. Current hosts always provide it. */
+    semantic?: Bindings.TimelineSemantics;
     payload: Record<string, unknown>;
     rowCursor?: number;
   }
 >;
 
-/** Persisted provider-normalized row before renderer-specific interpretation. */
-export type RawTimelineEvent = TimelineEvent;
+/** Untrusted wire row. Historical payload corruption may be any JSON value. */
+export type RawTimelineEvent = Retype<TimelineEvent, { payload: unknown }>;
 
 export type RawProviderOutput = Retype<
   Bindings.RawProviderOutput,
@@ -503,25 +527,33 @@ export interface ArgmaxApi {
     remove: (input: RemoveProjectInput) => Promise<void>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
     listBranches: (projectId: string) => Promise<string[]>;
+    /** The project's usable checkouts and the branch checked out in each. */
+    listCheckouts: (projectId: string) => Promise<ProjectCheckout[]>;
     refreshBranch: (projectId: string) => Promise<ProjectSummary>;
     switchBranch: (projectId: string, branch: string) => Promise<ProjectSummary>;
     /** Project check: whether the prompt reads like work for another project. */
     checkPrompt: (input: ProjectsCheckPromptInput) => Promise<ProjectCheck>;
+    /** Sets or clears (`null`) this project's branch template. */
+    setBranchTemplate: (input: Bindings.ProjectsSetBranchTemplateInput) => Promise<ProjectSummary>;
     resolveCheck: (input: ProjectsResolveCheckInput) => Promise<void>;
   };
   workspaces: {
     createIsolated: (input: CreateWorkspaceInput) => Promise<WorkspaceSummary>;
     createCurrent: (input: CreateCurrentWorkspaceInput) => Promise<WorkspaceSummary>;
+    /** A workspace in an existing checkout of the project, on a branch already checked out there. */
+    createAlongside: (input: CreateAlongsideWorkspaceInput) => Promise<WorkspaceSummary>;
     createScratch: (input: CreateScratchWorkspaceInput) => Promise<WorkspaceSummary>;
     refreshStatus: (workspaceId: string) => Promise<WorkspaceSummary>;
     status: (input?: WorkspaceStatusInput) => Promise<WorkspaceStatusSnapshot>;
     keep: (workspaceId: string) => Promise<WorkspaceSummary>;
     archive: (input: { workspaceId: string; force?: boolean }) => Promise<WorkspaceArchiveResult>;
-    openInIde: (input: OpenInIdeInput) => Promise<{ ok: true }>;
-    autoTitle: (input: AutotitleWorkspaceInput) => Promise<{ ok: true }>;
+    openInIde: (input: OpenInIdeInput) => Promise<Bindings.SystemOk>;
+    autoTitle: (input: AutotitleWorkspaceInput) => Promise<Bindings.SystemOk>;
     setPinned: (input: { workspaceId: string; pinned: boolean }) => Promise<WorkspaceSummary>;
     setPriorityDismissed: (input: { workspaceId: string; dismissed: boolean }) => Promise<WorkspaceSummary>;
     setPriorityAdded: (input: { workspaceId: string; added: boolean }) => Promise<WorkspaceSummary>;
+    /** Hides the row in the snooze shelf until `until` (RFC 3339), or unsnoozes with `null`. */
+    setSnoozedUntil: (input: Bindings.WorkspacesSetSnoozedUntilInput) => Promise<WorkspaceSummary>;
     setLabel: (input: { workspaceId: string; taskLabel: string }) => Promise<WorkspaceSummary>;
     setIcon: (input: {
       workspaceId: string;
@@ -532,14 +564,14 @@ export interface ArgmaxApi {
   providers: {
     discover: (refresh?: boolean) => Promise<DiscoveredProvider[]>;
     launch: (input: LaunchProviderSessionInput) => Promise<SessionSummary>;
-    sendInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
-    steerInput: (input: ProviderSessionInput) => Promise<{ ok: true; queued: boolean }>;
-    resize: (input: ProviderSessionResizeInput) => Promise<{ ok: true }>;
-    terminate: (sessionId: string) => Promise<{ ok: true }>;
-    cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<{ ok: true }>;
+    sendInput: (input: ProviderSessionInput) => Promise<Bindings.SendInputResult>;
+    steerInput: (input: ProviderSessionInput) => Promise<Bindings.SendInputResult>;
+    resize: (input: ProviderSessionResizeInput) => Promise<Bindings.SystemOk>;
+    terminate: (sessionId: string) => Promise<Bindings.SystemOk>;
+    cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<Bindings.SystemOk>;
     sendQueuedMessageNow: (
       input: ProvidersSendQueuedMessageNowInput
-    ) => Promise<{ ok: true; queued: boolean }>;
+    ) => Promise<Bindings.SendInputResult>;
   };
   cloud: {
     prepare: (input: CloudPrepareInput) => Promise<CloudHandoffPreview>;
@@ -559,6 +591,12 @@ export interface ArgmaxApi {
     eventsSince: (input: SessionEventsSinceInput) => Promise<SessionEventsSinceResult>;
     agentEvents: (input: SessionAgentEventsInput) => Promise<SessionEventsSinceResult>;
     fork: (input: SessionForkInput) => Promise<SessionForkResult>;
+    /** Where this chat was forked from, or null when it is not a fork. */
+    forkLineage: (input: SessionForkLineageInput) => Promise<ForkLineage | null>;
+    /** What bringing this fork's findings back to its source would send. */
+    forkMergePreview: (input: SessionForkMergePreviewInput) => Promise<ForkMergePreview>;
+    /** Send the previewed findings to the source as its next message. */
+    forkMerge: (input: SessionForkMergeInput) => Promise<ForkMergeResult>;
     /** Dispatch a multitask: a sibling chat that runs alongside this one's
      *  turn, in the same checkout unless `worktree` asks for its own. */
     multitask: (input: {
@@ -626,6 +664,9 @@ export interface ArgmaxApi {
       expectedMtimeMs: number | null
     ) => Promise<WorkspaceFileWriteResult>;
     statFile: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFileStat>;
+    /** Read-only preview of a file outside every workspace: an absolute path or `~/…`. */
+    readExternalFile: (path: string) => Promise<WorkspaceFilePreview>;
+    statExternalFile: (path: string) => Promise<WorkspaceFileStat>;
     grepContent: (input: {
       kind: "workspace" | "project";
       id: string;
@@ -641,7 +682,7 @@ export interface ArgmaxApi {
     rewindFiles: (input: CheckpointsRewindFilesInput) => Promise<RewindFilesResult>;
   };
   health: {
-    ping: () => Promise<{ ok: true; timestamp: string }>;
+    ping: () => Promise<Bindings.HealthPingOutput>;
   };
   skills: {
     list: (input: SkillsListInput) => Promise<SkillSummary[]>;
@@ -655,14 +696,17 @@ export interface ArgmaxApi {
     setRoutingKey: (input: { apiKey: string }) => Promise<RoutingSettings>;
     clearRoutingKey: () => Promise<RoutingSettings>;
     setProjectCheck: (input: { mode: ProjectCheckMode }) => Promise<RoutingSettings>;
+    /** The app-wide branch template for new isolated workspaces. */
+    branchTemplate: () => Promise<Bindings.BranchTemplateSettings>;
+    setBranchTemplate: (input: Bindings.SetBranchTemplateInput) => Promise<Bindings.BranchTemplateSettings>;
     setBrowserTools: (input: { enabled: boolean }) => Promise<AgentToolsSettings>;
     previewChatCleanup: () => Promise<ChatCleanupPreview>;
     deleteOldChats: (input: DeleteOldChatsInput) => Promise<DeleteOldChatsResult>;
   };
   system: {
     confirm: (message: string) => Promise<boolean>;
-    openPath: (input: { path: string; cwd?: string }) => Promise<{ ok: true }>;
-    openFileIn: (input: { path: string; cwd: string; app: OpenFileApp }) => Promise<{ ok: true }>;
+    openPath: (input: { path: string; cwd?: string }) => Promise<Bindings.SystemOk>;
+    openFileIn: (input: { path: string; cwd: string; app: OpenFileApp }) => Promise<Bindings.SystemOk>;
     listDetectedIdes: () => Promise<DetectedIde[]>;
     diagnostics: () => Promise<DiagnosticsReport>;
     debugSnapshot: (input?: { afterLogSeq?: number }) => Promise<DebugSnapshot>;
@@ -670,14 +714,14 @@ export interface ArgmaxApi {
     performanceStop: () => Promise<PerformanceCapture>;
     performanceStatus: () => Promise<PerformanceStatus>;
     performanceCapture: () => Promise<PerformanceCapture>;
-    reportRendererStall: (durationMs: number) => Promise<{ ok: true }>;
+    reportRendererStall: (durationMs: number) => Promise<Bindings.SystemOk>;
     /** The window's page zoom (⌘+/⌘−), published whenever it changes and
      *  restated on every load. CSS px are window points times this factor, so
      *  the band the page reserves for the native traffic lights divides it
      *  back out — see lib/windowChrome.ts and styles/shell-layout.css. */
     onZoom: (listener: (factor: number) => void) => EventSubscription;
-    vacuumDatabase: () => Promise<{ ok: true }>;
-    setTheme: (mode: "light" | "dark" | "system") => Promise<{ ok: true }>;
+    vacuumDatabase: () => Promise<Bindings.SystemOk>;
+    setTheme: (mode: "light" | "dark" | "system") => Promise<Bindings.SystemOk>;
     setDefaultAgent: (input: {
       provider?: ProviderId;
       permissionMode?: PermissionMode | null;
@@ -685,15 +729,15 @@ export interface ArgmaxApi {
       modelLabel?: string;
       modelId?: string;
       reasoningEffort?: ReasoningEffort | null;
-    }) => Promise<{ ok: true }>;
-    setNotificationsEnabled: (enabled: boolean) => Promise<{ ok: true }>;
-    setKeepAwake: (enabled: boolean) => Promise<{ ok: true }>;
-    testNotification: () => Promise<{ ok: true }>;
+    }) => Promise<Bindings.SystemOk>;
+    setNotificationsEnabled: (enabled: boolean) => Promise<Bindings.SystemOk>;
+    setKeepAwake: (enabled: boolean) => Promise<Bindings.SystemOk>;
+    testNotification: () => Promise<Bindings.SystemOk>;
   };
   remote: {
     getStatus: () => Promise<RemoteStatus>;
     setConfig: (input: { enabled: boolean; port: number; ntfyTopic: string }) => Promise<RemoteStatus>;
-    testNotification: () => Promise<{ ok: true }>;
+    testNotification: () => Promise<Bindings.SystemOk>;
     setApnsConfig: (input: {
       keyPath: string;
       keyId: string;
@@ -731,6 +775,19 @@ export interface ArgmaxApi {
   menu: {
     onCommand: (listener: (command: MenuCommand) => void) => () => void;
   };
+  windowSnapshot: {
+    status: () => Promise<WindowSnapshotStatus>;
+    /** Turn the global chord on or off, or move it. Rejects, leaving the old
+     *  chord registered, when registration fails. macOS lets two apps share a
+     *  chord, so a chord another app holds is not an error. */
+    configure: (input: Bindings.WindowSnapshotConfigureInput) => Promise<WindowSnapshotStatus>;
+    /** Prompt for Screen Recording, or open its System Settings pane after a refusal. */
+    requestPermission: () => Promise<WindowSnapshotStatus>;
+    /** A frontmost-app window was captured and saved as an attachment. See
+     *  `lib/windowSnapshotInbox.ts` for who receives it. */
+    onAttach: (listener: (snapshot: WindowSnapshotAttach) => void) => EventSubscription;
+    onFailed: (listener: (failure: WindowSnapshotFailure) => void) => EventSubscription;
+  };
   windows: {
     /** Select the exact chat named by a clicked desktop notification. */
     onFocusSession: (listener: (sessionId: string) => void) => EventSubscription;
@@ -744,7 +801,13 @@ export interface ArgmaxApi {
   learnings: {
     list: (input: { projectId: string; limit?: number }) => Promise<Learning[]>;
     update: (input: { id: string; summary?: string; verified?: boolean }) => Promise<Learning>;
-    delete: (id: string) => Promise<{ ok: true }>;
+    delete: (id: string) => Promise<null>;
+  };
+  linkedRepos: {
+    list: (input: Bindings.LinkedReposListInput) => Promise<LinkedRepo[]>;
+    add: (input: Bindings.LinkedReposAddInput) => Promise<LinkedRepo>;
+    setEnabled: (input: Bindings.LinkedReposSetEnabledInput) => Promise<LinkedRepo>;
+    remove: (input: Bindings.LinkedReposRemoveInput) => Promise<void>;
   };
   sources: {
     list: (input: Bindings.SourcesListInput) => Promise<ProjectSource[]>;
@@ -757,6 +820,7 @@ export interface ArgmaxApi {
     refresh: (input: { sessionId: string }) => Promise<GhPrRecord[]>;
     setPrimary: (input: Bindings.PrsSetPrimaryInput) => Promise<SessionPrSummary[]>;
     dismiss: (input: Bindings.PrsDismissInput) => Promise<SessionPrSummary[]>;
+    cleanup: (input: Bindings.PrsCleanupInput) => Promise<PrCleanupReport>;
   };
   git: {
     commit: (input: GitCommitInput) => Promise<GitCommitResult>;
@@ -766,9 +830,9 @@ export interface ArgmaxApi {
   };
   terminal: {
     spawn: (input: TerminalSpawnInput) => Promise<{ terminalId: string }>;
-    write: (input: TerminalWriteInput) => Promise<{ ok: true }>;
-    resize: (input: TerminalResizeInput) => Promise<{ ok: true }>;
-    terminate: (terminalId: string) => Promise<{ ok: true }>;
+    write: (input: TerminalWriteInput) => Promise<Bindings.SystemOk>;
+    resize: (input: TerminalResizeInput) => Promise<Bindings.SystemOk>;
+    terminate: (terminalId: string) => Promise<Bindings.SystemOk>;
     onData: (listener: (event: TerminalDataEvent) => void) => EventSubscription;
     onExit: (listener: (event: TerminalExitEvent) => void) => EventSubscription;
     onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) => EventSubscription;
@@ -786,18 +850,18 @@ export interface ArgmaxApi {
        *  when re-materializing a restored tab — the registry keeps the owner
        *  it already has. */
       ownerSessionId?: string | null;
-    }) => Promise<{ ok: true }>;
-    navigate: (url: string, tabId: string) => Promise<{ ok: true }>;
-    back: (tabId: string) => Promise<{ ok: true }>;
-    forward: (tabId: string) => Promise<{ ok: true }>;
-    reload: (tabId: string) => Promise<{ ok: true }>;
-    stop: (tabId: string) => Promise<{ ok: true }>;
-    setTheme: (mode: Bindings.ThemeMode) => Promise<{ ok: true }>;
-    setBounds: (input: { bounds: BrowserBounds; visible: boolean; tabId: string }) => Promise<{ ok: true }>;
+    }) => Promise<Bindings.SystemOk>;
+    navigate: (url: string, tabId: string) => Promise<Bindings.SystemOk>;
+    back: (tabId: string) => Promise<Bindings.SystemOk>;
+    forward: (tabId: string) => Promise<Bindings.SystemOk>;
+    reload: (tabId: string) => Promise<Bindings.SystemOk>;
+    stop: (tabId: string) => Promise<Bindings.SystemOk>;
+    setTheme: (mode: Bindings.ThemeMode) => Promise<Bindings.SystemOk>;
+    setBounds: (input: { bounds: BrowserBounds; visible: boolean; tabId: string }) => Promise<Bindings.SystemOk>;
     /** Gives the page the window's keyboard focus, the way clicking into it would. */
-    focus: (tabId: string) => Promise<{ ok: true }>;
+    focus: (tabId: string) => Promise<Bindings.SystemOk>;
     /** Destroys the tab's webview (history and session included). */
-    close: (tabId: string) => Promise<{ ok: true }>;
+    close: (tabId: string) => Promise<Bindings.SystemOk>;
     fillCredentials: (tabId: string) => Promise<BrowserFillResult>;
     /** PNG of the tab, base64. WebKit rasterises on demand, so a hidden tab still captures. */
     screenshot: (input: {
@@ -832,25 +896,13 @@ export type BrowserBounds = Bindings.BrowserBounds;
 export type BrowserContentBlocking = Bindings.BrowserContentBlocking;
 export type BrowserSetSiteBlockingInput = Bindings.BrowserSetSiteBlockingInput;
 
-export interface BrowserStateEvent {
-  tabId: string;
-  url: string;
-  /** Present on page-load finish; absent on plain navigations. */
-  title: string | null;
-  loading: boolean;
-}
+export type BrowserStateEvent = Bindings.BrowserStateEvent;
 
 /** A page asked for a popup / target="_blank"; the renderer opens a new tab. */
-export interface BrowserNewTabEvent {
-  tabId: string;
-  url: string;
-}
+export type BrowserNewTabEvent = Bindings.BrowserNewTabEvent;
 
 /** A browser shortcut pressed while the page itself had focus. */
-export interface BrowserPageCommandEvent {
-  tabId: string;
-  command: "close-tab" | "new-tab" | "focus-address" | "find" | (string & {});
-}
+export type BrowserPageCommandEvent = Bindings.BrowserPageCommandEvent;
 
 /** `width`/`height` are device pixels: twice the captured CSS size on a retina display. */
 export type BrowserScreenshot = Bindings.BrowserScreenshot;
@@ -862,11 +914,7 @@ export type ChromeHistoryImport = Bindings.ChromeHistoryImport;
 /** One live browser tab, as the app (not the renderer) knows it. */
 export type BrowserTabInfo = Bindings.BrowserTabInfo;
 
-export interface BrowserAgentOpenEvent {
-  sessionId: string;
-  tabId: string;
-  url: string;
-}
+export type BrowserAgentOpenEvent = Bindings.BrowserAgentOpenEvent;
 
 /** Name a tab directly, or let the session's current tab answer. */
 export interface BrowserTabTarget {
@@ -997,6 +1045,7 @@ export type GhPrRecord = Retype<
 export type GhPrState = "OPEN" | "CLOSED" | "MERGED";
 
 export type SessionPrSummary = Bindings.SessionPrSummary;
+export type PrCleanupReport = Bindings.PrCleanupReport;
 
 export type GhCheckState =
   | "unknown"
@@ -1013,20 +1062,7 @@ export type SourceInput = Bindings.SourceInput;
 
 export type Learning = Retype<Bindings.Learning, { kind: LearningKind }>;
 
-export type MenuCommand =
-  | "new-session"
-  | "next-chat"
-  | "previous-chat"
-  | "open-settings"
-  | "toggle-sidebar"
-  | "toggle-left-sidebar"
-  | "toggle-debug-log"
-  | "open-command-palette"
-  | "open-cheat-sheet"
-  | "check-for-updates"
-  | "open-docs"
-  | "report-issue"
-  | "close-surface";
+export type MenuCommand = Bindings.MenuCommand;
 
 declare global {
   interface Window {

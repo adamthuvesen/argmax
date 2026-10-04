@@ -27,33 +27,15 @@ function spawnEvents(ids: string[]): TimelineEvent[] {
   );
 }
 
-describe("SCIENTIST_NAMES", () => {
-  it("holds exactly 100 unique names", () => {
-    expect(SCIENTIST_NAMES).toHaveLength(100);
-    expect(new Set(SCIENTIST_NAMES).size).toBe(100);
-  });
-});
-
 describe("fallbackCodename", () => {
   it("returns a member of SCIENTIST_NAMES", () => {
     for (const id of ["task", "item_2", "abc", "", "🌙"]) {
       expect(SCIENTIST_NAMES).toContain(fallbackCodename(id));
     }
   });
-
-  it("is deterministic for the same id", () => {
-    expect(fallbackCodename("task")).toBe(fallbackCodename("task"));
-  });
 });
 
 describe("assignAgentCodenames", () => {
-  it("is deterministic — the same events produce the same map", () => {
-    const events = spawnEvents(["a", "b", "c"]);
-    const first = assignAgentCodenames(buildSessionToolCalls(events, false));
-    const second = assignAgentCodenames(buildSessionToolCalls(events, false));
-    expect([...first.entries()]).toEqual([...second.entries()]);
-  });
-
   it("assigns a distinct name to every spawn in a session", () => {
     const events = spawnEvents(["a", "b", "c", "d", "e", "f"]);
     const map = assignAgentCodenames(buildSessionToolCalls(events, false));

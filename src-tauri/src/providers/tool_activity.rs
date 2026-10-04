@@ -313,6 +313,77 @@ fn enrich_command_outcome(event_type: &str, payload: &mut Map<String, Value>) {
     }
 }
 
+/// Stable tool identity shared by desktop and native transcript clients.
+/// Provider wrappers stay in the raw payload for inspection.
+pub(crate) fn semantic_tool_name(payload: &Value) -> String {
+    let input = payload.get("input").and_then(Value::as_object);
+    let name = payload.get("name").and_then(Value::as_str);
+    if name.is_some_and(|name| name.eq_ignore_ascii_case("other")) {
+        if let Some(embedded) = input
+            .and_then(|input| input.get("_toolName"))
+            .and_then(Value::as_str)
+            .filter(|name| !name.is_empty())
+        {
+            return embedded.to_owned();
+        }
+    }
+    if name.is_some_and(|name| {
+        name.eq_ignore_ascii_case("mcptoolcall") || name.eq_ignore_ascii_case("getmcptoolstoolcall")
+    }) {
+        if let Some(input) = input {
+            let server = ["serverIdentifier", "providerIdentifier", "server"]
+                .into_iter()
+                .find_map(|key| input.get(key).and_then(Value::as_str))
+                .filter(|server| !server.is_empty());
+            let tool = input
+                .get("toolName")
+                .and_then(Value::as_str)
+                .filter(|tool| !tool.is_empty());
+            if let (Some(server), Some(tool)) = (server, tool) {
+                return format!("mcp__{server}__{tool}");
+            }
+        }
+    }
+    let server = payload
+        .get("server")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty());
+    let tool = payload
+        .get("tool")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty());
+    if let (Some(server), Some(tool)) = (server, tool) {
+        return if tool.contains('.') {
+            tool.to_owned()
+        } else {
+            format!("mcp__{server}__{tool}")
+        };
+    }
+    name.or_else(|| payload.get("type").and_then(Value::as_str))
+        .unwrap_or("tool")
+        .to_owned()
+}
+
+pub(crate) fn semantic_tool_failed(payload: &Value) -> bool {
+    if payload.get("is_error").and_then(Value::as_bool) == Some(true)
+        || payload.get("isError").and_then(Value::as_bool) == Some(true)
+    {
+        return true;
+    }
+    if payload.get("error").is_some_and(|error| {
+        error.is_object() || error.as_str().is_some_and(|message| !message.is_empty())
+    }) {
+        return true;
+    }
+    payload
+        .get("status")
+        .and_then(Value::as_str)
+        .is_some_and(|status| {
+            let status = status.to_ascii_lowercase();
+            status.contains("fail") || status.contains("error")
+        })
+}
+
 fn numeric_exit_code(payload: &Map<String, Value>) -> Option<i64> {
     fn find(fields: &Map<String, Value>, depth: usize) -> Option<i64> {
         if depth > 4 {

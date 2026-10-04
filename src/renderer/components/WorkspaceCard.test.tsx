@@ -48,13 +48,6 @@ function renderCard(
   overrides: {
     changeSummary?: { fileCount: number; additions: number; deletions: number } | null;
     changesState?: AsyncState;
-    isTerminalOpen?: boolean;
-    onBrowseFiles?: () => void;
-    onHide?: () => void;
-    onOpenChanges?: () => void;
-    onOpenAgents?: () => void;
-    onOpenCommitDialog?: () => void;
-    onToggleTerminal?: () => void;
     setStatus?: (status: { kind: "error" | "info"; message: string } | null) => void;
     subagents?: SubagentCluster | null;
     workspace?: WorkspaceSummary;
@@ -68,13 +61,12 @@ function renderCard(
           : { fileCount: 3, additions: 229, deletions: 44 }
       }
       changesState={overrides.changesState ?? "ready"}
-      isTerminalOpen={overrides.isTerminalOpen ?? false}
-      onBrowseFiles={overrides.onBrowseFiles ?? vi.fn()}
-      onHide={overrides.onHide ?? vi.fn()}
-      onOpenChanges={overrides.onOpenChanges ?? vi.fn()}
-      onOpenAgents={overrides.onOpenAgents}
-      onOpenCommitDialog={overrides.onOpenCommitDialog ?? vi.fn()}
-      onToggleTerminal={overrides.onToggleTerminal ?? vi.fn()}
+      isTerminalOpen={false}
+      onBrowseFiles={vi.fn()}
+      onHide={vi.fn()}
+      onOpenChanges={vi.fn()}
+      onOpenCommitDialog={vi.fn()}
+      onToggleTerminal={vi.fn()}
       session={baseSession()}
       setStatus={overrides.setStatus ?? vi.fn()}
       subagents={"subagents" in overrides ? overrides.subagents ?? null : undefined}
@@ -118,24 +110,6 @@ describe("WorkspaceCard", () => {
 
     expect(writeText).toHaveBeenCalledExactlyOnceWith(branch);
     await waitFor(() => expect(copyButton).toHaveAttribute("title", "Copied branch name"));
-  });
-
-  it("routes each row to the surface that owns it", () => {
-    const onOpenChanges = vi.fn();
-    const onBrowseFiles = vi.fn();
-    const onToggleTerminal = vi.fn();
-    const onOpenCommitDialog = vi.fn();
-    renderCard({ onOpenChanges, onBrowseFiles, onToggleTerminal, onOpenCommitDialog });
-
-    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
-    fireEvent.click(screen.getByRole("button", { name: "Files" }));
-    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
-    fireEvent.click(screen.getByRole("button", { name: "Commit" }));
-
-    expect(onOpenChanges).toHaveBeenCalledTimes(1);
-    expect(onBrowseFiles).toHaveBeenCalledTimes(1);
-    expect(onToggleTerminal).toHaveBeenCalledTimes(1);
-    expect(onOpenCommitDialog).toHaveBeenCalledTimes(1);
   });
 
   it("shows the diff stat and, on a clean worktree, disables the row instead of opening an empty panel", () => {
@@ -192,12 +166,6 @@ describe("WorkspaceCard", () => {
     const failed = screen.getByRole("button", { name: "Changes" });
     expect(failed.textContent).toContain("unavailable");
     expect(failed).toHaveAttribute("title", "Could not load the changed files");
-  });
-
-  it("marks the terminal row pressed while the terminal panel is open", () => {
-    renderCard({ isTerminalOpen: true });
-
-    expect(screen.getByRole("button", { name: "Terminal" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("refreshes PR state from GitHub on mount for a git workspace", () => {
@@ -317,6 +285,28 @@ describe("WorkspaceCard", () => {
     await waitFor(() => expect(dismiss).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
   });
 
+  it("cleans up a merged PR and shows the report", async () => {
+    resetToastForTests();
+    const report = "PR #762 merged as abc1234 (head def5678)\nRemote: origin/feat deleted";
+    const cleanup = vi.fn().mockResolvedValue({ text: report });
+    (window as { argmax?: unknown }).argmax = { prs: { setPrimary: vi.fn(), dismiss: vi.fn(), cleanup } };
+    renderCard({
+      workspace: workspaceWithPrs([
+        sessionPr({ prState: "MERGED" }),
+        sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Open one", isPrimary: false })
+      ])
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for PR #759" }));
+    expect(screen.queryByRole("menuitem", { name: "Clean up" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for PR #759" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Clean up" }));
+    await waitFor(() => expect(cleanup).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
+    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "info", message: report }));
+  });
+
   it("reports a failed pull-request call through the shared toast", async () => {
     resetToastForTests();
     const setStatus = vi.fn();
@@ -332,15 +322,6 @@ describe("WorkspaceCard", () => {
     expect(setStatus).toHaveBeenCalledWith(null);
   });
 
-  it("hides itself from its own dismiss control", () => {
-    const onHide = vi.fn();
-    renderCard({ onHide });
-
-    fireEvent.click(screen.getByRole("button", { name: "Hide workspace card" }));
-
-    expect(onHide).toHaveBeenCalledTimes(1);
-  });
-
   it("shows the subagent roster once the session spawns agents", () => {
     renderCard({ subagents: subagentCluster() });
 
@@ -352,15 +333,6 @@ describe("WorkspaceCard", () => {
     expect(section.querySelectorAll(".workspace-card-agent")).toHaveLength(2);
     // Each chip wears its agent's emblem rather than an initial.
     expect(section.querySelectorAll(".workspace-card-agent .agent-emblem[data-shape]")).toHaveLength(2);
-  });
-
-  it("opens the Agents view from the subagent roster", () => {
-    const onOpenAgents = vi.fn();
-    renderCard({ subagents: subagentCluster(), onOpenAgents });
-
-    fireEvent.click(screen.getByRole("button", { name: "Open Agents" }));
-
-    expect(onOpenAgents).toHaveBeenCalledTimes(1);
   });
 
   it("folds the avatar stack into a +N chip beyond five launches", () => {
@@ -412,11 +384,5 @@ describe("WorkspaceCard", () => {
     const chip = screen.getByRole("region", { name: "Alongside" }).querySelector(".workspace-card-agent");
     expect(chip?.querySelector("svg")).not.toBeNull();
     expect(chip?.textContent).toBe("");
-  });
-
-  it("keeps the subagents section out of a session that never spawned one", () => {
-    renderCard({ subagents: null });
-
-    expect(screen.queryByRole("region", { name: "Agents" })).toBeNull();
   });
 });

@@ -2,11 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_BACKGROUND_INTENSITY } from "../lib/backgroundIntensity.js";
-import {
-  CHAT_PANE_MIN_WIDTH_PX,
-  COMPOSER_MIN_WIDTH_PX,
-  SESSION_CELL_MIN_WIDTH_PX
-} from "../lib/layoutConstants.js";
 import { DEFAULT_INK_STRENGTH } from "../lib/inkStrength.js";
 import { SERVER_ICON_TONE_DEPTH } from "../lib/serverIcons.js";
 
@@ -230,7 +225,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(styles.indexOf('url("./styles/tokens.css")')).toBeLessThan(
       styles.indexOf('url("./styles/background-intensity.css")')
     );
-    expect(cssRuleBody(tokens, ":root")).toContain("--bg: #fcfcfb;");
+    expect(cssRuleBody(tokens, ":root")).toContain("--bg: #f7f7f7;");
     expect(cssRuleBody(tokens, ':root[data-theme="dark"]')).toContain("--bg: #141414;");
 
     // Every dark surface mixes away from a restated copy of the shipped literal,
@@ -290,12 +285,12 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     )) {
       // Lines and scrollbars stay grey at both ends.
       if (/^(line|scrollbar)/.test(surface)) continue;
-      // The paper stop is warm, not grey: more red than blue.
-      expect(Number.parseInt(cream.slice(1, 3), 16), surface).toBeGreaterThan(Number.parseInt(cream.slice(5, 7), 16));
+      // The low stop is neutral grey, not warm paper: red equals blue.
+      expect(cream.slice(1, 3), surface).toBe(cream.slice(5, 7));
       expect(white, surface).toBe("#ffffff");
     }
     expect(light).toContain(
-      "--bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
+      "--bg: color-mix(in oklab, color-mix(in oklab, #f4f4f4, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
     );
 
 
@@ -324,62 +319,12 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
-  it("keeps review scope menus below their trigger", () => {
-    const base = cssRuleBody(readSource("src/renderer/styles/chat-chrome.css"), ".project-picker-popover");
-    const scope = cssRuleBody(readSource("src/renderer/styles/overlays-review.css"), ".review-scope-popover");
-
-    expect(base).toContain("bottom: calc(100% + 6px);");
-    expect(scope).toContain("top: calc(100% + 4px);");
-    expect(scope).toContain("bottom: auto;");
-    expect(scope).toContain("left: auto;");
-  });
-
-  it("keeps picker rows on the app's compact control type size", () => {
-    const pickerItem = cssRuleBody(
-      readSource("src/renderer/styles/chat-chrome.css"),
-      ".project-picker-item"
-    );
-
-    expect(pickerItem).toContain("font-size: var(--text-xs);");
-  });
-
-  it("keeps the pane minimum width aligned with the compact composer breakpoint", () => {
-    const chatComposer = readSource("src/renderer/styles/chat-composer-chips.css");
-
-    expect(COMPOSER_MIN_WIDTH_PX).toBe(400);
-    expect(SESSION_CELL_MIN_WIDTH_PX).toBe(COMPOSER_MIN_WIDTH_PX);
-    expect(CHAT_PANE_MIN_WIDTH_PX).toBe(COMPOSER_MIN_WIDTH_PX);
-    expect(chatComposer).toContain("@container (max-width: 600px)");
-    expect(chatComposer).toContain("@container (max-width: 720px)");
-  });
-
-  it("disables programming ligatures on shipped machine-text surfaces", () => {
-    const tokens = readSource("src/renderer/styles/tokens.css");
-    expect(cssRuleBody(tokens, ":root")).toContain(
-      '--code-font-features: "liga" 0, "clig" 0, "calt" 0;'
-    );
-
-    const surfaces: [string, string][] = [
-      ["src/renderer/styles/chat-turns.css", ".tool-call-code"],
-      ["src/renderer/styles/chat-conversation.css", ".markdown code"],
-      ["src/renderer/styles/chat-conversation.css", ".terminal-transcript pre"],
-      ["src/renderer/styles/overlays-review-files.css", ".diff-blocks"]
-    ];
-    for (const [file, selector] of surfaces) {
-      expect(cssRuleBody(readSource(file), selector)).toContain(
-        "font-feature-settings: var(--code-font-features);"
-      );
-    }
-  });
-
-  it("shapes composer fields with the same OpenType features as their highlight mirror", () => {
+  it("shapes form-control prompt fields with the OpenType features the page inherits", () => {
     // The UA sheet's `font` shorthand resets font-feature-settings on form
-    // controls, so a composer textarea drops the `calt`/`ss01`/`tnum` that
-    // :root hands every div — including the mirror painting behind it. The
-    // cost is a fraction of a pixel per line, but line breaking is a cliff:
-    // in the width window between the two, the textarea breaks one word
-    // earlier than the mirror and the caret strands a word to the right of
-    // the painted text.
+    // controls, so a textarea drops the `calt`/`ss01`/`tnum` that :root hands
+    // every div. The phone's new-chat screen still uses a textarea and must
+    // opt back in. The composers' CodeMirror editor is divs and inherits them,
+    // so it must declare none.
     const fields: [string, string][] = [
       ["src/renderer/styles/chat-chrome.css", ".composer-input input,\n.composer-input textarea"],
       ["src/renderer/styles/chat-composer-chips.css", ".session-input input,\n.session-input textarea"]
@@ -388,9 +333,8 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       expect(cssRuleBody(readSource(file), selector)).toContain("font-feature-settings: inherit;");
     }
 
-    // The mirror declares none, so it keeps inheriting the app's features.
     const chips = readSource("src/renderer/styles/chat-composer-chips.css");
-    expect(cssRuleBody(chips, ".composer-highlight-backdrop")).not.toContain("font-feature-settings");
+    expect(cssRuleBody(chips, ".composer-editor .cm-editor")).not.toContain("font-feature-settings");
   });
 
   it("keeps markdown table labels in intrinsic column sizing", () => {
@@ -401,31 +345,6 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // that reach cells makes each character an intrinsic break opportunity,
     // so a prose-heavy second column can collapse labels to a few characters.
     expect(tableCells).toContain("overflow-wrap: break-word;");
-  });
-
-  it("dissolves scroller edges with the shared fade rather than a hard clip", () => {
-    const tokens = cssRuleBody(readSource("src/renderer/styles/tokens.css"), ":root");
-    expect(tokens).toContain("--scroll-edge-fade: 32px;");
-    expect(tokens).toContain("--scroll-edge-fade-color: var(--bg);");
-
-    const fade = readSource("src/renderer/styles/scroll-fade.css");
-    expect(fade).toContain(
-      "background: linear-gradient(to bottom, var(--scroll-edge-fade-color), transparent);"
-    );
-    expect(fade).toContain(
-      "background: linear-gradient(to top, var(--scroll-edge-fade-color), transparent);"
-    );
-
-    const sidebar = cssRuleBody(readSource("src/renderer/styles/shell-layout.css"), ".project-list-scroll");
-    expect(sidebar).toContain("--scroll-edge-fade-color: var(--sidebar);");
-
-    const conversation = cssRuleBody(readSource("src/renderer/styles/chat-conversation.css"), ".conversation-scroll");
-    expect(conversation).toContain("--scroll-edge-fade: var(--conversation-edge-fade);");
-    expect(conversation).toContain("--scroll-edge-fade-color: var(--conversation-fade, var(--bg));");
-
-    const settings = cssRuleBody(readSource("src/renderer/styles/settings-layout.css"), ".standalone-page-fade");
-    expect(settings).toContain("--scroll-edge-fade-color: var(--bg);");
-    expect(settings).toContain("pointer-events: none;");
   });
 
   it("keeps the centered transcript fixed when its vertical scrollbar appears", () => {
@@ -509,31 +428,6 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
         "--session-inline-padding: var(--session-inline-padding-beside-card);"
       );
     }
-  });
-
-  it("lets measured mermaid diagrams break out beyond the prose width", () => {
-    const conversation = readSource("src/renderer/styles/chat-conversation.css");
-    const workspaceCard = readSource("src/renderer/styles/chat-workspace-card.css");
-    const markdown = cssRuleBody(conversation, ".markdown");
-    expect(markdown).toContain("--markdown-prose-width: 780px");
-    expect(markdown).toContain("--diagram-breakout: 0px");
-    expect(cssRuleBody(workspaceCard, ".session-main-column")).toContain(
-      "--workspace-card-clearance: 14px"
-    );
-    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
-      "width: calc(min(100%, var(--markdown-prose-width)) + 2 * var(--diagram-breakout, 0px));"
-    );
-    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
-      "max-width: calc(min(100%, var(--markdown-prose-width)) + 2 * var(--diagram-breakout, 0px));"
-    );
-    expect(cssRuleBody(conversation, ".mermaid-diagram[data-wide]")).toContain(
-      "margin-inline: calc(-1 * var(--diagram-breakout, 0px)) auto;"
-    );
-    expect(
-      cssRuleBody(conversation, ".mermaid-diagram[data-wide] .mermaid-diagram-canvas svg")
-    ).toContain(
-      "width: 100%;"
-    );
   });
 
   it("restates the monochrome mascot ramp that the iPhone export also bakes", () => {

@@ -269,6 +269,24 @@ pub(crate) async fn projects_refresh_branch_impl(
     update_project_branch(&connection, input.project_id.as_str(), &current_branch)
 }
 
+#[tauri::command(rename = "projects:list-checkouts")]
+#[specta::specta]
+pub async fn projects_list_checkouts(
+    state: State<'_, AppState>,
+    input: ProjectsListCheckoutsInput,
+) -> ArgmaxResult<Vec<crate::workspaces::ProjectCheckout>> {
+    projects_list_checkouts_impl(&state, input).await
+}
+
+pub(crate) async fn projects_list_checkouts_impl(
+    state: &AppState,
+    input: ProjectsListCheckoutsInput,
+) -> ArgmaxResult<Vec<crate::workspaces::ProjectCheckout>> {
+    super::workspaces::live_workspaces(state)?
+        .list_checkouts(input.project_id.as_str())
+        .await
+}
+
 #[tauri::command(rename = "projects:switch-branch")]
 #[specta::specta]
 pub async fn projects_switch_branch(

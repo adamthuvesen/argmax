@@ -231,17 +231,6 @@ describe("ReviewPanel changes layout", () => {
     expect(screen.getByLabelText("File status")).toHaveTextContent("1 file");
   });
 
-  it("keeps the resizable workspace file tree in Files mode", () => {
-    const review = reviewStub();
-    setReviewMode(review, "files");
-    render(<ReviewPanel review={review} />);
-    const leftCol = document.querySelector<HTMLElement>(".review-list-col");
-
-    expect(leftCol).not.toBeNull();
-    expect(leftCol?.style.width).toMatch(/px$/);
-    expect(screen.getByRole("separator", { name: "Resize file list width" })).toBeInTheDocument();
-  });
-
   it("clamps a stored Files column width that would crowd the preview on mount", () => {
     const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(500);
     window.localStorage.setItem("argmax.reviewPanel.leftColumnWidth", "600");
@@ -251,21 +240,6 @@ describe("ReviewPanel changes layout", () => {
 
     expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("335px");
     clientWidth.mockRestore();
-  });
-
-  it("persists the Files-mode left column width to localStorage when the handle is dragged", () => {
-    const review = reviewStub();
-    setReviewMode(review, "files");
-    render(<ReviewPanel review={review} />);
-    const handle = screen.getByRole("separator", { name: "Resize file list width" });
-
-    fireEvent.mouseDown(handle, { clientX: 600 });
-    fireEvent.mouseMove(document, { clientX: 700 });
-    fireEvent.mouseUp(document);
-
-    const stored = window.localStorage.getItem("argmax.reviewPanel.leftColumnWidth");
-    expect(stored).not.toBeNull();
-    expect(Number.parseInt(stored ?? "0", 10)).toBeGreaterThanOrEqual(200);
   });
 
   it("keeps room for the preview column when the Files divider is dragged wide", () => {

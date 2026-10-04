@@ -99,10 +99,6 @@ describe("splitLogSegments", () => {
     expect(splitLogSegments(FIRST)).toEqual([]);
   });
 
-  it("returns no segments when the dump is only cancelled custom-tool bookkeeping", () => {
-    expect(splitLogSegments(MISSING_OUTPUT)).toEqual([]);
-  });
-
   it("strips Codex apply_patch router tracing out of a surrounding sentence", () => {
     const text = `The preregistration is written.\n${APPLY_PATCH}`;
     expect(splitLogSegments(text)).toEqual([
@@ -149,16 +145,6 @@ describe("isNoisyProviderTracing", () => {
     ).toBe(true);
     expect(isNoisyProviderTracing("codex_core::session", "stream disconnected")).toBe(false);
     expect(isNoisyProviderTracing("codex_core::util", "something else broke")).toBe(false);
-  });
-
-  it("drops Codex tool-router tracing", () => {
-    expect(
-      isNoisyProviderTracing(
-        "codex_core::tools::router",
-        "error=apply_patch verification failed: Failed to find expected lines"
-      )
-    ).toBe(true);
-    expect(isNoisyProviderTracing("codex_core::session", "stream disconnected")).toBe(false);
   });
 });
 

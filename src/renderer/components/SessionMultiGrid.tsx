@@ -21,6 +21,7 @@ import type {
   CheckRun,
   ComposerAttachment,
   DetectedIde,
+  ForkSessionOptions,
   IdeId,
   NativeAgentIdentity,
   PendingMessage,
@@ -140,7 +141,7 @@ interface SessionMultiGridProps {
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
-  onForkSession: (sessionId: string) => Promise<void>;
+  onForkSession: (sessionId: string, options?: ForkSessionOptions) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   /** App-level setter the focused SessionPane registers with so its file
       source + pick handler are wired into the command palette's Files

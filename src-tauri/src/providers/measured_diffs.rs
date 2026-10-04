@@ -337,12 +337,18 @@ mod tests {
     use serde_json::json;
 
     fn completion(payload: Value) -> TimelineEvent {
+        let semantic = crate::persistence::timeline_semantics::derive(
+            "command.completed",
+            "event-1",
+            &payload,
+        );
         TimelineEvent {
             id: "event-1".to_string(),
             session_id: "session-1".to_string(),
             r#type: "command.completed".to_string(),
             message: "file_change".to_string(),
             payload,
+            semantic,
             created_at: "2026-09-01T08:00:00.000Z".to_string(),
             row_cursor: Some(1),
         }
@@ -450,15 +456,6 @@ mod tests {
                 "inside.txt".to_string()
             )]
         );
-    }
-
-    #[tokio::test]
-    async fn a_session_with_no_mark_measures_nothing() {
-        let diffs = MeasuredDiffs::default();
-        assert!(diffs
-            .measure("unknown-session", &["/repo/a.sql".to_string()])
-            .await
-            .is_empty());
     }
 
     #[tokio::test]

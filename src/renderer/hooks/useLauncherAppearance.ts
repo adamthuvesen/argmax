@@ -68,6 +68,10 @@ import {
   writeStoredTheme
 } from "../lib/theme.js";
 import { readStoredBrowserTheme, writeStoredBrowserTheme } from "../lib/browserTheme.js";
+
+// The inline script in index.html restores some of these keys before React
+// mounts. A new persisted key must be mirrored there or listed as React-only
+// in lib/prePaintScript.test.ts, which fails until one of the two happens.
 export function useLauncherAppearance(): {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;

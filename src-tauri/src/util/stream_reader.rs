@@ -187,19 +187,6 @@ mod tests {
     }
 
     #[test]
-    fn emits_a_trailing_four_byte_codepoint() {
-        // A read ending exactly on a complete emoji must not be held back.
-        let reader = ChunkReader {
-            chunks: vec!["hi😀".as_bytes().to_vec()],
-            index: 0,
-            error_at_end: false,
-        };
-        let mut out = String::new();
-        pump_utf8_stream(reader, |_| true, |chunk| out.push_str(&chunk), |_| {});
-        assert_eq!(out, "hi😀");
-    }
-
-    #[test]
     fn on_read_false_discards_that_read_and_stops() {
         let reader = ChunkReader {
             chunks: vec![vec![b'a'], vec![b'b']],

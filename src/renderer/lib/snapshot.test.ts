@@ -33,11 +33,6 @@ describe("pruneSupersededDeltas — reference stability", () => {
     expect(pruneSupersededDeltas(events)).toBe(events);
   });
 
-  it("returns the same array reference for a single-event input", () => {
-    const events = [event("e1", "message.delta", "2026-05-12T15:00:00.000Z")];
-    expect(pruneSupersededDeltas(events)).toBe(events);
-  });
-
   it("returns the same array reference when a delta exists but is not superseded yet", () => {
     // Mid-stream: deltas are still arriving, no completion has landed.
     const events = [

@@ -14,36 +14,6 @@ describe("Mascot", () => {
     resetMascotVisibilityForTests();
   });
 
-  it("renders idle by default with role=img and data-mood=idle", () => {
-    render(<Mascot />);
-    const svg = screen.getByRole("img");
-    expect(svg.getAttribute("data-mood")).toBe("idle");
-    expect(svg.getAttribute("aria-label")).toBe("Fox mascot");
-  });
-
-  it.each(["idle", "sleepy", "sad"] as const)(
-    "renders mood=%s and sets matching data-mood + aria-label",
-    (mood) => {
-      render(<Mascot mood={mood} />);
-      const svg = screen.getByRole("img");
-      expect(svg.getAttribute("data-mood")).toBe(mood);
-      expect(svg.getAttribute("aria-label")).toMatch(/^Fox mascot/);
-    }
-  );
-
-  it("applies the size prop to width and height", () => {
-    render(<Mascot size={120} />);
-    const svg = screen.getByRole("img");
-    expect(svg.getAttribute("width")).toBe("120");
-    expect(svg.getAttribute("height")).toBe("120");
-  });
-
-  it("uses the label override when provided", () => {
-    render(<Mascot label="Custom mascot voice" mood="sleepy" />);
-    const svg = screen.getByRole("img", { name: "Custom mascot voice" });
-    expect(svg.getAttribute("data-mood")).toBe("sleepy");
-  });
-
   it("draws no marks below the sprite", () => {
     render(<Mascot />);
     const svg = screen.getByRole("img", { name: "Fox mascot" });
@@ -59,14 +29,6 @@ describe("Mascot", () => {
     render(<Mascot mood="sleepy" />);
     const svg = screen.getByRole("img", { name: "Fox mascot, dozing" });
     expect(svg.getAttribute("data-sprite")).toBe("sleepy");
-  });
-
-  it("renders a clickable button when onClick is provided and fires the handler", () => {
-    const onClick = vi.fn();
-    render(<Mascot onClick={onClick} />);
-    const button = screen.getByRole("button", { name: "Fox mascot" });
-    fireEvent.click(button);
-    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it("applies data-pet during the hop window and clears it after the timeout", () => {

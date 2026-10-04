@@ -25,6 +25,10 @@ const BROWSER_TOOLS_KEY: &str = "agent.browser_tools.enabled";
 /// What Project check may do when a launch looks aimed at the wrong project.
 const PROJECT_CHECK_KEY: &str = "launch.project_check.mode";
 
+/// The app-wide branch template for new isolated workspaces. A project's own
+/// template overrides it. Read on every launch path, so it lives here.
+const BRANCH_TEMPLATE_KEY: &str = "workspace.branch_template";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectCheckMode {
@@ -103,6 +107,45 @@ pub fn set_project_check_mode(connection: &Connection, mode: ProjectCheckMode) -
     Ok(())
 }
 
+/// The user's app-wide branch template, or `None` for Argmax's built-in
+/// default. An unreadable value reads as unset: a launch is not worth failing
+/// over a corrupt row.
+pub fn branch_template(connection: &Connection) -> Option<String> {
+    connection
+        .prepare_cached("SELECT value_json FROM ui_state WHERE key = ?")
+        .and_then(|mut statement| {
+            statement
+                .query_row(params![BRANCH_TEMPLATE_KEY], |row| row.get::<_, String>(0))
+                .optional()
+        })
+        .unwrap_or(None)
+        .and_then(|value| serde_json::from_str::<String>(&value).ok())
+        .filter(|template| !template.is_empty())
+}
+
+/// Saves the app-wide template after validating it. `None` clears it.
+pub fn set_branch_template(connection: &Connection, template: Option<&str>) -> ArgmaxResult<()> {
+    let Some(template) = template else {
+        connection
+            .prepare_cached("DELETE FROM ui_state WHERE key = ?")
+            .map_err(sqlite_error)?
+            .execute(params![BRANCH_TEMPLATE_KEY])
+            .map_err(sqlite_error)?;
+        return Ok(());
+    };
+    crate::workspaces::branch_names::validate_branch_template(template)?;
+    let value = serde_json::to_string(template).map_err(super::json_error)?;
+    connection
+        .prepare_cached(
+            "INSERT INTO ui_state (key, value_json, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
+        )
+        .map_err(sqlite_error)?
+        .execute(params![BRANCH_TEMPLATE_KEY, value, now_iso()])
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,5 +189,28 @@ mod tests {
         assert_eq!(project_check_mode(&connection), ProjectCheckMode::Off);
         set_project_check_mode(&connection, ProjectCheckMode::Suggest).expect("write");
         assert_eq!(project_check_mode(&connection), ProjectCheckMode::Suggest);
+    }
+
+    #[test]
+    fn branch_template_is_unset_until_saved_and_validated_on_save() {
+        let database = Database::open_in_memory().expect("database");
+        let connection = database.connection();
+
+        assert_eq!(branch_template(&connection), None);
+        set_branch_template(&connection, Some("adam/{type}-{slug}")).expect("write");
+        assert_eq!(
+            branch_template(&connection).as_deref(),
+            Some("adam/{type}-{slug}")
+        );
+
+        assert!(set_branch_template(&connection, Some("adam/{bogus}")).is_err());
+        assert_eq!(
+            branch_template(&connection).as_deref(),
+            Some("adam/{type}-{slug}"),
+            "a rejected save keeps the previous template"
+        );
+
+        set_branch_template(&connection, None).expect("clear");
+        assert_eq!(branch_template(&connection), None);
     }
 }

@@ -97,7 +97,7 @@ describe("wsTransport", () => {
     const { connect, sockets } = fakeTransportSeam();
     const transport = createWsTransport({ connect });
     sockets[0].authenticate();
-    const sent = transport.invoke("providers:send-input", { sessionId: "chat", content: "hello" });
+    const sent = transport.invoke("providers:send-input", { sessionId: "chat", input: "hello" });
     const original = sockets[0].requests()[0];
     const identity = original.operation as { clientId: string; operationId: string };
     expect(typeof identity.clientId).toBe("string");
@@ -116,7 +116,7 @@ describe("wsTransport", () => {
     const { connect, sockets } = fakeTransportSeam();
     const transport = createWsTransport({ connect });
     sockets[0].authenticate();
-    const sent = transport.invoke("providers:send-input", { sessionId: "chat", content: "hello" });
+    const sent = transport.invoke("providers:send-input", { sessionId: "chat", input: "hello" });
     const original = sockets[0].requests()[0];
 
     sockets[0].close();
@@ -216,7 +216,7 @@ describe("wsTransport", () => {
     const transport = createWsTransport({ connect });
     const socket = sockets[0];
 
-    const pending = transport.invoke<{ ok: true }>("health:ping", {});
+    const pending = transport.invoke("health:ping", {});
     expect(socket.requests()).toHaveLength(0);
 
     socket.open();
@@ -267,7 +267,7 @@ describe("wsTransport", () => {
     socket.authenticate();
     const input = { sessionId: "s-1", changeCursor: 42, limit: 500 };
 
-    const pending = transport.invoke<{ events: Array<{ message: string }> }>("session:events-since", input);
+    const pending = transport.invoke("session:events-since", input);
     socket.deliver({
       type: "response",
       id: 1,
@@ -306,7 +306,7 @@ describe("wsTransport", () => {
     } as Response));
     const reads = createWsTransport({ connect: first.connect, fetch });
     first.sockets[0].authenticate();
-    const read = reads.invoke("session:agent-events", { sessionId: "s-1", agentId: "a-1" });
+    const read = reads.invoke("session:agent-events", { sessionId: "s-1", parentToolUseId: "a-1" });
     first.sockets[0].deliver({
       type: "response", id: 1,
       error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }

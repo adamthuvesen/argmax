@@ -1571,6 +1571,232 @@ async fn send_queued_message_now_interrupts_without_dropping_the_rest_of_the_que
     assert_eq!(remaining[0].content, "keep this queued");
 }
 
+/// "Send now" on a row another session queued must keep the row's origin. A
+/// turn without one reads as the person's own prompt, which would let an agent's
+/// chat reference grant that chat to the recipient.
+#[tokio::test]
+async fn send_queued_message_now_keeps_the_origin_of_an_agents_message() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    let _workspace = seed_project_and_workspace(&database);
+    let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+    let handle = FakeHandle::new(false);
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(handle.clone())),
+        {
+            let deltas = Arc::clone(&deltas);
+            move |delta| deltas.lock().expect("deltas poisoned").push(delta)
+        },
+    );
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+
+    let queued = service
+        .send_input_with_origin(
+            ProvidersSendInput {
+                agent_references: None,
+                session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+                input: Prompt::try_from("look at [x](argmax://chat/other?v=1)".to_owned())
+                    .expect("prompt valid"),
+                provider: None,
+                model_label: None,
+                model_id: None,
+                reasoning_effort: None,
+                fast_mode: false,
+                agent_mode: None,
+                attachments: None,
+            },
+            Some(MessageOrigin {
+                session_id: "session-sender".to_string(),
+                label: "Sender".to_string(),
+                kind: MESSAGE_KIND.to_string(),
+                message_id: None,
+            }),
+        )
+        .await
+        .expect("queue the agent's message");
+    assert!(queued.queued);
+    let message_id = {
+        let deltas = deltas.lock().expect("deltas poisoned");
+        deltas
+            .iter()
+            .rev()
+            .find_map(|delta| {
+                delta
+                    .pending_messages
+                    .as_ref()?
+                    .get(&session.id)?
+                    .first()
+                    .map(|message| message.id.clone())
+            })
+            .expect("queued message id published")
+    };
+
+    service
+        .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+            delivery: None,
+            session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+            message_id: NonEmptyString::try_from(message_id).expect("message id valid"),
+        })
+        .await
+        .expect("send queued message now");
+
+    wait_for_event(&database, &session.id, "user.message", "look at").await;
+    let connection = database.connection();
+    let tail =
+        list_session_events_since(&connection, &session.id, None, None).expect("list events");
+    let sent = tail
+        .events
+        .iter()
+        .find(|event| event.r#type == "user.message" && event.message.contains("look at"))
+        .expect("the promoted user.message");
+    assert_eq!(sent.payload["origin"]["sessionId"], "session-sender");
+    assert!(
+        !argmax_lib::persistence::events::human_prompt_references_session(
+            &connection,
+            &session.id,
+            "other"
+        )
+        .expect("grant check"),
+        "an agent's message promoted by Send now must not grant its chat reference"
+    );
+}
+
+fn chip(target: &str) -> String {
+    format!("see [x](argmax://chat/{target}?v=1)")
+}
+
+fn grants(database: &Database, session_id: &str, target: &str) -> bool {
+    argmax_lib::persistence::events::human_prompt_references_session(
+        &database.connection(),
+        session_id,
+        target,
+    )
+    .expect("grant check")
+}
+
+/// The opening prompt is the composer's own text only when it arrived through
+/// the person launch call. Any other launch (a check-failure follow-up, an
+/// agent, a routine) leaves it unattested, so a chat reference in it grants
+/// nothing. A new chat that opens with a chat chip must be able to read it.
+#[tokio::test]
+async fn a_persons_opening_prompt_grants_a_referenced_chat_and_an_unattested_launch_does_not() {
+    for (person, expected) in [(true, true), (false, false)] {
+        let database = Arc::new(Database::open_in_memory().expect("open db"));
+        let _workspace = seed_project_and_workspace(&database);
+        let service = ProviderSessionService::with_launcher(
+            database.clone(),
+            Arc::new(FakeLauncher::new(FakeHandle::new(false))),
+            |_| {},
+        );
+        let mut input = build_launch_input();
+        input.prompt = Prompt::try_from(chip("elsewhere")).expect("prompt valid");
+
+        let session = if person {
+            service
+                .launch_as_person(input, argmax_lib::ipc::attest_person_for_tests())
+                .await
+        } else {
+            service.launch(input).await
+        }
+        .expect("launch ok");
+
+        assert_eq!(
+            grants(&database, &session.id, "elsewhere"),
+            expected,
+            "person launch = {person}"
+        );
+    }
+}
+
+/// A queued row keeps who wrote it through every action on it. Send now on a
+/// person's row stays theirs; on a row nobody attested, or one a move wrote on an
+/// agent's behalf, it never becomes theirs.
+#[tokio::test]
+async fn a_queued_row_keeps_its_author_when_send_now_promotes_it() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    let _workspace = seed_project_and_workspace(&database);
+    let deltas = Arc::new(Mutex::new(Vec::<DashboardDelta>::new()));
+    let service = ProviderSessionService::with_launcher(
+        database.clone(),
+        Arc::new(FakeLauncher::new(FakeHandle::new(false))),
+        {
+            let deltas = Arc::clone(&deltas);
+            move |delta| deltas.lock().expect("deltas poisoned").push(delta)
+        },
+    );
+    let session = service
+        .launch(build_launch_input())
+        .await
+        .expect("launch ok");
+    wait_for_resolved(&service, &session.id).await;
+    let send = |text: String| ProvidersSendInput {
+        agent_references: None,
+        session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+        input: Prompt::try_from(text).expect("prompt valid"),
+        provider: None,
+        model_label: None,
+        model_id: None,
+        reasoning_effort: None,
+        fast_mode: false,
+        agent_mode: None,
+        attachments: None,
+    };
+
+    let by_person = service
+        .send_input_as_person(
+            send(chip("by-person")),
+            argmax_lib::ipc::attest_person_for_tests(),
+        )
+        .await
+        .expect("queue the person's row");
+    let by_move = service
+        .send_moved_input(send(chip("by-move")))
+        .await
+        .expect("queue the move's row");
+    let by_nobody = service
+        .send_input(send(chip("by-nobody")))
+        .await
+        .expect("queue the unattested row");
+    assert!(by_person.queued && by_move.queued && by_nobody.queued);
+
+    let queued = service.pending_messages_snapshot()[&session.id].clone();
+    let author_of = |needle: &str| {
+        queued
+            .iter()
+            .find(|message| message.content.contains(needle))
+            .unwrap_or_else(|| panic!("no queued row for {needle}"))
+            .clone()
+    };
+    assert!(author_of("by-person").author.is_person());
+    assert!(!author_of("by-move").author.is_person());
+    assert!(!author_of("by-nobody").author.is_person());
+
+    for (needle, expected) in [
+        ("by-person", true),
+        ("by-move", false),
+        ("by-nobody", false),
+    ] {
+        service
+            .send_queued_message_now(ProvidersSendQueuedMessageNowInput {
+                delivery: None,
+                session_id: SessionId::try_from(session.id.clone()).expect("session id valid"),
+                message_id: NonEmptyString::try_from(author_of(needle).id).expect("message id"),
+            })
+            .await
+            .unwrap_or_else(|error| panic!("send now {needle}: {error}"));
+        wait_for_event(&database, &session.id, "user.message", needle).await;
+        assert_eq!(
+            grants(&database, &session.id, needle),
+            expected,
+            "chat reference in the {needle} row"
+        );
+    }
+}
+
 #[tokio::test]
 async fn queued_follow_up_drains_after_provider_thread_completion() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
@@ -1835,7 +2061,7 @@ async fn a_failed_turn_pauses_the_queue_and_preserves_the_inbox() {
 }
 
 #[tokio::test]
-async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
+async fn queued_cross_provider_switch_runs_under_the_chosen_provider_when_it_drains() {
     let database = Arc::new(Database::open_in_memory().expect("open db"));
     let _workspace = seed_project_and_workspace(&database);
     let launcher = Arc::new(ManualExitLauncher::default());
@@ -1847,10 +2073,8 @@ async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
         .expect("launch ok");
     wait_for_resolved(&service, &session.id).await;
 
-    // Provider switching only applies to idle sessions; a send that races the
-    // running state queues instead. The queued message must not carry the
-    // foreign provider's model metadata, or the drain would relaunch Claude
-    // with a Codex --model flag.
+    // The send names Codex while Claude's turn runs, so it queues. The row
+    // keeps the provider and model it picked and switches when it drains.
     let result = service
         .send_input(ProvidersSendInput {
             agent_references: None,
@@ -1880,10 +2104,23 @@ async fn queued_cross_provider_switch_keeps_current_provider_and_model() {
     wait_for_manual_launch_count(&launcher, 2).await;
 
     let launches = launcher.launches();
-    assert_eq!(launches[1].provider, ProviderId::Claude);
-    assert_eq!(launches[1].model_label, "Sonnet 5.5");
-    assert_eq!(launches[1].model_id, "claude-sonnet-5-5");
-    assert!(!launches[1].fast_mode);
+    assert_eq!(launches[1].provider, ProviderId::Codex);
+    assert_eq!(launches[1].model_label, "GPT-5.5");
+    assert_eq!(launches[1].model_id, "gpt-5.5");
+    let connection = database.read_connection();
+    let stored = argmax_lib::persistence::sessions::find_session_by_id(&connection, &session.id)
+        .expect("session");
+    assert_eq!(stored.provider, "codex");
+    assert_eq!(stored.model_id, "gpt-5.5");
+    assert!(
+        argmax_lib::persistence::pending_messages::list_session_pending_messages(
+            &connection,
+            &session.id
+        )
+        .expect("queue")
+        .is_empty(),
+        "the drained row leaves the durable queue"
+    );
 }
 
 #[tokio::test]
@@ -2907,4 +3144,87 @@ async fn a_codex_file_change_gets_the_diff_argmax_measured_from_git() {
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+}
+
+/// A prompt an agent can author must say so in the persisted `user.message`:
+/// the chat-reference grant treats only prompts with no `origin` and no
+/// `starter` as the person's own. A scheduled wake and a session move each
+/// carry their starter; the person's follow-up carries none.
+#[tokio::test]
+async fn prompts_written_on_an_agents_behalf_carry_a_starter_the_persons_do_not() {
+    let database = Arc::new(Database::open_in_memory().expect("open db"));
+    let _workspace = seed_project_and_workspace(&database);
+    let launcher = Arc::new(FakeCliLauncher::default());
+    let service = ProviderSessionService::with_launcher(database.clone(), launcher.clone(), |_| {});
+    let seed = |id: &str| {
+        let connection = database.connection();
+        persist_session(
+            &connection,
+            &PersistSessionInput {
+                id: id.to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                provider: "claude".to_owned(),
+                model_label: "Haiku 4.5".to_owned(),
+                model_id: "claude-haiku-4-5".to_owned(),
+                reasoning_effort: None,
+                permission_mode: Some("auto-approve".to_owned()),
+                agent_mode: Some("auto".to_owned()),
+                prompt: "ok".to_owned(),
+                state: SessionState::Complete,
+            },
+        )
+        .expect("persist session");
+    };
+    let input = |id: &str, text: &str| ProvidersSendInput {
+        agent_references: None,
+        session_id: SessionId::try_from(id.to_owned()).expect("session id valid"),
+        input: Prompt::try_from(text.to_owned()).expect("prompt valid"),
+        provider: None,
+        model_label: None,
+        model_id: None,
+        reasoning_effort: None,
+        fast_mode: false,
+        agent_mode: None,
+        attachments: None,
+    };
+    let starter_of = |id: &str, text: &str| -> Option<String> {
+        let connection = database.read_connection();
+        let page = list_session_events_since(&connection, id, Some(0), None).expect("events");
+        let event = page
+            .events
+            .iter()
+            .find(|event| event.r#type == "user.message" && event.message == text)
+            .expect("the prompt was persisted");
+        event
+            .payload
+            .get("starter")
+            .and_then(|value| value.as_str().map(str::to_owned))
+    };
+
+    seed("session-moved");
+    service
+        .send_moved_input(input("session-moved", "moved prompt"))
+        .await
+        .expect("moved");
+    assert_eq!(
+        starter_of("session-moved", "moved prompt").as_deref(),
+        Some("move")
+    );
+
+    seed("session-scheduled");
+    service
+        .send_scheduled_input(input("session-scheduled", "scheduled prompt"))
+        .await
+        .expect("scheduled");
+    assert_eq!(
+        starter_of("session-scheduled", "scheduled prompt").as_deref(),
+        Some("schedule")
+    );
+
+    seed("session-typed");
+    service
+        .send_input(input("session-typed", "typed prompt"))
+        .await
+        .expect("typed");
+    assert_eq!(starter_of("session-typed", "typed prompt"), None);
 }

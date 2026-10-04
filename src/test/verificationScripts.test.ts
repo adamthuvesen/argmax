@@ -1,9 +1,10 @@
-import { spawn } from "node:child_process";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,7 +18,7 @@ import {
   NATIVE_STOP_MINIMUM_SESSION_AGE_MS,
   parseMacosConsoleLockState,
 } from "../../scripts/verification/desktop.mjs";
-import { checkoutFingerprint, runChecked } from "../../scripts/verification/common.mjs";
+import { checkoutFingerprint, runChecked, writeTripwires } from "../../scripts/verification/common.mjs";
 import { redact } from "../../scripts/verification/evidence.mjs";
 import { EARLY_STOP_WINDOW_MS } from "../renderer/lib/earlyStop.js";
 
@@ -87,6 +88,34 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
     await exited;
   }
 }, 3000);
+
+async function runFixtureTurn(args: string[]): Promise<string> {
+  const { stdout } = await promisify(execFile)(process.execPath, [fixture, ...args], { timeout: 5000, env: fixtureEnvironment });
+  return stdout;
+}
+
+describe("workflow fixture turns", () => {
+  // A merge message and a portable fork prompt both quote earlier turns, so
+  // the fixture has to answer for the newest signature, not the first marker.
+  it.each([
+    ["a merge that quotes turn one and the child", "Findings from \"[argmax-verification:fork:child]\" forked at \"[argmax-verification:fork:one]\"\n\n— Argmax fork merge abc", "Verification fork merge received."],
+    ["a portable child prompt that retells turn one", "User: [argmax-verification:fork:one]\nAssistant: Verification fork turn one complete.\n[argmax-verification:fork:child]", "Verification fork child complete."],
+    ["a child follow-up", "[argmax-verification:fork:child-follow-up]", "Verification fork child follow-up complete."],
+    ["an occupied-branch share prompt", "[argmax-verification:occupied-share] share the checkout", "Verification occupied branch share complete."],
+    ["an occupied-branch worktree prompt", "[argmax-verification:occupied-worktree] isolate the work", "Verification occupied branch worktree complete."],
+    ["an occupied-branch follow-up", "[argmax-verification:occupied-follow-up]", "Verification occupied branch follow-up complete."],
+    ["an unoccupied-branch checkout prompt", "[argmax-verification:occupied-checkout] work in the main checkout", "Verification unoccupied branch checkout complete."],
+    ["the settings seed prompt", "[argmax-verification:workspace-settings]", "Verification workspace settings seed complete."],
+    ["the New chat background prompt with a chat link", "[argmax-verification:composer-background] compare with [Reference source alpha](argmax://chat/s1?v=1) and summarize", "Verification background launch complete."],
+  ])("answers %s", async (_name, prompt, expected) => {
+    expect(await runFixtureTurn(["-p", "--output-format", "stream-json", "--", prompt])).toContain(expected);
+  });
+
+  it("answers a title request about a workflow prompt with a title, not a turn", async () => {
+    const stdout = await runFixtureTurn(["-p", "--output-format", "text", "--", "[argmax-verification:fork:child] name this chat"]);
+    expect(stdout).toBe("Argmax Verification Chat\n");
+  });
+});
 
 it("rejects the session-move fixture before calling the CLI when controls are missing", async () => {
   const child = spawn(
@@ -394,14 +423,36 @@ describe("verification script arguments", () => {
     expect(() => parseVerifyArgs(["--scenario", "staged-revert", "--native", "off"])).toThrow(
       /requires native verification/,
     );
+    for (const scenario of ["composer-reference", "composer-editor", "fork-merge", "workspace-settings"]) {
+      expect(parseVerifyArgs(["--scenario", scenario])).toMatchObject({ scenario, native: "required" });
+      expect(() => parseVerifyArgs(["--scenario", scenario, "--native", "off"])).toThrow(/requires native verification/);
+    }
     expect(() => parseVerifyArgs(["--out"])).toThrow(/requires a value/);
     expect(() => parseScratchArgs(["--port", "70000"])).toThrow(/between 1 and 65535/);
     expect(() => parseScratchArgs(["--data-dir"])).toThrow(/requires a value/);
     expect(() => parseDoctorArgs(["--out"])).toThrow(/requires a value/);
   });
+});
 
-  it("parses explicit evidence destinations", () => {
-    expect(parseDoctorArgs(["--out", "scratch/doctor.json"])).toEqual({ output: "scratch/doctor.json" });
+describe("machine-command tripwires", () => {
+  // Runs only the stand-ins: PATH holds nothing else, so the real tools cannot
+  // be reached by name and nothing here touches the host Keychain or settings.
+  it("fails and records a call to a guarded command, and leaves an unguarded one alone", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "argmax-tripwire-"));
+    temporaryDirectories.push(root);
+    const log = path.join(root, "it's a log.txt");
+    await writeTripwires(path.join(root, "bin"), log, ["security", "defaults", "op"]);
+    const run = (command: string) => new Promise<number | null>((resolve, reject) => {
+      const child = spawn("/bin/sh", ["-c", command], { env: { PATH: path.join(root, "bin") }, stdio: "ignore" });
+      child.once("close", resolve);
+      child.once("error", reject);
+    });
+    expect(await run("security find-generic-password -s Argmax -w")).toBe(97);
+    expect(await run("defaults read com.apple.finder")).toBe(97);
+    expect((await readFile(log, "utf8")).trim().split("\n")).toEqual(["security find-generic-password", "defaults read"]);
+    // A command that is not guarded is not on PATH here, so the shell cannot find it.
+    expect(await run("launchctl list")).toBe(127);
+    expect((await readFile(log, "utf8")).trim().split("\n")).toEqual(["security find-generic-password", "defaults read"]);
   });
 });
 

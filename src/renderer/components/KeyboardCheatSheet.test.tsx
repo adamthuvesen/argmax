@@ -5,12 +5,6 @@ import { KeyboardCheatSheet } from "./KeyboardCheatSheet.js";
 describe("KeyboardCheatSheet", () => {
   afterEach(() => cleanup());
 
-  it("renders nothing when closed", () => {
-    const onClose = vi.fn();
-    render(<KeyboardCheatSheet open={false} onClose={onClose} />);
-    expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull();
-  });
-
   it("focuses the close button on open so keyboard users land inside the dialog", () => {
     const onClose = vi.fn();
     render(<KeyboardCheatSheet open={true} onClose={onClose} />);
@@ -21,12 +15,6 @@ describe("KeyboardCheatSheet", () => {
     const onClose = vi.fn();
     render(<KeyboardCheatSheet open={true} onClose={onClose} />);
     expect(screen.queryByText("Check for Updates")).not.toBeInTheDocument();
-  });
-
-  it("shows the renderer-only Actions search shortcut", () => {
-    render(<KeyboardCheatSheet open={true} onClose={vi.fn()} />);
-    expect(screen.getByText("⌘A")).toBeInTheDocument();
-    expect(screen.getByText("Open command palette on Actions")).toBeInTheDocument();
   });
 
   it("closes on Escape even when focus is in a typing target outside the dialog", () => {

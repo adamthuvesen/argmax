@@ -90,7 +90,7 @@ struct TranscriptMarkdownImageSource: Sendable {
     let target: String
 
     var isStoredAttachment: Bool {
-        target.hasPrefix("argmax-attachment://") || target.contains("/attachments/")
+        target.hasPrefix("argmax-attachment://") || target.contains("/local-state/attachments/")
     }
 
     /// A remote image is never fetched. Loading one is a silent outbound

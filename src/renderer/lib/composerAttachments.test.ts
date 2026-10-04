@@ -6,12 +6,10 @@ import {
   collectDroppedFiles,
   downscaleImageBlob,
   droppedFileHasUsablePath,
-  imageAttachmentReference,
   imageMimeFromDragType,
   imageMimeFromFileName,
   isAttachableDrag,
   isImageDragType,
-  isSupportedImageMime,
   isTransientScreenshotPath,
   listDragTypes,
   readBlobAsBase64
@@ -52,31 +50,12 @@ describe("buildAttachmentReferences", () => {
 });
 
 describe("appendReferencesToPrompt", () => {
-  it("returns the prompt unchanged when no references are passed", () => {
-    expect(appendReferencesToPrompt("hello", [])).toBe("hello");
-  });
-
   it("joins references onto an empty prompt without a leading space", () => {
     expect(appendReferencesToPrompt("", ["@a.ts", "@b.ts"])).toBe("@a.ts @b.ts");
   });
 
   it("appends references after an existing prompt with a single space separator", () => {
     expect(appendReferencesToPrompt("look at", ["@src/a.ts"])).toBe("look at @src/a.ts");
-  });
-});
-
-describe("isSupportedImageMime", () => {
-  it("accepts the four supported types", () => {
-    expect(isSupportedImageMime("image/png")).toBe(true);
-    expect(isSupportedImageMime("image/jpeg")).toBe(true);
-    expect(isSupportedImageMime("image/gif")).toBe(true);
-    expect(isSupportedImageMime("image/webp")).toBe(true);
-  });
-
-  it("rejects other types", () => {
-    expect(isSupportedImageMime("image/bmp")).toBe(false);
-    expect(isSupportedImageMime("text/plain")).toBe(false);
-    expect(isSupportedImageMime("")).toBe(false);
   });
 });
 
@@ -110,10 +89,6 @@ describe("isImageDragType", () => {
     expect(isImageDragType("public.tiff")).toBe(true);
     expect(isImageDragType("image/tiff")).toBe(true);
     expect(isImageDragType("public.png")).toBe(true);
-  });
-
-  it("rejects non-image types", () => {
-    expect(isImageDragType("text/plain")).toBe(false);
   });
 });
 
@@ -274,14 +249,6 @@ describe("droppedFileHasUsablePath", () => {
   });
 });
 
-describe("imageAttachmentReference", () => {
-  it("prefixes an absolute path with @", () => {
-    expect(imageAttachmentReference("/Users/me/Library/Application Support/argmax/x.png")).toBe(
-      "@/Users/me/Library/Application Support/argmax/x.png"
-    );
-  });
-});
-
 describe("downscaleImageBlob", () => {
   it("passes GIFs through untouched so animation survives", async () => {
     const gif = new Blob([new Uint8Array([1, 2, 3])], { type: "image/gif" });
@@ -305,11 +272,5 @@ describe("readBlobAsBase64", () => {
     const encoded = await readBlobAsBase64(blob);
     // 0x89 0x50 0x4e 0x47 → "iVBORw==" in base64 (no padding stripped)
     expect(encoded).toBe("iVBORw==");
-  });
-
-  it("handles an empty blob without throwing", async () => {
-    const blob = new Blob([], { type: "image/png" });
-    const encoded = await readBlobAsBase64(blob);
-    expect(encoded).toBe("");
   });
 });

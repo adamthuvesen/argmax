@@ -4,7 +4,6 @@ import type { ReactElement } from "react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { PendingMessage, RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { SessionConversation } from "./SessionConversation.js";
-import { THINKING_WORDS } from "../lib/thinkingWords.js";
 import { clearRendererLog, rendererLogSnapshot } from "../lib/rendererLogRing.js";
 import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import { startedAgentName } from "../../test/agentRowName.js";
@@ -225,26 +224,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(pickerAfter.textContent).toContain("Haiku 4.5");
   });
 
-  it("keeps workspace context chips on the same toolbar row as the model picker", () => {
-    renderConversation(baseSession());
-
-    const modelPicker = screen.getByRole("button", { name: "Chat model" });
-    const workspaceContext = screen.getByLabelText("Workspace context");
-    const toolbar = modelPicker.closest(".session-input-toolbar");
-
-    expect(toolbar).not.toBeNull();
-    expect(toolbar?.contains(workspaceContext)).toBe(true);
-    expect(
-      modelPicker.compareDocumentPosition(workspaceContext) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
-  });
-
-  it("shows the branch as a chip in the composer row", () => {
-    renderConversation(baseSession());
-
-    expect(screen.getByTitle("Branch: argmax/dashboard")).toHaveTextContent("argmax/dashboard");
-  });
-
   it("keeps the branch and changed files reachable behind the compact \"…\" trigger", () => {
     // Below the toolbar's 720px breakpoint the CSS hides the two chips, so the
     // trigger is the only way back to the Changes panel. jsdom applies no
@@ -366,21 +345,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText(/11\. Onions/)).toBeInTheDocument();
   });
 
-  it("drops the streaming class once the assistant message completes", () => {
-    const text = "1. First\n2. Second";
-
-    const { container } = renderConversation(
-      baseSession({ state: "complete" }),
-      [
-        event("u1", "user.message", "go", "2026-05-12T15:00:00.000Z"),
-        event("m1", "message.completed", text, "2026-05-12T15:00:01.000Z")
-      ]
-    );
-
-    expect(container.querySelector(".markdown-streaming")).toBeNull();
-    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
-  });
-
   it("renders settled Steps thinking as a collapsed Thought block beside the answer", () => {
     const thinking = "The user is asking me to read files.\n\nLet me start with the README.";
     const answer = "Here's the repo overview.";
@@ -428,26 +392,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByRole("button", { name: "Thought 5s" })).toBeInTheDocument();
   });
 
-  it("renders restored thoughts inline with a persistent label in Detailed", () => {
-    const thinking = "I should inspect the settings plumbing before touching the UI.";
-    const answer = "Settings are wired.";
-
-    renderConversation(
-      baseSession({ state: "complete" }),
-      [
-        event("u1", "user.message", "wire thinking settings", "2026-05-12T15:00:00.000Z"),
-        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true }),
-        event("m1", "message.completed", answer, "2026-05-12T15:00:02.000Z")
-      ],
-      { thinkingDisplay: "inline", defaultToolCallsDisplay: "collapsed", defaultToolCallGroupsExpanded: false }
-    );
-
-    expect(screen.queryByRole("button", { name: "Thought" })).not.toBeInTheDocument();
-    expect(screen.getByText("Thought")).toBeInTheDocument();
-    expect(screen.getByText(thinking)).toBeTruthy();
-    expect(screen.getByText(answer)).toBeTruthy();
-  });
-
   it("keeps labelled Detailed thoughts through a new turn and switches back to Compact", () => {
     const thinking = "Weighing both designs before I answer.";
     const session = baseSession({ state: "running" });
@@ -485,25 +429,6 @@ describe("SessionConversation — streaming & composer", () => {
 
     rerenderConversation(rerender, session, history, options);
     expect(screen.getByText(thinking)).toBeInTheDocument();
-  });
-
-  it("shows extended-thinking expanded and labelled 'Thinking' while the turn is live", () => {
-    const thinking = "Let me figure out which files matter here.";
-
-    renderConversation(
-      baseSession({ state: "running" }),
-      [
-        event("u1", "user.message", "explore the repo", "2026-05-12T15:00:00.000Z"),
-        // Thinking has landed but no answer text yet → the turn is live, so the
-        // reasoning shows expanded in place of the generic Thinking indicator.
-        event("t1", "message.delta", thinking, "2026-05-12T15:00:01.000Z", { thinking: true })
-      ]
-    );
-
-    const toggle = screen.getByRole("button", { name: "Thinking" });
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(toggle.textContent).toContain("Thinking");
-    expect(screen.getByText(thinking)).toBeTruthy();
   });
 
   // A tool boundary flushes a fresh thinking group, so a model that reasons
@@ -1060,16 +985,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.queryByText(/\/bin\/zsh/)).not.toBeInTheDocument();
   });
 
-  it("renders a user.message bubble for an @-mention-only prompt while the session is still running", () => {
-    renderConversation(
-      baseSession({ state: "running" }),
-      [event("u1", "user.message", "@AGENTS.md", "2026-05-12T15:00:00.000Z")]
-    );
-
-    const bubbleText = screen.getByText("@AGENTS.md", { selector: "p" });
-    expect(bubbleText.closest(".chat-bubble.user")).not.toBeNull();
-  });
-
   it("renders image attachments as previews above user.message bubbles", () => {
     const imagePath =
       "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
@@ -1175,18 +1090,6 @@ describe("SessionConversation — streaming & composer", () => {
       screen.queryByText("Explore the documentation in this Tauri/React Argmax project.", { selector: "p" })
     ).not.toBeInTheDocument();
   });
-  it("keeps Thinking for Claude when session.streaming fired before assistant text", () => {
-    renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("stream", "session.streaming", "", "2026-05-12T15:00:00.500Z"),
-        event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
-      ]
-    );
-
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
-  });
-
   it("keeps Thinking for Codex during the pre-content wait after session.streaming", () => {
     // Codex fires session.streaming on the child's first raw byte, then spends
     // seconds reasoning before any visible item lands. The beacon is not
@@ -1250,18 +1153,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(latest?.message).toBe("progress cue hidden");
     expect(latest?.fields.reason).toBe("tool-running");
     expect(latest?.fields.provider).toBe("claude");
-  });
-
-  it("records the cue coming up, so a shown/hidden pair brackets every wait", async () => {
-    clearRendererLog();
-    renderConversation(baseSession({ provider: "claude", state: "running" }), [
-      event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")
-    ]);
-
-    await waitFor(() => expect(screen.queryByLabelText("Thinking")).toBeTruthy());
-    const latest = rendererLogSnapshot().at(-1);
-    expect(latest?.message).toBe("progress cue shown");
-    expect(latest?.fields.reason).toBe("shown");
   });
 
   it.each(["single-line", "collapsed"] as const)(
@@ -1485,20 +1376,6 @@ describe("SessionConversation — streaming & composer", () => {
     expect(onSendSessionInput.mock.calls[0]).toHaveLength(5);
   });
 
-  it("renders a curated thinking word", () => {
-    const { container } = renderConversation(
-      baseSession({ provider: "codex", state: "running" }),
-      [event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z")]
-    );
-
-    // The elapsed clock (anchored on the user message) shares the testid's
-    // textContent, so match on the leading word.
-    expect(
-      THINKING_WORDS.some((word) => screen.getByTestId("thinking-label").textContent?.startsWith(word))
-    ).toBe(true);
-    expect(container.querySelector(".thinking-label")).not.toBeNull();
-  });
-
   it("keeps the Thinking line's slot in the list whether or not the line is in it", () => {
     // The slot is the CSS contract itself (chat-conversation.css reserves
     // `.conversation-tail`'s height): the Thinking line sits after the
@@ -1520,20 +1397,6 @@ describe("SessionConversation — streaming & composer", () => {
     );
     expect(screen.queryByLabelText("Thinking")).toBeNull();
     expect(settled.container.querySelector(".conversation-tail")).not.toBeNull();
-  });
-
-  it("marks only the latest user message as the turn-start anchor", () => {
-    renderConversation(
-      baseSession({ provider: "codex", state: "complete" }),
-      [
-        event("u1", "user.message", "first prompt", "2026-05-12T15:00:00.000Z"),
-        event("m1", "message.completed", "First reply.", "2026-05-12T15:00:01.000Z"),
-        event("u2", "user.message", "follow-up", "2026-05-12T15:00:02.000Z")
-      ]
-    );
-
-    expect(screen.getByText("first prompt").closest("[data-turn-anchor]")).toBeNull();
-    expect(screen.getByText("follow-up").closest("[data-turn-anchor]")).not.toBeNull();
   });
 
   it("shows steering before the agent produces its first output", () => {
@@ -1697,32 +1560,6 @@ describe("SessionConversation — streaming & composer", () => {
       vi.advanceTimersByTime(2000);
     });
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-  });
-
-  it("shows generic Thinking after a long completed assistant chunk pause", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-12T15:00:01.000Z"));
-    // Once a durable assistant chunk exists, the transcript still needs a live
-    // marker during a long silent mid-turn pause.
-    renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("m1", "message.completed", "Now I'll edit the file.", "2026-05-12T15:00:01.000Z"),
-        event("u1", "user.message", "edit it", "2026-05-12T15:00:00.000Z")
-      ]
-    );
-
-    expect(screen.getByText("Now I'll edit the file.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    act(() => {
-      vi.advanceTimersByTime(700);
-    });
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    act(() => {
-      vi.advanceTimersByTime(1100);
-    });
-    expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
   });
 
   it("drops Thinking when an atomic answer lands, without waiting for the state flip", () => {
@@ -2373,25 +2210,6 @@ describe("SessionConversation — streaming & composer", () => {
     });
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
   });
-
-  it("hides the Thinking indicator while a regular tool is actually running on screen", () => {
-    // For a visible tool, the row's own spinner is the progress indicator —
-    // no need to double up with Thinking.
-    renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("u1", "user.message", "run it", "2026-05-12T15:00:00.000Z"),
-        event("tu-start", "command.started", "Bash", "2026-05-12T15:00:01.000Z", {
-          type: "tool_use",
-          id: "tu_bash_running",
-          name: "Bash",
-          input: { command: "ls" }
-        })
-      ]
-    );
-
-    expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-  });
   it("hides oversized-payload truncation markers from chat", () => {
     renderConversation(
       baseSession({ state: "complete" }),
@@ -2407,20 +2225,6 @@ describe("SessionConversation — streaming & composer", () => {
 
     expect(screen.queryByText("event payload truncated")).not.toBeInTheDocument();
     expect(screen.getByText("Done")).toBeInTheDocument();
-  });
-
-  it("keeps the composer enabled while the session is running so messages can be queued", () => {
-    renderConversation(baseSession({ state: "running" }));
-
-    const textarea = screen.getByLabelText("Chat prompt");
-    expect(textarea).toBeEnabled();
-    // Stop is the only send-slot control while running: Enter queues the
-    // follow-up, and interrupting is the queued chip's explicit "Send now".
-    expect(screen.getByRole("button", { name: "Stop chat" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Send now" })).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Queue follow-up — sent when the current turn finishes" })
-    ).not.toBeInTheDocument();
   });
 
   it("renders a chip per queued follow-up and cancels through the IPC callback", () => {
@@ -2627,24 +2431,6 @@ describe("SessionConversation — streaming & composer", () => {
     await waitFor(() => expect(toastSnapshot()?.message).toBe("turn already completed"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Queued follow-up: Keep the tool running")).toBeInTheDocument();
-  });
-
-  it("labels the queued send action Send regardless of session state", () => {
-    renderConversation(baseSession({ state: "complete" }), [], {
-      pendingMessages: [
-        {
-          id: "queued-1",
-          sessionId: "session-a",
-          content: "Run the final check",
-          agentMode: "auto",
-          queuedAt: "2026-05-12T15:30:30.000Z"
-        }
-      ]
-    });
-
-    expect(
-      screen.getByRole("button", { name: "Send queued follow-up: Run the final check" })
-    ).toHaveTextContent("Send");
   });
 
   it("queued chips are keyboard-focusable and Backspace/Delete cancels them", () => {

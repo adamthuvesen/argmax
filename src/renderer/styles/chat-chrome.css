@@ -267,6 +267,9 @@
 .composer-tool {
   width: 28px;
   height: 28px;
+  /* No UA button padding: in the 26px chip it leaves a 12px content box, and
+     the 14px glyph overflows to the right of centre. */
+  padding: 0;
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
@@ -439,6 +442,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Where the chat will run, when that is not the project's own checkout. */
+.composer-context-chip-label[data-in]::after {
+  color: var(--muted);
+  content: " in " attr(data-in);
 }
 
 .composer-context-chip:focus-visible {
@@ -1234,6 +1243,16 @@ body > .picker-popover-portaled.settings-picker-popover {
   font-weight: calc(400 + var(--font-weight-offset));
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
+}
+
+/* A branch another worktree already has checked out: say which one. */
+.project-picker-item[data-in]::after {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-2xs-plus);
+  content: attr(data-in);
 }
 
 .picker-meta[data-tone="warn"] {

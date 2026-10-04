@@ -109,7 +109,7 @@ pub struct AppState {
     /// reviewed, then revalidates those rows before deletion.
     pub chat_cleanup_plan:
         std::sync::Mutex<Option<crate::persistence::chat_cleanup::ChatCleanupPlan>>,
-    pub routine_runs: crate::routines::scheduler::RoutineRuns,
+    pub routine_runs: Arc<crate::routines::scheduler::RoutineRuns>,
     /// Skill discovery, held here so its per-provider cache survives across
     /// calls: a fresh registry per `skills:list` re-walks every skill tree.
     pub skills: Arc<SkillRegistry>,

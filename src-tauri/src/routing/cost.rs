@@ -628,7 +628,6 @@ fn price_cursor_turns(
     calls: &[crate::usage::cursor::EstimatedCall],
     turns: &mut [RouteTurn],
 ) {
-    let rate = cursor_rates(&route.model_id);
     for call in calls {
         if call.created_at < route.created_at
             || until.is_some_and(|end| call.created_at.as_str() >= end)
@@ -636,6 +635,7 @@ fn price_cursor_turns(
             continue;
         }
         if let Some(index) = turn_index(turns, &call.created_at) {
+            let rate = cursor_rates(&route.model_id, &call.created_at);
             turns[index].add_usage(rate.map(|rate| rate.cost(call)));
         }
     }
@@ -1191,54 +1191,6 @@ mod tests {
             (balance.decisions[0].count, balance.decisions[0].turns),
             (3, 6)
         );
-    }
-
-    #[test]
-    fn answered_active_continuation_counts_without_a_finished_time() {
-        let database = open();
-        let connection = database.connection();
-        let model = "claude-opus-5-5";
-        route(
-            &connection,
-            "s1",
-            "2026-09-27T10:00:00.000Z",
-            "balanced",
-            "claude",
-            model,
-            "launch",
-        );
-        usage(&connection, "s1", "2026-09-27T10:00:02.000Z", model, 100);
-        event(
-            &connection,
-            "e1",
-            "s1",
-            "2026-09-27T10:00:10.000Z",
-            "session.completed",
-            0,
-        );
-        event(
-            &connection,
-            "e2",
-            "s1",
-            "2026-09-27T10:01:00.000Z",
-            "user.message",
-            4,
-        );
-        event(
-            &connection,
-            "e3",
-            "s1",
-            "2026-09-27T10:01:02.000Z",
-            "message.delta",
-            4,
-        );
-
-        let balance = &router_cost(&connection, UsageWindow::Past24h, now())
-            .unwrap()
-            .expect("summary")
-            .tiers[0];
-        assert_eq!((balance.turns, balance.unpriced_turns), (2, 1));
-        assert_eq!(balance.decisions[0].turns, 2);
     }
 
     #[test]

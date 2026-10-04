@@ -164,10 +164,13 @@ jobs:
 
       # Both parity checks read Rust sources, so they run for Rust-only PRs too.
       - run: npm run check:tauri-bridge
+      - run: npm run check:contracts
 
       - run: npm run check:main-thread
 
       - run: npm run check:ios-fonts
+
+      - run: npm run check:provider-models
 
       - if: ${{ steps.eslint-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4

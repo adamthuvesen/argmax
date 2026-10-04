@@ -13,7 +13,7 @@ use argmax_lib::error::{ArgmaxError, ArgmaxResult};
 use argmax_lib::ipc::inputs::{
     ProvidersLaunchInput, ScratchWorkspaceKind, WorkspacesArchiveInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
-    WorkspacesKeepInput, WorkspacesSetLabelInput, WorkspacesSetPinnedInput,
+    WorkspacesKeepInput,
 };
 use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::persistence::workspaces::WorkspaceSummary;
@@ -800,44 +800,6 @@ fn create_current_installs_watcher_without_tokio_context() {
 }
 
 #[tokio::test]
-async fn keep_flips_state_to_kept() {
-    let repo = seed_git_repo(&[("file.txt", "x")]);
-    ensure_main_branch(repo.path());
-    let database = Arc::new(Database::open_in_memory().expect("db"));
-    build_project(
-        &database,
-        &repo.path().display().to_string(),
-        &repo.path().join("worktrees").display().to_string(),
-    );
-    let connection = database.connection();
-    let workspace = persist_workspace(
-        &connection,
-        &PersistWorkspaceInput {
-            id: "w1".to_owned(),
-            project_id: PROJECT_ID.to_owned(),
-            task_label: "fresh".to_owned(),
-            branch: "main".to_owned(),
-            base_ref: "main".to_owned(),
-            path: repo.path().display().to_string(),
-            state: "created".to_string(),
-            shared_workspace: true,
-            kind: "git".to_string(),
-            dirty: false,
-            changed_files: 0,
-        },
-    )
-    .expect("persist workspace");
-    drop(connection);
-
-    let service = WorkspaceService::new(database.clone());
-    let input = WorkspacesKeepInput {
-        workspace_id: WorkspaceId::try_from(workspace.id).expect("workspace id"),
-    };
-    let kept = service.keep(input).expect("keep");
-    assert_eq!(kept.state, "kept");
-}
-
-#[tokio::test]
 async fn refresh_status_picks_up_uncommitted_changes() {
     let repo = seed_git_repo(&[("a.txt", "1")]);
     ensure_main_branch(repo.path());
@@ -914,100 +876,6 @@ async fn refresh_status_picks_up_uncommitted_changes() {
         1,
         "unchanged watcher refresh must not publish another workspace delta"
     );
-}
-
-#[tokio::test]
-async fn set_pinned_toggles_persisted_bit() {
-    let repo = seed_git_repo(&[("a.txt", "1")]);
-    ensure_main_branch(repo.path());
-    let database = Arc::new(Database::open_in_memory().expect("db"));
-    build_project(
-        &database,
-        &repo.path().display().to_string(),
-        &repo.path().join("worktrees").display().to_string(),
-    );
-    let connection = database.connection();
-    let workspace = persist_workspace(
-        &connection,
-        &PersistWorkspaceInput {
-            id: "w-pin".to_owned(),
-            project_id: PROJECT_ID.to_owned(),
-            task_label: "pin test".to_owned(),
-            branch: "main".to_owned(),
-            base_ref: "main".to_owned(),
-            path: repo.path().display().to_string(),
-            state: "kept".to_owned(),
-            shared_workspace: true,
-            kind: "git".to_string(),
-            dirty: false,
-            changed_files: 0,
-        },
-    )
-    .expect("persist workspace");
-    drop(connection);
-
-    let service = WorkspaceService::new(database.clone());
-    let pinned = service
-        .set_pinned(WorkspacesSetPinnedInput {
-            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
-            pinned: true,
-        })
-        .expect("pin");
-    assert!(pinned.pinned);
-
-    let unpinned = service
-        .set_pinned(WorkspacesSetPinnedInput {
-            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
-            pinned: false,
-        })
-        .expect("unpin");
-    assert!(!unpinned.pinned);
-}
-
-#[tokio::test]
-async fn set_label_persists_new_task_label() {
-    let repo = seed_git_repo(&[("a.txt", "1")]);
-    ensure_main_branch(repo.path());
-    let database = Arc::new(Database::open_in_memory().expect("db"));
-    build_project(
-        &database,
-        &repo.path().display().to_string(),
-        &repo.path().join("worktrees").display().to_string(),
-    );
-    let connection = database.connection();
-    let workspace = persist_workspace(
-        &connection,
-        &PersistWorkspaceInput {
-            id: "w-label".to_owned(),
-            project_id: PROJECT_ID.to_owned(),
-            task_label: "old label".to_owned(),
-            branch: "main".to_owned(),
-            base_ref: "main".to_owned(),
-            path: repo.path().display().to_string(),
-            state: "kept".to_owned(),
-            shared_workspace: true,
-            kind: "git".to_string(),
-            dirty: false,
-            changed_files: 0,
-        },
-    )
-    .expect("persist workspace");
-    drop(connection);
-
-    let service = WorkspaceService::new(database.clone());
-    let renamed = service
-        .set_label(WorkspacesSetLabelInput {
-            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
-            task_label: TaskLabel::try_from("new label".to_owned()).expect("task label"),
-        })
-        .expect("rename");
-    assert_eq!(renamed.task_label, "new label");
-
-    // The new label survives a fresh read from the database.
-    let connection = database.connection();
-    let reloaded =
-        find_workspace_by_id(&connection, workspace.id.as_str()).expect("reload workspace");
-    assert_eq!(reloaded.task_label, "new label");
 }
 
 #[tokio::test]
@@ -1668,6 +1536,270 @@ async fn isolated_worktree_with_colocated_chat(
     )
     .expect("colocated session");
     (owner, colocated)
+}
+
+fn in_checkout_input(
+    path: &str,
+    branch: &str,
+) -> argmax_lib::workspaces::inputs::WorkspacesCreateInCheckoutInput {
+    argmax_lib::workspaces::inputs::WorkspacesCreateInCheckoutInput {
+        project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+        task_label: TaskLabel::try_from("new chat".to_owned()).expect("task label"),
+        path: argmax_lib::ipc::validation::NonEmptyString::try_from(path.to_owned()).expect("path"),
+        branch: argmax_lib::ipc::validation::BranchName::try_from(branch.to_owned())
+            .expect("branch"),
+    }
+}
+
+/// The launcher offers a branch another worktree has checked out as "run in
+/// that checkout". Only checkouts a chat could really use are listed: not a
+/// detached HEAD, not one whose directory is gone, and not one that has moved
+/// into archive recovery storage.
+#[tokio::test]
+async fn list_checkouts_names_the_branch_of_every_usable_checkout() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let linked = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("linked".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("linked worktree");
+    let archived = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("archived".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("worktree to archive");
+    let detached = repo.path().join("detached-checkout");
+    run_git(
+        repo.path(),
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            &detached.display().to_string(),
+        ],
+    );
+    let vanished = repo.path().join("vanished-checkout");
+    run_git(
+        repo.path(),
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "vanished",
+            &vanished.display().to_string(),
+        ],
+    );
+    std::fs::remove_dir_all(&vanished).expect("delete the directory behind git's back");
+    run_git(repo.path(), &["branch", "free"]);
+    // Archive moves the checkout into recovery storage but git keeps listing it.
+    service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(archived.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive");
+
+    let checkouts = service
+        .list_checkouts(PROJECT_ID)
+        .await
+        .expect("list checkouts");
+
+    let summary: Vec<(String, bool)> = checkouts
+        .iter()
+        .map(|checkout| (checkout.branch.clone(), checkout.is_main))
+        .collect();
+    assert_eq!(
+        summary,
+        vec![("main".to_string(), true), (linked.branch.clone(), false)],
+        "{checkouts:?}"
+    );
+    assert_eq!(
+        std::fs::canonicalize(&checkouts[1].path).unwrap(),
+        std::fs::canonicalize(&linked.path).unwrap()
+    );
+}
+
+/// A branch another worktree has checked out is reached by running the new chat
+/// in that worktree, never by a second checkout of it.
+#[tokio::test]
+async fn create_in_checkout_attaches_to_a_registered_worktree_on_the_picked_branch() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let (owner, _first) =
+        isolated_worktree_with_colocated_chat(&database, &service, SessionState::Complete).await;
+
+    let attached = service
+        .create_in_checkout(in_checkout_input(&owner.path, &owner.branch))
+        .await
+        .expect("attach");
+
+    assert!(attached.shared_workspace, "the owner keeps owning the tree");
+    assert_ne!(attached.id, owner.id);
+    assert_eq!(attached.branch, owner.branch);
+    assert_eq!(
+        std::fs::canonicalize(&attached.path).unwrap(),
+        std::fs::canonicalize(&owner.path).unwrap()
+    );
+    // The main checkout was not touched.
+    assert_eq!(
+        run_git_stdout(repo.path(), &["rev-parse", "--abbrev-ref", "HEAD"]).trim(),
+        "main"
+    );
+    // Archiving the owner takes the row sharing its tree with it.
+    service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(owner.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive");
+    let connection = database.connection();
+    assert_eq!(
+        find_workspace_by_id(&connection, &attached.id)
+            .unwrap()
+            .state,
+        "archived"
+    );
+}
+
+#[tokio::test]
+async fn create_in_checkout_refuses_what_it_cannot_prove() {
+    let repo = seed_git_repo(&[("a.txt", "1")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let owner = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("owner".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("owner");
+    let outsider = tempfile::tempdir().expect("outside directory");
+
+    let relative = service
+        .create_in_checkout(in_checkout_input("worktrees/x", &owner.branch))
+        .await
+        .expect_err("a relative path");
+    assert!(relative.to_string().contains("not absolute"), "{relative}");
+
+    let unregistered = service
+        .create_in_checkout(in_checkout_input(
+            &outsider.path().display().to_string(),
+            "main",
+        ))
+        .await
+        .expect_err("a directory git does not list");
+    assert!(
+        unregistered
+            .to_string()
+            .contains("not a worktree of this project"),
+        "{unregistered}"
+    );
+
+    // The checkout moved to another branch after the picker listed it: refused
+    // with both names, never retargeted.
+    run_git(
+        std::path::Path::new(&owner.path),
+        &["checkout", "-b", "moved-on"],
+    );
+    let moved = service
+        .create_in_checkout(in_checkout_input(&owner.path, &owner.branch))
+        .await
+        .expect_err("a checkout on another branch");
+    let message = moved.to_string();
+    assert!(
+        message.contains("'moved-on'") && message.contains(&format!("'{}'", owner.branch)),
+        "{message}"
+    );
+    run_git(
+        std::path::Path::new(&owner.path),
+        &["checkout", &owner.branch],
+    );
+
+    // A shared row whose archive got stuck owns no tree, so it must not hide
+    // the live checkout it points at.
+    let stuck = service
+        .create_alongside(WorkspacesCreateAlongsideInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("stuck".to_owned()).expect("task label"),
+            path: owner.path.clone(),
+            branch: owner.branch.clone(),
+            base_ref: owner.base_ref.clone(),
+        })
+        .expect("shared row");
+    database
+        .connection()
+        .execute(
+            "UPDATE workspaces SET state = 'archive-failed' WHERE id = ?1",
+            [stuck.id.as_str()],
+        )
+        .unwrap();
+    service
+        .create_in_checkout(in_checkout_input(&owner.path, &owner.branch))
+        .await
+        .expect("a stuck shared archive hides nothing");
+
+    // The owner's archive began (admission closed) before this launch asked: the
+    // launch is refused rather than inserting a row the archive never scanned.
+    let lease = service
+        .lifecycle()
+        .begin_archive(&owner.id)
+        .expect("archive began");
+    let racing = service
+        .create_in_checkout(in_checkout_input(&owner.path, &owner.branch))
+        .await
+        .expect_err("the owner is archiving");
+    assert!(
+        racing.to_string().contains("archive is in progress"),
+        "{racing}"
+    );
+    lease.finish(argmax_lib::workspaces::lifecycle::ArchiveOutcome::Reopened);
+
+    // A checkout whose chat is mid-archive is about to disappear.
+    database
+        .connection()
+        .execute(
+            "UPDATE workspaces SET state = 'archiving' WHERE id = ?1",
+            [owner.id.as_str()],
+        )
+        .unwrap();
+    let archiving = service
+        .create_in_checkout(in_checkout_input(&owner.path, &owner.branch))
+        .await
+        .expect_err("a checkout being archived");
+    assert!(
+        archiving.to_string().contains("being archived"),
+        "{archiving}"
+    );
 }
 
 #[tokio::test]
@@ -3248,4 +3380,727 @@ fn archive_expiry_removes_an_orphaned_directory_only_once_it_is_old() {
     assert!(!old_orphan.exists());
     assert!(new_orphan.exists());
     assert!(moved_orphan.exists());
+}
+
+async fn create_with_label(service: &Arc<WorkspaceService>, label: &str) -> WorkspaceSummary {
+    service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("create isolated")
+}
+
+fn branch_template_fixture() -> (SeededGitRepo, Arc<Database>, Arc<WorkspaceService>) {
+    let repo = seed_git_repo(&[("README.md", "hi")]);
+    ensure_main_branch(repo.path());
+    let worktree_location = repo.path().join("worktrees");
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &worktree_location.display().to_string(),
+    );
+    let service = WorkspaceService::with_publisher(database.clone(), |_| {});
+    (repo, database, service)
+}
+
+#[tokio::test]
+async fn a_branch_template_names_new_worktrees_and_collisions_get_a_numeric_suffix() {
+    let (_repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{type}-{slug}"),
+    )
+    .expect("save template");
+
+    let first = create_with_label(&service, "Hello World!").await;
+    assert_eq!(first.branch, "adam/feat-hello-world");
+    assert_eq!(
+        std::path::Path::new(&first.path).file_name().unwrap(),
+        "adam-feat-hello-world"
+    );
+    // The same label again must not fail: it takes the next free name.
+    let second = create_with_label(&service, "Hello World!").await;
+    assert_eq!(second.branch, "adam/feat-hello-world-2");
+    let third = create_with_label(&service, "Hello World!").await;
+    assert_eq!(third.branch, "adam/feat-hello-world-3");
+    assert!(std::path::Path::new(&third.path).exists());
+}
+
+#[tokio::test]
+async fn a_flattened_directory_collision_is_resolved_like_a_branch_collision() {
+    let (repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{slug}"),
+    )
+    .expect("save template");
+    // `adam-fix` is where the branch `adam/fix` would land, and the branch
+    // `adam-fix` would land in the very same directory. A directory that is
+    // already there must push the launch to the next name, not fail it.
+    std::fs::create_dir_all(repo.path().join("worktrees").join("adam-fix")).unwrap();
+
+    let summary = create_with_label(&service, "fix").await;
+
+    assert_eq!(summary.branch, "adam/fix-2");
+    assert_eq!(
+        std::path::Path::new(&summary.path).file_name().unwrap(),
+        "adam-fix-2"
+    );
+}
+
+#[tokio::test]
+async fn the_project_template_overrides_the_app_template_and_neither_touches_old_branches() {
+    let (_repo, database, service) = branch_template_fixture();
+    let before = create_with_label(&service, "Hello World!").await;
+    assert!(
+        before.branch.starts_with("argmax/"),
+        "default template: {}",
+        before.branch
+    );
+
+    argmax_lib::persistence::app_settings::set_branch_template(
+        &database.connection(),
+        Some("global/{slug}"),
+    )
+    .expect("save global template");
+    let global = create_with_label(&service, "Hello World!").await;
+    assert_eq!(global.branch, "global/hello-world");
+
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("project/{slug}"),
+    )
+    .expect("save project template");
+    let project = create_with_label(&service, "Hello World!").await;
+    assert_eq!(project.branch, "project/hello-world");
+
+    // Clearing the override falls back to the app template.
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        None,
+    )
+    .expect("clear project template");
+    let fallback = create_with_label(&service, "Another one").await;
+    assert_eq!(fallback.branch, "global/another-one");
+
+    // Existing workspaces keep the name they were given.
+    let stored = find_workspace_by_id(&database.connection(), &before.id).expect("row");
+    assert_eq!(stored.branch, before.branch);
+}
+
+#[tokio::test]
+async fn an_unusable_label_still_yields_a_valid_unique_branch() {
+    let (_repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{slug}"),
+    )
+    .expect("save template");
+    let summary = create_with_label(&service, "🚀✨").await;
+    let slug = summary
+        .branch
+        .strip_prefix("adam/")
+        .expect("template prefix");
+    assert!(!slug.is_empty() && slug.bytes().all(|byte| byte.is_ascii_lowercase()));
+}
+
+async fn branches_in(repo: &std::path::Path) -> Vec<String> {
+    run_git_stdout(
+        repo,
+        &["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+    )
+    .lines()
+    .map(str::to_owned)
+    .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_launches_with_one_label_each_get_their_own_worktree() {
+    let (repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{type}-{slug}"),
+    )
+    .expect("save template");
+
+    // Same label, same template, same moment: every probe a naive launch ran
+    // would see the name free. Whoever loses a claim must move on to the next
+    // name and must not touch what the winner made.
+    let mut launches = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let service = Arc::clone(&service);
+        launches.spawn(async move { create_with_label(&service, "Fix CI").await });
+    }
+    let mut created = Vec::new();
+    while let Some(result) = launches.join_next().await {
+        created.push(result.expect("launch task"));
+    }
+
+    let mut branches: Vec<_> = created.iter().map(|w| w.branch.clone()).collect();
+    branches.sort();
+    branches.dedup();
+    assert_eq!(branches.len(), 8, "one branch each: {branches:?}");
+    let mut paths: Vec<_> = created.iter().map(|w| w.path.clone()).collect();
+    paths.sort();
+    paths.dedup();
+    assert_eq!(paths.len(), 8, "one directory each: {paths:?}");
+    let listed = run_git_stdout(repo.path(), &["worktree", "list", "--porcelain"]);
+    // The registry git reads is whole: one entry per launch, each with the
+    // `commondir` file the failed runs could not read.
+    let registry = repo.path().join(".git/worktrees");
+    let entries: Vec<_> = std::fs::read_dir(&registry)
+        .expect("worktree registry")
+        .map(|entry| entry.expect("registry entry").path())
+        .collect();
+    assert_eq!(entries.len(), 8, "{entries:?}");
+    for entry in &entries {
+        let commondir = std::fs::read_to_string(entry.join("commondir")).expect("commondir");
+        assert!(!commondir.trim().is_empty(), "{}", entry.display());
+    }
+    assert_eq!(
+        listed
+            .lines()
+            .filter(|line| line.starts_with("worktree "))
+            .count(),
+        9,
+        "the main checkout plus eight launches: {listed}"
+    );
+    let present = branches_in(repo.path()).await;
+    for workspace in &created {
+        let checkout = std::path::Path::new(&workspace.path);
+        assert!(
+            checkout.join("README.md").exists(),
+            "{} was emptied",
+            workspace.path
+        );
+        assert!(
+            listed.contains(&workspace.path),
+            "{} not registered",
+            workspace.path
+        );
+        assert!(
+            present.contains(&workspace.branch),
+            "{} lost its branch",
+            workspace.branch
+        );
+        assert_eq!(
+            run_git_stdout(checkout, &["rev-parse", "--abbrev-ref", "HEAD"]).trim(),
+            workspace.branch,
+            "each checkout sits on its own branch"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_taken_name_is_never_touched_and_the_launch_takes_the_next_one() {
+    let (repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{slug}"),
+    )
+    .expect("save template");
+    // An archived chat leaves its branch behind, ahead of the base.
+    run_git(repo.path(), &["checkout", "-q", "-b", "adam/hello"]);
+    std::fs::write(repo.path().join("kept.txt"), "work").unwrap();
+    run_git(repo.path(), &["add", "-A"]);
+    run_git(repo.path(), &["commit", "-qm", "work"]);
+    let kept = run_git_stdout(repo.path(), &["rev-parse", "adam/hello"]);
+    run_git(repo.path(), &["checkout", "-q", "main"]);
+
+    let summary = create_with_label(&service, "hello").await;
+
+    assert_eq!(summary.branch, "adam/hello-2");
+    assert_eq!(
+        run_git_stdout(repo.path(), &["rev-parse", "adam/hello"]),
+        kept
+    );
+}
+
+#[tokio::test]
+async fn after_the_numbered_names_run_out_a_launch_appends_its_unique_id() {
+    let (repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{slug}"),
+    )
+    .expect("save template");
+    run_git(repo.path(), &["branch", "adam/busy"]);
+    for n in 2..=31 {
+        run_git(repo.path(), &["branch", &format!("adam/busy-{n}")]);
+    }
+
+    let summary = create_with_label(&service, "busy").await;
+
+    let suffix = summary
+        .branch
+        .strip_prefix("adam/busy-")
+        .expect("template prefix");
+    assert_eq!(suffix.len(), 8, "{}", summary.branch);
+    assert!(
+        suffix.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "{}",
+        summary.branch
+    );
+}
+
+#[tokio::test]
+async fn a_parent_branch_blocks_the_prefix_so_the_launch_leaves_it_without_removing_anything() {
+    let (repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{slug}/{id}"),
+    )
+    .expect("save template");
+    // `adam/fix` exists, so git refuses every `adam/fix/…`; no suffix helps.
+    run_git(repo.path(), &["branch", "adam/fix"]);
+    let before = run_git_stdout(repo.path(), &["rev-parse", "adam/fix"]);
+
+    let summary = create_with_label(&service, "fix").await;
+
+    assert!(summary.branch.starts_with("argmax/"), "{}", summary.branch);
+    assert_eq!(
+        run_git_stdout(repo.path(), &["rev-parse", "adam/fix"]),
+        before
+    );
+    let leftovers: Vec<_> = std::fs::read_dir(repo.path().join("worktrees"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        leftovers.len(),
+        1,
+        "no empty directory left behind: {leftovers:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_child_branch_blocks_the_plain_name_but_a_suffix_still_works() {
+    let (repo, database, service) = branch_template_fixture();
+    argmax_lib::persistence::projects::set_project_branch_template(
+        &database.connection(),
+        PROJECT_ID,
+        Some("adam/{slug}"),
+    )
+    .expect("save template");
+    run_git(repo.path(), &["branch", "adam/fix/old"]);
+
+    let summary = create_with_label(&service, "fix").await;
+
+    // `adam/fix` cannot exist beside `adam/fix/old`, but `adam/fix-2` can.
+    assert_eq!(summary.branch, "adam/fix-2");
+    assert!(branches_in(repo.path())
+        .await
+        .contains(&"adam/fix/old".to_owned()));
+}
+
+#[tokio::test]
+async fn fork_into_an_isolated_checkout_starts_from_the_current_files_not_a_turn() {
+    use argmax_lib::ipc::inputs::ForkWorkspaceMode;
+    use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+
+    let repo = seed_git_repo(&[("tracked.txt", "committed\n")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_named_project(
+        &database,
+        "source-project",
+        "Source",
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let source_workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
+            task_label: TaskLabel::try_from("Fork me".to_string()).expect("task label"),
+        })
+        .expect("source workspace");
+    seed_completed_session(&database, &source_workspace.id, "source-session");
+    // The files the person sees now: an edit to a tracked file and a new one.
+    std::fs::write(repo.path().join("tracked.txt"), "edited since the turn\n").unwrap();
+    std::fs::write(repo.path().join("new.txt"), "brand new\n").unwrap();
+    let head = run_git_stdout(repo.path(), &["rev-parse", "HEAD"]);
+
+    let forked = service
+        .fork_session_at(ForkRequest {
+            session_id: "source-session".to_string(),
+            boundary_event_id: None,
+            workspace: ForkWorkspaceMode::Isolated,
+        })
+        .await
+        .expect("isolated fork");
+
+    let fork_path = std::path::PathBuf::from(&forked.workspace.path);
+    assert!(
+        !forked.workspace.shared_workspace,
+        "the fork owns its worktree"
+    );
+    assert_ne!(fork_path, repo.path());
+    assert_eq!(run_git_stdout(&fork_path, &["rev-parse", "HEAD"]), head);
+    // The current files came along; no historical state was restored.
+    assert_eq!(
+        std::fs::read_to_string(fork_path.join("tracked.txt")).unwrap(),
+        "edited since the turn\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(fork_path.join("new.txt")).unwrap(),
+        "brand new\n"
+    );
+    // The source checkout is exactly what it was.
+    assert_eq!(
+        std::fs::read_to_string(repo.path().join("tracked.txt")).unwrap(),
+        "edited since the turn\n"
+    );
+    assert_eq!(forked.fork.workspace, ForkWorkspaceMode::Isolated);
+    // Claude resumes in the new directory, so the latest-state fork may carry.
+    assert_eq!(
+        forked.session.provider_conversation_id.as_deref(),
+        Some("native-conversation")
+    );
+}
+
+/// Who wrote a prompt is copied with the history, never changed by it: a fork
+/// and a move keep a person's prompts theirs and leave everything else
+/// unattested, so neither can turn an agent's text into a read grant.
+#[tokio::test]
+async fn a_fork_and_a_move_copy_prompt_authors_without_changing_them() {
+    use argmax_lib::ipc::inputs::ForkWorkspaceMode;
+    use argmax_lib::persistence::authorship::PromptAuthor;
+    use argmax_lib::persistence::events::{persist_user_prompt, PersistTimelineEventInput};
+    use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, _source_workspace, sibling, _repo) = checkout_move_fixture(&database, "claude");
+    {
+        let connection = database.connection();
+        for (id, text, author) in [
+            (
+                "by-person",
+                "see [a](argmax://chat/chat-a?v=1)",
+                PromptAuthor::person(argmax_lib::ipc::attest_person_for_tests()),
+            ),
+            (
+                "by-agent",
+                "see [b](argmax://chat/chat-b?v=1)",
+                PromptAuthor::unattested(),
+            ),
+        ] {
+            persist_user_prompt(
+                &connection,
+                &PersistTimelineEventInput {
+                    id: id.to_string(),
+                    session_id: "source-session".to_string(),
+                    r#type: "user.message".to_string(),
+                    message: text.to_string(),
+                    payload: serde_json::json!({}),
+                    created_at: None,
+                },
+                author,
+            )
+            .expect("source prompt");
+        }
+    }
+    let authors = |session_id: &str| -> Vec<(String, Option<String>)> {
+        let connection = database.connection();
+        let mut statement = connection
+            .prepare(
+                "SELECT message, prompt_author FROM events
+                 WHERE session_id = ?1 AND type = 'user.message' ORDER BY rowid",
+            )
+            .unwrap();
+        statement
+            .query_map([session_id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    let expected = vec![
+        (
+            "see [a](argmax://chat/chat-a?v=1)".to_string(),
+            Some("person".to_string()),
+        ),
+        ("see [b](argmax://chat/chat-b?v=1)".to_string(), None),
+    ];
+    assert_eq!(authors("source-session"), expected);
+
+    let forked = service
+        .fork_session_at(ForkRequest {
+            session_id: "source-session".to_string(),
+            boundary_event_id: None,
+            workspace: ForkWorkspaceMode::Shared,
+        })
+        .await
+        .expect("fork");
+    assert_eq!(authors(&forked.session.id), expected, "fork copy");
+
+    let moved = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout { path: sibling },
+            true,
+        )
+        .await
+        .expect("move session");
+    assert_eq!(authors(&moved.session.id), expected, "move copy");
+}
+
+#[tokio::test]
+async fn move_session_gives_the_destination_no_binding_it_could_wrongly_resume() {
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, _source_workspace, sibling, _repo) = checkout_move_fixture(&database, "claude");
+    // A parked conversation with another provider must not follow the move.
+    {
+        let connection = database.connection();
+        connection
+            .execute(
+                "INSERT INTO provider_bindings (id, session_id, provider, conversation_id, working_dir, config_identity, state, created_at, updated_at) VALUES ('b1', 'source-session', 'codex', 'old-thread', '/elsewhere', '', 'parked', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+    }
+
+    let moved = service
+        .move_session(
+            "source-session",
+            MoveDestination::Checkout { path: sibling },
+            true,
+        )
+        .await
+        .expect("move session");
+
+    let connection = database.connection();
+    let mut statement = connection
+        .prepare(
+            "SELECT provider, conversation_id, state FROM provider_bindings WHERE session_id = ?",
+        )
+        .unwrap();
+    let bindings = statement
+        .query_map([&moved.session.id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    // Only the carried (and forked) conversation exists, and it is not the
+    // destination's own until the fork's first launch names a new id.
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].0, "claude");
+    assert_eq!(bindings[0].2, "invalid", "{bindings:?}");
+}
+
+#[tokio::test]
+async fn a_moved_fork_child_stays_a_fork_and_is_not_forked_natively_once_its_source_moved_on() {
+    use argmax_lib::ipc::inputs::ForkWorkspaceMode;
+    use argmax_lib::providers::{continuity::plan_launch, fork_merge, ProviderId};
+    use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, _source_workspace, sibling, _repo) = checkout_move_fixture(&database, "claude");
+
+    // Fork the whole chat: the child holds the source's id, flagged to fork it.
+    let forked = service
+        .fork_session_at(ForkRequest {
+            session_id: "source-session".to_string(),
+            boundary_event_id: None,
+            workspace: ForkWorkspaceMode::Shared,
+        })
+        .await
+        .expect("fork");
+    assert_eq!(
+        forked.session.provider_conversation_id.as_deref(),
+        Some("native-conversation")
+    );
+
+    // The source takes another turn before the untouched child speaks...
+    {
+        let connection = database.connection();
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "later-ask".to_string(),
+                session_id: "source-session".to_string(),
+                r#type: "user.message".to_string(),
+                message: "a later ask".to_string(),
+                payload: serde_json::json!({}),
+                created_at: None,
+            },
+        )
+        .unwrap();
+    }
+    // ...and the child is moved to another worktree first.
+    let moved = service
+        .move_session(
+            &forked.session.id,
+            MoveDestination::Checkout { path: sibling },
+            true,
+        )
+        .await
+        .expect("move the fork");
+
+    let connection = database.connection();
+    // The moved chat still knows where it came from.
+    let lineage =
+        argmax_lib::persistence::continuity::fork_for_child(&connection, &moved.session.id)
+            .unwrap()
+            .expect("the moved fork keeps its lineage");
+    assert_eq!(lineage.source_session_id.as_deref(), Some("source-session"));
+    assert_eq!(lineage.boundary_event_id, forked.fork.boundary_event_id);
+
+    // So the "fork the source's latest" shortcut is checked, and refused: the
+    // source moved on, and the child must not inherit its later turn.
+    let mut child = find_session_by_id_for_test(&connection, &moved.session.id);
+    let plan = plan_launch(
+        &connection,
+        &mut child,
+        ProviderId::Claude,
+        std::path::Path::new(&moved.workspace.path),
+        false,
+    )
+    .unwrap();
+    assert_eq!(plan.resume_conversation_id, None);
+    assert!(!plan.resume_fork);
+    drop(connection);
+
+    // And merge-back works from where it landed.
+    {
+        let connection = database.connection();
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "moved-finding".to_string(),
+                session_id: moved.session.id.clone(),
+                r#type: "message.completed".to_string(),
+                message: "found it after the move".to_string(),
+                payload: serde_json::json!({}),
+                created_at: None,
+            },
+        )
+        .unwrap();
+    }
+    let preview = fork_merge::preview(&database, &moved.session.id).expect("preview");
+    assert_eq!(preview.source_session_id, "source-session");
+    assert!(preview.text.contains("found it after the move"));
+    assert!(
+        !preview.text.contains("Source answer"),
+        "the copied history is not a finding"
+    );
+}
+
+fn find_session_by_id_for_test(
+    connection: &rusqlite::Connection,
+    session_id: &str,
+) -> argmax_lib::persistence::sessions::SessionSummary {
+    argmax_lib::persistence::sessions::find_session_by_id(connection, session_id).unwrap()
+}
+
+#[tokio::test]
+async fn a_queued_merge_claim_survives_the_fork_moving() {
+    use argmax_lib::ipc::inputs::ForkWorkspaceMode;
+    use argmax_lib::providers::fork_merge::{self, Claim, ClaimOptions};
+    use argmax_lib::providers::session_service::SendInputResult;
+    use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    let (service, _source_workspace, sibling, _repo) = checkout_move_fixture(&database, "claude");
+    let forked = service
+        .fork_session_at(ForkRequest {
+            session_id: "source-session".to_string(),
+            boundary_event_id: None,
+            workspace: ForkWorkspaceMode::Shared,
+        })
+        .await
+        .expect("fork");
+    let child_id = forked.session.id.clone();
+    {
+        let connection = database.connection();
+        persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: "finding".to_string(),
+                session_id: child_id.clone(),
+                r#type: "message.completed".to_string(),
+                message: "found it".to_string(),
+                payload: serde_json::json!({}),
+                created_at: None,
+            },
+        )
+        .unwrap();
+    }
+
+    // The source is busy, so the merge waits in its queue.
+    let Claim::Claimed { text, merge_id, .. } =
+        fork_merge::claim_range(&database, &child_id, "finding", &ClaimOptions::default())
+            .expect("claim")
+    else {
+        panic!("expected a claim");
+    };
+    fork_merge::settle_claim(
+        &database,
+        &merge_id,
+        &Ok(SendInputResult {
+            ok: true,
+            queued: true,
+        }),
+    )
+    .unwrap();
+    database
+        .connection()
+        .execute(
+            "INSERT INTO pending_messages (id, session_id, position, content, agent_mode, queued_at, updated_at) VALUES ('pm', 'source-session', 0, ?1, 'auto', '2026-05-24T10:00:00.000Z', '2026-05-24T10:00:00.000Z')",
+            [&text],
+        )
+        .unwrap();
+
+    // The fork moves to another worktree while its merge is still queued.
+    let moved = service
+        .move_session(&child_id, MoveDestination::Checkout { path: sibling }, true)
+        .await
+        .expect("move the fork");
+
+    // The copied claim still finds the queued message by its marker, so the
+    // range is not offered, and sent, a second time.
+    let preview = fork_merge::preview(&database, &moved.session.id).expect("preview");
+    assert!(preview.nothing_new, "{}", preview.text);
+    assert!(preview.unconfirmed_merge_id.is_some());
+    assert!(matches!(
+        fork_merge::claim_range(
+            &database,
+            &moved.session.id,
+            "finding",
+            &ClaimOptions::default()
+        ),
+        Err(_) | Ok(Claim::AlreadyMerged)
+    ));
+    let still_queued: i64 = database
+        .connection()
+        .query_row("SELECT COUNT(*) FROM pending_messages", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(still_queued, 1);
+
+    // Deleting the queued message still withdraws the carried claim.
+    database
+        .connection()
+        .execute("DELETE FROM pending_messages", [])
+        .unwrap();
+    let drained = fork_merge::preview(&database, &moved.session.id).expect("preview");
+    assert!(drained.unconfirmed_merge_id.is_none());
 }

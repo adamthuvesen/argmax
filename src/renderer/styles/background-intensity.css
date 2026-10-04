@@ -32,14 +32,14 @@
   --background-dim: calc(max(0, 10 - var(--background-intensity)) / 10 * 14%);
   --line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);
   --line-firm: calc(max(0, var(--contrast, 50) - 50) / 50 * 40%);
-  --bg: color-mix(in oklab, color-mix(in oklab, #f3f2ed, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --panel-soft: color-mix(in oklab, color-mix(in oklab, #f5f4ef, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --composer-surface: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --panel-sunken: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --code-surface: color-mix(in oklab, color-mix(in oklab, #edeeeb, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --terminal-surface: color-mix(in oklab, color-mix(in oklab, #f2f1eb, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --tool-block-surface: color-mix(in oklab, color-mix(in oklab, #eeeeeb, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --bg: color-mix(in oklab, color-mix(in oklab, #f4f4f4, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --panel: color-mix(in oklab, color-mix(in oklab, #fafafa, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --panel-soft: color-mix(in oklab, color-mix(in oklab, #f6f6f6, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --composer-surface: color-mix(in oklab, color-mix(in oklab, #fafafa, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --panel-sunken: color-mix(in oklab, color-mix(in oklab, #e8e8e8, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --code-surface: color-mix(in oklab, color-mix(in oklab, #eeeeee, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --terminal-surface: color-mix(in oklab, color-mix(in oklab, #f3f3f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --tool-block-surface: color-mix(in oklab, color-mix(in oklab, #efefef, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
   --line-at-intensity: color-mix(in oklab, color-mix(in oklab, #d4d6d4, #ebeeef var(--background-whiteness)), #000000 var(--background-dim));
   --line: color-mix(in oklab, color-mix(in oklab, var(--line-at-intensity), var(--bg) var(--line-fade)), #000000 var(--line-firm));
   --line-soft-at-intensity: color-mix(in oklab, color-mix(in oklab, #dee0dd, #f4f5f6 var(--background-whiteness)), #000000 var(--background-dim));
@@ -48,8 +48,8 @@
   --line-strong: color-mix(in oklab, color-mix(in oklab, var(--line-strong-at-intensity), var(--bg) var(--line-fade)), #000000 var(--line-firm));
   --scrollbar-thumb: color-mix(in oklab, color-mix(in oklab, #d3d6d5, #e6eaec var(--background-whiteness)), #000000 var(--background-dim));
   --scrollbar-thumb-hover: color-mix(in oklab, color-mix(in oklab, #c6cac9, #dadfe2 var(--background-whiteness)), #000000 var(--background-dim));
-  --overlay-panel: color-mix(in oklab, color-mix(in oklab, #f9f8f3, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
-  --overlay-panel-raised: color-mix(in oklab, color-mix(in oklab, #e7e8e5, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --overlay-panel: color-mix(in oklab, color-mix(in oklab, #fafafa, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
+  --overlay-panel-raised: color-mix(in oklab, color-mix(in oklab, #e8e8e8, #ffffff var(--background-whiteness)), #000000 var(--background-dim));
 }
 
 :root[data-theme="dark"][data-background-intensity] {

@@ -46,6 +46,11 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Test notification"
         ]
       },
+      {
+        id: "settings-window-snapshot",
+        label: "Window snapshot",
+        settings: ["Window snapshot shortcut", "Shortcut keys", "Screen Recording access"]
+      },
       { id: "settings-power", label: "Power", settings: ["Keep computer awake"] },
       { id: "settings-handoff", label: "Handoff", settings: ["Default IDE", "Web links from chat"] }
     ]

@@ -564,7 +564,9 @@ final class TranscriptStore: ObservableObject {
             queued: messages.map { entry in
                 NativeQueuedMessage(
                     id: entry.id,
-                    text: entry.content,
+                    // A chat reference reads as its title in the row; the
+                    // message itself keeps the link.
+                    text: ChatReferenceText.titlesOnly(entry.content),
                     canSteer: canSteer(entry, session: row)
                 )
             },
@@ -816,6 +818,7 @@ final class TranscriptStore: ObservableObject {
         return session.state == .running &&
             ["claude", "codex", "opencode"].contains(session.provider) &&
             hasContextHeadroom &&
+            (message.provider == nil || message.provider == session.provider) &&
             (message.modelId == nil || message.modelId == session.modelId) &&
             (message.reasoningEffort == nil || message.reasoningEffort == session.reasoningEffort)
     }

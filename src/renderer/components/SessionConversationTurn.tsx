@@ -2,10 +2,12 @@ import { Fragment, memo, useMemo, useState, type JSX, type ReactNode } from "rea
 import { CornerDownRight } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
+import { findChatReferences } from "../lib/composerContext.js";
 import { splitLinkSegments } from "../lib/messageLinks.js";
+import { ChatSourceChip } from "./ChatSourceChip.js";
 import { splitSkillTokens } from "../lib/slashHighlight.js";
 import { ImageLightbox } from "./ImageLightbox.js";
-import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import type { ForkSessionOptions, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import type { RenderItem } from "../lib/foldConversation.js";
 import { isSupportedImageMime } from "../lib/composerAttachments.js";
 import {
@@ -86,7 +88,7 @@ function SessionConversationTurnInner({
   onOpenDiff?: (path: string) => void;
   /** Open the review panel on the workspace's changes, from the top. */
   onOpenReview?: () => void;
-  onForkSession?: (sessionId: string) => Promise<void>;
+  onForkSession?: (sessionId: string, options?: ForkSessionOptions) => Promise<void>;
   /** Before-turn checkpoint id, keyed by the user-message event it answers. */
   revertCheckpointIds?: ReadonlyMap<string, string>;
   /** Why Revert is unavailable, keyed by the same user-message event id. */
@@ -495,11 +497,10 @@ function SessionConversationTurnInner({
     .map((group) => group.text.trim())
     .filter((text) => text.length > 0)
     .join("\n\n");
-  // Mirror `fork_session`'s gate (orchestration.rs): a mid-turn fork would copy
-  // a partial transcript, so the backend refuses "running" and "waiting". The
-  // footer only hides itself on the *latest* live turn, so without this every
-  // earlier turn — and every turn of a waiting session — offered a button whose
-  // only possible outcome was an error toast.
+  // The fork starts from the user message that began this turn (the render
+  // item just above it). The backend refuses a turn that is still working, and
+  // the footer hides itself on the live turn, so any turn that shows this
+  // action is a finished one.
   // Files this turn wrote, folded one row per path. Derived from the same tool
   // input the activity rows read, so the card cannot disagree with them.
   const turnChanges = useMemo(
@@ -517,11 +518,13 @@ function SessionConversationTurnInner({
         {...(onOpenReview ? { onOpenReview } : {})}
       />
     ) : null;
+  const forkBoundaryId =
+    priorItem?.kind === "user-message" ? priorItem.event.id : undefined;
   const forkable =
     session !== null &&
     FORK_CAPABLE_PROVIDERS.has(session.provider) &&
-    session.state !== "running" &&
-    session.state !== "waiting" &&
+    forkBoundaryId !== undefined &&
+    !isStreamingTurn &&
     onForkSession !== undefined;
   // The turn's own id is synthetic; the checkpoint was anchored to the user
   // message this turn answers, which is the render item just above it.
@@ -565,7 +568,16 @@ function SessionConversationTurnInner({
       {...(earliestCreatedAt ? { headerTimestampIso: earliestCreatedAt } : {})}
       {...(turnMarkdown ? { turnMarkdown } : {})}
       {...(changesCard ? { changes: changesCard } : {})}
-      {...(forkable && session ? { onFork: () => void onForkSession?.(session.id) } : {})}
+      {...(forkable && session && forkBoundaryId
+        ? {
+            onFork: () => void onForkSession?.(session.id, { boundaryEventId: forkBoundaryId }),
+            onForkIsolated: () =>
+              void onForkSession?.(session.id, {
+                boundaryEventId: forkBoundaryId,
+                workspace: "isolated"
+              })
+          }
+        : {})}
       {...(revert ? { revert } : {})}
     />
   );
@@ -582,6 +594,32 @@ export const SessionConversationTurn = memo(SessionConversationTurnInner);
  * links first so URL path segments never render as skill invocations.
  */
 function markUserMessage(text: string): ReactNode {
+  // Chat references first: their link text holds a path-like URL that the
+  // web-link and skill passes below must not see.
+  const references = findChatReferences(text);
+  if (references.length === 0) return markLinksAndSkills(text);
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const match of references) {
+    if (match.from > cursor) {
+      nodes.push(<Fragment key={`t${cursor}`}>{markLinksAndSkills(text.slice(cursor, match.from))}</Fragment>);
+    }
+    nodes.push(
+      <ChatSourceChip
+        key={`c${match.from}`}
+        sessionId={match.reference.sessionId}
+        title={match.reference.title}
+      />
+    );
+    cursor = match.to;
+  }
+  if (cursor < text.length) {
+    nodes.push(<Fragment key={`t${cursor}`}>{markLinksAndSkills(text.slice(cursor))}</Fragment>);
+  }
+  return nodes;
+}
+
+function markLinksAndSkills(text: string): ReactNode {
   const segments = splitLinkSegments(text);
   if (!segments) return markSkillTokens(text);
   return segments.map((segment, index) =>

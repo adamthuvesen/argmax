@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { formatFileChipLabel } from "../lib/fileChipPath.js";
 import { useFilePreview } from "../lib/filePreview.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
+import { isExternalFilePath } from "../lib/reviewIpc.js";
 import { withToast } from "../lib/withToast.js";
 import { showToast } from "../state/toast.js";
 import { FilePreviewPopover } from "./FilePreviewPopover.js";
@@ -14,19 +15,60 @@ export type FileChipOpenOptions = {
 
 const HOVER_INTENT_MS = 500;
 
-export function FileChip({
-  path,
-  line,
-  workspaceId,
-  workspaceCwd,
-  onOpen
-}: {
+type FileChipProps = {
   path: string;
   line: number | null;
   workspaceId?: string | null;
   workspaceCwd?: string | null;
   onOpen?: (path: string, opts?: FileChipOpenOptions) => void;
-}): JSX.Element {
+};
+
+/** Paths confirmed to be files. A miss is not cached: the agent may create the
+ *  file after mentioning it. */
+const confirmedFiles = new Set<string>();
+
+async function isFileOnDisk(path: string, workspaceId: string | null | undefined): Promise<boolean> {
+  const api = window.argmax;
+  if (!api) return false;
+  try {
+    if (isExternalFilePath(path)) {
+      await api.workspace.statExternalFile(path);
+    } else if (workspaceId) {
+      await api.workspace.statFile({ kind: "workspace", id: workspaceId }, path);
+    } else {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A FileChip for a path that could as easily be something else, such as
+ * `/api/users`: it shows `fallback` until the path is confirmed to be a file.
+ */
+export function CheckedFileChip({ fallback, ...props }: FileChipProps & { fallback: ReactNode }): JSX.Element {
+  const key = `${props.workspaceId ?? ""}:${props.path}`;
+  const [isFile, setIsFile] = useState(() => confirmedFiles.has(key));
+  useEffect(() => {
+    if (confirmedFiles.has(key)) {
+      setIsFile(true);
+      return;
+    }
+    let cancelled = false;
+    void isFileOnDisk(props.path, props.workspaceId).then((exists) => {
+      if (exists) confirmedFiles.add(key);
+      if (!cancelled) setIsFile(exists);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, props.path, props.workspaceId]);
+  return isFile ? <FileChip {...props} /> : <>{fallback}</>;
+}
+
+export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: FileChipProps): JSX.Element {
   const label = formatFileChipLabel(path, workspaceCwd, line);
   const ariaLabel = line ? `Open ${path} at line ${line}` : `Open ${path}`;
   const title = onOpen

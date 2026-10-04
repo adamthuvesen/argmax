@@ -2,7 +2,10 @@ use super::{inputs::*, live_database};
 use crate::{
     error::ArgmaxResult, gh::service::GhService, persistence::gh::GhPrRecord, state::AppState,
 };
+use std::sync::Arc;
 use tauri::State;
+
+use crate::git::pr_cleanup::{cleanup_merged_pr, PrCleanupReport};
 
 use crate::persistence::gh::{
     dismiss_session_pr, list_session_prs, set_session_pr_selection, SessionPrSummary,
@@ -58,6 +61,32 @@ pub(crate) async fn prs_dismiss_impl(
     .await?;
     super::publish_pr_workspaces_for_session(state, &session_id)?;
     Ok(rows)
+}
+
+/// The git cleanup after a merged PR (docs/workspaces.md#pr-cleanup). It
+/// never archives the chat.
+#[tauri::command(rename = "prs:cleanup")]
+#[specta::specta]
+pub async fn prs_cleanup(
+    state: State<'_, AppState>,
+    input: PrsCleanupInput,
+) -> ArgmaxResult<PrCleanupReport> {
+    prs_cleanup_impl(&state, input).await
+}
+
+pub(crate) async fn prs_cleanup_impl(
+    state: &AppState,
+    input: PrsCleanupInput,
+) -> ArgmaxResult<PrCleanupReport> {
+    let database = live_database(state)?;
+    let service = GhService::new(Arc::clone(&database));
+    cleanup_merged_pr(
+        &database,
+        &service,
+        input.session_id.as_str(),
+        input.pr_number,
+    )
+    .await
 }
 
 #[tauri::command(rename = "prs:list-for-session")]

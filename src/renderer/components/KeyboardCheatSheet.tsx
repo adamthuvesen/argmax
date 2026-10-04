@@ -1,5 +1,7 @@
 import { useEffect, useRef, type JSX } from "react";
+import { useBackgroundSendShortcut } from "../hooks/useBackgroundSendShortcut.js";
 import { KEYBOARD_BINDINGS } from "../lib/keyboardBindings.js";
+import { formatChord } from "../lib/shortcutChord.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { useMotionPresence } from "../hooks/useMotionPresence.js";
@@ -14,6 +16,8 @@ export function KeyboardCheatSheet({
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const motion = useMotionPresence(open);
+  // The one remappable chord, spelled as it is set now.
+  const backgroundSend = useBackgroundSendShortcut();
   useDismissOnOutsideOrEscape(dialogRef, open, onClose, undefined, { trapFocus: true });
   useRestoreFocus(open);
 
@@ -50,6 +54,12 @@ export function KeyboardCheatSheet({
               <dd>{binding.label}</dd>
             </div>
           ))}
+          <div className="cheat-sheet-row">
+            <dt>
+              <kbd>{formatChord(backgroundSend)}</kbd>
+            </dt>
+            <dd>Start the new chat in the background (Settings → General)</dd>
+          </div>
         </dl>
       </div>
     </div>

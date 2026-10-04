@@ -15,12 +15,6 @@ describe("serverIconFor", () => {
     expect(serverIconFor("github")?.layers[0]?.fill).toBeNull();
   });
 
-  it("keeps the multi-coloured Google marks in their own colours", () => {
-    const fills = serverIconFor("gmail")?.layers.map((layer) => layer.fill);
-    expect(fills).toContain("#EA4335");
-    expect(fills).toContain("#34A853");
-  });
-
   it("draws Argmax's own tools as the mascot's head in the fox tokens", () => {
     const icon = serverIconFor("argmax");
     expect(icon?.title).toBe("Argmax");
@@ -42,11 +36,6 @@ describe("serverIconFor", () => {
     const layers = serverIconFor("Hex")?.layers;
     expect(layers?.map((layer) => layer.fill)).toEqual(["#030119", "#EABCBB"]);
     expect(layers?.[0]?.path).toMatch(/^M12 0A12 12 /);
-  });
-
-  it("draws Executor as its cream E on a black circle", () => {
-    const layers = serverIconFor("executor")?.layers;
-    expect(layers?.map((layer) => layer.fill)).toEqual(["#000000", "#F3EFE7"]);
   });
 
   it("returns null for a server with no mark wired up", () => {

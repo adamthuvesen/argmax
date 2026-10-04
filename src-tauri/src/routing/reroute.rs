@@ -74,8 +74,9 @@ fn ladder(provider: ProviderId) -> &'static [(&'static RouteModel, Option<Reason
             (&table::GROK, Some(High)),
             (&table::OPUS, Some(High)),
         ],
-        // The grid never launches OpenCode, so no routed chat runs there.
-        ProviderId::Opencode => &[],
+        // A DeepSeek mechanical chat that is reported wrong moves to Sonnet on
+        // Claude Code, continuing from its visible transcript.
+        ProviderId::Opencode => &[(&table::DEEPSEEK, Some(High)), (&table::SONNET, Some(High))],
         ProviderId::Cursor => &[
             (&table::COMPOSER, None),
             (&table::CURSOR_OPUS, Some(Medium)),
@@ -865,7 +866,7 @@ mod tests {
     fn a_provider_without_a_policy_keeps_its_route() {
         let chat = state(
             ProviderId::Opencode,
-            "opencode-go/deepseek-v4.1-flash",
+            "openrouter/deepseek/deepseek-v4.1-flash",
             Some(High),
         );
         let decision = follow_up_route(&chat, &classified(TaskKind::Coding, 3.0, 0.95));

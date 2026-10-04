@@ -59,7 +59,7 @@ CursorBench (56.0% vs 49.2%).
 
 Effort is clamped to the model's ladder (same rule as `clampEffort` in
 `src/shared/providerModels.ts`: keep if supported, else the highest level below,
-else the lowest). Composer takes no effort; routed chats run it standard, not Fast.
+else the lowest). Composer takes no effort; routed chats run it on Fast (changed 2026-10-02, `33ecdf5f`; see [routing.md](../routing.md)).
 V4.1 Flash is floored at high (low measured no faster). Mechanical work caps at medium. **A launch never runs above high**; xhigh and max are reserved for escalation.
 
 Uncertainty:

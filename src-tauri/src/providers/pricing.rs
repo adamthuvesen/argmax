@@ -58,21 +58,19 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "claude-opus-5-5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-sonnet-5-5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-5-thinking-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    // OpenCode Zen free tier — ids keep the `opencode/` provider prefix the
-    // CLI's `-m` flag expects. All bill $0.
-    "opencode/big-pickle" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "opencode/nemotron-3.5-lightning-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "opencode/nemotron-3-ultra-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    "opencode/muse-spark-1.3-contributor-free" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    // OpenCode Go (opencode-go/*) — billed per-token models.
-    "opencode-go/glm-5.3-flash" => ModelPricing { input: 0.075, output: 0.25, cache_read: 0.015, cache_write: 0.0 },
-    "opencode-go/glm-5.3" => ModelPricing { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 0.0 },
-    "opencode-go/kimi-k3" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 0.0 },
-    "opencode-go/qwen3.8-max" => ModelPricing { input: 2.0, output: 6.0, cache_read: 0.25, cache_write: 2.5 },
-    "opencode-go/qwen3.8-flash" => ModelPricing { input: 0.15, output: 0.47, cache_read: 0.016, cache_write: 0.2 },
-    "opencode-go/deepseek-v4-pro" => ModelPricing { input: 0.66, output: 1.98, cache_read: 0.022, cache_write: 0.0 },
-    // OpenCode's catalog reports the off-peak rate. Peak pricing is not modeled.
-    "opencode-go/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.0 },
+    // OpenCode via OpenRouter: the model maker's own host rate on OpenRouter
+    // (Groq's for the pinned MiniMax), an estimate rather than the bill. See
+    // `opencode_cost_is_billed` and the TS table for why. Cache writes bill as
+    // plain input; Groq gives MiniMax no cached-input discount.
+    "openrouter/z-ai/glm-5.3-flash" => ModelPricing { input: 0.15, output: 0.5, cache_read: 0.03, cache_write: 0.15 },
+    "openrouter/z-ai/glm-5.3" => ModelPricing { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 1.4 },
+    "openrouter/deepseek/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.15 },
+    "openrouter/deepseek/deepseek-v4-pro-0813" => ModelPricing { input: 0.66, output: 1.98, cache_read: 0.022, cache_write: 0.66 },
+    "openrouter/moonshotai/kimi-k3" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.0 },
+    "openrouter/qwen/qwen3.8-max-0902" => ModelPricing { input: 2.0, output: 6.0, cache_read: 0.25, cache_write: 2.5 },
+    "openrouter/qwen/qwen3.8-flash" => ModelPricing { input: 0.15, output: 0.47, cache_read: 0.016, cache_write: 0.2 },
+    "openrouter/meta/muse-spark-1.3-contributor" => ModelPricing { input: 0.1, output: 0.2, cache_read: 0.002, cache_write: 0.1 },
+    "openrouter/minimax/minimax-m2.7" => ModelPricing { input: 0.6, output: 1.8, cache_read: 0.6, cache_write: 0.6 },
     // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
     // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
     // price (4.7 lists at $2 / $6; its SKU is 0.34x that). Every rate was solved
@@ -94,7 +92,6 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
-    "opencode-go/deepseek-v4-flash" => ModelPricing { input: 0.22, output: 0.66, cache_read: 0.007, cache_write: 0.0 },
     "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "claude-sonnet-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },
@@ -170,6 +167,16 @@ pub fn cost_of(usage: UsageCounts, model_id: &str) -> f64 {
         + (usage.output as f64 * price.output) / million
         + (usage.cache_read as f64 * price.cache_read) / million
         + (usage.cache_write as f64 * price.cache_write) / million
+}
+
+/// Whether OpenCode's own `cost` for a turn on this model is what the turn
+/// billed. It is not for OpenRouter models: OpenCode prices them from the
+/// OpenRouter catalog, which lists the cheapest rate per field across hosts,
+/// a combination no host charges (two test turns reported $0.005 and billed
+/// $0.097, 2026-10-04). Those turns are priced from the table instead, and an
+/// OpenRouter model the table does not know shows as unpriced.
+pub fn opencode_cost_is_billed(model_id: &str) -> bool {
+    !model_id.starts_with("openrouter/")
 }
 
 /// The list price for a model, across both the picker table and the aliases
@@ -360,28 +367,18 @@ mod tests {
             ),
             4.5,
         );
-        let free = list_price("opencode/big-pickle").expect("known model");
+        // Groq charges MiniMax cached input at the full input rate.
+        let undiscounted = list_price("openrouter/minimax/minimax-m2.7").expect("known model");
         assert_eq!(
             cache_savings(
                 &UsageRecordTokens {
                     cache_read: 1_000_000,
                     ..UsageRecordTokens::default()
                 },
-                &free,
+                &undiscounted,
             ),
             0.0,
         );
-    }
-
-    #[test]
-    fn list_price_reaches_both_tables_and_strips_date_suffixes() {
-        assert!(list_price("claude-opus-5").is_some());
-        assert!(list_price("claude-sonnet-4-6").is_some());
-        assert_eq!(
-            list_price("claude-sonnet-4-6-20250101"),
-            list_price("claude-sonnet-4-6"),
-        );
-        assert!(list_price("mystery-model").is_none());
     }
 
     #[test]

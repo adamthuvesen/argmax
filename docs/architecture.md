@@ -27,11 +27,12 @@ Argmax pairs a Rust/Tauri runtime with a React/Vite renderer over a `window.argm
 
 ## Runtime: `src-tauri`
 
-[src-tauri/src/lib.rs](../src-tauri/src/lib.rs) initializes app state, SQLite, services, menus, and event channels. Shared services live in [state.rs](../src-tauri/src/state.rs) and are accessed via `tauri::State`.
+[src-tauri/src/lib.rs](../src-tauri/src/lib.rs) initializes app state, SQLite, services, menus, and event channels. The desktop composition root stores services in [state.rs](../src-tauri/src/state.rs). Transport adapters resolve them through `tauri::State`. The scheduler receives explicit service dependencies.
 
 Key directories:
 
-- `ipc/`: Request/response command handlers.
+- `application/`: Validated command values and transport-independent session launch.
+- `ipc/`: Request/response adapters and the typed command catalogue.
 - `persistence/`: SQLite connection, migrations, and repository queries.
 - `providers/`: Adapter CLIs (Claude, Codex, Cursor, OpenCode, Grok Build), PTY runtime, normalizers, and the event flush queue.
 - `session_control/`: Private socket transport for agent-initiated session launch, move, list, and message commands.
@@ -72,6 +73,8 @@ Shell state that several surfaces move lives in `src/renderer/state/`, not in `A
 
 Snapshot and selection stay in [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts); [useAppGridSelection](../src/renderer/hooks/useAppGridSelection.ts) resolves grid moves against that snapshot and writes them to `paneGrid`.
 
+Shell policy has separate owners. [useAppMenuCommands](../src/renderer/hooks/useAppMenuCommands.ts) resolves native menu commands, and [useAppDestinations](../src/renderer/hooks/useAppDestinations.ts) applies explicit sidebar and session navigation. [useProjectActions](../src/renderer/hooks/useProjectActions.ts) and [useWorkspaceActions](../src/renderer/hooks/useWorkspaceActions.ts) own catalog and workspace mutations with their selection repair. `App` supplies current selection and renders surfaces. The grid lays out cells, while `SessionPane` owns review state and approval resolution. [useSessionComposerState](../src/renderer/hooks/useSessionComposerState.ts) owns each conversation's model choice, status, and attached annotations; the transcript reads timeline events independently.
+
 Mouse back and forward buttons move through each window's app navigation
 history: chats, New chat, Settings groups, Schedule, Usage, Activity, arcs, and
 the Browser page. History is bounded and stays in memory until the window
@@ -81,7 +84,12 @@ Clicks inside a browser pane use that tab's web history instead.
 
 Dashboard React state contains metadata and approvals. Transcript events, raw output, and read cursors live together in [SessionTimelines](../src/renderer/lib/sessionTimelines.ts). Each conversation subscribes to its session through `useSessionTimeline`, so a token does not update unrelated panes or the dashboard shell. Agent traces use their parent session's history, while multitasks subscribe to their own session. Subscribed histories stay resident, and the store retains at most 12 inactive histories. Eviction drops the history and its cursors together so reopening a session fetches a complete tail.
 
-Renderer code routes timeline meaning through [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts). Its cached decoder turns each persisted `TimelineEvent` into a discriminated union for messages, tools, lifecycle rows, multitasks, approvals, errors, and unknown rows. Consumers branch on that union instead of interpreting provider payload keys independently. The original event remains available for lossless debug output and large tool input or output bodies.
+Rust owns timeline meaning in [timeline_semantics.rs](../src-tauri/src/persistence/timeline_semantics.rs).
+Every event read carries a versioned semantic contract, including historical rows.
+Generated types serve both desktop and phone projections.
+The renderer's [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) adds presentation models and caches them.
+Provider payload interpretation remains only for older hosts without the supported contract.
+Raw payloads remain available for diagnostics and tool input or output bodies.
 
 [SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages two pane types:
 - **Session panes**: Primary conversation views.
@@ -98,5 +106,5 @@ Dragging a sidebar session over a cell previews an available split in the outer 
 
 - [bindings.d.ts](../src/shared/bindings.d.ts): Generated Rust types from `tauri-specta`.
 - [types.ts](../src/shared/types.ts): the `ArgmaxApi` interface, renderer-only shapes, and the wire types re-exported from `bindings.d.ts`. A type that crosses IPC is never declared by hand here: it is an alias of the generated binding, or a `Retype<>` of it that narrows the columns Rust stores as plain strings (`provider`, `state` on workspaces, event `type`). `WireSubtype<>` covers the two untagged enums the binding cannot narrow on its own.
-- [ipcSchemas.ts](../src/shared/ipcSchemas.ts): Channel-name union for the bridge.
+- [ipcSchemas.ts](../src/shared/ipcSchemas.ts): Generated associations between command names, input types, and result types.
 - [providerModels.ts](../src/shared/providerModels.ts): Model metadata, defaults, and pricing.

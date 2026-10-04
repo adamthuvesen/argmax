@@ -39,6 +39,12 @@ export interface ReviewIpcDispatch {
   ) => Promise<WorkspaceFileWriteResult> | null;
 }
 
+/** A Files-panel key that names a file outside the workspace. Workspace-
+ *  relative keys never start with `/` or `~/`, so the prefix is unambiguous. */
+export function isExternalFilePath(filePath: string): boolean {
+  return filePath.startsWith("/") || filePath === "~" || filePath.startsWith("~/");
+}
+
 /**
  * Factory that returns IPC callables already bound to a workspace/project target.
  *
@@ -95,14 +101,17 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
     },
     readFile: (filePath) => {
       if (!window.argmax) return noBridge();
+      if (isExternalFilePath(filePath)) return window.argmax.workspace.readExternalFile(filePath);
       return window.argmax.workspace.readFile({ kind, id }, filePath);
     },
     statFile: (filePath) => {
       if (!window.argmax) return null;
+      if (isExternalFilePath(filePath)) return window.argmax.workspace.statExternalFile(filePath);
       return window.argmax.workspace.statFile({ kind, id }, filePath);
     },
     writeFile: (filePath, content, expectedMtimeMs) => {
-      if (!window.argmax) return null;
+      // External files are read-only; the editor treats null as "cannot save".
+      if (!window.argmax || isExternalFilePath(filePath)) return null;
       return window.argmax.workspace.writeFile({ kind, id }, filePath, content, expectedMtimeMs);
     }
   };

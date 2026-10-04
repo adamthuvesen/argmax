@@ -7,7 +7,7 @@ import {
   requestActivitySummary,
   requestUsageRemaining,
   requestUsageSummary,
-  setCachedUsageRemaining,
+  recordUsageRemainingFailure,
   usageRemainingHasSettled
 } from "./ledgerPageState.js";
 
@@ -70,7 +70,7 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
         .catch((cause) => {
           const message =
             cause instanceof Error ? cause.message : "Could not read remaining usage.";
-          setCachedUsageRemaining(null, message);
+          recordUsageRemainingFailure(message, Date.now());
         })
     );
   }

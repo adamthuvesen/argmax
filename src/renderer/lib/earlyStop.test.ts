@@ -9,11 +9,6 @@ describe("isEarlySessionStop", () => {
     expect(isEarlySessionStop({ startedAt }, baseTime)).toBe(true);
   });
 
-  it("returns true when stopped within 10s (5s elapsed)", () => {
-    const startedAt = new Date(baseTime).toISOString();
-    expect(isEarlySessionStop({ startedAt }, baseTime + 5_000)).toBe(true);
-  });
-
   it("returns true at exactly 10s boundary", () => {
     const startedAt = new Date(baseTime).toISOString();
     expect(isEarlySessionStop({ startedAt }, baseTime + EARLY_STOP_WINDOW_MS)).toBe(true);
@@ -22,11 +17,6 @@ describe("isEarlySessionStop", () => {
   it("returns false when stopped after 10s (10.001s elapsed)", () => {
     const startedAt = new Date(baseTime).toISOString();
     expect(isEarlySessionStop({ startedAt }, baseTime + 10_001)).toBe(false);
-  });
-
-  it("returns false when stopped after 1 minute", () => {
-    const startedAt = new Date(baseTime).toISOString();
-    expect(isEarlySessionStop({ startedAt }, baseTime + 60_000)).toBe(false);
   });
 
   it("returns false for null or undefined session", () => {

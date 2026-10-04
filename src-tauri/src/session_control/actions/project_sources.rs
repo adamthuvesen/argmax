@@ -7,9 +7,9 @@ use uuid::Uuid;
 use super::super::{
     argmax_protocol_error,
     protocol::{
-        SessionControlError, SessionControlResponse, SessionControlResult, SourceAddedOutcome,
-        SourceReadOutcome, SourceRecord, SourcesAddAction, SourcesListAction, SourcesListOutcome,
-        SourcesReadAction,
+        LinkedEntryRecord, LinkedListingRecord, LinkedRepoRecord, SessionControlError,
+        SessionControlResponse, SessionControlResult, SourceAddedOutcome, SourceReadOutcome,
+        SourceRecord, SourcesAddAction, SourcesListAction, SourcesListOutcome, SourcesReadAction,
     },
     protocol_error,
     registry::ParentLaunchSettings,
@@ -18,11 +18,15 @@ use super::super::{
 };
 use super::workspace_tools::resolve_session_workspace;
 use crate::{
-    files::workspace_files::{SkippedReason, WorkspaceFilePreview, WorkspaceFilesService},
+    files::{
+        linked_roots,
+        workspace_files::{SkippedReason, WorkspaceFilePreview, WorkspaceFilesService},
+    },
     mcp::browser_bridge::{self, BrowserRequest},
     persistence::{
         database::Database,
         events::{persist_timeline_event, PersistTimelineEventInput, TimelineEvent},
+        linked_repos::{find_linked_repo_by_name, list_enabled_linked_repos, LinkedRepo},
         project_sources::{
             get_source, insert_source, list_sources, ProjectSource, ProjectSourceAddedBy,
             ProjectSourceKind, SourceInput,
@@ -45,8 +49,20 @@ pub(super) fn list_project_sources(
     database: Arc<Database>,
 ) -> Result<SessionControlResponse, SessionControlError> {
     let target = resolve_session_workspace(&database, &parent.session_id, None)?;
-    let all = list_sources(&database.read_connection(), &target.project.id)
-        .map_err(argmax_protocol_error)?;
+    if let Some(name) = action.linked_repo.as_deref() {
+        return list_linked_directory(&action, name, &target.project.id, &database);
+    }
+    if action.path.is_some() {
+        return Err(orphan_path_error());
+    }
+    let (all, linked_repos) = {
+        let connection = database.read_connection();
+        (
+            list_sources(&connection, &target.project.id).map_err(argmax_protocol_error)?,
+            list_enabled_linked_repos(&connection, &target.project.id)
+                .map_err(argmax_protocol_error)?,
+        )
+    };
     let offset = action.offset.unwrap_or(0) as usize;
     let limit = action
         .limit
@@ -72,10 +88,86 @@ pub(super) fn list_project_sources(
         SessionControlResult::SourcesListed(SourcesListOutcome {
             project_id: target.project.id,
             sources,
+            linked_repos: linked_repos.iter().map(linked_repo_record).collect(),
+            listing: None,
             next_offset: truncated.then_some(next as u32),
             truncated,
         }),
     ))
+}
+
+fn linked_repo_record(repo: &LinkedRepo) -> LinkedRepoRecord {
+    LinkedRepoRecord {
+        name: repo.name.clone(),
+        root: repo.root_path.clone(),
+    }
+}
+
+fn list_linked_directory(
+    action: &SourcesListAction,
+    name: &str,
+    project_id: &str,
+    database: &Arc<Database>,
+) -> Result<SessionControlResponse, SessionControlError> {
+    let repo = find_linked_repo_by_name(&database.read_connection(), project_id, name.trim())
+        .map_err(argmax_protocol_error)?;
+    let path = action.path.as_deref().unwrap_or("");
+    let offset = action.offset.unwrap_or(0) as usize;
+    let listing = linked_roots::list_directory(
+        &repo,
+        path,
+        offset,
+        action
+            .limit
+            .map(|value| value as usize)
+            .unwrap_or(linked_roots::LIST_DEFAULT_LIMIT),
+    )
+    .map_err(argmax_protocol_error)?;
+    // The reply is capped at 64 KiB, and 500 long names can exceed it. Keep to
+    // the same byte budget the plain listing uses, counting the encoded records
+    // and the echoed path, and page on from the entries actually returned.
+    let mut encoded_bytes = path.len() + repo.name.len() + 256;
+    let mut entries = Vec::new();
+    for entry in listing.entries {
+        let record = LinkedEntryRecord {
+            name: entry.name,
+            kind: entry.kind.to_string(),
+            size: entry.size,
+        };
+        let bytes = serde_json::to_vec(&record)
+            .map_err(|error| protocol_error("SOURCE_ENCODE_FAILED", error.to_string()))?
+            .len();
+        if !entries.is_empty() && encoded_bytes + bytes > SOURCES_LIST_BYTE_BUDGET {
+            break;
+        }
+        encoded_bytes += bytes;
+        entries.push(record);
+    }
+    let next = offset.saturating_add(entries.len());
+    let truncated = next < listing.total;
+    Ok(SessionControlResponse::new(
+        SessionControlResult::SourcesListed(SourcesListOutcome {
+            project_id: project_id.to_string(),
+            sources: Vec::new(),
+            linked_repos: Vec::new(),
+            listing: Some(LinkedListingRecord {
+                linked_repo: repo.name,
+                path: path.trim().to_string(),
+                entries,
+            }),
+            next_offset: truncated.then_some(next as u32),
+            truncated,
+        }),
+    ))
+}
+
+/// `path` only means something inside a linked repository. Ignoring it would
+/// answer a different question than the one the agent asked.
+fn orphan_path_error() -> SessionControlError {
+    protocol_error(
+        "SOURCE_PATH_REQUIRES_LINKED_REPO",
+        "`path` addresses a file or directory inside a linked repository. Pass `linked_repo` with it, or omit `path`.",
+    )
 }
 
 pub(super) fn add_project_source(
@@ -143,16 +235,44 @@ pub(super) async fn read_project_source(
     app: Option<&AppHandle>,
 ) -> Result<SessionControlResponse, SessionControlError> {
     let target = resolve_session_workspace(&database, &parent.session_id, None)?;
-    let source = get_source(
-        &database.read_connection(),
-        &target.project.id,
-        action.id.trim(),
-    )
-    .map_err(argmax_protocol_error)?;
     let max_chars = action
         .max_chars
         .map(|value| (value as usize).clamp(1, SOURCE_READ_MAX_CHARS))
         .unwrap_or(SOURCE_READ_DEFAULT_CHARS);
+    let id = match (action.id.as_deref(), action.linked_repo.as_deref()) {
+        (Some(_), Some(_)) => {
+            return Err(protocol_error(
+                "SOURCE_READ_AMBIGUOUS",
+                "Pass either `id` or `linked_repo` with `path`, not both.",
+            ))
+        }
+        (None, None) => {
+            return Err(protocol_error(
+                "SOURCE_READ_TARGET_REQUIRED",
+                "Pass a source `id`, or `linked_repo` with `path`.",
+            ))
+        }
+        (None, Some(name)) => {
+            return read_linked_file(
+                name,
+                action.path.as_deref(),
+                max_chars,
+                &target.project.id,
+                &parent.session_id,
+                &database,
+                &workspaces,
+            )
+            .await
+        }
+        (Some(id), None) => {
+            if action.path.is_some() {
+                return Err(orphan_path_error());
+            }
+            id
+        }
+    };
+    let source = get_source(&database.read_connection(), &target.project.id, id.trim())
+        .map_err(argmax_protocol_error)?;
 
     let (content, title, location, truncated) = match source.kind {
         ProjectSourceKind::File => {
@@ -203,7 +323,8 @@ pub(super) async fn read_project_source(
 
     let read_at = now_iso();
     let mut outcome = SourceReadOutcome {
-        source: source_record(&source),
+        source: Some(source_record(&source)),
+        linked_repo: None,
         content,
         read_at: read_at.clone(),
         title,
@@ -244,6 +365,79 @@ pub(super) async fn read_project_source(
     };
     workspaces.publish_session_with_events(session, vec![event]);
 
+    Ok(SessionControlResponse::new(
+        SessionControlResult::SourceRead(outcome),
+    ))
+}
+
+async fn read_linked_file(
+    name: &str,
+    path: Option<&str>,
+    max_chars: usize,
+    project_id: &str,
+    session_id: &str,
+    database: &Arc<Database>,
+    workspaces: &Arc<WorkspaceService>,
+) -> Result<SessionControlResponse, SessionControlError> {
+    let path = path.ok_or_else(|| {
+        protocol_error(
+            "SOURCE_READ_TARGET_REQUIRED",
+            "Pass `path`, the file to read inside the linked repository.",
+        )
+    })?;
+    let repo = find_linked_repo_by_name(&database.read_connection(), project_id, name.trim())
+        .map_err(argmax_protocol_error)?;
+    let read = linked_roots::read_text(&repo, path, max_chars)
+        .await
+        .map_err(argmax_protocol_error)?;
+    if read.content.trim().is_empty() {
+        return Err(protocol_error(
+            "SOURCE_CONTENT_EMPTY",
+            format!(
+                "'{}' in linked repository '{}' is empty.",
+                path.trim(),
+                repo.name
+            ),
+        ));
+    }
+    let read_at = now_iso();
+    let mut outcome = SourceReadOutcome {
+        source: None,
+        linked_repo: Some(repo.name.clone()),
+        content: read.content,
+        read_at: read_at.clone(),
+        title: format!("{}/{}", repo.name, path.trim()),
+        location: read.location,
+        truncated: read.truncated,
+        warning: SOURCE_CONTENT_WARNING.to_string(),
+    };
+    fit_source_read_response(&mut outcome)?;
+    let (session, event) = {
+        let connection = database.connection();
+        let session = find_session_by_id(&connection, session_id).map_err(argmax_protocol_error)?;
+        let event = persist_timeline_event(
+            &connection,
+            &PersistTimelineEventInput {
+                id: Uuid::new_v4().to_string(),
+                session_id: session_id.to_string(),
+                r#type: "session.note".to_string(),
+                message: format!("Read linked repository file: {}/{}", repo.name, path.trim()),
+                payload: json!({
+                    "operation": "linked-repo",
+                    "action": "read",
+                    "linkedRepo": repo.name,
+                    "path": path.trim(),
+                    "location": outcome.location,
+                    "truncated": outcome.truncated,
+                    "readAt": read_at,
+                }),
+                created_at: Some(read_at.clone()),
+            },
+        )
+        .map_err(argmax_protocol_error)?;
+        (session, event)
+    };
+    workspaces.publish_session_with_events(session, vec![event]);
     Ok(SessionControlResponse::new(
         SessionControlResult::SourceRead(outcome),
     ))
@@ -536,7 +730,9 @@ mod tests {
 
         let read = read_project_source(
             SourcesReadAction {
-                id: source_id.clone(),
+                id: Some(source_id.clone()),
+                linked_repo: None,
+                path: None,
                 max_chars: None,
             },
             parent.clone(),
@@ -577,7 +773,9 @@ mod tests {
         std::fs::write(repo.path().join("docs/context.md"), "changed context").unwrap();
         let reread = read_project_source(
             SourcesReadAction {
-                id: source_id.clone(),
+                id: Some(source_id.clone()),
+                linked_repo: None,
+                path: None,
                 max_chars: None,
             },
             parent.clone(),
@@ -630,7 +828,9 @@ mod tests {
         };
         let error = read_project_source(
             SourcesReadAction {
-                id: other.id,
+                id: Some(other.id),
+                linked_repo: None,
+                path: None,
                 max_chars: None,
             },
             parent,
@@ -666,7 +866,9 @@ mod tests {
         };
         let error = read_project_source(
             SourcesReadAction {
-                id: source_id,
+                id: Some(source_id),
+                linked_repo: None,
+                path: None,
                 max_chars: None,
             },
             parent,
@@ -689,6 +891,251 @@ mod tests {
             &json!({ "result": { "ready": false } })
         ));
         assert!(!source_page_is_ready(&json!({ "result": null })));
+    }
+
+    #[tokio::test]
+    async fn linked_repositories_are_listed_read_and_confined() {
+        let (_repo, database, parent, workspaces) = fixture();
+        let linked = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(linked.path().join("src")).unwrap();
+        std::fs::write(linked.path().join("src/lib.rs"), "pub fn shared() {}").unwrap();
+        std::fs::write(linked.path().join("README.md"), "linked readme").unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "secret").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.path(), linked.path().join("escape")).unwrap();
+        {
+            crate::persistence::linked_repos::add_linked_repo(
+                &database.connection(),
+                "p1",
+                &crate::persistence::linked_repos::LinkedRepoInput {
+                    name: Some("shared".to_string()),
+                    path: linked.path().display().to_string(),
+                },
+            )
+            .unwrap();
+        }
+        let list = |linked_repo: Option<&str>, path: Option<&str>| {
+            list_project_sources(
+                SourcesListAction {
+                    offset: None,
+                    limit: None,
+                    linked_repo: linked_repo.map(str::to_string),
+                    path: path.map(str::to_string),
+                },
+                parent.clone(),
+                Arc::clone(&database),
+            )
+        };
+        let read = |linked_repo: Option<&str>, path: Option<&str>| {
+            read_project_source(
+                SourcesReadAction {
+                    id: None,
+                    linked_repo: linked_repo.map(str::to_string),
+                    path: path.map(str::to_string),
+                    max_chars: None,
+                },
+                parent.clone(),
+                Arc::clone(&database),
+                Arc::clone(&workspaces),
+                None,
+            )
+        };
+
+        // The plain listing names the linked repository and its canonical root.
+        match list(None, None).unwrap().result {
+            SessionControlResult::SourcesListed(outcome) => {
+                assert_eq!(outcome.linked_repos.len(), 1);
+                assert_eq!(outcome.linked_repos[0].name, "shared");
+                assert_eq!(
+                    outcome.linked_repos[0].root,
+                    linked.path().canonicalize().unwrap().display().to_string()
+                );
+            }
+            _ => panic!("unexpected list result"),
+        }
+        // A named listing returns that directory.
+        match list(Some("shared"), Some("src")).unwrap().result {
+            SessionControlResult::SourcesListed(outcome) => {
+                let listing = outcome.listing.expect("listing");
+                assert_eq!(listing.entries.len(), 1);
+                assert_eq!(listing.entries[0].name, "lib.rs");
+            }
+            _ => panic!("unexpected list result"),
+        }
+        // A read returns the file and records the use.
+        match read(Some("shared"), Some("README.md"))
+            .await
+            .unwrap()
+            .result
+        {
+            SessionControlResult::SourceRead(outcome) => {
+                assert_eq!(outcome.content, "linked readme");
+                assert_eq!(outcome.linked_repo.as_deref(), Some("shared"));
+                assert!(outcome.source.is_none());
+            }
+            _ => panic!("unexpected read result"),
+        }
+        assert_eq!(note_count(&database), 1);
+
+        // Everything that leaves the root, or is not addressable, is refused
+        // with a specific code and records nothing.
+        let code = |error: SessionControlError| error.code;
+        assert_eq!(
+            code(
+                read(Some("shared"), Some("../secret.txt"))
+                    .await
+                    .unwrap_err()
+            ),
+            "LINKED_REPO_PATH_ESCAPES"
+        );
+        assert_eq!(
+            code(read(Some("shared"), Some("/etc/hosts")).await.unwrap_err()),
+            "LINKED_REPO_PATH_ABSOLUTE"
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            code(
+                read(Some("shared"), Some("escape/secret.txt"))
+                    .await
+                    .unwrap_err()
+            ),
+            "LINKED_REPO_PATH_ESCAPES"
+        );
+        assert_eq!(
+            code(read(Some("missing"), Some("README.md")).await.unwrap_err()),
+            "LINKED_REPO_NOT_FOUND"
+        );
+        assert_eq!(
+            code(read(Some("shared"), None).await.unwrap_err()),
+            "SOURCE_READ_TARGET_REQUIRED"
+        );
+        assert_eq!(
+            code(read(None, None).await.unwrap_err()),
+            "SOURCE_READ_TARGET_REQUIRED"
+        );
+        assert_eq!(
+            code(list(Some("shared"), Some("../")).unwrap_err()),
+            "LINKED_REPO_PATH_ESCAPES"
+        );
+        assert_eq!(note_count(&database), 1, "refused reads record nothing");
+
+        // Switching the repository off in Settings closes it to the agent.
+        {
+            let connection = database.connection();
+            let repo = crate::persistence::linked_repos::list_linked_repos(&connection, "p1")
+                .unwrap()
+                .remove(0);
+            crate::persistence::linked_repos::set_linked_repo_enabled(
+                &connection,
+                "p1",
+                &repo.id,
+                false,
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            code(read(Some("shared"), Some("README.md")).await.unwrap_err()),
+            "LINKED_REPO_DISABLED"
+        );
+        match list(None, None).unwrap().result {
+            SessionControlResult::SourcesListed(outcome) => {
+                assert!(outcome.linked_repos.is_empty())
+            }
+            _ => panic!("unexpected list result"),
+        }
+    }
+
+    #[test]
+    fn a_linked_directory_listing_stays_inside_the_byte_budget_and_pages_on() {
+        let (_repo, database, parent, _workspaces) = fixture();
+        let linked = tempfile::tempdir().unwrap();
+        for n in 0..400 {
+            std::fs::write(
+                linked.path().join(format!("{n:04}-{}", "x".repeat(150))),
+                "",
+            )
+            .unwrap();
+        }
+        crate::persistence::linked_repos::add_linked_repo(
+            &database.connection(),
+            "p1",
+            &crate::persistence::linked_repos::LinkedRepoInput {
+                name: Some("wide".to_string()),
+                path: linked.path().display().to_string(),
+            },
+        )
+        .unwrap();
+
+        let mut offset = 0u32;
+        let mut seen = Vec::new();
+        let mut pages = 0;
+        loop {
+            let response = list_project_sources(
+                SourcesListAction {
+                    offset: Some(offset),
+                    limit: Some(500),
+                    linked_repo: Some("wide".to_string()),
+                    path: None,
+                },
+                parent.clone(),
+                Arc::clone(&database),
+            )
+            .unwrap();
+            // What the control socket would carry must fit its 64 KiB cap.
+            assert!(serde_json::to_vec(&response).unwrap().len() < 64 * 1024);
+            let SessionControlResult::SourcesListed(outcome) = response.result else {
+                panic!("unexpected list result");
+            };
+            let listing = outcome.listing.expect("listing");
+            assert!(!listing.entries.is_empty());
+            seen.extend(listing.entries.into_iter().map(|entry| entry.name));
+            pages += 1;
+            match outcome.next_offset {
+                Some(next) => {
+                    // The next page starts exactly after what this one returned.
+                    assert_eq!(next as usize, seen.len());
+                    assert!(outcome.truncated);
+                    offset = next;
+                }
+                None => break,
+            }
+        }
+        assert!(pages > 1, "400 long names do not fit one page");
+        assert_eq!(seen.len(), 400);
+        let mut sorted = seen.clone();
+        sorted.sort();
+        assert_eq!(seen, sorted, "pages are contiguous and in order");
+    }
+
+    #[tokio::test]
+    async fn a_path_without_a_linked_repository_is_refused_not_ignored() {
+        let (_repo, database, parent, workspaces) = fixture();
+        let list = list_project_sources(
+            SourcesListAction {
+                offset: None,
+                limit: None,
+                linked_repo: None,
+                path: Some("src".to_string()),
+            },
+            parent.clone(),
+            Arc::clone(&database),
+        );
+        assert_eq!(list.unwrap_err().code, "SOURCE_PATH_REQUIRES_LINKED_REPO");
+        let read = read_project_source(
+            SourcesReadAction {
+                id: Some("any".to_string()),
+                linked_repo: None,
+                path: Some("src/lib.rs".to_string()),
+                max_chars: None,
+            },
+            parent,
+            Arc::clone(&database),
+            workspaces,
+            None,
+        )
+        .await;
+        assert_eq!(read.unwrap_err().code, "SOURCE_PATH_REQUIRES_LINKED_REPO");
     }
 
     fn note_count(database: &Database) -> i64 {

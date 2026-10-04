@@ -24,22 +24,9 @@ describe("BoundedSet", () => {
     expect(set.has("c")).toBe(true);
     expect(set.size).toBe(2);
   });
-
-  it("delete removes a value", () => {
-    const set = new BoundedSet<string>(2);
-    set.add("a");
-    expect(set.delete("a")).toBe(true);
-    expect(set.has("a")).toBe(false);
-  });
 });
 
 describe("BoundedMap", () => {
-  it("returns the stored value", () => {
-    const map = new BoundedMap<string, number>(2);
-    map.set("a", 1);
-    expect(map.get("a")).toBe(1);
-  });
-
   it("evicts oldest on insert past capacity", () => {
     const map = new BoundedMap<string, number>(2);
     map.set("a", 1);

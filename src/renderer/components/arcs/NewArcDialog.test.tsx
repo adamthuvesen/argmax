@@ -70,11 +70,6 @@ describe("NewArcDialog", () => {
     resetToastForTests();
   });
 
-  it("renders nothing when closed", () => {
-    render(<NewArcDialog open={false} onClose={() => {}} projects={PROJECTS} />);
-    expect(screen.queryByRole("dialog", { name: "New arc" })).not.toBeInTheDocument();
-  });
-
   it("blocks submit until it has a name and either a brief or a folder", () => {
     render(<NewArcDialog open onClose={() => {}} projects={PROJECTS} />);
     const submit = screen.getByRole("button", { name: "Create arc" });

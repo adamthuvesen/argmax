@@ -271,9 +271,14 @@ impl CursorRates {
     }
 }
 
+/// When Argmax started running every Composer 2.5 call on Fast. Calls before
+/// it ran standard, so history keeps the standard rate.
+const COMPOSER_ALWAYS_FAST_SINCE: &str = "2026-10-02T18:00:00.000Z";
+
 /// `None` for a model Cursor publishes no fixed rate for — Auto bills
 /// whichever model it routed each request to — or one this table predates.
-pub fn cursor_rates(model_id: &str) -> Option<CursorRates> {
+/// `created_at` is the call's RFC 3339 UTC time, which picks Composer's tier.
+pub fn cursor_rates(model_id: &str, created_at: &str) -> Option<CursorRates> {
     let rates = |input, cache_read, output| {
         Some(CursorRates {
             input,
@@ -289,6 +294,7 @@ pub fn cursor_rates(model_id: &str) -> Option<CursorRates> {
         .find_map(|effort| family.strip_suffix(effort))
         .unwrap_or(family);
     match family {
+        "composer-2.5" if created_at >= COMPOSER_ALWAYS_FAST_SINCE => rates(3.0, 0.50, 15.0),
         "composer-2.5" => rates(0.50, 0.20, 2.50),
         "grok-4.7" | "grok-4.6" | "grok-4.5" => rates(2.0, 0.50, 6.0),
         "claude-opus-5-5" => rates(4.0, 0.20, 20.0),
@@ -308,16 +314,27 @@ mod tests {
 
     #[test]
     fn rates_follow_the_family_not_the_effort_alias() {
-        assert_eq!(cursor_rates("grok-4.7-medium"), cursor_rates("grok-4.7"));
+        let at = "2026-09-01T00:00:00.000Z";
         assert_eq!(
-            cursor_rates("cursor-grok-4.6-medium"),
-            cursor_rates("grok-4.6")
+            cursor_rates("grok-4.7-medium", at),
+            cursor_rates("grok-4.7", at)
         );
         assert_eq!(
-            cursor_rates("claude-opus-5-5-medium").map(|rate| rate.output),
+            cursor_rates("cursor-grok-4.6-medium", at),
+            cursor_rates("grok-4.6", at)
+        );
+        assert_eq!(
+            cursor_rates("claude-opus-5-5-medium", at).map(|rate| rate.output),
             Some(20.0)
         );
-        assert_eq!(cursor_rates("auto-smart[optimize_for=cost]"), None);
-        assert_eq!(cursor_rates("composer-2"), None);
+        assert_eq!(cursor_rates("auto-smart[optimize_for=cost]", at), None);
+        assert_eq!(cursor_rates("composer-2", at), None);
+    }
+
+    #[test]
+    fn composer_bills_fast_only_from_the_switch() {
+        let output = |at| cursor_rates("composer-2.5", at).map(|rate| rate.output);
+        assert_eq!(output("2026-10-02T17:59:59.999Z"), Some(2.50));
+        assert_eq!(output("2026-10-02T18:00:00.000Z"), Some(15.0));
     }
 }

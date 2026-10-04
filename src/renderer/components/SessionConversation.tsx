@@ -24,6 +24,7 @@ import type {
   CheckRun,
   ComposerAttachment,
   DetectedIde,
+  ForkSessionOptions,
   IdeId,
   PendingMessage,
   ProjectSummary,
@@ -36,13 +37,12 @@ import type {
 } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
+import { useSessionComposerState } from "../hooks/useSessionComposerState.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import { isAutoTier, modelPickerSelectionFromSession, type ModelPickerSelection } from "../lib/models.js";
+import { isAutoTier, type ModelPickerSelection } from "../lib/models.js";
 import { successorModelId } from "../../shared/providerModels.js";
-import { orderedOpenFilePaths } from "../lib/openFileContext.js";
 import { repoNameFromPath } from "../lib/projects.js";
 import { buildTerminalTranscript } from "../lib/rawProvider.js";
-import { readStoredSessionModel, writeStoredSessionModel } from "../lib/sessionModelPreference.js";
 import type { FontSize } from "../lib/fonts.js";
 import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
@@ -64,6 +64,7 @@ import { buildSubagentCluster } from "../lib/subagentSummary.js";
 import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
+import { ForkBar } from "./ForkBar.js";
 import { CompactionNotice } from "./CompactionNotice.js";
 import { multitaskDisplayStatus, type MultitaskChild } from "../lib/multitask.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
@@ -80,18 +81,13 @@ import {
 import { liveThoughtOwnsProgress } from "../lib/sessionTurnView.js";
 import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
-import {
-  createAnnotation,
-  createDiffNoteAnnotation,
-  type ComposerAnnotation,
-  type DiffNoteInput
-} from "../lib/composerAnnotations.js";
+import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 import { buildDetailsSeed, buildSideChatSeed } from "../lib/sideChat.js";
 import { SelectionToolbar, type ChatSelection } from "./SelectionToolbar.js";
 import { QuestionDock } from "./QuestionDock.js";
 import type { QuestionAnswers } from "../lib/questions.js";
 import { postToNative } from "../mobile/nativeHost.js";
-import { SessionComposer, type ComposerStatus, type NewSessionSeed } from "./SessionComposer.js";
+import { SessionComposer, type NewSessionSeed } from "./SessionComposer.js";
 import { importChunk } from "../lib/importChunk.js";
 const GoalStatus = lazy(() => importChunk(async () => ({ default: (await import("./GoalStatus.js")).GoalStatus })));
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
@@ -348,7 +344,7 @@ export function SessionConversation({
   ) => Promise<void>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
-  onForkSession?: (sessionId: string) => Promise<void>;
+  onForkSession?: (sessionId: string, options?: ForkSessionOptions) => Promise<void>;
   onRunCheck?: (workspaceId: string, command: string) => Promise<void>;
   onToggleLog: () => void;
   /** Called when the user clicks a file reference inside agent text. When
@@ -378,89 +374,26 @@ export function SessionConversation({
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
-  const [status, setStatusState] = useState<ComposerStatus | null>(null);
-  const statusTimerRef = useRef<number | null>(null);
-  // Errors persist until the next action replaces them; info notes auto-clear
-  // like a toast. Every set clears the pending timer so a stale info timeout
-  // can never wipe an error that landed after it.
-  const setStatus = useCallback((next: ComposerStatus | null): void => {
-    if (statusTimerRef.current !== null) {
-      window.clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = null;
-    }
-    setStatusState(next);
-    if (next?.kind === "info") {
-      statusTimerRef.current = window.setTimeout(() => {
-        statusTimerRef.current = null;
-        setStatusState(null);
-      }, 4000);
-    }
-  }, []);
-  useEffect(() => {
-    return () => {
-      if (statusTimerRef.current !== null) window.clearTimeout(statusTimerRef.current);
-    };
-  }, []);
-  const [selectedModel, setSelectedModel] = useState<ModelPickerSelection>(() => {
-    const fallback = modelPickerSelectionFromSession(session);
-    return session ? readStoredSessionModel(session.id, fallback) : fallback;
-  });
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const shouldRefocusInput = useRef(false);
   const sessionId = session?.id ?? null;
-  const setSelectedModelForSession = useCallback(
-    (model: ModelPickerSelection): void => {
-      setSelectedModel(model);
-      if (sessionId) writeStoredSessionModel(sessionId, model);
-    },
-    [sessionId]
-  );
+  const {
+    status,
+    setStatus,
+    selectedModel,
+    setSelectedModelForSession,
+    inputRef,
+    shouldRefocusInput,
+    pendingAnnotations,
+    addAnnotation,
+    removeAnnotation,
+    clearAnnotations,
+    openFilePaths
+  } = useSessionComposerState({ session, isFocused, review, registerAnnotationSink });
   const eventsRef = useRef(events);
   eventsRef.current = events;
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<OptimisticUserMessage[]>([]);
   useEffect(() => {
     setOptimisticUserMessages([]);
   }, [sessionId]);
-  // Excerpts attached from the transcript via the selection toolbar. Ephemeral
-  // by design (unlike the localStorage-backed draft text): they quote messages
-  // of the open transcript, so they don't outlive the pane or follow a session
-  // switch.
-  const [pendingAnnotations, setPendingAnnotations] = useState<ComposerAnnotation[]>([]);
-  useEffect(() => {
-    setPendingAnnotations([]);
-  }, [sessionId]);
-  const addAnnotation = useCallback(
-    (selection: ChatSelection): void => {
-      setPendingAnnotations((prev) => [...prev, createAnnotation(selection.text)]);
-      if (isFocused) inputRef.current?.focus();
-    },
-    [isFocused]
-  );
-  const removeAnnotation = useCallback((id: string): void => {
-    setPendingAnnotations((prev) => prev.filter((a) => a.id !== id));
-  }, []);
-  // Files open as review-panel tabs ride along with sends while the panel is
-  // visible, so the agent knows what the user is looking at.
-  const openFilePaths = useMemo(
-    () =>
-      review.isPanelOpen
-        ? orderedOpenFilePaths(review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath)
-        : [],
-    [review.isPanelOpen, review.workspaceFiles.tabs, review.workspaceFiles.activeTabPath]
-  );
-  const clearAnnotations = useCallback((): void => {
-    setPendingAnnotations([]);
-  }, []);
-  // Line comments authored in the sibling ReviewPanel arrive through this
-  // sink (registered with the pane) and join the same annotation lane.
-  useEffect(() => {
-    if (!registerAnnotationSink) return undefined;
-    registerAnnotationSink((input) => {
-      setPendingAnnotations((prev) => [...prev, createDiffNoteAnnotation(input)]);
-      if (isFocused) inputRef.current?.focus();
-    });
-    return () => registerAnnotationSink(null);
-  }, [isFocused, registerAnnotationSink]);
   // `events` is sorted descending upstream (mergeDashboardDelta), so a reverse
   // gives ascending order for free without a per-tick string comparator pass.
   const reconciledOptimisticUserMessages = useMemo(
@@ -960,12 +893,12 @@ export function SessionConversation({
         // Keep that distinction across the async send so a stale dashboard
         // cannot overwrite a newer route or a pin from another window.
         const deliveryModel: ModelPickerSelection =
-          session && targetSessionId === session.id &&
-          isAutoTier(session.autoTier) &&
-          model.provider === session.provider &&
-          model.modelId === successorModelId(session.provider, session.modelId) &&
-          (model.reasoningEffort ?? null) === (session.reasoningEffort ?? null)
-            ? { ...model, autoTier: session.autoTier }
+          targetSessionId === session?.id &&
+          isAutoTier(session?.autoTier) &&
+          model.provider === session?.provider &&
+          model.modelId === successorModelId(session?.provider, session?.modelId) &&
+          (model.reasoningEffort ?? null) === (session?.reasoningEffort ?? null)
+            ? { ...model, autoTier: session?.autoTier }
             : model;
         const mentionedNames = new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []);
         const references =
@@ -975,7 +908,7 @@ export function SessionConversation({
             (model.provider === "cursor" && model.modelId !== "composer-2.5")) &&
           model.provider === session?.provider &&
           targetSessionId === session?.id
-          ? nativeAgentReferences(toolCalls, agentCodenames, session.providerConversationId)
+          ? nativeAgentReferences(toolCalls, agentCodenames, session?.providerConversationId)
               .filter((reference) => mentionedNames.has(reference.name.toLowerCase()))
           : [];
         if (references.length > 0) {
@@ -1396,22 +1329,6 @@ export function SessionConversation({
   const floatingHeading =
     headingLabel ?? project?.name ?? repoNameFromPath(workspace?.path) ?? "Repository";
 
-  // Reseed on the session's id and model fields rather than the session
-  // object: the parent rebuilds SessionSummary references on every dashboard
-  // delta. The model fields matter because the Mac re-routes an Auto chat's
-  // follow-ups; a composer still holding the old model would send it back as a
-  // pin and undo the route. A stored pick is the user's own and still wins.
-  // Reseeded during render, not in an effect, so the chip never paints a frame
-  // with the session's new model but the composer's old one: that frame drops
-  // the Router label and breaks the chip's switch motion.
-  const seededModelKey = [sessionId, session?.provider, session?.modelId, session?.reasoningEffort].join("\n");
-  const [seededFor, setSeededFor] = useState(seededModelKey);
-  if (seededFor !== seededModelKey) {
-    setSeededFor(seededModelKey);
-    const fallback = modelPickerSelectionFromSession(session);
-    setSelectedModel(sessionId ? readStoredSessionModel(sessionId, fallback) : fallback);
-  }
-
   const { milestone: prMilestone, finish: finishPrMilestone } = usePrMilestone(workspace);
 
   // The question the agent is waiting on right now. It can only be in the last
@@ -1497,7 +1414,7 @@ export function SessionConversation({
         () => undefined
       );
     },
-    [blockingQuestionRequest, liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus]
+    [blockingQuestionRequest, liveQuestion, onTerminateSession, selectedModel, sendSessionInput, session, setStatus, shouldRefocusInput]
   );
   const dismissLiveQuestion = useCallback(async (): Promise<boolean> => {
     if (!liveQuestion) return false;
@@ -1766,6 +1683,7 @@ export function SessionConversation({
         {...(askDetails ? { onMoreDetails: askDetails } : {})}
       />
       <div className="session-meta-cards">
+        {session ? <ForkBar sessionId={session.id} onOpenSession={onOpenSession} /> : null}
         <ChangedFilesCard
           workspaceId={workspace?.id}
           checkCommands={project?.settings.checkCommands ?? []}

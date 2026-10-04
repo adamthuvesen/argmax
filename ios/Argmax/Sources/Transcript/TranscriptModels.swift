@@ -73,6 +73,7 @@ struct TranscriptEvent: Codable, Hashable, Sendable, Identifiable {
     var type: String
     var message: String
     var payload: TranscriptJSONValue
+    var semantic: TimelineSemantics? = nil
     var createdAt: String
     var rowCursor: Int64?
 

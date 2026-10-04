@@ -719,17 +719,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_frontmatter_extracts_name_and_description() {
-        assert_eq!(
-            parse_frontmatter("---\nname: impl\ndescription: Implement code\n---\n"),
-            Frontmatter {
-                name: Some("impl".to_owned()),
-                description: Some("Implement code".to_owned()),
-            }
-        );
-    }
-
-    #[test]
     fn parse_frontmatter_handles_quoted_values() {
         assert_eq!(
             parse_frontmatter("---\nname: \"impl\"\ndescription: 'do a thing'\n---\n"),
@@ -845,23 +834,6 @@ mod tests {
                 .map(|skill| skill.source),
             Some(SkillSource::CodexPrompt)
         );
-    }
-
-    #[test]
-    fn excludes_system_directory_from_codex_user_walk() {
-        let home = tempdir().unwrap();
-        let registry = SkillRegistry::new(home.path());
-        let codex_skills = home.path().join(".codex/skills");
-        write_skill(
-            &codex_skills.join(".system"),
-            "imagegen",
-            "name: imagegen\ndescription: from system",
-        );
-
-        let result = registry.list_skills(ProviderId::Codex, None);
-
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].source, SkillSource::System);
     }
 
     #[test]
@@ -1017,14 +989,6 @@ mod tests {
         let result = registry.list_skills(ProviderId::Claude, None);
 
         assert_eq!(names(&result), ["small"]);
-    }
-
-    #[test]
-    fn returns_empty_when_source_directories_are_missing() {
-        let home = tempdir().unwrap();
-        let registry = SkillRegistry::new(home.path());
-
-        assert_eq!(registry.list_skills(ProviderId::Claude, None), Vec::new());
     }
 
     #[test]

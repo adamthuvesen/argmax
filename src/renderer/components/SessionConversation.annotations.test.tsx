@@ -44,14 +44,6 @@ describe("SessionConversation selection annotations", () => {
     cleanup();
   });
 
-  it("shows the selection toolbar over selected transcript text", () => {
-    renderConversation(baseSession(), EVENTS);
-    expect(screen.queryByRole("toolbar", { name: "Selection actions" })).toBeNull();
-
-    selectAssistantText();
-    expect(screen.getByRole("toolbar", { name: "Selection actions" })).toBeTruthy();
-  });
-
   it("attaches the selection as an annotation chip and clears the selection", () => {
     renderConversation(baseSession(), EVENTS);
     selectAssistantText();

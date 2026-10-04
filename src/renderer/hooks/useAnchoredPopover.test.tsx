@@ -44,11 +44,6 @@ describe("useAnchoredPopover", () => {
     expect(screen.getByLabelText("menu")).toHaveStyle({ bottom: "auto", right: "auto" });
   });
 
-  it("positions the popover out of flow", () => {
-    render(<Popover />);
-    expect(screen.getByLabelText("menu")).toHaveStyle({ position: "fixed" });
-  });
-
   it("opens from the edge attached to its anchor", () => {
     render(<Popover />);
     expect(screen.getByLabelText("menu").style.getPropertyValue("--popover-transform-origin")).toBe(

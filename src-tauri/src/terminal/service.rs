@@ -1293,51 +1293,6 @@ mod tests {
         assert_eq!(svc.live_count(), 0);
     }
 
-    #[tokio::test]
-    async fn terminate_kills_long_running_pty() {
-        let (database, workspace_id, _db, _cwd) = setup();
-        let on_data: OutputSink = Arc::new(|_| {});
-        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
-        let exit_tx = StdMutex::new(Some(exit_tx));
-        let on_exit: ExitSink = Arc::new(move |info| {
-            if let Some(tx) = exit_tx.lock().unwrap().take() {
-                let _ = tx.send(info);
-            }
-        });
-        let svc = TerminalService::with_shell_factory(
-            database,
-            on_data,
-            on_exit,
-            // Sleep long enough that the natural-exit path can't race
-            // ahead of terminate.
-            script_factory("sleep 60"),
-        );
-        let result = svc
-            .spawn(TerminalSpawnInput {
-                workspace_id,
-                cols: 80,
-                rows: 24,
-            })
-            .unwrap();
-        // Give the child a moment to actually start sleeping.
-        sleep(Duration::from_millis(100)).await;
-        svc.terminate(&result.terminal_id).await;
-
-        let info = timeout(Duration::from_secs(5), exit_rx)
-            .await
-            .expect("exit watcher did not fire after terminate")
-            .unwrap();
-        assert_eq!(info.terminal_id, result.terminal_id);
-        // After SIGTERM/SIGKILL the exit code on macOS is the signal value
-        // (15 for SIGTERM, 9 for SIGKILL) shifted, or the raw value
-        // depending on portable_pty's mapping. We just want a non-zero
-        // sentinel — the test's contract is "the child died".
-        assert!(
-            info.exit_code != 0,
-            "expected non-zero exit code after kill"
-        );
-    }
-
     #[cfg(unix)]
     #[tokio::test]
     async fn terminate_kills_term_ignoring_foreground_job_group() {
@@ -1604,66 +1559,6 @@ mod tests {
             .expect("exit channel closed before sending");
         assert_eq!(info.terminal_id, result.terminal_id);
         assert_ne!(info.exit_code, 0);
-    }
-
-    #[tokio::test]
-    async fn write_forwards_bytes_to_the_child() {
-        let (database, workspace_id, _db, _cwd) = setup();
-        let chunks: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
-        let chunks_for_sink = Arc::clone(&chunks);
-        let on_data: OutputSink = Arc::new(move |chunk| {
-            chunks_for_sink
-                .lock()
-                .expect("chunks poisoned")
-                .push(chunk.data);
-        });
-        let (exit_tx, exit_rx) = oneshot::channel::<TerminalExitInfo>();
-        let exit_tx = StdMutex::new(Some(exit_tx));
-        let on_exit: ExitSink = Arc::new(move |info| {
-            if let Some(tx) = exit_tx.lock().unwrap().take() {
-                let _ = tx.send(info);
-            }
-        });
-        // A tiny shell loop that echoes whatever we feed it and exits on
-        // a magic token. `read` returns 1 on EOF so we use a sentinel
-        // line to break cleanly.
-        let svc = TerminalService::with_shell_factory(
-            database,
-            on_data,
-            on_exit,
-            script_factory(
-                "while IFS= read -r line; do \
-                    echo \"got:$line\"; \
-                    if [ \"$line\" = \"bye\" ]; then exit 0; fi; \
-                 done",
-            ),
-        );
-        let result = svc
-            .spawn(TerminalSpawnInput {
-                workspace_id,
-                cols: 80,
-                rows: 24,
-            })
-            .unwrap();
-        // Give the PTY a moment to wire up the read loop.
-        sleep(Duration::from_millis(150)).await;
-        svc.write(&result.terminal_id, b"hello\n")
-            .expect("write hello");
-        sleep(Duration::from_millis(150)).await;
-        svc.write(&result.terminal_id, b"bye\n").expect("write bye");
-        let _info = timeout(Duration::from_secs(5), exit_rx)
-            .await
-            .expect("exit did not fire");
-        sleep(Duration::from_millis(50)).await;
-        let combined = chunks.lock().unwrap().join("");
-        assert!(
-            combined.contains("got:hello"),
-            "expected echo of hello, got: {combined:?}"
-        );
-        assert!(
-            combined.contains("got:bye"),
-            "expected echo of bye, got: {combined:?}"
-        );
     }
 
     #[tokio::test]

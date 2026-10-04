@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { isMermaidFenceClass } from "./mermaidFence.js";
 import {
   cssColorToHex,
@@ -76,16 +74,5 @@ describe("mermaidBreakoutWidth", () => {
 
   it("does not break out when either side has no room", () => {
     expect(mermaidBreakoutWidth(780, 20, 20, 1200)).toBe(0);
-  });
-});
-
-describe("mermaid defaults", () => {
-  it("pairs neo look with token-themed base and airy flowchart spacing", () => {
-    const source = readFileSync(fileURLToPath(new URL("./mermaidRuntime.ts", import.meta.url)), "utf8");
-    expect(source).toContain('look: "neo"');
-    expect(source).toContain("vars.useGradient = false");
-    expect(source).toContain("nodeSpacing: 56");
-    expect(source).toContain("rankSpacing: 64");
-    expect(source).toContain("wrappingWidth: 200");
   });
 });

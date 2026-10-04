@@ -103,7 +103,20 @@ pub fn known_roots(app: &tauri::AppHandle) -> Vec<PathBuf> {
         &conn,
         "SELECT path FROM workspaces LIMIT ?",
     ));
+    roots.extend(scratch_roots());
     roots
+}
+
+/// Temp directories agents write screenshots and charts into (Claude's
+/// scratchpad lives under `/tmp`, other CLIs under `$TMPDIR`). Image
+/// extensions only, via `is_whitelisted_image`, so this exposes pictures an
+/// agent just made, not the rest of the temp tree.
+fn scratch_roots() -> Vec<PathBuf> {
+    vec![
+        std::env::temp_dir(),
+        PathBuf::from("/tmp"),
+        PathBuf::from("/private/tmp"),
+    ]
 }
 
 /// One column of root paths, capped at `MAX_ROOTS`.
@@ -245,17 +258,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn serves_image_in_nested_subdir() {
-        let root = TempDir::new().unwrap();
-        let nested = root.path().join("docs").join("assets");
-        std::fs::create_dir_all(&nested).unwrap();
-        let file = nested.join("diagram.webp");
-        std::fs::write(&file, b"WEBP").unwrap();
-        let canonical = std::fs::canonicalize(&file).unwrap();
-        let roots = vec![root.path().to_path_buf()];
-        let response = serve_workspace_asset(&roots, &url_for(&canonical)).await;
+    async fn serves_an_agent_screenshot_from_the_temp_dir() {
+        let file = tempfile::Builder::new().suffix(".png").tempfile().unwrap();
+        std::fs::write(file.path(), b"SHOT").unwrap();
+        let canonical = std::fs::canonicalize(file.path()).unwrap();
+        let response = serve_workspace_asset(&scratch_roots(), &url_for(&canonical)).await;
         assert_eq!(response.status, AssetStatus::Ok);
-        assert_eq!(response.content_type, Some("image/webp"));
+        assert_eq!(response.bytes, b"SHOT");
     }
 
     #[tokio::test]

@@ -254,9 +254,8 @@ struct TranscriptScreen: View {
         .accessibilityLabel("Chat actions")
     }
 
-    /// The same gate the row's context menu and `fork_session` apply: a
-    /// provider whose CLI can resume a copied conversation, and never
-    /// mid-turn.
+    /// The same gate the row's context menu and the host's whole-chat fork
+    /// apply: a forkable provider, and never mid-turn.
     private var isForkable: Bool {
         let capable = ProviderCatalog.bundled.provider(row.session.provider)?.forkCapable ?? false
         let state = transcript.session?.state ?? row.session.state

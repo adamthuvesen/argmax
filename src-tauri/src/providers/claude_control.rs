@@ -143,6 +143,96 @@ fn backgrounded_agent_task_id(message: &Value) -> Option<&str> {
     .then_some(task_id)
 }
 
+/// What Claude prints when `--resume` names a conversation it does not have.
+const MISSING_CONVERSATION: &str = "No conversation found with session ID";
+
+/// Whether a stdout message is the zero-turn error Claude answers a missing
+/// resume with.
+fn reports_missing_conversation(message: &Value) -> bool {
+    message.get("type").and_then(Value::as_str) == Some("result")
+        && message
+            .get("errors")
+            .and_then(Value::as_array)
+            .is_some_and(|errors| {
+                errors
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .any(|error| error.contains(MISSING_CONVERSATION))
+            })
+}
+
+/// Holds a resumed launch's events until Claude has accepted the resume.
+///
+/// A resume of a conversation Claude no longer has fails before the initialize
+/// reply, so the prompt is never written and nothing was admitted: the launch
+/// can be rerun fresh. The failure's own output (a stderr line, an error
+/// result, an exit) must not reach the chat first, so it is held until the
+/// handshake settles and dropped if it was that failure.
+struct StartupGate {
+    real: EventCallback,
+    state: std::sync::Mutex<GateState>,
+}
+
+struct GateState {
+    open: bool,
+    rejected: bool,
+    held: Vec<ProviderRuntimeEvent>,
+    verdict: Option<oneshot::Sender<bool>>,
+}
+
+impl StartupGate {
+    fn new(real: EventCallback) -> (Arc<Self>, oneshot::Receiver<bool>) {
+        let (verdict, receiver) = oneshot::channel();
+        let gate = Arc::new(Self {
+            real,
+            state: std::sync::Mutex::new(GateState {
+                open: false,
+                rejected: false,
+                held: Vec::new(),
+                verdict: Some(verdict),
+            }),
+        });
+        (gate, receiver)
+    }
+
+    fn emit(&self, event: ProviderRuntimeEvent) {
+        {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if state.rejected {
+                return;
+            }
+            if !state.open {
+                state.held.push(event);
+                return;
+            }
+        }
+        (self.real)(event);
+    }
+
+    /// The first call decides: accepted opens the gate and replays what was
+    /// held, rejected drops it.
+    fn settle(&self, rejected: bool) {
+        let (held, verdict) = {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(verdict) = state.verdict.take() else {
+                return;
+            };
+            if rejected {
+                state.rejected = true;
+                state.held.clear();
+                (Vec::new(), verdict)
+            } else {
+                state.open = true;
+                (std::mem::take(&mut state.held), verdict)
+            }
+        };
+        for event in held {
+            (self.real)(event);
+        }
+        let _ = verdict.send(rejected);
+    }
+}
+
 pub async fn launch_turn(
     binary: &str,
     input: &ProviderLaunchInput,
@@ -150,6 +240,21 @@ pub async fn launch_turn(
     approvals: Arc<ApprovalService>,
     emit: EventCallback,
 ) -> ArgmaxResult<Arc<dyn ProviderRuntimeHandle>> {
+    // Only a launch with a fresh-start fallback waits for the handshake; every
+    // other launch returns as soon as the process is spawned.
+    let (emit, gate, verdict) = if input.resume_conversation_id.is_some()
+        && input
+            .continuity
+            .as_ref()
+            .is_some_and(|continuity| continuity.fresh_fallback_prompt.is_some())
+    {
+        let (gate, verdict) = StartupGate::new(emit);
+        let gated = Arc::clone(&gate);
+        let emit: EventCallback = Arc::new(move |event| gated.emit(event));
+        (emit, Some(gate), Some(verdict))
+    } else {
+        (emit, None, None)
+    };
     let definition = get_provider_definition(ProviderId::Claude);
     let mut args = match input.resume_conversation_id.as_deref() {
         Some(id) => (definition.structured_resume_args)(input, id, config),
@@ -183,6 +288,7 @@ pub async fn launch_turn(
     if let Some(config) = config {
         overrides.extend(config.env_pairs());
     }
+    overrides.extend(super::mcp_injection::claude_linked_root_env(config));
     let mut command = tokio::process::Command::new(binary);
     command
         .args(args)
@@ -244,7 +350,7 @@ pub async fn launch_turn(
     let provider_session_id = input
         .resume_conversation_id
         .as_deref()
-        .unwrap_or(&input.session_id)
+        .unwrap_or(input.fresh_native_id())
         .to_string();
     let handle = Arc::new(ControlHandle {
         cancel,
@@ -272,15 +378,26 @@ pub async fn launch_turn(
                 _ = cancelled.changed() => { break; }
                 _ = &mut deadline, if !initialized => { emit_event(&emit, &input, ProviderRuntimeEventType::Error, "Claude control initialization timed out".into(), None); code = 1; break; }
                 line = errors.next_line(), if stderr_open => {
-                    match line { Ok(Some(line)) => emit(ProviderRuntimeEvent {session_id:input.session_id.clone(), r#type:ProviderRuntimeEventType::Output, stream:ProviderOutputStream::Stderr,message:format!("{line}\n"),exit_code:None,created_at:now_iso()}), _ => stderr_open = false }
+                    match line { Ok(Some(line)) if !initialized && gate.is_some() && line.contains(MISSING_CONVERSATION) => {
+                            if let Some(gate) = &gate { gate.settle(true); }
+                            code = 1;
+                            break;
+                        }
+                        Ok(Some(line)) => emit(ProviderRuntimeEvent {session_id:input.session_id.clone(), r#type:ProviderRuntimeEventType::Output, stream:ProviderOutputStream::Stderr,message:format!("{line}\n"),exit_code:None,created_at:now_iso()}), _ => stderr_open = false }
                 }
                 line = lines.next_line() => {
                     let line = match line { Ok(Some(line)) => line, Ok(None) => { code = 1; break; }, Err(error) => { emit_event(&emit,&input,ProviderRuntimeEventType::Error,error.to_string(),None);code=1;break; } };
                     let Ok(message) = serde_json::from_str::<Value>(&line) else { continue; };
+                    if !initialized && reports_missing_conversation(&message) {
+                        if let Some(gate) = &gate { gate.settle(true); }
+                        code = 1;
+                        break;
+                    }
                     match message.get("type").and_then(Value::as_str) {
                         Some("control_response") if message.pointer("/response/request_id").and_then(Value::as_str) == Some("argmax-initialize") => {
                             if message.pointer("/response/subtype").and_then(Value::as_str) != Some("success") { emit_event(&emit,&input,ProviderRuntimeEventType::Error,message.to_string(),None);code=1;break; }
                             initialized = true;
+                            if let Some(gate) = &gate { gate.settle(false); }
                             let _ = write_tx.send(WriteRequest::user(
                                 &provider_session_id,
                                 &input.prompt,
@@ -382,6 +499,10 @@ pub async fn launch_turn(
                 }
             }
         }
+        // Any other way out of the handshake is an ordinary failure, shown as one.
+        if let Some(gate) = &gate {
+            gate.settle(false);
+        }
         requests.abort_all();
         let _ = approvals.cancel_session_pending(&input.session_id);
         writer.abort();
@@ -397,6 +518,14 @@ pub async fn launch_turn(
         );
         let _ = done_tx.send(true);
     });
+    if let Some(verdict) = verdict {
+        if verdict.await == Ok(true) {
+            return Err(ArgmaxError::service(
+                super::continuity::RESUME_REJECTED,
+                "Claude has no conversation with that id.",
+            ));
+        }
+    }
     Ok(handle)
 }
 
@@ -609,6 +738,7 @@ mod tests {
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode,
             agent_mode,
             cols: 80,
@@ -657,15 +787,6 @@ mod tests {
             permission_response("request-43", false, json!({}))["response"]["response"]["behavior"],
             "deny"
         );
-    }
-
-    #[test]
-    fn user_messages_have_the_sdk_envelope_and_echo_text_is_recoverable() {
-        let message = user_message("provider-session", "steer-token");
-        assert_eq!(message["type"], "user");
-        assert_eq!(message["session_id"], "provider-session");
-        assert_eq!(message["message"]["role"], "user");
-        assert_eq!(replayed_user_prompt(&message), Some("steer-token"));
     }
 
     #[test]
@@ -755,6 +876,137 @@ done
             1
         );
         assert_eq!(events.last().and_then(|event| event.exit_code), Some(0));
+    }
+
+    /// A fake `claude` for the resume handshake. `script` is the body of the
+    /// read loop's `initialize` branch, run before anything else is read.
+    #[cfg(unix)]
+    fn fake_claude(dir: &std::path::Path, startup: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let server = dir.join("fake-claude-resume");
+        std::fs::write(&server, format!("#!/bin/sh\n{startup}\n")).unwrap();
+        std::fs::set_permissions(&server, std::fs::Permissions::from_mode(0o755)).unwrap();
+        server
+    }
+
+    /// A resumed launch with a fresh-start fallback, collecting its events.
+    #[cfg(unix)]
+    async fn resume_with_fallback(
+        server: &std::path::Path,
+        dir: &std::path::Path,
+    ) -> (
+        ArgmaxResult<Arc<dyn ProviderRuntimeHandle>>,
+        Arc<std::sync::Mutex<Vec<ProviderRuntimeEvent>>>,
+    ) {
+        let approvals = ApprovalService::new(Arc::new(Database::open_in_memory().unwrap()));
+        let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| captured.lock().unwrap().push(event));
+        let mut input = launch_input(
+            PermissionMode::ProviderDefaults,
+            super::super::AgentMode::Auto,
+        );
+        input.workspace_path = dir.to_path_buf();
+        input.resume_conversation_id = Some("gone".to_string());
+        input.continuity = Some(crate::providers::LaunchContinuity {
+            fresh_fallback_prompt: Some("portable".to_string()),
+            ..Default::default()
+        });
+        let launched =
+            launch_turn(server.to_str().unwrap(), &input, None, approvals, callback).await;
+        (launched, events)
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_resume_of_a_missing_conversation_is_rejected_before_anything_reaches_the_chat() {
+        // Claude 2.1.289 prints this before it answers `initialize`, so the
+        // prompt is never written and a fresh start cannot duplicate it.
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_claude(
+            temp.path(),
+            r#"printf '%s\n' 'No conversation found with session ID: gone' >&2
+printf '%s\n' '{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"errors":["No conversation found with session ID: gone"]}'
+exit 1"#,
+        );
+        let (launched, events) = resume_with_fallback(&server, temp.path()).await;
+        let error = launched.err().expect("the resume is refused");
+        assert!(
+            crate::providers::continuity::is_definite_rejection(&error),
+            "{error:?}"
+        );
+        assert!(
+            events.lock().unwrap().is_empty(),
+            "{:?}",
+            events.lock().unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_accepted_resume_replays_the_events_held_during_the_handshake() {
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_claude(
+            temp.path(),
+            r#"while IFS= read -r line; do
+  case "$line" in
+    *'"subtype":"initialize"'*)
+      printf '%s\n' 'resumed' >&2
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"argmax-initialize","response":{}}}'
+      ;;
+    *'"type":"user"'*)
+      printf '%s\n' '{"type":"user","isReplay":true,"parent_tool_use_id":null,"message":{"role":"user","content":"p"}}'
+      printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"done"}'
+      ;;
+  esac
+done"#,
+        );
+        let (launched, events) = resume_with_fallback(&server, temp.path()).await;
+        let handle = launched.expect("the resume is accepted");
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the turn completes");
+        let events = events.lock().unwrap();
+        assert!(events.iter().any(|event| event.message.contains("resumed")));
+        assert!(events
+            .iter()
+            .any(|event| event.message.contains("\"type\":\"result\"")));
+        assert!(events
+            .iter()
+            .any(|event| event.r#type == ProviderRuntimeEventType::StreamStarted));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn any_other_early_failure_is_shown_not_retried() {
+        // The process dies before the handshake for a reason that says nothing
+        // about the conversation, so it surfaces as the failed turn it is.
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_claude(
+            temp.path(),
+            r#"printf '%s\n' 'API key rejected' >&2
+exit 1"#,
+        );
+        let (launched, events) = resume_with_fallback(&server, temp.path()).await;
+        let handle = launched.expect("not a resume rejection");
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !handle.disposed() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the process ends");
+        let events = events.lock().unwrap();
+        assert!(events
+            .iter()
+            .any(|event| event.message.contains("API key rejected")));
+        assert!(events
+            .iter()
+            .any(|event| event.r#type == ProviderRuntimeEventType::Exit));
     }
 
     // Claude replays a steered message only when it picks it up, and a turn

@@ -1,111 +1,49 @@
+import * as decode from "./bridgeDecoders.js";
+import type { PushPayloads } from "../../shared/bindings.js";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import type { IpcChannel } from "../../shared/ipcSchemas.js";
+import type { IpcChannel, IpcArguments, IpcOutput } from "../../shared/ipcSchemas.js";
 import type {
-  ActivitySummary,
   ActivitySummaryInput,
-  ArcDetail,
-  ArcDraft,
-  ArcRecord,
-  ArcTimelinePage,
   ArgmaxApi,
-  AgentToolsSettings,
-  ProjectCheck,
-  RoutingSettings,
-  ChatCleanupPreview,
-  DeleteOldChatsResult,
   AttachmentSaveImageInput,
-  BrowserActionOutcome,
   BrowserAgentOpenEvent,
-  BrowserContentBlocking,
-  BrowserEvaluateResult,
-  BrowserFillResult,
-  ChromeProfile,
-  ChromeHistoryImport,
-  BrowserFindResult,
   BrowserNewTabEvent,
   BrowserPageCommandEvent,
-  BrowserPageSnapshot,
-  BrowserPageExtraction,
-  BrowserPageText,
-  BrowserScreenshot,
   BrowserStateEvent,
   BrowserTabInfo,
-  AttachmentSaveImageResult,
-  ChangedFileSummary,
-  CloudHandoffPreview,
-  CloudHandoffResult,
   CloudLaunchInput,
   CloudPrepareInput,
-  CheckRun,
-  Checkpoint,
-  ConnectionSummary,
-  RewindPreview,
-  RewindFilesResult,
   DashboardDelta,
-  DashboardListSnapshot,
-  DashboardSnapshot,
-  DebugSnapshot,
-  PerformanceCapture,
-  PerformanceStatus,
-  DetectedIde,
-  DiagnosticsReport,
-  DiscoveredProvider,
-  GhPrRecord,
-  SessionPrSummary,
   GitCommitInput,
-  Goal,
-  GitCommitResult,
   GitCreateBranchInput,
-  GitCreateBranchResult,
   GitPushInput,
-  GitPushResult,
   GitViewOrCreatePrInput,
-  GitViewOrCreatePrResult,
-  Learning,
-  ProjectSource,
   LaunchProviderSessionInput,
-  MenuCommand,
   OpenInIdeInput,
-  ProjectFolderPickResult,
-  ProjectSummary,
   ProviderSessionInput,
   ProviderSessionResizeInput,
   ProvidersCancelQueuedMessageInput,
   ProvidersSendQueuedMessageNowInput,
-  QuestionResolveResult,
   QuestionsResolveInput,
   RegisterProjectInput,
-  RemotePushCapability,
-  RemotePushDevice,
-  RemotePushTestResult,
-  RemoteStatus,
   RemoveProjectInput,
   ResolveApprovalInput,
   ReviewComparison,
-  Routine,
   RoutineUpsertInput,
-  RouterCostSummary,
-  UsageRemaining,
   UsageRouterCostInput,
-  UsageSummary,
   UsageSummaryInput,
   RunCheckInput,
   SessionAgentEventsInput,
   SessionClearInput,
   SessionForkInput,
-  MultitaskLaunched,
-  SessionForkResult,
-  FollowUpSuggestion,
-  SessionCostSummary,
+  SessionForkLineageInput,
+  SessionForkMergeInput,
+  SessionForkMergePreviewInput,
   SessionCostSummaryInput,
   SessionEventsSinceInput,
-  SessionEventsSinceResult,
-  SessionSummary,
-  SkillSummary,
-  SyncStatus,
   EventSubscription,
   TerminalAgentOpenEvent,
   TerminalDataEvent,
@@ -114,16 +52,8 @@ import type {
   TerminalSpawnInput,
   TerminalWriteInput,
   UpdateProjectSettingsInput,
-  WorkspaceContentSearchResult,
-  WorkspaceDiff,
-  WorkspaceFileEntry,
-  WorkspaceFilePreview,
-  WorkspaceFileStat,
-  WorkspaceFileWriteResult,
   WorkspaceStatusInput,
   WorkspaceTarget,
-  WorkspaceStatusSnapshot,
-  WorkspaceSummary,
   WorkspacesMarkViewedInput
 } from "../../shared/types.js";
 import { isSecondaryWindow, windowLabelFromRuntime } from "./windowRole.js";
@@ -137,12 +67,6 @@ declare global {
   }
 }
 
-type SessionSearchResult = Array<{
-  sessionId: string;
-  eventId: string;
-  snippet: string;
-  rank: number;
-}>;
 
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
@@ -154,12 +78,12 @@ export function isTauriRuntime(): boolean {
  * other, so the same renderer API object serves both runtimes.
  */
 export interface BridgeTransport {
-  invoke<T>(channel: IpcChannel, input?: unknown): Promise<T>;
-  subscribe<T>(channel: string, listener: (payload: T) => void): EventSubscription;
+  invoke<C extends IpcChannel>(channel: C, ...args: IpcArguments<C>): Promise<IpcOutput<C>>;
+  subscribe<C extends keyof PushPayloads>(channel: C, listener: (payload: PushPayloads[C]) => void): EventSubscription;
 }
 
-function invokeThroughTauri<T>(channel: IpcChannel, input: unknown = {}): Promise<T> {
-  return tauriInvoke<T>(channel, { input });
+function invokeThroughTauri<C extends IpcChannel>(channel: C, ...args: IpcArguments<C>): Promise<IpcOutput<C>> {
+  return tauriInvoke<IpcOutput<C>>(channel, { input: args[0] ?? {} });
 }
 
 /**
@@ -175,7 +99,7 @@ export function hostsBrowserSurface(): boolean {
   return !isSecondaryWindow();
 }
 
-function subscribeThroughTauri<T>(channel: string, listener: (payload: T) => void): EventSubscription {
+function subscribeThroughTauri<C extends keyof PushPayloads>(channel: C, listener: (payload: PushPayloads[C]) => void): EventSubscription {
   let unlisten: UnlistenFn | null = null;
   let disposed = false;
   let unlistenQueued = false;
@@ -206,7 +130,7 @@ function subscribeThroughTauri<T>(channel: string, listener: (payload: T) => voi
   // to the focused window would toggle the sidebar in every open window.
   // Broadcasts (`app.emit`) still reach a labelled listener.
   const label = windowLabelFromRuntime();
-  const ready = tauriListen<T>(
+  const ready = tauriListen<PushPayloads[C]>(
     channel,
     (event) => {
       if (!disposed) listener(event.payload);
@@ -283,10 +207,8 @@ function trackDeltaArrival(): void {
 }
 
 function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
-  const invokeCommand = <T>(channel: IpcChannel, input: unknown = {}): Promise<T> =>
-    transport.invoke<T>(channel, input);
-  const subscribe = <T>(channel: string, listener: (payload: T) => void): EventSubscription =>
-    transport.subscribe<T>(channel, listener);
+  const invokeCommand = transport.invoke.bind(transport);
+  const subscribe = transport.subscribe.bind(transport);
 
   // One transport subscription fans out to every consumer, so the burst
   // diagnostic counts deltas rather than deliveries. Counting inside the
@@ -300,10 +222,11 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     deltaListeners.add(listener);
     const shared =
       deltaSubscription ??
-      (deltaSubscription = subscribe<DashboardDelta>("dashboard:delta", (delta) => {
+      (deltaSubscription = subscribe("dashboard:delta", (delta) => {
         trackDeltaArrival();
         // Copied: a consumer may unsubscribe from inside its own handler.
-        for (const each of [...deltaListeners]) each(delta);
+        const decoded = decode.delta(delta);
+        for (const each of [...deltaListeners]) each(decoded);
       }));
     const off = (): void => {
       if (!deltaListeners.delete(listener)) return;
@@ -318,135 +241,155 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
 
   return {
     markWorkspacesViewed: (input: WorkspacesMarkViewedInput) =>
-      invokeCommand<WorkspaceSummary[]>("workspaces:mark-viewed", input),
+      invokeCommand("workspaces:mark-viewed", input).then(rows => rows.map(decode.workspace)),
     dashboard: {
-      list: () => invokeCommand<DashboardListSnapshot>("dashboard:list"),
+      list: () => invokeCommand("dashboard:list").then(decode.dashboard),
       onDelta
     },
     projects: {
-      list: () => invokeCommand<ProjectSummary[]>("projects:list"),
-      pickFolder: () => invokeCommand<ProjectFolderPickResult>("projects:pick-folder"),
-      register: (input: RegisterProjectInput) => invokeCommand<ProjectSummary>("projects:register", input),
-      remove: (input: RemoveProjectInput) => invokeCommand<void>("projects:remove", input),
+      list: () => invokeCommand("projects:list"),
+      pickFolder: () => invokeCommand("projects:pick-folder").then(decode.pickedFolder),
+      register: (input: RegisterProjectInput) => invokeCommand("projects:register", input),
+      remove: (input: RemoveProjectInput) => invokeCommand("projects:remove", input).then(() => undefined),
       updateSettings: (input: UpdateProjectSettingsInput) =>
-        invokeCommand<ProjectSummary>("projects:update-settings", input),
+        invokeCommand("projects:update-settings", input),
       listBranches: (projectId: string) =>
-        invokeCommand<string[]>("projects:list-branches", { projectId }),
+        invokeCommand("projects:list-branches", { projectId }),
+      listCheckouts: (projectId: string) =>
+        invokeCommand("projects:list-checkouts", { projectId }),
       refreshBranch: (projectId: string) =>
-        invokeCommand<ProjectSummary>("projects:refresh-branch", { projectId }),
+        invokeCommand("projects:refresh-branch", { projectId }),
       switchBranch: (projectId: string, branch: string) =>
-        invokeCommand<ProjectSummary>("projects:switch-branch", { projectId, branch }),
-      checkPrompt: (input) => invokeCommand<ProjectCheck>("projects:check-prompt", input),
-      resolveCheck: (input) => invokeCommand<void>("projects:resolve-check", input)
+        invokeCommand("projects:switch-branch", { projectId, branch }),
+      setBranchTemplate: (input) => invokeCommand("projects:set-branch-template", input),
+      checkPrompt: (input) => invokeCommand("projects:check-prompt", input),
+      resolveCheck: (input) => invokeCommand("projects:resolve-check", input).then(() => undefined)
     },
     workspaces: {
-      createIsolated: (input) => invokeCommand<WorkspaceSummary>("workspaces:create-isolated", input),
-      createCurrent: (input) => invokeCommand<WorkspaceSummary>("workspaces:create-current", input),
-      createScratch: (input) => invokeCommand<WorkspaceSummary>("workspaces:create-scratch", input),
+      createIsolated: (input) => invokeCommand("workspaces:create-isolated", input).then(decode.workspace),
+      createCurrent: (input) => invokeCommand("workspaces:create-current", input).then(decode.workspace),
+      createAlongside: (input) => invokeCommand("workspaces:create-alongside", input).then(decode.workspace),
+      createScratch: (input) => invokeCommand("workspaces:create-scratch", input).then(decode.workspace),
       refreshStatus: (workspaceId) =>
-        invokeCommand<WorkspaceSummary>("workspaces:refresh-status", { workspaceId }),
+        invokeCommand("workspaces:refresh-status", { workspaceId }).then(decode.workspace),
       status: (input: WorkspaceStatusInput = { workspaceIds: null }) =>
-        invokeCommand<WorkspaceStatusSnapshot>("workspace:status", input),
-      keep: (workspaceId) => invokeCommand<WorkspaceSummary>("workspaces:keep", { workspaceId }),
-      archive: (input) => invokeCommand<{ workspace: WorkspaceSummary; recoveryPath: string | null }>("workspaces:archive", input),
-      openInIde: (input: OpenInIdeInput) => invokeCommand<{ ok: true }>("workspaces:open-in-ide", input),
-      autoTitle: (input) => invokeCommand<{ ok: true }>("workspaces:autotitle", input),
-      setPinned: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-pinned", input),
+        invokeCommand("workspace:status", input).then(decode.workspaceStatus),
+      keep: (workspaceId) => invokeCommand("workspaces:keep", { workspaceId }).then(decode.workspace),
+      archive: (input) => invokeCommand("workspaces:archive", input).then(row => ({ ...row, workspace: decode.workspace(row.workspace) })),
+      openInIde: (input: OpenInIdeInput) => invokeCommand("workspaces:open-in-ide", input),
+      autoTitle: (input) => invokeCommand("workspaces:autotitle", input),
+      setPinned: (input) => invokeCommand("workspaces:set-pinned", input).then(decode.workspace),
       setPriorityDismissed: (input) =>
-        invokeCommand<WorkspaceSummary>("workspaces:set-priority-dismissed", input),
+        invokeCommand("workspaces:set-priority-dismissed", input).then(decode.workspace),
       setPriorityAdded: (input) =>
-        invokeCommand<WorkspaceSummary>("workspaces:set-priority-added", input),
-      setLabel: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-label", input),
-      setIcon: (input) => invokeCommand<WorkspaceSummary>("workspaces:set-icon", input)
+        invokeCommand("workspaces:set-priority-added", input).then(decode.workspace),
+      setSnoozedUntil: (input) =>
+        invokeCommand("workspaces:set-snoozed-until", input).then(decode.workspace),
+      setLabel: (input) => invokeCommand("workspaces:set-label", input).then(decode.workspace),
+      setIcon: (input) => invokeCommand("workspaces:set-icon", input).then(decode.workspace)
     },
     providers: {
       discover: (refresh = false) =>
-        invokeCommand<DiscoveredProvider[]>("providers:discover", { refresh }),
-      launch: (input: LaunchProviderSessionInput) => invokeCommand<SessionSummary>("providers:launch", input),
+        invokeCommand("providers:discover", { refresh }),
+      launch: (input: LaunchProviderSessionInput) => invokeCommand("providers:launch", input).then(decode.session),
       sendInput: (input: ProviderSessionInput) =>
-        invokeCommand<{ ok: true; queued: boolean }>("providers:send-input", input),
+        invokeCommand("providers:send-input", input),
       steerInput: (input: ProviderSessionInput) =>
-        invokeCommand<{ ok: true; queued: boolean }>("providers:steer-input", input),
-      resize: (input: ProviderSessionResizeInput) => invokeCommand<{ ok: true }>("providers:resize", input),
-      terminate: (sessionId: string) => invokeCommand<{ ok: true }>("providers:terminate", { sessionId }),
+        invokeCommand("providers:steer-input", input),
+      resize: (input: ProviderSessionResizeInput) => invokeCommand("providers:resize", input),
+      terminate: (sessionId: string) => invokeCommand("providers:terminate", { sessionId }),
       cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) =>
-        invokeCommand<{ ok: true }>("providers:cancel-queued-message", input),
+        invokeCommand("providers:cancel-queued-message", input),
       sendQueuedMessageNow: (input: ProvidersSendQueuedMessageNowInput) =>
-        invokeCommand<{ ok: true; queued: boolean }>("providers:send-queued-message-now", input)
+        invokeCommand("providers:send-queued-message-now", input)
     },
     cloud: {
       prepare: (input: CloudPrepareInput) =>
-        invokeCommand<CloudHandoffPreview>("cloud:prepare", input),
+        invokeCommand("cloud:prepare", input),
       launch: (input: CloudLaunchInput) =>
-        invokeCommand<CloudHandoffResult>("cloud:launch", input)
+        invokeCommand("cloud:launch", input)
     },
     attachments: {
       saveImage: (input: AttachmentSaveImageInput) =>
-        invokeCommand<AttachmentSaveImageResult>("attachments:save-image", input)
+        invokeCommand("attachments:save-image", input)
     },
     approvals: {
-      pending: () => invokeCommand<DashboardSnapshot["approvals"]>("approvals:pending"),
+      pending: () => invokeCommand("approvals:pending").then(rows => rows.map(decode.approval)),
       resolve: (input: ResolveApprovalInput) =>
-        invokeCommand<DashboardSnapshot["approvals"][number]>("approvals:resolve", input)
+        invokeCommand("approvals:resolve", input).then(decode.approval)
     },
     questions: {
       resolve: (input: QuestionsResolveInput) =>
-        invokeCommand<QuestionResolveResult>("questions:resolve", input)
+        invokeCommand("questions:resolve", input)
     },
     session: {
       eventsSince: (input: SessionEventsSinceInput) =>
-        invokeCommand<SessionEventsSinceResult>("session:events-since", input),
+        invokeCommand("session:events-since", input).then(decode.transcript),
       agentEvents: (input: SessionAgentEventsInput) =>
-        invokeCommand<SessionEventsSinceResult>("session:agent-events", input),
-      fork: (input: SessionForkInput) => invokeCommand<SessionForkResult>("session:fork", input),
+        invokeCommand("session:agent-events", input).then(decode.transcript),
+      fork: (input: SessionForkInput) =>
+        invokeCommand("session:fork", {
+          ...input,
+          boundaryEventId: input.boundaryEventId ?? null,
+          workspace: input.workspace ?? null
+        }).then((forked) => ({
+          ...forked,
+          workspace: decode.workspace(forked.workspace),
+          session: decode.session(forked.session)
+        })),
+      forkLineage: (input: SessionForkLineageInput) =>
+        invokeCommand("session:fork-lineage", input),
+      forkMergePreview: (input: SessionForkMergePreviewInput) =>
+        invokeCommand("session:fork-merge-preview", input),
+      forkMerge: (input: SessionForkMergeInput) => invokeCommand("session:fork-merge", input),
       multitask: (input) =>
-        invokeCommand<MultitaskLaunched>("session:multitask", {
+        invokeCommand("session:multitask", {
           ...input,
           pendingMessageId: input.pendingMessageId ?? null,
           worktree: input.worktree ?? false,
           taskLabel: input.taskLabel ?? null
         }),
-      clear: (input: SessionClearInput) => invokeCommand<SessionSummary>("session:clear", input),
+      clear: (input: SessionClearInput) => invokeCommand("session:clear", input).then(decode.session),
       suggestFollowUp: (input) =>
-        invokeCommand<FollowUpSuggestion>("session:suggest-follow-up", input),
+        invokeCommand("session:suggest-follow-up", input),
       costSummary: (input: SessionCostSummaryInput) =>
-        invokeCommand<SessionCostSummary>("session:cost-summary", input),
-      search: (input) => invokeCommand<SessionSearchResult>("session:search", input)
+        invokeCommand("session:cost-summary", input),
+      search: (input) => invokeCommand("session:search", input)
     },
     goals: {
-      set: (input) => invokeCommand<Goal>("goal:set", input),
-      get: (input) => invokeCommand<Goal | null>("goal:get", input),
-      list: (input) => invokeCommand<Goal[]>("goal:list", input),
-      clear: (input) => invokeCommand<Goal | null>("goal:clear", input),
+      set: (input) => invokeCommand("goal:set", input),
+      get: (input) => invokeCommand("goal:get", input),
+      list: (input) => invokeCommand("goal:list", input),
+      clear: (input) => invokeCommand("goal:clear", input),
     },
     arcs: {
-      create: (input) => invokeCommand<ArcRecord>("arc:create", input),
-      list: (input) => invokeCommand<ArcRecord[]>("arc:list", input),
-      get: (input) => invokeCommand<ArcDetail>("arc:get", input),
-      update: (input) => invokeCommand<ArcRecord>("arc:update", input),
-      setState: (input) => invokeCommand<ArcRecord>("arc:set-state", input),
-      launchCoordinator: (input) => invokeCommand<ArcRecord>("arc:launch-coordinator", input),
-      timeline: (input) => invokeCommand<ArcTimelinePage>("arc:timeline", input),
-      draftFromSession: (input) => invokeCommand<ArcDraft>("arc:draft-from-session", input),
-      promote: (input) => invokeCommand<ArcRecord>("arc:promote", input)
+      create: (input) => invokeCommand("arc:create", input),
+      list: (input) => invokeCommand("arc:list", input),
+      get: (input) => invokeCommand("arc:get", input),
+      update: (input) => invokeCommand("arc:update", input),
+      setState: (input) => invokeCommand("arc:set-state", input),
+      launchCoordinator: (input) => invokeCommand("arc:launch-coordinator", input),
+      timeline: (input) => invokeCommand("arc:timeline", input),
+      draftFromSession: (input) => invokeCommand("arc:draft-from-session", input),
+      promote: (input) => invokeCommand("arc:promote", input)
     },
     review: {
-      stageFile: (input) => invokeCommand<void>("review:stage-file", input),
-      unstageFile: (input) => invokeCommand<void>("review:unstage-file", input),
-      revertFile: (input) => invokeCommand<void>("review:revert-file", input),
-      revertHunk: (input) => invokeCommand<void>("review:revert-hunk", input),
-      stageHunk: (input) => invokeCommand<void>("review:stage-hunk", input),
-      unstageHunk: (input) => invokeCommand<void>("review:unstage-hunk", input),
-      commitStaged: (input) => invokeCommand<GitCommitResult>("review:commit-staged", input),
+      stageFile: (input) => invokeCommand("review:stage-file", input).then(() => undefined),
+      unstageFile: (input) => invokeCommand("review:unstage-file", input).then(() => undefined),
+      revertFile: (input) => invokeCommand("review:revert-file", input).then(() => undefined),
+      revertHunk: (input) => invokeCommand("review:revert-hunk", input).then(() => undefined),
+      stageHunk: (input) => invokeCommand("review:stage-hunk", input).then(() => undefined),
+      unstageHunk: (input) => invokeCommand("review:unstage-hunk", input).then(() => undefined),
+      commitStaged: (input) => invokeCommand("review:commit-staged", input),
       listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) =>
-        invokeCommand<ChangedFileSummary[]>("review:list-changed-files", { ...target, comparison }),
+        invokeCommand("review:list-changed-files", { ...target, comparison }),
       loadDiff: (
         target: WorkspaceTarget,
         filePath?: string,
         comparison?: ReviewComparison,
         contextLines?: number
       ) =>
-        invokeCommand<WorkspaceDiff>("review:load-diff", {
+        invokeCommand("review:load-diff", {
           ...target,
           filePath,
           comparison,
@@ -455,196 +398,216 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     workspace: {
       listFiles: (target: WorkspaceTarget) =>
-        invokeCommand<WorkspaceFileEntry[]>("workspace:list-files", target),
+        invokeCommand("workspace:list-files", target),
       readFile: (target: WorkspaceTarget, filePath: string) =>
-        invokeCommand<WorkspaceFilePreview>("workspace:read-file", { ...target, filePath }),
+        invokeCommand("workspace:read-file", { ...target, filePath }),
       writeFile: (target: WorkspaceTarget, filePath: string, content: string, expectedMtimeMs: number | null) =>
-        invokeCommand<WorkspaceFileWriteResult>("workspace:write-file", {
+        invokeCommand("workspace:write-file", {
           ...target,
           filePath,
           content,
           expectedMtimeMs
         }),
       statFile: (target: WorkspaceTarget, filePath: string) =>
-        invokeCommand<WorkspaceFileStat>("workspace:stat-file", { ...target, filePath }),
-      grepContent: (input) => invokeCommand<WorkspaceContentSearchResult>("workspace:grep-content", input)
+        invokeCommand("workspace:stat-file", { ...target, filePath }),
+      readExternalFile: (path: string) =>
+        invokeCommand("workspace:read-external-file", { path }),
+      statExternalFile: (path: string) =>
+        invokeCommand("workspace:stat-external-file", { path }),
+      grepContent: (input) => invokeCommand("workspace:grep-content", input)
     },
     checks: {
-      run: (input: RunCheckInput) => invokeCommand<CheckRun>("checks:run", input)
+      run: (input: RunCheckInput) => invokeCommand("checks:run", input).then(decode.check)
     },
     checkpoints: {
-      list: (input) => invokeCommand<Checkpoint[]>("checkpoints:list", input),
-      previewRewind: (input) => invokeCommand<RewindPreview>("checkpoints:preview-rewind", input),
-      rewindFiles: (input) => invokeCommand<RewindFilesResult>("checkpoints:rewind-files", input)
+      list: (input) => invokeCommand("checkpoints:list", input),
+      previewRewind: (input) => invokeCommand("checkpoints:preview-rewind", input),
+      rewindFiles: (input) => invokeCommand("checkpoints:rewind-files", input)
     },
     health: {
-      ping: () => invokeCommand<{ ok: true; timestamp: string }>("health:ping")
+      ping: () => invokeCommand("health:ping")
     },
     skills: {
-      list: (input) => invokeCommand<SkillSummary[]>("skills:list", input)
+      list: (input) => invokeCommand("skills:list", input)
     },
     connections: {
-      list: (input) => invokeCommand<ConnectionSummary[]>("connections:list", input)
+      list: (input) => invokeCommand("connections:list", input)
     },
     settings: {
-      agentTools: () => invokeCommand<AgentToolsSettings>("settings:agent-tools"),
-      routing: () => invokeCommand<RoutingSettings>("settings:routing"),
-      setRoutingKey: (input) => invokeCommand<RoutingSettings>("settings:set-routing-key", input),
-      clearRoutingKey: () => invokeCommand<RoutingSettings>("settings:clear-routing-key"),
-      setProjectCheck: (input) => invokeCommand<RoutingSettings>("settings:set-project-check", input),
+      agentTools: () => invokeCommand("settings:agent-tools"),
+      routing: () => invokeCommand("settings:routing"),
+      setRoutingKey: (input) => invokeCommand("settings:set-routing-key", input),
+      clearRoutingKey: () => invokeCommand("settings:clear-routing-key"),
+      setProjectCheck: (input) => invokeCommand("settings:set-project-check", input),
+      branchTemplate: () => invokeCommand("settings:branch-template"),
+      setBranchTemplate: (input) => invokeCommand("settings:set-branch-template", input),
       setBrowserTools: (input) =>
-        invokeCommand<AgentToolsSettings>("settings:set-browser-tools", input),
-      previewChatCleanup: () => invokeCommand<ChatCleanupPreview>("settings:preview-chat-cleanup"),
-      deleteOldChats: (input) => invokeCommand<DeleteOldChatsResult>("settings:delete-old-chats", input)
+        invokeCommand("settings:set-browser-tools", input),
+      previewChatCleanup: () => invokeCommand("settings:preview-chat-cleanup"),
+      deleteOldChats: (input) => invokeCommand("settings:delete-old-chats", input)
     },
     system: {
       confirm: (message) => isTauriRuntime()
         ? confirmDialog(message, { title: "Argmax", kind: "warning" })
         : Promise.resolve(window.confirm(message)),
-      openPath: (input) => invokeCommand<{ ok: true }>("system:open-path", input),
-      openFileIn: (input) => invokeCommand<{ ok: true }>("system:open-file-in", input),
-      listDetectedIdes: () => invokeCommand<DetectedIde[]>("system:list-detected-ides"),
-      diagnostics: () => invokeCommand<DiagnosticsReport>("system:diagnostics"),
+      openPath: (input) => invokeCommand("system:open-path", input),
+      openFileIn: (input) => invokeCommand("system:open-file-in", input),
+      listDetectedIdes: () => invokeCommand("system:list-detected-ides"),
+      diagnostics: () => invokeCommand("system:diagnostics"),
       debugSnapshot: (input) =>
-        invokeCommand<DebugSnapshot>("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
-      performanceStart: () => invokeCommand<PerformanceStatus>("system:performance-start"),
-      performanceStop: () => invokeCommand<PerformanceCapture>("system:performance-stop"),
-      performanceStatus: () => invokeCommand<PerformanceStatus>("system:performance-status"),
-      performanceCapture: () => invokeCommand<PerformanceCapture>("system:performance-capture"),
+        invokeCommand("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
+      performanceStart: () => invokeCommand("system:performance-start"),
+      performanceStop: () => invokeCommand("system:performance-stop"),
+      performanceStatus: () => invokeCommand("system:performance-status"),
+      performanceCapture: () => invokeCommand("system:performance-capture"),
       reportRendererStall: (durationMs) =>
-        invokeCommand<{ ok: true }>("system:renderer-stall", { durationMs }),
-      onZoom: (listener) => subscribe<number>("ui:zoom", listener),
-      vacuumDatabase: () => invokeCommand<{ ok: true }>("system:vacuum-database"),
-      setTheme: (mode) => invokeCommand<{ ok: true }>("system:set-theme", { mode }),
+        invokeCommand("system:renderer-stall", { durationMs }),
+      onZoom: (listener) => subscribe("ui:zoom", listener),
+      vacuumDatabase: () => invokeCommand("system:vacuum-database"),
+      setTheme: (mode) => invokeCommand("system:set-theme", { mode }),
       setDefaultAgent: (input) =>
-        invokeCommand<{ ok: true }>("system:set-default-agent", {
+        invokeCommand("system:set-default-agent", {
           ...input,
           reasoningEffort: input.reasoningEffort ?? null
         }),
       setNotificationsEnabled: (enabled) =>
-        invokeCommand<{ ok: true }>("system:set-notifications-enabled", { enabled }),
-      setKeepAwake: (enabled) => invokeCommand<{ ok: true }>("system:set-keep-awake", { enabled }),
-      testNotification: () => invokeCommand<{ ok: true }>("system:test-notification")
+        invokeCommand("system:set-notifications-enabled", { enabled }),
+      setKeepAwake: (enabled) => invokeCommand("system:set-keep-awake", { enabled }),
+      testNotification: () => invokeCommand("system:test-notification")
     },
     remote: {
-      getStatus: () => invokeCommand<RemoteStatus>("remote:get-status"),
-      setConfig: (input) => invokeCommand<RemoteStatus>("remote:set-config", input),
-      testNotification: () => invokeCommand<{ ok: true }>("remote:test-notification"),
-      setApnsConfig: (input) => invokeCommand<RemoteStatus>("remote:set-apns-config", input),
+      getStatus: () => invokeCommand("remote:get-status"),
+      setConfig: (input) => invokeCommand("remote:set-config", input),
+      testNotification: () => invokeCommand("remote:test-notification"),
+      setApnsConfig: (input) => invokeCommand("remote:set-apns-config", input),
       registerPushDevice: (input) =>
-        invokeCommand<RemotePushDevice[]>("remote:register-push-device", input),
+        invokeCommand("remote:register-push-device", input),
       unregisterPushDevice: (input) =>
-        invokeCommand<RemotePushDevice[]>("remote:unregister-push-device", input),
-      pushTest: () => invokeCommand<RemotePushTestResult[]>("remote:push-test"),
-      pushCapability: () => invokeCommand<RemotePushCapability>("remote:push-capability")
+        invokeCommand("remote:unregister-push-device", input),
+      pushTest: () => invokeCommand("remote:push-test"),
+      pushCapability: () => invokeCommand("remote:push-capability")
     },
     sync: {
-      getStatus: () => invokeCommand<SyncStatus>("sync:get-status"),
-      setConfig: (input) => invokeCommand<SyncStatus>("sync:set-config", input),
-      runNow: () => invokeCommand<SyncStatus>("sync:run-now")
+      getStatus: () => invokeCommand("sync:get-status").then(decode.syncStatus),
+      setConfig: (input) => invokeCommand("sync:set-config", input).then(decode.syncStatus),
+      runNow: () => invokeCommand("sync:run-now").then(decode.syncStatus)
     },
     routines: {
-      list: () => invokeCommand<Routine[]>("routines:list"),
-      upsert: (input: RoutineUpsertInput) => invokeCommand<Routine>("routines:upsert", input),
-      delete: (id: string) => invokeCommand<null>("routines:delete", { id }),
+      list: () => invokeCommand("routines:list").then(rows => rows.map(decode.routine)),
+      upsert: (input: RoutineUpsertInput) => invokeCommand("routines:upsert", input).then(decode.routine),
+      delete: (id: string) => invokeCommand("routines:delete", { id }),
       setEnabled: (id: string, enabled: boolean) =>
-        invokeCommand<Routine>("routines:set-enabled", { id, enabled }),
-      runNow: (id: string) => invokeCommand<Routine>("routines:run-now", { id }),
-      resetSession: (id: string) => invokeCommand<Routine>("routines:reset-session", { id })
+        invokeCommand("routines:set-enabled", { id, enabled }).then(decode.routine),
+      runNow: (id: string) => invokeCommand("routines:run-now", { id }).then(decode.routine),
+      resetSession: (id: string) => invokeCommand("routines:reset-session", { id }).then(decode.routine)
     },
     usage: {
-      summary: (input: UsageSummaryInput) => invokeCommand<UsageSummary>("usage:summary", input),
-      remaining: () => invokeCommand<UsageRemaining>("usage:remaining"),
+      summary: (input: UsageSummaryInput) => invokeCommand("usage:summary", input),
+      remaining: () => invokeCommand("usage:remaining"),
       routerCost: (input: UsageRouterCostInput) =>
-        invokeCommand<RouterCostSummary | null>("usage:router-cost", input)
+        invokeCommand("usage:router-cost", input)
     },
     activity: {
-      summary: (input: ActivitySummaryInput) => invokeCommand<ActivitySummary>("activity:summary", input)
+      summary: (input: ActivitySummaryInput) => invokeCommand("activity:summary", input)
     },
     menu: {
-      onCommand: (listener) => subscribe<MenuCommand>("menu:command", listener)
+      onCommand: (listener) => subscribe("menu:command", listener)
+    },
+    windowSnapshot: {
+      status: () => invokeCommand("window-snapshot:status"),
+      configure: (input) => invokeCommand("window-snapshot:configure", input),
+      requestPermission: () => invokeCommand("window-snapshot:request-permission"),
+      onAttach: (listener) => subscribe("composer:attach-window-snapshot", listener),
+      onFailed: (listener) => subscribe("window-snapshot:failed", listener)
     },
     windows: {
-      onFocusSession: (listener) => subscribe<string>("window:focus-session", listener),
-      openSession: (input) => invokeCommand<{ label: string }>("window:open-session", input),
-      setSession: (input) => invokeCommand<{ label: string }>("window:set-session", input)
+      onFocusSession: (listener) => subscribe("window:focus-session", listener),
+      openSession: (input) => invokeCommand("window:open-session", input),
+      setSession: (input) => invokeCommand("window:set-session", input)
+    },
+    linkedRepos: {
+      list: (input) => invokeCommand("linked-repos:list", input),
+      add: (input) => invokeCommand("linked-repos:add", input),
+      setEnabled: (input) => invokeCommand("linked-repos:set-enabled", input),
+      remove: (input) => invokeCommand("linked-repos:remove", input).then(() => undefined)
     },
     sources: {
-      list: (input) => invokeCommand<ProjectSource[]>("sources:list", input),
-      add: (input) => invokeCommand<ProjectSource>("sources:add", input),
-      update: (input) => invokeCommand<ProjectSource>("sources:update", input),
-      delete: (input) => invokeCommand<void>("sources:delete", input)
+      list: (input) => invokeCommand("sources:list", input),
+      add: (input) => invokeCommand("sources:add", input),
+      update: (input) => invokeCommand("sources:update", input),
+      delete: (input) => invokeCommand("sources:delete", input).then(() => undefined)
     },
     learnings: {
-      list: (input) => invokeCommand<Learning[]>("learnings:list", input),
-      update: (input) => invokeCommand<Learning>("learnings:update", input),
-      delete: (id: string) => invokeCommand<{ ok: true }>("learnings:delete", { id })
+      list: (input) => invokeCommand("learnings:list", input).then(rows => rows.map(decode.learning)),
+      update: (input) => invokeCommand("learnings:update", input).then(decode.learning),
+      delete: (id: string) => invokeCommand("learnings:delete", { id })
     },
     prs: {
-      listForSession: (input) => invokeCommand<GhPrRecord[]>("prs:list-for-session", input),
-      refresh: (input) => invokeCommand<GhPrRecord[]>("prs:refresh", input),
-      setPrimary: (input) => invokeCommand<SessionPrSummary[]>("prs:set-primary", input),
-      dismiss: (input) => invokeCommand<SessionPrSummary[]>("prs:dismiss", input)
+      listForSession: (input) => invokeCommand("prs:list-for-session", input).then(rows => rows.map(decode.pullRequest)),
+      refresh: (input) => invokeCommand("prs:refresh", input).then(rows => rows.map(decode.pullRequest)),
+      setPrimary: (input) => invokeCommand("prs:set-primary", input),
+      dismiss: (input) => invokeCommand("prs:dismiss", input),
+      cleanup: (input) => invokeCommand("prs:cleanup", input)
     },
     git: {
-      commit: (input: GitCommitInput) => invokeCommand<GitCommitResult>("git:commit", input),
-      push: (input: GitPushInput) => invokeCommand<GitPushResult>("git:push", input),
+      commit: (input: GitCommitInput) => invokeCommand("git:commit", input),
+      push: (input: GitPushInput) => invokeCommand("git:push", input),
       createBranch: (input: GitCreateBranchInput) =>
-        invokeCommand<GitCreateBranchResult>("git:create-branch", input),
+        invokeCommand("git:create-branch", input),
       viewOrCreatePr: (input: GitViewOrCreatePrInput) =>
-        invokeCommand<GitViewOrCreatePrResult>("git:view-or-create-pr", input)
+        invokeCommand("git:view-or-create-pr", input)
     },
     terminal: {
-      spawn: (input: TerminalSpawnInput) => invokeCommand<{ terminalId: string }>("terminal:spawn", input),
-      write: (input: TerminalWriteInput) => invokeCommand<{ ok: true }>("terminal:write", input),
-      resize: (input: TerminalResizeInput) => invokeCommand<{ ok: true }>("terminal:resize", input),
-      terminate: (terminalId: string) => invokeCommand<{ ok: true }>("terminal:terminate", { terminalId }),
+      spawn: (input: TerminalSpawnInput) => invokeCommand("terminal:spawn", input),
+      write: (input: TerminalWriteInput) => invokeCommand("terminal:write", input),
+      resize: (input: TerminalResizeInput) => invokeCommand("terminal:resize", input),
+      terminate: (terminalId: string) => invokeCommand("terminal:terminate", { terminalId }),
       onData: (listener: (event: TerminalDataEvent) => void) =>
-        subscribe<TerminalDataEvent>("terminal:data", listener),
+        subscribe("terminal:data", listener),
       onExit: (listener: (event: TerminalExitEvent) => void) =>
-        subscribe<TerminalExitEvent>("terminal:exit", listener),
+        subscribe("terminal:exit", listener),
       onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) =>
-        subscribe<TerminalAgentOpenEvent>("terminal:agent-open", listener)
+        subscribe("terminal:agent-open", listener)
     },
     browser: {
-      chromeProfiles: () => invokeCommand<ChromeProfile[]>("browser:chrome-profiles"),
+      chromeProfiles: () => invokeCommand("browser:chrome-profiles"),
       importChromeHistory: (profileId: string) =>
-        invokeCommand<ChromeHistoryImport>("browser:import-chrome-history", { profileId }),
-      contentBlocking: () => invokeCommand<BrowserContentBlocking>("browser:content-blocking"),
+        invokeCommand("browser:import-chrome-history", { profileId }),
+      contentBlocking: () => invokeCommand("browser:content-blocking"),
       setSiteBlocking: (input) =>
-        invokeCommand<BrowserContentBlocking>("browser:set-site-blocking", input),
-      open: (input) => invokeCommand<{ ok: true }>("browser:open", input),
+        invokeCommand("browser:set-site-blocking", input),
+      open: (input) => invokeCommand("browser:open", input),
       navigate: (url: string, tabId: string) =>
-        invokeCommand<{ ok: true }>("browser:navigate", { url, tabId }),
-      back: (tabId: string) => invokeCommand<{ ok: true }>("browser:back", { tabId }),
-      forward: (tabId: string) => invokeCommand<{ ok: true }>("browser:forward", { tabId }),
-      reload: (tabId: string) => invokeCommand<{ ok: true }>("browser:reload", { tabId }),
-      stop: (tabId: string) => invokeCommand<{ ok: true }>("browser:stop", { tabId }),
-      setTheme: (mode) => invokeCommand<{ ok: true }>("browser:set-theme", { mode }),
-      setBounds: (input) => invokeCommand<{ ok: true }>("browser:set-bounds", input),
-      focus: (tabId: string) => invokeCommand<{ ok: true }>("browser:focus", { tabId }),
-      close: (tabId: string) => invokeCommand<{ ok: true }>("browser:close", { tabId }),
+        invokeCommand("browser:navigate", { url, tabId }),
+      back: (tabId: string) => invokeCommand("browser:back", { tabId }),
+      forward: (tabId: string) => invokeCommand("browser:forward", { tabId }),
+      reload: (tabId: string) => invokeCommand("browser:reload", { tabId }),
+      stop: (tabId: string) => invokeCommand("browser:stop", { tabId }),
+      setTheme: (mode) => invokeCommand("browser:set-theme", { mode }),
+      setBounds: (input) => invokeCommand("browser:set-bounds", input),
+      focus: (tabId: string) => invokeCommand("browser:focus", { tabId }),
+      close: (tabId: string) => invokeCommand("browser:close", { tabId }),
       fillCredentials: (tabId: string) =>
-        invokeCommand<BrowserFillResult>("browser:fill-credentials", { tabId }),
-      screenshot: (input) => invokeCommand<BrowserScreenshot>("browser:screenshot", input),
-      evaluate: (input) => invokeCommand<BrowserEvaluateResult>("browser:evaluate", input),
-      listTabs: (input) => invokeCommand<{ tabs: BrowserTabInfo[] }>("browser:list-tabs", input),
-      openForSession: (input) => invokeCommand<{ tabId: string }>("browser:open-for-session", input),
-      snapshot: (input) => invokeCommand<BrowserPageSnapshot>("browser:snapshot", input),
-      find: (input) => invokeCommand<BrowserFindResult>("browser:find", input),
-      getText: (input) => invokeCommand<BrowserPageText>("browser:get-text", input),
-      extract: (input) => invokeCommand<BrowserPageExtraction>("browser:extract", input),
-      act: (input) => invokeCommand<BrowserActionOutcome>("browser:act", input),
+        invokeCommand("browser:fill-credentials", { tabId }),
+      screenshot: (input) => invokeCommand("browser:screenshot", input),
+      evaluate: (input) => invokeCommand("browser:evaluate", input),
+      listTabs: (input) => invokeCommand("browser:list-tabs", input),
+      openForSession: (input) => invokeCommand("browser:open-for-session", input),
+      snapshot: (input) => invokeCommand("browser:snapshot", input),
+      find: (input) => invokeCommand("browser:find", input),
+      getText: (input) => invokeCommand("browser:get-text", input),
+      extract: (input) => invokeCommand("browser:extract", input).then(decode.pageExtraction),
+      act: (input) => invokeCommand("browser:act", input),
       onState: (listener: (event: BrowserStateEvent) => void) =>
-        subscribe<BrowserStateEvent>("browser:state", listener),
+        subscribe("browser:state", listener),
       onNewTab: (listener: (event: BrowserNewTabEvent) => void) =>
-        subscribe<BrowserNewTabEvent>("browser:new-tab", listener),
+        subscribe("browser:new-tab", listener),
       onPageCommand: (listener: (event: BrowserPageCommandEvent) => void) =>
-        subscribe<BrowserPageCommandEvent>("browser:page-command", listener),
+        subscribe("browser:page-command", listener),
       onTabs: (listener: (event: { tabs: BrowserTabInfo[] }) => void) =>
-        subscribe<{ tabs: BrowserTabInfo[] }>("browser:tabs", listener),
+        subscribe("browser:tabs", listener),
       onAgentOpen: (listener: (event: BrowserAgentOpenEvent) => void) =>
-        subscribe<BrowserAgentOpenEvent>("browser:agent-open", listener)
+        subscribe("browser:agent-open", listener)
     }
   };
 }
@@ -673,7 +636,7 @@ let remoteBridgeInstalled = false;
 /**
  * True when `window.argmax` speaks to the host over the WebSocket bridge
  * rather than Tauri. A handful of channels are desktop-only
- * (`REMOTE_UNSUPPORTED_CHANNELS` in the Rust dispatcher) — opening a path in
+ * (the `desktop` policy in the Rust command catalogue) — opening a path in
  * the host's Finder, saving a pasted image — so the affordances that call them
  * check here instead of firing a request that can only fail.
  */

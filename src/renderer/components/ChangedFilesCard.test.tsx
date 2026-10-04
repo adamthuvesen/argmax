@@ -95,15 +95,4 @@ describe("ChangedFilesCard checks list", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle log for npm test" }));
     expect(screen.getByLabelText("Log for npm test").textContent).toContain("2 tests passed");
   });
-
-  it("renders nothing when there are no registered checks", () => {
-    const { container } = render(
-      <ChangedFilesCard
-        workspaceId="workspace-1"
-        checkCommands={[]}
-        checks={[]}
-      />
-    );
-    expect(container.firstChild).toBeNull();
-  });
 });

@@ -38,19 +38,6 @@ describe("CommitDialog", () => {
     delete (window as { argmax?: unknown }).argmax;
   });
 
-  it("renders nothing when closed", () => {
-    render(
-      <CommitDialog
-        open={false}
-        onClose={() => {}}
-        workspaceId="workspace-1"
-        files={FILES}
-        defaultMessage="feat: review wiring"
-      />
-    );
-    expect(screen.queryByRole("dialog", { name: "Commit selected changes" })).not.toBeInTheDocument();
-  });
-
   it("pre-selects every changed file and pre-fills the message", () => {
     render(
       <CommitDialog

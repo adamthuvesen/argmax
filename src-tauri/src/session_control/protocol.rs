@@ -58,6 +58,9 @@ pub enum SessionControlAction {
     ScheduleCancel(ScheduleCancelAction),
     ScheduleResume(ScheduleResumeAction),
     ArcStatus(ArcStatusAction),
+    PrWatch(PrWatchAction),
+    PrUnwatch(PrUnwatchAction),
+    PrCleanup(PrCleanupAction),
 }
 
 /// Which session an inspection is about. Every session-addressable action
@@ -131,13 +134,28 @@ pub struct SourcesListAction {
     pub offset: Option<u32>,
     #[serde(default)]
     pub limit: Option<u32>,
+    /// Name of a linked repository to list a directory of. Omit it to list the
+    /// project's registered sources and the linked repositories themselves.
+    #[serde(default)]
+    pub linked_repo: Option<String>,
+    /// Directory inside `linked_repo`, relative to its root. Empty is the root.
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 /// Read one registered source from the caller's current checkout or the web.
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourcesReadAction {
-    pub id: String,
+    /// A registered source. Pass this or `linked_repo` with `path`.
+    #[serde(default)]
+    pub id: Option<String>,
+    /// Name of a linked repository to read a file from.
+    #[serde(default)]
+    pub linked_repo: Option<String>,
+    /// File inside `linked_repo`, relative to its root.
+    #[serde(default)]
+    pub path: Option<String>,
     #[serde(default)]
     pub max_chars: Option<u32>,
 }
@@ -251,6 +269,35 @@ pub struct ScheduleCancelAction {
     pub disable: bool,
 }
 
+/// Ask Argmax to wake this session about one of its PRs until it merges or
+/// closes. `pr` defaults to the session's primary PR.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrWatchAction {
+    #[serde(default)]
+    pub pr: Option<i64>,
+    /// Run PR cleanup when the PR merges; its report goes in the merged notice.
+    #[serde(default)]
+    pub cleanup_on_merge: bool,
+}
+
+/// Clean up after one of this session's merged PRs. `pr` defaults to the
+/// session's primary PR. Never archives the chat.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrCleanupAction {
+    #[serde(default)]
+    pub pr: Option<i64>,
+}
+
+/// Stop watching one PR. `pr` defaults to the session's primary PR.
+#[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrUnwatchAction {
+    #[serde(default)]
+    pub pr: Option<i64>,
+}
+
 /// Start a new top-level session. Provider and model default to the calling
 /// session's own, so an agent that names neither gets a peer of itself.
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -290,6 +337,12 @@ pub struct LaunchAction {
     /// completion notice is delivered, so a finished session never fires it.
     #[serde(default)]
     pub check_in_minutes: Option<u32>,
+    /// Caller-chosen key that makes the launch safe to retry. The same key with
+    /// the same arguments from the same session answers with the first launch's
+    /// ids instead of starting another session; the same key with other
+    /// arguments is refused. Scoped to the calling session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_request_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -325,6 +378,10 @@ pub struct ListAction {
     pub project: Option<String>,
     #[serde(default)]
     pub all: bool,
+    /// Free text matched against task labels and, for the sessions the caller
+    /// may read, the visible conversation. Omitted, the list is unfiltered.
+    #[serde(default)]
+    pub query: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -332,6 +389,11 @@ pub struct ListAction {
 pub struct MessageAction {
     pub session_id: String,
     pub message: String,
+    /// From inside a fork: bring the fork's new findings back to the source
+    /// chat, with `message` as the note ahead of them. `session_id` must be the
+    /// chat this one was forked from.
+    #[serde(default)]
+    pub fork_findings: bool,
 }
 
 /// What one session looks like right now, without reading its transcript.
@@ -343,6 +405,10 @@ pub struct StatusAction {
 
 /// The normalized timeline since a cursor. `cursor` is the `nextCursor` a
 /// previous read returned; omitting it starts from the beginning.
+///
+/// With `item_id` the read is one entry instead of a page: the full text of
+/// the entry a page clipped, from byte `offset`, so a long answer or tool
+/// result arrives in as many bounded slices as it needs.
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadAction {
@@ -351,6 +417,10 @@ pub struct ReadAction {
     pub cursor: Option<i64>,
     #[serde(default)]
     pub max_chars: Option<u32>,
+    #[serde(default)]
+    pub item_id: Option<String>,
+    #[serde(default)]
+    pub offset: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
@@ -436,6 +506,9 @@ pub enum SessionControlResult {
     ScheduleCancelled(ScheduleCancelled),
     ScheduleResumed(ScheduleResumed),
     ArcStatus(ArcStatusOutcome),
+    PrWatch(PrWatchOutcome),
+    PrUnwatch(PrUnwatchOutcome),
+    PrCleanup(crate::git::pr_cleanup::PrCleanupReport),
     Error(SessionControlError),
 }
 
@@ -552,11 +625,46 @@ pub struct SourceRecord {
     pub updated_at: String,
 }
 
+/// An enabled linked repository an agent may address by `name`.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinkedRepoRecord {
+    pub name: String,
+    /// The canonical root. Treat everything under it as read-only context:
+    /// that is advice to the agent, not something Argmax enforces on a
+    /// provider that was given the directory.
+    pub root: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinkedEntryRecord {
+    pub name: String,
+    /// `file`, `dir`, `symlink`, or `other`.
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinkedListingRecord {
+    pub linked_repo: String,
+    pub path: String,
+    pub entries: Vec<LinkedEntryRecord>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourcesListOutcome {
     pub project_id: String,
     pub sources: Vec<SourceRecord>,
+    /// The project's enabled linked repositories.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linked_repos: Vec<LinkedRepoRecord>,
+    /// Present when the call named a `linked_repo`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listing: Option<LinkedListingRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<u32>,
     pub truncated: bool,
@@ -565,7 +673,12 @@ pub struct SourcesListOutcome {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourceReadOutcome {
-    pub source: SourceRecord,
+    /// The registered source. Absent for a file read from a linked repository.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<SourceRecord>,
+    /// The linked repository a file was read from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_repo: Option<String>,
     pub content: String,
     pub read_at: String,
     /// Title reported by the live page, or the registered title for a file.
@@ -793,6 +906,26 @@ pub struct ScheduleResumed {
     pub next_run_at: Option<String>,
 }
 
+/// The PR a watch is on. `url` and `headSha` are absent when Argmax has not
+/// read the PR from GitHub yet; the next poll fills them in.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrWatchOutcome {
+    pub project_id: String,
+    pub pr_number: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
+    pub watching: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PrUnwatchOutcome {
+    pub removed: bool,
+}
+
 /// Attach a completion condition to the calling session. The condition is the
 /// whole configuration — see [`crate::goals`].
 #[derive(Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -842,6 +975,16 @@ pub struct LaunchedSession {
     pub branch: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_check: Option<LaunchProjectCheck>,
+    /// The mode the session runs under after the caller's own mode capped the
+    /// request. Always set on a new launch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<crate::providers::PermissionMode>,
+    /// Set only when the caller asked for a looser mode than it may hand out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode_requested: Option<crate::providers::PermissionMode>,
+    /// True when this is the first launch's answer replayed for a retry.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replayed: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -906,6 +1049,27 @@ pub struct SessionListEntry {
     /// The session that launched this one, when an agent did.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub launched_by_session_id: Option<String>,
+    /// Set when this session's conversation is not one the caller may read
+    /// (another project, outside its launch lineage, not attached by the user).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unreadable: bool,
+    /// Why a `query` list kept this session: its task label, or a line of its
+    /// conversation the caller may read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched: Option<SessionMatch>,
+}
+
+/// The evidence behind a search hit. A content hit names the timeline entry,
+/// so `session_read` can fetch it with `itemId`.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionMatch {
+    /// `title` or `content`.
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -939,9 +1103,31 @@ pub struct SessionStatus {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadEntry {
+    /// Stable for the life of the transcript; pass it back as `itemId`.
+    pub id: String,
     pub at: String,
     pub kind: String,
     pub text: String,
+    /// True when `text` is a cut of a longer entry. `itemId` reads the rest.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub clipped: bool,
+}
+
+/// One slice of a single entry's full text.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadItemSlice {
+    pub id: String,
+    pub at: String,
+    pub kind: String,
+    pub text: String,
+    /// Byte offset this slice starts at. Always on a character boundary.
+    pub offset: u32,
+    /// Where the next slice starts. Absent once the entry has been read to its end.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<u32>,
+    /// The entry's full length in bytes.
+    pub total_bytes: u32,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -954,6 +1140,9 @@ pub struct SessionRead {
     /// True when the byte cap cut the page short; read again from
     /// `next_cursor` for the rest.
     pub truncated: bool,
+    /// Set instead of `entries` when the read named an `itemId`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item: Option<ReadItemSlice>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1104,6 +1293,7 @@ mod tests {
                 reasoning: Some(crate::providers::ReasoningEffort::High),
                 permission_mode: Some(crate::providers::PermissionMode::AskEachTime),
                 check_in_minutes: Some(45),
+                client_request_id: Some("retry-1".to_string()),
             }),
         };
         let encoded = serde_json::to_value(&request).expect("encode");
@@ -1132,6 +1322,7 @@ mod tests {
             SessionControlAction::Message(MessageAction {
                 session_id: "s1".to_string(),
                 message: "ping".to_string(),
+                fork_findings: false,
             }),
             SessionControlAction::Rename(RenameAction {
                 task_label: "Ship the fix".to_string(),
@@ -1163,10 +1354,20 @@ mod tests {
             SessionControlAction::SourcesList(SourcesListAction {
                 offset: Some(10),
                 limit: Some(20),
+                linked_repo: Some("docs".to_string()),
+                path: Some("src".to_string()),
             }),
             SessionControlAction::SourcesRead(SourcesReadAction {
-                id: "source-1".to_string(),
+                id: Some("source-1".to_string()),
+                linked_repo: None,
+                path: None,
                 max_chars: Some(8_000),
+            }),
+            SessionControlAction::SourcesRead(SourcesReadAction {
+                id: None,
+                linked_repo: Some("docs".to_string()),
+                path: Some("README.md".to_string()),
+                max_chars: None,
             }),
             SessionControlAction::SourcesAdd(SourcesAddAction {
                 title: "Runtime guide".to_string(),
@@ -1205,6 +1406,12 @@ mod tests {
             SessionControlAction::ScheduleResume(ScheduleResumeAction {
                 schedule_id: "routine-1".to_string(),
             }),
+            SessionControlAction::PrWatch(PrWatchAction {
+                pr: Some(42),
+                cleanup_on_merge: true,
+            }),
+            SessionControlAction::PrUnwatch(PrUnwatchAction { pr: None }),
+            SessionControlAction::PrCleanup(PrCleanupAction { pr: Some(72) }),
         ] {
             let encoded = serde_json::to_string(&action).expect("encode");
             assert_eq!(
@@ -1221,6 +1428,13 @@ mod tests {
             }));
         let encoded = serde_json::to_value(&response).expect("encode");
         assert_eq!(encoded["messaged"]["queued"], true);
+
+        let watch = serde_json::to_value(SessionControlAction::PrWatch(PrWatchAction {
+            pr: Some(42),
+            cleanup_on_merge: true,
+        }))
+        .expect("encode watch");
+        assert_eq!(watch["pr-watch"]["cleanupOnMerge"], true);
         assert_eq!(encoded["version"], PROTOCOL_VERSION);
     }
 }

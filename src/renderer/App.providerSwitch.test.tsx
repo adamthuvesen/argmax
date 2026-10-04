@@ -34,7 +34,11 @@ describe("provider switch — new session instead", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: snapshot.workspaces.map((workspace) => ({ ...workspace, state: "complete" })),
-      sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
+      sessions: snapshot.sessions.map((session) => ({
+        ...session,
+        state: "complete",
+        providerConversationId: "conv-1"
+      }))
     });
     render(<App />);
     await openSessionPane();

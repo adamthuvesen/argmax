@@ -11,6 +11,7 @@ use serde_json::{Map, Value};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::validation::ProviderId;
 use crate::providers::normalizer::{number_value, object_value, string_value};
+use crate::providers::pricing;
 use crate::usage::records::{UsageRecord, UsageRecordTokens};
 
 /// Reads every assistant turn created at or after `since_ms`.
@@ -77,17 +78,18 @@ fn record_from_row(
         return None;
     }
     let tokens = tokens_from_data(data);
+    let model_id = model_id(data);
     let reported_cost_usd = data
         .get("cost")
         .and_then(Value::as_f64)
-        .filter(|cost| *cost > 0.0);
+        .filter(|cost| *cost > 0.0 && pricing::opencode_cost_is_billed(&model_id));
     if tokens.is_empty() && reported_cost_usd.is_none() {
         return None;
     }
 
     Some(UsageRecord {
         provider: ProviderId::Opencode,
-        model_id: model_id(data),
+        model_id,
         session_id: session_id.to_string(),
         // The turn bills when it finishes; a row still running has no
         // completion stamp yet and falls back to when it started.

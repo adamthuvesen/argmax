@@ -540,8 +540,8 @@
     padding-block: var(--space-1_5);
   }
 
-  /* The skill highlight mirror sits on the textarea's box. */
-  html:not(:has(.mobile-shell)) .session-input .composer-highlight-backdrop {
+  html:not(:has(.mobile-shell)) .session-input .composer-editor .cm-content {
+    min-height: 40px;
     padding-block: var(--space-1_5);
   }
 

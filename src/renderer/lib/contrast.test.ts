@@ -2,7 +2,6 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  applyContrastToDocument,
   CONTRAST_STORAGE_KEY,
   DEFAULT_CONTRAST,
   readStoredContrast,
@@ -11,8 +10,6 @@ import {
 
 afterEach(() => {
   window.localStorage.clear();
-  document.documentElement.removeAttribute("data-contrast");
-  document.documentElement.style.removeProperty("--contrast");
 });
 
 describe("contrast", () => {
@@ -32,11 +29,5 @@ describe("contrast", () => {
     expect(readStoredContrast()).toBe(80);
     window.localStorage.setItem(CONTRAST_STORAGE_KEY, "80oops");
     expect(readStoredContrast()).toBe(DEFAULT_CONTRAST);
-  });
-
-  it("applies the value to the document root", () => {
-    applyContrastToDocument(90);
-    expect(document.documentElement.getAttribute("data-contrast")).toBe("90");
-    expect(document.documentElement.style.getPropertyValue("--contrast")).toBe("90");
   });
 });

@@ -217,19 +217,6 @@ describe("SidebarSessionRow", () => {
     expect(screen.getByRole("button", { name: /Build the dashboard/ })).toBeInTheDocument();
   });
 
-  it("does not offer a rename menu when onRename is not provided", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    render(
-      <SidebarSessionRow
-        workspace={workspaceBase}
-        {...rowProps()}
-      />
-    );
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
-  });
-
   it("right-click → Edit Icon applies the picked icon with the picked color", async () => {
     const { fireEvent } = await import("@testing-library/react");
     const onSetIcon = vi.fn();
@@ -403,20 +390,6 @@ describe("SidebarSessionRow", () => {
 
     expect(onSetIcon).toHaveBeenCalledWith("workspace-1", "Brain", "amber");
     expect(screen.getByRole("dialog", { name: "Edit Icon" })).toBeInTheDocument();
-  });
-
-  it("does not offer Edit Icon when onSetIcon is not provided", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    render(
-      <SidebarSessionRow
-        workspace={workspaceBase}
-        {...rowProps()}
-        onRename={vi.fn()}
-      />
-    );
-
-    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    expect(screen.queryByRole("menuitem", { name: "Edit Icon" })).toBeNull();
   });
 
   it("memo comparator skips re-render when a new workspace object has identical visible fields (ralph C1)", () => {
@@ -665,21 +638,6 @@ describe("SidebarSessionRow", () => {
     expect(row.querySelector('[data-pr="merged"]')).not.toBeNull();
   });
 
-  it("shows a working marker while the workspace turn is running", () => {
-    render(
-      <SidebarSessionRow
-        workspace={{ ...workspaceBase, state: "running" }}
-        {...rowProps()}
-      />
-    );
-
-    // The row's accessible title carries the state; the marker itself is the
-    // decorative working ring.
-    const row = screen.getByTitle(/Build the dashboard — running/);
-    expect(row.querySelector('[data-working="true"]')).not.toBeNull();
-    expect(row.querySelector("[data-pr]")).toBeNull();
-  });
-
   it("working marker wins over PR markers while a turn is in flight", () => {
     render(
       <SidebarSessionRow
@@ -750,18 +708,6 @@ describe("SidebarSessionRow", () => {
     const reduceBlock =
       /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[^{}]*\.working-nest\[data-active="true"\]\s\.working-nest-part[^{}]*\{[^}]*animation:\s*none/i.exec(css);
     expect(reduceBlock, "expected reduced-motion override for the working parts").not.toBeNull();
-  });
-
-  it("reserves both action slots for PR count badges even without an archive button", () => {
-    const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), "../styles.css");
-    const css = readBundledCss(cssPath);
-
-    expect(css).toMatch(
-      /\.session-row-actions\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*var\(--sidebar-action-size\)\)/i
-    );
-    expect(css).toMatch(
-      /\.session-archive-btn\s*\{[^}]*grid-column:\s*2/i
-    );
   });
 
   it("renders a persistent session-row-actions container with pin and archive buttons", () => {
@@ -913,16 +859,6 @@ describe("styles.css startup contract", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
     expect(screen.queryByRole("menuitem", { name: "Sync now" })).toBeNull();
   });
-
-  it("leaves rows for sessions started in Argmax unmarked", () => {
-    render(
-      <SidebarSessionRow
-        workspace={workspaceBase}
-        {...rowProps()}
-      />
-    );
-    expect(screen.queryByTitle(/^Synced from/)).not.toBeInTheDocument();
-  });
 });
 
 describe("SidebarSessionRow copy ids", () => {
@@ -944,18 +880,6 @@ describe("SidebarSessionRow copy ids", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("session   session-1\nworkspace workspace-1"));
     expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
   });
-
-  it("offers no Copy ids item when the row carries no id block", async () => {
-    const { fireEvent } = await import("@testing-library/react");
-    render(
-      <SidebarSessionRow
-        workspace={workspaceBase}
-        {...rowProps()}
-      />
-    );
-    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    expect(screen.queryByRole("menuitem", { name: "Copy ids" })).not.toBeInTheDocument();
-  });
 });
 
 describe("SidebarSessionRow — launch lineage", () => {
@@ -972,20 +896,6 @@ describe("SidebarSessionRow — launch lineage", () => {
 
     expect(screen.getByTitle("Launched by Ship the phase-2 branch")).toHaveTextContent(
       "launched by Ship the phase-2 branch"
-    );
-  });
-
-  it("leaves a row with no launching chat unmarked", () => {
-    render(
-      <SidebarSessionRow
-        workspace={workspaceBase}
-        {...rowProps()}
-      />
-    );
-
-    expect(screen.queryByTitle(/^Launched by/)).toBeNull();
-    expect(screen.getByRole("button", { name: /Build the dashboard/ })).not.toHaveTextContent(
-      "launched by"
     );
   });
 

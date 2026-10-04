@@ -17,7 +17,7 @@ The page opens in the workspace with the app sidebar still beside it, using the 
 
 ## Scheduler Behavior
 
-The scheduler ticks every 30 seconds. Due tasks launch sequentially via `session_control::launch_with_spec`.
+The scheduler ticks every 30 seconds. Due tasks launch sequentially through the shared application launch operation in [session_launch.rs](../src-tauri/src/application/session_launch.rs). Its dependencies are explicit database, workspace, provider, run-claim, and data-directory values. The scheduler does not depend on a Tauri app handle or the agent session-control protocol.
 
 The scheduler and Run now share a per-routine launch claim. An overlapping
 request cannot launch the same task twice, while different tasks can still run

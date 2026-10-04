@@ -3,11 +3,12 @@ import { decodeTimelineEvent } from "./canonicalTimeline.js";
 
 /**
  * Handing an idle session to another provider. The new agent can't resume the
- * old one's native conversation, so `send_input` drops the resume id and
- * relaunches from the visible transcript (providers/follow_up.rs). That is a
- * real seam in the conversation — the chat shows it for the same reason it
- * shows a compaction: everything after it was written by an agent that only
- * read a summary of everything before it.
+ * old one's native conversation, so `send_input` parks that conversation and
+ * either rejoins the new provider's own earlier one or relaunches from the
+ * visible transcript (providers/continuity.rs, providers/follow_up.rs). That
+ * is a real seam in the conversation — the chat shows it for the same reason
+ * it shows a compaction: the agent after it may have only read a summary of
+ * what came before.
  */
 export interface ProviderSwitchNotice {
   /** Absent on rows written before the payload carried both ends. */

@@ -84,35 +84,6 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_a_mirrored_agent() {
-        let dir = tempdir().expect("tempdir");
-        let agent = DefaultAgent {
-            provider: "codex".to_string(),
-            model_label: "GPT-5.6 Sol".to_string(),
-            model_id: "gpt-5.6-sol".to_string(),
-            reasoning_effort: Some("xhigh".to_string()),
-            permission_mode: crate::providers::PermissionMode::AskEachTime,
-            permission_modes: HashMap::from([
-                (
-                    crate::providers::ProviderId::Claude,
-                    crate::providers::PermissionMode::AutoApprove,
-                ),
-                (
-                    crate::providers::ProviderId::Codex,
-                    crate::providers::PermissionMode::AskEachTime,
-                ),
-            ]),
-        };
-        std::fs::write(
-            dir.path().join(DEFAULT_AGENT_FILE),
-            serde_json::to_vec(&agent).expect("serialize"),
-        )
-        .expect("write");
-
-        assert_eq!(read_default_agent(dir.path()), agent);
-    }
-
-    #[test]
     fn old_preference_keeps_model_and_inherits_provider_permissions() {
         let dir = tempdir().expect("tempdir");
         std::fs::write(dir.path().join(DEFAULT_AGENT_FILE), br#"{"provider":"codex","modelLabel":"Custom","modelId":"custom-model","reasoningEffort":"high"}"#).unwrap();

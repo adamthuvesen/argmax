@@ -706,13 +706,15 @@
 }
 
 .composer-queued-chip-label,
+.composer-queued-chip-provider,
 .composer-queued-chip-recovery {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.composer-queued-chip-recovery {
+.composer-queued-chip-recovery,
+.composer-queued-chip-provider {
   color: var(--muted);
   font-size: var(--text-xs);
 }
@@ -862,11 +864,12 @@
   max-width: 100%;
 }
 
+/* A sent screenshot shows at its own shape, up to 200px tall, so its text is
+   readable in place. Smaller images keep their natural size. */
 .user-message-attachment-preview {
   display: block;
-  flex: 0 0 auto;
-  width: 112px;
-  height: 112px;
+  flex: 0 1 auto;
+  max-width: 100%;
   margin: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -877,8 +880,10 @@
 
 .user-message-attachment-image {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 200px;
   object-fit: contain;
   background: var(--panel);
 }
@@ -950,58 +955,104 @@
   min-width: 0;
 }
 
-/* Slash-command highlight. A textarea can't colour a substring, so a mirror
-   div paints the text behind the textarea and the textarea text goes
-   transparent (caret stays visible). Every /command token that maps to a real
-   skill is tinted — leading or mid-message; the rest is painted in the normal
-   text colour so the visible text still reads through. Every metric here MUST
-   match the textarea box (font, OpenType features, padding, line-height,
-   wrapping) or the painted text drifts from the caret. Line breaking is a
-   cliff, so the tolerance is sub-pixel: a fraction of a pixel per line moves
-   one word to the next line in one layer only, and the caret ends up a whole
-   word away from the text. That is also why the token gets no
-   font-weight change: bolder glyphs are wider, and everything painted after a
-   mid-message token would drift off the invisible text. The overlay is
-   mounted only while a real skill is typed, so this never affects ordinary
-   input. Shared by the session composer (.session-input-field) and the
-   launcher (.composer-input); both textareas use the same font, 8px padding,
-   and 1.55 line-height. */
-.composer-highlight-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  padding: var(--space-2) var(--space-2);
+/* The prompt field. One CodeMirror editor in both composers, set to the box a
+   textarea had: Geist at --text-base, 1.55 line-height, 8px padding, a 52px
+   floor and a 168px ceiling that scrolls. The /skill tint is a decoration on
+   the text itself, so there is no second layer whose metrics have to match. */
+.composer-editor {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  --composer-field-min-height: 52px;
+  --composer-field-max-height: 168px;
+}
+
+.composer-editor .cm-editor {
+  flex: 1;
+  min-width: 0;
+  max-height: var(--composer-field-max-height);
+  color: var(--text);
+  background: transparent;
   font-family: var(--font-prose);
   font-size: var(--text-base);
+}
+
+.composer-editor .cm-editor.cm-focused {
+  outline: 0;
+}
+
+.composer-editor .cm-scroller {
+  font-family: inherit;
   line-height: 1.55;
-  color: var(--text);
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: break-word;
-  pointer-events: none;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-/* Moved by transform to the textarea's scrollTop (see syncHighlightScroll). */
-.composer-highlight-text {
-  will-change: transform;
-}
-
-/* In the launcher the field is 60px tall and centres a 52px textarea, so a
-   mirror stretched to the field paints its text above the real one — 4px on a
-   single line, closing to 0 once the prompt wraps past the field's minimum.
-   Give the mirror the textarea's own height bounds and let the field's
-   centring place it on the same box. */
-.composer-input > .composer-highlight-backdrop {
-  top: 50%;
-  bottom: auto;
+.composer-editor .cm-content {
+  box-sizing: border-box;
   min-height: var(--composer-field-min-height);
-  max-height: var(--composer-field-max-height);
-  transform: translateY(-50%);
+  padding: var(--space-2);
+  caret-color: var(--text);
 }
 
-/* One treatment in both composers and sent prompts. Keep glyph metrics intact
-   so the textarea caret and mirror remain aligned, including wrapped tokens. */
+.composer-editor .cm-line {
+  padding: 0;
+}
+
+.composer-editor .cm-placeholder {
+  color: var(--muted);
+}
+
+.composer-editor[data-placeholder-kind="suggested-follow-up"] .cm-placeholder {
+  color: var(--composer-suggestion);
+}
+
+/* The router's reason for a switch borrows the placeholder's line while the
+   draft is empty; the placeholder steps aside until it has gone. */
+.composer-editor[data-route-caption] .cm-placeholder {
+  color: transparent;
+}
+
+.composer-editor[data-disabled="true"] {
+  opacity: 0.6;
+}
+
+/* A chat attached to the prompt. Sized to sit on the text line without moving
+   it: the same height as a line, a rounded tint, the title ellipsized. The
+   editor treats the whole chip as one character, so the caret steps over it
+   and Backspace removes it. An unavailable chat keeps its title and says so. */
+.composer-chat-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(100%, 28ch);
+  padding: 0 var(--space-1_5);
+  vertical-align: baseline;
+  color: var(--text);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.composer-chat-chip:hover {
+  background: color-mix(in oklab, var(--accent) 20%, transparent);
+}
+
+.composer-chat-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-chat-chip[data-status="unresolved"] {
+  color: var(--muted-strong);
+  background: transparent;
+  cursor: default;
+  outline: 1px dashed var(--line-strong);
+  outline-offset: -1px;
+}
+
+/* One treatment in both composers and sent prompts. */
 .skill-token {
   color: var(--skill-token-ink, var(--accent));
   background: color-mix(in oklab, currentColor 14%, transparent);
@@ -1010,14 +1061,6 @@
 
 .chat-bubble.user .skill-token {
   --skill-token-ink: var(--user-message-fg);
-}
-
-.session-input-field textarea.composer-input--highlighting,
-.composer-input textarea.composer-input--highlighting {
-  position: relative;
-  z-index: 1;
-  color: transparent;
-  caret-color: var(--text);
 }
 
 /* The two menus that open in the composer's slot — `/` commands and `@` files —
@@ -1192,6 +1235,12 @@
   stroke: var(--accent);
 }
 
+.file-popover-heading {
+  padding: var(--space-1_5) var(--space-3) var(--space-1);
+  font-size: var(--text-xs-plus);
+  color: var(--muted);
+}
+
 .file-popover-empty {
   display: flex;
   align-items: center;
@@ -1212,7 +1261,7 @@
 
 /* The router's reason for a switch, on the placeholder's line while the draft
    is empty; the placeholder steps aside until it has gone. Same box metrics as
-   the textarea (see .composer-highlight-backdrop), one line, ellipsized. */
+   the editor's text box (see .composer-editor), one line, ellipsized. */
 .session-input textarea[data-route-caption]::placeholder {
   color: transparent;
 }
@@ -1327,4 +1376,45 @@
 .composer-run-location:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* A chat named in the transcript (see ChatSourceChip). Reads as inline text
+   with a tint, like the composer's chip, and opens the chat on click. */
+.chat-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: min(100%, 32ch);
+  padding: 0 var(--space-1_5);
+  font: inherit;
+  color: inherit;
+  vertical-align: baseline;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+button.chat-source-chip {
+  cursor: pointer;
+}
+
+button.chat-source-chip:hover {
+  background: color-mix(in oklab, currentColor 20%, transparent);
+}
+
+.chat-source-chip svg {
+  flex: 0 0 auto;
+}
+
+.chat-source-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-source-chip[data-status="unresolved"] {
+  background: transparent;
+  outline: 1px dashed currentColor;
+  outline-offset: -1px;
+  opacity: 0.75;
 }

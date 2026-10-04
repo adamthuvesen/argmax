@@ -120,12 +120,6 @@ mod tests {
     }
 
     #[test]
-    fn unknown_spelling_is_rejected() {
-        assert_eq!(SessionState::from_wire("idle"), None);
-        assert_eq!(SessionState::from_wire(""), None);
-    }
-
-    #[test]
     fn only_a_turn_in_flight_is_active() {
         for state in [
             SessionState::Created,

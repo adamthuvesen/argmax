@@ -2,6 +2,7 @@ import { logger } from "../../shared/logger.js";
 import { errorMessage } from "../../shared/error.js";
 import { safeJsonParseArray, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { ProjectSummary } from "../../shared/types.js";
+import { chatReferencesAsTitles } from "./composerContext.js";
 
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 const expandedProjectsStorageKey = "argmax.sidebar.expandedProjects";
@@ -257,7 +258,8 @@ function applyProjectOrder(projects: ProjectSummary[], order: string[]): Project
 }
 
 export function titleFromPrompt(prompt: string): string {
-  const firstLine = prompt.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  // A chat reference reads as its title, not as the link that carries it.
+  const firstLine = chatReferencesAsTitles(prompt.split(/\r?\n/, 1)[0] ?? "").trim();
   return firstLine.length > 64 ? `${firstLine.slice(0, 61)}...` : firstLine || "Local agent task";
 }
 

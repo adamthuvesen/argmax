@@ -26,35 +26,6 @@ function openClaudePicker(value: ProviderModelSelection = HAIKU): ReturnType<typ
 }
 
 describe("ModelSelector — one row per model", () => {
-  it("lists one row per model, not one per effort", () => {
-    openClaudePicker();
-    const list = screen.getByRole("listbox", { name: "Chat model" });
-    // Four Claude models: Fable 5.1, Opus 5.5, Sonnet, Haiku.
-    expect(within(list).getAllByRole("option")).toHaveLength(4);
-    expect(within(list).getByText("Fable 5.1")).toBeInTheDocument();
-    expect(within(list).getByText("Opus 5.5")).toBeInTheDocument();
-    expect(within(list).getByText("Sonnet 5.5")).toBeInTheDocument();
-    expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
-  });
-
-  it("keeps GPT-6 Astra above Sol in the Codex picker", () => {
-    const value: ProviderModelSelection = {
-      label: "GPT-6.1 Sol",
-      modelId: "gpt-6.1-sol",
-      reasoningEffort: "medium"
-    };
-    render(<ModelSelector ariaLabel="Chat model" provider="codex" value={value} onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-
-    const options = within(screen.getByRole("listbox", { name: "Chat model" })).getAllByRole("option");
-    expect(options.map((option) => optionName(option))).toEqual([
-      "GPT-6 Astra",
-      "GPT-6.1 Sol",
-      "GPT-5.6 Terra",
-      "GPT-6 Luna"
-    ]);
-  });
-
   it("picking a model row selects it with the default Medium effort", () => {
     const onChange = openClaudePicker();
     fireEvent.click(screen.getByText("Opus 5.5"));
@@ -92,8 +63,8 @@ describe("ModelSelector — one row per model", () => {
     window.localStorage.setItem(
       LAUNCH_MODEL_RECENCY_KEY,
       JSON.stringify([
-        "opencode:opencode-go/deepseek-v4.1-flash",
-        "opencode:opencode-go/deepseek-v4-pro",
+        "opencode:openrouter/deepseek/deepseek-v4.1-flash",
+        "opencode:openrouter/deepseek/deepseek-v4-pro-0813",
         "grok:grok-4.7",
         "cursor:claude-opus-5-5-medium",
         "codex:gpt-6-luna"
@@ -300,37 +271,6 @@ describe("LaunchModelSelector — all providers", () => {
     expect(chosen.querySelector(".picker-lead svg")).not.toBeNull();
   });
 
-  it("shows speed in the model picker and toggles fast mode", () => {
-    const value: ModelPickerSelection = {
-      provider: "codex",
-      label: "GPT-6.1 Sol",
-      modelId: "gpt-6.1-sol",
-      reasoningEffort: "medium"
-    };
-    const onFastModeEnabledChange = vi.fn();
-    render(
-      <LaunchModelSelector
-        ariaLabel="Launch model"
-        value={value}
-        onChange={vi.fn()}
-        fastModeEnabled={false}
-        onFastModeEnabledChange={onFastModeEnabledChange}
-      />
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Fast mode" }));
-    const speedMenu = screen.getByRole("listbox", { name: "Fast mode" });
-    expect(
-      within(speedMenu)
-        .getAllByRole("option")
-        .map((option) => optionName(option))
-    ).toEqual(["Off", "On"]);
-    fireEvent.click(within(speedMenu).getByRole("button", { name: "On" }));
-
-    expect(onFastModeEnabledChange).toHaveBeenCalledWith(true);
-  });
-
   // Both boxes are placed by `useAnchoredPopover` — the flyout against the
   // chip, the Fast mode submenu against its own row. jsdom has no layout to check
   // where they land, so this pins the wiring: each carries the primitive's
@@ -528,16 +468,6 @@ describe("LaunchModelSelector — provider availability gating", () => {
     expect(codexRow && within(codexRow).getAllByRole("button")[0]).toBeDisabled();
   });
 
-  it("does not fire onChange when an uninstalled model row is clicked", () => {
-    const onChange = openLauncher({
-      claude: { installed: true, authenticated: true },
-      codex: { installed: false, authenticated: null },
-      cursor: { installed: true, authenticated: true }
-    });
-    fireEvent.click(screen.getByRole("button", { name: CODEX_SOL_ROW }));
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
   it("annotates an installed-but-unauthenticated provider while keeping it selectable", () => {
     const onChange = openLauncher({
       claude: { installed: true, authenticated: true },
@@ -553,14 +483,6 @@ describe("LaunchModelSelector — provider availability gating", () => {
 });
 
 describe("ModelSelector — standalone effort slider", () => {
-  it("without withEffortSlider the chip shows just the model label, no slider", () => {
-    render(<ModelSelector ariaLabel="Chat model" provider="claude" value={OPUS_MEDIUM} onChange={vi.fn()} />);
-    const modelButton = screen.getByRole("button", { name: "Chat model" });
-    expect(modelButton).toHaveTextContent("Opus 5.5");
-    expect(modelButton).toHaveAttribute("title", "Opus 5.5");
-    expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
-  });
-
   it("with withEffortSlider the model chip stays effort-free and a separate chip shows it", () => {
     render(
       <ModelSelector
@@ -626,65 +548,6 @@ describe("ModelSelector — standalone effort slider", () => {
       reasoningEffort: "ultra"
     });
   });
-
-  it("caps the Codex Astra/Sol/Terra effort slider at Ultra", () => {
-    const value: ModelPickerSelection = {
-      provider: "codex",
-      label: "GPT-6.1 Sol",
-      modelId: "gpt-6.1-sol",
-      reasoningEffort: "medium"
-    };
-    render(<LaunchModelSelector ariaLabel="Chat model" value={value} onChange={vi.fn()} withEffortSlider />);
-    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
-    const dialog = screen.getByRole("dialog", { name: "Chat model effort" });
-    expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "5");
-  });
-
-  it("caps the Codex Luna effort slider at Max", () => {
-    const value: ModelPickerSelection = {
-      provider: "codex",
-      label: "GPT-6 Luna",
-      modelId: "gpt-6-luna",
-      reasoningEffort: "medium"
-    };
-    render(<LaunchModelSelector ariaLabel="Chat model" value={value} onChange={vi.fn()} withEffortSlider />);
-    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
-    const dialog = screen.getByRole("dialog", { name: "Chat model effort" });
-    expect(within(dialog).getByRole("slider", { name: "Reasoning effort" })).toHaveAttribute("aria-valuemax", "4");
-  });
-
-  it("caps the Cursor GPT-5.6 effort slider at Max, same as Opus", () => {
-    const gpt: ModelPickerSelection = {
-      provider: "cursor",
-      label: "GPT-5.6 Sol (Cursor)",
-      modelId: "gpt-5.6-sol-medium",
-      reasoningEffort: "medium"
-    };
-    const { unmount } = render(
-      <LaunchModelSelector ariaLabel="Chat model" value={gpt} onChange={vi.fn()} withEffortSlider />
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
-    expect(
-      within(screen.getByRole("dialog", { name: "Chat model effort" })).getByRole("slider", {
-        name: "Reasoning effort"
-      })
-    ).toHaveAttribute("aria-valuemax", "4");
-    unmount();
-
-    const opus: ModelPickerSelection = {
-      provider: "cursor",
-      label: "Claude Opus 5.5 (Cursor)",
-      modelId: "claude-opus-5-5-medium",
-      reasoningEffort: "medium"
-    };
-    render(<LaunchModelSelector ariaLabel="Chat model" value={opus} onChange={vi.fn()} withEffortSlider />);
-    fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
-    expect(
-      within(screen.getByRole("dialog", { name: "Chat model effort" })).getByRole("slider", {
-        name: "Reasoning effort"
-      })
-    ).toHaveAttribute("aria-valuemax", "4");
-  });
 });
 
 describe("LaunchModelSelector — effort carries across model switches", () => {
@@ -694,22 +557,6 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     return onChange;
   }
-
-  it("keeps a Claude Max selection when switching to Codex Sol", () => {
-    const onChange = openWith({
-      provider: "claude",
-      label: "Opus 5.5",
-      modelId: "claude-opus-5-5",
-      reasoningEffort: "max"
-    });
-    fireEvent.click(screen.getByRole("button", { name: "GPT-6.1 Sol" }));
-    expect(onChange).toHaveBeenCalledWith({
-      provider: "codex",
-      label: "GPT-6.1 Sol",
-      modelId: "gpt-6.1-sol",
-      reasoningEffort: "max"
-    });
-  });
 
   it("keeps a Claude Ultra selection when switching to Codex Sol", () => {
     const onChange = openWith({

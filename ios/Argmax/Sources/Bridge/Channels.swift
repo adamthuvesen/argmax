@@ -2,8 +2,8 @@ import Foundation
 
 // The channels the phone calls, as Swift.
 //
-// Every struct here mirrors a generated binding in `src/shared/bindings.d.ts`
-// field for field, in the same camelCase the wire uses. The host's input
+// Request wrappers below encode through types generated from the Rust binding.
+// They keep phone defaults and deliberate null/omission behavior. The host's input
 // structs are `deny_unknown_fields` (src-tauri/src/ipc/inputs.rs), so a key
 // this app invents is a rejected request rather than an ignored one, and the
 // payloads the renderer sends are the specification: see
@@ -15,13 +15,11 @@ import Foundation
 // the same manifest the host reads, so the read/mutation split cannot drift
 // out of a call site's spelling.
 //
-// A nullable field is encoded as `null`, never dropped. The renderer sends
-// `baseRef: null` and `attachments: null` explicitly; matching it keeps one
-// payload shape on the host's side of the socket and one shape to read in a
-// log.
+// `WireField` represents absent, null, and value separately when older hosts
+// need a specific payload shape.
 
 extension KeyedEncodingContainer {
-    /// Encode an optional as `null` instead of omitting the key.
+    /// Other phone request models also use explicit null for optional fields.
     mutating func encodeAlways(_ value: (some Encodable)?, forKey key: Key) throws {
         if let value {
             try encode(value, forKey: key)
@@ -34,15 +32,17 @@ extension KeyedEncodingContainer {
 // MARK: - Reads
 
 /// `ProjectsListBranchesInput`. Answers `[String]`, newest-first as git lists.
-struct ListBranchesInput: Encodable, Sendable {
-    var projectId: String
-}
+typealias ListBranchesInput = WireProjectsListBranchesInput
 
 /// `ProvidersDiscoverInput`. `refresh` re-probes each CLI instead of reading
 /// the host's cached reports, which takes seconds — the sheet asks for the
 /// cache.
 struct DiscoverProvidersInput: Encodable, Sendable {
     var refresh: Bool = false
+
+    func encode(to encoder: Encoder) throws {
+        try WireProvidersDiscoverInput(refresh: .value(refresh)).encode(to: encoder)
+    }
 }
 
 /// `ProviderCapabilityReport`, trimmed to what the New chat sheet reads.
@@ -73,24 +73,17 @@ struct CreateIsolatedWorkspaceInput: Encodable, Sendable {
     var taskLabel: String
     var baseRef: String?
 
-    enum CodingKeys: String, CodingKey {
-        case projectId, taskLabel, baseRef
-    }
-
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(projectId, forKey: .projectId)
-        try container.encode(taskLabel, forKey: .taskLabel)
-        try container.encodeAlways(baseRef, forKey: .baseRef)
+        try WireWorkspacesCreateIsolatedInput(
+            projectId: projectId, taskLabel: taskLabel,
+            baseRef: baseRef.map(WireField.value) ?? .null
+        ).encode(to: encoder)
     }
 }
 
 /// `WorkspacesCreateCurrentInput` — the project's own checkout, shared with
 /// whatever else is working in it.
-struct CreateCurrentWorkspaceInput: Encodable, Sendable {
-    var projectId: String
-    var taskLabel: String
-}
+typealias CreateCurrentWorkspaceInput = WireWorkspacesCreateCurrentInput
 
 /// `WorkspacesCreateScratchInput` — a side chat: an app-owned directory with
 /// one empty commit and no repository. `kind` stays `nil`, which is
@@ -99,14 +92,11 @@ struct CreateScratchWorkspaceInput: Encodable, Sendable {
     var taskLabel: String
     var kind: String?
 
-    enum CodingKeys: String, CodingKey {
-        case taskLabel, kind
-    }
-
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(taskLabel, forKey: .taskLabel)
-        try container.encodeAlways(kind, forKey: .kind)
+        let kind: WireField<WireScratchWorkspaceKind> = try kind.map {
+            .value(try wireEnum($0, as: WireScratchWorkspaceKind.self))
+        } ?? .null
+        try WireWorkspacesCreateScratchInput(taskLabel: taskLabel, kind: kind).encode(to: encoder)
     }
 }
 
@@ -156,34 +146,26 @@ struct LaunchSessionInput: Encodable, Sendable {
     /// fields above. Nil for a model picked by hand.
     var autoTier: String? = nil
 
-    enum CodingKeys: String, CodingKey {
-        case workspaceId, provider, prompt, modelLabel, modelId, reasoningEffort
-        case fastMode, agentMode, cols, rows, attachments, autoTier
-    }
-
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(workspaceId, forKey: .workspaceId)
-        try container.encode(provider, forKey: .provider)
-        try container.encode(prompt, forKey: .prompt)
-        try container.encode(modelLabel, forKey: .modelLabel)
-        try container.encode(modelId, forKey: .modelId)
-        try container.encodeAlways(reasoningEffort, forKey: .reasoningEffort)
-        try container.encode(fastMode, forKey: .fastMode)
-        try container.encode(agentMode, forKey: .agentMode)
-        try container.encode(cols, forKey: .cols)
-        try container.encode(rows, forKey: .rows)
-        // An empty pick still sends the key: the renderer sends it, so the
-        // two launchers write the same object.
-        if attachments.isEmpty {
-            try container.encodeNil(forKey: .attachments)
-        } else {
-            try container.encode(attachments, forKey: .attachments)
-        }
+        var wire = WireProvidersLaunchInput(
+            workspaceId: workspaceId,
+            provider: try wireEnum(provider, as: WireProviderId.self),
+            prompt: prompt, modelLabel: modelLabel, modelId: modelId,
+            cols: cols, rows: rows
+        )
+        wire.reasoningEffort = try reasoningEffort.map {
+            .value(try wireEnum($0, as: WireReasoningEffort.self))
+        } ?? .null
+        wire.fastMode = .value(fastMode)
+        wire.agentMode = .value(try wireEnum(agentMode, as: WireAgentMode.self))
+        wire.attachments = try attachments.isEmpty ? .null : .value(attachments.map { try $0.wire() })
         // Only on a Router pick, unlike the web launcher's null: the input
         // denies unknown fields, and a Mac built before routing would refuse
         // every launch that named the key.
-        try container.encodeIfPresent(autoTier, forKey: .autoTier)
+        wire.autoTier = try autoTier.map {
+            .value(try wireEnum($0, as: WireAutoTier.self))
+        } ?? .absent
+        try wire.encode(to: encoder)
     }
 }
 
@@ -201,6 +183,14 @@ struct AutoTitleWorkspaceInput: Encodable, Sendable {
     var provider: String
     var modelId: String
     var prompt: String
+
+    func encode(to encoder: Encoder) throws {
+        try WireWorkspacesAutotitleInput(
+            workspaceId: workspaceId,
+            provider: wireEnum(provider, as: WireProviderId.self),
+            modelId: modelId, prompt: prompt
+        ).encode(to: encoder)
+    }
 }
 
 // MARK: - Sending a follow-up
@@ -212,6 +202,18 @@ struct ComposerAttachment: Encodable, Sendable, Equatable {
     var filePath: String
     var mimeType: String
     var sizeBytes: Int
+
+    func wire() throws -> WireComposerAttachmentInput {
+        WireComposerAttachmentInput(
+            filePath: filePath,
+            mimeType: try wireEnum(mimeType, as: WireAttachmentMimeType.self),
+            sizeBytes: sizeBytes
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        try wire().encode(to: encoder)
+    }
 }
 
 /// `AttachmentsSaveImageInput` — picked photo bytes, written to the host's
@@ -221,6 +223,14 @@ struct SaveAttachmentImageInput: Encodable, Sendable {
     var sessionId: String
     var mimeType: String
     var dataBase64: String
+
+    func encode(to encoder: Encoder) throws {
+        try WireAttachmentsSaveImageInput(
+            sessionId: sessionId,
+            mimeType: wireEnum(mimeType, as: WireAttachmentMimeType.self),
+            dataBase64: dataBase64
+        ).encode(to: encoder)
+    }
 }
 
 /// `SaveImageResult`.
@@ -252,30 +262,24 @@ struct SendInputInput: Encodable, Sendable {
     var agentMode: String = "auto"
     var attachments: [ComposerAttachment] = []
 
-    enum CodingKeys: String, CodingKey {
-        case sessionId, input, provider, modelLabel, modelId, reasoningEffort
-        case fastMode, agentMode, attachments
-    }
-
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(sessionId, forKey: .sessionId)
-        try container.encode(input, forKey: .input)
-        if let provider { try container.encode(provider, forKey: .provider) }
-        if let modelLabel { try container.encode(modelLabel, forKey: .modelLabel) }
-        if let modelId {
-            try container.encode(modelId, forKey: .modelId)
-            try container.encodeAlways(reasoningEffort, forKey: .reasoningEffort)
+        var wire = WireProvidersSendInput(sessionId: sessionId, input: input)
+        wire.provider = try provider.map {
+            .value(try wireEnum($0, as: WireProviderId.self))
+        } ?? .absent
+        wire.modelLabel = modelLabel.map(WireField.value) ?? .absent
+        wire.modelId = modelId.map(WireField.value) ?? .absent
+        if modelId != nil {
+            wire.reasoningEffort = try reasoningEffort.map {
+                .value(try wireEnum($0, as: WireReasoningEffort.self))
+            } ?? .null
         }
         // Off, same as `LaunchSessionInput`: fast mode is a Codex-only
         // control the phone does not surface.
-        try container.encode(false, forKey: .fastMode)
-        try container.encode(agentMode, forKey: .agentMode)
-        if attachments.isEmpty {
-            try container.encodeNil(forKey: .attachments)
-        } else {
-            try container.encode(attachments, forKey: .attachments)
-        }
+        wire.fastMode = .value(false)
+        wire.agentMode = .value(try wireEnum(agentMode, as: WireAgentMode.self))
+        wire.attachments = try attachments.isEmpty ? .null : .value(attachments.map { try $0.wire() })
+        try wire.encode(to: encoder)
     }
 }
 
@@ -294,6 +298,13 @@ struct ResolveTranscriptQuestionInput: Encodable, Sendable {
     var requestId: String
     var answers: [String: [String]]
     var dismissed: Bool?
+
+    func encode(to encoder: Encoder) throws {
+        try WireQuestionsResolveInput(
+            sessionId: sessionId, requestId: requestId, answers: answers,
+            dismissed: dismissed.map(WireField.value) ?? .absent
+        ).encode(to: encoder)
+    }
 }
 
 /// The broker's terminal state for one live question request.
@@ -304,15 +315,10 @@ struct TranscriptQuestionResolution: Decodable, Sendable {
 }
 
 /// `ProvidersTerminateInput`.
-struct TerminateSessionInput: Encodable, Sendable {
-    var sessionId: String
-}
+typealias TerminateSessionInput = WireProvidersTerminateInput
 
 /// `ProvidersCancelQueuedMessageInput`.
-struct CancelQueuedMessageInput: Encodable, Sendable {
-    var sessionId: String
-    var messageId: String
-}
+typealias CancelQueuedMessageInput = WireProvidersCancelQueuedMessageInput
 
 /// `ProvidersSendQueuedMessageNowInput`. `delivery` always goes out —
 /// `useSessionCommands.ts` defaults it to `"interrupt"` rather than omitting
@@ -322,6 +328,13 @@ struct SendQueuedMessageNowInput: Encodable, Sendable {
     var sessionId: String
     var messageId: String
     var delivery = "interrupt"
+
+    func encode(to encoder: Encoder) throws {
+        try WireProvidersSendQueuedMessageNowInput(
+            sessionId: sessionId, messageId: messageId,
+            delivery: .value(wireEnum(delivery, as: WireQueuedMessageDelivery.self))
+        ).encode(to: encoder)
+    }
 }
 
 /// `SessionMultitaskInput` — run a queued follow-up now as its own chat in
@@ -332,20 +345,15 @@ struct MultitaskInput: Encodable, Sendable {
     var prompt: String
     var pendingMessageId: String?
 
-    enum CodingKeys: String, CodingKey {
-        case sessionId, prompt, pendingMessageId, taskLabel
-    }
-
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(sessionId, forKey: .sessionId)
-        try container.encode(prompt, forKey: .prompt)
-        try container.encodeAlways(pendingMessageId, forKey: .pendingMessageId)
+        var wire = WireSessionMultitaskInput(sessionId: sessionId, prompt: prompt)
+        wire.pendingMessageId = pendingMessageId.map(WireField.value) ?? .null
         // The host falls back to the prompt's first line, and the auto-title
         // call that follows renames the chat — the same order the desktop
         // dispatches a multitask in. `worktree` is left off: it defaults to
         // false, which is the whole point of a multitask.
-        try container.encodeNil(forKey: .taskLabel)
+        wire.taskLabel = .null
+        try wire.encode(to: encoder)
     }
 }
 
@@ -359,22 +367,20 @@ struct MultitaskLaunched: Decodable, Sendable {
 // MARK: - Row actions
 
 /// `WorkspacesSetPinnedInput`.
-struct SetPinnedInput: Encodable, Sendable {
-    var workspaceId: String
-    var pinned: Bool
-}
+typealias SetPinnedInput = WireWorkspacesSetPinnedInput
 
 /// `WorkspacesSetLabelInput`. `taskLabel` is the chat's name.
-struct SetLabelInput: Encodable, Sendable {
-    var workspaceId: String
-    var taskLabel: String
-}
+typealias SetLabelInput = WireWorkspacesSetLabelInput
 
 /// `WorkspacesArchiveInput`. `force` moves a dirty worktree to recovery
 /// storage; without it the host answers `kept` and changes nothing.
 struct ArchiveWorkspaceInput: Encodable, Sendable {
     var workspaceId: String
     var force: Bool
+
+    func encode(to encoder: Encoder) throws {
+        try WireWorkspacesArchiveInput(workspaceId: workspaceId, force: .value(force)).encode(to: encoder)
+    }
 }
 
 /// `WorkspaceArchiveResult`. A `kept` workspace is the host saying it found
@@ -384,12 +390,15 @@ struct WorkspaceArchiveResult: Decodable, Sendable {
     var recoveryPath: String?
 }
 
-/// `SessionForkInput`. The host refuses a running or waiting session.
-struct ForkSessionInput: Encodable, Sendable {
-    var sessionId: String
-}
+/// `SessionForkInput`. Without a `boundaryEventId` it forks the whole chat as
+/// it is now, and the host refuses a running or waiting session. The phone
+/// forks whole chats; selecting a turn and the shared or isolated checkout are
+/// desktop actions.
+typealias ForkSessionInput = WireSessionForkInput
 
-/// `SessionForkResult` — the copy, in its own workspace.
+/// `SessionForkResult` — the copy, in its own workspace. The host also reports
+/// `fork` (lineage and how the first message continues), which the phone does
+/// not read.
 struct SessionForkResult: Decodable, Sendable {
     var workspace: WorkspaceSummary
     var session: SessionSummary
@@ -400,6 +409,10 @@ struct SessionForkResult: Decodable, Sendable {
 /// never falls through to creation.
 struct ViewPullRequestInput: Encodable, Sendable {
     var sessionId: String
+
+    func encode(to encoder: Encoder) throws {
+        try WireGitViewOrCreatePrInput(sessionId: sessionId).encode(to: encoder)
+    }
 }
 
 /// `GitViewOrCreatePrResult`. Both host outcomes carry a URL; the native chat
@@ -440,15 +453,10 @@ struct PushDevice: Decodable, Sendable, Identifiable {
 /// `RemoteRegisterPushDeviceInput`. The host lowercases the token and treats
 /// one it already holds as a rename plus a fresher timestamp, never a second
 /// row, which is what lets the app re-register on every launch.
-struct RegisterPushDeviceInput: Encodable, Sendable {
-    var token: String
-    var name: String
-}
+typealias RegisterPushDeviceInput = WireRemoteRegisterPushDeviceInput
 
 /// `RemoteUnregisterPushDeviceInput`.
-struct UnregisterPushDeviceInput: Encodable, Sendable {
-    var token: String
-}
+typealias UnregisterPushDeviceInput = WireRemoteUnregisterPushDeviceInput
 
 /// `RemotePushTestResult` — one row per paired phone, so a single retired
 /// token does not read as a broken auth key.

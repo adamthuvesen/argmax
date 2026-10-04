@@ -52,7 +52,9 @@ pub(crate) async fn providers_launch_impl(
     let available = state.provider_discovery.available_providers().await;
     let route = crate::routing::route_launch(&mut input, &available).await?;
     apply_launch_permission_default(&mut input, default_agent);
-    let session = live_providers(state)?.launch(input).await?;
+    let session = live_providers(state)?
+        .launch_as_person(input, super::attest_person())
+        .await?;
     match route {
         Some(route) => {
             let database = super::live_database(state)?;
@@ -90,7 +92,9 @@ pub(crate) async fn providers_send_input_impl(
     state: &AppState,
     input: ProvidersSendInput,
 ) -> ArgmaxResult<SendInputResult> {
-    live_providers(state)?.send_input(input).await
+    live_providers(state)?
+        .send_input_as_person(input, super::attest_person())
+        .await
 }
 
 #[tauri::command(rename = "providers:steer-input")]
@@ -106,7 +110,9 @@ pub(crate) async fn providers_steer_input_impl(
     state: &AppState,
     input: ProvidersSendInput,
 ) -> ArgmaxResult<SendInputResult> {
-    live_providers(state)?.steer_input(input).await
+    live_providers(state)?
+        .steer_input_as_person(input, super::attest_person())
+        .await
 }
 
 #[tauri::command(rename = "providers:resize")]

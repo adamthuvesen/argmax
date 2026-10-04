@@ -240,7 +240,7 @@ export function FilePreview({
     >
       <div className="file-preview-heading">
         <strong aria-label={state.selectedPath} title={state.selectedPath}>
-          {state.selectedPath.split("/").map((segment, index, segments) => (
+          {state.selectedPath.split("/").filter(Boolean).map((segment, index, segments) => (
             <Fragment key={`${index}-${segment}`}>
               {index > 0 ? (
                 <ChevronRight size={11} className="file-preview-path-sep" aria-hidden="true" />

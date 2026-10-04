@@ -4,9 +4,9 @@
 :root:not([data-theme="dark"])[data-sidebar-intensity] {
   --sidebar-whiteness: calc(max(0, var(--sidebar-intensity) - 10) / 90 * 100%);
   --sidebar-dim: calc(max(0, 10 - var(--sidebar-intensity)) / 10 * 14%);
-  --sidebar: color-mix(in oklab, color-mix(in oklab, #eeede7, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
-  --review-panel: color-mix(in oklab, color-mix(in oklab, #eeede7, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
-  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #e8e7e0, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
+  --sidebar: color-mix(in oklab, color-mix(in oklab, #ececec, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
+  --review-panel: color-mix(in oklab, color-mix(in oklab, #ececec, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
+  --review-sidebar: color-mix(in oklab, color-mix(in oklab, #e6e6e6, #ffffff var(--sidebar-whiteness)), #000000 var(--sidebar-dim));
 }
 
 :root[data-theme="dark"][data-sidebar-intensity] {

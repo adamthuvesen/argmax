@@ -148,6 +148,17 @@ impl WorkspaceFilesService {
         stat_file_at_path(&self.root_path(kind, id)?, file_path).await
     }
 
+    /// Read-only preview of a file outside every workspace, named by an
+    /// absolute path or `~/…`. Same caps as `read_file`; there is no write
+    /// counterpart, so an external tab is always read-only.
+    pub async fn read_external_file(&self, path: &str) -> ArgmaxResult<WorkspaceFilePreview> {
+        read_resolved_file(&resolve_external_path(path).await?).await
+    }
+
+    pub async fn stat_external_file(&self, path: &str) -> ArgmaxResult<WorkspaceFileStat> {
+        stat_resolved_file(&resolve_external_path(path).await?).await
+    }
+
     pub async fn write_file(
         &self,
         kind: WorkspaceTargetKind,
@@ -218,8 +229,11 @@ async fn list_files_at_path(repo_path: &str) -> ArgmaxResult<Vec<WorkspaceFileEn
 }
 
 async fn read_file_at_path(repo_path: &str, file_path: &str) -> ArgmaxResult<WorkspaceFilePreview> {
-    let resolved = resolve_inside_or_err(repo_path, file_path)?;
-    let metadata = tokio_fs::symlink_metadata(&resolved)
+    read_resolved_file(&resolve_inside_or_err(repo_path, file_path)?).await
+}
+
+pub(crate) async fn read_resolved_file(resolved: &Path) -> ArgmaxResult<WorkspaceFilePreview> {
+    let metadata = tokio_fs::symlink_metadata(resolved)
         .await
         .map_err(io_error)?;
 
@@ -239,16 +253,14 @@ async fn read_file_at_path(repo_path: &str, file_path: &str) -> ArgmaxResult<Wor
         });
     }
 
-    if looks_binary(&resolved).await? {
+    if looks_binary(resolved).await? {
         return Ok(WorkspaceFilePreview::Skipped {
             reason: SkippedReason::Binary,
             size: Some(metadata.len()),
         });
     }
 
-    let content = tokio_fs::read_to_string(&resolved)
-        .await
-        .map_err(io_error)?;
+    let content = tokio_fs::read_to_string(resolved).await.map_err(io_error)?;
     Ok(WorkspaceFilePreview::Text {
         content,
         size: metadata.len(),
@@ -257,8 +269,11 @@ async fn read_file_at_path(repo_path: &str, file_path: &str) -> ArgmaxResult<Wor
 }
 
 async fn stat_file_at_path(repo_path: &str, file_path: &str) -> ArgmaxResult<WorkspaceFileStat> {
-    let resolved = resolve_inside_or_err(repo_path, file_path)?;
-    let metadata = tokio_fs::symlink_metadata(&resolved)
+    stat_resolved_file(&resolve_inside_or_err(repo_path, file_path)?).await
+}
+
+async fn stat_resolved_file(resolved: &Path) -> ArgmaxResult<WorkspaceFileStat> {
+    let metadata = tokio_fs::symlink_metadata(resolved)
         .await
         .map_err(io_error)?;
     if !metadata.file_type().is_file() {
@@ -455,6 +470,26 @@ async fn looks_binary(path: &Path) -> ArgmaxResult<bool> {
     Ok(buffer[..read].contains(&0))
 }
 
+/// Expands `~`/`~/…` against `$HOME`, requires an absolute path, and resolves
+/// symlinks so the preview reads what the path really names. `~user` forms
+/// are rejected rather than guessed.
+async fn resolve_external_path(path: &str) -> ArgmaxResult<PathBuf> {
+    let expanded = if path == "~" {
+        crate::sync::home_dir()
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        crate::sync::home_dir().join(rest)
+    } else {
+        PathBuf::from(path)
+    };
+    if !expanded.is_absolute() {
+        return Err(ArgmaxError::service(
+            "WORKSPACE_PATH_INVALID",
+            "external file path must be absolute or start with `~/`",
+        ));
+    }
+    tokio_fs::canonicalize(&expanded).await.map_err(io_error)
+}
+
 fn resolve_inside_or_err(root: &str, candidate: &str) -> ArgmaxResult<PathBuf> {
     resolve_inside(Path::new(root), Path::new(candidate)).map_err(path_error)
 }
@@ -597,6 +632,34 @@ mod tests {
             WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "dash file\n"),
             other => panic!("expected text preview, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn read_external_file_reads_absolute_and_rejects_relative() {
+        let outside = TempDir::new().unwrap();
+        let file = outside.path().join("notes.txt");
+        std::fs::write(&file, "elsewhere\n").unwrap();
+
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let svc = WorkspaceFilesService::new(database);
+        match svc
+            .read_external_file(file.to_str().unwrap())
+            .await
+            .unwrap()
+        {
+            WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "elsewhere\n"),
+            other => panic!("expected text preview, got {other:?}"),
+        }
+        assert_eq!(
+            svc.stat_external_file(file.to_str().unwrap())
+                .await
+                .unwrap()
+                .size,
+            10
+        );
+        assert!(svc.read_external_file("notes.txt").await.is_err());
+        assert!(svc.read_external_file("~someone/notes.txt").await.is_err());
     }
 
     #[tokio::test]

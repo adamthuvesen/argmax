@@ -23,7 +23,7 @@ describe("SessionComposer provider switch confirmation", () => {
   afterEach(cleanup);
 
   it("holds a cross-provider pick behind a confirmation instead of applying it", () => {
-    renderConversation(baseSession({ state: "complete", provider: "codex" }));
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
 
     pickModel("Sonnet 5.5");
 
@@ -37,7 +37,7 @@ describe("SessionComposer provider switch confirmation", () => {
   // is `position: relative`, so a dialog left there sizes to the input box and
   // spills over it instead of centring on the session.
   it("centres the dialog on the session pane, not the composer", () => {
-    renderConversation(baseSession({ state: "complete", provider: "codex" }));
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
 
     pickModel("Sonnet 5.5");
 
@@ -47,7 +47,7 @@ describe("SessionComposer provider switch confirmation", () => {
   });
 
   it("applies the pick when the user switches anyway", () => {
-    renderConversation(baseSession({ state: "complete", provider: "codex" }));
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
 
     pickModel("Sonnet 5.5");
     fireEvent.click(screen.getByRole("button", { name: "Switch" }));
@@ -57,7 +57,7 @@ describe("SessionComposer provider switch confirmation", () => {
   });
 
   it("keeps the current provider when the user cancels", () => {
-    renderConversation(baseSession({ state: "complete", provider: "codex" }));
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
 
     pickModel("Sonnet 5.5");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -68,7 +68,7 @@ describe("SessionComposer provider switch confirmation", () => {
 
   it("hands the picked model and the half-written follow-up to a new session", () => {
     const onNewSession = vi.fn();
-    renderConversation(baseSession({ state: "complete", provider: "codex" }), [], { onNewSession });
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }), [], { onNewSession });
 
     fireEvent.change(screen.getByRole("textbox", { name: "Chat prompt" }), {
       target: { value: "Try the other agent on this" }
@@ -93,7 +93,7 @@ describe("SessionComposer provider switch confirmation", () => {
       "session-a": { text: "", attachments: [attachment] }
     }));
     const onNewSession = vi.fn();
-    renderConversation(baseSession({ state: "complete", provider: "codex" }), [], { onNewSession });
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }), [], { onNewSession });
 
     expect(screen.getByLabelText("Attached images")).toBeInTheDocument();
     pickModel("Sonnet 5.5");
@@ -109,7 +109,7 @@ describe("SessionComposer provider switch confirmation", () => {
   // already confirmed. Without it, every later effort change re-raises the
   // dialog — and its early return drops the effort change on the floor.
   it("keeps the dialog closed when the effort changes after a confirmed switch", () => {
-    renderConversation(baseSession({ state: "complete", provider: "codex" }));
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
 
     pickModel("Sonnet 5.5");
     fireEvent.click(screen.getByRole("button", { name: "Switch" }));
@@ -125,19 +125,46 @@ describe("SessionComposer provider switch confirmation", () => {
     );
   });
 
-  it("drops the held pick when a turn starts, since the send would only queue", () => {
-    const { rerender } = renderConversation(baseSession({ state: "complete", provider: "codex" }));
+  // A running chat queues its follow-up with the picked provider, which takes
+  // over once the turn ends, so a pick held for confirmation survives the turn
+  // starting and the dialog says when the switch happens.
+  it("keeps the held pick when a turn starts, and says the switch waits for the turn", () => {
+    const { rerender } = renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
 
     pickModel("Sonnet 5.5");
     expect(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).toBeTruthy();
+    expect(screen.queryByText(/waits for the current turn/)).toBeNull();
 
-    rerenderConversation(rerender, baseSession({ state: "running", provider: "codex" }));
+    rerenderConversation(rerender, baseSession({ state: "running", provider: "codex", providerConversationId: "conv-1" }));
 
-    expect(screen.queryByRole("dialog", { name: "Switch this chat to Claude" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).toBeTruthy();
+    expect(screen.getByText("Your follow-up waits for the current turn, then runs on Claude.")).toBeTruthy();
+  });
+
+  it("offers the other providers mid-turn, and queues the follow-up with the one picked", async () => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    renderConversation(baseSession({ state: "running", provider: "codex", providerConversationId: "conv-1" }), [], {
+      onSendSessionInput,
+      defaultFollowUpDelivery: "steer"
+    });
+
+    pickModel("Sonnet 5.5");
+    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Chat prompt" }), {
+      target: { value: "Then review it" }
+    });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Chat prompt" }), { key: "Enter" });
+
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(1));
+    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ provider: "claude" });
+    // Steering means the running turn takes it as it is, and this one is
+    // bound for another provider: it queues whatever the default says (a
+    // queued send names no delivery).
+    expect(onSendSessionInput.mock.calls[0]?.[6]).toBeUndefined();
   });
 
   it("drops the new-session action when the pane cannot open the launcher", () => {
-    renderConversation(baseSession({ state: "complete", provider: "codex" }));
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
 
     pickModel("Sonnet 5.5");
 
@@ -150,6 +177,7 @@ describe("SessionComposer provider switch confirmation", () => {
     const session = baseSession({
       modelLabel: "GPT-6 Luna",
       modelId: "gpt-6-luna",
+      providerConversationId: "conv-1",
       state: "running"
     });
     const { rerender } = renderConversation(session, [], { onSendSessionInput, onTerminateSession });
@@ -177,5 +205,24 @@ describe("SessionComposer provider switch confirmation", () => {
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(1));
     expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ reasoningEffort: "max" });
+  });
+
+  it("switches without asking when the chat has no native conversation to leave", () => {
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: null }));
+
+    pickModel("Sonnet 5.5");
+
+    expect(screen.queryByRole("dialog", { name: "Switch this chat to Claude" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("Sonnet 5.5");
+  });
+
+  it("says the new agent resumes its own earlier conversation when it has one", () => {
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
+
+    pickModel("Sonnet 5.5");
+
+    const dialog = screen.getByRole("dialog", { name: "Switch this chat to Claude" });
+    expect(dialog).toHaveTextContent("resumes that conversation and reads what it missed");
+    expect(dialog).toHaveTextContent("summary of the visible chat");
   });
 });

@@ -15,6 +15,7 @@ use argmax_lib::{
         dispatch, dispatch_queued, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND,
     },
     persistence::{
+        authorship::PromptAuthor,
         database::Database,
         events::list_session_events_since,
         pending_messages::{list_session_pending_messages, replace_session_queue},
@@ -35,7 +36,7 @@ use argmax_lib::{
             ProviderRuntimeEventType, ProviderRuntimeHandle,
         },
         session_service::ProviderSessionService,
-        ProviderLaunchInput,
+        ProviderId, ProviderLaunchInput, ReasoningEffort,
     },
     workspaces::WorkspaceService,
 };
@@ -260,7 +261,9 @@ async fn multitask(fixture: &Fixture, prompt: &str, worktree: bool) -> String {
             prompt: prompt.to_string(),
             worktree,
             task_label: None,
+            queued_settings: None,
         },
+        argmax_lib::persistence::authorship::PromptAuthor::unattested(),
         Arc::clone(&fixture.database),
         Arc::clone(&fixture.workspaces),
         Arc::clone(&fixture.providers),
@@ -563,7 +566,9 @@ async fn a_multitask_that_cannot_start_still_reports_back() {
             prompt: "Fix the README typo".to_string(),
             worktree: false,
             task_label: None,
+            queued_settings: None,
         },
+        argmax_lib::persistence::authorship::PromptAuthor::unattested(),
         Arc::clone(&fixture.database),
         Arc::clone(&fixture.workspaces),
         Arc::clone(&fixture.providers),
@@ -594,6 +599,7 @@ async fn queued_multitask_uses_the_claimed_prompt_and_deletes_its_queue_row() {
         session_id: "session-parent".to_string(),
         content: "Use the queued prompt".to_string(),
         agent_mode: "auto".to_string(),
+        provider: None,
         model_label: None,
         model_id: None,
         reasoning_effort: None,
@@ -603,6 +609,7 @@ async fn queued_multitask_uses_the_claimed_prompt_and_deletes_its_queue_row() {
         origin: None,
         recovery_status: None,
         queued_at: now_iso(),
+        author: argmax_lib::persistence::authorship::PromptAuthor::unattested(),
     };
     {
         let mut connection = fixture.database.connection();
@@ -625,6 +632,7 @@ async fn queued_multitask_uses_the_claimed_prompt_and_deletes_its_queue_row() {
             prompt: "stale renderer copy".to_string(),
             worktree: false,
             task_label: None,
+            queued_settings: None,
         },
         "pending-1",
         Arc::clone(&fixture.database),
@@ -647,6 +655,267 @@ async fn queued_multitask_uses_the_claimed_prompt_and_deletes_its_queue_row() {
     );
 }
 
+/// Queue one row with the given settings on the parent, promote it to a
+/// multitask, and return what the child was launched with.
+async fn launch_queued_with(
+    fixture: &Fixture,
+    provider: Option<ProviderId>,
+    model: Option<(&str, &str)>,
+    reasoning_effort: Option<&str>,
+    fast_mode: bool,
+) -> ProviderLaunchInput {
+    launch_queued_row(
+        fixture,
+        "Run this elsewhere",
+        PromptAuthor::unattested(),
+        None,
+        RowSettings {
+            provider,
+            model,
+            reasoning_effort,
+            fast_mode,
+        },
+    )
+    .await
+}
+
+/// The provider, model, effort and fast-mode choice a queued row was sent with.
+#[derive(Default)]
+struct RowSettings<'a> {
+    provider: Option<ProviderId>,
+    model: Option<(&'a str, &'a str)>,
+    reasoning_effort: Option<&'a str>,
+    fast_mode: bool,
+}
+
+/// The same, for a row with a given author and origin.
+async fn launch_queued_row(
+    fixture: &Fixture,
+    content: &str,
+    author: PromptAuthor,
+    origin: Option<argmax_lib::providers::session_service::MessageOrigin>,
+    RowSettings {
+        provider,
+        model,
+        reasoning_effort,
+        fast_mode,
+    }: RowSettings<'_>,
+) -> ProviderLaunchInput {
+    let message = PendingMessage {
+        id: "pending-1".to_string(),
+        session_id: "session-parent".to_string(),
+        content: content.to_string(),
+        agent_mode: "auto".to_string(),
+        provider,
+        model_label: model.map(|(label, _)| label.to_string()),
+        model_id: model.map(|(_, id)| id.to_string()),
+        reasoning_effort: reasoning_effort.map(str::to_string),
+        fast_mode,
+        attachments: Vec::new(),
+        agent_references: Vec::new(),
+        origin,
+        recovery_status: None,
+        queued_at: now_iso(),
+        author,
+    };
+    {
+        let mut connection = fixture.database.connection();
+        replace_session_queue(
+            &mut connection,
+            "session-parent",
+            &VecDeque::from([message]),
+        )
+        .expect("persist queue");
+    }
+    let providers = ProviderSessionService::with_launcher(
+        Arc::clone(&fixture.database),
+        fixture.launcher.clone(),
+        |_| {},
+    );
+    let launched = dispatch_queued(
+        MultitaskRequest {
+            parent_session_id: "session-parent".to_string(),
+            prompt: "stale renderer copy".to_string(),
+            worktree: false,
+            task_label: None,
+            queued_settings: None,
+        },
+        "pending-1",
+        Arc::clone(&fixture.database),
+        Arc::clone(&fixture.workspaces),
+        providers,
+    )
+    .await
+    .expect("dispatch queued multitask");
+    wait_for_launch(&fixture.launcher, &launched.session_id).await;
+    fixture
+        .launcher
+        .launches()
+        .into_iter()
+        .find(|launch| launch.session_id == launched.session_id)
+        .expect("child launch")
+}
+
+#[tokio::test]
+async fn queued_multitask_keeps_a_different_model_effort_and_fast_mode_on_the_same_provider() {
+    let fixture = fixture();
+
+    let launch = launch_queued_with(
+        &fixture,
+        None,
+        Some(("Sonnet 5.5", "claude-sonnet-5-5")),
+        Some("medium"),
+        true,
+    )
+    .await;
+
+    assert_eq!(launch.provider, ProviderId::Claude);
+    assert_eq!(launch.model_id, "claude-sonnet-5-5");
+    assert_eq!(launch.model_label, "Sonnet 5.5");
+    assert_eq!(launch.reasoning_effort, Some(ReasoningEffort::Medium));
+    assert!(launch.fast_mode);
+    let connection = fixture.database.connection();
+    let child = find_session_by_id(&connection, &launch.session_id).expect("child session");
+    assert_eq!(child.model_id, "claude-sonnet-5-5");
+}
+
+#[tokio::test]
+async fn queued_multitask_runs_on_the_provider_the_row_was_queued_for() {
+    let fixture = fixture();
+
+    let launch = launch_queued_with(
+        &fixture,
+        Some(ProviderId::Codex),
+        Some(("GPT-6 Luna", "gpt-6-luna")),
+        Some("high"),
+        false,
+    )
+    .await;
+
+    assert_eq!(launch.provider, ProviderId::Codex);
+    assert_eq!(launch.model_id, "gpt-6-luna");
+    assert_eq!(launch.reasoning_effort, Some(ReasoningEffort::High));
+    assert!(!launch.fast_mode);
+}
+
+#[tokio::test]
+async fn queued_multitask_without_settings_runs_as_the_parent_does() {
+    let fixture = fixture();
+
+    let launch = launch_queued_with(&fixture, None, None, None, false).await;
+
+    assert_eq!(launch.provider, ProviderId::Claude);
+    assert_eq!(launch.model_id, "claude-opus-5");
+    assert_eq!(launch.reasoning_effort, Some(ReasoningEffort::High));
+    assert!(!launch.fast_mode);
+}
+
+/// The opening prompt of a typed multitask is stored as the person's, but it
+/// holds text Argmax adds from strings the parent chat's agent controls (its
+/// task label and branch). A chat link there must not become a read grant; a
+/// chip the person typed still does.
+#[tokio::test]
+async fn an_agent_set_label_cannot_smuggle_a_grant_into_a_typed_multitask() {
+    let fixture = fixture();
+    fixture
+        .database
+        .connection()
+        .execute(
+            "UPDATE workspaces SET task_label = '[x](argmax://chat/chat-x)' WHERE id = 'workspace-parent'",
+            [],
+        )
+        .expect("rename the parent chat");
+
+    let launched = dispatch(
+        MultitaskRequest {
+            parent_session_id: "session-parent".to_string(),
+            prompt: "compare with [Billing](argmax://chat/chat-y?v=1)".to_string(),
+            worktree: false,
+            task_label: None,
+            queued_settings: None,
+        },
+        PromptAuthor::person(argmax_lib::ipc::attest_person_for_tests()),
+        Arc::clone(&fixture.database),
+        Arc::clone(&fixture.workspaces),
+        Arc::clone(&fixture.providers),
+    )
+    .await
+    .expect("dispatch multitask");
+
+    let grants = |target: &str| {
+        argmax_lib::persistence::events::human_prompt_references_session(
+            &fixture.database.connection(),
+            &launched.session_id,
+            target,
+        )
+        .expect("grant check")
+    };
+    assert!(!grants("chat-x"), "the agent-set label must grant nothing");
+    assert!(grants("chat-y"), "the person's own chip still grants");
+}
+
+/// The child's opening prompt is a person's only when a person wrote it: typed
+/// into the composer's Multitask, or queued by the person and then promoted.
+/// An agent's queued message promoted by hand, and any prompt dispatched
+/// without a person's mark, grants nothing.
+#[tokio::test]
+async fn a_multitask_child_opens_with_the_author_its_prompt_had() {
+    let referenced = |text: &str| format!("{text} [x](argmax://chat/chat-x?v=1)");
+    let grants = |fixture: &Fixture, child: &str| {
+        argmax_lib::persistence::events::human_prompt_references_session(
+            &fixture.database.connection(),
+            child,
+            "chat-x",
+        )
+        .expect("grant check")
+    };
+    let person = || PromptAuthor::person(argmax_lib::ipc::attest_person_for_tests());
+
+    // Typed into the composer's Multitask.
+    for (author, expected) in [(person(), true), (PromptAuthor::unattested(), false)] {
+        let fixture = fixture();
+        let launched = dispatch(
+            MultitaskRequest {
+                parent_session_id: "session-parent".to_string(),
+                prompt: referenced("typed"),
+                worktree: false,
+                task_label: None,
+                queued_settings: None,
+            },
+            author,
+            Arc::clone(&fixture.database),
+            Arc::clone(&fixture.workspaces),
+            Arc::clone(&fixture.providers),
+        )
+        .await
+        .expect("dispatch multitask");
+        assert_eq!(grants(&fixture, &launched.session_id), expected, "typed");
+    }
+
+    // A queued row keeps its author when it is promoted.
+    let origin = argmax_lib::providers::session_service::MessageOrigin {
+        session_id: "session-sender".to_string(),
+        label: "Sender".to_string(),
+        kind: "message".to_string(),
+        message_id: None,
+    };
+    for (author, origin, expected) in [
+        (person(), None, true),
+        (PromptAuthor::unattested(), Some(origin), false),
+    ] {
+        let fixture = fixture();
+        let launch = launch_queued_row(
+            &fixture,
+            &referenced("queued"),
+            author,
+            origin,
+            RowSettings::default(),
+        )
+        .await;
+        assert_eq!(grants(&fixture, &launch.session_id), expected, "queued");
+    }
+}
+
 #[tokio::test]
 async fn queued_multitask_restores_its_claim_when_dispatch_is_refused() {
     let fixture = fixture();
@@ -655,6 +924,7 @@ async fn queued_multitask_restores_its_claim_when_dispatch_is_refused() {
         session_id: "session-parent".to_string(),
         content: "Keep this queued".to_string(),
         agent_mode: "auto".to_string(),
+        provider: None,
         model_label: None,
         model_id: None,
         reasoning_effort: None,
@@ -664,6 +934,7 @@ async fn queued_multitask_restores_its_claim_when_dispatch_is_refused() {
         origin: None,
         recovery_status: None,
         queued_at: now_iso(),
+        author: argmax_lib::persistence::authorship::PromptAuthor::unattested(),
     };
     {
         let mut connection = fixture.database.connection();
@@ -692,6 +963,7 @@ async fn queued_multitask_restores_its_claim_when_dispatch_is_refused() {
             prompt: "Keep this queued".to_string(),
             worktree: false,
             task_label: None,
+            queued_settings: None,
         },
         "pending-1",
         Arc::clone(&fixture.database),

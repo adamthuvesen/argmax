@@ -24,13 +24,11 @@ import {
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type FormEvent,
   type JSX,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
   type ReactNode
 } from "react";
@@ -51,13 +49,15 @@ import {
 } from "../../shared/cloudProviders.js";
 import { PROVIDER_DISPLAY_NAMES, successorModelId } from "../../shared/providerModels.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
+import { selectionOfQueuedMessage } from "../lib/queuedSelection.js";
 import { canSteerQueuedMessage, hasSteeringContextHeadroom } from "../lib/queuedSteer.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
-import { useAutoGrowTextArea } from "../hooks/useAutoGrowTextArea.js";
 import { useComposerAttachments } from "../hooks/useComposerAttachments.js";
 import { useComposerDraft } from "../hooks/useComposerDraft.js";
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { useFollowUpSuggestion } from "../hooks/useFollowUpSuggestion.js";
+import { useWindowSnapshotAttach } from "../hooks/useWindowSnapshotAttach.js";
+import { windowSnapshotLabel } from "../lib/windowSnapshotInbox.js";
 import { useRouteSwitch, useRouteSwitchElapsed } from "../hooks/useRouteSwitch.js";
 import { routeSwitchPace } from "../lib/routeSwitch.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -82,21 +82,26 @@ import { multitaskCommandPrompt } from "../lib/multitask.js";
 import { parseGoalCommand } from "../lib/goalCommand.js";
 import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
-import { splitSkillTokens } from "../lib/slashHighlight.js";
 import {
   AUTO_TIER_SHORT_LABELS,
   autoSessionChipLabel,
   isAutoTier,
   type ModelPickerSelection
 } from "../lib/models.js";
+import { chatChipEnvironmentFor } from "../lib/chatChipEnvironment.js";
+import { chatReferencesAsTitles } from "../lib/composerContext.js";
+import { openChat, useChatDirectory } from "../state/chatDirectory.js";
 import { ChangeCount } from "./ChangeCount.js";
+import { ComposerEditor } from "./ComposerEditor.js";
+import { ComposerUsageSlot } from "./ComposerUsageSlot.js";
+import type { ComposerField } from "./composerEditor/composerField.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
 import { ContextRing } from "./ContextRing.js";
 import { FilePopover } from "./FilePopover.js";
 import { ImageLightbox } from "./ImageLightbox.js";
-import { LaunchModelSelector, ModelSelector, type ChipRouteSwitch } from "./ModelSelector.js";
+import { LaunchModelSelector, type ChipRouteSwitch } from "./ModelSelector.js";
 import { ProviderSwitchDialog } from "./ProviderSwitchDialog.js";
 import { SlashCommandMenu } from "./SlashCommandMenu.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -105,7 +110,6 @@ import type { FollowUpDelivery } from "../lib/uiPreferences.js";
 import { showErrorToast } from "../state/toast.js";
 import { errorMessage } from "../../shared/error.js";
 
-const PROMPT_MAX_HEIGHT_PX = 168;
 const NO_SENT_PROMPTS: readonly string[] = [];
 
 /**
@@ -178,7 +182,7 @@ export function SessionComposer({
   /** The "More details" popup: too narrow for the workspace-context cluster
       and file attach, so the toolbar keeps only model, mode, and send. */
   floating?: boolean;
-  inputRef: MutableRefObject<HTMLTextAreaElement | null>;
+  inputRef: MutableRefObject<ComposerField | null>;
   isFocused?: boolean;
   /** The user's messages in this chat, oldest first; ↑ in an empty draft
       steps back through them. */
@@ -310,17 +314,33 @@ export function SessionComposer({
     onAttachmentInputChange,
     openFilePicker,
     clearAttachments,
-    restoreAttachments
+    restoreAttachments,
+    attachSavedAttachment,
+    attachmentLabels
   } = useComposerAttachments({
     draftKey: sessionId,
     workspacePath: workspace?.path ?? null,
     setInput,
+    fieldRef: inputRef,
     persist: persistCurrentDraft
   });
 
   useEffect(() => {
     onDraftPresentChange?.(input.trim() !== "" || pendingAttachments.length > 0);
   }, [input, pendingAttachments, onDraftPresentChange]);
+
+  // A window capture goes to the composer the user is working in: this pane is
+  // focused, can take input and is not mid-send. It lands like a pasted image,
+  // in the draft that outlives this mount, and the field takes focus so the
+  // next thing typed describes it.
+  useWindowSnapshotAttach(
+    isFocused && sessionId !== null && canSend && !isSending,
+    (snapshot) => {
+      attachSavedAttachment(snapshot.attachment, windowSnapshotLabel(snapshot));
+      inputRef.current?.focus();
+    },
+    floating
+  );
 
   // ⌘⇧M and ⌘⇧E open the model and effort pickers. Document-level like the
   // pane's ⌘B / ⌘G, and gated on focus the same way, so the chord works while
@@ -503,14 +523,19 @@ export function SessionComposer({
     inputRef
   });
 
+  const chatDirectory = useChatDirectory();
   const fileAutocomplete = useFileAutocomplete({
     input,
     setInput,
     inputRef,
-    source: workspace ? { kind: "workspace", id: workspace.id } : null
+    source: workspace ? { kind: "workspace", id: workspace.id } : null,
+    chats: chatDirectory,
+    ownSessionId: sessionId
   });
-
-  useAutoGrowTextArea(inputRef, input, PROMPT_MAX_HEIGHT_PX);
+  const chatChips = useMemo(
+    () => chatChipEnvironmentFor(chatDirectory, openChat),
+    [chatDirectory]
+  );
 
   const dispatchedNames = useMemo(
     () =>
@@ -523,30 +548,11 @@ export function SessionComposer({
     [goalEnabled, onMultitask, session, workspace?.kind]
   );
   // Tint every `/command` token that maps to a real skill or one of those
-  // commands — leading or mid-message — in the accent colour. A textarea can't
-  // colour a substring, so a mirror div renders the same text behind a
-  // transparent-text textarea — mounted only while a valid token is present,
-  // so normal typing never routes through the overlay.
-  const skillHighlight = useMemo(
-    () =>
-      splitSkillTokens(
-        input,
-        (name) => slashAutocomplete.skillNames.has(name) || dispatchedNames.has(name)
-      ),
-    [dispatchedNames, input, slashAutocomplete.skillNames]
+  // commands, leading or mid-message, in the accent colour.
+  const isSkillToken = useCallback(
+    (name: string): boolean => slashAutocomplete.skillNames.has(name) || dispatchedNames.has(name),
+    [dispatchedNames, slashAutocomplete.skillNames]
   );
-  // The mirror follows the textarea's scroll by transform, not by its own
-  // scrollTop: WebKit leaves the div's bottom padding out of its scroll range,
-  // so a long prompt scrolled to the end clamped the mirror a line short and
-  // the caret sat a line above the text it belongs to. Synced after every
-  // render as well, since the mirror mounts into an already-scrolled field.
-  const highlightTextRef = useRef<HTMLDivElement | null>(null);
-  const syncHighlightScroll = useCallback((): void => {
-    const text = highlightTextRef.current;
-    const field = inputRef.current;
-    if (text && field) text.style.transform = `translateY(${-field.scrollTop}px)`;
-  }, [inputRef]);
-  useLayoutEffect(syncHighlightScroll, [skillHighlight, syncHighlightScroll]);
   const changeSummaryText = changeSummary
     ? `${changeSummary.fileCount} ${changeSummary.fileCount === 1 ? "file" : "files"} changed`
     : null;
@@ -600,12 +606,17 @@ export function SessionComposer({
     const active = document.activeElement;
     // Keyboard navigation can activate a pane through another control. Keep
     // that control focused instead of redirecting its first keystroke.
-    if (becameFocused && active !== inputRef.current && inputRef.current?.closest('[role="region"]')?.contains(active)) return;
+    if (becameFocused && !inputRef.current?.contains(active) && inputRef.current?.closest('[role="region"]')?.contains(active)) return;
     if (!becameFocused && active !== document.body && !inputFormRef.current?.contains(active)) return;
     inputRef.current?.focus({ preventScroll: true });
   }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isFocused, isSending, shouldRefocusInput]);
 
-  const onSessionInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
+  // What the field holds right now. React's copy of it can be a render behind
+  // a keystroke that has just landed in the editor, and a submit that read the
+  // old copy would send (or refuse to send) the prompt as it was a moment ago.
+  const liveInput = (): string => inputRef.current?.value ?? input;
+
+  const onSessionInputKeyDown = (event: KeyboardEvent): void => {
     slashAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
@@ -615,15 +626,15 @@ export function SessionComposer({
       !event.ctrlKey &&
       !event.metaKey &&
       !event.altKey &&
-      !event.nativeEvent.isComposing
+      !event.isComposing
     ) {
-      if (!event.shiftKey && followUpSuggestion && input.length === 0) {
+      if (!event.shiftKey && followUpSuggestion && liveInput().length === 0) {
         event.preventDefault();
         setInput(followUpSuggestion);
       }
       if (event.defaultPrevented) return;
     }
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       inputFormRef.current?.requestSubmit();
       return;
@@ -638,25 +649,27 @@ export function SessionComposer({
       !event.shiftKey &&
       !event.altKey &&
       !event.ctrlKey &&
-      !event.nativeEvent.isComposing
+      !event.isComposing
     ) {
       const step = event.key === "ArrowUp" ? -1 : 1;
       const recalled = recalledPrompt.current;
+      const current = liveInput();
       const recalledIndex =
-        recalled?.sessionId === sessionId && sentPrompts[recalled.index] === input
+        recalled?.sessionId === sessionId && sentPrompts[recalled.index] === current
           ? recalled.index
           : null;
-      const { selectionStart, selectionEnd } = event.currentTarget;
+      const selectionStart = inputRef.current?.selectionStart ?? 0;
+      const selectionEnd = inputRef.current?.selectionEnd ?? selectionStart;
       // ↑ leaves a recalled prompt only from its first line and ↓ only from
       // its last, so the caret still walks a multiline prompt's lines.
       const caretAtEdge =
         selectionStart === selectionEnd &&
         (step === -1
-          ? !input.slice(0, selectionStart).includes("\n")
-          : !input.slice(selectionEnd).includes("\n"));
+          ? !current.slice(0, selectionStart).includes("\n")
+          : !current.slice(selectionEnd).includes("\n"));
       let nextIndex: number | null = null;
       if (recalledIndex !== null && caretAtEdge) nextIndex = recalledIndex + step;
-      else if (recalledIndex === null && input.length === 0 && step === -1) {
+      else if (recalledIndex === null && current.length === 0 && step === -1) {
         nextIndex = sentPrompts.length - 1;
       }
       if (nextIndex === null || nextIndex < 0) return;
@@ -690,9 +703,11 @@ export function SessionComposer({
       attachments: ComposerAttachment[] | undefined
     ) => Promise<void>
   ): Promise<void> => {
-    const draftInput = input;
+    const draftInput = liveInput();
     const trimmedInput = draftInput.trim();
-    if (!session || !hasSendableContent || isSending || sendingQueuedMessageId) {
+    const hasContent =
+      trimmedInput.length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
+    if (!session || !hasContent || isSending || sendingQueuedMessageId) {
       return;
     }
 
@@ -840,6 +855,7 @@ export function SessionComposer({
       isQueueing &&
       defaultFollowUpDelivery === "steer" &&
       session &&
+      selectedModel.provider === session.provider &&
       hasSteeringContextHeadroom(session)
         ? "steer"
         : "queue";
@@ -882,6 +898,9 @@ export function SessionComposer({
         <div className="composer-queued-lane" role="list" aria-label="Queued follow-ups">
           {pendingMessages.map((entry) => {
             const sessionIsRunning = session?.state === "running";
+            // A chat reference reads as its title here; the raw link stays in
+            // `entry.content`, which is what edit and send hand back.
+            const shownContent = chatReferencesAsTitles(entry.content);
             const canSteer = session !== null && canSteerQueuedMessage(session, entry);
             const cancel = (): void => {
               if (!session || !onCancelQueuedMessage) return;
@@ -951,6 +970,11 @@ export function SessionComposer({
               const restoredContent = hasGeneratedReferences
                 ? `${content.slice(0, content[referenceStart - 1] === " " ? referenceStart - 1 : referenceStart)}${content.slice(referenceEnd)}`.trim()
                 : content;
+              // The follow-up comes back with the settings it was queued under:
+              // its provider, model and effort. A row from before a provider
+              // could be chosen names none, and leaves the picker alone.
+              const queuedSelection = selectionOfQueuedMessage(entry, session);
+              if (queuedSelection) setSelectedModel(queuedSelection);
               caretAfterInput.current = restoredContent.length;
               setInput((draft) =>
                 restoredContent === "" ? draft : draft.trim() === "" ? restoredContent : `${restoredContent}\n\n${draft}`
@@ -966,8 +990,8 @@ export function SessionComposer({
                 className="composer-queued-chip"
                 role="listitem"
                 tabIndex={0}
-                title={entry.content}
-                aria-label={`Queued follow-up: ${entry.content}`}
+                title={shownContent}
+                aria-label={`Queued follow-up: ${shownContent}`}
                 onKeyDown={(event) => {
                   if (
                     sendingQueuedMessageId === null &&
@@ -984,7 +1008,12 @@ export function SessionComposer({
                   aria-hidden="true"
                 />
                 <span className="composer-queued-chip-copy">
-                  <span className="composer-queued-chip-label">{entry.content}</span>
+                  <span className="composer-queued-chip-label">{shownContent}</span>
+                  {entry.provider && session && entry.provider !== session.provider ? (
+                    <span className="composer-queued-chip-provider" data-provider={entry.provider}>
+                      {`Then ${PROVIDER_DISPLAY_NAMES[entry.provider]}`}
+                    </span>
+                  ) : null}
                   {entry.recoveryStatus ? (
                     <span
                       className="composer-queued-chip-recovery"
@@ -1000,7 +1029,7 @@ export function SessionComposer({
                   <button
                     type="button"
                     className="composer-queued-chip-action"
-                    aria-label={`Steer queued follow-up: ${entry.content}`}
+                    aria-label={`Steer queued follow-up: ${shownContent}`}
                     title="Steer the current turn without stopping it"
                     disabled={sendingQueuedMessageId !== null}
                     onClick={() => void sendQueuedNow("steer")}
@@ -1012,7 +1041,7 @@ export function SessionComposer({
                 <button
                   type="button"
                   className="composer-queued-chip-action"
-                  aria-label={`Send queued follow-up: ${entry.content}`}
+                  aria-label={`Send queued follow-up: ${shownContent}`}
                   title={
                     sessionIsRunning
                       ? "Stop the current turn and send this follow-up"
@@ -1028,7 +1057,7 @@ export function SessionComposer({
                   <button
                     type="button"
                     className="composer-queued-chip-action"
-                    aria-label={`Multitask queued follow-up: ${entry.content}`}
+                    aria-label={`Multitask queued follow-up: ${shownContent}`}
                     title="Run it now in a second chat sharing this checkout; the current turn keeps going"
                     disabled={sendingQueuedMessageId !== null}
                     onClick={() => void multitaskQueued(entry.id, entry.content)}
@@ -1040,7 +1069,7 @@ export function SessionComposer({
                 <button
                   type="button"
                   className="composer-queued-chip-remove composer-queued-chip-edit"
-                  aria-label={`Edit queued follow-up: ${entry.content}`}
+                  aria-label={`Edit queued follow-up: ${shownContent}`}
                   title="Put it back in the prompt to reword"
                   disabled={sendingQueuedMessageId !== null}
                   onClick={() => void editQueued(entry.id, entry.content)}
@@ -1124,8 +1153,12 @@ export function SessionComposer({
               <button
                 type="button"
                 className="attachment-open-button"
-                aria-label="View attachment"
-                title="View attachment"
+                aria-label={
+                  attachmentLabels[attachment.filePath]
+                    ? `View window capture: ${attachmentLabels[attachment.filePath]}`
+                    : "View attachment"
+                }
+                title={attachmentLabels[attachment.filePath] ?? "View attachment"}
                 onClick={() => setLightboxSrc(attachmentProtocolUrl(attachment.filePath))}
               >
                 <img src={attachmentProtocolUrl(attachment.filePath)} alt="" />
@@ -1144,23 +1177,6 @@ export function SessionComposer({
         </div>
       ) : null}
       <div className="session-input-field">
-        {skillHighlight ? (
-          <div className="composer-highlight-backdrop" aria-hidden="true">
-            <div className="composer-highlight-text" ref={highlightTextRef}>
-              {skillHighlight.map((segment, index) =>
-                segment.skill ? (
-                  <span key={index} className="skill-token">
-                    {segment.text}
-                  </span>
-                ) : (
-                  segment.text
-                )
-              )}
-              {/* Holds open the empty last line a trailing newline makes, as the textarea does. */}
-              {input.endsWith("\n") ? "\u200b" : null}
-            </div>
-          </div>
-        ) : null}
         {routeCaption ? (
           <div
             key={routeCaption.id}
@@ -1178,16 +1194,15 @@ export function SessionComposer({
             {routeCaption.reason}
           </div>
         ) : null}
-        <textarea
-          className={skillHighlight ? "composer-input--highlighting" : undefined}
-          aria-label="Chat prompt"
-          data-route-caption={routeCaption ? "" : undefined}
-          data-placeholder-kind={
+        <ComposerEditor
+          ariaLabel="Chat prompt"
+          documentKey={sessionId}
+          dataRouteCaption={routeCaption !== null}
+          dataPlaceholderKind={
             followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined
           }
-          aria-autocomplete="list"
-          aria-expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
-          aria-controls={
+          expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+          controls={
             slashAutocomplete.popoverOpen
               ? "slash-menu"
               : fileAutocomplete.popoverOpen
@@ -1195,25 +1210,21 @@ export function SessionComposer({
                 : undefined
           }
           disabled={!canSend || isSending}
-          onChange={(event) => {
-            setInput(event.target.value);
-            fileAutocomplete.onSelectionChange(event);
-          }}
+          onChange={setInput}
+          onCaretChange={fileAutocomplete.onSelectionChange}
           onKeyDown={onSessionInputKeyDown}
           onPaste={onComposerPaste}
-          onScroll={syncHighlightScroll}
-          onSelect={fileAutocomplete.onSelectionChange}
-          onClick={fileAutocomplete.onSelectionChange}
           placeholder={
             canSend
               ? isQueueing
                 ? "Queue a follow-up"
-                : (followUpSuggestion ?? "Reply to your agent, or @-mention files")
+                : (followUpSuggestion ?? "Reply to your agent, or @-mention files and chats")
               : ""
           }
-          ref={inputRef}
+          fieldRef={inputRef}
           value={input}
-          rows={1}
+          isSkill={isSkillToken}
+          chats={chatChips}
         />
         <SlashCommandMenu state={slashAutocomplete} />
         <FilePopover state={fileAutocomplete} inputRef={inputRef} />
@@ -1233,60 +1244,48 @@ export function SessionComposer({
         )}
         {session ? (
           <div className="composer-chips-group composer-chips-model">
-            {session.state === "running" ? (
-              // Mid-turn: the next message queues, so provider can't change yet —
-              // keep the picker locked to the session's current provider.
-              <ModelSelector
-                provider={session.provider}
-                chipLabel={autoChipLabel}
-                chipTitle={autoChipTitle}
-                routeSwitch={chipRouteSwitch}
-                value={selectedModel}
-                onChange={(model) => setSelectedModel({ provider: session.provider, ...model })}
-                fastModeEnabled={fastModeEnabled}
-                onFastModeEnabledChange={onFastModeEnabledChange}
-                open={modelPickerOpen}
-                onOpenChange={setModelPickerOpen}
-                withEffortSlider
-                effortOpen={effortPickerOpen}
-                onEffortOpenChange={setEffortPickerOpen}
-                ariaLabel="Chat model"
-              />
-            ) : (
-              // Idle: switching provider here relaunches the agent under the new
-              // provider on the next send, carrying context via the transcript.
-              // Same-provider model changes commit straight away; a different
-              // provider goes through the confirmation below first.
-              <LaunchModelSelector
-                value={selectedModel}
-                chipLabel={autoChipLabel}
-                chipTitle={autoChipTitle}
-                routeSwitch={chipRouteSwitch}
-                availability={providerAvailability}
-                onChange={(model) => {
-                  // `session.provider` only catches up when the backend
-                  // relaunches on the next send, so after a confirmed switch
-                  // the staged selection is the truth about what was already
-                  // confirmed. Without it, a reasoning-effort nudge would
-                  // re-raise the dialog and drop the change.
-                  if (
-                    model.provider !== session.provider &&
-                    model.provider !== selectedModel.provider
-                  ) {
-                    setPendingProviderSwitch({ sessionId: session.id, model });
-                    return;
-                  }
-                  setSelectedModel(model);
-                }}
-                fastModeEnabled={fastModeEnabled}
-                onFastModeEnabledChange={onFastModeEnabledChange}
-                open={modelPickerOpen}
-                onOpenChange={setModelPickerOpen}
-                withEffortSlider
-                effortOpen={effortPickerOpen}
-                onEffortOpenChange={setEffortPickerOpen}
-                ariaLabel="Chat model"
-              />
+            {/* Idle or mid-turn, the picker offers every provider. Idle, a different
+                provider relaunches the agent on the next send, carrying context
+                through the transcript. Mid-turn, the follow-up queues with that
+                provider and takes it once the current turn ends. Same-provider
+                model changes commit straight away; a different provider goes
+                through the confirmation below first. */}
+            <LaunchModelSelector
+              value={selectedModel}
+              chipLabel={autoChipLabel}
+              chipTitle={autoChipTitle}
+              routeSwitch={chipRouteSwitch}
+              availability={providerAvailability}
+              onChange={(model) => {
+                // `session.provider` only catches up when the backend
+                // relaunches on the next send, so after a confirmed switch
+                // the staged selection is the truth about what was already
+                // confirmed. Without it, a reasoning-effort nudge would
+                // re-raise the dialog and drop the change.
+                // A chat with no native conversation (a fork child before its
+                // first send, a cleared chat) has nothing to lose, so it
+                // switches without asking.
+                if (
+                  session.providerConversationId !== null &&
+                  model.provider !== session.provider &&
+                  model.provider !== selectedModel.provider
+                ) {
+                  setPendingProviderSwitch({ sessionId: session.id, model });
+                  return;
+                }
+                setSelectedModel(model);
+              }}
+              fastModeEnabled={fastModeEnabled}
+              onFastModeEnabledChange={onFastModeEnabledChange}
+              open={modelPickerOpen}
+              onOpenChange={setModelPickerOpen}
+              withEffortSlider
+              effortOpen={effortPickerOpen}
+              onEffortOpenChange={setEffortPickerOpen}
+              ariaLabel="Chat model"
+            />
+            {floating || selectedModel.autoTier ? null : (
+              <ComposerUsageSlot provider={selectedModel.provider} />
             )}
           </div>
         ) : null}
@@ -1462,13 +1461,13 @@ export function SessionComposer({
           }}
         />
       ) : null}
-      {/* Only while the pick still applies: the same idle session it was made
-          on. A turn starting mid-dialog would queue the follow-up and keep the
-          current provider anyway, so the offer would be a lie. */}
-      {session && pendingProviderSwitch?.sessionId === session.id && session.state !== "running" ? (
+      {/* Only while the pick still applies: the session it was made on. A turn
+          starting mid-dialog queues the follow-up with the picked provider, and
+          the dialog then says it takes effect after that turn. */}
+      {session && pendingProviderSwitch?.sessionId === session.id ? (
         <ProviderSwitchDialog
-          from={session.provider}
           to={pendingProviderSwitch.model.provider}
+          afterTurn={session.state === "running"}
           onCancel={() => setPendingProviderSwitch(null)}
           onSwitch={() => {
             setSelectedModel(pendingProviderSwitch.model);

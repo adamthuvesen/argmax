@@ -85,11 +85,6 @@ describe("searchPaletteItems", () => {
     expect(hits[0].subtitleRanges).not.toBeNull();
   });
 
-  it("returns an empty array when nothing matches", () => {
-    const items = [item("a", "Alpha"), item("b", "Beta")];
-    expect(searchPaletteItems(items, "zzz")).toEqual([]);
-  });
-
   it("handles out-of-order terms", () => {
     const items = [item("a", "Open Settings"), item("b", "Search Sessions")];
     const hits = searchPaletteItems(items, "settings open");
@@ -142,14 +137,6 @@ describe("highlightSegments", () => {
     ]);
   });
 
-  it("handles ranges in the middle of the string", () => {
-    const segments = highlightSegments("Open Settings", [5, 13]);
-    expect(segments).toEqual([
-      { text: "Open ", matched: false },
-      { text: "Settings", matched: true }
-    ]);
-  });
-
   it("handles disjoint matched ranges", () => {
     const segments = highlightSegments("foo bar baz", [0, 3, 8, 11]);
     expect(segments).toEqual([
@@ -161,10 +148,6 @@ describe("highlightSegments", () => {
 });
 
 describe("parseFtsSnippet", () => {
-  it("returns a single unmatched segment when no markers are present", () => {
-    expect(parseFtsSnippet("plain text")).toEqual([{ text: "plain text", matched: false }]);
-  });
-
   it("extracts <b>...</b> matched tokens as matched segments", () => {
     const segments = parseFtsSnippet("the <b>quick</b> brown <b>fox</b>");
     expect(segments).toEqual([

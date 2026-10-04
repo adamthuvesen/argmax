@@ -71,10 +71,9 @@ export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultr
  * catalog lists max and ultra). Codex Luna stops at Max. Cursor's GPT-5.6
  * Luna/Terra/Sol, Opus 5 Thinking, Opus 5.5, and Sonnet 5.5 go to Max (no Ultra suffix).
  * Cursor Grok 4.7 goes to Extra High; Cursor Grok 4.6/4.5 and Gemini 3.8 Flash
- * stop at High. OpenCode Go (opencode-go/*) models
- * ship non-prefix variant lists because their CLI exposes only certain
- * discrete levels (e.g. low/high/max). Kept in sync with the Rust adapters'
- * effort → model mapping.
+ * stop at High. OpenCode's OpenRouter models ship non-prefix variant lists
+ * because their CLI exposes only certain discrete levels (e.g. low/high/max).
+ * Kept in sync with the Rust adapters' effort → model mapping.
  */
 export function reasoningEffortsForModel(provider: ProviderId, modelId: string): readonly ReasoningEffort[] {
   if (provider === "claude") return REASONING_EFFORTS; // low → ultra
@@ -115,17 +114,17 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   }
   // OpenCode models that expose `--variant`, each with its own set; fall back
   // to low → xhigh for the rest (which won't set supportsReasoningEffort).
-  // Muse Spark also offers a `minimal` variant below Low, which has no rung on
-  // this ladder and is left out.
+  // Qwen3.8 Max and Muse Spark also offer a `minimal` variant below Low, which
+  // has no rung on this ladder and is left out.
   const opencodeVariants: Record<string, readonly ReasoningEffort[]> = {
-    "opencode/muse-spark-1.3-contributor-free": ["low", "medium", "high", "xhigh"],
-    "opencode-go/glm-5.3-flash": ["low", "high", "max"],
-    "opencode-go/glm-5.3": ["low", "high", "max"],
-    "opencode-go/kimi-k3": ["max"],
-    "opencode-go/qwen3.8-flash": ["high", "max"],
-    "opencode-go/deepseek-v4-pro": ["high", "max"],
-    "opencode-go/deepseek-v4-flash": ["low", "high", "max"],
-    "opencode-go/deepseek-v4.1-flash": ["low", "high", "max"]
+    "openrouter/z-ai/glm-5.3-flash": ["low", "high", "max"],
+    "openrouter/z-ai/glm-5.3": ["low", "high", "max"],
+    "openrouter/deepseek/deepseek-v4.1-flash": ["low", "high", "max"],
+    "openrouter/deepseek/deepseek-v4-pro-0813": ["low", "high", "max"],
+    "openrouter/moonshotai/kimi-k3": ["low", "high", "max"],
+    "openrouter/qwen/qwen3.8-max-0902": ["low", "medium", "high", "xhigh"],
+    "openrouter/qwen/qwen3.8-flash": ["high", "max"],
+    "openrouter/meta/muse-spark-1.3-contributor": ["low", "medium", "high", "xhigh", "max"]
   };
   if (provider === "opencode" && modelId in opencodeVariants) return opencodeVariants[modelId];
   // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
@@ -163,7 +162,7 @@ export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 /**
  * Effort a model actually runs at, given the app-wide default effort the user
  * picked in Settings. Models offer different ladders (Grok Build stops at
- * Extra High, the OpenCode Go variants are discrete sets), so a single global
+ * Extra High, the OpenCode variants are discrete sets), so a single global
  * preference cannot apply verbatim everywhere:
  *
  *  - the preferred level when the model offers it;
@@ -218,7 +217,8 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
     { label: "Auto Balance (Cursor)", modelId: "auto-smart[optimize_for=balanced]" },
     { label: "Auto Intelligence (Cursor)", modelId: "auto-smart[optimize_for=intelligence]" },
-    { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", supportsFastMode: true, contextWindow: 1_000_000 },
+    // Composer always runs Fast (cursor_fast_mode in adapters.rs), so it shows no Fast toggle.
+    { label: "Composer 2.5 (Cursor)", modelId: "composer-2.5", contextWindow: 1_000_000 },
     {
       label: "Grok 4.7 (Cursor)",
       modelId: "grok-4.7-medium",
@@ -250,31 +250,42 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       contextWindow: 1_000_000
     }
   ],
-  // OpenCode Zen free tier. Ids keep the `provider/model` format the OpenCode
-  // CLI's `-m` flag expects. No fast-mode control, and only Muse Spark 1.3
-  // takes `--variant` — the other free models have no reasoning effort.
+  // OpenCode runs every model through OpenRouter, on the OpenRouter key in
+  // OpenCode's own auth (`opencode auth login`). Ids keep the
+  // `openrouter/<vendor>/<model>` form the CLI's `-m` flag expects. Effort
+  // variants ride the CLI's `--variant` flag; keep the variant map in
+  // reasoningEffortsForModel and the Rust adapter in sync with these. No
+  // fast-mode control: MiniMax M2.7 is the fast model, pinned to Groq in the
+  // OpenCode server's inline config (openrouter_host_pins in opencode_server.rs).
   //
-  // Muse Spark 1.3 is free in exchange for Meta training on the prompts and
+  // Muse Spark 1.3 Contributor is cheap because Meta trains on the prompts and
   // completions it sees, which is what "contributor" in its id means.
-  //
-  // OpenCode Go (opencode-go/*) are billed per-token models with reasoning
-  // effort variants wired via the CLI's `--variant` flag. Keep the variant map
-  // in reasoningEffortsForModel and the Rust adapter in sync with these.
   opencode: [
-    { label: "Big Pickle", modelId: "opencode/big-pickle", contextWindow: 200_000 },
+    { label: "GLM-5.3-Flash", modelId: "openrouter/z-ai/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_048_576 },
+    { label: "GLM-5.3", modelId: "openrouter/z-ai/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
     {
-      label: "Muse Spark 1.3 Free",
-      modelId: "opencode/muse-spark-1.3-contributor-free",
+      label: "DeepSeek V4.1 Flash",
+      modelId: "openrouter/deepseek/deepseek-v4.1-flash",
       supportsReasoningEffort: true,
       contextWindow: 1_048_576
     },
-    { label: "GLM-5.3-Flash", modelId: "opencode-go/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "GLM-5.3", modelId: "opencode-go/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "Kimi K3", modelId: "opencode-go/kimi-k3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
-    { label: "Qwen3.8 Max", modelId: "opencode-go/qwen3.8-max", contextWindow: 1_000_000 },
-    { label: "Qwen3.8 Flash", modelId: "opencode-go/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "DeepSeek V4 Pro", modelId: "opencode-go/deepseek-v4-pro", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "DeepSeek V4.1 Flash", modelId: "opencode-go/deepseek-v4.1-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 }
+    {
+      label: "DeepSeek V4 Pro",
+      modelId: "openrouter/deepseek/deepseek-v4-pro-0813",
+      supportsReasoningEffort: true,
+      contextWindow: 1_048_576
+    },
+    { label: "Kimi K3", modelId: "openrouter/moonshotai/kimi-k3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
+    { label: "Qwen3.8 Max", modelId: "openrouter/qwen/qwen3.8-max-0902", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    { label: "Qwen3.8 Flash", modelId: "openrouter/qwen/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000 },
+    {
+      label: "Muse Spark 1.3 Contributor",
+      modelId: "openrouter/meta/muse-spark-1.3-contributor",
+      supportsReasoningEffort: true,
+      contextWindow: 1_048_576
+    },
+    // Groq's window, not the model's 204,800: the pin keeps it on Groq.
+    { label: "MiniMax M2.7 (Groq)", modelId: "openrouter/minimax/minimax-m2.7", contextWindow: 196_608 }
   ],
   // The picker offers Grok 4.7. It takes --reasoning-effort up to xhigh (the
   // CLI rejects max/ultra). Fast is the advertised SKU `grok-4.7-build-fast`.
@@ -295,21 +306,23 @@ export const PROVIDER_TITLE_MODEL: Record<ProviderId, string> = {
   claude: "claude-sonnet-5-5",
   codex: "gpt-6-luna",
   cursor: "composer-2.5",
-  opencode: "opencode/big-pickle",
+  opencode: "openrouter/z-ai/glm-5.3-flash",
   // Same Grok Build rate as the chat model.
   grok: "grok-4.7"
 };
 
 /**
- * Providers whose CLI can fork a resumed conversation, which is what the turn
- * footer's Fork button rides: Claude via `--fork-session`, Codex via
- * `exec fork`, OpenCode via `run --fork`. Cursor has no equivalent — resuming
- * its chat id from two sessions would write into one conversation. Mirrors the
- * gate in `fork_session` (src-tauri/src/workspaces/orchestration.rs).
+ * Providers a chat can be forked from, which is what the turn footer's Fork
+ * button rides. Every provider forks: Claude, Codex, OpenCode and Grok may
+ * continue the source conversation natively where that is exact, and Cursor —
+ * which cannot resume one conversation from two sessions — always starts the
+ * fork fresh from the copied visible history. See docs/providers.md
+ * (Native continuity and forks).
  */
 export const FORK_CAPABLE_PROVIDERS: ReadonlySet<string> = new Set<ProviderId>([
   "claude",
   "codex",
+  "cursor",
   "opencode",
   "grok"
 ]);
@@ -330,11 +343,11 @@ export const PROVIDER_MODEL_DEFAULTS: Record<ProviderId, ProviderModelDefault> =
     modelId: "grok-4.7-medium",
     supportsReasoningEffort: true
   },
-  // GLM-5.3-Flash is an OpenCode Go model. Its variant list is low/high/max
-  // (no medium), so seed High rather than DEFAULT_REASONING_EFFORT.
+  // GLM-5.3-Flash's variant list is low/high/max (no medium), so seed High
+  // rather than DEFAULT_REASONING_EFFORT.
   opencode: {
     label: "GLM-5.3-Flash",
-    modelId: "opencode-go/glm-5.3-flash",
+    modelId: "openrouter/z-ai/glm-5.3-flash",
     supportsReasoningEffort: true,
     reasoningEffort: "high"
   },
@@ -394,20 +407,22 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "claude-sonnet-5-5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 
-  // OpenCode Zen free tier — $0 across the board. OpenCode Go (opencode-go/*)
-  // is billed per-token. Keep in sync with the Rust pricing mirror.
-  "opencode/big-pickle":                       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/nemotron-3.5-lightning-free":      { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/nemotron-3-ultra-free":            { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode/muse-spark-1.3-contributor-free":  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "opencode-go/glm-5.3-flash":                 { input: 0.075, output: 0.25,   cacheRead: 0.015, cacheWrite: 0 },
-  "opencode-go/glm-5.3":                       { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 0 },
-  "opencode-go/kimi-k3":                       { input: 3,     output: 15,     cacheRead: 0.3,   cacheWrite: 0 },
-  "opencode-go/qwen3.8-max":                   { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
-  "opencode-go/qwen3.8-flash":                 { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
-  "opencode-go/deepseek-v4-pro":               { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0 },
-  // OpenCode's catalog reports the off-peak rate. Peak pricing is not modeled.
-  "opencode-go/deepseek-v4.1-flash":           { input: 0.15,  output: 0.6,    cacheRead: 0.003, cacheWrite: 0 },
+  // OpenCode via OpenRouter. OpenRouter spreads a request across hosts whose
+  // rates differ several-fold, and OpenCode's own `cost` is the catalog's
+  // cheapest rate per field, which no host charges (about 20x low on a test
+  // turn, 2026-10-04). So these are the model maker's own host rates on
+  // OpenRouter (Groq's for the pinned MiniMax): an estimate, not the bill.
+  // Cache writes bill as plain input. Keep in sync with the Rust pricing mirror.
+  "openrouter/z-ai/glm-5.3-flash":              { input: 0.15,  output: 0.5,    cacheRead: 0.03,  cacheWrite: 0.15 },
+  "openrouter/z-ai/glm-5.3":                    { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 1.4 },
+  "openrouter/deepseek/deepseek-v4.1-flash":    { input: 0.15,  output: 0.6,    cacheRead: 0.003, cacheWrite: 0.15 },
+  "openrouter/deepseek/deepseek-v4-pro-0813":   { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0.66 },
+  "openrouter/moonshotai/kimi-k3":              { input: 3,     output: 15,     cacheRead: 0.3,   cacheWrite: 3 },
+  "openrouter/qwen/qwen3.8-max-0902":           { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
+  "openrouter/qwen/qwen3.8-flash":              { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
+  "openrouter/meta/muse-spark-1.3-contributor": { input: 0.1,   output: 0.2,    cacheRead: 0.002, cacheWrite: 0.1 },
+  // Groq offers no cached-input discount for this model.
+  "openrouter/minimax/minimax-m2.7":            { input: 0.6,   output: 1.8,    cacheRead: 0.6,   cacheWrite: 0.6 },
 
   // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
   // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
@@ -424,7 +439,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
-  "opencode-go/deepseek-v4-flash": { input: 0.22, output: 0.66, cacheRead: 0.007, cacheWrite: 0 },
   "claude-fable-5":       { input: 10,   output: 50,   cacheRead: 1,     cacheWrite: 12.5 },
   "claude-sonnet-5":      { input: 2,    output: 10,   cacheRead: 0.2,   cacheWrite: 2.5 },
   "claude-opus-4-8":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },

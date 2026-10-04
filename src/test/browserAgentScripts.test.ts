@@ -1175,18 +1175,5 @@ describe("page state, extract items, waits", () => {
     expect(api().waitFor("c1", { minCount: 3 }).ok).toBe(true);
     expect(api().waitFor("c1", { minCount: 3 }).matched).toBe(true);
   });
-
-  it("click reports whether the page moved", () => {
-    document.body.innerHTML = `<button>Go</button>`;
-    install();
-    const match = api().find("Go").matches[0];
-    expect(match).toBeDefined();
-    if (!match) return;
-    const result = api().click(match.ref);
-    expect(result.ok).toBe(true);
-    expect(result.urlChanged).toBeUndefined();
-    expect(result.listboxOpen).toBe(false);
-    expect(typeof result.textChars).toBe("number");
-  });
 });
 

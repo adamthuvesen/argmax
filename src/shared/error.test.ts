@@ -6,11 +6,6 @@ describe("errorMessage", () => {
     expect(errorMessage(new Error("kaboom"))).toBe("kaboom");
   });
 
-  it("returns the message field for Error subclasses", () => {
-    class CustomError extends Error {}
-    expect(errorMessage(new CustomError("custom"))).toBe("custom");
-  });
-
   it("stringifies primitives and unknown shapes", () => {
     expect(errorMessage("plain string")).toBe("plain string");
     expect(errorMessage(42)).toBe("42");

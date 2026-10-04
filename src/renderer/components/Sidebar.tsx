@@ -72,6 +72,7 @@ import { usePaneGrid } from "../state/paneGrid.js";
 import { setSidebarPeek, useSidebarChrome } from "../state/sidebarChrome.js";
 import { beginWorkspaceDrag, endWorkspaceDrag } from "../state/workspaceDrag.js";
 import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from "../lib/priority.js";
+import { computeSnoozeShelf, snoozeTimerDelay } from "../lib/snooze.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
 import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
@@ -115,6 +116,7 @@ const ARCS_GROUP_KEY = "arcs";
 const PRIORITY_GROUP_KEY = "priority";
 const SIDE_CHATS_GROUP_KEY = "side-chats";
 const ARCHIVED_GROUP_KEY = "archived";
+const SNOOZED_GROUP_KEY = "snoozed";
 const OLDER_GROUP_KEY = "older";
 
 // Active and paused sort together, ahead of done; ties break by most recently
@@ -210,6 +212,8 @@ export function Sidebar({
   onToggleWorkspacePinned,
   onRemoveFromPriority,
   onAddToPriority,
+  onSnoozeWorkspace,
+  onUnsnoozeWorkspace,
   onClearPriority,
   onSetWorkspaceIcon,
   onSyncNowWorkspace,
@@ -248,6 +252,10 @@ export function Sidebar({
   onRemoveFromPriority?: (workspaceId: string) => void;
   /** Right-click "Add to priority" on any other row — floats it manually. */
   onAddToPriority?: (workspaceId: string) => void;
+  /** Right-click "Snooze …" — moves the row to the Snoozed shelf until `until`. */
+  onSnoozeWorkspace?: (workspaceId: string, until: string) => void;
+  /** Right-click "Unsnooze" on a shelved row. */
+  onUnsnoozeWorkspace?: (workspaceId: string) => void;
   /** "Clear" on the Priority header dismisses every row the section holds. */
   onClearPriority?: (workspaceIds: string[]) => void;
   /** Right-click "Edit Icon" on any row — both values null clears the glyph. */
@@ -340,6 +348,9 @@ export function Sidebar({
       : new Set(BOOT_COLLAPSED_GROUP_KEYS)
   );
   const [archivedExpanded, setArchivedExpanded] = useState(false);
+  // The shelf starts collapsed on every launch: snoozing says "not now", and a
+  // list that opens itself would say otherwise.
+  const [snoozedExpanded, setSnoozedExpanded] = useState(false);
   useEffect(() => {
     if (!readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)) {
       markBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY);
@@ -542,15 +553,47 @@ export function Sidebar({
     () => workingWorkspaceIds(snapshot.sessions),
     [snapshot.sessions]
   );
-  const sidebarWorkspaces = useMemo(
+  const allSidebarWorkspaces = useMemo(
     () =>
       snapshot.workspaces.filter(
         (workspace) => workspace.kind !== "popup" && !hiddenMultitasks.has(workspace.id)
       ),
     [hiddenMultitasks, snapshot.workspaces]
   );
+  // A snooze lifts a row out of every section into the collapsed Snoozed shelf
+  // until its time passes. Membership is derived from the clock, so there is no
+  // poll: one timer is armed for the earliest expiry and re-derives the shelf.
+  const [snoozeNow, setSnoozeNow] = useState(() => Date.now());
+  const snoozeShelf = useMemo(
+    () => computeSnoozeShelf(allSidebarWorkspaces, snapshot.sessions, snoozeNow),
+    [allSidebarWorkspaces, snapshot.sessions, snoozeNow]
+  );
+  const nextSnoozeExpiryAt = snoozeShelf.nextExpiryAt;
+  useEffect(() => {
+    if (nextSnoozeExpiryAt === null) return;
+    // A timer set before the Mac slept fires late. Re-derive when the window
+    // comes back instead of waiting for it.
+    const refresh = (): void => setSnoozeNow(Date.now());
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const timerId = window.setTimeout(
+      () => setSnoozeNow(Date.now()),
+      snoozeTimerDelay(nextSnoozeExpiryAt, Date.now())
+    );
+    return () => {
+      window.clearTimeout(timerId);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [nextSnoozeExpiryAt, snoozeNow]);
+  const sidebarWorkspaces = useMemo(
+    () => allSidebarWorkspaces.filter((workspace) => !snoozeShelf.shelfIds.has(workspace.id)),
+    [allSidebarWorkspaces, snoozeShelf]
+  );
+  // Every listed chat, shelved or not: opening a snoozed chat must still mark
+  // it viewed, and a shelved row must still show unread when it returns.
   const unreadWorkspaces = useUnreadWorkspaceIds(
-    sidebarWorkspaces,
+    allSidebarWorkspaces,
     selectedWorkspaceId,
     workingWorkspaces
   );
@@ -625,20 +668,24 @@ export function Sidebar({
   // groups (projects view). They're pulled out of their normal bucket while
   // pinned and drop straight back the moment they're unpinned. Shared by both
   // view modes.
+  // The user's drag order rides in `workspaceOrders` under the Pinned key, like
+  // a project's order; chats newly pinned fall in below it by recency.
   const pinnedWorkspaces = useMemo(
     () =>
-      sidebarWorkspaces
-        .filter(
+      sortWorkspaceGroup(
+        sidebarWorkspaces.filter(
           (workspace) =>
             workspace.pinned &&
             workspace.state !== "archived" &&
             workspaceIdsWithSessions.has(workspace.id)
-        )
-        .sort((a, b) => {
-          if (a.lastActivityAt === b.lastActivityAt) return 0;
-          return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
-        }),
-    [sidebarWorkspaces, workspaceIdsWithSessions]
+        ),
+        workspaceOrders[PINNED_GROUP_KEY] ?? []
+      ),
+    [sidebarWorkspaces, workspaceIdsWithSessions, workspaceOrders]
+  );
+  const pinnedWorkspaceIds = useMemo(
+    () => pinnedWorkspaces.map((workspace) => workspace.id),
+    [pinnedWorkspaces]
   );
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
@@ -678,6 +725,19 @@ export function Sidebar({
           return a.lastActivityAt < b.lastActivityAt ? 1 : -1;
         }),
     [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
+  );
+
+  const snoozedWorkspaces = useMemo(
+    () =>
+      allSidebarWorkspaces
+        .filter(
+          (workspace) =>
+            snoozeShelf.shelfIds.has(workspace.id) &&
+            workspace.state !== "archived" &&
+            workspaceIdsWithSessions.has(workspace.id)
+        )
+        .sort((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? "")),
+    [allSidebarWorkspaces, snoozeShelf, workspaceIdsWithSessions]
   );
 
   const archivedWorkspaces = useMemo(
@@ -735,6 +795,10 @@ export function Sidebar({
       setArchivedExpanded((expanded) => !expanded);
       return;
     }
+    if (key === SNOOZED_GROUP_KEY) {
+      setSnoozedExpanded((expanded) => !expanded);
+      return;
+    }
     setCollapsedDateGroups((current) => {
       const next = new Set(current);
       if (next.has(key)) {
@@ -788,6 +852,14 @@ export function Sidebar({
   // once revealed, the user may still collapse the group over a selected row
   // without this snapping it back open.
   const lastExpandedForWorkspaceId = useRef<string | null>(null);
+  // The shelf opens when the selection moves to a shelved chat, or the selected
+  // chat enters the shelf. The effect depends on this flag, not on the shelf
+  // object, which is derived again on every dashboard refresh: keyed on that, a
+  // refresh would reopen a shelf the user closed over the selected row.
+  const selectedChatIsShelved = selectedWorkspaceId !== null && snoozeShelf.shelfIds.has(selectedWorkspaceId);
+  useEffect(() => {
+    if (selectedChatIsShelved) setSnoozedExpanded(true);
+  }, [selectedWorkspaceId, selectedChatIsShelved]);
   useEffect(() => {
     if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedWorkspaceId) return;
     const workspace = sidebarWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
@@ -806,20 +878,23 @@ export function Sidebar({
   const knownWorkspaceIdsRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     const known = knownWorkspaceIdsRef.current;
-    if (sidebarWorkspaces.length === 0 && known === null) return;
+    // Seeded from every listed chat, shelved ones included: a row that was
+    // snoozed at launch and later leaves the shelf is not a new arrival, and
+    // must not unfold a group the user collapsed.
+    if (allSidebarWorkspaces.length === 0 && known === null) return;
     if (known === null) {
-      knownWorkspaceIdsRef.current = new Set(sidebarWorkspaces.map((workspace) => workspace.id));
+      knownWorkspaceIdsRef.current = new Set(allSidebarWorkspaces.map((workspace) => workspace.id));
       return;
     }
     const next = new Set(known);
-    for (const workspace of sidebarWorkspaces) {
+    for (const workspace of allSidebarWorkspaces) {
       if (next.has(workspace.id)) continue;
       next.add(workspace.id);
-      if (workspace.state === "archived") continue;
+      if (workspace.state === "archived" || snoozeShelf.shelfIds.has(workspace.id)) continue;
       revealWorkspaceGroup(workspace);
     }
     knownWorkspaceIdsRef.current = next;
-  }, [revealWorkspaceGroup, sidebarWorkspaces]);
+  }, [revealWorkspaceGroup, allSidebarWorkspaces, snoozeShelf]);
 
   // An arc opened from elsewhere (the palette, a chat's arc label) must not
   // sit selected inside a collapsed Arcs section.
@@ -988,6 +1063,7 @@ export function Sidebar({
   const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
   const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
   const archivedCollapsed = !archivedExpanded;
+  const snoozedCollapsed = !snoozedExpanded;
   const sidebarActions = (
     <div className="rail-actions" onClick={(event) => event.stopPropagation()}>
       <div className="project-picker-anchor rail-sort-anchor" ref={sortMenuAnchorRef}>
@@ -1171,6 +1247,7 @@ export function Sidebar({
                   onSetIcon={onSetWorkspaceIcon}
                   onSyncNow={onSyncNowWorkspace}
                   onAddToPriority={addToPriority}
+                  onSnooze={onSnoozeWorkspace}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
                 />
@@ -1310,7 +1387,17 @@ export function Sidebar({
               <span aria-hidden="true" />
             </div>
             {pinnedCollapsed ? null : pinnedWorkspaces.map((workspace) => (
-              <div key={workspace.id} className="session-row-wrap">
+              <div
+                key={workspace.id}
+                className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
+                onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
+                onDragOver={handleWorkspaceDragOver}
+                onDrop={(event) =>
+                  handleWorkspaceDrop(event, PINNED_GROUP_KEY, workspace.id, pinnedWorkspaceIds)
+                }
+                onDragEnd={handleWorkspaceDragEnd}
+              >
                 <SidebarSessionRow
                   workspace={workspace}
                   isWorking={workingWorkspaces.has(workspace.id)}
@@ -1395,6 +1482,7 @@ export function Sidebar({
                       ? onRemoveFromPriority
                       : undefined
                   }
+                  onSnooze={onSnoozeWorkspace}
                   priorityReason={entry.reason ?? undefined}
                   detectedIdes={detectedIdes}
                   defaultIde={defaultIde}
@@ -1473,6 +1561,7 @@ export function Sidebar({
                             onSetIcon={onSetWorkspaceIcon}
                             onSyncNow={onSyncNowWorkspace}
                             onAddToPriority={addToPriority}
+                            onSnooze={onSnoozeWorkspace}
                             detectedIdes={detectedIdes}
                             defaultIde={defaultIde}
                           />
@@ -1634,6 +1723,7 @@ export function Sidebar({
                         onSetIcon={onSetWorkspaceIcon}
                         onSyncNow={onSyncNowWorkspace}
                         onAddToPriority={addToPriority}
+                        onSnooze={onSnoozeWorkspace}
                         detectedIdes={detectedIdes}
                         defaultIde={defaultIde}
                       />
@@ -1660,6 +1750,50 @@ export function Sidebar({
           );
         })}
         {sideChatsSection}
+        {snoozedWorkspaces.length > 0 ? (
+          <div
+            className="project-group session-date-group snoozed-shelf"
+            data-collapsed={snoozedCollapsed ? "true" : undefined}
+          >
+            <div
+              className="project-row session-date-row"
+              title={`${snoozedWorkspaces.length} snoozed ${snoozedWorkspaces.length === 1 ? "chat" : "chats"}`}
+              onClick={() => toggleDateGroupVisibility(SNOOZED_GROUP_KEY)}
+            >
+              <span className="project-name session-date-label">
+                <span className="project-name-text">Snoozed</span>
+                {renderCollapseButton(SNOOZED_GROUP_KEY, "Snoozed", snoozedCollapsed)}
+              </span>
+              <span aria-hidden="true" />
+            </div>
+            {snoozedCollapsed ? null : snoozedWorkspaces.map((workspace) => (
+              <div key={workspace.id} className="session-row-wrap">
+                <SidebarSessionRow
+                  workspace={workspace}
+                  isWorking={workingWorkspaces.has(workspace.id)}
+                  hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
+                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
+                  subtitle={projectNameById.get(workspace.projectId) ?? null}
+                  importedProvider={importedProviderByWorkspace.get(workspace.id)}
+                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
+                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
+                  isSelected={selectedWorkspaceId === workspace.id}
+                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+                  canDragToGrid={false}
+                  onOpenWorkspaceChat={onOpenWorkspaceChat}
+                  onArchiveWorkspace={onArchiveWorkspace}
+                  onOpenInIde={onOpenInIde}
+                  onOpenInWindow={onOpenInWindow}
+                  onRename={onRenameWorkspace}
+                  onSetIcon={onSetWorkspaceIcon}
+                  onUnsnooze={onUnsnoozeWorkspace}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
         {showArchived && archivedWorkspaces.length > 0 ? (
           <div
             className="project-group session-date-group"

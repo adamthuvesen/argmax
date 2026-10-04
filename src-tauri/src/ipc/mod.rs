@@ -6,6 +6,7 @@ use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::Database;
 use crate::state::AppState;
 
+pub mod events;
 pub mod inputs;
 pub mod validation;
 
@@ -24,6 +25,7 @@ pub mod git_ops;
 pub mod goals;
 pub mod health;
 pub mod learnings;
+pub mod linked_repos;
 pub mod projects;
 pub mod providers;
 pub mod prs;
@@ -39,184 +41,30 @@ pub mod sync;
 pub mod system;
 pub mod terminal;
 pub mod usage;
+pub mod window_snapshot;
 pub mod windows;
 pub mod workspace_files;
 pub mod workspaces;
 
-pub const REGISTERED_CHANNELS: &[&str] = &[
-    "health:ping",
-    "projects:list",
-    "projects:pick-folder",
-    "projects:check-prompt",
-    "projects:resolve-check",
-    "dashboard:list",
-    "projects:register",
-    "projects:remove",
-    "projects:update-settings",
-    "projects:list-branches",
-    "projects:refresh-branch",
-    "projects:switch-branch",
-    "workspaces:create-isolated",
-    "workspaces:create-current",
-    "workspaces:create-scratch",
-    "workspaces:refresh-status",
-    "workspaces:keep",
-    "workspaces:archive",
-    "workspaces:open-in-ide",
-    "workspaces:autotitle",
-    "workspace:status",
-    "providers:discover",
-    "providers:launch",
-    "providers:send-input",
-    "providers:steer-input",
-    "providers:resize",
-    "providers:terminate",
-    "providers:cancel-queued-message",
-    "providers:send-queued-message-now",
-    "cloud:prepare",
-    "cloud:launch",
-    "attachments:save-image",
-    "terminal:spawn",
-    "terminal:write",
-    "terminal:resize",
-    "terminal:terminate",
-    "approvals:resolve",
-    "approvals:pending",
-    "questions:resolve",
-    "session:events-since",
-    "session:agent-events",
-    "session:fork",
-    "session:multitask",
-    "session:clear",
-    "session:suggest-follow-up",
-    "settings:agent-tools",
-    "settings:set-browser-tools",
-    "settings:routing",
-    "settings:set-project-check",
-    "settings:set-routing-key",
-    "settings:clear-routing-key",
-    "settings:preview-chat-cleanup",
-    "settings:delete-old-chats",
-    "review:list-changed-files",
-    "review:load-diff",
-    "review:stage-file",
-    "review:unstage-file",
-    "review:stage-hunk",
-    "review:unstage-hunk",
-    "review:commit-staged",
-    "review:revert-file",
-    "review:revert-hunk",
-    "goal:set",
-    "goal:get",
-    "goal:list",
-    "goal:clear",
-    "arc:create",
-    "arc:list",
-    "arc:get",
-    "arc:update",
-    "arc:set-state",
-    "arc:launch-coordinator",
-    "arc:timeline",
-    "arc:draft-from-session",
-    "arc:promote",
-    "checkpoints:list",
-    "checkpoints:preview-rewind",
-    "checkpoints:rewind-files",
-    "workspace:list-files",
-    "workspace:read-file",
-    "workspace:write-file",
-    "workspace:stat-file",
-    "workspace:grep-content",
-    "checks:run",
-    "skills:list",
-    "sources:list",
-    "sources:add",
-    "sources:update",
-    "sources:delete",
-    "connections:list",
-    "system:open-path",
-    "system:open-file-in",
-    "system:list-detected-ides",
-    "system:diagnostics",
-    "system:debug-snapshot",
-    "system:performance-start",
-    "system:performance-stop",
-    "system:performance-status",
-    "system:performance-capture",
-    "system:renderer-stall",
-    "system:vacuum-database",
-    "system:set-theme",
-    "system:set-default-agent",
-    "system:set-notifications-enabled",
-    "system:set-keep-awake",
-    "system:test-notification",
-    "window:open-session",
-    "window:set-session",
-    "session:cost-summary",
-    "learnings:list",
-    "learnings:update",
-    "learnings:delete",
-    "session:search",
-    "workspaces:set-pinned",
-    "workspaces:mark-viewed",
-    "workspaces:set-priority-added",
-    "workspaces:set-priority-dismissed",
-    "workspaces:set-label",
-    "workspaces:set-icon",
-    "prs:list-for-session",
-    "prs:refresh",
-    "prs:set-primary",
-    "prs:dismiss",
-    "git:commit",
-    "git:push",
-    "git:create-branch",
-    "git:view-or-create-pr",
-    "remote:get-status",
-    "remote:set-config",
-    "remote:test-notification",
-    "remote:set-apns-config",
-    "remote:register-push-device",
-    "remote:unregister-push-device",
-    "remote:push-test",
-    "remote:push-capability",
-    "sync:get-status",
-    "sync:set-config",
-    "sync:run-now",
-    "browser:open",
-    "browser:content-blocking",
-    "browser:set-site-blocking",
-    "browser:navigate",
-    "browser:back",
-    "browser:forward",
-    "browser:reload",
-    "browser:stop",
-    "browser:set-bounds",
-    "browser:focus",
-    "browser:set-theme",
-    "browser:close",
-    "browser:fill-credentials",
-    "browser:screenshot",
-    "browser:evaluate",
-    "browser:list-tabs",
-    "browser:open-for-session",
-    "browser:snapshot",
-    "browser:find",
-    "browser:get-text",
-    "browser:extract",
-    "browser:act",
-    "browser:chrome-profiles",
-    "browser:import-chrome-history",
-    "routines:list",
-    "routines:upsert",
-    "routines:delete",
-    "routines:set-enabled",
-    "routines:run-now",
-    "routines:reset-session",
-    "usage:summary",
-    "usage:remaining",
-    "usage:router-cost",
-    "activity:summary",
-];
+/// Proof that the text came from the person's own composer over IPC (the
+/// desktop webview or the paired remote device). Only `crate::ipc` can build
+/// one, and only the handlers that take fresh person input do.
+pub struct PersonAttestation(());
+
+pub(in crate::ipc) fn attest_person() -> PersonAttestation {
+    PersonAttestation(())
+}
+
+/// For tests that stand in for a person IPC call. Production code must not
+/// call this: `ipc::tests::person_attestation_is_minted_only_by_the_person_handlers`
+/// scans the source for every call site.
+#[doc(hidden)]
+pub fn attest_person_for_tests() -> PersonAttestation {
+    PersonAttestation(())
+}
+
+pub mod catalogue;
+pub use catalogue::{specta_builder, REGISTERED_CHANNELS};
 
 /// Run a blocking database read off the macOS main thread.
 ///
@@ -276,179 +124,64 @@ pub(crate) fn publish_pr_workspaces_for_session(
     Ok(())
 }
 
-pub fn specta_builder() -> SpectaBuilder<tauri::Wry> {
-    SpectaBuilder::<tauri::Wry>::new().commands(collect_commands![
-        health::health_ping,
-        projects::projects_list,
-        projects::projects_pick_folder,
-        projects::projects_check_prompt,
-        projects::projects_resolve_check,
-        dashboard::dashboard_list,
-        projects::projects_register,
-        projects::projects_remove,
-        projects::projects_update_settings,
-        projects::projects_list_branches,
-        projects::projects_refresh_branch,
-        projects::projects_switch_branch,
-        workspaces::workspaces_create_isolated,
-        workspaces::workspaces_create_current,
-        workspaces::workspaces_create_scratch,
-        workspaces::workspaces_refresh_status,
-        workspaces::workspaces_keep,
-        workspaces::workspaces_archive,
-        workspaces::workspaces_open_in_ide,
-        workspaces::workspaces_autotitle,
-        workspace_files::workspace_status,
-        providers::providers_discover,
-        providers::providers_launch,
-        providers::providers_send_input,
-        providers::providers_steer_input,
-        providers::providers_resize,
-        providers::providers_terminate,
-        providers::providers_cancel_queued_message,
-        providers::providers_send_queued_message_now,
-        cloud::cloud_prepare,
-        cloud::cloud_launch,
-        attachments::attachments_save_image,
-        terminal::terminal_spawn,
-        terminal::terminal_write,
-        terminal::terminal_resize,
-        terminal::terminal_terminate,
-        approvals::approvals_resolve,
-        approvals::approvals_pending,
-        questions::questions_resolve,
-        session::session_events_since,
-        session::session_agent_events,
-        session::session_fork,
-        session::session_multitask,
-        session::session_clear,
-        session::session_suggest_follow_up,
-        settings::settings_routing,
-        settings::settings_set_project_check,
-        settings::settings_set_routing_key,
-        settings::settings_clear_routing_key,
-        settings::settings_agent_tools,
-        settings::settings_set_browser_tools,
-        settings::settings_preview_chat_cleanup,
-        settings::settings_delete_old_chats,
-        review::review_list_changed_files,
-        review::review_load_diff,
-        review::review_stage_file,
-        review::review_unstage_file,
-        review::review_stage_hunk,
-        review::review_unstage_hunk,
-        review::review_commit_staged,
-        review::review_revert_file,
-        review::review_revert_hunk,
-        goals::goal_set,
-        goals::goal_get,
-        goals::goal_list,
-        goals::goal_clear,
-        arcs::arc_create,
-        arcs::arc_list,
-        arcs::arc_get,
-        arcs::arc_update,
-        arcs::arc_set_state,
-        arcs::arc_launch_coordinator,
-        arcs::arc_timeline,
-        arcs::arc_draft_from_session,
-        arcs::arc_promote,
-        checkpoints::checkpoints_list,
-        checkpoints::checkpoints_preview_rewind,
-        checkpoints::checkpoints_rewind_files,
-        workspace_files::workspace_list_files,
-        workspace_files::workspace_read_file,
-        workspace_files::workspace_write_file,
-        workspace_files::workspace_stat_file,
-        workspace_files::workspace_grep_content,
-        checks::checks_run,
-        skills::skills_list,
-        sources::sources_list,
-        sources::sources_add,
-        sources::sources_update,
-        sources::sources_delete,
-        connections::connections_list,
-        system::system_open_path,
-        system::system_open_file_in,
-        system::system_list_detected_ides,
-        system::system_diagnostics,
-        system::system_debug_snapshot,
-        system::system_performance_start,
-        system::system_performance_stop,
-        system::system_performance_status,
-        system::system_performance_capture,
-        system::system_renderer_stall,
-        system::system_vacuum_database,
-        system::system_set_theme,
-        system::system_set_default_agent,
-        system::system_set_notifications_enabled,
-        system::system_set_keep_awake,
-        system::system_test_notification,
-        windows::window_open_session,
-        windows::window_set_session,
-        session::session_cost_summary,
-        learnings::learnings_list,
-        learnings::learnings_update,
-        learnings::learnings_delete,
-        session::session_search,
-        workspaces::workspaces_set_pinned,
-        workspaces::workspaces_mark_viewed,
-        workspaces::workspaces_set_priority_added,
-        workspaces::workspaces_set_priority_dismissed,
-        workspaces::workspaces_set_label,
-        workspaces::workspaces_set_icon,
-        prs::prs_list_for_session,
-        prs::prs_refresh,
-        prs::prs_set_primary,
-        prs::prs_dismiss,
-        git_ops::git_commit,
-        git_ops::git_push,
-        git_ops::git_create_branch,
-        git_ops::git_view_or_create_pr,
-        remote::remote_get_status,
-        remote::remote_set_config,
-        remote::remote_test_notification,
-        remote::remote_set_apns_config,
-        remote::remote_register_push_device,
-        remote::remote_unregister_push_device,
-        remote::remote_push_test,
-        remote::remote_push_capability,
-        sync::sync_get_status,
-        sync::sync_set_config,
-        sync::sync_run_now,
-        browser::browser_open,
-        browser::browser_content_blocking,
-        browser::browser_set_site_blocking,
-        browser::browser_navigate,
-        browser::browser_back,
-        browser::browser_forward,
-        browser::browser_reload,
-        browser::browser_stop,
-        browser::browser_set_bounds,
-        browser::browser_focus,
-        browser::browser_set_theme,
-        browser::browser_close,
-        browser::browser_fill_credentials,
-        browser::browser_screenshot,
-        browser::browser_evaluate,
-        browser::browser_list_tabs,
-        browser::browser_open_for_session,
-        browser::browser_snapshot,
-        browser::browser_find,
-        browser::browser_get_text,
-        browser::browser_extract,
-        browser::browser_act,
-        browser_import::browser_chrome_profiles,
-        browser_import::browser_import_chrome_history,
-        routines::routines_list,
-        routines::routines_upsert,
-        routines::routines_delete,
-        routines::routines_set_enabled,
-        routines::routines_run_now,
-        routines::routines_reset_session,
-        usage::usage_summary,
-        usage::usage_remaining,
-        usage::usage_router_cost,
-        activity::activity_summary
-    ])
+#[cfg(test)]
+mod tests {
+    /// The person mark is the only thing that makes a chat reference a read
+    /// grant, so who can mint it is an invariant, not a convention. Only the
+    /// handlers that take fresh text from the person's own composer do.
+    #[test]
+    fn person_attestation_is_minted_only_by_the_person_handlers() {
+        fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    rust_files(&path, out);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&src, &mut files);
+        let mut mints: Vec<(String, usize)> = Vec::new();
+        let mut test_minters: Vec<String> = Vec::new();
+        for file in files {
+            let relative = file
+                .strip_prefix(&src)
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            let text = std::fs::read_to_string(&file).unwrap();
+            if relative == "ipc/mod.rs" {
+                continue;
+            }
+            // The test minter appears only inside unit-test code.
+            if text.contains("attest_person_for_tests") {
+                test_minters.push(relative.clone());
+            }
+            let count = text.matches("attest_person()").count();
+            if count > 0 {
+                mints.push((relative, count));
+            }
+        }
+        mints.sort();
+        test_minters.sort();
+        assert_eq!(
+            test_minters,
+            vec![
+                "providers/session_service.rs".to_string(),
+                "providers/session_service_steering_tests.rs".to_string(),
+            ],
+            "the test minter may be used only by the unit tests of the provider service"
+        );
+        assert_eq!(
+            mints,
+            vec![
+                ("ipc/providers.rs".to_string(), 3),
+                ("ipc/session.rs".to_string(), 1),
+            ],
+            "launch, send-input, steer-input and a typed multitask prompt are the only person calls"
+        );
+    }
 }

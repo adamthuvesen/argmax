@@ -85,7 +85,13 @@ export const VERIFICATION_BARRIERS = Object.freeze({
   chatResumeStream: "chat-resume-stream",
   chatResumeTool: "chat-resume-tool",
   sessionMoveScheduled: "session-move-scheduled",
+  forkSourceHold: "fork-source-hold",
 });
+
+export const VERIFICATION_FORK_CHILD_CONVERSATION_ID =
+  "argmax-verification-fork-child-conversation";
+// A merge message ends with `Argmax fork merge <id>` (providers/fork_merge.rs).
+export const VERIFICATION_FORK_MERGE_MARKER = "Argmax fork merge ";
 
 export const VERIFICATION_SCENARIOS = Object.freeze({
   chatResumeFirst: {
@@ -151,6 +157,66 @@ export const VERIFICATION_SCENARIOS = Object.freeze({
     prompt: "[argmax-verification:persistent-cursor-subagent:second]",
     visibleText: "Verification persistent Cursor child follow-up response.",
     resumeConversationId: VERIFICATION_CONVERSATION_ID,
+  },
+  composerSource: {
+    prompt: "[argmax-verification:composer-source]",
+    taskLabel: "Reference source alpha",
+    visibleText: "Verification composer source complete.",
+  },
+  // Chats in and around a branch that a worktree already holds (workspace-settings).
+  occupiedSeed: {
+    prompt: "[argmax-verification:occupied-seed]",
+    visibleText: "Verification occupied branch seed complete.",
+  },
+  occupiedShare: {
+    prompt: "[argmax-verification:occupied-share]",
+    visibleText: "Verification occupied branch share complete.",
+  },
+  occupiedWorktree: {
+    prompt: "[argmax-verification:occupied-worktree]",
+    visibleText: "Verification occupied branch worktree complete.",
+  },
+  occupiedFollowUp: {
+    prompt: "[argmax-verification:occupied-follow-up]",
+    visibleText: "Verification occupied branch follow-up complete.",
+  },
+  occupiedCheckout: {
+    prompt: "[argmax-verification:occupied-checkout]",
+    visibleText: "Verification unoccupied branch checkout complete.",
+  },
+  workspaceSettings: {
+    prompt: "[argmax-verification:workspace-settings]",
+    taskLabel: "Settings seed gamma",
+    visibleText: "Verification workspace settings seed complete.",
+  },
+  composerBackground: {
+    prompt: "[argmax-verification:composer-background]",
+    visibleText: "Verification background launch complete.",
+  },
+  forkTurnOne: {
+    prompt: "[argmax-verification:fork:one]",
+    taskLabel: "Fork source beta",
+    visibleText: "Verification fork turn one complete.",
+  },
+  forkTurnTwo: {
+    prompt: "[argmax-verification:fork:two]",
+    visibleText: "Verification fork turn two complete.",
+  },
+  forkHold: {
+    prompt: "[argmax-verification:fork:hold]",
+    startedText: "Verification fork hold started.",
+    visibleText: "Verification fork hold complete.",
+  },
+  forkChild: {
+    prompt: "[argmax-verification:fork:child]",
+    visibleText: "Verification fork child complete.",
+  },
+  forkChildFollowUp: {
+    prompt: "[argmax-verification:fork:child-follow-up]",
+    visibleText: "Verification fork child follow-up complete.",
+  },
+  forkMerge: {
+    visibleText: "Verification fork merge received.",
   },
   cancellation: {
     prompt: "[argmax-verification:cancellation]",
@@ -1181,6 +1247,59 @@ async function runProviderError() {
   process.exitCode = VERIFICATION_SCENARIOS.providerError.exitCode;
 }
 
+// The workflow scenarios assert on what the provider was actually told, so
+// these turns log their prompt next to the invocation line.
+async function recordPrompt(prompt) {
+  const path = process.env.ARGMAX_VERIFICATION_LOG;
+  if (!path) return;
+  await appendFile(path, `${JSON.stringify({ prompt })}\n`, "utf8");
+}
+
+async function runQuickTurn(prompt, text, conversationId = VERIFICATION_CONVERSATION_ID) {
+  await recordPrompt(prompt);
+  await emitInit(conversationId);
+  await emitTextDelta(text, conversationId);
+  await emitAssistant([{ type: "text", text }], `verification-workflow-${text.length}`, conversationId);
+  await emitSuccess(text, conversationId);
+}
+
+async function runForkHold(prompt) {
+  await recordPrompt(prompt);
+  await emitInit();
+  await emitTextDelta(VERIFICATION_SCENARIOS.forkHold.startedText);
+  await waitAtBarrier(VERIFICATION_BARRIERS.forkSourceHold);
+  const text = VERIFICATION_SCENARIOS.forkHold.visibleText;
+  await emitAssistant([{ type: "text", text }], "verification-fork-hold");
+  await emitSuccess(text);
+}
+
+// Dispatch order matters: a merge message and a portable child prompt both
+// quote earlier turns, so the more specific signature is matched first.
+function workflowTurn(prompt) {
+  const scenarios = VERIFICATION_SCENARIOS;
+  if (prompt.includes(VERIFICATION_FORK_MERGE_MARKER)) {
+    return () => runQuickTurn(prompt, scenarios.forkMerge.visibleText);
+  }
+  if (prompt.includes(scenarios.forkChildFollowUp.prompt)) {
+    return () => runQuickTurn(prompt, scenarios.forkChildFollowUp.visibleText, VERIFICATION_FORK_CHILD_CONVERSATION_ID);
+  }
+  if (prompt.includes(scenarios.forkChild.prompt)) {
+    return () => runQuickTurn(prompt, scenarios.forkChild.visibleText, VERIFICATION_FORK_CHILD_CONVERSATION_ID);
+  }
+  if (prompt.includes(scenarios.forkHold.prompt)) return () => runForkHold(prompt);
+  if (prompt.includes(scenarios.forkTurnTwo.prompt)) return () => runQuickTurn(prompt, scenarios.forkTurnTwo.visibleText);
+  if (prompt.includes(scenarios.forkTurnOne.prompt)) return () => runQuickTurn(prompt, scenarios.forkTurnOne.visibleText);
+  if (prompt.includes(scenarios.composerBackground.prompt)) return () => runQuickTurn(prompt, scenarios.composerBackground.visibleText);
+  if (prompt.includes(scenarios.occupiedFollowUp.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedFollowUp.visibleText);
+  if (prompt.includes(scenarios.occupiedCheckout.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedCheckout.visibleText);
+  if (prompt.includes(scenarios.occupiedSeed.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedSeed.visibleText);
+  if (prompt.includes(scenarios.occupiedShare.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedShare.visibleText);
+  if (prompt.includes(scenarios.occupiedWorktree.prompt)) return () => runQuickTurn(prompt, scenarios.occupiedWorktree.visibleText);
+  if (prompt.includes(scenarios.workspaceSettings.prompt)) return () => runQuickTurn(prompt, scenarios.workspaceSettings.visibleText);
+  if (prompt.includes(scenarios.composerSource.prompt)) return () => runQuickTurn(prompt, scenarios.composerSource.visibleText);
+  return null;
+}
+
 export async function runProviderFixture(args = process.argv.slice(2)) {
   await recordInvocation(args);
   if (args.length === 1 && args[0] === "--version") {
@@ -1209,8 +1328,14 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
   }
 
   const prompt = await promptFrom(args);
-  if (args.includes("text") && !prompt.includes("[argmax-verification:")) {
+  const workflow = workflowTurn(prompt);
+  // A one-shot title request quotes the prompt; it gets a title, not a turn.
+  if (args.includes("text") && (!prompt.includes("[argmax-verification:") || workflow)) {
     process.stdout.write("Argmax Verification Chat\n");
+    return;
+  }
+  if (workflow) {
+    await workflow();
     return;
   }
   if (prompt.includes(VERIFICATION_SCENARIOS.chatResumeFirst.prompt)) {

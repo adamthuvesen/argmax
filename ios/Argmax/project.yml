@@ -133,7 +133,11 @@ targets:
   ArgmaxTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [Tests]
+    sources:
+      - Tests
+      - path: ../../src/shared/timelineSemanticFixtures.json
+        buildPhase: resources
+        group: Shared
     dependencies:
       - target: Argmax
     settings:

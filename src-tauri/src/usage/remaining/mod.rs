@@ -22,6 +22,8 @@ mod cursor;
 mod grok;
 mod http;
 mod opencode;
+#[cfg(feature = "verification")]
+pub mod verification;
 mod windows;
 
 pub use windows::{
@@ -459,7 +461,7 @@ pub mod tests {
     fn one_http_failure_does_not_blank_the_others() {
         let dir = tempfile::tempdir().expect("temp");
         let home = dir.path();
-        fs_write_opencode_go(home);
+        fs_write_opencode_openrouter(home);
         let mut source = FakeSource::new(home.to_path_buf());
         source
             .env
@@ -468,13 +470,7 @@ pub mod tests {
         source = source.with_http(
             opencode::USAGE_URL,
             200,
-            json!({
-                "usage": {
-                    "rolling": { "status": "ok", "percent": 10, "resetsAt": "2026-09-06T16:00:00Z" },
-                    "weekly": { "status": "ok", "percent": 20, "resetsAt": "2026-09-13T00:00:00Z" },
-                    "monthly": { "status": "ok", "percent": 30, "resetsAt": "2026-10-01T00:00:00Z" }
-                }
-            }),
+            json!({ "data": { "limit": 100, "limit_remaining": 40, "usage": 60 } }),
         );
         let snapshot = fetch_remaining(Arc::new(source));
         let claude = snapshot
@@ -483,21 +479,21 @@ pub mod tests {
             .find(|row| row.provider == ProviderId::Claude)
             .expect("claude");
         assert_eq!(claude.kind, UsagePlanKind::Error);
-        let go = snapshot
+        let opencode = snapshot
             .providers
             .iter()
             .find(|row| row.provider == ProviderId::Opencode)
             .expect("opencode");
-        assert_eq!(go.kind, UsagePlanKind::Subscription);
-        assert_eq!(go.windows.len(), 3);
+        assert_eq!(opencode.kind, UsagePlanKind::Subscription);
+        assert_eq!(opencode.windows.len(), 1);
     }
 
-    fn fs_write_opencode_go(home: &Path) {
+    fn fs_write_opencode_openrouter(home: &Path) {
         let dir = home.join(".local/share/opencode");
         std::fs::create_dir_all(&dir).expect("dir");
         std::fs::write(
             dir.join("auth.json"),
-            r#"{"opencode-go":{"type":"key","key":"oc-go-test"}}"#,
+            r#"{"openrouter":{"type":"api","key":"sk-or-test"}}"#,
         )
         .expect("auth");
     }

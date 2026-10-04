@@ -1,7 +1,7 @@
 // Settings → Remote access: pairing status, config writes, the ntfy test
 // push, and the APNs key and paired phones. Status and the config writes are
 // desktop-only — they hand out the pairing token and take a filesystem path
-// for the auth key — so they sit in REMOTE_UNSUPPORTED_CHANNELS. Pairing
+// for the auth key — so they sit in the catalogue desktop policy. Pairing
 // itself does not: the phone is the only thing that knows its own APNs device
 // token, so it registers, unregisters, and tests over the bridge.
 

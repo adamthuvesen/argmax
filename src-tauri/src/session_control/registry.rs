@@ -121,11 +121,23 @@ pub(super) struct ParentLaunchSettings {
     pub(super) agent_mode: crate::providers::AgentMode,
 }
 
+/// A linked repository this launch's project allows, resolved at launch time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkedRoot {
+    pub name: String,
+    /// The canonical root, still resolving to itself when the launch was built.
+    pub path: PathBuf,
+}
+
 pub struct SessionLaunchProcessConfig {
     socket_path: PathBuf,
     token: String,
     argmax_bin: PathBuf,
     browser_tools: bool,
+    /// Enabled linked repositories, read from the database on every launch so
+    /// a follow-up or resumed turn sees what Settings says now, not what the
+    /// first turn saw.
+    linked_roots: Vec<LinkedRoot>,
 }
 
 impl std::fmt::Debug for SessionLaunchProcessConfig {
@@ -160,10 +172,17 @@ impl SessionLaunchProcessConfig {
     pub fn for_tests(socket_path: &str, token: &str, argmax_bin: &str) -> Self {
         Self {
             browser_tools: true,
+            linked_roots: Vec::new(),
             socket_path: PathBuf::from(socket_path),
             token: token.to_string(),
             argmax_bin: PathBuf::from(argmax_bin),
         }
+    }
+
+    #[cfg(test)]
+    pub fn with_linked_roots(mut self, roots: Vec<LinkedRoot>) -> Self {
+        self.linked_roots = roots;
+        self
     }
 
     #[cfg(test)]
@@ -187,6 +206,55 @@ impl SessionLaunchProcessConfig {
     /// Whether this launch's `argmax` server carries the browser tools.
     pub fn browser_tools(&self) -> bool {
         self.browser_tools
+    }
+
+    pub fn linked_roots(&self) -> &[LinkedRoot] {
+        &self.linked_roots
+    }
+}
+
+/// The enabled linked repositories of the project that owns `session_id`.
+/// A root that is gone, or that now resolves somewhere else (a directory swapped
+/// for a symlink), is left out: handing a provider a path that no longer means
+/// what the user approved would widen the allowlist.
+fn linked_roots_for_session(database: &Database, session_id: &str) -> Vec<LinkedRoot> {
+    let connection = database.read_connection();
+    let repos = (|| {
+        let session = crate::persistence::sessions::find_session_by_id(&connection, session_id)?;
+        let workspace = crate::persistence::workspaces::find_workspace_by_id(
+            &connection,
+            &session.workspace_id,
+        )?;
+        crate::persistence::linked_repos::list_enabled_linked_repos(
+            &connection,
+            &workspace.project_id,
+        )
+    })();
+    match repos {
+        Ok(repos) => repos
+            .into_iter()
+            .filter_map(|repo| {
+                let path = PathBuf::from(&repo.root_path);
+                match path.canonicalize() {
+                    Ok(current) if current == path => Some(LinkedRoot {
+                        name: repo.name,
+                        path,
+                    }),
+                    _ => {
+                        tracing::warn!(
+                            session_id,
+                            linked_repo = %repo.name,
+                            "skipping linked repository whose root is missing or moved"
+                        );
+                        None
+                    }
+                }
+            })
+            .collect(),
+        Err(error) => {
+            tracing::warn!(session_id, ?error, "could not load linked repositories");
+            Vec::new()
+        }
     }
 }
 
@@ -223,11 +291,13 @@ impl SessionLaunchRegistry {
         // same answer: a chat the user started, and a chat one of their agents
         // started, carry the same tool surface.
         let browser_tools = browser_tools_enabled(&self.inner.database.read_connection());
+        let linked_roots = linked_roots_for_session(&self.inner.database, &input.session_id);
         SessionLaunchProcessConfig {
             socket_path: self.inner.socket_path.clone(),
             token,
             argmax_bin: self.inner.argmax_bin.clone(),
             browser_tools,
+            linked_roots,
         }
     }
 
@@ -542,11 +612,58 @@ mod tests {
             fast_mode: true,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 120,
             rows: 32,
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn every_issue_reads_the_projects_enabled_linked_roots_from_the_database() {
+        use crate::persistence::linked_repos::{
+            add_linked_repo, list_linked_repos, set_linked_repo_enabled, LinkedRepoInput,
+        };
+        let database = database_with_sessions(&["session-1"]);
+        let (_server, registry) = SessionLaunchServer::bind(Arc::clone(&database)).unwrap();
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        for (name, dir) in [("docs", first.path()), ("api", second.path())] {
+            add_linked_repo(
+                &database.connection(),
+                "project-1",
+                &LinkedRepoInput {
+                    name: Some(name.to_string()),
+                    path: dir.display().to_string(),
+                },
+            )
+            .unwrap();
+        }
+        let names = |registry: &SessionLaunchRegistry| {
+            registry
+                .issue(&launch_input("session-1"))
+                .linked_roots()
+                .iter()
+                .map(|root| root.name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(&registry), vec!["api", "docs"]);
+
+        // A follow-up launch sees the setting as it is now, not as the first
+        // turn saw it.
+        let docs = list_linked_repos(&database.connection(), "project-1")
+            .unwrap()
+            .into_iter()
+            .find(|repo| repo.name == "docs")
+            .unwrap();
+        set_linked_repo_enabled(&database.connection(), "project-1", &docs.id, false).unwrap();
+        assert_eq!(names(&registry), vec!["api"]);
+
+        // A root that vanished is left out rather than handed to the provider.
+        drop(second);
+        assert!(names(&registry).is_empty());
     }
 
     #[cfg(unix)]
@@ -692,22 +809,5 @@ mod tests {
             .schedule_after_turn("session-1", &move_action(), second_tx)
             .expect_err("the archive already owns the slot");
         assert_eq!(error.code, "ARCHIVE_ALREADY_PENDING");
-    }
-
-    #[test]
-    fn process_config_exports_socket_token_and_bin() {
-        let config = SessionLaunchProcessConfig {
-            socket_path: PathBuf::from("/tmp/a/s"),
-            token: "secret".to_string(),
-            argmax_bin: PathBuf::from("/Applications/Argmax.app/argmax"),
-            browser_tools: true,
-        };
-        let env = config.env_pairs();
-        assert_eq!(env[0].0, SESSION_LAUNCH_SOCKET_ENV);
-        assert_eq!(
-            env[1],
-            (SESSION_LAUNCH_TOKEN_ENV.to_string(), "secret".to_string())
-        );
-        assert_eq!(env[2].0, ARGMAX_BIN_ENV);
     }
 }

@@ -3,6 +3,7 @@ import { commitChatCycle, stepChatCycle } from "../lib/chatCycle.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { listVisibleSidebarWorkspaceIds, selectedSidebarWorkspaceId } from "../lib/sidebarOrder.js";
 import { isTypingTarget } from "../lib/typingTarget.js";
+import { CHAT_CYCLE_CODES } from "../../shared/menuKeybindings.js";
 import type { MenuCommand } from "../../shared/types.js";
 
 interface GlobalKeybindingArgs {
@@ -64,9 +65,6 @@ function parseDigitShortcut(event: KeyboardEvent): number | null {
  * session jumping, new session, pane close, cheat sheet, search) that do not
  * conflict with standard text-editing shortcuts in inputs/textareas.
  */
-
-/** The key under Esc: `Backquote` on an ANSI Mac, `IntlBackslash` on an ISO one. */
-const CHAT_CYCLE_CODES = new Set(["Backquote", "IntlBackslash"]);
 
 export function useGlobalKeybindings({
   onMenuCommand,

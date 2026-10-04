@@ -369,6 +369,7 @@ fn credential(
         fast_mode: false,
         resume_conversation_id: None,
         resume_fork: false,
+        continuity: None,
         permission_mode: PermissionMode::AutoApprove,
         agent_mode: AgentMode::Auto,
         cols: 120,
@@ -580,7 +581,7 @@ async fn the_current_coordinator_is_exempt_from_the_lifetime_launch_cap_a_member
             Some("session-coordinator"),
         )
         .expect("point coordinator");
-        for index in 0..10 {
+        for index in 0..argmax_lib::session_control::MAX_LAUNCHES_PER_SESSION {
             let child_id = format!("session-coordinator-child-{index}");
             persist_session(
                 &connection,
@@ -645,13 +646,13 @@ async fn the_current_coordinator_is_exempt_from_the_lifetime_launch_cap_a_member
         json!({
             "version": 1,
             "token": coordinator_token,
-            "action": { "launch": { "prompt": "An eleventh piece" } },
+            "action": { "launch": { "prompt": "One piece past the cap" } },
         }),
     )
     .await;
     assert!(
         coordinator_response.get("launched").is_some(),
-        "the coordinator's eleventh launch must succeed: {coordinator_response}"
+        "the coordinator's launch past the cap must succeed: {coordinator_response}"
     );
 
     let (member_socket, member_token) = credential(
@@ -664,7 +665,7 @@ async fn the_current_coordinator_is_exempt_from_the_lifetime_launch_cap_a_member
         json!({
             "version": 1,
             "token": member_token,
-            "action": { "launch": { "prompt": "An eleventh piece" } },
+            "action": { "launch": { "prompt": "One piece past the cap" } },
         }),
     )
     .await;

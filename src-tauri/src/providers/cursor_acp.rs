@@ -39,6 +39,7 @@ use super::acp::{
     AcpClient, AcpPermissionDecision, AcpPermissionHandler, AcpPermissionRequest,
     AcpQuestionHandler, AcpQuestionRequest,
 };
+use super::adapters::cursor_fast_mode;
 use super::environment::build_provider_environment;
 use super::normalizer::todo::is_todo_tool;
 use super::normalizer::ProviderOutputStream;
@@ -717,7 +718,11 @@ fn cursor_option_changes(options: &[Value], input: &ProviderLaunchInput) -> Vec<
         let is_effort = option.get("category").and_then(Value::as_str) == Some("thought_level")
             && values.contains(&"high");
         let wanted = match id {
-            "fast" => Some(if input.fast_mode { "true" } else { "false" }),
+            "fast" => Some(if cursor_fast_mode(&input.model_id, input.fast_mode) {
+                "true"
+            } else {
+                "false"
+            }),
             "optimize_for" => input
                 .model_id
                 .strip_prefix("auto-smart[optimize_for=")
@@ -1733,6 +1738,7 @@ mod tests {
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 80,
@@ -2204,24 +2210,6 @@ mod tests {
     }
 
     #[test]
-    fn non_terminal_tool_updates_are_dropped() {
-        let mut translation = TurnTranslation::default();
-        translation.translate(&update(json!({
-            "sessionUpdate": "tool_call",
-            "toolCallId": "tool-1",
-            "kind": "execute",
-            "status": "pending",
-            "rawInput": {},
-        })));
-        let in_progress = translation.translate(&update(json!({
-            "sessionUpdate": "tool_call_update",
-            "toolCallId": "tool-1",
-            "status": "in_progress",
-        })));
-        assert!(in_progress.is_empty());
-    }
-
-    #[test]
     fn unknown_updates_translate_to_nothing() {
         let mut translation = TurnTranslation::default();
         for kind in [
@@ -2520,11 +2508,6 @@ mod tests {
     }
 
     #[test]
-    fn agent_mode_maps_onto_cursors_acp_mode_ids() {
-        assert_eq!(acp_mode_id(), "agent");
-    }
-
-    #[test]
     fn cursor_data_dir_matches_the_environment_passed_to_the_child() {
         let environment = vec![(
             "CURSOR_DATA_DIR".to_owned(),
@@ -2657,9 +2640,19 @@ mod tests {
 
     #[test]
     fn fast_follows_the_chats_fast_mode() {
-        let mut input = launch_input("composer-2.5");
-        assert!(changes("composer-2.5", &input).is_empty());
+        let mut input = launch_input("claude-opus-5-5-medium");
+        assert!(changes("claude-opus-5-5", &input).is_empty());
         input.fast_mode = true;
+        assert_eq!(
+            changes("claude-opus-5-5", &input),
+            [("fast".into(), "true".into())]
+        );
+    }
+
+    #[test]
+    fn composer_runs_fast_even_when_the_chat_asks_for_standard() {
+        let input = launch_input("composer-2.5");
+        assert!(!input.fast_mode);
         assert_eq!(
             changes("composer-2.5", &input),
             [("fast".into(), "true".into())]
@@ -2693,51 +2686,6 @@ mod tests {
         // No effort chosen keeps Cursor's default.
         input.reasoning_effort = None;
         assert!(changes("claude-opus-5-5", &input).is_empty());
-    }
-
-    #[test]
-    fn resumed_cursor_selection_can_lower_and_restore_effort_and_model() {
-        for (model_id, advertised, effort, expected_option) in [
-            (
-                "claude-opus-5-5-medium",
-                "claude-opus-5-5",
-                ReasoningEffort::High,
-                ("effort", "high"),
-            ),
-            (
-                "claude-opus-5-5-medium",
-                "claude-opus-5-5",
-                ReasoningEffort::Low,
-                ("effort", "low"),
-            ),
-            (
-                "claude-opus-5-5-medium",
-                "claude-opus-5-5",
-                ReasoningEffort::High,
-                ("effort", "high"),
-            ),
-            (
-                "grok-4.7-medium",
-                "grok-4.7",
-                ReasoningEffort::Low,
-                ("reasoning_effort", "low"),
-            ),
-            (
-                "claude-opus-5-5-medium",
-                "claude-opus-5-5",
-                ReasoningEffort::High,
-                ("effort", "high"),
-            ),
-        ] {
-            let mut input = launch_input(model_id);
-            input.resume_conversation_id = Some("native-conversation".into());
-            input.reasoning_effort = Some(effort);
-            assert!(cursor_model_matches(advertised, &input));
-            assert_eq!(
-                changes(advertised, &input),
-                [(expected_option.0.into(), expected_option.1.into())]
-            );
-        }
     }
 
     #[test]

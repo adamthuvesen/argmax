@@ -8,12 +8,22 @@ import {
   readStoredLinkTarget,
   type LinkTarget
 } from "../../lib/linkTarget.js";
+import {
+  backgroundSendChordProblem,
+  DEFAULT_BACKGROUND_SEND_SHORTCUT,
+  resetBackgroundSendShortcut,
+  writeBackgroundSendShortcut
+} from "../../lib/backgroundSend.js";
+import { formatChord } from "../../lib/shortcutChord.js";
+import { useBackgroundSendShortcut } from "../../hooks/useBackgroundSendShortcut.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
 import {
   ESCAPE_STOPS_CHAT_KEY,
   useBooleanUiPreference,
   type FollowUpDelivery
 } from "../../lib/uiPreferences.js";
+import { ShortcutField } from "./ShortcutField.js";
+import { WindowSnapshotSettings } from "./WindowSnapshotSettings.js";
 import {
   SegmentedControl,
   SettingGroup,
@@ -61,6 +71,7 @@ export function GeneralSettings({
     ESCAPE_STOPS_CHAT_KEY,
     false
   );
+  const backgroundSendShortcut = useBackgroundSendShortcut();
   const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
 
@@ -105,6 +116,23 @@ export function GeneralSettings({
                 { value: "embedded", label: "In grid" },
                 { value: "full", label: "Full view" }
               ]}
+            />
+          }
+        />
+        <SettingRow
+          label="Start in background"
+          description={`Send a new chat's prompt and stay on the draft. Default ${formatChord(DEFAULT_BACKGROUND_SEND_SHORTCUT)}.`}
+          control={
+            <ShortcutField
+              ariaLabel="Start in background shortcut"
+              value={backgroundSendShortcut}
+              defaultValue={DEFAULT_BACKGROUND_SEND_SHORTCUT}
+              validate={backgroundSendChordProblem}
+              onChange={(accelerator) =>
+                accelerator === DEFAULT_BACKGROUND_SEND_SHORTCUT
+                  ? resetBackgroundSendShortcut()
+                  : writeBackgroundSendShortcut(accelerator)
+              }
             />
           }
         />
@@ -179,6 +207,8 @@ export function GeneralSettings({
           <SettingNote role="status">{testNotificationStatus}</SettingNote>
         ) : null}
       </SettingGroup>
+
+      <WindowSnapshotSettings />
 
       <SettingGroup id="settings-power" label="Power">
         <SettingRow

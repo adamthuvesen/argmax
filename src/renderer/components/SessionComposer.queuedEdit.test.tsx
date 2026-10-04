@@ -121,4 +121,88 @@ describe("SessionComposer queued follow-up editing", () => {
     ).toBeInTheDocument();
     expect(onSendQueuedMessageNow).not.toHaveBeenCalled();
   });
+
+  it("tags a row bound for another provider, cannot steer it, and still multitasks it", () => {
+    renderConversation(baseSession({ state: "running", provider: "codex" }), [], {
+      pendingMessages: [{ ...queued[0], provider: "claude", modelId: "claude-sonnet-5-5", modelLabel: "Sonnet 5.5" }],
+      onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined),
+      onSendQueuedMessageNow: vi.fn().mockResolvedValue(undefined),
+      onMultitask: vi.fn().mockResolvedValue(undefined)
+    });
+
+    expect(screen.getByText("Then Claude")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Steer queued follow-up/ })).toBeNull();
+    // The backend runs the multitask with the row's own provider, model, effort
+    // and fast mode, so the action stays.
+    expect(screen.getByRole("button", { name: /^Multitask queued follow-up/ })).toBeInTheDocument();
+  });
+
+  it("shows no provider tag on a legacy row, or one for the chat's own provider", () => {
+    renderConversation(baseSession({ state: "running", provider: "codex" }), [], {
+      pendingMessages: [
+        queued[0],
+        { ...queued[0], id: "pending-2", content: "Same provider", provider: "codex" }
+      ],
+      onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined)
+    });
+
+    expect(screen.queryByText(/^Then /)).toBeNull();
+  });
+
+  it("brings the provider, model and effort back with the text when a row is edited", async () => {
+    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    renderConversation(baseSession({ state: "running", provider: "codex" }), [], {
+      pendingMessages: [
+        {
+          ...queued[0],
+          provider: "claude",
+          modelLabel: "Sonnet 5.5",
+          modelId: "claude-sonnet-5-5",
+          reasoningEffort: "high"
+        }
+      ],
+      onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined),
+      onSendSessionInput
+    });
+
+    fireEvent.click(editButton());
+    await waitFor(() => expect(prompt().value).toBe("Fix the README typo"));
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toContain("Sonnet 5.5");
+
+    fireEvent.keyDown(prompt(), { key: "Enter" });
+    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(1));
+    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({
+      provider: "claude",
+      modelId: "claude-sonnet-5-5",
+      reasoningEffort: "high"
+    });
+  });
+
+  it("leaves the picker alone when a legacy row is edited", async () => {
+    renderConversation(baseSession({ state: "running", provider: "codex" }), [], {
+      pendingMessages: queued,
+      onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined)
+    });
+    const chipBefore = screen.getByRole("button", { name: "Chat model" }).textContent;
+
+    fireEvent.click(editButton());
+
+    await waitFor(() => expect(prompt().value).toBe("Fix the README typo"));
+    expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe(chipBefore);
+  });
+
+  it("keeps chat references in an edited row, since they are part of its text", async () => {
+    const content = "compare with [Billing](argmax://chat/session-9?v=1) please";
+    renderConversation(baseSession({ state: "running" }), [], {
+      pendingMessages: [{ ...queued[0], content }],
+      onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined)
+    });
+
+    // The lane reads the chat by its title; edit hands the link itself back.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued follow-up: compare with Billing please" })
+    );
+
+    await waitFor(() => expect(prompt().value).toBe(content));
+  });
 });

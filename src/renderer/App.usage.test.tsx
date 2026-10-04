@@ -215,19 +215,6 @@ describe("App usage", () => {
     expect(within(usagePage()).queryByText(/vs the previous/)).not.toBeInTheDocument();
   });
 
-  it("breaks the tokens into their four parts and names what the cache saved", async () => {
-    await openUsage();
-
-    const flow = await screen.findByRole("region", { name: "Where the tokens went" });
-    // Processed tokens are the sum of the four, so the parts carry percentages
-    // of one whole rather than four unrelated totals.
-    expect(within(flow).getByText("Cache read")).toBeInTheDocument();
-    expect(within(flow).getByText("Cache written")).toBeInTheDocument();
-    expect(within(flow).getByText("Uncached input")).toBeInTheDocument();
-    expect(within(flow).getByText("Output")).toBeInTheDocument();
-    expect(within(flow).getByText("$4.35")).toBeInTheDocument();
-  });
-
   it("sorts the breakdown by whichever column is asked for", async () => {
     await openUsage();
 

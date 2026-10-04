@@ -300,6 +300,99 @@ pub static PROJECT_CHECKS_COLUMNS: phf::Map<&'static str, &'static [&'static str
     ] as &'static [&'static str],
 };
 
+// v62: PR watches. One row per session and PR, with the cursors the gh
+// poller's watch pass advances (docs/gh.md#pr-watch).
+pub static PR_WATCHES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "pr_watches" => &[
+        "cleanup_on_merge", "created_at", "head_sha", "id", "last_pr_updated_at",
+        "not_found_count", "notice_seq", "pending_ends_watch", "pending_notice_body",
+        "pending_notice_id", "pr_number", "project_id", "reported_ready_sha",
+        "seen_check_failures", "seen_feedback_ids", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// v63 gives `pr_watches` its conflict cursor, adds the linked-repository table,
+// and gives `projects` and `workspaces` one nullable column each.
+pub static WORKSPACE_IMPROVEMENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "archive_on_merge", "branch_template", "check_commands_json", "created_at",
+        "current_branch", "default_branch", "id", "name", "repo_path", "repo_remote_name",
+        "repo_remote_owner", "setup_command", "ui_preferences_json", "updated_at",
+        "worktree_location",
+    ] as &'static [&'static str],
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "created_at", "dirty", "icon",
+        "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path",
+        "pinned", "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+    "pr_watches" => &[
+        "cleanup_on_merge", "conflict_state", "created_at", "head_sha", "id",
+        "last_pr_updated_at", "not_found_count", "notice_seq", "pending_ends_watch",
+        "pending_notice_body", "pending_notice_id", "pr_number", "project_id",
+        "reported_ready_sha", "seen_check_failures", "seen_feedback_ids", "session_id",
+        "updated_at",
+    ] as &'static [&'static str],
+    "project_linked_repos" => &[
+        "created_at", "enabled", "id", "name", "project_id", "root_path", "updated_at",
+    ] as &'static [&'static str],
+};
+
+// v64: launch receipts (a retried `session_launch` finds its first answer) and
+// the provider a queued follow-up should run under. `pending_messages` is
+// listed in full because the head-shape check reads the newest map per table.
+pub static LAUNCH_RECEIPTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "launch_receipts" => &[
+        "caller_session_id", "client_request_id", "created_at", "error_code",
+        "error_message", "request_hash", "result_json", "session_id", "status",
+        "updated_at", "workspace_id",
+    ] as &'static [&'static str],
+    "pending_messages" => &[
+        "agent_mode", "agent_references_json", "attachments_json", "content",
+        "delivery_state", "fast_mode", "id", "model_id", "model_label",
+        "origin_json", "position", "provider", "queued_at", "reasoning_effort",
+        "session_id", "updated_at",
+    ] as &'static [&'static str],
+    "session_messages" => &[
+        "body", "created_at", "delivered_at", "from_session_id", "id", "kind",
+        "to_session_id", "wake_due_at",
+    ] as &'static [&'static str],
+};
+
+// v65: native provider continuity (docs/providers.md#native-continuity-and-forks).
+pub static NATIVE_CONTINUITY_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "provider_bindings" => &[
+        "config_identity", "conversation_id", "created_at", "delivered_through_event_id", "id",
+        "invalid_reason", "pending_since_event_id", "provider", "session_id", "state",
+        "updated_at", "working_dir",
+    ] as &'static [&'static str],
+    "provider_binding_turns" => &["binding_id", "provider_turn_id", "user_event_id"] as &'static [&'static str],
+    "session_forks" => &[
+        "boundary_event_id", "child_base_event_id", "child_session_id", "created_at", "id",
+        "native_conversation_id", "native_mode", "native_provider", "native_turn_id",
+        "source_last_event_id", "source_session_id", "workspace_mode",
+    ] as &'static [&'static str],
+    "fork_merges" => &[
+        "created_at", "fork_id", "from_event_id", "id", "marker_id", "outcome",
+        "through_event_id",
+    ] as &'static [&'static str],
+};
+
+// v66: who wrote a prompt (`persistence/authorship.rs`). Both tables are listed
+// in full because the head-shape check reads the newest map per table.
+pub static PROMPT_AUTHORSHIP_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "events" => &[
+        "created_at", "id", "message", "payload_json", "prompt_author", "session_id", "type",
+    ] as &'static [&'static str],
+    "pending_messages" => &[
+        "agent_mode", "agent_references_json", "attachments_json", "content",
+        "delivery_state", "fast_mode", "id", "model_id", "model_label",
+        "origin_json", "position", "prompt_author", "provider", "queued_at",
+        "reasoning_effort", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
 pub static SESSION_PR_MODEL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "gh_pull_requests" => &[
         "head_ref_name", "head_sha", "last_seen_check_state", "pr_created_at",
@@ -1142,7 +1235,130 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &ROUTER_ECONOMY_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 62,
+        name: "pr_watches",
+        up: crate::persistence::pr_watches::MIGRATION_SQL,
+        affected_tables: &["pr_watches"],
+        expected_columns: &PR_WATCHES_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 63,
+        name: "workspace_improvements",
+        up: WORKSPACE_IMPROVEMENTS,
+        affected_tables: &[
+            "projects",
+            "workspaces",
+            "pr_watches",
+            "project_linked_repos",
+        ],
+        expected_columns: &WORKSPACE_IMPROVEMENTS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 64,
+        name: "launch_receipts_and_pending_provider",
+        up: LAUNCH_RECEIPTS_AND_PENDING_PROVIDER,
+        affected_tables: &["launch_receipts", "pending_messages", "session_messages"],
+        expected_columns: &LAUNCH_RECEIPTS_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 65,
+        name: "native_continuity",
+        up: crate::persistence::continuity::MIGRATION_SQL,
+        affected_tables: &[
+            "provider_bindings",
+            "provider_binding_turns",
+            "session_forks",
+            "fork_merges",
+        ],
+        expected_columns: &NATIVE_CONTINUITY_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 66,
+        name: "prompt_authorship",
+        up: PROMPT_AUTHORSHIP,
+        affected_tables: &["events", "pending_messages"],
+        expected_columns: &PROMPT_AUTHORSHIP_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+// Linked repositories, configurable isolated-branch names, PR conflict notices
+// and the snooze shelf. One migration, four independent additions:
+// - `project_linked_repos`: named canonical roots a project's agents may read.
+//   `root_path` is the allowlist entry and is unique per project, as is `name`.
+// - `projects.branch_template`: the project's override of the global branch
+//   template. NULL means "use the global default".
+// - `pr_watches.conflict_state`: whether the last mergeable read reported a
+//   conflict. NULL until a pass has seen `MERGEABLE` or `CONFLICTING`, so
+//   `UNKNOWN` never invents a transition.
+// - `workspaces.snoozed_until`: an RFC 3339 instant the sidebar hides the row
+//   until. Display metadata only; it never changes execution state.
+const WORKSPACE_IMPROVEMENTS: &str = r#"
+CREATE TABLE project_linked_repos (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 40),
+  root_path TEXT NOT NULL CHECK (length(root_path) > 0),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (project_id, name),
+  UNIQUE (project_id, root_path)
+);
+CREATE INDEX idx_project_linked_repos_project ON project_linked_repos(project_id);
+
+ALTER TABLE projects ADD COLUMN branch_template TEXT;
+ALTER TABLE pr_watches ADD COLUMN conflict_state TEXT
+  CHECK (conflict_state IS NULL OR conflict_state IN ('clean', 'conflicting'));
+ALTER TABLE workspaces ADD COLUMN snoozed_until TEXT;
+"#;
+
+// A `session_launch` that carries a `clientRequestId` leaves one receipt per
+// (caller, key) before any budget, routing or provider work. `status` says
+// what a retry may do: `completed` replays `result_json`; `failed` means no
+// provider session accepted the launch, so the key may be tried again; `pending` is in
+// flight; `uncertain` means the process stopped (or the call was dropped)
+// mid-launch, so the provider may already have been paid and a retry must not
+// spend again. `session_id` is allocated up front so every state names it.
+// A queued follow-up may name a provider; NULL keeps the chat's current one.
+// `session_messages.wake_due_at` marks a completion row whose automatic wake of
+// the launcher has not been attempted yet. The coalescing window is in memory,
+// so boot reads this column to wake a launcher whose window died with the app.
+// Rows from before v64 stay NULL and are never woken for retroactively.
+const LAUNCH_RECEIPTS_AND_PENDING_PROVIDER: &str = r#"
+CREATE TABLE launch_receipts (
+  caller_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  client_request_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed', 'uncertain')),
+  session_id TEXT NOT NULL,
+  workspace_id TEXT,
+  result_json TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (caller_session_id, client_request_id)
+);
+
+ALTER TABLE pending_messages ADD COLUMN provider TEXT;
+ALTER TABLE session_messages ADD COLUMN wake_due_at TEXT;
+"#;
+
+// A prompt grants a chat reference only when a person wrote it, and that is
+// recorded, not inferred. NULL (every row that exists, and every writer that
+// does not say) means unattested. No backfill: nothing has shipped.
+const PROMPT_AUTHORSHIP: &str = r#"
+ALTER TABLE events ADD COLUMN prompt_author TEXT
+  CHECK (prompt_author IS NULL OR prompt_author = 'person');
+ALTER TABLE pending_messages ADD COLUMN prompt_author TEXT
+  CHECK (prompt_author IS NULL OR prompt_author = 'person');
+"#;
 
 // GitHub state belongs to a project and PR number. Session links keep the
 // evidence, relationship and user selection separate so a refresh cannot
@@ -2920,13 +3136,13 @@ mod tests {
         let mut connection = Connection::open_in_memory().expect("open db");
         run_migrations(&mut connection).expect("migrate");
 
-        for table in ["events", "learnings"] {
-            verify_table_columns(&connection, &EXPECTED_COLUMNS, table).expect(table);
-        }
+        verify_table_columns(&connection, &EXPECTED_COLUMNS, "learnings").expect("learnings");
+        // `events` gained `prompt_author` in v66.
+        verify_table_columns(&connection, &PROMPT_AUTHORSHIP_COLUMNS, "events").expect("events");
         // projects, sessions, and workspaces gained columns in later
         // migrations, so verify them against the head shapes rather than the
         // v1 EXPECTED_COLUMNS.
-        verify_table_columns(&connection, &PROJECT_ARCHIVE_ON_MERGE_COLUMNS, "projects")
+        verify_table_columns(&connection, &WORKSPACE_IMPROVEMENTS_COLUMNS, "projects")
             .expect("projects");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "sessions").expect("sessions");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "turn_routes")
@@ -2936,7 +3152,7 @@ mod tests {
         for table in ["arcs", "arc_events"] {
             verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, table).expect(table);
         }
-        verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_IMPROVEMENTS_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -3077,6 +3293,20 @@ mod tests {
                 (59, compute_migration_checksum(EVENTS_SESSION_MOVED_INDEX)),
                 (60, compute_migration_checksum(TURN_ROUTE_SIGNALS)),
                 (61, compute_migration_checksum(ROUTER_ECONOMY_TIER)),
+                (
+                    62,
+                    compute_migration_checksum(crate::persistence::pr_watches::MIGRATION_SQL)
+                ),
+                (63, compute_migration_checksum(WORKSPACE_IMPROVEMENTS)),
+                (
+                    64,
+                    compute_migration_checksum(LAUNCH_RECEIPTS_AND_PENDING_PROVIDER)
+                ),
+                (
+                    65,
+                    compute_migration_checksum(crate::persistence::continuity::MIGRATION_SQL)
+                ),
+                (66, compute_migration_checksum(PROMPT_AUTHORSHIP)),
             ]
         );
 
@@ -3174,7 +3404,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &WORKSPACE_LAST_VIEWED_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_IMPROVEMENTS_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 
@@ -3328,23 +3558,17 @@ mod tests {
     fn routine_arc_target_migration_preserves_existing_rows_of_each_target() {
         let mut connection = Connection::open_in_memory().expect("open db");
         run_migrations_with(&mut connection, &MIGRATIONS[..51]).expect("migrate through v51");
-        persist_project(
-            &connection,
-            &PersistProjectInput {
-                id: "p1".to_string(),
-                name: "Project".to_string(),
-                repo_path: "/tmp/routines-arc-preserve".to_string(),
-                default_branch: Some("main".to_string()),
-                current_branch: "main".to_string(),
-                settings: ProjectSettings {
-                    archive_on_merge: false,
-                    worktree_location: "/tmp/routines-arc-preserve/.worktrees".to_string(),
-                    setup_command: String::new(),
-                    check_commands: Vec::new(),
-                },
-            },
-        )
-        .expect("seed project");
+        // Raw SQL: `persist_project` reads the head `projects` shape back, and
+        // this database is at v51.
+        connection
+            .execute(
+                "INSERT INTO projects (id, name, repo_path, current_branch, default_branch, \
+                 worktree_location, created_at, updated_at) \
+                 VALUES ('p1', 'Project', '/tmp/routines-arc-preserve', 'main', 'main', \
+                 '/tmp/routines-arc-preserve/.worktrees', '2026-01-01', '2026-01-01')",
+                [],
+            )
+            .expect("seed project");
         connection
             .execute_batch(
                 r#"

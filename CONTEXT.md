@@ -21,7 +21,7 @@ The directory on disk a workspace's `path` points at. Shared by every workspace 
 _Avoid_: Workspace, worktree, repo
 
 **Isolated workspace**:
-A workspace backed by its own `git worktree`, forked onto `argmax/<slug>-<short-id>`. Archiving one moves its checkout into recoverable storage, retaining its files for 14 days and its branch for good.
+A workspace backed by its own `git worktree`, forked onto a branch named by the **branch template** (`argmax/{word}-{id}` unless the project or the app sets another). Archiving one moves its checkout into recoverable storage, retaining its files for 14 days and its branch for good.
 _Avoid_: Worktree workspace, forked workspace
 
 **Shared checkout**:
@@ -43,6 +43,18 @@ The hidden singleton project (`scratch-side-chats`) that owns every scratch and 
 **Project check**:
 Jev's read, before a launch, of whether the prompt belongs in the project it is aimed at. From the launcher it suggests another project, or on overwhelming evidence switches to it with an Undo. An agent launch is checked the same way and switches only at that bar, without a dialog.
 _Avoid_: Repo check, repo detection
+
+**Branch template**:
+The pattern that names the branch of a new isolated workspace, such as `adam/{type}-{slug}`. A project's template overrides the app's, which overrides the built-in one. It applies to new branches only.
+_Avoid_: Branch naming rule, branch format
+
+**Linked repository**:
+A named, canonical directory outside the project's checkout that a project's agents may consult, listed in Settings → Projects. Not a project source: a source is a project-relative file or a URL. Read-only is advice to the agent, not a permission, and Argmax never watches the directory.
+_Avoid_: Linked project, extra root, additional directory
+
+**Snooze shelf**:
+The collapsed sidebar section holding chats the user snoozed until a chosen time. A snooze hides a row and changes nothing else about the chat.
+_Avoid_: Snoozed state, deferred, hidden chats
 
 **Base ref**:
 The git ref an isolated workspace forked from, and the merge-base used for a branch-comparison review. Falls back to the project's default branch.
@@ -108,8 +120,16 @@ A sidebar mark that a chat has produced a response the user has not opened yet. 
 _Avoid_: Badge, notification, unseen
 
 **Pending message**:
-A follow-up the user composed while the agent was mid-turn. Saved durably and normally sent after the current turn. Messages recovered after a restart wait for an explicit send, with uncertain delivery called out.
+A follow-up the user composed while the agent was mid-turn. Saved durably and normally sent after the current turn. It may be bound for a different provider than the chat's, which takes over when the turn ends. Messages recovered after a restart wait for an explicit send, with uncertain delivery called out.
 _Avoid_: Queued message, draft
+
+**Chat reference**:
+Another chat a person attached to a prompt, written into the prompt as `[title](argmax://chat/<session id>)` and drawn as a chip. The link is the only copy, so it survives drafts, queued messages and the clipboard. Naming a chat this way is the one thing that lets an agent read a chat outside its project and launch lineage, and only that chat.
+_Avoid_: Mention, attachment, link, citation
+
+**Background send**:
+Starting the New chat draft without leaving it: the chat launches and takes its sidebar row, the draft empties for the next one, and a failed start puts the draft back.
+_Avoid_: Quick send, silent launch, detached launch
 
 **Permission mode**:
 Whether the agent's commands run unattended (`auto-approve`, the default) or stop for the user (`ask-each-time`).
@@ -175,6 +195,18 @@ _Avoid_: PR ownership, branch ownership
 **Primary PR**:
 The pull request foregrounded for a session. The user can pin it, or automatic selection can choose it from the session's meaningful PR activity. Refresh order never changes its identity. Other associated PRs remain visible in the workspace card.
 _Avoid_: Latest PR, current branch PR
+
+**PR watch**:
+A persisted request from one session to be woken about one pull request until it merges, closes, or is unwatched. The agent calls `pr_watch` once and ends its turn; the gh poller reads the PR on its own tick. Argmax reports and never merges.
+_Avoid_: PR subscription, PR monitor, babysitter
+
+**Watch notice**:
+The message a PR watch sends to its session through the inbox: every new event since the last one (merged or closed, checks failing, a merge conflict starting or resolving, new feedback, checks green) in one plain-text body. Delivered like any other system notice, so an idle session wakes on it.
+_Avoid_: PR event, PR alert, PR notification
+
+**PR cleanup**:
+The deterministic git cleanup after a PR merges: delete the remote branch while it still points at the merged head, fast-forward the base where it is checked out, delete an unowned local branch, and prune. Argmax runs it with no model turn. It never archives or hides the chat and keeps its checkout.
+_Avoid_: post-merge archive, tidy-up
 
 **Approval**:
 A single command a provider asked permission to run, with its risk classification and resolution. Compare-and-set from `pending`, so a replayed request cannot create a second row.

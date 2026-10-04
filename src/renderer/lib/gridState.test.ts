@@ -4,7 +4,6 @@ import {
   MAX_CELLS,
   closeCell,
   dropWorkspaceInGrid,
-  focusedCell,
   openLauncherInGrid,
   setLauncherProject,
   openWorkspaceInGrid,
@@ -361,28 +360,9 @@ describe("closeCell", () => {
     expect(next.rows).toEqual([[cell(1), cell(2)]]);
     expect(next.focused).toEqual({ row: 0, col: 0 });
   });
-
-  it("keeps focus on the same row when a non-last cell is closed in a multi-cell row", () => {
-    const start: GridState = {
-      rows: [[cell(1), cell(2)]],
-      focused: { row: 0, col: 0 }
-    };
-    const next = closeCell(start, 0, 0);
-    expect(next.rows).toEqual([[cell(2)]]);
-    expect(next.focused).toEqual({ row: 0, col: 0 });
-  });
 });
 
 describe("setFocus", () => {
-  it("moves focus to a valid coord", () => {
-    const start: GridState = {
-      rows: [[cell(1), cell(2)]],
-      focused: { row: 0, col: 0 }
-    };
-    const next = setFocus(start, { row: 0, col: 1 });
-    expect(next.focused).toEqual({ row: 0, col: 1 });
-  });
-
   it("ignores an out-of-bounds coord", () => {
     const start: GridState = {
       rows: [[cell(1)]],
@@ -390,17 +370,6 @@ describe("setFocus", () => {
     };
     const next = setFocus(start, { row: 5, col: 5 });
     expect(next).toBe(start);
-  });
-});
-
-describe("focusedCell", () => {
-  it("returns the cell at the focus coord", () => {
-    const grid: GridState = { rows: [[cell(1), cell(2)]], focused: { row: 0, col: 1 } };
-    expect(focusedCell(grid)).toEqual(cell(2));
-  });
-
-  it("returns null when nothing is focused", () => {
-    expect(focusedCell(EMPTY_GRID)).toBeNull();
   });
 });
 

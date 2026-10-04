@@ -211,6 +211,7 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
                 .session_launch_registry
                 .as_ref()
                 .map(|registry| registry.issue(&input));
+            let input = with_linked_repositories(input, session_launch.as_ref());
             let input = with_argmax_routing_instruction(input, session_launch.is_some());
 
             // Warm-process fast path: eligible Cursor launches run as ACP
@@ -317,6 +318,21 @@ impl ProviderProcessLauncher for RealProviderProcessLauncher {
     }
 }
 
+/// Adds the linked-repository listing to the provider-facing prompt. Only a
+/// launch that carries the Argmax server gets it: the listing points at the
+/// `sources_*` tools, which live there.
+pub(crate) fn with_linked_repositories(
+    mut input: ProviderLaunchInput,
+    session_launch: Option<&SessionLaunchProcessConfig>,
+) -> ProviderLaunchInput {
+    input.prompt = super::mcp_injection::prepend_linked_repositories(
+        input.provider,
+        &input.prompt,
+        session_launch,
+    );
+    input
+}
+
 /// Keep the provider-facing prompt separate from the prompt Argmax persists
 /// and renders. The server gate prevents promising tools in restricted test or
 /// helper launches that deliberately omit the per-session Argmax MCP server.
@@ -349,6 +365,7 @@ mod routing_tests {
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 100,
@@ -465,6 +482,7 @@ fn launch_structured_via_pty(
         ("TERM".to_string(), "xterm-256color".to_string()),
     ];
     if input.provider == ProviderId::Claude {
+        environment_overrides.extend(super::mcp_injection::claude_linked_root_env(session_launch));
         // Print mode otherwise kills active background agents after ten minutes,
         // even while they are making progress. The user can still stop the turn.
         environment_overrides.push((
@@ -926,6 +944,7 @@ mod process_tests {
             fast_mode: false,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 120,
@@ -1095,6 +1114,7 @@ mod verification_tests {
             fast_mode: false,
             resume_conversation_id: resume_conversation_id.map(str::to_string),
             resume_fork: false,
+            continuity: None,
             permission_mode: PermissionMode::AutoApprove,
             agent_mode: AgentMode::Auto,
             cols: 120,

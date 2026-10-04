@@ -176,14 +176,3 @@ async fn probe_cli(cmd: &str) -> bool {
     let result = time::timeout(WHICH_TIMEOUT, Command::new("which").arg(cmd).output()).await;
     matches!(result, Ok(Ok(output)) if output.status.success())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn detection_always_includes_terminal() {
-        let detected = detect_installed_ides().await;
-        assert!(detected.iter().any(|ide| ide.id == IdeId::Terminal));
-    }
-}

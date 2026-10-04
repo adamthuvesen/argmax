@@ -10,7 +10,6 @@ function DialogHarness(): JSX.Element {
       <button type="button" onClick={() => setOpen(true)}>Change provider</button>
       {open ? (
         <ProviderSwitchDialog
-          from="codex"
           to="claude"
           onCancel={() => setOpen(false)}
           onStartNewSession={() => setOpen(false)}

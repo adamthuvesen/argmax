@@ -3,6 +3,7 @@
 
 pub mod poller;
 pub mod service;
+pub mod watch;
 
 /// Re-read every workspace whose marker can change when this session refreshes
 /// a PR, including other observers and isolated workspaces on its head branch.

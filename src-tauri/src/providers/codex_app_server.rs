@@ -151,7 +151,15 @@ pub async fn launch_turn(
             "thread/start"
         };
         let thread_params = thread_params(input, session_launch, computer_use_server.as_ref());
-        let thread_response = rpc.request(thread_method, thread_params).await?;
+        let fork_through = fork_last_turn_id(input);
+        let thread_response = thread_handshake(
+            &rpc,
+            thread_method,
+            thread_params,
+            input.resume_conversation_id.is_some(),
+            fork_through.is_some(),
+        )
+        .await?;
         let thread_id = thread_response
             .pointer("/thread/id")
             .and_then(Value::as_str)
@@ -162,6 +170,12 @@ pub async fn launch_turn(
                 )
             })?
             .to_string();
+        // An app-server that ignores `lastTurnId` would fork the latest turn
+        // without saying so. Before any turn starts, ask the new thread where
+        // it ends.
+        if let Some(requested) = fork_through {
+            verify_fork_end(&rpc, &thread_id, requested).await?;
+        }
 
         let prompt = input.prompt.clone();
         let turn_response = rpc
@@ -203,7 +217,9 @@ pub async fn launch_turn(
     emit_line(
         &on_event,
         &input.session_id,
-        json!({ "type": "thread.started", "thread_id": thread_id }),
+        // The turn id lets Argmax fork this thread exactly through this turn
+        // later (continuity.rs).
+        json!({ "type": "thread.started", "thread_id": thread_id, "turn_id": turn_id }),
     );
     emit_line(
         &on_event,
@@ -357,12 +373,95 @@ fn thread_params(
     );
     if let Some(resume_id) = &input.resume_conversation_id {
         params.insert("threadId".to_string(), json!(resume_id));
+        // Fork through a selected turn, inclusive. Never combined with
+        // `beforeTurnId`, which the schema forbids. The turns are asked for
+        // afterwards (`verify_fork_end`) rather than hydrated here.
+        if let Some(turn_id) = fork_last_turn_id(input) {
+            params.insert("lastTurnId".to_string(), json!(turn_id));
+            params.insert("excludeTurns".to_string(), json!(true));
+        }
     }
     apply_permission_policy(&mut params, input, false);
     if let Some(config) = mcp_config(session_launch, computer_use_server) {
         params.insert("config".to_string(), config);
     }
     Value::Object(params)
+}
+
+/// The turn a fork must end at, when this launch forks at a selected turn.
+fn fork_last_turn_id(input: &ProviderLaunchInput) -> Option<&str> {
+    input
+        .continuity
+        .as_ref()
+        .and_then(|continuity| continuity.fork_last_turn_id.as_deref())
+        .filter(|_| input.resume_fork && input.resume_conversation_id.is_some())
+}
+
+/// Whether the server's refusal of a resume or fork says the conversation, or
+/// the way of forking it, is not there: the only refusals a fresh start can
+/// answer. A configuration or permission refusal is not one, and a good thread
+/// must not be given up on over it.
+fn refusal_means_unavailable(code: Option<i64>, message: &str, forking_at_turn: bool) -> bool {
+    let message = message.to_lowercase();
+    ["not found", "no rollout", "no such", "does not exist", "unknown thread"]
+        .iter()
+        .any(|needle| message.contains(needle))
+        // JSON-RPC method-not-found and invalid-params: an older build that
+        // does not know `lastTurnId` or `excludeTurns`.
+        || (forking_at_turn && matches!(code, Some(-32601 | -32602)))
+}
+
+/// `thread/start`, `thread/resume` or `thread/fork`. A refusal that says the
+/// conversation is unavailable arrives before any turn exists, so the caller
+/// may retry fresh. A timeout or a closed pipe says nothing about admission and
+/// keeps its ordinary error.
+async fn thread_handshake(
+    rpc: &RpcPeer,
+    method: &str,
+    params: Value,
+    resuming: bool,
+    forking_at_turn: bool,
+) -> ArgmaxResult<Value> {
+    match rpc.request_outcome(method, params).await {
+        Ok(response) => Ok(response),
+        Err(RequestError::Refused { message, code })
+            if resuming && refusal_means_unavailable(code, &message, forking_at_turn) =>
+        {
+            Err(ArgmaxError::service(
+                super::continuity::RESUME_REJECTED,
+                message,
+            ))
+        }
+        Err(RequestError::Refused { message, .. }) => {
+            Err(ArgmaxError::service("CODEX_APP_SERVER_RPC", message))
+        }
+        Err(RequestError::Other(error)) => Err(error),
+    }
+}
+
+/// The forked thread must end at the requested turn. Anything else, including a
+/// build without `thread/turns/list`, is a rejection: a fresh conversation from
+/// the visible history is exact, and a silently longer fork is not.
+async fn verify_fork_end(rpc: &RpcPeer, thread_id: &str, requested: &str) -> ArgmaxResult<()> {
+    let listed = thread_handshake(
+        rpc,
+        "thread/turns/list",
+        json!({ "threadId": thread_id, "limit": 1 }),
+        true,
+        true,
+    )
+    .await?;
+    let newest = listed.pointer("/data/0/id").and_then(Value::as_str);
+    if newest == Some(requested) {
+        return Ok(());
+    }
+    Err(ArgmaxError::service(
+        super::continuity::RESUME_REJECTED,
+        format!(
+            "the forked thread ends at {} instead of the selected turn",
+            newest.unwrap_or("no turn")
+        ),
+    ))
 }
 
 fn turn_params(input: &ProviderLaunchInput, thread_id: &str, prompt: String) -> Value {
@@ -583,8 +682,23 @@ fn version_key(version: &str) -> Vec<u64> {
 
 struct RpcPeer {
     writer: tokio::sync::Mutex<ChildStdin>,
-    pending: Mutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>,
+    pending: Mutex<HashMap<String, oneshot::Sender<Result<Value, RpcFailure>>>>,
     next_id: AtomicU64,
+}
+
+/// How a request failed. Only the server's own answer says the request was
+/// refused; a closed pipe says nothing about what the server did with it.
+enum RpcFailure {
+    Refused { message: String, code: Option<i64> },
+    Closed(String),
+}
+
+/// A request's failure, keeping the server's refusal apart from transport
+/// trouble. The thread handshake needs the difference: a refusal means nothing
+/// was admitted, a lost reply means nobody knows.
+enum RequestError {
+    Refused { message: String, code: Option<i64> },
+    Other(ArgmaxError),
 }
 
 impl RpcPeer {
@@ -597,6 +711,17 @@ impl RpcPeer {
     }
 
     async fn request(&self, method: &str, params: Value) -> ArgmaxResult<Value> {
+        self.request_outcome(method, params)
+            .await
+            .map_err(|error| match error {
+                RequestError::Refused { message, .. } => {
+                    ArgmaxError::service("CODEX_APP_SERVER_RPC", message)
+                }
+                RequestError::Other(error) => error,
+            })
+    }
+
+    async fn request_outcome(&self, method: &str, params: Value) -> Result<Value, RequestError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (sender, receiver) = oneshot::channel();
         self.pending
@@ -609,23 +734,28 @@ impl RpcPeer {
             self.pending
                 .lock_or_recover("codex app-server requests")
                 .remove(&id.to_string());
-            return Err(error);
+            return Err(RequestError::Other(error));
         }
         match tokio::time::timeout(RESPONSE_TIMEOUT, receiver).await {
             Ok(Ok(Ok(result))) => Ok(result),
-            Ok(Ok(Err(message))) => Err(ArgmaxError::service("CODEX_APP_SERVER_RPC", message)),
-            Ok(Err(_)) => Err(ArgmaxError::service(
+            Ok(Ok(Err(RpcFailure::Refused { message, code }))) => {
+                Err(RequestError::Refused { message, code })
+            }
+            Ok(Ok(Err(RpcFailure::Closed(message)))) => Err(RequestError::Other(
+                ArgmaxError::service("CODEX_APP_SERVER_CLOSED", message),
+            )),
+            Ok(Err(_)) => Err(RequestError::Other(ArgmaxError::service(
                 "CODEX_APP_SERVER_CLOSED",
                 format!("Codex app-server closed while answering {method}"),
-            )),
+            ))),
             Err(_) => {
                 self.pending
                     .lock_or_recover("codex app-server requests")
                     .remove(&id.to_string());
-                Err(ArgmaxError::service(
+                Err(RequestError::Other(ArgmaxError::service(
                     "CODEX_APP_SERVER_TIMEOUT",
                     format!("Codex app-server did not answer {method}"),
-                ))
+                )))
             }
         }
     }
@@ -711,11 +841,14 @@ fn resolve_response(rpc: &RpcPeer, message: Value) {
         return;
     };
     let result = if let Some(error) = message.get("error") {
-        Err(error
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("Codex app-server request failed")
-            .to_string())
+        Err(RpcFailure::Refused {
+            message: error
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("Codex app-server request failed")
+                .to_string(),
+            code: error.get("code").and_then(Value::as_i64),
+        })
     } else {
         Ok(message.get("result").cloned().unwrap_or(Value::Null))
     };
@@ -728,7 +861,7 @@ fn close_pending(rpc: &RpcPeer, reason: &str) {
         .lock_or_recover("codex app-server requests")
         .drain()
     {
-        let _ = sender.send(Err(reason.to_string()));
+        let _ = sender.send(Err(RpcFailure::Closed(reason.to_string())));
     }
 }
 
@@ -1576,6 +1709,7 @@ mod tests {
             fast_mode: true,
             resume_conversation_id: None,
             resume_fork: false,
+            continuity: None,
             permission_mode,
             agent_mode: AgentMode::Auto,
             cols: 80,
@@ -1835,6 +1969,315 @@ done
         assert!(!fs::read_to_string(temp.path().join("launch-args.txt"))
             .unwrap()
             .contains("features.reasoning_effort_override=true"));
+    }
+
+    /// A fake app-server for the fork handshake. `fork_reply` answers
+    /// `thread/fork` (a result for a build that supports `lastTurnId`, an error
+    /// for one that does not) and `turns_reply` answers `thread/turns/list`.
+    /// `__ID__` in a reply stands for the id of the request it answers.
+    fn fake_fork_server(
+        dir: &std::path::Path,
+        fork_reply: &str,
+        turns_reply: &str,
+    ) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let server = dir.join("fake-codex-fork");
+        fs::write(
+            &server,
+            format!(
+                r#"#!/bin/sh
+reply() {{ printf '%s\n' "$1" | sed "s/__ID__/$id/"; }}
+while IFS= read -r line; do
+  id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+  case "$line" in
+    *'"method":"initialize"'*)
+      reply '{{"jsonrpc":"2.0","id":__ID__,"result":{{"codexHome":"/tmp/codex","platformFamily":"unix","platformOs":"test","userAgent":"fake"}}}}'
+      ;;
+    *'"method":"thread/fork"'*)
+      printf '%s\n' "$line" >> thread-requests.jsonl
+      reply '{fork_reply}'
+      ;;
+    *'"method":"thread/turns/list"'*)
+      printf '%s\n' "$line" >> turns-list-requests.jsonl
+      reply '{turns_reply}'
+      ;;
+    *'"method":"thread/start"'*|*'"method":"thread/resume"'*)
+      printf '%s\n' "$line" >> thread-requests.jsonl
+      reply '{{"jsonrpc":"2.0","id":__ID__,"result":{{"thread":{{"id":"thread-fresh"}}}}}}'
+      ;;
+    *'"method":"turn/start"'*)
+      printf '%s\n' "$line" >> turn-requests.jsonl
+      reply '{{"jsonrpc":"2.0","id":__ID__,"result":{{"turn":{{"id":"turn-9","status":"inProgress","items":[]}}}}}}'
+      sleep 0.2
+      printf '%s\n' '{{"jsonrpc":"2.0","method":"turn/completed","params":{{"threadId":"thread-fork","turn":{{"id":"turn-9","status":"completed","items":[]}}}}}}'
+      ;;
+  esac
+done
+"#
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+        server
+    }
+
+    async fn launch_fork(
+        temp: &std::path::Path,
+        server: &std::path::Path,
+        launch_input: ProviderLaunchInput,
+    ) -> (ArgmaxResult<()>, Vec<ProviderRuntimeEvent>) {
+        let database = Arc::new(Database::open(temp.join("argmax.sqlite")).unwrap());
+        let approvals = ApprovalService::new(Arc::clone(&database));
+        let questions = QuestionService::new(database);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&events);
+        let callback: EventCallback = Arc::new(move |event| {
+            captured.lock().unwrap().push(event);
+        });
+        let launched = launch_turn(
+            server.to_str().unwrap(),
+            &launch_input,
+            None,
+            approvals,
+            questions,
+            callback,
+        )
+        .await;
+        // The handle owns the process: keep it until the turn has ended.
+        if launched.is_ok() {
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while !events
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|event| event.r#type == ProviderRuntimeEventType::Exit)
+                {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("fake Codex fork turn completed");
+        }
+        let launched = launched.map(|_handle| ());
+        let events = events.lock().unwrap().clone();
+        (launched, events)
+    }
+
+    fn forking_input(temp: &std::path::Path, last_turn_id: Option<&str>) -> ProviderLaunchInput {
+        let mut launch_input = input(PermissionMode::ProviderDefaults);
+        launch_input.workspace_path = temp.to_path_buf();
+        launch_input.resume_conversation_id = Some("thread-source".to_string());
+        launch_input.resume_fork = true;
+        launch_input.continuity = last_turn_id.map(|turn| crate::providers::LaunchContinuity {
+            fork_last_turn_id: Some(turn.to_string()),
+            ..Default::default()
+        });
+        launch_input
+    }
+
+    #[tokio::test]
+    async fn a_selected_turn_fork_sends_last_turn_id_and_reports_the_new_turn() {
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_fork_server(
+            temp.path(),
+            r#"{"jsonrpc":"2.0","id":__ID__,"result":{"thread":{"id":"thread-fork"}}}"#,
+            r#"{"jsonrpc":"2.0","id":__ID__,"result":{"data":[{"id":"turn-3"},{"id":"turn-2"}]}}"#,
+        );
+        let (launched, events) = launch_fork(
+            temp.path(),
+            &server,
+            forking_input(temp.path(), Some("turn-3")),
+        )
+        .await;
+        launched.expect("the fork launches");
+
+        let requests = fs::read_to_string(temp.path().join("thread-requests.jsonl")).unwrap();
+        let fork: Value = serde_json::from_str(requests.lines().next().unwrap()).unwrap();
+        assert_eq!(fork["method"], "thread/fork");
+        assert_eq!(fork["params"]["threadId"], "thread-source");
+        // Inclusive end of the fork, and never both bounds at once.
+        assert_eq!(fork["params"]["lastTurnId"], "turn-3");
+        assert!(fork["params"].get("beforeTurnId").is_none());
+        // The turns come from `thread/turns/list`, not from hydrating the fork.
+        assert_eq!(fork["params"]["excludeTurns"], true);
+        // The new thread was asked where it ends before any turn started.
+        let listed: Value = serde_json::from_str(
+            fs::read_to_string(temp.path().join("turns-list-requests.jsonl"))
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(listed["params"]["threadId"], "thread-fork");
+        // The turn that follows runs on the forked thread, not the source.
+        let turn: Value = serde_json::from_str(
+            fs::read_to_string(temp.path().join("turn-requests.jsonl"))
+                .unwrap()
+                .lines()
+                .next()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(turn["params"]["threadId"], "thread-fork");
+        // The runtime reports the turn id so Argmax can fork this thread later.
+        assert!(events.iter().any(|event| {
+            serde_json::from_str::<Value>(event.message.trim()).is_ok_and(|line| {
+                line["type"] == "thread.started"
+                    && line["thread_id"] == "thread-fork"
+                    && line["turn_id"] == "turn-9"
+            })
+        }));
+    }
+
+    #[tokio::test]
+    async fn a_whole_thread_fork_sends_no_turn_bound() {
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_fork_server(
+            temp.path(),
+            r#"{"jsonrpc":"2.0","id":__ID__,"result":{"thread":{"id":"thread-fork"}}}"#,
+            r#"{"jsonrpc":"2.0","id":__ID__,"result":{"data":[{"id":"turn-3"},{"id":"turn-2"}]}}"#,
+        );
+        launch_fork(temp.path(), &server, forking_input(temp.path(), None))
+            .await
+            .0
+            .unwrap();
+        let requests = fs::read_to_string(temp.path().join("thread-requests.jsonl")).unwrap();
+        let fork: Value = serde_json::from_str(requests.lines().next().unwrap()).unwrap();
+        assert_eq!(fork["method"], "thread/fork");
+        assert!(fork["params"].get("lastTurnId").is_none());
+        // Nothing to verify without a selected turn.
+        assert!(!temp.path().join("turns-list-requests.jsonl").exists());
+    }
+
+    /// Launch a selected-turn fork against a server with these two answers and
+    /// return the launch result plus whether any turn was started.
+    async fn fork_outcome(fork_reply: &str, turns_reply: &str) -> (ArgmaxResult<()>, bool) {
+        let temp = tempfile::tempdir().unwrap();
+        let server = fake_fork_server(temp.path(), fork_reply, turns_reply);
+        let (launched, _) = launch_fork(
+            temp.path(),
+            &server,
+            forking_input(temp.path(), Some("turn-3")),
+        )
+        .await;
+        (launched, temp.path().join("turn-requests.jsonl").exists())
+    }
+
+    const THREADS_OK: &str =
+        r#"{"jsonrpc":"2.0","id":__ID__,"result":{"thread":{"id":"thread-fork"}}}"#;
+    const ENDS_AT_TURN_3: &str =
+        r#"{"jsonrpc":"2.0","id":__ID__,"result":{"data":[{"id":"turn-3"},{"id":"turn-2"}]}}"#;
+
+    #[tokio::test]
+    async fn a_build_that_rejects_the_fork_reports_a_definite_rejection_before_any_turn() {
+        let (launched, turn_started) = fork_outcome(
+            r#"{"jsonrpc":"2.0","id":__ID__,"error":{"code":-32602,"message":"unknown field lastTurnId"}}"#,
+            ENDS_AT_TURN_3,
+        )
+        .await;
+        let error = launched.expect_err("the fork is refused");
+        assert!(
+            crate::providers::continuity::is_definite_rejection(&error),
+            "{error:?}"
+        );
+        // No turn was started on any thread, so a fresh retry cannot duplicate it.
+        assert!(!turn_started);
+    }
+
+    #[tokio::test]
+    async fn a_missing_thread_or_turn_is_a_definite_rejection() {
+        for message in ["thread not found: thread-source", "turn not found: turn-3"] {
+            let reply = format!(
+                r#"{{"jsonrpc":"2.0","id":__ID__,"error":{{"code":-32600,"message":"{message}"}}}}"#
+            );
+            let (launched, turn_started) = fork_outcome(&reply, ENDS_AT_TURN_3).await;
+            let error = launched.expect_err("the fork is refused");
+            assert!(
+                crate::providers::continuity::is_definite_rejection(&error),
+                "{message}: {error:?}"
+            );
+            assert!(!turn_started);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refusal_that_is_not_about_the_conversation_stays_an_ordinary_error() {
+        // A configuration refusal says nothing against the thread, so a good
+        // conversation is not given up on and retold from scratch.
+        let (launched, turn_started) = fork_outcome(
+            r#"{"jsonrpc":"2.0","id":__ID__,"error":{"code":-32000,"message":"invalid sandbox configuration"}}"#,
+            ENDS_AT_TURN_3,
+        )
+        .await;
+        let error = launched.expect_err("the fork fails");
+        assert!(
+            !crate::providers::continuity::is_definite_rejection(&error),
+            "{error:?}"
+        );
+        assert!(!turn_started);
+    }
+
+    #[tokio::test]
+    async fn a_fork_that_ends_at_a_later_turn_than_requested_is_rejected_before_any_turn() {
+        // A build that ignores `lastTurnId` forks the latest state and says so
+        // nowhere: only the new thread's own turn list gives it away.
+        let (launched, turn_started) = fork_outcome(
+            THREADS_OK,
+            r#"{"jsonrpc":"2.0","id":__ID__,"result":{"data":[{"id":"turn-5"},{"id":"turn-4"},{"id":"turn-3"}]}}"#,
+        )
+        .await;
+        let error = launched.expect_err("the fork is not exact");
+        assert!(
+            crate::providers::continuity::is_definite_rejection(&error),
+            "{error:?}"
+        );
+        assert!(!turn_started);
+    }
+
+    #[tokio::test]
+    async fn a_build_that_cannot_list_turns_cannot_prove_the_fork_and_is_rejected() {
+        let (launched, turn_started) = fork_outcome(
+            THREADS_OK,
+            r#"{"jsonrpc":"2.0","id":__ID__,"error":{"code":-32601,"message":"method not found"}}"#,
+        )
+        .await;
+        let error = launched.expect_err("the fork cannot be verified");
+        assert!(
+            crate::providers::continuity::is_definite_rejection(&error),
+            "{error:?}"
+        );
+        assert!(!turn_started);
+    }
+
+    #[tokio::test]
+    async fn a_closed_pipe_during_resume_is_not_a_definite_rejection() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let server = temp.path().join("dies-on-thread");
+        fs::write(
+            &server,
+            r#"#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"codexHome":"/tmp/codex","platformFamily":"unix","platformOs":"test","userAgent":"fake"}}'
+      ;;
+    *'"method":"thread/'*) exit 0 ;;
+  esac
+done
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&server, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut resume = forking_input(temp.path(), None);
+        resume.resume_fork = false;
+        let (launched, _) = launch_fork(temp.path(), &server, resume).await;
+        let error = launched.expect_err("the server went away");
+        assert!(
+            !crate::providers::continuity::is_definite_rejection(&error),
+            "{error:?}"
+        );
     }
 
     #[test]

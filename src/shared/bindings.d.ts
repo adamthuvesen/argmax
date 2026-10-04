@@ -104,6 +104,22 @@ async projectsSwitchBranch(input: ProjectsSwitchBranchInput) : Promise<Result<Pr
     else return { status: "error", error: e  as any };
 }
 },
+async projectsListCheckouts(input: ProjectsListCheckoutsInput) : Promise<Result<ProjectCheckout[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_list_checkouts", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async workspacesCreateAlongside(input: WorkspacesCreateInCheckoutInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_create_alongside", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspacesCreateIsolated(input: WorkspacesCreateIsolatedInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspaces_create_isolated", { input }) };
@@ -344,6 +360,30 @@ async sessionFork(input: SessionForkInput) : Promise<Result<SessionForkResult, A
     else return { status: "error", error: e  as any };
 }
 },
+async sessionForkLineage(input: SessionForkLineageInput) : Promise<Result<ForkLineage | null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_fork_lineage", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sessionForkMergePreview(input: SessionForkMergePreviewInput) : Promise<Result<ForkMergePreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_fork_merge_preview", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async sessionForkMerge(input: SessionForkMergeInput) : Promise<Result<ForkMergeResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("session_fork_merge", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async sessionMultitask(input: SessionMultitaskInput) : Promise<Result<MultitaskLaunched, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_multitask", { input }) };
@@ -363,6 +403,27 @@ async sessionClear(input: SessionClearInput) : Promise<Result<SessionSummary, Ar
 async sessionSuggestFollowUp(input: SessionSuggestFollowUpInput) : Promise<Result<FollowUpSuggestion, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("session_suggest_follow_up", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsAgentTools() : Promise<Result<AgentToolsSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_agent_tools") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Takes effect on the next launch. A running turn keeps the surface it
+ * started with — its provider read the tool list once, at startup, and no
+ * CLI re-reads it mid-conversation.
+ */
+async settingsSetBrowserTools(input: SetBrowserToolsInput) : Promise<Result<AgentToolsSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_browser_tools", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -404,27 +465,6 @@ async settingsClearRoutingKey() : Promise<Result<RoutingSettings, ArgmaxError>> 
     else return { status: "error", error: e  as any };
 }
 },
-async settingsAgentTools() : Promise<Result<AgentToolsSettings, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("settings_agent_tools") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Takes effect on the next launch. A running turn keeps the surface it
- * started with — its provider read the tool list once, at startup, and no
- * CLI re-reads it mid-conversation.
- */
-async settingsSetBrowserTools(input: SetBrowserToolsInput) : Promise<Result<AgentToolsSettings, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("settings_set_browser_tools", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async settingsPreviewChatCleanup() : Promise<Result<ChatCleanupPreview, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("settings_preview_chat_cleanup") };
@@ -436,6 +476,39 @@ async settingsPreviewChatCleanup() : Promise<Result<ChatCleanupPreview, ArgmaxEr
 async settingsDeleteOldChats(input: DeleteOldChatsInput) : Promise<Result<DeleteOldChatsResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("settings_delete_old_chats", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async windowSnapshotStatus() : Promise<Result<WindowSnapshotStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("window_snapshot_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Turn the chord on or off, or move it. A chord the system refuses is an
+ * error and leaves the previous one in place.
+ */
+async windowSnapshotConfigure(input: WindowSnapshotConfigureInput) : Promise<Result<WindowSnapshotStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("window_snapshot_configure", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Ask macOS for Screen Recording access. The system prompt appears once per
+ * install; after a refusal it never appears again, so the answer is to open
+ * System Settings on the right pane instead.
+ */
+async windowSnapshotRequestPermission() : Promise<Result<WindowSnapshotStatus, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("window_snapshot_request_permission") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -673,6 +746,22 @@ async workspaceStatFile(input: WorkspaceStatFileInput) : Promise<Result<Workspac
     else return { status: "error", error: e  as any };
 }
 },
+async workspaceReadExternalFile(input: WorkspaceExternalFileInput) : Promise<Result<WorkspaceFilePreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_read_external_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async workspaceStatExternalFile(input: WorkspaceExternalFileInput) : Promise<Result<WorkspaceFileStat, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_stat_external_file", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspaceGrepContent(input: WorkspaceGrepContentInput) : Promise<Result<WorkspaceContentSearchResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspace_grep_content", { input }) };
@@ -692,6 +781,70 @@ async checksRun(input: ChecksRunInput) : Promise<Result<CheckRun, ArgmaxError>> 
 async skillsList(input: SkillsListInput) : Promise<Result<SkillSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("skills_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async linkedReposList(input: LinkedReposListInput) : Promise<Result<LinkedRepo[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("linked_repos_list", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async linkedReposAdd(input: LinkedReposAddInput) : Promise<Result<LinkedRepo, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("linked_repos_add", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async linkedReposSetEnabled(input: LinkedReposSetEnabledInput) : Promise<Result<LinkedRepo, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("linked_repos_set_enabled", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async linkedReposRemove(input: LinkedReposRemoveInput) : Promise<Result<null, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("linked_repos_remove", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsSetBranchTemplate(input: ProjectsSetBranchTemplateInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_set_branch_template", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsBranchTemplate() : Promise<Result<BranchTemplateSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_branch_template") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsSetBranchTemplate(input: SetBranchTemplateInput) : Promise<Result<BranchTemplateSettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_branch_template", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async workspacesSetSnoozedUntil(input: WorkspacesSetSnoozedUntilInput) : Promise<Result<WorkspaceSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspaces_set_snoozed_until", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1012,6 +1165,18 @@ async prsSetPrimary(input: PrsSetPrimaryInput) : Promise<Result<SessionPrSummary
 async prsDismiss(input: PrsDismissInput) : Promise<Result<SessionPrSummary[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("prs_dismiss", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * The git cleanup after a merged PR (docs/workspaces.md#pr-cleanup). It
+ * never archives the chat.
+ */
+async prsCleanup(input: PrsCleanupInput) : Promise<Result<PrCleanupReport, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("prs_cleanup", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1614,9 +1779,11 @@ export type AgentMode =
  * old rows and payloads load, then run as Auto.
  */
 "auto"
+export type AgentPhase = "started" | "completed"
 export type AgentReference = { name: NonEmptyString; providerChildSessionId: NonEmptyString; providerParentConversationId: NonEmptyString }
 export type AgentToolsSettings = { browserTools: boolean }
 export type ApprovalId = string
+export type ApprovalPhase = "requested" | "resolved" | "blocked"
 export type ApprovalRequest = { id: string; sessionId: string; command: string; cwd: string; provider: string; providerInvocationId: string | null; providerRequestId: string | null; riskLevel: string; status: string; createdAt: string; resolvedAt: string | null }
 export type ApprovalResolution = "approved" | "rejected"
 /**
@@ -1724,12 +1891,22 @@ export type AutoTier = "cost" | "economy" | "balanced" | "intelligence"
 export type Base64ImageData = string
 export type BaseRef = string
 export type BranchName = string
+/**
+ * The app-wide template as saved, and the built-in one it falls back to, so
+ * the form can show what "unset" means.
+ */
+export type BranchTemplateSettings = { template: string | null; defaultTemplate: string }
 export type BrowserActInput = { tabId?: string | null; sessionId?: string | null; action: BrowserAction }
 /**
  * One interaction. Serialized tagged so a tool layer can pass it straight
  * through without a verb-per-command explosion on the IPC surface.
  */
 export type BrowserAction = { kind: "click"; ref: string } | { kind: "type"; ref: string; text: string; submit?: boolean } | { kind: "select"; ref: string; value: string } | { kind: "hover"; ref: string } | { kind: "drag"; ref: string; toRef?: string | null; startX?: number | null; startY?: number | null; endX?: number | null; endY?: number | null; deltaX?: number | null; deltaY?: number | null; steps?: number | null } | { kind: "pressKey"; key: string; modifiers?: string[] } | { kind: "scroll"; ref?: string | null; direction: string; amount?: number | null } | { kind: "waitFor"; text?: string | null; ref?: string | null; urlIncludes?: string | null; quietMs?: number | null; minCount?: number | null; timeoutMs?: number | null }
+/**
+ * Pushed when a session's tab opens, so the pane showing that session can
+ * switch itself to Browser mode and watch.
+ */
+export type BrowserAgentOpenEvent = { sessionId: string; tabId: string; url: string }
 export type BrowserBackInput = { tabId: string }
 /**
  * Logical (CSS-pixel) rect of the renderer placeholder the browser webview
@@ -1780,6 +1957,15 @@ export type BrowserListTabsInput = {
  */
 sessionId?: string | null }
 export type BrowserNavigateInput = { url: string; tabId: string }
+/**
+ * Pushed when a page asks for a `target="_blank"` link — the renderer
+ * answers by creating a new tab at `url`.
+ */
+export type BrowserNewTabEvent = {
+/**
+ * Tab whose page requested the link.
+ */
+tabId: string; url: string }
 export type BrowserOpenForSessionInput = { url: string; sessionId: string }
 export type BrowserOpenInput = { url: string; bounds: BrowserBounds; tabId: string;
 /**
@@ -1793,6 +1979,12 @@ ownerSessionId?: string | null }
  * `browser:agent-open` and `browser:tabs`, not from this reply.
  */
 export type BrowserOpenedTab = { tabId: string }
+/**
+ * A browser shortcut pressed while the page (not the panel chrome) had
+ * focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
+ * `reload`, `back`, `forward`, `find`, or a native-page `focus` notification.
+ */
+export type BrowserPageCommandEvent = { tabId: string; command: string }
 export type BrowserReloadInput = { tabId: string }
 /**
  * PNG of one tab, base64 so it can ride the JSON IPC envelope. `width` and
@@ -1834,6 +2026,11 @@ export type BrowserSnapshotInput = { tabId?: string | null; sessionId?: string |
  * clicked or typed into.
  */
 interactiveOnly?: boolean | null }
+/**
+ * Event pushed to the main webview whenever a tab navigates, starts loading,
+ * or finishes loading. `title` is only present on load-finish.
+ */
+export type BrowserStateEvent = { tabId: string; url: string; title: string | null; loading: boolean }
 export type BrowserStopInput = { tabId: string }
 export type BrowserTabInfo = { tabId: string;
 /**
@@ -1888,6 +2085,36 @@ export type ConnectionKind = "mcp-server" | "plugin" | "connector"
 export type ConnectionScope = "built-in" | "user" | "project"
 export type ConnectionSummary = { name: string; kind: ConnectionKind; scope: ConnectionScope; availability: ConnectionAvailability; authentication: ConnectionAuthentication; statusDetail: string; authenticationCommand: string | null }
 export type ConnectionsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
+export type DashboardDelta = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; approvals: ApprovalRequest[]; pendingMessages?: Partial<{ [key in string]: PendingMessage[] }> | null;
+/**
+ * Rows the renderer must drop rather than merge. The delta protocol is
+ * otherwise whole-object replacement, which has no way to say "gone" —
+ * the sync pruner needs one, since it deletes in the background rather
+ * than as the result of an IPC call the renderer could react to.
+ */
+removedSessionIds: string[]; removedWorkspaceIds: string[];
+/**
+ * Sessions whose durable transcript changed. Live delivery sends these
+ * compact hints instead of duplicating full event/raw-output payloads;
+ * subscribed consumers pull the revision feed for the named sessions.
+ */
+changedSessionIds: string[];
+/**
+ * Goals are read through focused IPC, so a delta only needs to invalidate
+ * the named durable rows rather than duplicate their full configurations.
+ */
+goalChangedIds: string[];
+/**
+ * Durable dashboard metadata changed. Consumers reload a coherent
+ * snapshot instead of applying possibly stale individual payloads.
+ */
+dashboardChanged: boolean;
+/**
+ * The live delivery queue overflowed. Consumers must reload their
+ * durable dashboard and transcript state instead of treating this delta
+ * as a complete continuation of the push stream.
+ */
+resyncRequired: boolean }
 export type DashboardListInput = Record<string, never>
 export type DashboardListSnapshot = { projects: ProjectSummary[]; workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[]; pendingMessages: Partial<{ [key in string]: PendingMessage[] }>; arcs: ArcSummary[] }
 export type DatabaseStats = { rowCounts: RowCounts; walBytes: number; walAutocheckpoint: number; readers: SqliteReaderStats }
@@ -1915,6 +2142,65 @@ export type FileContent = string
  * both mean "keep the static placeholder".
  */
 export type FollowUpSuggestion = { suggestion: string | null }
+/**
+ * How the fork's first message will continue the provider conversation.
+ */
+export type ForkContinuation =
+/**
+ * Fresh conversation retold from the copied visible prefix.
+ */
+"portable" |
+/**
+ * Codex forks its own thread through the selected turn.
+ */
+"codex-turn" |
+/**
+ * The provider forks the source's latest conversation (only offered while
+ * the selected turn is the source's latest).
+ */
+"latest"
+export type ForkInfo = { id: string; sourceSessionId: string; boundaryEventId: string | null; workspace: ForkWorkspaceMode; continuation: ForkContinuation }
+export type ForkLineage = { forkId: string; sourceSessionId: string | null; boundaryEventId: string | null;
+/**
+ * `shared` or `isolated`.
+ */
+workspace: string; lastMergedThroughEventId: string | null }
+export type ForkMergePreview = { forkId: string; childSessionId: string; sourceSessionId: string; childLabel: string; sourceLabel: string;
+/**
+ * The user message the fork started from, shortened. `None` for a fork of
+ * the whole chat.
+ */
+boundaryExcerpt: string | null;
+/**
+ * The fork message this merge reaches. Pass it back to confirm.
+ */
+throughEventId: string | null;
+/**
+ * Visible messages the fork added that no merge has carried yet.
+ */
+newMessageCount: number; shownMessageCount: number; truncated: boolean;
+/**
+ * What the source would receive, minus the footer naming the merge.
+ */
+text: string; nothingNew: boolean;
+/**
+ * The fork is still working, so its findings are incomplete.
+ */
+childActive: boolean;
+/**
+ * The source is mid-turn; the message waits in its queue.
+ */
+sourceBusy: boolean;
+/**
+ * A merge whose delivery is not confirmed yet.
+ */
+unconfirmedMergeId: string | null; lastMergedThroughEventId: string | null }
+export type ForkMergeResult = {
+/**
+ * False when this range was already merged and nothing was sent.
+ */
+merged: boolean; queued: boolean; mergeId: string | null; throughEventId: string }
+export type ForkWorkspaceMode = "shared" | "isolated"
 export type FoundElement = { ref: string; role: string; name: string; value: string }
 export type GhPrRecord = {
 /**
@@ -1990,7 +2276,26 @@ export type Learning = { id: string; projectId: string; kind: string; summary: s
 export type LearningsDeleteInput = { id: NonEmptyString }
 export type LearningsListInput = { projectId: ProjectId; limit: Limit200 | null }
 export type LearningsUpdateInput = { id: NonEmptyString; summary: NonEmptyString | null; verified: boolean | null }
+export type LifecycleName = "started" | "streaming" | "completed" | "cancelled" | "cleared" | "recovered-from-crash" | "compacting" | "compacted" | "provider-changed" | "move-requested" | "archive-requested" | "moved" | "note"
 export type Limit200 = number
+export type LinkedRepo = { id: string; projectId: string;
+/**
+ * The handle an agent passes as `linked_repo`. Unique within the project.
+ */
+name: string;
+/**
+ * Canonical absolute directory, resolved when the root was added.
+ */
+rootPath: string; enabled: boolean; createdAt: string; updatedAt: string }
+export type LinkedRepoInput = {
+/**
+ * Defaults to the directory's name.
+ */
+name?: string | null; path: string }
+export type LinkedReposAddInput = { projectId: ProjectId; repo: LinkedRepoInput }
+export type LinkedReposListInput = { projectId: ProjectId }
+export type LinkedReposRemoveInput = { projectId: ProjectId; id: NonEmptyString }
+export type LinkedReposSetEnabledInput = { projectId: ProjectId; id: NonEmptyString; enabled: boolean }
 export type LogEntry = {
 /**
  * Monotonic, process-lifetime sequence number. The debug panel polls with
@@ -1998,6 +2303,9 @@ export type LogEntry = {
  * of the whole 1000-entry ring.
  */
 seq: number; timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
+export type MenuCommand = "new-session" | "next-chat" | "previous-chat" | "open-settings" | "toggle-sidebar" | "toggle-left-sidebar" | "toggle-debug-log" | "open-command-palette" | "open-cheat-sheet" | "check-for-updates" | "open-docs" | "report-issue" | "close-surface"
+export type MessageContent = "answer" | "thinking"
+export type MessageDelivery = "steer"
 /**
  * Where a user turn came from, when it was not the person at the keyboard.
  * Written onto the `user.message` payload as `origin`, which is what the chat
@@ -2025,11 +2333,14 @@ kind: string;
  * it — is not also sent as a turn.
  */
 messageId?: string | null }
+export type MessagePhase = "delta" | "completed"
+export type MessageRole = "user" | "assistant"
 /**
  * The chat the multitask runs in, handed straight back to the composer so it
  * can show the card without waiting for the dashboard delta.
  */
 export type MultitaskLaunched = { sessionId: string; workspaceId: string; taskLabel: string }
+export type MultitaskPhase = "launched" | "finished"
 export type NonEmptyString = string
 export type NullableExpectedMtimeMs = number | null
 export type NumericSummary = { median: number; p95: number; peak: number }
@@ -2064,7 +2375,15 @@ tree: string;
 truncated: boolean }
 export type PageTable = { caption: string | null; headers: string[]; rows: string[][] }
 export type PageText = { tabId: string; url: string; title: string; state: string; text: string; truncated: boolean }
-export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; agentReferences: AgentReference[]; origin?: MessageOrigin | null;
+export type PendingMessage = { id: string; sessionId: string; content: string; agentMode: string;
+/**
+ * The provider this follow-up runs under once it drains. `None` is the
+ * chat's provider at that moment, which is what every row queued before
+ * this field existed means. Set only when the sender picked another
+ * provider than the one the chat will be on; it then carries its own
+ * `model_label` and `model_id`.
+ */
+provider?: ProviderId | null; modelLabel?: string | null; modelId?: string | null; reasoningEffort?: string | null; fastMode: boolean; attachments: ComposerAttachmentInput[]; agentReferences: AgentReference[]; origin?: MessageOrigin | null;
 /**
  * Present only after startup recovery. Recovered messages stay visible
  * but are excluded from automatic queue draining until the user chooses
@@ -2077,6 +2396,42 @@ export type PerformanceEnvironment = { appVersion: string; platform: string; arc
 export type PerformanceSample = { capturedAt: string; elapsedMs: number; samplerOverheadMs: number; processes: ProcessTreeMetrics; runningChats: number; runningChatsByProvider: Partial<{ [key in string]: number }>; providerEvents: number; providerEventsPerSecond: number; ipcCalls: number; ipcCallsPerSecond: number; pendingProviderItems: number; sqlite: SqlitePressureMetrics; rendererStalls: RendererStallMetrics }
 export type PerformanceStatus = { recording: boolean; startedAt: string | null; sampleCount: number; droppedSamples: number; latest: PerformanceSample | null }
 export type PermissionMode = "provider-defaults" | "auto-approve" | "ask-each-time"
+export type PrCleanupOutcome =
+/**
+ * Cleanup did this step.
+ */
+"done" |
+/**
+ * Nothing to do: the branch was already gone, or the base already current.
+ */
+"already-done" |
+/**
+ * Not safe or not applicable, so cleanup left it alone.
+ */
+"skipped" |
+/**
+ * A branch stays because a rule protects it.
+ */
+"kept" |
+/**
+ * The remote branch moved past the merged head, so it stays.
+ */
+"diverged" | "failed"
+export type PrCleanupReport = { prNumber: number; branch: string; baseBranch: string; mergedHead: string; mergeCommit: string | null; remote: PrCleanupStep; base: PrCleanupStep; local: PrCleanupStep;
+/**
+ * The chat's checkout, which cleanup always keeps. `None` when it is not
+ * on disk, for example after the chat was archived.
+ */
+checkoutPath: string | null;
+/**
+ * The plain-text report, one line per step.
+ */
+text: string }
+export type PrCleanupStep = { outcome: PrCleanupOutcome;
+/**
+ * The report line without its label, e.g. `origin/fix-parser deleted`.
+ */
+detail: string }
 export type ProcessGroupMetrics = { cpuPercent: number; rssBytes: number; processCount: number }
 export type ProcessTreeMetrics = { total: ProcessGroupMetrics; host: ProcessGroupMetrics; webview: ProcessGroupMetrics; agents: ProcessGroupMetrics }
 export type ProjectCheck = { decision: ProjectCheckDecision;
@@ -2119,6 +2474,15 @@ export type ProjectCheckOutcome =
  * Went back to the composer without launching.
  */
 "cancelled"
+/**
+ * A checkout a new chat can run in: one entry of the project's
+ * `git worktree list` that has a branch checked out.
+ */
+export type ProjectCheckout = { branch: string; path: string;
+/**
+ * The project's own checkout, the first entry git lists.
+ */
+isMain: boolean }
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectId = string
@@ -2138,7 +2502,14 @@ archiveOnMerge: boolean }
 export type ProjectSource = { id: string; projectId: string; title: string; kind: ProjectSourceKind; location: string; guidance: string; addedBy: ProjectSourceAddedBy; addedBySessionId: string | null; createdAt: string; updatedAt: string }
 export type ProjectSourceAddedBy = "user" | "agent"
 export type ProjectSourceKind = "file" | "url"
-export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings; counts: ProjectCounts; latestActivityAt: string | null }
+export type ProjectSummary = { id: string; name: string; repoPath: string; currentBranch: string; defaultBranch: string | null; settings: ProjectSettings;
+/**
+ * This project's branch template for new isolated workspaces, overriding
+ * the app-wide one. Kept beside `settings` rather than inside it: the
+ * settings form saves through `projects:update-settings`, and this value
+ * has its own validated channel.
+ */
+branchTemplate?: string | null; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsCheckPromptInput = {
 /**
  * The project the launcher is aimed at.
@@ -2150,6 +2521,7 @@ projectId: ProjectId; prompt: Prompt;
  */
 pickedByHand: boolean }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
+export type ProjectsListCheckoutsInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
 export type ProjectsPickFolderInput = Record<string, never>
 export type ProjectsRefreshBranchInput = { projectId: ProjectId }
@@ -2160,6 +2532,11 @@ export type ProjectsResolveCheckInput = { checkId: NonEmptyString; outcome: Proj
  * The chat the launch started, when it started one.
  */
 sessionId: SessionId | null }
+export type ProjectsSetBranchTemplateInput = { projectId: ProjectId;
+/**
+ * `null` removes the project's override.
+ */
+template: string | null }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
@@ -2236,17 +2613,24 @@ export type ProvidersSendInput = { sessionId: SessionId; input: Prompt;
  * current provider, an idle follow-up relaunches under the new provider and
  * rebuilds context from the visible transcript — the native resume id is
  * dropped because Claude/Codex/Cursor ids don't translate. Requires
- * `model_label`/`model_id` for the new provider. Ignored while a turn runs:
- * the message queues under the session's current provider and the switch's
- * model metadata is dropped with it.
+ * `model_label`/`model_id` for the new provider. While a turn runs the
+ * message queues with the provider, model, effort and fast mode it picked,
+ * and the switch happens when it drains. A send that needs a model and has
+ * none is refused when it is queued, not when it drains.
  */
 provider?: ProviderId | null; modelLabel: NonEmptyString | null; modelId: NonEmptyString | null; reasoningEffort: ReasoningEffort | null; fastMode?: boolean; agentMode: AgentMode | null; attachments: ComposerAttachmentInput[] | null; agentReferences?: AgentReference[] | null }
 export type ProvidersSendQueuedMessageNowInput = { sessionId: SessionId; messageId: NonEmptyString; delivery?: QueuedMessageDelivery | null }
 export type ProvidersTerminateInput = { sessionId: SessionId }
+export type PrsCleanupInput = { sessionId: SessionId; prNumber: number }
 export type PrsDismissInput = { sessionId: SessionId; prNumber: number }
 export type PrsListForSessionInput = { sessionId: SessionId }
 export type PrsRefreshInput = { sessionId: SessionId }
 export type PrsSetPrimaryInput = { sessionId: SessionId; prNumber: number | null }
+/**
+ * A type-level channel map. Clients index it by channel instead of choosing
+ * an unrelated payload type at each subscription.
+ */
+export type PushPayloads = { "dashboard:delta": DashboardDelta; "terminal:data": TerminalChunk; "terminal:exit": TerminalExitInfo; "terminal:agent-open": TerminalAgentOpenEvent; "menu:command": MenuCommand; "ui:zoom": number; "window:focus-session": string; "composer:attach-window-snapshot": WindowSnapshotAttach; "window-snapshot:failed": SnapshotFailure; "browser:state": BrowserStateEvent; "browser:new-tab": BrowserNewTabEvent; "browser:page-command": BrowserPageCommandEvent; "browser:tabs": BrowserTabsEvent; "browser:agent-open": BrowserAgentOpenEvent }
 export type QuestionRequestId = string
 export type QuestionResolveResult = { sessionId: string; requestId: string; status: QuestionResolveStatus }
 export type QuestionResolveStatus = "answered" | "dismissed"
@@ -2463,6 +2847,7 @@ export type SaveImageResult = { filePath: string; sizeBytes: number }
  */
 export type ScratchWorkspaceKind = "scratch" | "popup"
 export type SearchQuery = string
+export type SemanticEvent = { kind: "message"; role: MessageRole; phase: MessagePhase; content: MessageContent; delivery: MessageDelivery | null; rawStream: boolean; cumulativeText: string | null } | { kind: "tool"; phase: ToolPhase; toolUseId: string | null; name: string; providerName: string | null; outcome: ToolOutcome | null; running: boolean; surface: string | null; traceSyntheticLaunch: boolean } | { kind: "approval"; phase: ApprovalPhase; approvalId: string | null; provider: string | null; providerRequestId: string | null; toolUseId: string | null; resolution: string | null } | { kind: "agent"; phase: AgentPhase; status: string | null } | { kind: "lifecycle"; name: LifecycleName } | { kind: "multitask"; phase: MultitaskPhase; childSessionId: string | null; state: string | null; taskLabel: string | null; prompt: string | null; worktree: boolean; answer: string | null } | { kind: "error"; code: string | null; operation: string | null } | { kind: "unknown"; reason: UnknownReason }
 export type SendInputResult = { ok: boolean; queued: boolean }
 export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: NonEmptyString; providerParentConversationId?: NonEmptyString | null; providerChildSessionId?: NonEmptyString | null }
 export type SessionClearInput = { sessionId: SessionId }
@@ -2470,8 +2855,33 @@ export type SessionCostSummary = { sessionId: string; modelId: string | null; to
 export type SessionCostSummaryInput = { sessionId: SessionId }
 export type SessionEventsSinceInput = { sessionId: SessionId; eventCursor: number | null; rawOutputCursor: number | null; changeCursor: number | null }
 export type SessionEventsSinceResult = { events: TimelineEvent[]; rawOutputs: RawProviderOutput[]; eventCursor: number; rawOutputCursor: number; changeCursor: number | null; deletedEventIds: string[]; deletedRawOutputIds: string[]; resetRequired: boolean; hasMore: boolean }
-export type SessionForkInput = { sessionId: SessionId }
-export type SessionForkResult = { workspace: WorkspaceSummary; session: SessionSummary }
+export type SessionForkInput = { sessionId: SessionId;
+/**
+ * The user message that started the finished turn to fork at. Omitted
+ * forks the whole chat as it is now.
+ */
+boundaryEventId?: NonEmptyString | null;
+/**
+ * Where the fork works: the source's checkout, or an isolated worktree
+ * that starts from the source's current files. Defaults to `shared`.
+ */
+workspace?: ForkWorkspaceMode | null }
+export type SessionForkLineageInput = { sessionId: SessionId }
+export type SessionForkMergeInput = {
+/**
+ * The fork whose findings come back to its source.
+ */
+sessionId: SessionId;
+/**
+ * The fork position the preview showed.
+ */
+throughEventId: NonEmptyString }
+export type SessionForkMergePreviewInput = {
+/**
+ * The fork whose findings would come back.
+ */
+sessionId: SessionId }
+export type SessionForkResult = { workspace: WorkspaceSummary; session: SessionSummary; fork: ForkInfo }
 /**
  * A picker token (icon name or palette color name). The renderer owns the
  * catalog; Rust only guarantees the value is a short slug so nothing arbitrary
@@ -2562,6 +2972,11 @@ autoTier?: string | null;
  * Why the router picked the current model, e.g. `coding · standard`.
  */
 autoRoute?: string | null }
+export type SetBranchTemplateInput = {
+/**
+ * `null` returns to Argmax's built-in template.
+ */
+template: string | null }
 export type SetBrowserToolsInput = { enabled: boolean }
 export type SetProjectCheckInput = { mode: ProjectCheckMode }
 export type SetRoutingKeyInput = { apiKey: string }
@@ -2570,6 +2985,13 @@ export type SkillSource = "user" | "workspace" | "codex-prompt" | "plugin" | "sy
 export type SkillSummary = { name: string; description: string; source: SkillSource }
 export type SkillsListInput = { provider: ProviderId; workspaceId: WorkspaceId | null }
 export type SkippedReason = "not-a-file" | "too-large" | "binary"
+export type SnapshotAttachment = { filePath: string; mimeType: string; sizeBytes: number }
+export type SnapshotFailure = { code: string; message: string; action: string | null }
+export type SnapshotSource = { appName: string; bundleId: string | null; windowTitle: string | null;
+/**
+ * RFC 3339.
+ */
+capturedAt: string }
 export type SourceInput = { title: string; location: string; guidance: string }
 export type SourcesAddInput = { projectId: ProjectId; source: SourceInput }
 export type SourcesDeleteInput = { projectId: ProjectId; id: NonEmptyString }
@@ -2644,7 +3066,10 @@ export type SystemSetThemeInput = { mode: ThemeMode }
 export type SystemTestNotificationInput = Record<string, never>
 export type SystemVacuumDatabaseInput = Record<string, never>
 export type TaskLabel = string
+export type TerminalAgentOpenEvent = { terminalId: string; workspaceId: string; command: string | null }
+export type TerminalChunk = { terminalId: string; data: string }
 export type TerminalCols = number
+export type TerminalExitInfo = { terminalId: string; exitCode: number; signal: number | null }
 export type TerminalId = string
 export type TerminalResizeInput = { terminalId: TerminalId; cols: TerminalCols; rows: TerminalRows }
 export type TerminalRows = number
@@ -2653,7 +3078,16 @@ export type TerminalSpawnResult = { terminalId: string }
 export type TerminalTerminateInput = { terminalId: TerminalId }
 export type TerminalWriteInput = { terminalId: TerminalId; data: StreamChunk }
 export type ThemeMode = "light" | "dark" | "system"
-export type TimelineEvent = { id: string; sessionId: string; type: string; message: string; payload: JsonValue; createdAt: string; rowCursor: number | null }
+export type TimelineContext = { parentToolUseId: string | null; providerThreadId: string | null; providerInvocationId: string | null; providerChildSessionId: string | null; providerParentConversationId: string | null; agentRunId: string | null; agentRootToolUseId: string | null; agentCodename: string | null; agentModelId: string | null; agentReasoningEffort: string | null; isRaw: boolean; traceSuperseded: boolean; traceImported: boolean }
+export type TimelineEvent = { id: string; sessionId: string; type: string; message: string; payload: JsonValue; semantic: TimelineSemantics; createdAt: string; rowCursor: number | null }
+/**
+ * Provider-independent meaning of a timeline row. The original type and
+ * payload remain available for diagnostics and presentation details.
+ */
+export type TimelineSemantics = { version: number; context: TimelineContext; event: SemanticEvent }
+export type ToolOutcome = "succeeded" | "failed" | "cancelled"
+export type ToolPhase = "started" | "output" | "completed"
+export type UnknownReason = "invalid-payload" | "unsupported-type"
 /**
  * Where a dollar figure came from. `provider_reported` is the CLI's own
  * accounting (Grok ticks, OpenCode cost); `list_price` is our table applied
@@ -2778,6 +3212,19 @@ export type UsageWindow = "24h" | "7d" | "30d"
 export type WindowOpenSessionInput = { sessionId: string }
 export type WindowOpenSessionResult = { label: string }
 export type WindowSetSessionInput = { sessionId: string | null }
+/**
+ * The `composer:attach-window-snapshot` payload.
+ */
+export type WindowSnapshotAttach = { attachment: SnapshotAttachment; source: SnapshotSource }
+export type WindowSnapshotConfigureInput = { enabled: boolean; chord: string }
+/**
+ * What Settings shows.
+ */
+export type WindowSnapshotStatus = { supported: boolean;
+/**
+ * `granted`, `denied` or `unsupported`.
+ */
+permission: string; enabled: boolean; chord: string; defaultChord: string; registered: boolean; registrationError: string | null }
 export type WorkspaceArchiveResult = { workspace: WorkspaceSummary; recoveryPath: string | null }
 export type WorkspaceContentSearchFile = { path: string; matches: WorkspaceContentSearchMatch[] }
 export type WorkspaceContentSearchMatch = { line: number; preview: string }
@@ -2789,6 +3236,11 @@ export type WorkspaceDiff = { workspaceId: string; filePath: string | null; cont
  * cannot operate on a later edit in a shared checkout.
  */
 revision: string }
+/**
+ * A file outside every workspace. `OpenPath` already rejects `..`, null
+ * bytes, and a leading dash.
+ */
+export type WorkspaceExternalFileInput = { path: OpenPath }
 export type WorkspaceFileEntry = { path: string }
 export type WorkspaceFilePreview = { kind: "text"; content: string; size: number; mtimeMs: number } | { kind: "skipped"; reason: SkippedReason; size?: number | null }
 export type WorkspaceFileStat = { mtimeMs: number; size: number }
@@ -2826,6 +3278,13 @@ priorityDismissedAt: string | null;
  * explicit remove or a dismissal.
  */
 priorityAddedAt: string | null;
+/**
+ * When the sidebar's snooze shelf lets this workspace back into its
+ * normal section. Display metadata only: snoozing never touches
+ * `state`, the running session, or the gh poller. A value in the past is
+ * an expired snooze, and the renderer treats it as none.
+ */
+snoozedUntil?: string | null;
 /**
  * State of the displayed session's primary PR, filled in from canonical
  * PR state and session evidence on every read path. The renderer merges
@@ -2884,6 +3343,16 @@ export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: Workspace
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
 export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
 export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: TaskLabel }
+/**
+ * A workspace in a checkout that already exists, named by the launcher after
+ * the person picked a branch that a worktree has checked out.
+ */
+export type WorkspacesCreateInCheckoutInput = { projectId: ProjectId; taskLabel: TaskLabel; path: NonEmptyString;
+/**
+ * The branch the person saw checked out at `path`. The launch is refused
+ * when the checkout has moved to another branch since.
+ */
+branch: BranchName }
 export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: TaskLabel; baseRef: BaseRef | null }
 export type WorkspacesCreateScratchInput = { taskLabel: TaskLabel; kind: ScratchWorkspaceKind | null }
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
@@ -2899,6 +3368,11 @@ export type WorkspacesSetLabelInput = { workspaceId: WorkspaceId; taskLabel: Tas
 export type WorkspacesSetPinnedInput = { workspaceId: WorkspaceId; pinned: boolean }
 export type WorkspacesSetPriorityAddedInput = { workspaceId: WorkspaceId; added: boolean }
 export type WorkspacesSetPriorityDismissedInput = { workspaceId: WorkspaceId; dismissed: boolean }
+export type WorkspacesSetSnoozedUntilInput = { workspaceId: WorkspaceId;
+/**
+ * RFC 3339 instant in the future, or `null` to unsnooze.
+ */
+until: string | null }
 export type WriteStaleReason = "stale"
 
 /** tauri-specta globals **/

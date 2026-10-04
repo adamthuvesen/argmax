@@ -69,12 +69,32 @@ A chat already shown in a torn-off window is routed there.
 
 ## Pending Follow-up Recovery
 
+A provider exit commits its raw output, terminal session state, workspace
+state, and completion timeline event in one SQLite transaction. Cancellation,
+launch failure, Cursor result completion, and restart recovery each commit
+their related terminal state writes together. A failed write rolls back that
+transition. Stream events can precede the terminal transition. After commit, the lifecycle owner removes the
+handle and advances pending messages. Approval cleanup and completion notices
+run independently of that queue drain. The completion-notice policy owns the
+quiet-window timers for user-driven turns in launched sessions and cancels a
+replaced timer before starting its successor.
+
 The composer queue is SQLite-backed. Enqueue, removal, editing, reordering,
 and restoration commit the complete per-session order before the renderer is
 notified. Dispatch marks a row `launching` before removing it from the
 in-memory queue, and deletes it only after the user turn is durably recorded.
 Attachments, agent references, model choices, fast mode, and cross-session
-message origin travel with the journal row.
+message origin travel with the journal row. So does the provider, when the
+sender named one (`pending_messages.provider`, v64): a row that names a provider
+keeps it and its model whatever the chat or the rows ahead of it are on, so
+removing or reordering a queued switch cannot change what a later row runs
+under. A row that names no provider (every row queued before v64) runs under the
+chat's provider at drain time. Naming a provider without a model, or one that
+cannot answer approvals in an `ask-each-time` chat, is refused when the row is
+queued, not when it drains. The drain passes the provider to the normal send, so
+the switch is the idle provider switch described in
+[providers.md](providers.md#session-lifecycle-and-follow-ups). A row that names
+a provider other than the running chat's cannot be steered into the turn.
 
 Startup restores every journal row to the composer but never drains recovered
 work automatically. A row that was merely waiting is labeled **Paused • not sent**.
@@ -87,6 +107,11 @@ may drain past paused recovered rows, so reviewing old work does not stall new
 work. Agent-originated messages remain authoritative in `session_messages`;
 their pending-turn copy uses the same journal but still checks the inbox row
 before dispatch to prevent double delivery.
+
+Completion wakes for launched sessions follow the same rule. The coalescing
+window that holds them is in memory, so their durable mark
+(`session_messages.wake_due_at`) is read at boot to wake an idle launcher whose
+window died with the app. See [agent-tools.md](agent-tools.md#completion-notices).
 
 ## Type Bindings
 

@@ -10,7 +10,13 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 - **Filesystem watchers:** Watchers are keyed by canonical checkout path so multiple sessions sharing a checkout share one watch. Linked worktrees also watch their external Git metadata directory, so branch and index changes update the card and composer even when no working files change. Events are debounced at 200 ms with a 1-second max interval. Changes inside `.git/objects`, `.git/lfs`, `.git/fsmonitor--daemon`, and `*.lock` are ignored.
 - **Workspace modes:** The launcher offers two modes (stored in `localStorage.argmax.workspaceMode`):
   - `current`: Shared checkout (`create_current`).
-  - `worktree`: Isolated worktree (`create_isolated`), branched as `argmax/<word>-<8-hex-id>`, for example `argmax/cedar-a3f92c18`. The name is generated locally without a model call. The directory uses the same name with `/` replaced by `-`. Branch and directory names stay stable while the descriptive chat title updates in the background. Existing worktrees keep their names.
+  - `worktree`: Isolated worktree (`create_isolated`), branched as `argmax/<word>-<8-hex-id>`, for example `argmax/cedar-a3f92c18`, unless a [branch name template](#branch-name-templates) is set. The name is generated locally without a model call. The directory uses the same name with `/` replaced by `-`. Branch and directory names stay stable while the descriptive chat title updates in the background. Existing worktrees keep their names.
+  **The launcher's branch pick** changes nothing on disk. It is held in the launcher and sent with the launch, captured when the prompt is sent, so Project check's dialog, a background send and an Undo each launch with the branch that was picked for them. The picker marks a branch another worktree has checked out (`projects:list-checkouts`), and a pick belongs to the project it was made in. What the launch does with it:
+  - `worktree` mode: `create_isolated` with the picked branch as `baseRef`. The project root is not touched.
+  - `current` mode, branch checked out in a worktree or the project root: `workspaces:create-alongside` attaches a new chat to that checkout. It takes the same shared-row shape as a multitask ([Lifecycle](#lifecycle--watchers) covers archive), so the owning chat's archive takes the new row with it. The host re-validates the path against `git worktree list`, refuses it when the checkout is now on another branch (`CHECKOUT_BRANCH_CHANGED`, naming both branches), and refuses a checkout under archive recovery storage or whose owner is mid-archive or failed to archive. It holds an admission on the owner from before the first check until the row exists, so an archive that starts meanwhile either refuses the launch or finds the row and archives it too.
+  - `current` mode, branch no checkout has: the project root checks the branch out at launch, not at the pick. Git still refuses if a worktree gained the branch in between.
+
+  A picked linked checkout is where the chat runs, but Files, Changes, the launcher's terminal and `@` file suggestions still show the project's own checkout. The branch chip says so in its tooltip. Dropped files' relative paths follow the pick.
   Agent `session_launch` can also attach to an existing checkout (`path`) or fork an isolated worktree from a named `branch`. See [agent-tools.md](agent-tools.md).
 - **Worktree location:** New projects default to `~/.argmax/worktrees/<project-id>/`. A one-time upgrade on database open switches project settings still pointing to the old `<repo>/.argmax/worktrees` default to this location for future launches. Custom locations and existing workspace paths stay unchanged. Settings → Projects accepts an absolute directory inside or outside the repo, including a return to the old location after upgrading. Creation resolves that directory and refuses an existing destination, including a symlink. Scratch profiles using `ARGMAX_DATA_DIR` keep worktrees under `<ARGMAX_DATA_DIR>/local-state/worktrees/<project-id>/`.
 - **Worktree setup:** `create_isolated` returns as soon as the checkout exists. `git worktree add` runs with hooks disabled, then a background task replays the repository's `post-checkout` hook with `git hook run` (git 2.36+, only when the hook exists) and runs the project's configured setup command, each through `CheckService` as a check row in the new worktree. Check children get the login-shell `PATH`, like git's do. Failures are recorded on the check rows and never fail the workspace, and the agent's first turn may start while they run.
@@ -25,6 +31,30 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
   - Archiving is also how a workspace is disposed of automatically. A project with `archive_on_merge` on (Settings → Projects) has each of its *isolated* workspaces archived by the gh poller once the PR on that workspace's branch merges, never forced — see [gh.md](gh.md).
   - An agent can ask for the same thing from inside: the `workspace_archive` MCP tool archives the caller's own workspace once its turn settles. Babysitting a PR does not imply archiving its chat. An explicit archive request can use this tool without removing the worktree during the agent's turn. See [agent-tools.md](agent-tools.md).
   - Stopping a chat within 10 seconds of launch is an undo of a mistaken start: the pane returns to the composer, and the workspace is force-archived so no cancelled row stays in the sidebar. Docked multitasks and details popups are excluded. See [earlyStop.ts](../src/renderer/lib/earlyStop.ts).
+
+### Branch name templates
+
+A **branch template** names the branch of each new isolated worktree. A project can set its own (Settings → Projects → Branch names), the app can set a default for every project, and with neither set the built-in `argmax/{word}-{id}` applies. Order of precedence: project, then app, then built-in. The app value lives in `ui_state` (`workspace.branch_template`) and the project value in `projects.branch_template`, because a launch reads both from Rust on every path, including agent launches.
+
+| Placeholder | Value |
+| --- | --- |
+| `{slug}` | The task label's words, lowercase ASCII, joined with `-`, at most 40 characters, cut at a word boundary. A word with any non-ASCII letter is skipped whole rather than kept as a fragment ("ändring" would become "ndring"). A label with no usable word (only emoji, or only such words) becomes `{word}`. |
+| `{type}` | Always `feat`. Nothing classifies the work: that would put a model call on chat startup. |
+| `{word}` | A random word from the worktree word list. |
+| `{id}` | Eight hex characters, unique per launch. |
+| `{date}` | The UTC day, `YYYYMMDD`. |
+
+Rust validates a template when it is saved ([branch_names.rs](../src-tauri/src/workspaces/branch_names.rs)): at most 100 characters, only the placeholders above, balanced braces, and a render with worst-case values must be a valid Git branch name. The rules match `git check-ref-format --branch` (including its refusal of `HEAD`), and a test checks them against the installed `git`. A rejected save keeps the previous value and returns the reason, which the form shows beside the field. A stored template that renders to an invalid name for some label (`a.{slug}` with the label "lock") falls back to the built-in one and logs a warning, so a launch never fails on it.
+
+A template with no unique part (`adam/{type}-{slug}`) collides when two chats share a label, and two launches can pick the same name at the same moment. `create_isolated` therefore **claims** a name instead of probing for one, and only ever removes what it created itself:
+
+1. `create_dir` makes the worktree directory and fails if anything is already there. The directory is the branch with `/` replaced by `-`, so `a/b-c` and `a-b/c` share one and the second launch loses.
+2. `git branch` creates the branch under git's own ref lock and fails if the name is taken, or if a parent or child ref blocks it. Of two launches racing for a name, exactly one succeeds.
+3. `git worktree add` checks the branch it owns out into the directory it owns.
+
+Steps 2 and 3 run as one group under a **worktree registry lock**, and so does every other Argmax call that writes the repository's `.git/worktrees/` registry: a failed launch's cleanup, archive's `worktree move`, `worktree repair` during archive recovery, and the expiry sweep's `worktree remove` and `prune`. Git does not lock that registry against itself, so two overlapping `git worktree add` calls could fail with `failed to read .git/worktrees/<name>/commondir`. The lock is one per repository, keyed by the canonical git common dir (every linked checkout and every path spelling shares it), and is a leaf: nothing else is acquired while it is held, and it is released before the row, the watcher and the background hook replay. Another process running git on the same repository is not covered; there the failing launch reports the error and removes only what it created.
+
+A launch that loses step 1 or 2 deletes nothing but its own empty directory and tries the next name: `-2`, `-3`, … `-31`, then the name plus the launch's random `{id}`, then the built-in `argmax/{word}-{id}` name. A parent/child conflict (an existing branch `adam/fix` forbids every `adam/fix/…`, so no suffix on that prefix can work) skips straight to the built-in name; an existing child (`adam/fix/old` blocks `adam/fix`) still takes the next suffix, because `adam/fix-2` is a different ref. If even that fails the launch ends with an error that names the last conflict. A failure after the claim (disk full) removes the directory and the branch it created, and the branch only while it still points at the commit it was created at. No code path removes a worktree or branch this launch did not create. Only new branches change. Existing branches and worktree directories keep their names, and the name still never follows the chat's later auto-title.
 
 ### Session Moves
 
@@ -47,6 +77,27 @@ A `--project` destination uses that project's shared checkout by default; `--wor
 A cross-project move always leaves the provider conversation id empty. A `--path` move carries it where the provider supports that, so the same work continues in the new worktree instead of starting cold — see [providers.md](providers.md#session-moves-and-the-provider-conversation).
 
 `session.moved` marks the handoff in both timelines; its payload carries `checkoutMode` (`shared`, `worktree`, or `attached`) and `conversationCarried`. The renderer follows the destination only when the source session is still selected.
+
+## Forking at a finished turn
+
+The Fork action under a finished turn forks the chat at that turn, in the same checkout. A second action forks it into an isolated checkout. The new chat opens with the visible history up to the end of that turn and no provider conversation: its first message starts one, with the provider chosen in the composer then. The source chat is never modified. Provider mechanics, the exact-versus-fresh rule, and why files are not rewound are in [providers.md](providers.md#native-continuity-and-forks).
+
+- `shared` reuses the source's checkout and workspace path, as a shared row, so archiving the fork never touches the source's worktree.
+- `isolated` creates a worktree on a new branch from the source's current `HEAD`, then applies the source's current uncommitted and untracked changes. It is the current files, never the files at the turn. If the changes cannot be copied the new worktree is archived and the fork fails.
+- Only git checkouts fork isolated.
+- `session_forks` records source, child, boundary message, last copied event, workspace mode and native plan. A fork can be made from a chat that is itself a fork. A fork of a chat that has not launched yet (an untouched fork or a moved copy) always starts fresh from the copied history: the id it holds is borrowed. A fork that has launched owns its conversation and can be forked like any chat.
+
+### Bringing findings back
+
+A fork chat shows a **Forked chat** card above the composer with **Open source** and **Bring findings back**. The second opens a preview: the source's name, the message the fork started from, how many visible messages the fork added since the fork or its last merge, and the exact text the source would receive. Confirming sends that text as the source's next message, attributed to the fork. A source that is mid-turn queues it through the ordinary follow-up queue; it is never steered into the running turn.
+
+- **No git merge, no file restore.** It moves context, not changes.
+- **Range.** A merge covers the fork's visible messages (the same eligibility as a provider handoff) in the earliest range no live claim covers, up to the position the preview showed. Positions are visible messages, never trace rows, which are rewritten after the fact, so a trace import is not a finding and cannot move the cursor. At most 40 messages and 24k characters go; older ones drop and the text points at `session_read` on the fork.
+- **Idempotent.** `fork_merges` claims `(fork, through event)` under a unique key before anything is sent, under the writer lock, so a repeated or concurrent click claims nothing. The footer line `Argmax fork merge <id>` is the claim's marker. The marker id is stored apart from the row id, so a claim copied onto a moved fork still finds its queued message.
+- **Gaps.** The next range is the first hole in the live claims, not "after the newest". Withdrawing an older queued merge while a newer one is queued offers the older range again, before the newer work.
+- **Delivery.** A send the source refuses releases its claim, unless the message was stored before the error, in which case the range stays merged. A queued message keeps its claim as `sending`. A claim whose send is running in this process is never touched. Any other `sending` claim is settled the next time a merge reads the fork: confirmed once the marker is in a source message, left alone while the message waits in the queue, and withdrawn when it is nowhere (the queued message was deleted, or the app died between claim and send). The preview itself writes nothing.
+- **A moved fork** keeps its lineage and claims (copied onto the destination), so merge-back still works from where it landed. If the source chat was deleted the fork keeps its history and has nothing to bring findings to.
+- **From inside the fork.** The fork's own agent calls `session_message` with `forkFindings: true` and the source's id. `message` becomes the note ahead of the findings, the call is allowed mid-turn, and it queues rather than steers. See [agent-tools.md](agent-tools.md).
 
 ## Scratch Workspaces
 
@@ -77,6 +128,14 @@ Workspaces holding at least one live **reason**, and workspaces with a live turn
 - Pinned status takes precedence over Priority.
 - Right-click "Done" (`workspaces:set-priority-dismissed`) clears every reason that was already true, and nothing that happens afterwards: a PR going red after a dismissal brings the row back, because `ci-red` is newer than the dismissal. Each reason carries its own `since` for that comparison — a session reason uses `attention_changed_at`, a PR reason the poller's `pr_activity_at`. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
 - The "Priority section in sidebar" setting hides the whole section, running rows included; they fall back to their date bucket or project group.
+
+## Snooze Shelf
+
+Right-click a chat → **Snooze for 1 hour**, **Snooze until tomorrow** (9:00 local), or **Snooze for a week**. The row leaves its section (Priority, date bucket, project group, Chat) and goes to a **Snoozed** shelf above Archived. The shelf is collapsed on every launch. Right-click a shelved row → **Unsnooze** returns it at once, and a snooze that reaches its time returns it by itself.
+
+A snooze is display metadata. `workspaces.snoozed_until` (RFC 3339, millisecond UTC, stored by `workspaces:set-snoozed-until`) is the only thing written. It never changes the workspace state, the session, attention, checks, or what the gh poller does: a PR that merges still settles the workspace, and archive on merge still runs. Rust accepts only a future instant at most 366 days out, and `null` clears it.
+
+Shelf membership is derived in the renderer ([snooze.ts](../src/renderer/lib/snooze.ts)) from the clock, so there is no backend timer and no poll. The sidebar arms one `setTimeout` for the earliest active expiry and re-derives when it fires. A snoozed row stays in its normal section while a session on it has a pending approval or an unanswered question (`approval-needed`, `question-asked`), because hiding what an agent is blocked on would stall it unseen. A pinned row stays in Pinned. Selecting a shelved chat opens the shelf. The iPhone app decodes `snoozedUntil` but does not shelve rows yet.
 
 ## Arcs
 
@@ -174,7 +233,8 @@ submodules are unsupported.
 an earlier message — each takes one opaque conversation id and continues from
 its end — so rewinding the transcript would be a promise the backend cannot
 keep. The conversation stays as the record of what was tried, and Fork is the
-escape hatch for a clean continuation. Settings → Agents → Conversation turns
+escape hatch for a clean continuation. Fork at a turn copies the history up to
+that turn, and still does not rewind files ([above](#forking-at-a-finished-turn)). Settings → Agents → Conversation turns
 the action off.
 
 ### Diff Notes
@@ -187,7 +247,7 @@ The composer chip and submitted note retain the range. Quoted ranges include dif
 
 Diffs carry git's default three lines of context. `parseUnifiedDiff` ([src/renderer/lib/diff.ts](../src/renderer/lib/diff.ts)) turns each between-hunk gap into an `omitted` block, which `DiffBlocks` renders as an "N unmodified lines" button. Clicking it re-requests the file with `contextLines` on `review:load-diff`, which becomes `git diff -U<n>`, climbing `DIFF_CONTEXT_STEPS` (25, then the whole file) until every gap is closed.
 
-Context is per open file and resets when a different file is selected. Only a single-file request honors `contextLines`; the whole-workspace diff and the additions/deletions counts stay on git's default. `MAX_DIFF_CONTEXT_LINES` in [validation.rs](../src-tauri/src/ipc/validation.rs) rejects anything larger, and the renderer's diff cache is keyed by path *and* context so a wider request is never served the narrower cached diff.
+Context is per open file and resets when a different file is selected. Only a single-file request honors `contextLines`; the whole-workspace diff and the additions/deletions counts stay on git's default. `MAX_DIFF_CONTEXT_LINES` in [validation.rs](../src-tauri/src/application/validation.rs) rejects anything larger, and the renderer's diff cache is keyed by path *and* context so a wider request is never served the narrower cached diff.
 
 Each per-file diff is capped at 1 MiB (`PER_FILE_DIFF_CAP_BYTES`). A capped diff loses whole trailing hunks, so the parser emits a `truncated` block for the marker `cap_diff` appends, `DiffBlocks` shows it as a warning row, and the expand buttons stop offering an action that would only drop more.
 
@@ -208,3 +268,25 @@ Images are the one file kind the text read can't carry: `workspace:read-file` re
 [src-tauri/src/git](../src-tauri/src/git) executes git commands via direct argv arguments for branching, commits, pushing, and pull request actions.
 
 Selected-file commits build and commit through a temporary index, leaving unrelated staged entries in the checkout index alone. If the follow-up reset of that real index is blocked, the commit still returns its new SHA with an `indexCleanupWarning`; the commit dialog keeps the successful result visible and asks the user to repair the index rather than reporting a false failure. Git writes from Argmax serialize per canonical checkout, including separate IPC-created service instances that target a shared workspace.
+
+### PR Cleanup
+
+After a PR merges, Argmax does the git cleanup itself, with no model turn, for every provider. One function, `cleanup_merged_pr` in [pr_cleanup.rs](../src-tauri/src/git/pr_cleanup.rs), serves the `pr_cleanup` agent tool, the `prs:cleanup` IPC command (the **Clean up** action on a merged PR row in the workspace card), and a PR watch with `cleanupOnMerge` ([gh.md](gh.md#pr-watch)).
+
+Cleanup never archives, hides, or deletes the chat. The chat's checkout stays. The report says what was kept.
+
+1. Read the PR with `gh pr view`. Refuse with `PR_NOT_MERGED` unless it is merged. Record `headRefOid` as the merged head and `mergeCommit.oid` as the merge commit.
+2. Remote branch. Skip it when the head repository's owner is not `origin`'s owner (a fork PR). Otherwise check `git ls-remote --heads origin refs/heads/<branch>`. GitHub may have deleted it already. If it is there, delete it with `git push --force-with-lease=refs/heads/<branch>:<merged head> origin --delete refs/heads/<branch>`. A `stale info` rejection means the branch moved past the merged head, so it stays and the report names the divergence.
+3. Base. Find the worktree that has the base branch checked out. Skip when no worktree has it, when a turn is running there, or when it has uncommitted tracked changes. Otherwise take that checkout's write lock and run `git pull --ff-only origin <base>`. The report says when the merge commit is still not in it.
+4. Local branch. Keep it when any worktree has it checked out (normally the chat's own worktree) or when its tip is not the merged head, including when it has later commits. Otherwise delete it with `git update-ref -d refs/heads/<branch> <merged head>`, which refuses if the tip moves in between.
+5. `git remote prune origin`.
+
+Worktree paths compare through `comparable_worktree_path`. A step that fails is reported in its line. Only a refusal returns an error. A report reads:
+
+```
+PR #72 merged as abc1234 (head def5678)
+Remote: origin/fix-parser deleted
+Base: main fast-forwarded in /path/to/repo
+Local: fix-parser kept (checked out by this chat's worktree)
+Chat: kept, checkout /path/to/worktree kept
+```

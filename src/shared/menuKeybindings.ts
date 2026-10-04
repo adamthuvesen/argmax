@@ -28,6 +28,13 @@ interface MenuKeybinding {
   menuLocation: "app" | "file" | "view" | "help" | null;
 }
 
+/**
+ * The key under Esc: `Backquote` on an ANSI Mac, `IntlBackslash` on an ISO one.
+ * The global handler cycles chats on either, and the chord recorder reserves
+ * both, so the two read this one list.
+ */
+export const CHAT_CYCLE_CODES: ReadonlySet<string> = new Set(["Backquote", "IntlBackslash"]);
+
 export const MENU_KEYBINDINGS: readonly MenuKeybinding[] = [
   {
     command: "open-command-palette",
@@ -138,5 +145,6 @@ export const RENDERER_ONLY_KEYBINDINGS: readonly RendererOnlyKeybinding[] = [
   { displayAccelerator: "⌘⇧R", label: "Open the folder picker (new chat)" },
   { displayAccelerator: "⌘⇧I", label: "Toggle browser panel" },
   { displayAccelerator: "⌘↑", label: "Recall the last sent message into an empty draft" },
+  { displayAccelerator: "⌘⇧O", label: "Open the chat reference at the caret" },
   { displayAccelerator: "Esc", label: "Close the topmost menu or panel, then stop the focused chat if enabled" }
 ] as const;

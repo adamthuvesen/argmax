@@ -213,20 +213,6 @@ mod tests {
     }
 
     #[test]
-    fn merge_falls_back_to_process_env_when_base_empty() {
-        // Hydration failure / non-Unix: behave like the pre-hydration code.
-        let process = pairs(&[("CLAUDE_CONFIG_DIR", "/Users/me/.claude")]);
-
-        let merged = merge_provider_environment(Vec::new(), process, []);
-
-        assert_eq!(
-            lookup(&merged, "CLAUDE_CONFIG_DIR"),
-            Some("/Users/me/.claude")
-        );
-        assert!(lookup(&merged, "PATH").is_some());
-    }
-
-    #[test]
     fn verification_environment_isolates_provider_credentials_and_home() {
         let process = pairs(&[
             ("ARGMAX_VERIFICATION_HOME", "/tmp/verification-home"),

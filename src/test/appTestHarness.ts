@@ -79,6 +79,7 @@ export type SettingsGroup =
 export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<typeof vi.fn<T>>;
 
 export let createCurrentWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createCurrent"]>;
+export let createAlongsideWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createAlongside"]>;
 export let createIsolatedWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createIsolated"]>;
 export let createScratchWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["createScratch"]>;
 export let autotitleWorkspace: AppTestMockFn<ArgmaxApi["workspaces"]["autoTitle"]>;
@@ -93,6 +94,8 @@ let approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
 export let questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
 export let pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
 export let listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
+export let listCheckouts: AppTestMockFn<ArgmaxApi["projects"]["listCheckouts"]>;
+export let switchBranch: AppTestMockFn<ArgmaxApi["projects"]["switchBranch"]>;
 export let listChangedFiles: AppTestMockFn<ArgmaxApi["review"]["listChangedFiles"]>;
 export let loadDiff: AppTestMockFn<ArgmaxApi["review"]["loadDiff"]>;
 export let listWorkspaceFiles: AppTestMockFn<ArgmaxApi["workspace"]["listFiles"]>;
@@ -215,6 +218,9 @@ export function setupAppTestMocks(): void {
   createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
     snapshot.workspaces[0] ?? missingWorkspace()
   );
+  createAlongsideWorkspace = vi.fn<ArgmaxApi["workspaces"]["createAlongside"]>().mockResolvedValue(
+    snapshot.workspaces[0] ?? missingWorkspace()
+  );
   createIsolatedWorkspace = vi.fn<ArgmaxApi["workspaces"]["createIsolated"]>().mockResolvedValue(
     snapshot.workspaces[0] ?? missingWorkspace()
   );
@@ -260,6 +266,10 @@ export function setupAppTestMocks(): void {
     project: primaryProject()
   });
   listBranches = vi.fn<ArgmaxApi["projects"]["listBranches"]>().mockResolvedValue(["main"]);
+  listCheckouts = vi.fn<ArgmaxApi["projects"]["listCheckouts"]>().mockResolvedValue([]);
+  switchBranch = vi.fn<ArgmaxApi["projects"]["switchBranch"]>().mockImplementation(() =>
+    Promise.resolve(primaryProject())
+  );
   sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue(eventPageStub(snapshot));
   sessionAgentEvents = vi.fn<ArgmaxApi["session"]["agentEvents"]>().mockResolvedValue(eventPageStub(snapshot));
   sessionCostSummary = vi.fn<ArgmaxApi["session"]["costSummary"]>().mockResolvedValue({
@@ -475,8 +485,11 @@ export function setupAppTestMocks(): void {
       remove: () => Promise.resolve(),
       updateSettings: () => Promise.resolve(primaryProject()),
       listBranches,
+      listCheckouts,
       refreshBranch: () => Promise.resolve(primaryProject()),
-      switchBranch: () => Promise.resolve(primaryProject()),
+      switchBranch,
+      setBranchTemplate: ({ template }) =>
+        Promise.resolve({ ...primaryProject(), branchTemplate: template }),
       checkPrompt: () => Promise.resolve({
         decision: "none",
         checkId: null,
@@ -491,6 +504,7 @@ export function setupAppTestMocks(): void {
     workspaces: {
       createIsolated: createIsolatedWorkspace,
       createCurrent: createCurrentWorkspace,
+      createAlongside: createAlongsideWorkspace,
       createScratch: createScratchWorkspace,
       refreshStatus: () => Promise.resolve(snapshot.workspaces[0] ?? missingWorkspace()),
       status: workspaceStatus,
@@ -511,6 +525,12 @@ export function setupAppTestMocks(): void {
           id: workspaceId,
           priorityAddedAt: added ? new Date().toISOString() : null,
           priorityDismissedAt: null
+        }),
+      setSnoozedUntil: ({ workspaceId, until }) =>
+        Promise.resolve({
+          ...(snapshot.workspaces[0] ?? missingWorkspace()),
+          id: workspaceId,
+          snoozedUntil: until
         }),
       setLabel: ({ workspaceId, taskLabel }) =>
         Promise.resolve({
@@ -548,6 +568,9 @@ export function setupAppTestMocks(): void {
       eventsSince: sessionEventsSince,
       agentEvents: sessionAgentEvents,
       fork: () => Promise.reject(new Error("session fork not stubbed")),
+      forkLineage: () => Promise.resolve(null),
+      forkMergePreview: () => Promise.reject(new Error("fork merge not stubbed")),
+      forkMerge: () => Promise.reject(new Error("fork merge not stubbed")),
       multitask: multitaskStub,
       clear: () => Promise.reject(new Error("session clear not stubbed")),
       suggestFollowUp: () => Promise.resolve({ suggestion: null }),
@@ -594,6 +617,8 @@ export function setupAppTestMocks(): void {
         ? writeProjectFile(target, path, content, mtime)
         : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
+      readExternalFile: () => Promise.reject(new Error("not available in the harness")),
+      statExternalFile: () => Promise.reject(new Error("not available in the harness")),
       grepContent: () => Promise.resolve({ files: [], truncated: false })
     },
     checks: {
@@ -614,6 +639,9 @@ export function setupAppTestMocks(): void {
       setRoutingKey: () => Promise.reject(new Error("Routing key not stubbed")),
       clearRoutingKey: () => Promise.resolve({ enabled: false, projectCheck: "switch" }),
       setProjectCheck: ({ mode }) => Promise.resolve({ enabled: false, projectCheck: mode }),
+      branchTemplate: () => Promise.resolve({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
+      setBranchTemplate: ({ template }) =>
+        Promise.resolve({ template, defaultTemplate: "argmax/{word}-{id}" }),
       setBrowserTools: setBrowserToolsStub,
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
@@ -659,6 +687,22 @@ export function setupAppTestMocks(): void {
         };
       }
     },
+    windowSnapshot: {
+      status: () =>
+        Promise.resolve({
+          supported: false,
+          permission: "unsupported",
+          enabled: false,
+          chord: "CommandOrControl+Alt+Shift+S",
+          defaultChord: "CommandOrControl+Alt+Shift+S",
+          registered: false,
+          registrationError: null
+        }),
+      configure: () => Promise.reject(new Error("window snapshot is not configured in this test")),
+      requestPermission: () => Promise.reject(new Error("window snapshot is not configured in this test")),
+      onAttach: () => () => undefined,
+      onFailed: () => () => undefined
+    },
     windows: {
       onFocusSession: (listener) => {
         focusSessionListener = listener;
@@ -666,6 +710,12 @@ export function setupAppTestMocks(): void {
       },
       openSession: openSessionWindow,
       setSession: () => Promise.resolve({ label: "main" })
+    },
+    linkedRepos: {
+      list: () => Promise.resolve([]),
+      add: () => Promise.reject(new Error("linked repository writes not configured in this test")),
+      setEnabled: () => Promise.reject(new Error("linked repository writes not configured in this test")),
+      remove: () => Promise.resolve()
     },
     sources: {
       list: () => Promise.resolve([]),
@@ -688,13 +738,14 @@ export function setupAppTestMocks(): void {
           createdAt: "2026-05-12T00:00:00.000Z",
           lastSeenAt: "2026-05-12T00:00:00.000Z"
         }),
-      delete: () => Promise.resolve({ ok: true })
+      delete: () => Promise.resolve(null)
     },
     prs: {
       listForSession: () => Promise.resolve([]),
       refresh: () => Promise.resolve([]),
       setPrimary: () => Promise.resolve([]),
-      dismiss: () => Promise.resolve([])
+      dismiss: () => Promise.resolve([]),
+      cleanup: () => Promise.reject(new Error("prs.cleanup is not stubbed"))
     },
     git: {
       commit: () => Promise.resolve({ commitSha: "deadbeef", branch: "main" }),

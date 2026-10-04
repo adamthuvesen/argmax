@@ -263,7 +263,16 @@ const vitestBase = runEverything ? null : scope.vitestBase;
 // Contract checks are sub-second and cross the Rust/TS boundary, so they run
 // whenever either side changed.
 step("IPC channel parity", "node", ["scripts/check-tauri-bridge.mjs"]);
+step("Architecture boundaries", "node", ["scripts/check-architecture.mjs"]);
+step("Remote contracts", "node", ["scripts/export-remote-contracts.mjs", "--check"]);
+step("Swift contracts", "node", ["scripts/export-swift-contracts.mjs", "--check"]);
 step("main-thread handler allowlist", "node", ["scripts/check-main-thread-handlers.mjs"]);
+
+// One second, and the likeliest check to fail on a push: run it before the
+// minutes-long suites so a formatting slip does not cost a whole cycle.
+if (scope.rust) {
+  step("cargo fmt", "cargo", ["fmt", "--manifest-path", CARGO_MANIFEST, "--check"]);
+}
 
 if (scope.js) {
   step("eslint", "npx", ["eslint", ".", "--cache", "--cache-location", "node_modules/.cache/eslint/"]);
@@ -280,7 +289,6 @@ if (scope.js) {
 }
 
 if (scope.rust) {
-  step("cargo fmt", "cargo", ["fmt", "--manifest-path", CARGO_MANIFEST, "--check"]);
   step("cargo test", "cargo", ["test", "--manifest-path", CARGO_MANIFEST]);
   step("cargo clippy", "cargo", [
     "clippy",
@@ -297,6 +305,12 @@ if (scope.rust) {
 // but a font named outside the type roles is caught by reading the source.
 if (scope.ios) {
   step("iOS typography", "node", ["scripts/check-ios-fonts.mjs"]);
+}
+
+// The phone's model catalogue is generated from src/shared/providerModels.ts,
+// so a change on either side can leave it stale.
+if (scope.ios || scope.js) {
+  step("iOS model catalogue", "node", ["scripts/export-provider-models.mjs", "--check"]);
 }
 
 if (scope.bundle) {

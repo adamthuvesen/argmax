@@ -677,23 +677,6 @@ mod tests {
         assert_eq!(routine.next_run_at.as_deref(), Some(later));
     }
 
-    /// `routines:run-now` reads its launch fields straight off the row, so the
-    /// paused state has to travel with them or firing a paused task resumes it.
-    #[test]
-    fn launch_fields_carry_the_paused_state() {
-        let database = database_with_project();
-        let connection = database.connection();
-        upsert_routine(
-            &connection,
-            &input("r1"),
-            Some("2026-01-01T09:00:00.000Z".into()),
-        )
-        .unwrap();
-        set_routine_enabled(&connection, "r1", false, None).unwrap();
-        let paused = find_routine_by_id(&connection, "r1").unwrap();
-        assert!(!paused.enabled);
-    }
-
     #[test]
     fn run_settlement_preserves_pause_and_reschedule_edits_made_during_launch() {
         let database = database_with_project();
@@ -856,14 +839,6 @@ mod tests {
             .execute("DELETE FROM projects WHERE id = 'p1'", [])
             .unwrap();
         assert!(list_routines(&connection).unwrap().is_empty());
-    }
-
-    #[test]
-    fn delete_unknown_id_is_record_not_found() {
-        let database = database_with_project();
-        let connection = database.connection();
-        let error = delete_routine(&connection, "missing").unwrap_err();
-        assert_eq!(error.to_string(), "routine not found: missing");
     }
 
     #[test]

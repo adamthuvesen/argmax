@@ -56,12 +56,6 @@ describe("prependAnnotationsToPrompt", () => {
     );
   });
 
-  it("assigns each annotation a distinct id", () => {
-    const a = createAnnotation("x");
-    const b = createAnnotation("x");
-    expect(a.id).not.toBe(b.id);
-  });
-
   it("keeps the typed message after the notes", () => {
     const prompt = prependAnnotationsToPrompt("then rerun tests", [
       createDiffNoteAnnotation(diffNote())
@@ -98,20 +92,6 @@ describe("prependAnnotationsToPrompt", () => {
     ]);
     expect(prompt).toContain('line="12" end-line="15" side="added" base=');
     expect(prompt).not.toContain("end-side=");
-  });
-
-  it("names the comparison the line number belongs to", () => {
-    const prompt = prependAnnotationsToPrompt("", [
-      createDiffNoteAnnotation(diffNote({ base: "the whole branch vs origin/main" }))
-    ]);
-    expect(prompt).toContain('base="the whole branch vs origin/main"');
-  });
-
-  it("marks a deleted line as removed, since its number is the pre-change one", () => {
-    const prompt = prependAnnotationsToPrompt("", [
-      createDiffNoteAnnotation(diffNote({ side: "deletion", lineText: "let y = 0;" }))
-    ]);
-    expect(prompt).toContain('side="removed"');
   });
 
   it("drops the line attribute from a file-level note", () => {

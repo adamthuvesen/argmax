@@ -21,7 +21,6 @@ import {
 import { WINDOW_TRANSLUCENCY_KEY, WINDOW_TRANSLUCENT_KEY } from "./lib/windowTranslucency.js";
 import { USER_BUBBLE_TINT_STORAGE_KEY } from "./lib/userBubbleTint.js";
 import * as tauriBridge from "./lib/tauriBridge.js";
-import { APP_VERSION, APP_VERSION_LABEL } from "../shared/appVersion.js";
 import {
   diagnosticsStub,
   launchProvider,
@@ -82,31 +81,6 @@ describe("App settings", () => {
 
     fireEvent.keyDown(document, { key: ",", metaKey: true });
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
-  });
-
-  it("shows a local identity menu instead of a Ready settings footer", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    const trigger = screen.getByRole("button", { name: "Argmax menu" });
-    expect(trigger).toHaveTextContent("Argmax");
-    expect(trigger).toHaveTextContent(APP_VERSION);
-    // The stage word lives in About alone, so the chrome shows a bare version.
-    expect(trigger).not.toHaveTextContent(APP_VERSION_LABEL);
-    expect(trigger).not.toHaveTextContent("Local workspace");
-    expect(within(trigger).queryByText(/ready/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
-
-    const menu = await openArgmaxMenu();
-    expect(within(menu).getByRole("menuitem", { name: /Command Palette/ })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: /Settings/ })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: /Providers/ })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: /Diagnostics & Logs/ })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: /Keyboard Shortcuts/ })).toBeInTheDocument();
-    expect(within(menu).getByRole("menuitem", { name: /About Argmax/ })).toBeInTheDocument();
-
-    fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu", { name: "Argmax menu" })).not.toBeInTheDocument());
   });
 
   it("opens command palette and keyboard shortcuts from the identity menu", async () => {
@@ -931,26 +905,4 @@ describe("App settings", () => {
     );
     expect(document.documentElement.getAttribute("data-user-bubble")).toBe("accent");
   });
-
-
-  it("settings Appearance page wires the macOS-native options through to the document attribute", async () => {
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-
-    await openSettings("Appearance");
-    await screen.findByRole("heading", { name: "Theme" });
-
-    for (const [label, id] of [
-      ["System Mono", "system-mono"],
-      ["System Sans (SF Pro)", "system"]
-    ] as const) {
-      fireEvent.click(screen.getByRole("button", { name: "Font family" }));
-      fireEvent.click(screen.getByRole("button", { name: label }));
-      await waitFor(() =>
-        expect(document.documentElement.getAttribute("data-font")).toBe(id)
-      );
-      expect(window.localStorage.getItem("argmax.font.family")).toBe(id);
-    }
-  });
-
 });

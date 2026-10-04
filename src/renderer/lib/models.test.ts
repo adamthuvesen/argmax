@@ -6,7 +6,6 @@ import {
   AUTO_TIERS,
   autoTierSelection,
   FALLBACK_LAUNCH_MODEL,
-  factoryLaunchModel,
   modelDefaultForProvider,
   modelPickerSelectionFromSession,
   modelSelectionFromSession,
@@ -163,15 +162,6 @@ function discovered(
 }
 
 describe("preferredLaunchModel", () => {
-  it("seeds Claude Opus 5.5 as the factory default", () => {
-    expect(factoryLaunchModel()).toEqual({
-      provider: "claude",
-      label: "Opus 5.5",
-      modelId: "claude-opus-5-5",
-      reasoningEffort: "medium"
-    });
-  });
-
   it("prefers Claude, then Codex, then Cursor, then OpenCode", () => {
     const all = [
       discovered("opencode"),
@@ -208,7 +198,7 @@ describe("preferredLaunchModel", () => {
     ).toBe("codex");
   });
 
-  it("falls back to Big Pickle when no provider is usable", () => {
+  it("falls back to OpenCode's default when no provider is usable", () => {
     expect(preferredLaunchModel([])).toEqual(FALLBACK_LAUNCH_MODEL);
     expect(
       preferredLaunchModel([
@@ -218,21 +208,6 @@ describe("preferredLaunchModel", () => {
     ).toEqual(FALLBACK_LAUNCH_MODEL);
   });
 
-  it("defaults OpenCode to GLM-5.3-Flash at high effort", () => {
-    expect(modelDefaultForProvider("opencode")).toEqual({
-      label: "GLM-5.3-Flash",
-      modelId: "opencode-go/glm-5.3-flash",
-      reasoningEffort: "high"
-    });
-  });
-
-  it("defaults Cursor to Grok 4.7 at medium effort", () => {
-    expect(modelDefaultForProvider("cursor")).toEqual({
-      label: "Grok 4.7 (Cursor)",
-      modelId: "grok-4.7-medium",
-      reasoningEffort: "medium"
-    });
-  });
 });
 
 describe("allModelOptions", () => {
@@ -250,9 +225,9 @@ describe("allModelOptions", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("seeds Kimi K3 with max, its only variant, not the default medium", () => {
-    const kimi = allModelOptions.find((option) => option.modelId === "opencode-go/kimi-k3");
-    expect(kimi?.reasoningEffort).toBe("max");
+  it("seeds Qwen3.8 Flash with high, its lowest variant, not the default medium", () => {
+    const qwen = allModelOptions.find((option) => option.modelId === "openrouter/qwen/qwen3.8-flash");
+    expect(qwen?.reasoningEffort).toBe("high");
   });
 });
 

@@ -99,16 +99,16 @@ describe("launch model preference", () => {
   });
 
   it("clamps onto the discrete variant lists when Medium is missing too", () => {
-    // OpenCode Go variant lists are discrete: GLM-5.3-Flash has no medium, and
-    // Kimi K3 has only max. A default effort must land on a real variant, not
+    // OpenCode variant lists are discrete: GLM-5.3-Flash has no medium, and
+    // Qwen3.8 Flash has only high and max. A default effort must land on a real variant, not
     // ride through to the adapter as-is.
     const stored = (modelId: string): string | undefined => {
       window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "opencode", modelId }));
       return readStoredLaunchModel()?.reasoningEffort;
     };
 
-    expect(stored("opencode-go/glm-5.3-flash")).toBe("low");
-    expect(stored("opencode-go/kimi-k3")).toBe("max");
+    expect(stored("openrouter/z-ai/glm-5.3-flash")).toBe("low");
+    expect(stored("openrouter/qwen/qwen3.8-flash")).toBe("high");
   });
 
   it("keeps the stored default when a model can only offer a fallback", () => {

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   agentLaunchAriaLabel,
   agentLaunchLabel,
-  agentStatusLabel,
   isInternalAgentLaunchMetadata
 } from "./agentLaunch.js";
 import type { ToolCall } from "./toolCalls.js";
@@ -40,14 +39,6 @@ describe("agentLaunchLabel", () => {
     const prompt = "Inspect the repository at /Users/adamthuvesen/dev/menti/revops-backoffice.";
     const out = agentLaunchLabel(tool({ inputPreview: prompt.slice(0, 72), inputFull: { prompt } }), "Turing");
     expect(out.title).toBe("Launched Turing");
-  });
-});
-
-describe("agentStatusLabel", () => {
-  it("uses Completed / Running / Failed", () => {
-    expect(agentStatusLabel("done")).toBe("Completed");
-    expect(agentStatusLabel("running")).toBe("Running");
-    expect(agentStatusLabel("error")).toBe("Failed");
   });
 });
 

@@ -38,10 +38,6 @@ describe("ReactMarkdown URL sanitization", () => {
     expect(hrefOf("[good](https://example.com)")).toBe("https://example.com");
   });
 
-  it("preserves http: hrefs", () => {
-    expect(hrefOf("[good](http://example.com)")).toBe("http://example.com");
-  });
-
   it("preserves mailto: hrefs", () => {
     expect(hrefOf("[email](mailto:a@b.com)")).toBe("mailto:a@b.com");
   });

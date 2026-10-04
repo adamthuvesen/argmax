@@ -13,15 +13,27 @@ the result and treat dialog errors as failed actions. The plugin's injected
 | File | Role |
 |---|---|
 | [src-tauri/src/ipc](../src-tauri/src/ipc) | Command handlers with `#[tauri::command(rename = "...")]` |
-| [src-tauri/src/ipc/inputs.rs](../src-tauri/src/ipc/inputs.rs) | Input structs and validated newtypes |
+| [src-tauri/src/ipc/catalogue.rs](../src-tauri/src/ipc/catalogue.rs) | Command registration, remote dispatch, and exposure policy |
+| [src-tauri/src/ipc/inputs.rs](../src-tauri/src/ipc/inputs.rs) | Transport inputs and application input re-exports |
+| [src-tauri/src/application/validation.rs](../src-tauri/src/application/validation.rs) | Validated application scalar types |
 | [src-tauri/tests/fixtures/channels.txt](../src-tauri/tests/fixtures/channels.txt) | Generated request/response channel list |
 | [src/shared/bindings.d.ts](../src/shared/bindings.d.ts) | Generated TypeScript types |
-| [src/shared/ipcSchemas.ts](../src/shared/ipcSchemas.ts) | Generated channel-name array and union |
+| [src/shared/ipcSchemas.ts](../src/shared/ipcSchemas.ts) | Generated channel names and request/result associations |
 | [src/renderer/lib/tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) | `window.argmax` implementation |
 
 ## Request Channels
 
-Commands are registered in [src-tauri/src/ipc/mod.rs](../src-tauri/src/ipc/mod.rs) with `tauri-specta`. Validation happens in Rust input structs and newtypes, not in the renderer.
+Commands are registered once in [ipc/catalogue.rs](../src-tauri/src/ipc/catalogue.rs).
+Each entry names its Tauri handler, remote dispatch body, and desktop/read/control exposure.
+The catalogue builds the Specta registration and exports channel-specific request and result types.
+The remote adapter adds only the connection-owned `dashboard:changes` cursor.
+
+Rust validates request structs and application scalar types before executing operations.
+`BridgeTransport.invoke` associates the channel with its generated input and result types.
+Push subscriptions use the generated `PushPayloads` map from `ipc/events.rs`.
+The renderer facade validates persisted string enums before exposing narrower client types.
+These decoders are shared by command results and dashboard pushes.
+Raw malformed timeline payloads remain available in an explicit diagnostic envelope.
 
 File and review operations use a `{ kind: "workspace" | "project", id }` target resolved in Rust.
 
@@ -38,6 +50,8 @@ The first response pairs an authoritative bounded tail with a cursor from the
 same SQLite read transaction. `resetRequired` replaces retained history,
 `deletedEventIds` and `deletedRawOutputIds` remove rows, and `hasMore` asks the
 client to continue paging. Legacy event/raw row cursors remain supported.
+
+`session:fork` takes `{ sessionId, boundaryEventId?, workspace? }` and returns `{ workspace, session, fork }`. `boundaryEventId` is the user message that started the finished turn to fork at; omitted, it forks the whole chat. `workspace` is `shared` (default) or `isolated`. `fork` says how the first message continues: `portable`, `codex-turn`, or `latest`. `session:fork-lineage` (read) returns `{ forkId, sourceSessionId, boundaryEventId, workspace, lastMergedThroughEventId }` for a fork, else `null`. `session:fork-merge-preview` (read) returns what bringing findings back would send, including `throughEventId`, which `session:fork-merge` takes back to send exactly that range. Preview writes nothing: a stale merge claim is only left out of its answer, and `session:fork-merge` withdraws it. See [workspaces.md](workspaces.md#bringing-findings-back).
 
 `session:multitask` dispatches a sibling chat from a session that may still be mid-turn, and returns the new session and workspace ids so the composer can draw the card without waiting for the dashboard delta. See [multitask.md](multitask.md).
 
@@ -98,7 +112,7 @@ Subscribed in `tauriBridge.ts`:
 - `browser:tabs`
 - `browser:agent-open`
 
-Push channels are not listed in `channels.txt`.
+Push channels are not listed in `channels.txt`. Their payload types come from `ipc/events.rs`.
 
 `dashboard:delta` carries `changedSessionIds` for transcript reads and
 `dashboardChanged` for metadata reads. Full transcript and metadata payloads
@@ -112,15 +126,23 @@ immediate and drain revision pages before settling.
 
 1. Define input/output types in `src-tauri/src/ipc/inputs.rs` or the subsystem module.
 2. Implement the handler in `src-tauri/src/ipc/*.rs` with `#[tauri::command(rename = "namespace:name")]`.
-3. Register the command in `ipc::specta_builder()` and in `REGISTERED_CHANNELS`.
-4. Either implement the channel in `src-tauri/src/remote/dispatch.rs` or list it in `REMOTE_UNSUPPORTED_CHANNELS`.
+3. Add one entry to `ipc/catalogue.rs` with its handler and remote access policy.
+4. Implement the typed remote operation in that entry, or mark it `desktop`.
 5. Add the method to `ArgmaxApi` in `src/shared/types.ts` and `src/renderer/lib/tauriBridge.ts`.
-6. Run `npm run generate:bindings`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:tauri-bridge` and `check:main-thread`).
+6. Run `npm run generate:contracts`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:tauri-bridge` and `check:main-thread`).
 
 A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,
 in which case add it to the allowlist in `scripts/check-main-thread-handlers.mjs`
 with the reason.
+
+## Existing checkouts
+
+`projects:list-checkouts` (`read`) takes `{ projectId }` and returns `{ branch, path, isMain }` for each checkout in the project's `git worktree list` that a chat can use: not a detached or bare entry, not one git marks prunable or whose directory is gone, and not one in archive recovery storage or whose owner is mid-archive. `projects:list-branches` still returns names only. `workspaces:create-alongside` (`control`) takes `{ projectId, taskLabel, path, branch }`, validates `path` the way an agent's `session_launch` path is validated, refuses it with `CHECKOUT_BRANCH_CHANGED` when the checkout is on another branch than `branch`, and returns the new shared `WorkspaceSummary`. See [workspaces.md](workspaces.md#lifecycle--watchers).
+
+## Workspace settings channels
+
+`linked-repos:list`, `linked-repos:add`, `linked-repos:set-enabled`, and `linked-repos:remove` manage a project's linked repositories ([memory.md](memory.md#linked-repositories)). `projects:set-branch-template` sets or clears (`null`) a project's branch template, and `settings:branch-template` / `settings:set-branch-template` read and write the app-wide one ([workspaces.md](workspaces.md#branch-name-templates)). A template is validated on save, and a rejection arrives as `InvalidInput` whose issue message the settings form shows (`validationMessage` in `src/shared`). `workspaces:set-snoozed-until` takes `{ workspaceId, until }` with a future RFC 3339 instant, or `null` to unsnooze ([workspaces.md](workspaces.md#snooze-shelf)). All are `desktop` except the snooze write, which is `control` like the other row writes; `WorkspaceSummary.snoozedUntil` rides every snapshot and delta and is omitted when unset.
 
 ## Project sources
 
@@ -175,7 +197,20 @@ message starts "The arc was created"; the arc still exists.
 ordering. `prs:dismiss` takes `{ sessionId, prNumber }` and suppresses that
 association even if the transcript is replayed. Both return session PR summaries
 and publish affected workspace metadata. Remote mutations use the same handlers.
+`prs:cleanup` takes `{ sessionId, prNumber }` and runs
+[PR cleanup](workspaces.md#pr-cleanup) for a merged PR. It returns the
+structured report with its plain `text`, and it never archives the chat.
 
 Existing PR links open their stored URL. `git:view-or-create-pr` is the separate
 checkout creation action and accepts `expectedBranch` to reject a stale card
 before calling GitHub.
+
+## Contract checks
+
+`npm run check:contracts` checks handler names, application dependency direction, and generated client contracts.
+The Rust integration tests also check generated TypeScript freshness.
+`remoteReadChannels.json` is generated from the catalogue, with the remote-only delta cursor added explicitly.
+MCP tools retain their own explicit session-control exposure. Registering an IPC channel does not expose an agent tool.
+
+The Swift generator reads Rust-generated bindings and emits the phone's wire DTOs.
+Phone presentation models remain in Swift. Request wrappers preserve compatibility policies for omitted and null fields.

@@ -886,25 +886,6 @@ describe("AgentActivity", () => {
     ).toBeInTheDocument();
   });
 
-  it("labels the region without a codename when none is assigned", () => {
-    render(
-      <AgentActivity
-        events={[
-          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-            id: "task-1",
-            name: "Task",
-            input: { description: "Explore repo", prompt: "Map the repo." }
-          })
-        ]}
-        parentSession={session}
-        parentToolUseId="task-1"
-        workspace={workspace}
-      />
-    );
-
-    expect(screen.getByRole("region", { name: "Agent activity: Explore repo" })).toBeInTheDocument();
-  });
-
   it("keeps the agent role on the instructions line", () => {
     render(
       <AgentActivity

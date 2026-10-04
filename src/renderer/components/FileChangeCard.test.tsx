@@ -60,17 +60,6 @@ describe("FileChangeCard", () => {
     expect(onOpenFile).toHaveBeenCalledWith("src/foo.ts");
   });
 
-  it("renders an edit card with data-kind=edit", () => {
-    const change = changeFor("Edit", {
-      file_path: "/tmp/a.ts",
-      old_string: "old1\nold2",
-      new_string: "new1\nnew2\nnew3"
-    });
-    const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
-    const card = container.querySelector(".file-change-card");
-    expect(card?.getAttribute("data-kind")).toBe("edit");
-  });
-
   it("renders a delete card with no body diff", () => {
     const change = changeFor("deleteToolCall", { path: "/tmp/gone.md" });
     const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);

@@ -13,6 +13,7 @@ src/
 └── test/         Vitest setup
 
 src-tauri/        Rust runtime, services, IPC handlers, persistence, packaging
+ios/Argmax/       SwiftUI phone app: Sources/, Tests/ (XCTest, not run in CI), Resources/ (providerModels.json is generated); see docs/ios-performance.md
 scripts/          Lightweight CI/check scripts
 docs/             Deeper subsystem docs; see Index
 assets/           App icon sources the icon generator reads, and the mascot sprite
@@ -41,7 +42,7 @@ npm run tauri:build     # production Tauri bundle
 - **Renderer tests** query by **role / aria-label / title**, never by `className`.
 - **iPhone type goes through the roles in [Typography.swift](ios/Argmax/Sources/Design/Typography.swift).** A `.font(...)` at a call site is a surface Settings → Typeface cannot reach; `npm run check:ios-fonts` enforces it, and `npm run build:ios-fonts` regenerates the bundled Geist faces.
 - **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles/tokens.css](src/renderer/styles/tokens.css); see [docs/styling.md](docs/styling.md).
-- **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts).
+- **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts), but a model id is also read by Rust, the routing grid, and the generated iPhone catalogue. Use the checklist in [docs/providers.md](docs/providers.md#adding-or-retiring-a-model) to add or retire one.
 - **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
 - **An image reaches the user only through Markdown.** `![what it shows](path)` on its own line, pointing inside the checkout or at a path Argmax handed you (a `browser_screenshot`'s `path`). An image a tool returned lands in the model's context, not the chat, and a remote `http(s)` image is drawn as a link rather than fetched. See [docs/chat-cards.md](docs/chat-cards.md).
 - **A diagram reaches the user as a mermaid fence.** A fenced `mermaid` / `mmd` block in the answer is drawn as SVG, wider than the prose column. Prefer mermaid for architecture, sequence, and flow; prefer a Markdown image for a screenshot or chart already on disk. Skip hex `classDef` / `style` colors — Argmax themes the diagram. See [docs/chat-cards.md](docs/chat-cards.md).
@@ -67,7 +68,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Start here / Architecture** → [architecture.md](docs/architecture.md)
 - **Runtime / lifecycle / bridge** → [runtime.md](docs/runtime.md)
 - **IPC / `window.argmax`** → [ipc.md](docs/ipc.md)
-- **Database / migrations** → [data.md](docs/data.md)
+- **Database / migrations / live DB path** → [data.md](docs/data.md)
 - **Providers** → [providers.md](docs/providers.md)
 - **Auto routing (Router tiers, Jev classifier)** → [routing.md](docs/routing.md)
 - **Agent tools (the `argmax` MCP server)** → [agent-tools.md](docs/agent-tools.md)
@@ -83,6 +84,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Integrated terminal panel** → [terminal.md](docs/terminal.md)
 - **In-app browser panel** → [browser.md](docs/browser.md)
 - **Mobile remote / WS bridge** → [remote.md](docs/remote.md)
+- **Window snapshot (global chord, frontmost window → composer)** → [window-snapshot.md](docs/window-snapshot.md)
 - **GitHub PR / CI feedback loop** → [gh.md](docs/gh.md)
 - **Learnings extraction / project memory** → [memory.md](docs/memory.md)
 - **Skills / slash autocomplete** → [skills.md](docs/skills.md)
@@ -92,6 +94,7 @@ Before editing a subsystem, read the matching `docs/*.md`:
 - **Tests** → [testing.md](docs/testing.md)
 - **Verifying a change end to end** → [verification.md](docs/verification.md)
 - **Perf budgets** → [performance.md](docs/performance.md)
+- **Plans (dated snapshots, not kept current)** → [docs/plan](docs/plan/README.md)
 - **Release** → [release.md](docs/release.md)
 - **Homebrew cask / tap** → [homebrew.md](docs/homebrew.md)
 

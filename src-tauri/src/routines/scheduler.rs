@@ -11,24 +11,22 @@
 //! broken routine can never retry on every future tick.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::Utc;
-use tauri::Manager;
-
+use crate::application::session_launch::{self, LaunchSpec};
+use crate::application::validation::{NonEmptyString, Prompt, SessionId};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::inputs::ProvidersSendInput;
-use crate::ipc::validation::{NonEmptyString, Prompt, SessionId};
 use crate::persistence::database::Database;
 use crate::persistence::routines::{self, RoutineAuthor, RoutineLaunchFields, RoutineRunTarget};
 use crate::persistence::time::now_iso;
+use crate::providers::inputs::ProvidersSendInput;
 use crate::providers::session_service::{self, ProviderSessionService};
 use crate::providers::{AgentMode, ProviderId, ReasoningEffort};
-use crate::session_control::{self, LaunchSpec};
-use crate::state::AppState;
 use crate::util::sync::LockOrRecover;
 use crate::workspaces::WorkspaceService;
+use chrono::Utc;
 
 use super::schedule;
 
@@ -62,50 +60,44 @@ impl Drop for RoutineRun<'_> {
     }
 }
 
-/// Spawns the tick loop. Services are pulled from `AppState` on every tick
-/// and skipped while boot has not installed them yet, mirroring the session
-/// sync sweep loop, so this can start before the database opens.
-pub fn spawn(app: tauri::AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(SCHEDULER_TICK);
-        // A tick that overruns must not be followed by a burst of catch-up
-        // ticks: each one would re-evaluate the same due rows.
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            if let Err(error) = tick(&app).await {
-                tracing::warn!(?error, "routines.scheduler: tick failed");
-            }
-        }
-    });
+/// The scheduler runs after startup has installed the services it needs.
+/// The desktop shell supplies them once; individual ticks use no Tauri state.
+pub struct SchedulerDependencies {
+    pub database: Arc<Database>,
+    pub workspaces: Arc<WorkspaceService>,
+    pub providers: Arc<ProviderSessionService>,
+    pub runs: Arc<RoutineRuns>,
+    pub app_data_dir: PathBuf,
 }
 
-async fn tick(app: &tauri::AppHandle) -> ArgmaxResult<()> {
-    let (database, workspaces, providers) = {
-        let state = app.state::<AppState>();
-        let (Some(database), Some(workspaces), Some(providers)) = (
-            state.db.get(),
-            state.workspaces.get(),
-            state.providers.get(),
-        ) else {
-            return Ok(());
-        };
-        (
-            Arc::clone(database),
-            Arc::clone(workspaces),
-            Arc::clone(providers),
-        )
-    };
+pub async fn run(dependencies: SchedulerDependencies) {
+    let mut interval = tokio::time::interval(SCHEDULER_TICK);
+    // A tick that overruns must not be followed by a burst of catch-up
+    // ticks: each one would re-evaluate the same due rows.
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        interval.tick().await;
+        if let Err(error) = tick(&dependencies).await {
+            tracing::warn!(?error, "routines.scheduler: tick failed");
+        }
+    }
+}
+
+async fn tick(dependencies: &SchedulerDependencies) -> ArgmaxResult<()> {
+    let SchedulerDependencies {
+        database,
+        workspaces,
+        providers,
+        runs,
+        app_data_dir,
+    } = dependencies;
     let due = {
         let connection = database.connection();
         routines::due_routines(&connection, &now_iso())?
     };
-    let app_data = crate::util::data_dir::app_data_dir(app)
-        .map_err(|error| ArgmaxError::service("APP_DATA_DIR", error.to_string()))?;
-    let default_agent = crate::default_agent::read_default_agent(&app_data);
-    let state = app.state::<AppState>();
+    let default_agent = crate::default_agent::read_default_agent(app_data_dir);
     for fields in due {
-        let Some(_run) = state.routine_runs.try_start(&fields.id) else {
+        let Some(_run) = runs.try_start(&fields.id) else {
             continue;
         };
         // A manual run or schedule edit can finish after the due list was read.
@@ -127,7 +119,7 @@ async fn tick(app: &tauri::AppHandle) -> ArgmaxResult<()> {
             }
             routines::routine_launch_fields(&current)
         };
-        fire_routine(&database, &workspaces, &providers, fields, &default_agent).await;
+        fire_routine(database, workspaces, providers, fields, &default_agent).await;
     }
     Ok(())
 }
@@ -358,7 +350,6 @@ pub(crate) async fn fire_routine(
 
     let spec = LaunchSpec {
         alongside: None,
-        project: Some(fields.project_id.clone()),
         path: None,
         branch: None,
         prompt: fields.prompt.clone(),
@@ -376,15 +367,29 @@ pub(crate) async fn fire_routine(
         // A scheduled/routine launch is never attached to an Arc today.
         arc_id: None,
         arc_is_coordinator_launch: false,
+        author: crate::persistence::authorship::PromptAuthor::unattested(),
     };
-    let outcome = session_control::launch_with_spec(
-        spec,
-        Arc::clone(database),
-        Arc::clone(workspaces),
-        Arc::clone(providers),
-        &fields.project_id,
-    )
-    .await;
+    let outcome = match spec.validate() {
+        Ok(spec) => {
+            let project = {
+                let connection = database.read_connection();
+                crate::persistence::projects::require_project(&connection, &fields.project_id)
+            };
+            match project {
+                Ok(project) => {
+                    session_launch::launch(
+                        spec,
+                        project,
+                        Arc::clone(workspaces),
+                        Arc::clone(providers),
+                    )
+                    .await
+                }
+                Err(error) => Err(error),
+            }
+        }
+        Err(error) => Err(error),
+    };
 
     match outcome {
         Ok(launched) => {
@@ -405,7 +410,7 @@ pub(crate) async fn fire_routine(
             );
         }
         Err(error) => {
-            tracing::warn!(routine_id = %fields.id, code = %error.code, message = %error.message, "scheduled task launch failed");
+            tracing::warn!(routine_id = %fields.id, ?error, "scheduled task launch failed");
             // No unbounded retries of a one-shot; the panel surfaces the error
             // and run-now can retry deliberately.
             mark(
@@ -413,7 +418,7 @@ pub(crate) async fn fire_routine(
                 &fields,
                 &last_run,
                 stays_scheduled.next_run_at_or_retry(now).as_deref(),
-                Some(&error.message),
+                Some(&error.to_string()),
                 stays_scheduled.enabled(),
                 None,
             );
@@ -724,6 +729,30 @@ mod tests {
         assert!(runs.try_start("same").is_some());
     }
 
+    #[tokio::test]
+    async fn tick_uses_explicit_services_to_settle_a_due_routine() {
+        let database = database_with_project();
+        seed_coordinator_session(&database, "w-coord", "coord-a", "/tmp/argmax-tick-coord");
+        seed_arc(&database, "arc-1", "paused", Some("coord-a"));
+        arc_coordinator_routine(&database, "r1", "arc-1");
+        let data_dir = tempfile::tempdir().unwrap();
+        let dependencies = SchedulerDependencies {
+            database: Arc::clone(&database),
+            workspaces: WorkspaceService::new(Arc::clone(&database)),
+            providers: ProviderSessionService::new(Arc::clone(&database)),
+            runs: Arc::new(RoutineRuns::default()),
+            app_data_dir: data_dir.path().to_path_buf(),
+        };
+        tick(&dependencies).await.unwrap();
+        let routine = routines::find_routine_by_id(&database.connection(), "r1").unwrap();
+        assert_eq!(routine.last_error, None);
+        assert!(routine.last_run_at.is_some());
+        assert!(routine
+            .next_run_at
+            .as_deref()
+            .is_some_and(|at| at > "2026-01-01T09:00:00.000Z"));
+    }
+
     fn database_with_project() -> Arc<Database> {
         let database = Arc::new(Database::open_in_memory().expect("open db"));
         {
@@ -1011,28 +1040,6 @@ mod tests {
         assert!(matches!(
             resolve_arc_coordinator(&connection, Some("arc-1")),
             ArcCoordinatorResolution::NoCoordinator
-        ));
-    }
-
-    #[test]
-    fn resolve_arc_coordinator_finds_the_current_coordinator_and_a_repointed_one() {
-        let database = database_with_project();
-        seed_coordinator_session(&database, "w-coord-a", "coord-a", "/tmp/argmax-arc-coord-a");
-        seed_coordinator_session(&database, "w-coord-b", "coord-b", "/tmp/argmax-arc-coord-b");
-        seed_arc(&database, "arc-1", "active", Some("coord-a"));
-
-        let connection = database.connection();
-        assert!(matches!(
-            resolve_arc_coordinator(&connection, Some("arc-1")),
-            ArcCoordinatorResolution::Coordinator(session_id) if session_id == "coord-a"
-        ));
-        drop(connection);
-
-        repoint_arc_coordinator(&database, "arc-1", "coord-b");
-        let connection = database.connection();
-        assert!(matches!(
-            resolve_arc_coordinator(&connection, Some("arc-1")),
-            ArcCoordinatorResolution::Coordinator(session_id) if session_id == "coord-b"
         ));
     }
 

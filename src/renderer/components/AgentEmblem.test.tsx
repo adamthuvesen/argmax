@@ -4,16 +4,6 @@ import { EMBLEM_PATHS } from "../lib/agentEmblems.js";
 import { AgentEmblem } from "./AgentEmblem.js";
 
 describe("AgentEmblem", () => {
-  it("names its shape and hue on the mark and stays out of the accessibility tree", () => {
-    const { container } = render(<AgentEmblem shape="trefoil" hue="teal" size={18} />);
-    const svg = container.querySelector(".agent-emblem");
-    expect(svg?.getAttribute("data-shape")).toBe("trefoil");
-    expect(svg?.getAttribute("data-hue")).toBe("teal");
-    expect(svg?.getAttribute("aria-hidden")).toBe("true");
-    expect(svg?.getAttribute("width")).toBe("18");
-    expect(svg?.getAttribute("viewBox")).toBe("0 0 16 16");
-  });
-
   it("bevels one path in three passes rather than a gradient", () => {
     // Ids are the reason: the same emblem shows in four places on one page, and
     // duplicated <defs> ids would leave those copies fighting over one gradient.

@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState, type JSX } from "react";
 import type { ProjectSummary } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
+import { BranchTemplatePanel } from "./BranchTemplatePanel.js";
+import { LinkedReposPanel } from "./LinkedReposPanel.js";
 import { ProjectSourcesPanel } from "./ProjectSourcesPanel.js";
 import { SettingGroup, SettingRow, SettingsListPicker, Toggle } from "./settingsPrimitives.js";
 
@@ -48,6 +50,12 @@ export function ProjectsSettings({
             </div>
           ) : null}
           <ProjectSettingsForm key={selected.id} project={selected} onProjectUpdated={onProjectUpdated} />
+          <BranchTemplatePanel
+            key={`branch-names-${selected.id}`}
+            project={selected}
+            onProjectUpdated={onProjectUpdated}
+          />
+          <LinkedReposPanel key={`linked-${selected.id}`} projectId={selected.id} />
           <ProjectSourcesPanel key={`sources-${selected.id}`} projectId={selected.id} />
         </>
       )}

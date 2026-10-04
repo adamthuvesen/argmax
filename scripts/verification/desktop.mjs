@@ -172,7 +172,7 @@ async function closeDesktopProcessTree(browser) {
   };
 }
 
-async function captureDesktopState(browser) {
+export async function captureDesktopState(browser) {
   return await browser.execute(function captureUiState() {
     const diagnostic = window.__ARGMAX_VERIFICATION__?.snapshot();
     return {
@@ -256,7 +256,7 @@ export function foregroundActivationTimeoutDetails({
   };
 }
 
-async function ensureDesktopForeground(browser) {
+export async function ensureDesktopForeground(browser) {
   const visibilityState = await browser.execute(function currentVisibility() {
     return document.visibilityState;
   });
@@ -429,7 +429,7 @@ function rendererErrors(uiState) {
   );
 }
 
-function rendererErrorMessages(uiState) {
+export function rendererErrorMessages(uiState) {
   return rendererErrors(uiState).map((entry) => `${entry.level}: ${entry.message}`);
 }
 
@@ -805,6 +805,183 @@ export async function verifyDesktopSession({
   return result;
 }
 
+/**
+ * Runs in the page. Finds the CodeMirror view behind a composer field the way
+ * `EditorView.findFromDOM` does: the `.cm-content` node holds a `cmTile`, and
+ * the tile's root holds the view. (Older CodeMirror used `cmView`; the version
+ * installed here, 6.43.13, does not have it.) `action` is "text" (the document,
+ * chat chips as their link text and without the placeholder, which is a widget
+ * in the DOM but not in the document), "select-all" or "select-end".
+ * It throws when the view is not reachable, so a CodeMirror upgrade that moves
+ * the property fails loudly instead of returning the placeholder as text.
+ */
+export function composerEditorCommand(element, action) {
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+    if (action === "text") return element.value;
+    element.focus();
+    const end = action === "select-end" ? element.value.length : 0;
+    element.setSelectionRange(end, action === "select-all" ? element.value.length : end);
+    return null;
+  }
+  const content = element.matches(".cm-content") ? element : element.querySelector(".cm-content");
+  const view = content?.cmTile?.root?.view ?? null;
+  if (!view) {
+    const keys = Object.getOwnPropertyNames(content ?? {}).filter((key) => /cm|tile|view/i.test(key));
+    throw new Error(`CodeMirror view is not reachable from the composer field (cmTile: ${typeof content?.cmTile}; related properties: ${keys.join(", ") || "none"})`);
+  }
+  if (action === "text") return view.state.doc.toString();
+  view.focus();
+  const length = view.state.doc.length;
+  view.dispatch({ selection: action === "select-all" ? { anchor: 0, head: length } : { anchor: length } });
+  return null;
+}
+
+/** The prompt text in a composer field, as a draft stores it. */
+export async function readComposerText(browser, field) {
+  return await browser.execute(composerEditorCommand, field, "text");
+}
+
+/** Select all of a composer field's text, or put the caret at its end. */
+export async function selectComposerText(browser, field, where) {
+  await browser.execute(composerEditorCommand, field, where === "all" ? "select-all" : "select-end");
+}
+
+/**
+ * Wait for the real CodeMirror editor. The composer starts as a plain textarea
+ * and swaps to CodeMirror once its chunk loads, so a driver that types first
+ * proves the fallback, not the editor. Returns a fresh element handle: the
+ * swap replaces the node.
+ */
+export async function waitForCodeMirror(browser, label, timeoutMs = 20_000) {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(function editorIsCodeMirror(ariaLabel) {
+        const field = document.querySelector(`[aria-label="${ariaLabel}"]`);
+        return field !== null && field.closest(".cm-editor") !== null && document.querySelector(`textarea[aria-label="${ariaLabel}"]`) === null;
+      }, label),
+    { timeout: timeoutMs, interval: 150, timeoutMsg: `The "${label}" field never became a CodeMirror editor` },
+  );
+  return await browser.$(`[aria-label="${label}"]`);
+}
+
+/**
+ * Put text in a composer field. This WebDriver (tauri-plugin-wdio-webdriver)
+ * delivers `browser.keys` as untrusted KeyboardEvents and only edits INPUT and
+ * TEXTAREA values for them, so keys typed into the CodeMirror contenteditable
+ * go nowhere and the Send button stays disabled. Element send keys is the call
+ * that reaches a contenteditable: it focuses the element (no click, which could
+ * land on a chat chip and open the chat) and runs `execCommand("insertText")`,
+ * the browser's own editing path, so CodeMirror and React see a real input.
+ */
+export async function typeIntoComposer(browser, field, text) {
+  const tag = await field.getTagName();
+  if (tag === "textarea" || tag === "input") {
+    await field.setValue(text);
+    return;
+  }
+  await field.addValue(text);
+}
+
+/**
+ * Set the value of a plain input and read it back. A value that did not land
+ * whole (a missing last character, say) fails here with what the field holds,
+ * not later as a validation error from the app that looks like a product bug.
+ */
+export async function setInputValue(browser, field, text) {
+  await field.setValue(text);
+  // The page call takes the element as a WebDriver handle without checking it is
+  // still attached; a remounted input would answer from the detached node, which
+  // keeps the typed text, so `connected` makes a remount fail here.
+  const read = () => browser.execute(function readValue(element) {
+    return { value: element.value, connected: element.isConnected };
+  }, field);
+  const immediately = await read();
+  // A controlled input can be re-rendered from state a moment after the event.
+  await browser.pause(300);
+  const settled = await read();
+  if (!immediately.connected || !settled.connected) {
+    throw new Error(`Input was detached after typing ${JSON.stringify(text)} (attached: ${immediately.connected} then ${settled.connected})`);
+  }
+  if (immediately.value !== text || settled.value !== text) {
+    throw new Error(`Input holds ${JSON.stringify(immediately.value)} then ${JSON.stringify(settled.value)} after typing ${JSON.stringify(text)}`);
+  }
+}
+
+/**
+ * Press the mouse button on an element. This WebDriver's click is a bare
+ * `el.click()`, which sends no mousedown; the `@` menu rows select on
+ * mousedown (so the editor keeps focus), and a person's click always sends one.
+ * The event carries the element's centre, so a handler that reads the pointer
+ * position sees a real one.
+ */
+export async function pressMouseDown(browser, element) {
+  await browser.execute(function mouseDown(target) {
+    const box = target.getBoundingClientRect();
+    target.dispatchEvent(new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: box.left + box.width / 2,
+      clientY: box.top + box.height / 2,
+    }));
+  }, element);
+}
+
+/**
+ * Open the context menu of the element a CSS selector matches. `click({ button:
+ * "right" })` is a plain click here, so the page never sees a `contextmenu`
+ * event; this sends the one a right click produces, at the element's centre.
+ * The element is looked up inside the same page call that dispatches, so a
+ * WebDriver handle that went stale when the row re-rendered cannot receive the
+ * event on a detached node (where no handler would run and nothing would
+ * fail). It throws unless the page handled the event (`preventDefault`), and
+ * returns the target's identity for the evidence.
+ */
+export async function openContextMenu(browser, selector) {
+  const hit = await browser.execute(function contextMenu(query) {
+    const target = document.querySelector(query);
+    if (!target) return { found: false };
+    const box = target.getBoundingClientRect();
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      button: 2,
+      buttons: 2,
+      clientX: box.left + box.width / 2,
+      clientY: box.top + box.height / 2,
+    });
+    target.dispatchEvent(event);
+    return {
+      found: true,
+      defaultPrevented: event.defaultPrevented,
+      connected: target.isConnected,
+      tag: target.tagName,
+      title: target.getAttribute("title"),
+      workspaceId: target.closest("[data-workspace-id]")?.getAttribute("data-workspace-id") ?? null,
+      rect: [Math.round(box.left), Math.round(box.top), Math.round(box.width), Math.round(box.height)],
+    };
+  }, selector);
+  if (!hit.found) throw new Error(`openContextMenu: nothing matches ${selector}`);
+  if (!hit.defaultPrevented) throw new Error(`openContextMenu: the page did not handle contextmenu on ${JSON.stringify(hit)}`);
+  return hit;
+}
+
+/**
+ * Deliver one key chord to the focused element as a keydown carrying its
+ * modifiers. The WebDriver's `browser.keys` builds Enter, Backspace and the
+ * other named keys without `altKey`, `ctrlKey`, `metaKey` or `shiftKey`, so a
+ * chord like Alt+Enter would arrive as plain Enter. Returns whether a handler
+ * called `preventDefault`, which the composers do for a chord they act on.
+ */
+export async function pressChord(browser, { key, altKey = false, ctrlKey = false, metaKey = false, shiftKey = false }) {
+  return browser.execute(function dispatchChord(init) {
+    const target = document.activeElement ?? document.body;
+    const event = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
+    target.dispatchEvent(event);
+    return event.defaultPrevented;
+  }, { key, code: key === "Enter" ? "Enter" : key, keyCode: key === "Enter" ? 13 : 0, which: key === "Enter" ? 13 : 0, altKey, ctrlKey, metaKey, shiftKey });
+}
+
 /** Send a follow-up through the native composer in the attached app. */
 export async function sendDesktopMessage({ browser, input, sessionId = null, expectQueued = false }) {
   if (!browser) throw new Error("sendDesktopMessage requires browser");
@@ -817,7 +994,11 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
 
   const composer = await browser.$('[aria-label="Chat prompt"]');
   await composer.waitForEnabled({ timeout: 20_000 });
-  await composer.setValue(input);
+  await typeIntoComposer(browser, composer, input);
+  // Positive control for the clear check below: a reader that cannot see the
+  // text would also see it "cleared".
+  const typed = await readComposerText(browser, composer);
+  if (typed !== input) throw new Error(`Native composer holds ${JSON.stringify(typed)} after typing, not the follow-up`);
   if (expectQueued) {
     await browser.keys("Enter");
   } else {
@@ -825,7 +1006,7 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
     await send.waitForEnabled({ timeout: 10_000 });
     await send.click();
   }
-  await browser.waitUntil(async () => (await composer.getValue()) === "", {
+  await browser.waitUntil(async () => (await readComposerText(browser, composer)) === "", {
     timeout: 10_000,
     interval: 100,
     timeoutMsg: "Native composer did not clear after sending the follow-up"

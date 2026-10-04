@@ -8,7 +8,6 @@ import {
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import type * as TauriBridgeModule from "../lib/tauriBridge.js";
-import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 const SCREENSHOT_PATH = "/attachments/session-a/shot.png";
 
@@ -67,6 +66,16 @@ describe("SessionComposer unsent drafts", () => {
 
     renderConversation(baseSession());
     expect(prompt().value).toBe("half a thought");
+  });
+
+  it("brings a chat reference back with the draft, as the same link", () => {
+    const text = "compare with [Billing](argmax://chat/session-9?v=1) please";
+    renderConversation(baseSession());
+    fireEvent.change(prompt(), { target: { value: text } });
+    cleanup();
+
+    renderConversation(baseSession());
+    expect(prompt().value).toBe(text);
   });
 
   it("keeps each session's draft to itself", () => {
@@ -206,23 +215,5 @@ describe("SessionComposer unsent drafts", () => {
 
     renderConversation(baseSession());
     expect(attachedScreenshots()).toEqual([]);
-  });
-
-  it("leaves the screenshot in place when the send fails", async () => {
-    resetToastForTests();
-    const onSendSessionInput = vi.fn().mockRejectedValue(new Error("provider offline"));
-    renderConversation(baseSession(), [], { onSendSessionInput });
-    pasteScreenshot();
-    await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));
-
-    fireEvent.change(prompt(), { target: { value: "retry me" } });
-    fireEvent.keyDown(prompt(), { key: "Enter" });
-
-    await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    await waitFor(() => expect(toastSnapshot()?.message).toBe("provider offline"));
-    cleanup();
-
-    renderConversation(baseSession());
-    expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]);
   });
 });

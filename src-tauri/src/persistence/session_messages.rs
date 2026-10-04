@@ -76,6 +76,62 @@ pub fn insert_session_message(
     Ok(inserted > 0)
 }
 
+/// Record that this row's automatic wake of its recipient is still to be
+/// attempted. See `list_due_wakes`.
+pub fn mark_wake_due(connection: &Connection, id: &str) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("UPDATE session_messages SET wake_due_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((now_iso(), id))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// The wake was attempted (it started a turn, queued behind one, or failed), so
+/// boot must not attempt it again. The row itself stays collectable.
+pub fn clear_wake_due(connection: &Connection, id: &str) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached("UPDATE session_messages SET wake_due_at = NULL WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute([id])
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Completion rows whose wake was never attempted: the app stopped inside the
+/// coalescing window. Rows the recipient already collected are not wakes, and a
+/// row that has a copy in the follow-up journal is already held there (shown in
+/// the composer, delivered by the queue or by the person), so it is left to it.
+pub fn list_due_wakes(connection: &Connection) -> ArgmaxResult<Vec<SessionMessage>> {
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT m.id, m.from_session_id, m.to_session_id, m.body, m.kind, m.created_at, m.delivered_at
+             FROM session_messages m
+             WHERE m.wake_due_at IS NOT NULL AND m.delivered_at IS NULL
+               AND NOT EXISTS (
+                 SELECT 1 FROM pending_messages p
+                 WHERE json_extract(p.origin_json, '$.messageId') = m.id)
+             ORDER BY m.created_at ASC, m.rowid ASC",
+        )
+        .map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(SessionMessage {
+                id: row.get(0)?,
+                from_session_id: row.get(1)?,
+                to_session_id: row.get(2)?,
+                body: row.get(3)?,
+                kind: row.get(4)?,
+                created_at: row.get(5)?,
+                delivered_at: row.get(6)?,
+            })
+        })
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
 /// Close a row because a turn carried the message. Every caller is a turn —
 /// the immediate send, the queue drain, the completion notice, a multitask's
 /// results — so this is the whole `turn` side of the hand-over log.

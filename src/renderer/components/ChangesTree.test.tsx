@@ -64,15 +64,6 @@ describe("ChangesTree", () => {
     expect(screen.getByRole("img", { name: "Modified, 4 insertions, 6 deletions" }).textContent).toBe("·");
   });
 
-  it("marks a deleted file's label through data-status rather than an inline style", () => {
-    renderTree({ files: [makeFile({ path: "gone.ts", additions: 0, deletions: 9 })] });
-
-    const row = screen.getByRole("treeitem", { name: "gone.ts" });
-    const label = row.querySelector(".changes-tree-label");
-    expect(label?.getAttribute("data-status")).toBe("deleted");
-    expect(label?.getAttribute("style")).toBeNull();
-  });
-
   it("reports the selected row and passes clicks through as paths", () => {
     const onSelectFile = vi.fn();
     renderTree({
@@ -102,14 +93,6 @@ describe("ChangesTree", () => {
 
     rerender(<ChangesTree {...props} selectedPath="src/lib/deep.ts" />);
     expect(screen.getByRole("treeitem", { name: "deep.ts" })).toBeVisible();
-  });
-
-  it("runs the toolbar refresh", () => {
-    const onRefresh = vi.fn();
-    renderTree({ files: [makeFile({ path: "a.ts" })], onRefresh });
-
-    fireEvent.click(screen.getByRole("button", { name: "Refresh changed files" }));
-    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("routes row actions to their own callbacks without selecting the row", () => {

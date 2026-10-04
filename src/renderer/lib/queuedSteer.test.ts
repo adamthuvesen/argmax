@@ -24,7 +24,7 @@ const session = {
 const entry = {
   modelId: "claude-opus-5",
   reasoningEffort: "medium"
-} as Pick<PendingMessage, "modelId" | "reasoningEffort">;
+} as Pick<PendingMessage, "modelId" | "reasoningEffort" | "provider">;
 
 describe("canSteerQueuedMessage", () => {
   it("steers a matching row into a running Claude, Codex or OpenCode turn", () => {
@@ -33,6 +33,9 @@ describe("canSteerQueuedMessage", () => {
     expect(canSteerQueuedMessage({ ...session, provider: "opencode" }, entry)).toBe(true);
     // A row queued before the model was picked takes the turn's own settings.
     expect(canSteerQueuedMessage(session, {})).toBe(true);
+    // A row that names the chat's own provider, or none (every legacy row).
+    expect(canSteerQueuedMessage(session, { ...entry, provider: "claude" })).toBe(true);
+    expect(canSteerQueuedMessage(session, { ...entry, provider: null })).toBe(true);
   });
 
   it.each([
@@ -48,6 +51,7 @@ describe("canSteerQueuedMessage", () => {
       },
       entry
     ],
+    ["the row is bound for another provider", session, { ...entry, provider: "codex" as const }],
     ["the row names another model", session, { ...entry, modelId: "claude-sonnet-5-5" }],
     ["the row names another effort", session, { ...entry, reasoningEffort: "high" as const }]
   ])("refuses when %s", (_case, openSession, queued) => {

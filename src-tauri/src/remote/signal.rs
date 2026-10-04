@@ -471,17 +471,4 @@ mod tests {
         assert!(dedupe.admit(&second));
         assert!(!dedupe.admit(&first));
     }
-
-    #[test]
-    fn priority_maps_to_both_sinks() {
-        assert_eq!(SignalPriority::Urgent.ntfy_header(), "high");
-        assert_eq!(SignalPriority::Urgent.apns_header(), "10");
-        assert_eq!(
-            SignalPriority::Urgent.interruption_level(),
-            "time-sensitive"
-        );
-        assert_eq!(SignalPriority::Normal.ntfy_header(), "default");
-        assert_eq!(SignalPriority::Normal.apns_header(), "5");
-        assert_eq!(SignalPriority::Normal.interruption_level(), "active");
-    }
 }

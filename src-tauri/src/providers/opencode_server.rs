@@ -48,6 +48,7 @@ const SERVER_USERNAME: &str = "argmax";
 const SERVER_START_TIMEOUT: Duration = Duration::from_secs(15);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const SSE_READ_TIMEOUT: Duration = Duration::from_millis(250);
+const SSE_CONNECT_RETRIES: u32 = 10;
 const SSE_LINE_LIMIT: usize = 16 * 1024 * 1024;
 const MAX_SESSION_LINEAGE_DEPTH: usize = 64;
 const OPENCODE_CONFIG_CONTENT: &str = "OPENCODE_CONFIG_CONTENT";
@@ -850,19 +851,31 @@ fn subscribe(
             .build();
         // The authenticated URL's userinfo becomes a Basic authorization
         // header. Errors are sanitized before leaving this module.
-        let response = match stream_http
-            .get(&format!("{endpoint}/event"))
-            .query("directory", &directory)
-            .set("Accept", "text/event-stream")
-            .call()
-        {
-            Ok(response) => response,
-            Err(error) => {
-                let _ = sender.send(SseMessage::Failed(request_error(
-                    "subscribe to OpenCode events",
-                    &error,
-                )));
-                return;
+        // The health check can pass just before the listener drops a first
+        // connection, so a transport failure gets a few quick retries. The
+        // caller waits 5s for `Connected`, so stay inside that.
+        let mut attempts_left = SSE_CONNECT_RETRIES;
+        let response = loop {
+            match stream_http
+                .get(&format!("{endpoint}/event"))
+                .query("directory", &directory)
+                .set("Accept", "text/event-stream")
+                .call()
+            {
+                Ok(response) => break response,
+                Err(ureq::Error::Transport(_))
+                    if attempts_left > 0 && !cancel.load(Ordering::SeqCst) =>
+                {
+                    attempts_left -= 1;
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                Err(error) => {
+                    let _ = sender.send(SseMessage::Failed(request_error(
+                        "subscribe to OpenCode events",
+                        &error,
+                    )));
+                    return;
+                }
             }
         };
         let _ = sender.send(SseMessage::Connected);

@@ -143,10 +143,12 @@ hides the card when the read fails or the Mac predates the channel.
   cost nothing and is not counted anywhere: not in chats, turns, or the model
   mix. A tier left with no turns disappears, and so does the card. A turn still
   waiting on its first reply joins once that reply lands.
-- **Unknown turns are unpriced.** An answered turn with no usage recorded (cut
-  off before its usage landed), or on a model neither table knows, is counted
-  in turns and listed as unpriced, never $0, and left out of the per-turn
-  figure.
+- **Cancelled turns are left out.** A turn that ended in `session.cancelled`
+  is not counted in turns, cost, coverage or timings, whether or not it
+  recorded usage. Its spend still appears in the Usage ledger above.
+- **Unknown turns are unpriced.** An answered turn that finished with no usage
+  recorded, or on a model neither table knows, is counted in turns and listed
+  as unpriced, never $0, and left out of the per-turn figure.
 
 ## Cursor estimate
 

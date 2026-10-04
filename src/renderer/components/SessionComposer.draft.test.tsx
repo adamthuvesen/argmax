@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   baseSession,
   renderConversation,
-  rerenderConversation
+  rerenderConversation,
+  STARTED_TURN
 } from "../../test/sessionConversationTestHarness.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import type { ArgmaxApi } from "../../shared/types.js";
@@ -88,7 +89,7 @@ describe("SessionComposer unsent drafts", () => {
   });
 
   it("forgets the draft once the message sends", async () => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     renderConversation(baseSession(), [], { onSendSessionInput });
     fireEvent.change(prompt(), { target: { value: "ship it" } });
     fireEvent.keyDown(prompt(), { key: "Enter" });
@@ -105,7 +106,7 @@ describe("SessionComposer unsent drafts", () => {
     let rejectSend: ((error: Error) => void) | undefined;
     const onSendSessionInput = vi.fn(
       () =>
-        new Promise<void>((_resolve, reject) => {
+        new Promise<typeof STARTED_TURN>((_resolve, reject) => {
           rejectSend = reject;
         })
     );
@@ -127,7 +128,7 @@ describe("SessionComposer unsent drafts", () => {
     let rejectSend: ((error: Error) => void) | undefined;
     const onSendSessionInput = vi.fn(
       () =>
-        new Promise<void>((_resolve, reject) => {
+        new Promise<typeof STARTED_TURN>((_resolve, reject) => {
           rejectSend = reject;
         })
     );
@@ -146,7 +147,7 @@ describe("SessionComposer unsent drafts", () => {
     await waitFor(() => expect(prompt()).toHaveValue("retry in session a"));
     expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(SCREENSHOT_PATH)]);
 
-    onSendSessionInput.mockImplementationOnce(() => Promise.resolve());
+    onSendSessionInput.mockImplementationOnce(() => Promise.resolve(STARTED_TURN));
     fireEvent.keyDown(prompt(), { key: "Enter" });
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(2));
     const retry = onSendSessionInput.mock.calls[1] as unknown as unknown[] | undefined;
@@ -191,7 +192,7 @@ describe("SessionComposer unsent drafts", () => {
   });
 
   it.each(["click", "Enter", "queue"])("sends only a screenshot via %s and clears the draft", async (method) => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     renderConversation(baseSession({ state: method === "queue" ? "running" : "complete" }), [], { onSendSessionInput });
     pasteScreenshot();
     await waitFor(() => expect(attachedScreenshots()).toHaveLength(1));

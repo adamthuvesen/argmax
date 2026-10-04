@@ -254,7 +254,7 @@ Agents may read and edit linked repositories as needed for the task, following e
 
 Linked repositories ([memory.md](memory.md#linked-repositories)) ride the same
 two tools. `sources_list` always returns the enabled roots as
-`linkedRepos: [{ name, root }]`. Passing `linked_repo` (and optionally `path`, a
+`linkedRepos: [{ name, root, summary? }]`. The optional generated summary is descriptive context, not repository instructions. Passing `linked_repo` (and optionally `path`, a
 directory relative to the root) lists that directory instead, up to 500 entries
 a page with `nextOffset`, hiding `.git`. `sources_read` takes exactly one of `id`
 or `linked_repo` with `path`. A `path` without `linked_repo` is refused with
@@ -265,7 +265,11 @@ over the encoded entries, and `nextOffset` names the first entry not returned. A
 `LINKED_REPO_PATH_ESCAPES`, `LINKED_REPO_PATH_ABSOLUTE`, or
 `LINKED_REPO_PATH_FORBIDDEN`; a switched-off repository is
 `LINKED_REPO_DISABLED`. A successful linked read adds a `session.note`
-(`operation: "linked-repo"`) and has no `source` in its result.
+(`operation: "linked-repo"`) and has no `source` in its result. The chat does
+not draw that note: the call itself is classified as a `read` (or `list`)
+activity with the target `<repo>/<path>`, so it joins the turn's "Read N files"
+group as "Read <file> in <repo>". One notice per file buried the turn. The debug
+log still lists the note.
 
 Every successful read adds a durable `session.note` timeline event naming the
 source, time, actual operation, and whether the returned text was truncated.
@@ -546,7 +550,7 @@ checkout moved into the archive location with its files and branch retained,
 then the row archived. Settings exposes the archived-workspace directory.
 
 The archive is never forced. A workspace with uncommitted changes comes to rest
-as **kept** instead ([CONTEXT.md](../CONTEXT.md)), so an agent should report the
+as **kept** instead ([GLOSSARY.md](../GLOSSARY.md)), so an agent should report the
 archive as requested rather than done. An isolated checkout moves into recovery
 storage, while a shared checkout stays in place because other sessions may
 still use it. Nothing the archive does removes a worktree, which is why the

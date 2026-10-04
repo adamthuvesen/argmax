@@ -23,7 +23,7 @@ enum NewChatMode: String, CaseIterable, Hashable, Sendable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Sentence case, and CONTEXT.md's words.
+    /// Sentence case, and GLOSSARY.md's words.
     var title: String {
         switch self {
         case .worktree: return "New worktree"

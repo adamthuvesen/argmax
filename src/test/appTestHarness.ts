@@ -714,6 +714,8 @@ export function setupAppTestMocks(): void {
     linkedRepos: {
       list: () => Promise.resolve([]),
       add: () => Promise.reject(new Error("linked repository writes not configured in this test")),
+      pickFolder: () => Promise.resolve(null),
+      summarize: () => Promise.reject(new Error("linked repository summaries not configured in this test")),
       setEnabled: () => Promise.reject(new Error("linked repository writes not configured in this test")),
       remove: () => Promise.resolve()
     },

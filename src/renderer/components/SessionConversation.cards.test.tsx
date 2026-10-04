@@ -190,7 +190,9 @@ describe("SessionConversation — cards", () => {
     expect(screen.getByLabelText("Chat prompt")).toBeInTheDocument();
   });
 
-  it("answers a blocking Codex question in the same turn and restores a saved draft", async () => {
+  // OpenCode's `question` tool blocks its turn exactly like Codex's request.
+  // Sending the answer as a follow-up would queue behind that turn forever.
+  it.each(["codex", "opencode"] as const)("answers a blocking %s question in the same turn and restores a saved draft", async (provider) => {
     const resolveQuestion = vi.fn().mockResolvedValue({
       sessionId: "session-a",
       requestId: "request-1",
@@ -199,7 +201,7 @@ describe("SessionConversation — cards", () => {
     window.argmax = { questions: { resolve: resolveQuestion } } as unknown as NonNullable<typeof window.argmax>;
     const onSend = vi.fn().mockResolvedValue(undefined);
     const onTerminate = vi.fn().mockResolvedValue(undefined);
-    const session = baseSession({ provider: "codex", state: "waiting" });
+    const session = baseSession({ provider, state: "waiting" });
     const questionEvents = [
       event("u1", "user.message", "ask me", "2026-05-12T15:00:00.000Z"),
       event("question-start", "command.started", "AskUserQuestion", "2026-05-12T15:00:01.000Z", {

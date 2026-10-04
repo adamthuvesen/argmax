@@ -14,7 +14,7 @@ const worker = path.join(root, ".agents/skills/verify-argmax/drives.mjs");
 const helper = "node .agents/skills/verify-argmax/verify.mjs";
 const target = "native-local";
 const tripwires = ["launchctl", "defaults", "brew", "security", "op", "crontab", "systemctl"];
-const features = ["chat-resume", "queued-restart", "session-move", "composer-reference", "composer-editor", "fork-merge", "workspace-settings", "cancellation", "provider-error"];
+const features = ["chat-resume", "queued-restart", "session-move", "composer-reference", "composer-editor", "browser-focus", "fork-merge", "workspace-settings", "cancellation", "provider-error"];
 const controlVariables = new Set(["DOTFILES_SKIP_SECRETS", "DOTFILES_SECRETS_LOADED", "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS"]);
 const secretValues = Object.entries(process.env).filter(([key, value]) => /KEY|TOKEN|SECRET|PASSWORD/i.test(key) && !controlVariables.has(key) && value).map(([, value]) => value);
 function sanitize(value) {

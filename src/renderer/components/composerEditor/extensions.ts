@@ -10,6 +10,7 @@ import {
   EditorView,
   ViewPlugin,
   WidgetType,
+  drawSelection,
   keymap,
   type Command,
   type DecorationSet,
@@ -246,6 +247,8 @@ export function promptExtensions(callbacks: { current: PromptCallbacks }): Exten
   ];
   return [
     history(),
+    // Native carets can render incorrectly beside the noneditable placeholder.
+    drawSelection(),
     EditorView.lineWrapping,
     promptDecorations,
     clipboardHandlers(),

@@ -95,6 +95,8 @@ checks:run
 skills:list
 linked-repos:list
 linked-repos:add
+linked-repos:pick-folder
+linked-repos:summarize
 linked-repos:set-enabled
 linked-repos:remove
 projects:set-branch-template

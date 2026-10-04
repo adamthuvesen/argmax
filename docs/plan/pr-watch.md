@@ -26,7 +26,7 @@ any provider's session with `send_system_notice`. The agent should not poll.
 ## Terms
 
 - **PR watch:** a persisted request from one session to be woken about one PR
-  until it merges, closes, or is unwatched. Add it to `CONTEXT.md`.
+  until it merges, closes, or is unwatched. Add it to `GLOSSARY.md`.
 - **Watch notice:** the `send_system_notice` message a PR watch sends.
 - **PR cleanup:** the post-merge git work below. It never removes the chat's
   checkout unless the caller asks to archive the chat.
@@ -174,7 +174,7 @@ steps stay for other environments.
 1. PR watch: migration, `pr_watch`/`pr_unwatch`, always-due watched sessions,
    the watch step, events (merged/closed, checks failing, new feedback, checks
    green), follow-up suppression, `RollupEntry` names, tests, docs
-   (`agent-tools.md`, `gh.md`, `data.md`, `CONTEXT.md`), and an ADR.
+   (`agent-tools.md`, `gh.md`, `data.md`, `GLOSSARY.md`), and an ADR.
 2. PR cleanup: git helpers, service, `pr_cleanup` tool, `prs:cleanup` IPC,
    "Clean up" action on a merged PR row, `cleanupOnMerge`, tests, docs
    (`workspaces.md`, `gh.md`).

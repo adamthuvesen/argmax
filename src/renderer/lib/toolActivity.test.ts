@@ -8,6 +8,7 @@ import {
 } from "./toolActivity.js";
 import {
   describeToolAction,
+  extractOpenablePath,
   summarizeToolGroup,
   type ToolCall
 } from "./toolCalls.js";
@@ -292,5 +293,24 @@ describe("buildSessionToolCalls integration", () => {
     const command = tool({ name: "Bash", inputPreview: "npm test", activity: { version: 1, kind: "command", evidence: "tool", targets: [] } });
     expect(describeToolAction(command)).toBe("Ran npm test");
     expect(summarizeToolGroup([command]).headline).toBe("Ran a command");
+  });
+});
+
+describe("linked-repository reads", () => {
+  it("read as file work that names the repository and cannot open in this checkout", () => {
+    const read = tool({
+      name: "sources_read",
+      inputFull: { linked_repo: "dbt-transform", path: "models/sv__maru.sql" },
+      activity: { version: 1, kind: "read", evidence: "tool", targets: ["dbt-transform/models/sv__maru.sql"] }
+    });
+    const listing = tool({
+      name: "mcp__argmax__sources_list",
+      inputFull: { linked_repo: "dbt-transform" },
+      activity: { version: 1, kind: "list", evidence: "tool", targets: ["dbt-transform"] }
+    });
+    expect(describeToolAction(read)).toBe("Read sv__maru.sql in dbt-transform");
+    expect(describeToolAction(listing)).toBe("Listed files in dbt-transform");
+    expect(summarizeToolGroup([read, { ...read, id: "second", activity: { ...read.activity!, targets: ["dbt-transform/README.md"] } }]).headline).toBe("Read 2 files");
+    expect(extractOpenablePath(read.name, read.inputFull)).toBeNull();
   });
 });

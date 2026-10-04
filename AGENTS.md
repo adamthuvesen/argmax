@@ -104,4 +104,4 @@ If a doc disagrees with code, fix the doc in the same change.
 
 Start in [architecture.md](docs/architecture.md), then follow the subsystem docs above.
 
-[CONTEXT.md](CONTEXT.md) is the domain glossary: the canonical word for each concept and the ones not to use. Read it before naming anything. Decisions that would otherwise look arbitrary are recorded in [docs/adr](docs/adr).
+[GLOSSARY.md](GLOSSARY.md) is the domain glossary: the canonical word for each concept and the ones not to use. Read it before naming anything. Decisions that would otherwise look arbitrary are recorded in [docs/adr](docs/adr).

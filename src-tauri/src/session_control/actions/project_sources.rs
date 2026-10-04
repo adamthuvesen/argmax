@@ -100,6 +100,7 @@ fn linked_repo_record(repo: &LinkedRepo) -> LinkedRepoRecord {
     LinkedRepoRecord {
         name: repo.name.clone(),
         root: repo.root_path.clone(),
+        summary: repo.summary.clone(),
     }
 }
 
@@ -905,13 +906,20 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(outside.path(), linked.path().join("escape")).unwrap();
         {
-            crate::persistence::linked_repos::add_linked_repo(
+            let repo = crate::persistence::linked_repos::add_linked_repo(
                 &database.connection(),
                 "p1",
                 &crate::persistence::linked_repos::LinkedRepoInput {
                     name: Some("shared".to_string()),
                     path: linked.path().display().to_string(),
                 },
+            )
+            .unwrap();
+            crate::persistence::linked_repos::set_linked_repo_summary(
+                &database.connection(),
+                "p1",
+                &repo.id,
+                "Shared Rust API contracts",
             )
             .unwrap();
         }
@@ -947,6 +955,10 @@ mod tests {
             SessionControlResult::SourcesListed(outcome) => {
                 assert_eq!(outcome.linked_repos.len(), 1);
                 assert_eq!(outcome.linked_repos[0].name, "shared");
+                assert_eq!(
+                    outcome.linked_repos[0].summary.as_deref(),
+                    Some("Shared Rust API contracts")
+                );
                 assert_eq!(
                     outcome.linked_repos[0].root,
                     linked.path().canonicalize().unwrap().display().to_string()

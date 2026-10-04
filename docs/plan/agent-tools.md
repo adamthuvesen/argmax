@@ -86,7 +86,7 @@ Browser (tabs are owned by the calling session)
 - `src-tauri/src/providers/session_service.rs` — on turn end of a session with `launched_by_session_id`, enqueue a one-shot "Session X finished: <final answer>" message to the parent via the existing queue path; the notification carries the child's last assistant text. Guard: skip if the parent is archived or is the child itself.
 - `src-tauri/src/mcp/session_tools.rs` — wire the five tools. Enforce depth ≤ 2, launch cap per session (10), reject self-message.
 - Renderer: `src/renderer/components/...` — an "agent message" bubble variant for prompts whose origin is another session (origin column on the user event payload), with a link to the sender; sidebar row shows "launched by <label>" for child sessions; `SessionActions` gets "Open parent".
-- `docs/providers.md` "Agent Session Control" → moves to new `docs/agent-tools.md`; `CONTEXT.md` adds "inbox", "launched-by".
+- `docs/providers.md` "Agent Session Control" → moves to new `docs/agent-tools.md`; `GLOSSARY.md` adds "inbox", "launched-by".
 **Success check:** scratch scenario script under `scripts/` or `src-tauri/tests`: parent launches child with a prompt that answers "42", calls `session_wait`, then `session_read`, and its final answer contains "42". Second scenario: `session_stop` on a long-running child flips it to cancelled within 2 s. Renderer tests for the bubble and sidebar label by role.
 
 ## Phase 3: Browser core — done, 12dd7f39 (automation) and 2fec2d7d (MCP tools)

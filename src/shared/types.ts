@@ -806,6 +806,8 @@ export interface ArgmaxApi {
   linkedRepos: {
     list: (input: Bindings.LinkedReposListInput) => Promise<LinkedRepo[]>;
     add: (input: Bindings.LinkedReposAddInput) => Promise<LinkedRepo>;
+    pickFolder: (input: Bindings.LinkedReposListInput) => Promise<LinkedRepo | null>;
+    summarize: (input: Bindings.LinkedReposSummarizeInput) => Promise<LinkedRepo>;
     setEnabled: (input: Bindings.LinkedReposSetEnabledInput) => Promise<LinkedRepo>;
     remove: (input: Bindings.LinkedReposRemoveInput) => Promise<void>;
   };

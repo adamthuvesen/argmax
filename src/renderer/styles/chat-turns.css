@@ -1093,8 +1093,10 @@
 .tool-call-group-preview {
   min-width: 0;
   flex: 1 1 0;
-  /* Separate the inline caption from the headline. */
-  padding-left: calc(var(--activity-mark-size) + 7px);
+  /* The header's 7px column gap already separates the caption from the
+     chevron. Adding the icon-width inset here left a gap twice the one on the
+     chevron's left, so the caption reads as detached from the arrow. */
+  padding-left: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

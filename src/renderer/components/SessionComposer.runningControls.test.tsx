@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import { baseSession, renderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
 
 function runningComposer() {
   const onTerminateSession = vi.fn(() => Promise.resolve());
-  const onSendSessionInput = vi.fn(() => Promise.resolve());
+  const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
   renderConversation(baseSession({ state: "running" }), [], {
     onSendSessionInput,
     onTerminateSession
@@ -29,7 +29,7 @@ describe("SessionComposer — running turn controls", () => {
   });
 
   it("steers on Enter when configured as the default", async () => {
-    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
     renderConversation(baseSession({ state: "running" }), [], {
       defaultFollowUpDelivery: "steer",
       onSendSessionInput
@@ -53,7 +53,7 @@ describe("SessionComposer — running turn controls", () => {
   });
 
   it("queues instead of steering when Codex is close to compaction", async () => {
-    const onSendSessionInput = vi.fn(() => Promise.resolve());
+    const onSendSessionInput = vi.fn(() => Promise.resolve(STARTED_TURN));
     renderConversation(
       baseSession({
         state: "running",

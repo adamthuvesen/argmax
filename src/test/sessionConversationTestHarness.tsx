@@ -11,10 +11,14 @@ import type {
 } from "../shared/types.js";
 import { SessionConversation } from "../renderer/components/SessionConversation.js";
 import type { ReviewState } from "../renderer/hooks/useReviewState.js";
+import type { SendInputResult } from "../shared/bindings.js";
 import type { ToolCall } from "../renderer/lib/toolCalls.js";
 import { reviewStub } from "./reviewFixture.js";
 
 export { reviewStub };
+
+/** What the backend answers for input that started a turn. */
+export const STARTED_TURN: SendInputResult = { ok: true, queued: false };
 
 export function baseSession(overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -163,7 +167,7 @@ export function conversationElement(
       eventsBackfilled={options.eventsBackfilled ?? true}
       historyLoadFailed={options.historyLoadFailed ?? false}
       isLogOpen={false}
-      onSendSessionInput={options.onSendSessionInput ?? vi.fn(() => Promise.resolve())}
+      onSendSessionInput={options.onSendSessionInput ?? vi.fn(() => Promise.resolve(STARTED_TURN))}
       onTerminateSession={options.onTerminateSession ?? vi.fn(() => Promise.resolve())}
       onClearSession={options.onClearSession ?? vi.fn(() => Promise.resolve())}
       onCancelQueuedMessage={options.onCancelQueuedMessage ?? vi.fn(() => Promise.resolve())}

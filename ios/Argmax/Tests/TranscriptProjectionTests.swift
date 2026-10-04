@@ -629,6 +629,32 @@ final class TranscriptProjectionTests: XCTestCase {
         XCTAssertEqual(unconfirmed.summary, "File read")
     }
 
+    func testLinkedRepositoryReadNamesTheRepositoryAndOpensNoLocalFile() throws {
+        let read = try XCTUnwrap(firstTool(TranscriptProjection.project(events: [
+            event("read", "command.started", "sources_read", 1, [
+                "id": .string("read-1"),
+                "name": .string("sources_read"),
+                "server": .string("argmax"),
+                "input": .object([
+                    "linked_repo": .string("dbt-transform"),
+                    "path": .string("models/sv__maru.sql")
+                ]),
+                "activity": .object([
+                    "version": .number(1),
+                    "kind": .string("read"),
+                    "evidence": .string("tool"),
+                    "targets": .array([.string("dbt-transform/models/sv__maru.sql")])
+                ])
+            ]),
+            event("read-end", "command.completed", "done", 2, [
+                "tool_use_id": .string("read-1"),
+                "status": .string("completed")
+            ])
+        ])))
+        XCTAssertEqual(read.summary, "Read sv__maru.sql in dbt-transform")
+        XCTAssertNil(read.filePath)
+    }
+
     func testGenericToolAndCommandCaptionsKeepTheirUsefulPreviewAndLifecycle() throws {
         let events = [
             event("mcp", "command.started", "Linear", 1, [

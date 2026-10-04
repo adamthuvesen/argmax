@@ -186,7 +186,7 @@ the page's window ([usage.md](../usage.md#router-cost)).
 
 `npm run precheck`; bindings regenerated; `check:tauri-bridge`; docs
 (`docs/routing.md` new, `providers.md`, `data.md`, `agent-tools.md`,
-`CONTEXT.md` terms Auto tier / Route, an ADR for "route at launch, re-route only
+`GLOSSARY.md` terms Auto tier / Route, an ADR for "route at launch, re-route only
 at break-even; speed breaks ties outside Heavy/Frontier"); `pricing.rs` ↔ TS
 `MODEL_PRICING` agree.
 

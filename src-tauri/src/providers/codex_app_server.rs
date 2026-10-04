@@ -1115,6 +1115,11 @@ fn rpc_error(id: Value, code: i64, message: impl Into<String>) -> Value {
 #[derive(Default)]
 struct EventTranslation {
     last_usage: Option<Value>,
+    /// What the thread had spent before this turn's first model request:
+    /// that update's `total` minus its `last`. codex 0.159 carries the whole
+    /// conversation in `total` on a resumed thread, older builds restart it
+    /// at zero; subtracting this baseline is right for both.
+    usage_before_turn: Option<[u64; 3]>,
     reasoning_streams: HashMap<String, ReasoningStream>,
     last_reasoning_item_id: Option<String>,
 }
@@ -1217,6 +1222,10 @@ impl EventTranslation {
             "item/reasoning/summaryPartAdded" => Vec::new(),
             "thread/tokenUsage/updated" => {
                 self.last_usage = params.get("tokenUsage").cloned();
+                if self.usage_before_turn.is_none() {
+                    self.usage_before_turn =
+                        self.last_usage.as_ref().and_then(usage_before_request);
+                }
                 Vec::new()
             }
             "error" => params
@@ -1229,7 +1238,12 @@ impl EventTranslation {
                     "type".to_string(),
                     Value::String("turn.completed".to_string()),
                 )]);
-                if let Some(usage) = self.last_usage.as_ref().and_then(app_server_usage) {
+                let before = self.usage_before_turn.take().unwrap_or_default();
+                if let Some(usage) = self
+                    .last_usage
+                    .as_ref()
+                    .and_then(|usage| app_server_usage(usage, before))
+                {
                     line.insert("usage".to_string(), usage);
                 }
                 vec![Value::Object(line)]
@@ -1283,12 +1297,28 @@ impl EventTranslation {
 /// app-server has made. Argmax runs one app-server per turn, so `total` at
 /// `turn/completed` is exactly this turn's usage — reading `last` billed only
 /// the final request of a multi-step turn.
-fn app_server_usage(usage: &Value) -> Option<Value> {
-    let usage = usage.get("total")?;
+fn token_fields(usage: &Value) -> Option<[u64; 3]> {
+    Some([
+        usage.get("inputTokens")?.as_u64()?,
+        usage.get("cachedInputTokens")?.as_u64()?,
+        usage.get("outputTokens")?.as_u64()?,
+    ])
+}
+
+/// The thread's spend before the request this update reports.
+fn usage_before_request(usage: &Value) -> Option<[u64; 3]> {
+    let total = token_fields(usage.get("total")?)?;
+    let last = token_fields(usage.get("last")?)?;
+    Some(std::array::from_fn(|i| total[i].saturating_sub(last[i])))
+}
+
+/// This turn's spend: the thread `total` less what it had spent before the turn.
+fn app_server_usage(usage: &Value, before: [u64; 3]) -> Option<Value> {
+    let [input, cached, output] = token_fields(usage.get("total")?)?;
     Some(json!({
-        "input_tokens": usage.get("inputTokens")?.as_u64()?,
-        "cached_input_tokens": usage.get("cachedInputTokens")?.as_u64()?,
-        "output_tokens": usage.get("outputTokens")?.as_u64()?,
+        "input_tokens": input.saturating_sub(before[0]),
+        "cached_input_tokens": cached.saturating_sub(before[1]),
+        "output_tokens": output.saturating_sub(before[2]),
     }))
 }
 
@@ -1737,14 +1767,33 @@ mod tests {
             "total": { "inputTokens": 67329, "cachedInputTokens": 44288, "outputTokens": 319 },
         });
         assert_eq!(
-            app_server_usage(&usage).expect("usage"),
+            app_server_usage(&usage, [0; 3]).expect("usage"),
             json!({
                 "input_tokens": 67329,
                 "cached_input_tokens": 44288,
                 "output_tokens": 319,
             })
         );
-        assert!(app_server_usage(&json!({ "last": { "inputTokens": 1 } })).is_none());
+        assert!(app_server_usage(&json!({ "last": { "inputTokens": 1 } }), [0; 3]).is_none());
+    }
+
+    /// codex 0.159 resumes a thread with its whole history in `total`; billing
+    /// that as the turn re-charged the conversation on every follow-up.
+    #[test]
+    fn a_resumed_turn_is_billed_only_for_what_it_added() {
+        let mut translation = EventTranslation::default();
+        for (total, last, output) in [(1_000_000, 40_000, 510), (1_060_000, 60_000, 520)] {
+            translation.translate(
+                "thread/tokenUsage/updated",
+                &json!({ "tokenUsage": {
+                    "last": { "inputTokens": last, "cachedInputTokens": 0, "outputTokens": 10 },
+                    "total": { "inputTokens": total, "cachedInputTokens": 0, "outputTokens": output },
+                }}),
+            );
+        }
+        let events = translation.translate("turn/completed", &json!({}));
+        assert_eq!(events[0]["usage"]["input_tokens"], 100_000);
+        assert_eq!(events[0]["usage"]["output_tokens"], 20);
     }
 
     #[test]

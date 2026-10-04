@@ -110,6 +110,8 @@ A fork chat shows a **Forked chat** card above the composer with **Open source**
 
 ## Sidebar Priority Section
 
+Repository sessions and repo-less sessions use the same Priority rules.
+
 Workspaces holding at least one live **reason**, and workspaces with a live turn, share the Priority section beneath Pinned. A reason is one claim on the reader with its own answer to "what makes this go away", which is what keeps the section from being a feed of everything that finished recently.
 
 | Reason | Raised by | Cleared by |
@@ -163,7 +165,7 @@ Resizing temporarily hides native browser pages so they cannot swallow the drag'
 
 The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves the arrangement for its next open. Full-screen review surfaces keep their explicit initial visibility and a single view.
 
-Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads a clean active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. Existing single-mode session preferences remain the fallback until a layout is saved.
+Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads a clean active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. New chat starts with the panel closed, even when a chat in the shared checkout shows its terminal. Opening the launcher panel explicitly restores its layout. Existing single-mode session preferences remain the fallback until a layout is saved.
 
 Unsaved Files edits stay in memory when switching chats or projects, scoped to the pane and source checkout. Returning restores the draft and checks the disk version without replacing the edited text. Saving still uses the draft's original disk timestamp to detect external changes. Draft contents do not survive an app restart.
 

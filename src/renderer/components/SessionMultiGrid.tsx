@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { FontSize } from "../lib/fonts.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { PaletteSurfaceContext } from "../lib/paletteSearch.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
@@ -125,7 +126,7 @@ interface SessionMultiGridProps {
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
     delivery?: FollowUpDelivery
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onSendQueuedMessageNow: (
     sessionId: string,

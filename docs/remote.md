@@ -102,7 +102,7 @@ the size error and need updating to recover the page.
 
 ## Recovering remote actions
 
-Blocking Codex question cards submit `questions:resolve` from both the browser
+Blocking question cards (Codex, Cursor, OpenCode) submit `questions:resolve` from both the browser
 and native iPhone app. The opaque request ID comes from the timeline. Answering
 resumes the waiting turn, and dismissing sends an empty answer map. Reconnecting
 reloads pending or settled cards from the same timeline. Nonblocking Codex

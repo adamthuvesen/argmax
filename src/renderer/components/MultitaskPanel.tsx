@@ -6,6 +6,7 @@ import type {
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
@@ -74,7 +75,7 @@ export function MultitaskPanel({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     attachments?: ComposerAttachment[]
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
 }): JSX.Element {
   // The dock *is* the review panel, so a chat inside it has no panel of its

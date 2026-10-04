@@ -19,6 +19,7 @@ use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
 pub const MAX_LINKED_REPOS_PER_PROJECT: i64 = 10;
 pub const MAX_LINKED_REPO_NAME_CHARS: usize = 40;
+pub const MAX_LINKED_REPO_SUMMARY_CHARS: usize = 600;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +30,8 @@ pub struct LinkedRepo {
     pub name: String,
     /// Canonical absolute directory, resolved when the root was added.
     pub root_path: String,
+    #[serde(default)]
+    pub summary: Option<String>,
     pub enabled: bool,
     pub created_at: String,
     pub updated_at: String,
@@ -120,7 +123,7 @@ pub fn add_linked_repo(
             validate_name(name)?;
             name.to_owned()
         }
-        None => name_from_root(&root)?,
+        None => name_from_root(connection, project_id, &root)?,
     };
     let count: i64 = connection
         .query_row(
@@ -170,6 +173,40 @@ pub fn set_linked_repo_enabled(
     find_linked_repo_by_id(connection, project_id, id)
 }
 
+pub fn set_linked_repo_summary(
+    connection: &Connection,
+    project_id: &str,
+    id: &str,
+    summary: &str,
+) -> ArgmaxResult<LinkedRepo> {
+    if summary.trim().is_empty() {
+        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["summary".to_owned()],
+            "LINKED_REPO_SUMMARY_REQUIRED",
+            "A linked repository summary cannot be blank.",
+        )));
+    }
+    if summary.chars().count() > MAX_LINKED_REPO_SUMMARY_CHARS {
+        return Err(ArgmaxError::invalid(InvalidInputIssue::at(
+            vec!["summary".to_owned()],
+            "LINKED_REPO_SUMMARY_TOO_LONG",
+            format!("A linked repository summary has at most {MAX_LINKED_REPO_SUMMARY_CHARS} characters."),
+        )));
+    }
+    let changes = connection
+        .prepare_cached(
+            "UPDATE project_linked_repos SET summary = ?, updated_at = ? \
+             WHERE project_id = ? AND id = ?",
+        )
+        .map_err(sqlite_error)?
+        .execute((summary, now_iso(), project_id, id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("linked repository", id));
+    }
+    find_linked_repo_by_id(connection, project_id, id)
+}
+
 pub fn delete_linked_repo(connection: &Connection, project_id: &str, id: &str) -> ArgmaxResult<()> {
     let changes = connection
         .prepare_cached("DELETE FROM project_linked_repos WHERE project_id = ? AND id = ?")
@@ -182,7 +219,7 @@ pub fn delete_linked_repo(connection: &Connection, project_id: &str, id: &str) -
     Ok(())
 }
 
-fn find_linked_repo_by_id(
+pub fn find_linked_repo_by_id(
     connection: &Connection,
     project_id: &str,
     id: &str,
@@ -280,7 +317,7 @@ pub fn validate_name(name: &str) -> ArgmaxResult<()> {
     )))
 }
 
-fn name_from_root(root: &Path) -> ArgmaxResult<String> {
+fn name_from_root(connection: &Connection, project_id: &str, root: &Path) -> ArgmaxResult<String> {
     let base = root
         .file_name()
         .map(|name| name.to_string_lossy().to_ascii_lowercase())
@@ -300,13 +337,22 @@ fn name_from_root(root: &Path) -> ArgmaxResult<String> {
         .chars()
         .take(MAX_LINKED_REPO_NAME_CHARS)
         .collect();
-    validate_name(&cleaned).map_err(|_| {
-        invalid_root(
-            "LINKED_REPO_NAME_REQUIRED",
-            "Cannot derive a name from this directory. Enter one.",
-        )
-    })?;
-    Ok(cleaned)
+    let base = if cleaned.is_empty() {
+        "repository".to_owned()
+    } else {
+        cleaned
+    };
+    let existing = list_linked_repos(connection, project_id)?;
+    let mut name = base.clone();
+    let mut next_suffix = 2;
+    while existing.iter().any(|repo| repo.name == name) {
+        let suffix = format!("-{next_suffix}");
+        // The sanitized base is ASCII, so byte and character limits agree.
+        let prefix = &base[..base.len().min(MAX_LINKED_REPO_NAME_CHARS - suffix.len())];
+        name = format!("{prefix}{suffix}");
+        next_suffix += 1;
+    }
+    Ok(name)
 }
 
 fn invalid_root(code: &'static str, message: impl Into<String>) -> ArgmaxError {
@@ -334,7 +380,7 @@ fn map_insert_error(error: rusqlite::Error, name: &str, root: &str) -> ArgmaxErr
     sqlite_error(error)
 }
 
-const COLUMNS: &str = "id, project_id, name, root_path, enabled, created_at, updated_at";
+const COLUMNS: &str = "id, project_id, name, root_path, enabled, created_at, updated_at, summary";
 
 fn row_to_linked_repo(row: &Row<'_>) -> rusqlite::Result<LinkedRepo> {
     Ok(LinkedRepo {
@@ -345,6 +391,7 @@ fn row_to_linked_repo(row: &Row<'_>) -> rusqlite::Result<LinkedRepo> {
         enabled: row.get::<_, i64>(4)? == 1,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
+        summary: row.get(7)?,
     })
 }
 
@@ -406,6 +453,7 @@ mod tests {
             sibling.path().canonicalize().unwrap().to_string_lossy()
         );
         assert!(repo.enabled);
+        assert_eq!(repo.summary, None);
         assert!(validate_name(&repo.name).is_ok());
 
         let off = set_linked_repo_enabled(&connection, "p1", &repo.id, false).unwrap();
@@ -518,5 +566,112 @@ mod tests {
         let database = database(project.path());
         let error = find_linked_repo_by_name(&database.connection(), "p1", "nope").unwrap_err();
         assert_eq!(code(error), "LINKED_REPO_NOT_FOUND");
+    }
+
+    #[test]
+    fn picker_selections_with_duplicate_basenames_get_unique_bounded_names() {
+        let project = TempDir::new().unwrap();
+        let siblings = TempDir::new().unwrap();
+        let database = database(project.path());
+        let connection = database.connection();
+        for base in ["api".to_owned(), "a".repeat(MAX_LINKED_REPO_NAME_CHARS)] {
+            for (index, suffix) in [(1, ""), (2, "-2"), (3, "-3")] {
+                let root = siblings.path().join(format!("org-{index}")).join(&base);
+                std::fs::create_dir_all(&root).unwrap();
+                let repo = add_linked_repo(&connection, "p1", &input(None, &root)).unwrap();
+                let prefix = &base[..base.len().min(MAX_LINKED_REPO_NAME_CHARS - suffix.len())];
+                assert_eq!(repo.name, format!("{prefix}{suffix}"));
+                assert!(validate_name(&repo.name).is_ok());
+                assert_eq!(
+                    code(add_linked_repo(&connection, "p1", &input(None, &root)).unwrap_err()),
+                    "LINKED_REPO_CONFLICT"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn picker_selections_without_ascii_names_get_usable_fallbacks() {
+        let project = TempDir::new().unwrap();
+        let siblings = TempDir::new().unwrap();
+        let database = database(project.path());
+        let connection = database.connection();
+        for (base, expected_name) in [("資料", "repository"), ("日本語", "repository-2")] {
+            let root = siblings.path().join(base);
+            std::fs::create_dir_all(&root).unwrap();
+            let repo = add_linked_repo(&connection, "p1", &input(None, &root)).unwrap();
+            assert_eq!(repo.name, expected_name);
+            assert_eq!(
+                repo.root_path,
+                root.canonicalize().unwrap().to_string_lossy()
+            );
+        }
+    }
+
+    #[test]
+    fn summary_updates_roundtrip_and_are_scoped_to_the_project() {
+        let project = TempDir::new().unwrap();
+        let sibling = TempDir::new().unwrap();
+        let database = database(project.path());
+        let connection = database.connection();
+        let repo =
+            add_linked_repo(&connection, "p1", &input(Some("shared"), sibling.path())).unwrap();
+        assert!(matches!(
+            find_linked_repo_by_id(&connection, "other-project", &repo.id),
+            Err(ArgmaxError::RecordNotFound { .. })
+        ));
+        assert!(matches!(
+            set_linked_repo_summary(&connection, "other-project", &repo.id, "Wrong project"),
+            Err(ArgmaxError::RecordNotFound { .. })
+        ));
+        assert_eq!(
+            find_linked_repo_by_id(&connection, "p1", &repo.id)
+                .unwrap()
+                .summary,
+            None
+        );
+
+        let summary = "Shared Rust API contracts for the desktop and phone apps.";
+        let updated = set_linked_repo_summary(&connection, "p1", &repo.id, summary).unwrap();
+        assert_eq!(updated.summary.as_deref(), Some(summary));
+        assert_eq!(
+            find_linked_repo_by_name(&connection, "p1", "shared").unwrap(),
+            updated
+        );
+        assert_eq!(
+            list_enabled_linked_repos(&connection, "p1").unwrap(),
+            vec![updated]
+        );
+    }
+
+    #[test]
+    fn summary_rejects_blank_and_oversize_values_without_replacing_stored_context() {
+        let project = TempDir::new().unwrap();
+        let sibling = TempDir::new().unwrap();
+        let database = database(project.path());
+        let connection = database.connection();
+        let repo =
+            add_linked_repo(&connection, "p1", &input(Some("shared"), sibling.path())).unwrap();
+        let summary = "é".repeat(MAX_LINKED_REPO_SUMMARY_CHARS);
+        set_linked_repo_summary(&connection, "p1", &repo.id, &summary).unwrap();
+        for blank in ["", " \n\t"] {
+            assert_eq!(
+                code(set_linked_repo_summary(&connection, "p1", &repo.id, blank).unwrap_err()),
+                "LINKED_REPO_SUMMARY_REQUIRED"
+            );
+        }
+        assert_eq!(
+            code(
+                set_linked_repo_summary(&connection, "p1", &repo.id, &format!("{summary}é"))
+                    .unwrap_err()
+            ),
+            "LINKED_REPO_SUMMARY_TOO_LONG"
+        );
+        assert_eq!(
+            find_linked_repo_by_id(&connection, "p1", &repo.id)
+                .unwrap()
+                .summary,
+            Some(summary)
+        );
     }
 }

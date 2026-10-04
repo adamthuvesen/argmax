@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";
+import { baseSession, event, renderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import type { DiffNoteInput } from "../lib/composerAnnotations.js";
 
@@ -58,7 +58,7 @@ describe("SessionConversation selection annotations", () => {
   });
 
   it("sends the quoted excerpt ahead of the typed message and clears the chip", async () => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     renderConversation(baseSession(), EVENTS, { onSendSessionInput });
     selectAssistantText();
     fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
@@ -79,7 +79,7 @@ describe("SessionConversation selection annotations", () => {
   });
 
   it.each(["click", "Enter"])("sends only a conversation excerpt via %s", async (method) => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     renderConversation(baseSession(), EVENTS, { onSendSessionInput });
     selectAssistantText();
     fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
@@ -153,7 +153,7 @@ describe("SessionConversation selection annotations", () => {
   });
 
   it("turns a registered diff note into a chip and serializes it on send", async () => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     let sink: ((input: DiffNoteInput) => void) | null = null;
     renderConversation(baseSession(), EVENTS, {
       onSendSessionInput,
@@ -184,7 +184,7 @@ describe("SessionConversation selection annotations", () => {
   });
 
   it.each(["click", "Enter"])("sends a diff note with no typed message via %s", async (method) => {
-    const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
+    const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     let sink: ((input: DiffNoteInput) => void) | null = null;
     renderConversation(baseSession(), EVENTS, {
       onSendSessionInput,

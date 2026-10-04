@@ -1031,10 +1031,12 @@ mod tests {
             LinkedRoot {
                 name: "docs".to_string(),
                 path: PathBuf::from("/work/docs"),
+                summary: None,
             },
             LinkedRoot {
                 name: "api".to_string(),
                 path: PathBuf::from("/work/api"),
+                summary: None,
             },
         ]);
         let definition = get_provider_definition(ProviderId::Claude);

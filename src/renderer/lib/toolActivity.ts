@@ -109,7 +109,17 @@ export function describeActivity(tool: ToolCall): string | null {
   const target = raw === undefined
     ? undefined
     : activity.kind === "skill" ? skillTargetName(raw) : raw.split(/[\\/]/).pop();
-  return activityLabel(activity, toolActivityState(tool), activity.targets.length > 1, target, activity.targets.length);
+  const label = activityLabel(activity, toolActivityState(tool), activity.targets.length > 1, target, activity.targets.length);
+  // Rust prefixes the repository to the target; the basename alone would read
+  // as a file in this checkout.
+  const repo = activity.kind === "read" || activity.kind === "list" ? linkedRepoName(tool.inputFull) : null;
+  return repo ? `${label} in ${repo}` : label;
+}
+
+/** The repository an Argmax `sources_read` / `sources_list` call targets. */
+export function linkedRepoName(input: Record<string, unknown>): string | null {
+  const repo = input.linked_repo;
+  return typeof repo === "string" && repo.trim() ? repo.trim() : null;
 }
 
 /** Parent folder of `SKILL.md`, otherwise the last path component. */

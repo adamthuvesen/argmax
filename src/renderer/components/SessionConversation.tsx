@@ -35,6 +35,7 @@ import type {
   TimelineEvent,
   WorkspaceSummary
 } from "../../shared/types.js";
+import type { SendInputResult } from "../../shared/bindings.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { useSessionComposerState } from "../hooks/useSessionComposerState.js";
@@ -326,7 +327,7 @@ export function SessionConversation({
     attachments?: ComposerAttachment[],
     agentReferences?: AgentReference[],
     delivery?: FollowUpDelivery
-  ) => Promise<void>;
+  ) => Promise<SendInputResult>;
   /** Follow-ups composed while the agent was running. Render as cancellable
       chips above the composer; cleared from the parent as the queue drains. */
   pendingMessages?: PendingMessage[];
@@ -865,7 +866,8 @@ export function SessionConversation({
       delivery: FollowUpDelivery = "queue"
     ): Promise<void> => {
       const optimisticId = `optimistic:${targetSessionId}:${uuidV4()}`;
-      if (sessionStateRef.current !== "running") {
+      const echoed = sessionStateRef.current !== "running";
+      if (echoed) {
         setOptimisticUserMessages((current) => [
           {
             event: {
@@ -888,6 +890,13 @@ export function SessionConversation({
         state: sessionStateRef.current,
         sentAtMs: Date.now()
       });
+      const dropOptimisticSend = (): void => {
+        setOptimisticUserMessages((current) =>
+          current.filter(({ event }) => event.id !== optimisticId)
+        );
+        setTurnStartBaseline(null);
+      };
+      let result: SendInputResult;
       try {
         // An Auto selection describes the displayed route, not a user pin.
         // Keep that distinction across the async send so a stale dashboard
@@ -913,24 +922,27 @@ export function SessionConversation({
           : [];
         if (references.length > 0) {
           if (delivery === "steer") {
-            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references, delivery);
+            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references, delivery);
           } else {
-            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references);
+            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, references);
           }
         } else {
           if (delivery === "steer") {
-            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, undefined, delivery);
+            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments, undefined, delivery);
           } else {
-            await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments);
+            result = await onSendSessionInput(targetSessionId, text, deliveryModel, mode, attachments);
           }
         }
       } catch (error) {
-        setOptimisticUserMessages((current) =>
-          current.filter(({ event }) => event.id !== optimisticId)
-        );
-        setTurnStartBaseline(null);
+        dropOptimisticSend();
         throw error;
       }
+      // The backend queued the input behind a turn it still holds, though the
+      // session did not read as running (waiting on an approval). The queue
+      // chip shows it, so the echo would duplicate it and the cue would count
+      // for a turn this send did not start. Behind a running turn there was no
+      // echo, and the cue stays because that turn is still working.
+      if (result.queued && echoed) dropOptimisticSend();
     },
     [onSendSessionInput, session?.id, session?.provider, session?.providerConversationId,
       session?.autoTier, session?.modelId, session?.reasoningEffort, toolCalls, agentCodenames]
@@ -1346,8 +1358,11 @@ export function SessionConversation({
   // with the panel — the agent's own prose above it is the record of the ask.
   const [dismissedQuestionId, setDismissedQuestionId] = useState<string | null>(null);
   const [composerDraftPresent, setComposerDraftPresent] = useState(false);
+  // A blocking question (Codex `request_user_input`, OpenCode's `question`
+  // tool) holds the provider's turn open until it is resolved. A plain send
+  // would queue behind that turn and never drain, so its answer goes back
+  // through the question request whatever the provider.
   const blockingQuestionRequest =
-    session?.provider === "codex" &&
     liveQuestion?.tool.delivery === "blocking" &&
     liveQuestion.tool.requestId
       ? liveQuestion.tool.requestId

@@ -247,6 +247,8 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
     /// Kept separate from the legacy three-state status so a cancelled call
     /// cannot be worded as successful merely because its completion arrived.
     var completionStatus: String? = nil
+    /// The repository an Argmax `sources_read` / `sources_list` call targets.
+    var linkedRepo: String? = nil
 
     /// The review path an edit row opens. Tool inputs retain absolute paths,
     /// while the review surface keys changed files by workspace-relative path.
@@ -279,8 +281,12 @@ struct TranscriptTool: Hashable, Sendable, Identifiable {
         let target: String? = activity.targets.count == 1
             ? TranscriptToolActivity.displayTarget(activity.targets[0], kind: activity.kind)
             : nil
-        return activity.label(state: activityState, plural: activity.targets.count > 1, target: target,
-                              count: activity.targets.count)
+        let label = activity.label(state: activityState, plural: activity.targets.count > 1, target: target,
+                                   count: activity.targets.count)
+        // Mirrors describeActivity in toolActivity.ts: the basename alone
+        // would read as a file in this checkout.
+        guard let linkedRepo, activity.kind == .read || activity.kind == .list else { return label }
+        return "\(label) in \(linkedRepo)"
     }
 }
 

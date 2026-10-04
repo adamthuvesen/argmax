@@ -1891,14 +1891,14 @@ describe("Sidebar — repo-less chats", () => {
     expect(screen.queryByRole("button", { name: "New chat without a repository" })).toBeNull();
   });
 
-  it("reveals a running chat in the Chat group, which Priority never takes", () => {
-    // Priority only floats git workspaces, so a running scratch row stays in
-    // the Chat group — and the reveal has to expand that group, not Priority.
-    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["side-chats"]));
+  it.each([false, true])("reveals a running chat with Priority enabled: %s", (showPriority) => {
+    const homeGroup = showPriority ? "priority" : "side-chats";
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify([homeGroup]));
 
     render(
       <Sidebar
         {...baseProps}
+        showPriority={showPriority}
         selectedWorkspaceId="w-chat"
         snapshot={{
           ...sideChatSnapshot,
@@ -1907,9 +1907,61 @@ describe("Sidebar — repo-less chats", () => {
       />
     );
 
-    expect(screen.queryByText("Priority")).toBeNull();
+    if (showPriority) {
+      expect(screen.getByRole("button", { name: "Hide Priority chats" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
+    } else {
+      expect(screen.queryByText("Priority")).toBeNull();
+      expect(screen.getByRole("button", { name: "Hide chats" })).toBeInTheDocument();
+    }
     expect(screen.getByRole("button", { name: /Explain quantization/ })).toBeInTheDocument();
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(JSON.stringify([]));
+  });
+
+  it.each([
+    ["projects", "running"],
+    ["projects", "approval-needed"],
+    ["projects", "review-ready"],
+    ["projects", "manual"],
+    ["sessions", "running"],
+    ["sessions", "approval-needed"],
+    ["sessions", "review-ready"],
+    ["sessions", "manual"]
+  ] as const)("promotes a %s chat for %s and returns it when resolved", (viewMode, reason) => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify(viewMode));
+    const now = new Date().toISOString();
+    const activeSnapshot: DashboardSnapshot = {
+      ...sideChatSnapshot,
+      workspaces: sideChatSnapshot.workspaces.map((workspace) => workspace.id === "w-chat"
+        ? { ...workspace, lastActivityAt: now, priorityAddedAt: reason === "manual" ? now : null }
+        : workspace),
+      sessions: [session("w-repo"), {
+        ...session("w-chat"),
+        state: reason === "running" ? "running" : "complete",
+        attention: reason === "approval-needed" || reason === "review-ready" ? reason : "normal",
+        attentionChangedAt: now,
+        lastActivityAt: now
+      }]
+    };
+    const { rerender } = render(<Sidebar {...baseProps} showPriority snapshot={activeSnapshot} />);
+
+    expect(screen.getByRole("button", { name: "Hide Priority chats" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Explain quantization/ })).toHaveLength(1);
+    expect(rendersAfter(screen.getByText("Priority"), screen.getByRole("button", {
+      name: /Explain quantization/
+    }))).toBe(true);
+    expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
+
+    rerender(<Sidebar {...baseProps} showPriority snapshot={sideChatSnapshot} />);
+
+    expect(screen.queryByText("Priority")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Explain quantization/ })).toHaveLength(1);
+    const homeGroup = viewMode === "projects"
+      ? screen.getByRole("button", { name: "Hide chats" })
+      : screen.getByText("Today");
+    expect(rendersAfter(homeGroup, screen.getByRole("button", {
+      name: /Explain quantization/
+    }))).toBe(true);
   });
 
   it("hides the Chat group entirely without chats or a launch handler", () => {

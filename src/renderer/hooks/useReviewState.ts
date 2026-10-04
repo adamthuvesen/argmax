@@ -313,6 +313,8 @@ export function useReviewState(
         ? "argmax.reviewPanel.layout.launcher"
         : null
     : null;
+  // A new launcher must not inherit visibility from a chat in its checkout.
+  const restoreTerminalShowing = sourceKind === "workspace" && getWorkspaceTerminalState(terminalWorkspaceId).showing;
   // Session panes remount on navigation. Restore both visibility and mode,
   // falling back to the workspace terminal state for sessions without a preference.
   const [isPanelOpen, setIsPanelOpen] = useState(() => {
@@ -324,7 +326,7 @@ export function useReviewState(
         // Appearance preferences are optional when storage is unavailable.
       }
     }
-    return options?.initiallyOpen ?? getWorkspaceTerminalState(terminalWorkspaceId).showing;
+    return options?.initiallyOpen ?? restoreTerminalShowing;
   });
   useEffect(() => {
     if (!panelOpenKey) return;
@@ -360,7 +362,7 @@ export function useReviewState(
     }
     const initialMode = options?.initiallyOpen !== undefined
       ? "changes"
-      : getWorkspaceTerminalState(terminalWorkspaceId).showing
+      : restoreTerminalShowing
         ? "terminal"
         : "changes";
     return normalizeReviewLayout(createReviewLayout(initialMode), availablePanelModes);

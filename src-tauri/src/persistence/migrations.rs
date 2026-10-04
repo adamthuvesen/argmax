@@ -49,6 +49,15 @@ const ALL_TABLES: &[&str] = &[
 
 pub static EMPTY_EXPECTED_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {};
 
+static LINKED_REPOSITORY_SUMMARY_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "project_linked_repos" => &[
+        "id", "project_id", "name", "root_path", "enabled", "created_at", "updated_at", "summary",
+    ] as &'static [&'static str],
+};
+
+const LINKED_REPOSITORY_SUMMARIES: &str =
+    "ALTER TABLE project_linked_repos ADD COLUMN summary TEXT;";
+
 pub static FINITE_GOAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "goals" => &[
         "active_elapsed_ms", "active_started_at", "attempt_count", "candidate_snapshot",
@@ -1283,6 +1292,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: PROMPT_AUTHORSHIP,
         affected_tables: &["events", "pending_messages"],
         expected_columns: &PROMPT_AUTHORSHIP_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 67,
+        name: "linked_repository_summaries",
+        up: LINKED_REPOSITORY_SUMMARIES,
+        affected_tables: &["project_linked_repos"],
+        expected_columns: &LINKED_REPOSITORY_SUMMARY_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -2951,6 +2968,27 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
 
     #[test]
+    fn linked_repository_summary_upgrade_preserves_existing_roots() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..66]).unwrap();
+        seed_minimal_session(&connection);
+        connection.execute(
+            "INSERT INTO project_linked_repos (id, project_id, name, root_path, enabled, created_at, updated_at) VALUES ('linked-1', 'p1', 'shared', '/tmp/shared', 1, 'created', 'updated')",
+            [],
+        ).unwrap();
+
+        run_migrations(&mut connection).unwrap();
+
+        let repo =
+            crate::persistence::linked_repos::find_linked_repo_by_id(&connection, "p1", "linked-1")
+                .unwrap();
+        assert_eq!(repo.root_path, "/tmp/shared");
+        assert!(repo.enabled);
+        assert_eq!(repo.summary, None);
+        run_migrations(&mut connection).unwrap();
+    }
+
+    #[test]
     fn economy_tier_upgrade_preserves_routes_sessions_and_children() {
         let mut connection = Connection::open_in_memory().unwrap();
         run_migrations_with(&mut connection, &MIGRATIONS[..60]).unwrap();
@@ -3307,6 +3345,7 @@ mod tests {
                     compute_migration_checksum(crate::persistence::continuity::MIGRATION_SQL)
                 ),
                 (66, compute_migration_checksum(PROMPT_AUTHORSHIP)),
+                (67, compute_migration_checksum(LINKED_REPOSITORY_SUMMARIES)),
             ]
         );
 

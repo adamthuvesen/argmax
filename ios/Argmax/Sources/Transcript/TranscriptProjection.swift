@@ -577,7 +577,8 @@ enum TranscriptProjection {
                 changeCounts: facts.changeCounts,
                 activity: activity,
                 completionObserved: completionObserved,
-                completionStatus: completionStatus
+                completionStatus: completionStatus,
+                linkedRepo: facts.linkedRepo
             )
             tool.summary = TranscriptProjection.toolSummary(tool, name: name, preview: preview)
             return tool
@@ -728,6 +729,7 @@ enum TranscriptProjection {
         let filePath: String?
         let fileLabel: String?
         let changeCounts: TranscriptChangeCounts?
+        let linkedRepo: String?
     }
 
     /// A streaming chat projects its whole history per chunk, and deriving
@@ -781,7 +783,12 @@ enum TranscriptProjection {
             let activityPath = activity.kind == .edit && activity.targets.count == 1
                 ? activity.targets.first
                 : nil
-            let filePath = path(in: input) ?? activityPath
+            // A linked-repository path is relative to that repository, so it
+            // must not open as a file in this checkout.
+            let linkedRepo = string(input, keys: ["linked_repo"])
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .flatMap { $0.isEmpty ? nil : $0 }
+            let filePath = linkedRepo == nil ? path(in: input) ?? activityPath : nil
             return ToolFacts(
                 name: name,
                 input: input,
@@ -795,7 +802,8 @@ enum TranscriptProjection {
                 preview: preview(name: name, input: input, workspacePath: workspacePath),
                 filePath: filePath,
                 fileLabel: filePath.map { relativePath($0, workspacePath: workspacePath) },
-                changeCounts: changeCounts(activity: activity, input: input)
+                changeCounts: changeCounts(activity: activity, input: input),
+                linkedRepo: linkedRepo
             )
         }
     }
@@ -1560,6 +1568,8 @@ enum TranscriptProjection {
                 createdAt: event.createdAt
             )
         case "note", "session.note":
+            // Linked-repository reads are a record, not chat; the desktop hides them too.
+            if payload["operation"]?.string == "linked-repo" { return nil }
             return TranscriptNotice(
                 id: "note-\(event.id)",
                 text: event.message,

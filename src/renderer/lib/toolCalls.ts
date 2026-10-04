@@ -2,7 +2,7 @@ import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
 import { interpretFileChange, summarizeFileChanges, type ChangeCounts } from "./fileChange.js";
 import { isOpaqueCiphertext } from "./toolArguments.js";
-import { describeActivity, joinClauses, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
+import { describeActivity, joinClauses, linkedRepoName, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
 
 export type ToolCall = {
   id: string;
@@ -761,6 +761,8 @@ export function extractToolError(payload: Record<string, unknown>): string | nul
 export function extractOpenablePath(name: string, input: Record<string, unknown>): string | null {
   const lower = name.toLowerCase();
   if (!/read|view|cat|write|edit|patch|create|open/.test(lower)) return null;
+  // A linked-repository path is relative to that repository, not this checkout.
+  if (linkedRepoName(input)) return null;
   for (const key of ["file_path", "filePath", "filepath", "path", "relative_path", "absolute_path"]) {
     const value = input[key];
     if (typeof value === "string" && value.length > 0) return value;

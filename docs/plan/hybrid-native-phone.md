@@ -175,7 +175,7 @@ system's; the pixels are ours).
   offers one switch for all custom haptics.
 - **Glyphs.** SF Symbols, `.medium` weight, hierarchical rendering. Provider
   marks are the repo's own (`docs/design/agent-emblems`), drawn at 16pt.
-- **Copy.** Sentence case; CONTEXT.md vocabulary (chat, project, workspace,
+- **Copy.** Sentence case; GLOSSARY.md vocabulary (chat, project, workspace,
   checkout). Empty and error states are one line and one action.
 - **The fox.** Appears exactly four places: the app icon, the pairing screen
   (large, idle), beside "Argmax" in the root screen's header (34pt), and as

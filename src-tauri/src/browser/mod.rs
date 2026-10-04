@@ -18,6 +18,7 @@ pub mod content_blocking;
 #[cfg(target_os = "macos")]
 pub mod content_blocking_macos;
 pub mod eval;
+pub mod focus_guard;
 pub mod js_dialogs;
 pub mod popup;
 pub mod registry;

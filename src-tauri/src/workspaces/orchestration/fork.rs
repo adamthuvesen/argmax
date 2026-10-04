@@ -12,10 +12,27 @@
 // plus a copy of its current uncommitted files.
 
 use super::*;
+use crate::application::session_launch::MAX_TASK_LABEL_BYTES;
 use crate::ipc::inputs::ForkWorkspaceMode;
 use crate::persistence::continuity::{insert_fork, ForkRecord, NativeMode};
 use crate::persistence::events::persist_copied_event;
 use crate::providers::continuity::{latest_turn_starter, recorded_codex_turn};
+
+const FORK_SUFFIX: &str = " (fork)";
+
+/// The fork's title: the source's, then " (fork)". A source title near the
+/// `TaskLabel` byte bound would overflow it (and fail the isolated fork), so the
+/// source part is cut on a character boundary and marked with "...", as
+/// `session_launch::task_label` does. The suffix always survives.
+fn fork_task_label(source_label: &str) -> String {
+    const ELLIPSIS: &str = "...";
+    if source_label.len() + FORK_SUFFIX.len() <= MAX_TASK_LABEL_BYTES {
+        return format!("{source_label}{FORK_SUFFIX}");
+    }
+    let keep = MAX_TASK_LABEL_BYTES - FORK_SUFFIX.len() - ELLIPSIS.len();
+    let cut = source_label.floor_char_boundary(keep);
+    format!("{}{ELLIPSIS}{FORK_SUFFIX}", source_label[..cut].trim_end())
+}
 
 /// How the fork's first message will continue the provider conversation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
@@ -356,7 +373,7 @@ impl WorkspaceService {
                                 )
                             },
                         )?,
-                        task_label: format!("{} (fork)", source_workspace.task_label)
+                        task_label: fork_task_label(&source_workspace.task_label)
                             .try_into()
                             .map_err(|_| {
                                 fork_error(
@@ -465,7 +482,7 @@ impl WorkspaceService {
                 &PersistWorkspaceInput {
                     id: Uuid::new_v4().to_string(),
                     project_id: source_workspace.project_id.clone(),
-                    task_label: format!("{} (fork)", source_workspace.task_label),
+                    task_label: fork_task_label(&source_workspace.task_label),
                     branch: source_workspace.branch.clone(),
                     base_ref: source_workspace.base_ref.clone(),
                     path: source_workspace.path.clone(),
@@ -1113,5 +1130,123 @@ mod tests {
         let messages = child_messages(&database, &forked.session.id);
         assert!(messages.contains(&"provider crashed".to_string()));
         assert!(!messages.contains(&"ask 5".to_string()));
+    }
+
+    /// Titles at the byte bound, in ASCII and in 2-, 3- and 4-byte characters.
+    fn boundary_titles() -> Vec<String> {
+        let mut titles = Vec::new();
+        for unit in ["a", "é", "日", "🦊"] {
+            // The longest title `TaskLabel` accepts, and the lengths around the
+            // point where " (fork)" stops fitting.
+            for bytes in [190, 193, 199, 200] {
+                let mut title = String::new();
+                while title.len() + unit.len() <= bytes {
+                    title.push_str(unit);
+                }
+                titles.push(title);
+            }
+        }
+        titles
+    }
+
+    #[test]
+    fn a_fork_title_keeps_its_suffix_and_fits_the_task_label_bound() {
+        for title in boundary_titles() {
+            let label = fork_task_label(&title);
+            assert!(label.ends_with(FORK_SUFFIX), "{label:?}");
+            assert!(label.len() <= MAX_TASK_LABEL_BYTES, "{} bytes", label.len());
+            assert!(
+                crate::application::validation::TaskLabel::try_from(label.clone()).is_ok(),
+                "{label:?} is not a valid task label"
+            );
+            if title.len() + FORK_SUFFIX.len() <= MAX_TASK_LABEL_BYTES {
+                assert_eq!(
+                    label,
+                    format!("{title}{FORK_SUFFIX}"),
+                    "a title that fits is kept whole"
+                );
+            } else {
+                assert!(label.contains("..."), "{label:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_shared_fork_of_a_long_title_stays_within_the_bound() {
+        let (database, service) = service();
+        three_turns(&database, "claude", "claude-conv");
+        let title = "日".repeat(66); // 198 bytes: valid, but too long for a suffix
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET task_label = ? WHERE id = 'w1'",
+                [&title],
+            )
+            .unwrap();
+        let forked = service.fork_session_at(request(None)).await.unwrap();
+        assert!(forked.workspace.task_label.ends_with(FORK_SUFFIX));
+        assert!(forked.workspace.task_label.len() <= MAX_TASK_LABEL_BYTES);
+    }
+
+    /// The real isolated path: a git repo, a worktree, and a source title at the
+    /// bound. `create_isolated` validates the label as a `TaskLabel`.
+    #[tokio::test]
+    async fn an_isolated_fork_of_a_long_title_creates_its_worktree() {
+        let repo = tempfile::tempdir().unwrap();
+        let worktrees = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@example.test"])
+                .args(args)
+                .current_dir(repo.path())
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "git {args:?}: {output:?}");
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(repo.path().join("file.txt"), "one\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "init"]);
+
+        for (index, title) in boundary_titles()
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| i % 5 == 3)
+        {
+            let (database, service) = service();
+            {
+                let connection = database.connection();
+                seed_session(&connection, "claude");
+                connection
+                    .execute(
+                        "UPDATE projects SET repo_path = ?1, worktree_location = ?2 WHERE id = 'p1'",
+                        [
+                            repo.path().to_str().unwrap(),
+                            worktrees.path().join(index.to_string()).to_str().unwrap(),
+                        ],
+                    )
+                    .unwrap();
+                connection
+                    .execute(
+                        "UPDATE workspaces SET path = ?1, task_label = ?2, kind = 'git' WHERE id = 'w1'",
+                        [repo.path().to_str().unwrap(), title.as_str()],
+                    )
+                    .unwrap();
+                event(&connection, "s1", "u1", "user.message", "ask");
+                event(&connection, "s1", "a1", "message.completed", "answer");
+            }
+            let forked = service
+                .fork_session_at(ForkRequest {
+                    session_id: "s1".to_string(),
+                    boundary_event_id: None,
+                    workspace: ForkWorkspaceMode::Isolated,
+                })
+                .await
+                .unwrap_or_else(|error| panic!("{} byte title: {error}", title.len()));
+            let label = &forked.workspace.task_label;
+            assert!(label.ends_with(FORK_SUFFIX), "{label:?}");
+            assert!(label.len() <= MAX_TASK_LABEL_BYTES);
+            assert!(!forked.workspace.shared_workspace);
+        }
     }
 }

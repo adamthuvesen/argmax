@@ -86,9 +86,13 @@ pub fn load_settings(connection: &Connection) -> Settings {
     }
 }
 
+/// Both rows or neither: a failure on the second must not leave the first
+/// written, or the saved flag and chord would disagree.
 pub fn save_settings(connection: &Connection, settings: &Settings) -> ArgmaxResult<()> {
-    write_value(connection, ENABLED_KEY, &settings.enabled)?;
-    write_value(connection, CHORD_KEY, &settings.chord)
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    write_value(&transaction, ENABLED_KEY, &settings.enabled)?;
+    write_value(&transaction, CHORD_KEY, &settings.chord)?;
+    transaction.commit().map_err(sqlite_error)
 }
 
 fn chord_issue(message: impl Into<String>) -> ArgmaxError {
@@ -209,8 +213,9 @@ pub fn install<R: Runtime>(app: &AppHandle<R>, connection: &Connection) {
     apply(&TauriRegistrar(app), &state, &load_settings(connection));
 }
 
-/// Apply new settings; on a refusal put the previous ones back and fail, so a
-/// rejected chord never leaves the user with no shortcut at all.
+/// Apply new settings; on a registration error or a failed save put the
+/// previous registration back and fail, so the OS and the saved settings agree
+/// and a rejected chord never leaves the user with no shortcut at all.
 pub fn configure<R: Runtime>(
     app: &AppHandle<R>,
     connection: &Connection,
@@ -242,7 +247,12 @@ fn configure_with(
             error,
         ));
     }
-    save_settings(connection, &next)?;
+    if let Err(error) = save_settings(connection, &next) {
+        // The OS holds the new chord but the settings still name the old one;
+        // put the registration back so the two agree.
+        apply(registrar, state, &previous);
+        return Err(error);
+    }
     Ok(result)
 }
 
@@ -492,6 +502,50 @@ mod tests {
             load_settings(&connection),
             on("Control+Alt+K"),
             "the refused chord was not saved"
+        );
+    }
+
+    /// The save is two rows. A failure on the second must leave neither
+    /// written, and the OS must hold the chord the saved settings name.
+    #[test]
+    fn a_failed_save_rolls_back_both_rows_and_restores_the_old_registration() {
+        let database = Database::open_in_memory().unwrap();
+        let connection = database.connection();
+        let os = FakeOs::default();
+        let state = WindowSnapshotState::default();
+        configure_with(&os, &state, &connection, on("Control+Alt+K")).unwrap();
+
+        // The enabled row is written first and succeeds; the chord row aborts.
+        connection
+            .execute_batch(
+                "CREATE TRIGGER inject_chord_write_failure BEFORE UPDATE ON ui_state
+                 WHEN NEW.key = 'window_snapshot.chord'
+                 BEGIN SELECT RAISE(ABORT, 'injected write failure'); END;",
+            )
+            .unwrap();
+        let off_and_moved = Settings {
+            enabled: false,
+            chord: "Control+Alt+J".to_owned(),
+        };
+        let error = configure_with(&os, &state, &connection, off_and_moved).unwrap_err();
+
+        assert!(
+            error.to_string().contains("injected write failure"),
+            "the save error is reported: {error}"
+        );
+        assert_eq!(
+            load_settings(&connection),
+            on("Control+Alt+K"),
+            "neither row changed: the enabled flag was rolled back too"
+        );
+        assert_eq!(
+            state.registration().registered.as_deref(),
+            Some("Control+Alt+K"),
+            "the previous chord is registered again"
+        );
+        assert_eq!(
+            *os.held.borrow(),
+            vec![key(&validate_chord("Control+Alt+K").unwrap())]
         );
     }
 

@@ -719,7 +719,7 @@ impl CompletionNoticePolicy {
         at: &str,
         shape: NoticeShape,
     ) -> ArgmaxResult<Option<CompletionNotice>> {
-        let connection = self.database.connection();
+        let mut connection = self.database.connection();
         let session = find_session_by_id(&connection, session_id)?;
         let Some(parent_id) = session.launched_by_session_id.clone() else {
             return Ok(None);
@@ -762,10 +762,14 @@ impl CompletionNoticePolicy {
             body: body.clone(),
             kind: COMPLETION_KIND.to_string(),
         };
-        if !insert_session_message(&connection, &message)? {
+        // The row and its wake mark commit together: a crash between them
+        // would leave an unread row that boot never wakes the launcher for.
+        let transaction = connection.transaction().map_err(sqlite_error)?;
+        if !insert_session_message(&transaction, &message)? {
             return Ok(None);
         }
-        mark_wake_due(&connection, &message.id)?;
+        mark_wake_due(&transaction, &message.id)?;
+        transaction.commit().map_err(sqlite_error)?;
         Ok(Some(CompletionNotice {
             message_id: message.id.clone(),
             to_session_id: parent_id,
@@ -1373,6 +1377,57 @@ mod tests {
             delivered[0].message_id,
             "completion:c2:2026-10-04T10:00:00.200Z"
         );
+    }
+
+    /// The row and its wake mark are one write. If the mark cannot be written,
+    /// no unmarked row is left behind for boot to miss, and the same turn end
+    /// can be recorded again once the fault clears.
+    #[tokio::test]
+    async fn a_completion_row_and_its_wake_mark_are_written_together_or_not_at_all() {
+        let h = harness();
+        h.database
+            .connection()
+            .execute_batch(
+                "CREATE TRIGGER refuse_wake_mark BEFORE UPDATE OF wake_due_at ON session_messages
+                 WHEN NEW.wake_due_at IS NOT NULL
+                 BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+            )
+            .unwrap();
+        let at = "2026-10-04T10:00:00.100Z";
+        // The notice is not recorded (the failure is logged) and nothing wakes.
+        h.policy
+            .turn_ended("c1", SessionState::Complete, at)
+            .unwrap();
+        let rows: i64 = h
+            .database
+            .connection()
+            .query_row("SELECT COUNT(*) FROM session_messages", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(rows, 0, "a row without its wake mark must not survive");
+        assert!(h.announced.lock().unwrap().is_empty());
+
+        // The fault clears; the same turn end records both, as one.
+        h.database
+            .connection()
+            .execute_batch("DROP TRIGGER refuse_wake_mark")
+            .unwrap();
+        h.policy
+            .turn_ended("c1", SessionState::Complete, at)
+            .unwrap();
+        let due = list_due_wakes(&h.database.connection()).unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].id, format!("completion:c1:{at}"));
+
+        // A restart before the window closed still wakes the launcher.
+        drop(h.policy);
+        let (after_restart, delivered) = policy_over(&h.database, WINDOW, false);
+        assert_eq!(after_restart.recover_pending_wakes().unwrap(), 1);
+        after_window().await;
+        let delivered = delivered.lock().unwrap();
+        assert_eq!(delivered.len(), 1);
+        assert_eq!(delivered[0].message_id, format!("completion:c1:{at}"));
     }
 
     #[tokio::test]

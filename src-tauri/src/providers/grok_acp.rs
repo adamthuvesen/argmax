@@ -499,6 +499,15 @@ async fn run_turn(
         "type": "system", "subtype": "init", "session_id": acp_session_id,
         "model": model_id, "transport": "acp",
     }));
+    // Grok runs `/compact` itself and streams nothing, so the seam comes from
+    // here, in the shape the shared Claude normalizer already maps.
+    let compacting = crate::providers::inputs::is_compact_command(&prompt);
+    if compacting {
+        emit_line(json!({
+            "type": "system", "subtype": "status", "status": "compacting",
+            "session_id": acp_session_id,
+        }));
+    }
     let (subscription, mut updates) = client.subscribe(&acp_session_id);
     let mut translation = GrokTurnTranslation::default();
     let prompt_request = client.request(
@@ -548,6 +557,12 @@ async fn run_turn(
             );
         }
         Ok(response) if response.get("stopReason").and_then(Value::as_str) == Some("end_turn") => {
+            if compacting {
+                emit_line(json!({
+                    "type": "system", "subtype": "compact_boundary",
+                    "session_id": acp_session_id,
+                }));
+            }
             emit_line(translation.success_result(&acp_session_id));
             emit(
                 ProviderRuntimeEventType::Exit,

@@ -5,6 +5,7 @@ import {
   CornerUpRight,
   Eraser,
   FileDiff,
+  FoldVertical,
   FolderOpen,
   GitBranch,
   Maximize2,
@@ -447,6 +448,20 @@ export function SessionComposer({
         icon: Cloud,
         writesDraft: true,
         run: () => setInput("/cloud ")
+      });
+    }
+    // `/compact` is sent as ordinary prompt text. Claude and Grok run it
+    // themselves; Codex and OpenCode have no such command, so the Rust adapter
+    // turns the exact prompt into their compact call. Cursor has no
+    // equivalent, so it gets no entry.
+    if (session && session.provider !== "cursor") {
+      commands.push({
+        name: "compact",
+        label: "Compact",
+        hint: "Summarize the conversation to free up context",
+        icon: FoldVertical,
+        writesDraft: true,
+        run: () => setInput("/compact ")
       });
     }
     if (session && onMultitask) {

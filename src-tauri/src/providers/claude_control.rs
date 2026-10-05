@@ -143,6 +143,14 @@ fn backgrounded_agent_task_id(message: &Value) -> Option<&str> {
     .then_some(task_id)
 }
 
+/// Whether a `user` row is the output of a slash command Claude ran locally.
+fn is_local_command_output(message: &Value) -> bool {
+    message
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .is_some_and(|content| content.starts_with("<local-command-stdout>"))
+}
+
 /// What Claude prints when `--resume` names a conversation it does not have.
 const MISSING_CONVERSATION: &str = "No conversation found with session ID";
 
@@ -459,7 +467,22 @@ pub async fn launch_turn(
                                     Some(UserEcho::Steer) => {
                                         continue;
                                     }
-                                    None => {}
+                                    None => {
+                                        // A slash command Claude runs itself, such
+                                        // as `/compact`, is never echoed back as a
+                                        // user message. Its `<local-command-stdout>`
+                                        // row is the acknowledgement; without it
+                                        // the echo stays pending and every later
+                                        // `result` is dropped, so the turn never ends.
+                                        let mut echoes = pending_user_echoes.lock().await;
+                                        if is_local_command_output(&message)
+                                            && echoes.pending.front().is_some_and(|pending| pending.prompt.trim_start().starts_with('/'))
+                                        {
+                                            if let Some(UserEcho::Initial) = echoes.pending.pop_front().map(|pending| pending.acknowledgement) {
+                                                let _ = ready_tx.send(true);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             if let Some(task_id) = backgrounded_agent_task_id(&message) {

@@ -171,6 +171,12 @@ pub fn normalize_event(
         }
         Some("step_finish") => normalize_step_finish(event, part).into_iter().collect(),
         Some("error") => normalize_error(event, payload).into_iter().collect(),
+        Some("compacted") => vec![timeline_event(
+            event,
+            "session.compacted",
+            "Compacted context",
+            json!({}),
+        )],
         _ => Vec::new(),
     }
 }
@@ -687,6 +693,18 @@ mod tests {
         assert_eq!(result.events.len(), 1);
         assert_eq!(result.events[0].r#type, "error");
         assert_eq!(result.events[0].message, "Upstream request failed");
+    }
+
+    #[test]
+    fn opencode_compacted_envelope_becomes_a_compaction_seam() {
+        let mut context = NormalizerSessionContext::default();
+        let result = normalize_provider_event(
+            ProviderId::Opencode,
+            &output_event(r#"{"type":"compacted","sessionID":"ses_1","compaction":{}}"#),
+            &mut context,
+        );
+        assert_eq!(result.events.len(), 1);
+        assert_eq!(result.events[0].r#type, "session.compacted");
     }
 
     #[test]

@@ -947,6 +947,12 @@
   position: relative;
   display: flex;
   min-width: 0;
+  /* Its own stacking context, so nothing the field paints can outrank the
+     toolbar that follows it. The router caption sits on the placeholder's line
+     with z-index 1, while the model/effort pickers keep their popover inside
+     `--chip`'s `isolation: isolate` — the caption escaped past it and drew over
+     the open picker. Containing the field puts all its text behind them. */
+  isolation: isolate;
 }
 
 .session-input-field input,
@@ -1000,16 +1006,11 @@
   padding: 0;
 }
 
-.composer-editor .cm-cursor {
-  border-left-color: var(--text);
-}
-
-.composer-editor .cm-editor .cm-selectionBackground,
-.composer-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
-  background: var(--selection-bg);
-}
-
-.composer-editor .cm-placeholder {
+/* Inline, not CodeMirror's inline-block: the native caret beside a wrapped
+   inline-block placeholder takes the whole block's height. Inline text wraps
+   in ordinary line boxes, so the caret keeps one line's height. */
+.composer-editor .cm-line .cm-placeholder {
+  display: inline;
   color: var(--muted);
 }
 

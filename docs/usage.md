@@ -81,8 +81,10 @@ for Cursor", from `UsageSummary::estimated_cost_usd` / `estimated_tokens`).
 Below the remaining card, a **Router** card shows what each Auto tier cost in
 the page's window: Frontier, Balance, Speed, each with chats, turns, total
 cost, cost per turn, median turn time and time to first activity, escalations,
-and the model mix. It appears only when a
-chat was routed in the window. The read is `usage:router-cost`
+and the model mix. The mix names the top two models by share of the tier's
+turns, with provider dots, and folds the rest into "+N more". It appears only
+when a chat was routed in the window. The browser preview draws it from
+`demoRouterCost` in [demoUsage.ts](../src/renderer/demoUsage.ts). The read is `usage:router-cost`
 ([routing/cost.rs](../src-tauri/src/routing/cost.rs)).
 
 Each desktop tier expands to its recorded routing decisions, grouped by task
@@ -94,7 +96,8 @@ windows as the totals, excluding pins and unanswered windows. Missing
 classification or effort stays explicitly unrecorded. Escalations measure
 router actions, not successful outcomes or all user corrections.
 
-Desktop shows pricing coverage as priced turns / total turns.
+Desktop flags a tier with unpriced turns with an "N unpriced" badge; its
+tooltip gives priced turns / total turns. A fully priced tier carries no badge.
 On desktop and iPhone, **First activity** includes reasoning and tool calls, not only a
 text answer. Its existing wire field remains `medianFirstAnswerSeconds`.
 

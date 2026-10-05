@@ -70,7 +70,13 @@ import {
 import { NewArcDialog } from "./arcs/NewArcDialog.js";
 import { usePaneGrid } from "../state/paneGrid.js";
 import { setSidebarPeek, useSidebarChrome } from "../state/sidebarChrome.js";
-import { beginWorkspaceDrag, endWorkspaceDrag } from "../state/workspaceDrag.js";
+import {
+  beginWorkspaceDrag,
+  endWorkspaceDrag,
+  subscribeWorkspacePointerDrag,
+  useDraggingWorkspaceId,
+  workspaceDragSnapshot
+} from "../state/workspaceDrag.js";
 import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from "../lib/priority.js";
 import { computeSnoozeShelf, snoozeTimerDelay } from "../lib/snooze.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
@@ -378,6 +384,8 @@ export function Sidebar({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
+  const pointerDraggingWorkspaceId = useDraggingWorkspaceId();
+  const priorityGroupRef = useRef<HTMLDivElement | null>(null);
 
   const closeSortMenu = useCallback((): void => {
     setSortMenuOpen(false);
@@ -605,16 +613,28 @@ export function Sidebar({
   // arm it — they leave when the thing that raised them is dealt with.
   const [priorityNow, setPriorityNow] = useState(() => Date.now());
   const priorityEntries = useMemo(
-    () =>
-      showPriority
+    () => {
+      const entries = showPriority
         ? computePriorityEntries(
             sidebarWorkspaces,
             snapshot.sessions,
             priorityNow,
             unreadWorkspaces
           )
-        : [],
-    [showPriority, sidebarWorkspaces, snapshot.sessions, priorityNow, unreadWorkspaces]
+        : [];
+      const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
+      const positions = new Map(manualOrder.map((id, index) => [id, index]));
+      // Unordered entries keep the selector's attention and activity order.
+      return entries.sort((a, b) =>
+        (positions.get(a.workspace.id) ?? manualOrder.length) -
+        (positions.get(b.workspace.id) ?? manualOrder.length)
+      );
+    },
+    [showPriority, sidebarWorkspaces, snapshot.sessions, priorityNow, unreadWorkspaces, workspaceOrders]
+  );
+  const priorityOrderedIds = useMemo(
+    () => priorityEntries.map((entry) => entry.workspace.id),
+    [priorityEntries]
   );
 
   const nextPriorityIdle = nextPriorityIdleAt(priorityEntries);
@@ -1007,35 +1027,55 @@ export function Sidebar({
     }
   }, [draggingWorkspaceId]);
 
-  const handleWorkspaceDrop = useCallback(
+  const reorderWorkspace = useCallback(
     (
-      event: ReactDragEvent<HTMLDivElement>,
+      sourceWorkspaceId: string,
       projectId: string,
       targetWorkspaceId: string,
       orderedIds: string[]
     ): void => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!draggingWorkspaceId || draggingWorkspaceId === targetWorkspaceId) {
-        setDraggingWorkspaceId(null);
-        return;
-      }
-      const from = orderedIds.indexOf(draggingWorkspaceId);
+      if (sourceWorkspaceId === targetWorkspaceId) return;
+      const from = orderedIds.indexOf(sourceWorkspaceId);
       const to = orderedIds.indexOf(targetWorkspaceId);
       if (from === -1 || to === -1) {
-        setDraggingWorkspaceId(null);
         return;
       }
       const next = [...orderedIds];
       next.splice(from, 1);
-      next.splice(to, 0, draggingWorkspaceId);
+      next.splice(to, 0, sourceWorkspaceId);
       const updated = { ...workspaceOrders, [projectId]: next };
       setWorkspaceOrders(updated);
       saveWorkspaceOrders(updated);
+    },
+    [workspaceOrders]
+  );
+
+  const handleWorkspaceDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>, groupId: string, targetId: string, orderedIds: string[]): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (draggingWorkspaceId) reorderWorkspace(draggingWorkspaceId, groupId, targetId, orderedIds);
       setDraggingWorkspaceId(null);
     },
-    [draggingWorkspaceId, workspaceOrders]
+    [draggingWorkspaceId, reorderWorkspace]
   );
+
+  useEffect(() => subscribeWorkspacePointerDrag({
+    move: () => {},
+    drop: ({ clientX, clientY }) => {
+      const sourceId = workspaceDragSnapshot();
+      if (!sourceId || !priorityOrderedIds.includes(sourceId)) return;
+      const rows = priorityGroupRef.current?.querySelectorAll<HTMLElement>("[data-workspace-id]") ?? [];
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+          reorderWorkspace(sourceId, PRIORITY_GROUP_KEY, row.dataset.workspaceId!, priorityOrderedIds);
+          return;
+        }
+      }
+    },
+    cancel: () => {}
+  }), [priorityOrderedIds, reorderWorkspace]);
 
   const handleWorkspaceDragEnd = useCallback((): void => {
     setDraggingWorkspaceId(null);
@@ -1425,6 +1465,7 @@ export function Sidebar({
         ) : null}
         {priorityEntries.length > 0 ? (
           <div
+            ref={priorityGroupRef}
             className="project-group session-date-group session-priority-group"
             data-collapsed={priorityCollapsed ? "true" : undefined}
           >
@@ -1454,7 +1495,17 @@ export function Sidebar({
               )}
             </div>
             {priorityCollapsed ? null : priorityEntries.map((entry) => (
-              <div key={entry.workspace.id} className="session-row-wrap">
+              <div
+                key={entry.workspace.id}
+                className={`session-row-wrap${(draggingWorkspaceId ?? pointerDraggingWorkspaceId) === entry.workspace.id ? " dragging" : ""}`}
+                draggable={canDragWorkspaceToGrid}
+                onDragStart={(event) => handleWorkspaceDragStart(event, entry.workspace.id)}
+                onDragOver={handleWorkspaceDragOver}
+                onDrop={(event) =>
+                  handleWorkspaceDrop(event, PRIORITY_GROUP_KEY, entry.workspace.id, priorityOrderedIds)
+                }
+                onDragEnd={handleWorkspaceDragEnd}
+              >
                 <SidebarSessionRow
                   workspace={entry.workspace}
                   isWorking={entry.working}

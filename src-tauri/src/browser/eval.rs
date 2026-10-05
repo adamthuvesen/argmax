@@ -57,25 +57,57 @@ pub async fn eval_json(webview: &Webview, script: &str, timeout: Duration) -> Ar
 
 /// Wraps a script so a thrown error comes back as data instead of vanishing
 /// into WebKit's dropped `NSError`. The result is always a JSON string holding
-/// either `{"ok":<value>}` or `{"error":"<message>"}`.
+/// `{"ok":<value>}`, `{"error":"<message>"}`, or `{"refused":"<message>"}`
+/// when the page will not `eval` at all — a Content Security Policy without
+/// `unsafe-eval`, or Trusted Types. The refusal is probed with a constant
+/// before the script runs, so it can never be a side effect of the script.
 pub fn wrap_for_errors(script: &str) -> String {
     let literal = serde_json::to_string(script).unwrap_or_else(|_| "\"\"".to_string());
     format!(
         "(function () {{ \
+           try {{ (0, eval)(\"0\"); }} \
+           catch (error) {{ return JSON.stringify({{ refused: String(error) }}); }} \
            try {{ return JSON.stringify({{ ok: (0, eval)({literal}) }}); }} \
            catch (error) {{ return JSON.stringify({{ error: String(error) }}); }} \
          }})()"
     )
 }
 
+/// The script as a block statement, for evaluating directly where `eval` is
+/// refused. A block keeps the script's completion value, as `eval` does, and
+/// keeps its `let` and `const` out of the page's global scope, so a second
+/// call reusing a name does not fail on a duplicate declaration.
+pub fn as_block(script: &str) -> String {
+    format!("{{\n{script}\n}}")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::wrap_for_errors;
+    use super::{as_block, wrap_for_errors};
 
     #[test]
     fn wrapped_script_is_embedded_as_a_json_string_literal() {
         let wrapped = wrap_for_errors("document.title + \"!\"");
         assert!(wrapped.contains(r#"eval)("document.title + \"!\"")"#));
         assert!(wrapped.contains("catch (error)"));
+    }
+
+    #[test]
+    fn eval_is_probed_before_the_script_runs() {
+        let wrapped = wrap_for_errors("sideEffect()");
+        let probe = wrapped.find("refused").expect("refusal probe");
+        let run = wrapped.find("sideEffect").expect("script");
+        assert!(
+            probe < run,
+            "a refusal must be detected before the script can run"
+        );
+    }
+
+    #[test]
+    fn a_block_keeps_declarations_local() {
+        assert_eq!(
+            as_block("const rows = 1; rows"),
+            "{\nconst rows = 1; rows\n}"
+        );
     }
 }

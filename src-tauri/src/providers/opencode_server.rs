@@ -47,6 +47,7 @@ use tokio::{
 const SERVER_USERNAME: &str = "argmax";
 const SERVER_START_TIMEOUT: Duration = Duration::from_secs(15);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
+const COMPACT_TIMEOUT: Duration = Duration::from_secs(300);
 const SSE_READ_TIMEOUT: Duration = Duration::from_millis(250);
 const SSE_CONNECT_RETRIES: u32 = 10;
 const SSE_LINE_LIMIT: usize = 16 * 1024 * 1024;
@@ -317,6 +318,9 @@ async fn prompt(
     input: &ProviderLaunchInput,
     native_session_id: &str,
 ) -> ArgmaxResult<()> {
+    if crate::providers::inputs::is_compact_command(&input.prompt) {
+        return compact(endpoint, input, native_session_id).await;
+    }
     let body = prompt_body(input)?;
     let http = http.clone();
     let endpoint = endpoint.to_string();
@@ -334,6 +338,38 @@ async fn prompt(
     })
     .await
     .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode prompt setup stopped"))?
+}
+
+/// OpenCode has no compact slash command over the server API, so `/compact`
+/// calls `session/{id}/summarize`. That route holds the request open until the
+/// summary is written, which outlasts `HTTP_TIMEOUT`, so it gets its own agent.
+/// The event stream then reports `session.compacted` and `idle`, which end the
+/// turn the same way a prompt does.
+async fn compact(
+    endpoint: &str,
+    input: &ProviderLaunchInput,
+    native_session_id: &str,
+) -> ArgmaxResult<()> {
+    let (provider_id, model_id) = split_model_id(&input.model_id)?;
+    let body = json!({ "providerID": provider_id, "modelID": model_id });
+    let http = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_millis(250))
+        .timeout_read(COMPACT_TIMEOUT)
+        .timeout_write(HTTP_TIMEOUT)
+        .build();
+    let endpoint = endpoint.to_string();
+    let directory = input.workspace_path.to_string_lossy().into_owned();
+    let native_session_id = native_session_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        http.post(&format!("{endpoint}/session/{native_session_id}/summarize"))
+            .query("directory", &directory)
+            .set("Content-Type", "application/json")
+            .send_string(&body.to_string())
+            .map_err(|error| request_error("compact the OpenCode session", &error))?;
+        Ok(())
+    })
+    .await
+    .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode compaction stopped"))?
 }
 
 fn prompt_body(input: &ProviderLaunchInput) -> ArgmaxResult<Value> {
@@ -367,6 +403,7 @@ async fn run_turn(
 ) {
     let invocation_id = uuid::Uuid::new_v4().to_string();
     let directory = input.workspace_path.to_string_lossy().into_owned();
+    let compacting = crate::providers::inputs::is_compact_command(&input.prompt);
     let mut tracked_sessions = HashSet::from([native_session_id.clone()]);
     let mut seen_requests = HashSet::new();
     let mut active_requests = HashSet::new();
@@ -436,6 +473,16 @@ async fn run_turn(
                         }
                         match classify_event(&event, &mut tracked_sessions, &native_session_id) {
                         EventAction::Output(line) => {
+                            // The summary a compaction writes is for the model:
+                            // the chat shows the seam, as it does for Claude.
+                            if compacting
+                                && matches!(
+                                    line["type"].as_str(),
+                                    Some("text" | "reasoning" | "step_start" | "step_finish")
+                                )
+                            {
+                                continue;
+                            }
                             if !stream_started {
                                 stream_started = true;
                                 emit_runtime(&emit, &input, ProviderRuntimeEventType::StreamStarted, ProviderOutputStream::Stdout, String::new(), None);
@@ -1050,6 +1097,21 @@ fn classify_event(
                 return EventAction::Ignore;
             };
             EventAction::Error(run_envelope("error", root_session_id, "error", error))
+        }
+        Some("session.compacted") => {
+            let session_id = properties
+                .and_then(|value| value.get("sessionID"))
+                .and_then(Value::as_str);
+            if session_id == Some(root_session_id) {
+                EventAction::Output(run_envelope(
+                    "compacted",
+                    root_session_id,
+                    "compaction",
+                    &json!({}),
+                ))
+            } else {
+                EventAction::Ignore
+            }
         }
         Some("session.status") => {
             let session_id = properties

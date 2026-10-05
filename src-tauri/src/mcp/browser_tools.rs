@@ -241,6 +241,9 @@ pub struct EvaluateParams {
     pub expression: String,
     /// Tab id; defaults to the tab this session used last.
     pub tab: Option<String>,
+    /// Frame id from a snapshot's `[frame=f3]` line, to evaluate inside that
+    /// iframe's page instead of the tab's top document.
+    pub frame: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
@@ -407,7 +410,8 @@ the tool to reach for first and after every action — it is far cheaper than a 
 what gives you the refs the click and type tools need. Refs live in the page, so they stay valid \
 while the element does and go stale the moment the page navigates. A `state:` header line is \
 captcha, cookie, error, loading, or ready. A `dialog:` header line means the page raised an \
-alert, confirm or prompt; see browser_handle_dialog."
+alert, confirm or prompt; see browser_handle_dialog. An iframe's page, cross-origin ones included, \
+is spliced in under its `- iframe [frame=f3]` line, with refs like `f3e5` that every tool accepts."
     )]
     async fn browser_snapshot(
         &self,
@@ -441,7 +445,8 @@ a long page."
         name = "browser_get_text",
         description = "Read the page's visible text, main content first. Use it to read an \
 article or a result; use browser_snapshot when you need to act on something. Includes the same \
-`state` field as a snapshot (captcha, cookie, error, loading, ready)."
+`state` field as a snapshot (captcha, cookie, error, loading, ready). Each iframe's text follows \
+under a `[frame f3: url]` line."
     )]
     async fn browser_get_text(
         &self,
@@ -551,7 +556,8 @@ only appear on hover. Snapshot afterwards to see what appeared."
     #[tool(
         name = "browser_press_key",
         description = "Send a key press to whatever has focus — Enter to submit, Escape to close \
-an overlay, Tab to move on, arrows to walk a list."
+an overlay, Tab to move on, arrows to walk a list or a slide deck. Focus is followed into \
+iframes, and after you click or type inside one, keys go there."
     )]
     async fn browser_press_key(
         &self,
@@ -570,7 +576,8 @@ an overlay, Tab to move on, arrows to walk a list."
     #[tool(
         name = "browser_scroll",
         description = "Scroll the page, or one scrollable element when you name its ref. A \
-snapshot already covers the whole document, so scroll for pages that load more content as you go."
+snapshot already covers the whole document, so scroll for pages that load more content as you go. \
+When the page cannot scroll because its content lives in an iframe, the iframe scrolls."
     )]
     async fn browser_scroll(
         &self,
@@ -679,7 +686,9 @@ line in your reply."
         name = "browser_evaluate",
         description = "Evaluate a JavaScript expression in the page and get its value back as \
 JSON. For inspection and debugging — reading computed styles, checking a global, counting nodes. \
-Drive the UI with the click and type tools instead, so the user can follow along."
+Pass frame (`f3` from a snapshot) to evaluate inside that iframe. Works on pages whose Content \
+Security Policy forbids eval. Drive the UI with the click and type tools instead, so the user can \
+follow along."
     )]
     async fn browser_evaluate(
         &self,
@@ -688,6 +697,7 @@ Drive the UI with the click and type tools instead, so the user can follow along
         call(BrowserRequest::Evaluate {
             tab: params.tab,
             expression: params.expression,
+            frame: params.frame,
         })
         .await
     }
@@ -699,7 +709,7 @@ unhandled promise rejections, newest last. This is the tool for checking a web c
 made — a page that renders can still be throwing on every click. Recording starts before the \
 page's first statement runs, so an error during load is caught too. Pass clear to empty the \
 buffer, then act, then read again to see only what your action caused. Capture is per tab and \
-only on tabs you opened."
+only on tabs you opened. Records from inside an iframe carry its frame id."
     )]
     async fn browser_console(
         &self,

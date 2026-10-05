@@ -84,7 +84,7 @@ node .agents/skills/verify-argmax/verify.mjs drive chat-resume
 ```
 
 Select `chat-resume`, `queued-restart`, `session-move`, `composer-reference`,
-`composer-editor`, `browser-focus`, `fork-merge`, `workspace-settings`, `cancellation`, or `provider-error` from the feature map.
+`composer-editor`, `browser-focus`, `browser-frames`, `fork-merge`, `workspace-settings`, `cancellation`, or `provider-error` from the feature map.
 A failed drive stays FAIL. After `doctor` and `reset`, one retry is allowed and
 a successful retry is `flaky`. After any surprising result, inspect evidence
 and doctor before continuing. A tripwire hit requires cleanup and an isolation fix.

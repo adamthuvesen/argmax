@@ -10,8 +10,18 @@
 // here, so they stay valid for as long as the element does — a re-snapshot
 // after the page mutates reuses the attribute the node already carries, and
 // only genuinely new elements get new numbers.
+//
+// Each document gets its own copy: a cross-origin <iframe> is unreachable from
+// its parent's scripts, so `browser::frames` evaluates this file inside the
+// frame itself and composes the trees in Rust. A frame's refs carry its id
+// (`f3e5`), which is how Rust knows which document a ref lives in. The parent
+// tags each <iframe> element with that id (`data-argmax-frame`) and prints it
+// as `- iframe [frame=f3]`, the line the frame's own tree is spliced under.
 (function () {
   var REF_ATTR = "data-argmax-ref";
+  var FRAME_ATTR = "data-argmax-frame";
+  // Smaller than this is a tracking pixel or a hidden channel, not content.
+  var MIN_FRAME_SIDE = 8;
   var MAX_NODES = 800;
   var MAX_BYTES = 40 * 1024;
   var MAX_TEXT = 120;
@@ -55,22 +65,43 @@
   (function () {
     var existing = document.querySelectorAll("[" + REF_ATTR + "]");
     for (var i = 0; i < existing.length; i += 1) {
-      var match = /^e(\d+)$/.exec(existing[i].getAttribute(REF_ATTR) || "");
+      var match = /^(?:f\d+)?e(\d+)$/.exec(existing[i].getAttribute(REF_ATTR) || "");
       if (match) refCounter = Math.max(refCounter, Number(match[1]));
     }
   })();
 
+  /** This document's frame id (`f3`), or "" in the tab's main frame. Rust
+   *  sets it before every call, so it is never stale. */
+  function frameId() {
+    var id = window.__argmaxFrameId;
+    return typeof id === "string" && /^f\d+$/.test(id) ? id : "";
+  }
+
   function refFor(element) {
+    var prefix = frameId();
     var existing = element.getAttribute(REF_ATTR);
-    if (existing) return existing;
+    if (existing && new RegExp("^" + prefix + "e\\d+$").test(existing)) return existing;
     refCounter += 1;
-    var ref = "e" + refCounter;
+    var ref = prefix + "e" + refCounter;
     element.setAttribute(REF_ATTR, ref);
     return ref;
   }
 
+  /** A ref naming the frame itself (`f3` inside frame f3): its document,
+   *  addressed by whatever sits at the middle of its viewport. */
+  function isFrameRef(ref) {
+    return typeof ref === "string" && ref !== "" && ref === frameId();
+  }
+
   function byRef(ref) {
-    if (typeof ref !== "string" || !/^e\d+$/.test(ref)) return null;
+    if (isFrameRef(ref)) {
+      var middle =
+        typeof document.elementFromPoint === "function"
+          ? document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
+          : null;
+      return middle || document.body;
+    }
+    if (typeof ref !== "string" || !/^(?:f\d+)?e\d+$/.test(ref)) return null;
     return document.querySelector("[" + REF_ATTR + '="' + ref + '"]');
   }
 
@@ -210,6 +241,22 @@
       var tag = node.tagName;
       if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT" || tag === "TEMPLATE") return;
       if (!isVisible(node)) return;
+      if (tag === "IFRAME" || tag === "FRAME") {
+        var frame = node.getAttribute(FRAME_ATTR);
+        var frameBox = node.getBoundingClientRect();
+        if (frame && frameBox.width >= MIN_FRAME_SIDE && frameBox.height >= MIN_FRAME_SIDE) {
+          entries.push({
+            kind: "frame",
+            frame: frame,
+            name: truncate(
+              node.getAttribute("title") || node.getAttribute("aria-label") || node.getAttribute("name") || "",
+              MAX_TEXT
+            ),
+            depth: depth
+          });
+        }
+        return;
+      }
 
       var role = roleOf(node);
       var interactive = matchesInteractive(node) || tag === "IMG";
@@ -220,11 +267,24 @@
       if (keep && interactiveOnly && !interactive && role !== "heading") keep = false;
 
       if (keep) {
+        var name = nameOf(node);
+        // A container's short text is its children's text run together: a
+        // <main> on a small page would take "Slide 1Next slide" as its name,
+        // and the dedupe below would then swallow the button inside it.
+        var leaf = tag === "A" || tag === "BUTTON" || tag === "SELECT" || tag === "TEXTAREA" || tag === "INPUT";
+        if (
+          !leaf &&
+          name &&
+          name === normalize(node.textContent) &&
+          node.querySelector(INTERACTIVE_SELECTOR + ", h1, h2, h3, h4, h5, h6")
+        ) {
+          name = "";
+        }
         var entry = {
           kind: "element",
           element: node,
           role: role,
-          name: nameOf(node),
+          name: name,
           value: valueOf(node),
           href: tag === "A" ? node.getAttribute("href") : null,
           level: role === "heading" ? Number(tag.slice(1)) || null : null,
@@ -251,6 +311,9 @@
   function formatEntry(entry) {
     var indent = new Array(entry.depth + 1).join("  ");
     if (entry.kind === "text") return indent + "- text: " + entry.text;
+    if (entry.kind === "frame") {
+      return indent + "- iframe" + (entry.name ? ' "' + entry.name + '"' : "") + " [frame=" + entry.frame + "]";
+    }
     var line = indent + "- " + entry.role;
     if (entry.name) line += ' "' + entry.name + '"';
     if (entry.interactive) line += " [ref=" + refFor(entry.element) + "]";
@@ -419,21 +482,26 @@
     return "dialog: " + record.kind + " " + JSON.stringify(record.message) + " " + state;
   }
 
+  /**
+   * A frame's tree is spliced under its parent's `[frame=…]` line, so it
+   * comes without the url/title/state header; its dialog travels separately
+   * and Rust lifts it into the tab's header.
+   */
   function snapshot(options) {
+    var inFrame = !!(options && options.frame);
+    var maxBytes = options && options.maxBytes > 0 ? Math.min(options.maxBytes, MAX_BYTES) : MAX_BYTES;
     var collected = collect(options);
     var state = pageState();
-    var lines = [
-      "url: " + location.href,
-      "title: " + truncate(document.title, MAX_TEXT),
-      stateLine(state)
-    ];
     var dialog = dialogLine();
-    if (dialog) lines.push(dialog);
+    var lines = inFrame
+      ? []
+      : ["url: " + location.href, "title: " + truncate(document.title, MAX_TEXT), stateLine(state)];
+    if (dialog && !inFrame) lines.push(dialog);
     var bytes = lines.join("\n").length + 1;
     var truncated = collected.truncated;
     for (var i = 0; i < collected.entries.length; i += 1) {
       var line = formatEntry(collected.entries[i]);
-      if (bytes + line.length + 1 > MAX_BYTES) {
+      if (bytes + line.length + 1 > maxBytes) {
         truncated = true;
         break;
       }
@@ -445,9 +513,93 @@
       url: location.href,
       title: document.title,
       state: stateLine(state).slice("state: ".length),
+      dialog: dialog,
       tree: lines.join("\n"),
       truncated: truncated
     };
+  }
+
+  /** Where an <iframe>'s document sits in this document's viewport: the
+   *  content box (inside border and padding) and how much the element is
+   *  scaled, since a transformed iframe draws its page smaller or larger. */
+  function frameGeometry(element) {
+    var box = element.getBoundingClientRect();
+    var style = window.getComputedStyle(element);
+    var scale = element.offsetWidth > 0 ? box.width / element.offsetWidth : 1;
+    var padLeft = parseFloat(style.paddingLeft) || 0;
+    var padTop = parseFloat(style.paddingTop) || 0;
+    var padRight = parseFloat(style.paddingRight) || 0;
+    var padBottom = parseFloat(style.paddingBottom) || 0;
+    return {
+      x: box.left + (element.clientLeft + padLeft) * scale,
+      y: box.top + (element.clientTop + padTop) * scale,
+      width: Math.max(0, element.clientWidth - padLeft - padRight) * scale,
+      height: Math.max(0, element.clientHeight - padTop - padBottom) * scale,
+      scale: scale || 1
+    };
+  }
+
+  /** A nonce for one <iframe>: the round's prefix plus 64 random bits, so a
+   *  frame that sees its own nonce learns nothing about its siblings'. */
+  function frameNonce(prefix) {
+    var bytes = new Uint8Array(8);
+    window.crypto.getRandomValues(bytes);
+    var hex = "";
+    for (var i = 0; i < bytes.length; i += 1) hex += (bytes[i] < 16 ? "0" : "") + bytes[i].toString(16);
+    return prefix + "." + hex;
+  }
+
+  /**
+   * Tags every <iframe> in this document with a tab-wide frame id and asks
+   * each to identify itself. The answer does not come back here: the child's
+   * isolated-world probe (frame_probe.js) sends it to Rust with the frame's
+   * WebKit handle attached, and Rust accepts it only with the nonce returned
+   * here for that one frame.
+   */
+  function probeFrames(nextId, prefix) {
+    var next = Number(nextId) || 1;
+    var nodes = document.querySelectorAll("iframe, frame");
+    var frames = [];
+    for (var i = 0; i < nodes.length; i += 1) {
+      var match = /^f(\d+)$/.exec(nodes[i].getAttribute(FRAME_ATTR) || "");
+      if (match) next = Math.max(next, Number(match[1]) + 1);
+    }
+    for (var j = 0; j < nodes.length; j += 1) {
+      var node = nodes[j];
+      var id = node.getAttribute(FRAME_ATTR);
+      if (!/^f\d+$/.test(id || "")) {
+        id = "f" + next;
+        next += 1;
+        node.setAttribute(FRAME_ATTR, id);
+      }
+      var geometry = frameGeometry(node);
+      var shown = isVisible(node) && geometry.width >= MIN_FRAME_SIDE && geometry.height >= MIN_FRAME_SIDE;
+      var nonce = frameNonce(String(prefix));
+      try {
+        if (node.contentWindow) node.contentWindow.postMessage({ __argmaxFrameProbe: { id: id, nonce: nonce } }, "*");
+      } catch (error) {}
+      frames.push({
+        id: id,
+        nonce: nonce,
+        visible: shown,
+        focused: document.activeElement === node,
+        x: geometry.x,
+        y: geometry.y,
+        width: geometry.width,
+        height: geometry.height,
+        scale: geometry.scale
+      });
+    }
+    return { frames: frames, nextId: next };
+  }
+
+  /** `frameGeometry` for one tagged <iframe>, scrolled into view first, for
+   *  cropping a screenshot to an element inside it. */
+  function frameBox(id) {
+    var node = typeof id === "string" ? document.querySelector("[" + FRAME_ATTR + '="' + id + '"]') : null;
+    if (!node) return { error: "frame " + JSON.stringify(id) + " is no longer in the page; take a fresh snapshot" };
+    node.scrollIntoView({ block: "nearest", inline: "nearest" });
+    return { ok: frameGeometry(node) };
   }
 
   function find(query) {
@@ -672,10 +824,14 @@
     // install. Letting it drift low reinstalls both scripts on every call and
     // silently wipes anything they hold between calls — a drag's gesture
     // state, for one. A Rust test pins the two together.
-    v: 4,
+    v: 5,
     refAttr: REF_ATTR,
+    frameAttr: FRAME_ATTR,
     byRef: byRef,
     refFor: refFor,
+    isFrameRef: isFrameRef,
+    probeFrames: probeFrames,
+    frameBox: frameBox,
     unknownRef: unknownRef,
     truncate: truncate,
     isVisible: isVisible,

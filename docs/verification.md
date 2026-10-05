@@ -23,6 +23,7 @@ npm run verify -- --scenario staged-revert
 npm run verify -- --scenario composer-reference
 npm run verify -- --scenario composer-editor
 npm run verify -- --scenario browser-focus
+npm run verify -- --scenario browser-frames
 npm run verify -- --scenario fork-merge
 npm run verify -- --scenario workspace-settings
 ```
@@ -95,6 +96,14 @@ the New chat composer, and has the tab's page focus its own input. The app
 document must keep `document.hasFocus()`, the composer must keep the active
 element, and the window must see no `blur`: WebKit otherwise hands the hidden
 tab the window's keyboard. This scenario requires native verification.
+
+`browser-frames` opens a hidden agent tab on a host page whose content lives
+in a sandboxed iframe on another origin, with focus on the iframe and a host
+that cannot scroll. Through the agent IPC channels it checks that the snapshot
+splices the frame's tree in with frame-qualified refs, that a key press with no
+click follows focus into the frame, that get-text, click, wait-for, scroll and
+a ref-cropped screenshot all reach the frame. This scenario requires native
+verification.
 
 `fork-merge` clicks "Fork from this turn" on turn one of a two-turn chat and
 checks the boundary in SQLite, sends the fork's first message from the native

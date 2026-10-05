@@ -1,20 +1,22 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useId, useRef, useState, type JSX } from "react";
-import type { RouterCostSummary, RouterTierCost, UsageWindow } from "../../../shared/types.js";
+import type { RouterCostSummary, RouterModelCost, RouterTierCost, UsageWindow } from "../../../shared/types.js";
 import { modelLabelFor } from "../../../shared/providerModels.js";
 import { formatElapsedSeconds } from "../../formatElapsed.js";
 import { AUTO_TIER_SHORT_LABELS } from "../../lib/models.js";
-import { formatCount, formatUsd } from "./usageFormat.js";
+import { formatCount, formatPercent, formatUsd } from "./usageFormat.js";
 import { providerLabel } from "./usagePresentation.js";
 
 /** Same cadence as the ledger above it. */
 const REFRESH_MS = 60_000;
 
 async function fetchRouterCost(window: UsageWindow): Promise<RouterCostSummary | null> {
-  const routerCost = globalThis.window?.argmax?.usage.routerCost;
-  // No bridge (browser preview): there is no routing history to show.
-  if (!routerCost) return null;
-  return routerCost({ window });
+  const api = globalThis.window?.argmax;
+  if (api) return api.usage.routerCost?.({ window }) ?? null;
+  // No bridge: the browser preview reads the same fixture module as the rest
+  // of the page, dynamic-imported so it never reaches the packaged bundle.
+  const { demoRouterCost } = await import("../../demoUsage.js");
+  return demoRouterCost();
 }
 
 /** Any figure built on a Cursor transcript estimate reads "≈$…". */
@@ -29,12 +31,48 @@ function formatSeconds(seconds: number | null): string {
   return formatElapsedSeconds(seconds * 1000);
 }
 
-function modelMix(tier: RouterTierCost): string {
-  const models = tier.models.map((model) => {
-    const label = modelLabelFor(model.provider, model.modelId) ?? model.modelId;
-    return `${label} ×${formatCount(model.turns)}`;
-  });
-  return models.join(" · ");
+/** Past this many models the mix folds into "+N more"; the decisions hold the rest. */
+const MIX_MODELS = 2;
+
+function modelName(model: Pick<RouterModelCost, "provider" | "modelId">): string {
+  return modelLabelFor(model.provider, model.modelId) ?? model.modelId;
+}
+
+/** The tier's models as the rest of the page draws them: provider dot, name, share. */
+function ModelMix({ tier }: { tier: RouterTierCost }): JSX.Element {
+  const shown = tier.models.slice(0, MIX_MODELS);
+  const folded = tier.models.slice(MIX_MODELS);
+  return (
+    <span className="usage-router-mix">
+      {shown.map((model, index) => (
+        <span
+          key={`${model.provider}:${model.modelId}`}
+          className="usage-router-model usage-series"
+          data-provider={model.provider}
+          title={`${modelName(model)}, ${providerLabel(model.provider)}: ${plural(model.turns, "turn")}`}
+        >
+          <span className="usage-series-dot" aria-hidden="true" />
+          {modelName(model)}
+          <span className="usage-router-model-share">
+            {formatPercent(tier.turns > 0 ? model.turns / tier.turns : null)}
+          </span>
+          {/* Held on the last model's line, so a wrap never strands it alone. */}
+          {index === shown.length - 1 && folded.length > 0 ? (
+            <span
+              className="usage-router-more"
+              title={folded.map((rest) => `${modelName(rest)} ×${formatCount(rest.turns)}`).join(" · ")}
+            >
+              +{formatCount(folded.length)} more
+            </span>
+          ) : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function plural(count: number, noun: string): string {
+  return `${formatCount(count)} ${count === 1 ? noun : `${noun}s`}`;
 }
 
 const DECISION_LABELS: Record<string, string> = {
@@ -78,7 +116,7 @@ function DecisionBreakdown({ tier }: { tier: RouterTierCost }): JSX.Element {
                 </span>
               </th>
               <td>
-                {modelLabelFor(decision.provider, decision.modelId) ?? decision.modelId}
+                {modelName(decision)}
                 <span className="usage-router-mix">
                   {providerLabel(decision.provider)} · {decision.reasoningEffort ?? "No effort recorded"}
                 </span>
@@ -109,25 +147,34 @@ function TierRow({ tier }: { tier: RouterTierCost }): JSX.Element {
     <>
       <tr>
         <th scope="row">
-          {hasDecisions ? (
-            <button
-              type="button"
-              className="usage-router-toggle usage-router-tier"
-              aria-label={`${AUTO_TIER_SHORT_LABELS[tier.tier]} routing decisions`}
-              aria-expanded={expanded}
-              aria-controls={detailsId}
-              onClick={() => setExpanded((open) => !open)}
-            >
-              <ChevronRight size={14} aria-hidden="true" />
-              {AUTO_TIER_SHORT_LABELS[tier.tier]}
-            </button>
-          ) : (
-            <span className="usage-router-tier">{AUTO_TIER_SHORT_LABELS[tier.tier]}</span>
-          )}
-          <span className="usage-router-mix">{modelMix(tier)}</span>
-          <span className="usage-router-mix">
-            {formatCount(pricedTurns)}/{formatCount(tier.turns)} turns priced
+          <span className="usage-router-name">
+            {hasDecisions ? (
+              <button
+                type="button"
+                className="usage-router-toggle usage-router-tier"
+                aria-label={`${AUTO_TIER_SHORT_LABELS[tier.tier]} routing decisions`}
+                aria-expanded={expanded}
+                aria-controls={detailsId}
+                onClick={() => setExpanded((open) => !open)}
+              >
+                <ChevronRight size={14} aria-hidden="true" />
+                {AUTO_TIER_SHORT_LABELS[tier.tier]}
+              </button>
+            ) : (
+              <span className="usage-router-tier">{AUTO_TIER_SHORT_LABELS[tier.tier]}</span>
+            )}
+            {/* Fully priced is the normal case, so only the exception is flagged. */}
+            {tier.unpricedTurns > 0 ? (
+              <span
+                className="usage-badge"
+                data-tone="unpriced"
+                title={`${formatCount(pricedTurns)}/${formatCount(tier.turns)} turns priced`}
+              >
+                {formatCount(tier.unpricedTurns)} unpriced
+              </span>
+            ) : null}
           </span>
+          {tier.models.length > 0 ? <ModelMix tier={tier} /> : null}
         </th>
         <td className="usage-table-num">{formatCount(tier.chats)}</td>
         <td className="usage-table-num">{formatCount(tier.turns)}</td>
@@ -186,13 +233,15 @@ export function RouterCostCard({
   }, [usageWindow, visible]);
 
   if (!summary || summary.tiers.length === 0) return null;
+  const routedTurns = summary.tiers.reduce((sum, tier) => sum + tier.turns, 0);
   return (
     <section className="usage-section usage-router" aria-label="Router">
       <div className="usage-section-head">
         <h2 className="usage-section-title">Router</h2>
+        <span className="usage-table-count">{plural(routedTurns, "routed turn")}</span>
       </div>
       <div className="usage-table-scroll">
-        <table className="usage-table" aria-label="Router cost by tier">
+        <table className="usage-table usage-router-tiers" aria-label="Router cost by tier">
           <thead>
             <tr>
               <th scope="col">Tier</th>

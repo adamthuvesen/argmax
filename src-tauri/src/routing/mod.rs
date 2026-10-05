@@ -5,6 +5,7 @@
 pub mod api_key;
 pub mod context;
 pub mod cost;
+pub mod directive;
 pub mod jev;
 pub mod project_check;
 pub mod reroute;
@@ -96,13 +97,26 @@ pub fn require_api_key() -> ArgmaxResult<String> {
 }
 
 pub async fn resolve_route(prompt: &str, tier: AutoTier, api_key: &str) -> RouteDecision {
-    match jev::classify(prompt, api_key, false).await {
+    // A request the tier can serve ("use astra high") needs no classifier.
+    let refusal = match directive::parse(prompt, tier) {
+        directive::Directive::Route(routed) => {
+            let reason = format!("asked for {}", routed.model.label);
+            return decision_from(tier, routed, None, None, RouteDecisionKind::Launch, reason);
+        }
+        directive::Directive::Refused(why) => Some(why),
+        directive::Directive::None => None,
+    };
+    let mut route = match jev::classify(prompt, api_key, false).await {
         Ok(classification) => decide(tier, &classification),
         Err(error) => {
             tracing::warn!(target: "argmax::routing", "Jev classification failed: {error}");
             fallback_decision(tier, &error.to_string())
         }
+    };
+    if let Some(why) = refusal {
+        route.reason = format!("{} (ignored the request: {why})", route.reason);
     }
+    route
 }
 
 /// Provider order when the grid's pick is not installed. Matches the launcher.

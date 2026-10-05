@@ -8,6 +8,15 @@ use crate::application::validation::{
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+/// True when a prompt is exactly the `/compact` command. Claude and Grok run
+/// it themselves when it arrives as prompt text. Codex and OpenCode have no
+/// such command, so their adapters turn it into the protocol's compact call.
+/// Arguments (`/compact focus on X`) are not forwarded: neither protocol takes
+/// them, so those prompts stay ordinary text.
+pub fn is_compact_command(prompt: &str) -> bool {
+    prompt.trim().eq_ignore_ascii_case("/compact")
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ComposerAttachmentInput {
@@ -150,4 +159,17 @@ pub enum QueuedMessageDelivery {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionClearInput {
     pub session_id: SessionId,
+}
+
+#[cfg(test)]
+mod compact_command_tests {
+    use super::is_compact_command;
+
+    #[test]
+    fn only_the_bare_command_is_compact() {
+        assert!(is_compact_command("/compact"));
+        assert!(is_compact_command("  /Compact \n"));
+        assert!(!is_compact_command("/compact focus on tests"));
+        assert!(!is_compact_command("please /compact"));
+    }
 }

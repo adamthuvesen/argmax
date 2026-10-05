@@ -29,7 +29,7 @@ use crate::browser::automation::{
 };
 use crate::browser::registry::{self, BrowserAgentOpenEvent, BrowserTabRegistry, BrowserTabsEvent};
 use crate::browser::user_agent;
-use crate::browser::user_scripts::PageScript;
+use crate::browser::user_scripts::{PageScript, ScriptWorld};
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
@@ -277,36 +277,49 @@ const BROWSER_COOKIE_SCRIPT: &str = include_str!("../browser/cookie.js");
 /// inherited from the opener stay out of a window that has no tab strip.
 const BROWSER_POPUP_MARKER_SCRIPT: &str = "window.__argmaxBrowserPopup = true;";
 
-/// The initialization script one tab gets. Three documents' worth, because the
-/// agent-only halves must be in place before the page's first statement runs
-/// and an initialization script is fixed when the webview is created.
-fn init_script(owned_by_session: bool) -> String {
-    if owned_by_session {
-        format!("{BROWSER_INIT_SCRIPT}\n{BROWSER_DIALOG_SCRIPT}\n{BROWSER_CAPTURE_SCRIPT}")
-    } else {
-        BROWSER_INIT_SCRIPT.to_string()
-    }
+/// The agent-only initialization script, for every frame of a tab a session
+/// opened. A cross-origin iframe is a document of its own: its `alert` and its
+/// console errors are only caught if the recorders are installed in it too,
+/// and the agent reads them there through `browser::frames`.
+fn agent_frame_script() -> String {
+    format!("{BROWSER_DIALOG_SCRIPT}\n{BROWSER_CAPTURE_SCRIPT}")
 }
 
 /// Every script a tab's page runs before its own first statement, in
-/// injection order. The builder installs these, and on macOS
+/// injection order. The builder installs the page-world ones, and on macOS
 /// `browser::user_scripts` reinstalls exactly this list so Wry's `window.ipc`
-/// definition does not travel with them into a third-party page.
+/// definition does not travel with them into a third-party page. The frame
+/// probe needs Argmax's isolated world, which only that reinstall can give it.
 fn page_scripts(owned_by_session: bool, popup: bool) -> Vec<PageScript> {
     let mut scripts = vec![PageScript {
-        source: init_script(owned_by_session),
+        source: BROWSER_INIT_SCRIPT.to_string(),
         all_frames: false,
+        world: ScriptWorld::Page,
     }];
     if owned_by_session {
         scripts.push(PageScript {
+            source: agent_frame_script(),
+            all_frames: true,
+            world: ScriptWorld::Page,
+        });
+        scripts.push(PageScript {
             source: BROWSER_COOKIE_SCRIPT.to_string(),
             all_frames: true,
+            world: ScriptWorld::Page,
         });
+        if !popup {
+            scripts.push(PageScript {
+                source: crate::browser::frames::PROBE_JS.to_string(),
+                all_frames: true,
+                world: ScriptWorld::Agent,
+            });
+        }
     }
     if popup {
         scripts.push(PageScript {
             source: BROWSER_POPUP_MARKER_SCRIPT.to_string(),
             all_frames: false,
+            world: ScriptWorld::Page,
         });
     }
     scripts
@@ -661,11 +674,18 @@ fn open_tab_with_url(
     #[cfg(not(target_os = "macos"))]
     let _ = blocking_identifier;
     let owned = owner_session_id.is_some();
+    // Tauri's default drag-drop handler answers every native file drop
+    // itself (for its `DragDrop` event) and never hands it to WebKit, so a
+    // page's dropzone — an upload field, a file picker — saw nothing. Nothing
+    // in the app listens for that event from a browser tab.
     let builder = builder
         .user_agent(tab_user_agent)
-        .initialization_script(init_script(owned));
+        .disable_drag_drop_handler()
+        .initialization_script(BROWSER_INIT_SCRIPT);
     let builder = if owned {
-        builder.initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
+        builder
+            .initialization_script_for_all_frames(agent_frame_script())
+            .initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
     } else {
         builder
     };
@@ -700,12 +720,15 @@ fn open_tab_with_url(
             .inner_size(600.0, 720.0)
             .window_features(features)
             .user_agent(user_agent::SAFARI)
+            .disable_drag_drop_handler()
             // The popup gets a fresh WKUserContentController on macOS, so
             // explicitly restore the panel scripts Wry would otherwise see
             // through the inherited controller.
-            .initialization_script(init_script(popup_owned_by_session));
+            .initialization_script(BROWSER_INIT_SCRIPT);
             let popup_builder = if popup_owned_by_session {
-                popup_builder.initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
+                popup_builder
+                    .initialization_script_for_all_frames(agent_frame_script())
+                    .initialization_script_for_all_frames(BROWSER_COOKIE_SCRIPT)
             } else {
                 popup_builder
             };
@@ -841,6 +864,9 @@ fn open_tab_with_url(
     // main thread, and the navigation started above cannot produce a document
     // until the run loop turns again.
     crate::browser::user_scripts::replace(&created, &page_scripts(owned, false))?;
+    if owned {
+        crate::browser::frames::install(&created, tab_id)?;
+    }
     crate::browser::focus_guard::install();
     let browser_theme = *app
         .state::<AppState>()
@@ -1043,6 +1069,7 @@ pub(crate) fn close_tab(app: &AppHandle, tab_id: &str) -> ArgmaxResult<()> {
     browser_webview(app, tab_id)?
         .close()
         .map_err(|error| ArgmaxError::service("BROWSER_CLOSE_FAILED", error.to_string()))?;
+    crate::browser::frames::forget(app, tab_id);
     let tabs = tab_registry(app);
     if tabs.remove(tab_id) {
         registry::publish(app, &tabs);
@@ -1587,39 +1614,43 @@ mod tests {
     }
 
     #[test]
-    fn agent_tabs_get_capture_and_user_tabs_do_not() {
-        let agent = init_script(true);
-        assert!(agent.contains("__argmaxCapture"));
-        assert!(agent.contains("readConsole"));
-        assert!(agent.contains("readNetwork"));
-        assert!(agent.contains("__argmaxDialog"));
-        assert!(
-            BROWSER_COOKIE_SCRIPT.contains("__argmaxCookies"),
-            "cookie dismisser is a separate all-frames init script"
-        );
-
-        let user = init_script(false);
-        assert!(!user.contains("__argmaxCapture"));
-        assert!(!user.contains("__argmaxDialog"));
-        assert!(!user.contains("__argmaxCookies"));
-        assert!(
-            user.contains("argmax-newtab"),
-            "ordinary browser behavior is still installed"
-        );
-    }
-
-    #[test]
-    fn page_scripts_carry_the_cookie_dismisser_into_every_frame() {
+    fn agent_tabs_get_capture_in_every_frame_and_user_tabs_do_not() {
         let user = page_scripts(false, false);
         assert_eq!(user.len(), 1, "a user tab only gets the panel script");
         assert!(!user[0].all_frames);
+        assert!(user[0].source.contains("argmax-newtab"));
+        assert!(!user[0].source.contains("__argmaxCapture"));
+        assert!(!user[0].source.contains("__argmaxDialog"));
 
         let agent = page_scripts(true, false);
-        assert_eq!(agent.len(), 2);
-        assert!(agent[1].source.contains("__argmaxCookies"));
+        let sources: Vec<&str> = agent.iter().map(|script| script.source.as_str()).collect();
         assert!(
-            agent[1].all_frames,
-            "a consent button often lives in an iframe"
+            !agent[0].all_frames,
+            "the panel script stays in the main frame"
+        );
+        for marker in [
+            "__argmaxCapture",
+            "__argmaxDialog",
+            "__argmaxCookies",
+            "argmaxFrame",
+        ] {
+            let script = agent
+                .iter()
+                .find(|script| script.source.contains(marker))
+                .unwrap_or_else(|| panic!("no agent script carries {marker}: {sources:?}"));
+            assert!(
+                script.all_frames,
+                "{marker} must reach cross-origin iframes"
+            );
+        }
+        let probe = agent
+            .iter()
+            .find(|script| script.source.contains("argmaxFrame"))
+            .expect("frame probe");
+        assert_eq!(
+            probe.world,
+            ScriptWorld::Agent,
+            "the page must not see the probe's message handler"
         );
 
         let popup = page_scripts(true, true);
@@ -1627,6 +1658,10 @@ mod tests {
             popup.last().expect("popup marker").source,
             BROWSER_POPUP_MARKER_SCRIPT,
             "a popup window has no tab strip to shortcut into"
+        );
+        assert!(
+            popup.iter().all(|script| script.world == ScriptWorld::Page),
+            "popups are not agent-addressable, so they get no frame probe"
         );
     }
 

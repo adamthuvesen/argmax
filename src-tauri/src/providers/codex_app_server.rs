@@ -177,20 +177,28 @@ pub async fn launch_turn(
             verify_fork_end(&rpc, &thread_id, requested).await?;
         }
 
-        let prompt = input.prompt.clone();
-        let turn_response = rpc
-            .request("turn/start", turn_params(input, &thread_id, prompt))
-            .await?;
-        let turn_id = turn_response
-            .pointer("/turn/id")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                ArgmaxError::service(
-                    "CODEX_APP_SERVER_PROTOCOL",
-                    "turn/start returned no turn.id",
-                )
-            })?
-            .to_string();
+        let turn_id = if crate::providers::inputs::is_compact_command(&input.prompt) {
+            // Compaction runs as its own turn, but `thread/compact/start`
+            // answers `{}`: the turn id only arrives in `turn/started`.
+            rpc.request("thread/compact/start", json!({ "threadId": thread_id }))
+                .await?;
+            compaction_turn_id(&mut incoming_rx, &thread_id).await?
+        } else {
+            let prompt = input.prompt.clone();
+            let turn_response = rpc
+                .request("turn/start", turn_params(input, &thread_id, prompt))
+                .await?;
+            turn_response
+                .pointer("/turn/id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    ArgmaxError::service(
+                        "CODEX_APP_SERVER_PROTOCOL",
+                        "turn/start returned no turn.id",
+                    )
+                })?
+                .to_string()
+        };
         Ok::<_, ArgmaxError>((thread_id, turn_id))
     }
     .await;
@@ -462,6 +470,54 @@ async fn verify_fork_end(rpc: &RpcPeer, thread_id: &str, requested: &str) -> Arg
             newest.unwrap_or("no turn")
         ),
     ))
+}
+
+/// Waits for the `turn/started` that `thread/compact/start` produces and
+/// returns its turn id. A closed connection or a silent server is an error, so
+/// a compact that never begins cannot leave the chat running forever.
+async fn compaction_turn_id(
+    incoming_rx: &mut mpsc::UnboundedReceiver<Incoming>,
+    thread_id: &str,
+) -> ArgmaxResult<String> {
+    let wait = async {
+        loop {
+            match incoming_rx.recv().await {
+                Some(Incoming::Message(message)) => {
+                    if message.get("method").and_then(Value::as_str) != Some("turn/started") {
+                        continue;
+                    }
+                    let params = message.get("params");
+                    let same_thread = params
+                        .and_then(|params| params.get("threadId"))
+                        .and_then(Value::as_str)
+                        == Some(thread_id);
+                    let turn_id = params
+                        .and_then(|params| params.pointer("/turn/id"))
+                        .and_then(Value::as_str);
+                    if let (true, Some(turn_id)) = (same_thread, turn_id) {
+                        return Ok(turn_id.to_string());
+                    }
+                }
+                Some(Incoming::Closed(reason)) => {
+                    return Err(ArgmaxError::service("CODEX_APP_SERVER_IO", reason))
+                }
+                None => {
+                    return Err(ArgmaxError::service(
+                        "CODEX_APP_SERVER_IO",
+                        "Codex app-server event channel closed",
+                    ))
+                }
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(30), wait)
+        .await
+        .map_err(|_| {
+            ArgmaxError::service(
+                "CODEX_APP_SERVER_PROTOCOL",
+                "Codex did not start compacting the conversation",
+            )
+        })?
 }
 
 fn turn_params(input: &ProviderLaunchInput, thread_id: &str, prompt: String) -> Value {

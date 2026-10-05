@@ -103,6 +103,13 @@
   outline: none;
 }
 
+/* The list holds focus so the number keys work, and the focused row already
+   shows where the caret is. The global :focus-visible ring would frame the
+   whole list as a second rectangle inside the dock. */
+.question-dock-options:focus-visible {
+  box-shadow: none;
+}
+
 .question-dock-option {
   display: grid;
   grid-template-columns: auto 1fr auto;

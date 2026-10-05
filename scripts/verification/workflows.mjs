@@ -13,6 +13,8 @@
 //                       exactly once
 //   browser-focus       a page in a hidden agent browser tab focusing its own
 //                       field leaves the New chat composer with the keyboard
+//   browser-frames      the agent browser tools read and drive a page that
+//                       lives in a cross-origin, sandboxed iframe
 //
 // Both run in the disposable app `scripts/verify.mjs` builds, against the
 // scripted Claude fixture. Keys, clicks and visible text go through the native
@@ -1650,6 +1652,142 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
   await writeJson(path.join(evidenceDir, "browser-focus.json"), { sourceSessionId: source.id, tabId: result?.tabId ?? null, screenshots, assertions });
   return {
     session: await waitForCompleted(bridge, source.id, 5_000, "browser focus source chat"),
+    workspace,
+    records: (await readAllEvents(bridge, source.id)).map((event) => ({ kind: "event", ...event })),
+    browser: phases,
+    assertions,
+  };
+}
+
+// The page a Claude artifact or an embedded slide deck puts in front of an
+// agent: the content lives in a sandboxed iframe on another origin (another
+// port), the parent's focus sits on that iframe, and the parent itself cannot
+// scroll.
+function framedDeckServers() {
+  const deck = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html><title>Deck</title>
+<main><h2 id="slide">Slide 1 of 3</h2><button id="next" type="button">Next slide</button><p id="log">no key yet</p>
+<div style="height:4000px">tall slide notes</div></main>
+<script>
+  let slide = 1;
+  const show = () => { document.getElementById("slide").textContent = "Slide " + slide + " of 3"; };
+  addEventListener("keydown", (event) => {
+    document.getElementById("log").textContent = "key " + event.key;
+    if (event.key === "ArrowRight") { slide = Math.min(3, slide + 1); show(); }
+  });
+  document.getElementById("next").addEventListener("click", () => { slide = Math.min(3, slide + 1); show(); });
+  setTimeout(() => document.querySelector("main").insertAdjacentHTML("afterbegin", "<p>Speaker notes loaded</p>"), 1500);
+</script>`);
+  });
+  const host = createServer((_request, response) => {
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      // claude.ai's own policy shape: no eval in the parent page.
+      "content-security-policy": "script-src 'self' 'unsafe-inline'",
+    });
+    response.end(`<!doctype html><title>Frame host</title>
+<body style="margin:0;overflow:hidden"><p style="margin:0;height:24px">Deck host</p>
+<iframe title="Slides" sandbox="allow-scripts" src="http://127.0.0.1:${deck.address().port}/" style="border:0;width:100vw;height:calc(100vh - 24px)"></iframe>
+<script>addEventListener("load", () => document.querySelector("iframe").focus());</script></body>`);
+  });
+  return { deck, host };
+}
+
+export async function verifyBrowserFrames({ bridge, browser, source, workspace, outputDir, timeoutMs, verifyUi }) {
+  const evidenceDir = path.join(outputDir, "native");
+  await mkdir(evidenceDir, { recursive: true });
+  const assertions = (progress.assertions = []);
+  const phases = [];
+
+  await waitForCompleted(bridge, source.id, timeoutMs, "browser frames source chat");
+  phases.push(await verifyUi({
+    name: "frames-source",
+    expectedTexts: [VERIFICATION_SCENARIOS.composerSource.visibleText],
+    expectIdle: true,
+  }));
+
+  const { deck, host } = framedDeckServers();
+  await new Promise((resolve) => deck.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => host.listen(0, "127.0.0.1", resolve));
+  let result;
+  try {
+    // The renderer drives the tab itself: while the window holds a child
+    // webview, WebDriver cannot reach the main window (see browser-focus).
+    await browser.execute(function driveFramedDeck(sessionId, url) {
+      const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const api = window.argmax.browser;
+      const steps = {};
+      // Filled in as the drive goes, so a failure still shows every answer
+      // that came back before it.
+      window.__verifyFrames = { steps, done: false };
+      void (async () => {
+        let tabId = null;
+        try {
+          ({ tabId } = await api.openForSession({ sessionId, url }));
+          for (let attempt = 0; ; attempt += 1) {
+            const snap = await api.snapshot({ tabId }).catch(() => null);
+            if (snap && snap.tree.includes("Slide 1 of 3")) break;
+            if (attempt === 50) throw new Error("the framed deck never showed up in a snapshot: " + JSON.stringify(snap));
+            await pause(200);
+          }
+          steps.snapshot = await api.snapshot({ tabId });
+          steps.find = await api.find({ tabId, query: "Next slide" });
+          // No click first: the parent's focus is on the iframe, so the key
+          // has to be carried into the frame's document.
+          steps.press = await api.act({ tabId, action: { kind: "pressKey", key: "ArrowRight" } });
+          steps.afterPress = await api.getText({ tabId });
+          const nextRef = steps.find.matches[0]?.ref;
+          if (!nextRef) throw new Error("find returned no ref for the frame's button");
+          steps.click = await api.act({ tabId, action: { kind: "click", ref: nextRef } });
+          steps.afterClick = await api.snapshot({ tabId });
+          steps.wait = await api.act({ tabId, action: { kind: "waitFor", text: "Speaker notes loaded", timeoutMs: 8000 } });
+          steps.scroll = await api.act({ tabId, action: { kind: "scroll", direction: "down" } });
+          steps.crop = await api.screenshot({ tabId, ref: nextRef });
+          steps.crop = { width: steps.crop.width, height: steps.crop.height };
+          steps.full = await api.screenshot({ tabId });
+          steps.full = { width: steps.full.width, height: steps.full.height };
+          window.__verifyFrames = { tabId, steps, done: true };
+        } catch (error) {
+          window.__verifyFrames = { tabId, steps, done: true, error: String(error?.message ?? error) };
+        } finally {
+          if (tabId) await api.close(tabId).catch(() => undefined);
+        }
+      })();
+    }, source.id, `http://127.0.0.1:${host.address().port}/`);
+    result = await browser.waitUntil(
+      () => browser.execute(function readFramesProbe() { return window.__verifyFrames?.done ? window.__verifyFrames : null; }).catch(() => null),
+      { timeout: timeoutMs, interval: 250, timeoutMsg: "The framed deck drive never finished" },
+    );
+    await writeJson(path.join(evidenceDir, "browser-frames-steps.json"), result);
+    if (result.error) throw new Error(result.error);
+    const { steps } = result;
+
+    check(assertions, "snapshot-splices-the-frame-tree-under-its-iframe",
+      /- iframe "Slides" \[frame=f\d+\] url=http:\/\/127\.0\.0\.1:\d+\/\n(?: {2,}- .*\n)*? {2,}- heading "Slide 1 of 3"/.test(steps.snapshot.tree), steps.snapshot.tree);
+    check(assertions, "frame-refs-carry-their-frame-id",
+      /^f\d+e\d+$/.test(steps.find.matches[0]?.ref ?? ""), steps.find);
+    check(assertions, "a-key-follows-focus-into-the-iframe",
+      steps.press.detail?.includes("(in frame f") && steps.afterPress.text.includes("Slide 2 of 3") && steps.afterPress.text.includes("key ArrowRight"),
+      { press: steps.press, text: steps.afterPress.text });
+    check(assertions, "get-text-reads-the-frame-under-its-label",
+      /\[frame f\d+: http:\/\/127\.0\.0\.1:\d+\/\]/.test(steps.afterPress.text), steps.afterPress.text);
+    check(assertions, "a-click-by-frame-ref-lands-in-the-frame",
+      steps.afterClick.tree.includes("Slide 3 of 3"), steps.afterClick.tree);
+    check(assertions, "wait-for-text-sees-frame-content", steps.wait.matched === true, steps.wait);
+    check(assertions, "an-unscrollable-page-scrolls-its-frame",
+      /^scrolled frame f\d+$/.test(steps.scroll.detail ?? ""), steps.scroll);
+    check(assertions, "a-frame-ref-crops-the-screenshot-to-that-element",
+      steps.crop.width > 0 && steps.crop.width < steps.full.width / 2 && steps.crop.height < steps.full.height / 4,
+      { crop: steps.crop, full: steps.full });
+  } finally {
+    host.close();
+    deck.close();
+  }
+
+  await writeJson(path.join(evidenceDir, "browser-frames.json"), { sourceSessionId: source.id, tabId: result?.tabId ?? null, assertions });
+  return {
+    session: await waitForCompleted(bridge, source.id, 5_000, "browser frames source chat"),
     workspace,
     records: (await readAllEvents(bridge, source.id)).map((event) => ({ kind: "event", ...event })),
     browser: phases,

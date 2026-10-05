@@ -436,6 +436,11 @@
       element = keyboardTarget;
     }
     if (!element) return { error: "the page has no focused element to type into" };
+    // Focus sits on an <iframe>: the key belongs to the document inside it,
+    // which this script cannot reach. Rust re-sends the press there.
+    if (element.tagName === "IFRAME" || element.tagName === "FRAME") {
+      return done({ target: "iframe", frame: element.getAttribute(api.frameAttr) || "" });
+    }
     var prevented = pressOn(element, key, modifiers);
     if (key === "Enter" && !prevented) submitFrom(element);
     return done({ target: describe(element) });
@@ -445,7 +450,8 @@
     var options = spec || {};
     var amount = typeof options.amount === "number" && options.amount > 0 ? options.amount : null;
     var target = null;
-    if (options.ref) {
+    // A ref naming the frame itself scrolls its window, like no ref at all.
+    if (options.ref && !api.isFrameRef(options.ref)) {
       var found = resolve(options.ref);
       if (found.error) return found;
       target = found.element;
@@ -457,12 +463,39 @@
     if (!step) return { error: 'scroll direction must be one of up, down, left, right' };
     var dx = step[0] * (amount || box.width * 0.8);
     var dy = step[1] * (amount || box.height * 0.8);
+    var beforeX = target ? target.scrollLeft : window.scrollX;
+    var beforeY = target ? target.scrollTop : window.scrollY;
     if (target) target.scrollBy(dx, dy);
     else window.scrollBy(dx, dy);
+    var scrollX = target ? target.scrollLeft : window.scrollX;
+    var scrollY = target ? target.scrollTop : window.scrollY;
+    // A window a person could not scroll is how a page that lives in an
+    // <iframe> looks from outside, and the cue for Rust to scroll the frame.
+    // One merely at its end is not: the agent should learn it reached the end.
+    var scrollable = target ? true : windowCanScroll(step[1] !== 0);
     return done({
-      scrollY: target ? target.scrollTop : window.scrollY,
-      scrollX: target ? target.scrollLeft : window.scrollX
+      scrollY: scrollY,
+      scrollX: scrollX,
+      moved: scrollX !== beforeX || scrollY !== beforeY,
+      scrollable: scrollable
     });
+  }
+
+  /** Whether the window has anything to scroll on that axis: overflow it
+   *  is allowed to scroll. `overflow: hidden` on the viewport (the root's,
+   *  or the body's when the root leaves it visible) blocks it even when an
+   *  inline <iframe>'s baseline gap makes the page a few pixels too tall. */
+  function windowCanScroll(vertical) {
+    var root = document.scrollingElement || document.documentElement;
+    var extent = vertical
+      ? root.scrollHeight - window.innerHeight
+      : root.scrollWidth - window.innerWidth;
+    if (extent <= 1) return false;
+    var key = vertical ? "overflowY" : "overflowX";
+    var rootOverflow = window.getComputedStyle(document.documentElement)[key];
+    var viewport =
+      rootOverflow === "visible" && document.body ? window.getComputedStyle(document.body)[key] : rootOverflow;
+    return viewport !== "hidden" && viewport !== "clip";
   }
 
   // --- waitFor -------------------------------------------------------------
@@ -623,6 +656,17 @@
     return entry.result;
   }
 
+  /** Disarms a wait that will not be read again, so its observer and timer
+   *  stop now rather than at the TTL. */
+  function cancelWait(id) {
+    var entry = waits[id];
+    if (entry) {
+      stop(entry);
+      delete waits[id];
+    }
+    return { ok: true };
+  }
+
   // --- dialogs -------------------------------------------------------------
 
   /**
@@ -653,4 +697,5 @@
   api.pressKey = pressKey;
   api.scroll = scroll;
   api.waitFor = waitFor;
+  api.cancelWait = cancelWait;
 })();

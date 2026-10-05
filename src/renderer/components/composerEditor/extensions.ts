@@ -10,7 +10,6 @@ import {
   EditorView,
   ViewPlugin,
   WidgetType,
-  drawSelection,
   keymap,
   type Command,
   type DecorationSet,
@@ -247,8 +246,10 @@ export function promptExtensions(callbacks: { current: PromptCallbacks }): Exten
   ];
   return [
     history(),
-    // Native carets can render incorrectly beside the noneditable placeholder.
-    drawSelection(),
+    // No drawSelection(): its caret is a drawn layer placed from the last
+    // measure, and WebKit reflows text (a late font, a metric change) without
+    // telling CodeMirror, which left the caret on top of the letters until the
+    // next edit. The native caret is painted from the live layout.
     EditorView.lineWrapping,
     promptDecorations,
     clipboardHandlers(),

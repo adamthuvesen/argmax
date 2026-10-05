@@ -11,6 +11,7 @@ import {
 } from "../lib/projects.js";
 import { resetSessionUnreadForTests } from "../lib/sessionUnread.js";
 import { overlaysSnapshot, resetOverlaysForTests, showArcPage } from "../state/overlays.js";
+import { resetWorkspaceDragForTests } from "../state/workspaceDrag.js";
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
@@ -1142,6 +1143,88 @@ describe("Sidebar — Priority section", () => {
   it("renders nothing when the setting is off", () => {
     render(<Sidebar {...baseProps} showPriority={false} snapshot={prioritySnapshot} />);
     expect(screen.queryByText("Priority")).toBeNull();
+  });
+
+  it("persists dragged Priority order across remounts, activity changes, and sidebar views", () => {
+    const orderedSnapshot: DashboardSnapshot = {
+      ...prioritySnapshot,
+      workspaces: [
+        workspace("w-blocked", "Blocked task"),
+        { ...workspace("w-review", "Review task"), priorityAddedAt: MINUTES_AGO_10 }
+      ],
+      sessions: [
+        session("w-blocked", "blocked", MINUTES_AGO_10),
+        session("w-review", "review-ready", MINUTES_AGO_5)
+      ]
+    };
+    window.localStorage.setItem("argmax.sidebar.workspaceOrder", JSON.stringify({ pinned: ["w-pin"] }));
+    const props = { ...baseProps, showPriority: true, snapshot: orderedSnapshot };
+    const { unmount } = render(<Sidebar {...props} />);
+    const names = () => screen.getAllByRole("button", { name: /Blocked task|Review task|New task/ })
+      .map((row) => row.getAttribute("title")?.split(" — ")[0]);
+    expect(names()).toEqual(["Blocked task", "Review task"]);
+
+    const source = screen.getByRole("button", { name: /Review task/ }).closest("[draggable]")!;
+    const target = screen.getByRole("button", { name: /Blocked task/ }).closest("[draggable]")!;
+    expect(source).toHaveAttribute("draggable", "true");
+    const dataTransfer = { setData: vi.fn(), effectAllowed: "", dropEffect: "" };
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+    fireEvent.dragEnd(source, { dataTransfer });
+    expect(names()).toEqual(["Review task", "Blocked task"]);
+    expect(JSON.parse(window.localStorage.getItem("argmax.sidebar.workspaceOrder")!)).toEqual({
+      pinned: ["w-pin"], priority: ["w-review", "w-blocked"]
+    });
+
+    unmount();
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("sessions"));
+    render(<Sidebar {...props} snapshot={{
+      ...orderedSnapshot,
+      workspaces: [...orderedSnapshot.workspaces, workspace("w-new", "New task")],
+      sessions: [
+        session("w-blocked", "blocked", MINUTES_AGO_5),
+        session("w-review", "normal", MINUTES_AGO_5),
+        { ...session("w-new", "normal", MINUTES_AGO_5), state: "running" }
+      ]
+    }} />);
+    expect(names()).toEqual(["Review task", "Blocked task", "New task"]);
+  });
+
+  it("reorders Priority by dragging a chat title without opening the chat", () => {
+    const onOpenWorkspaceChat = vi.fn();
+    render(<Sidebar {...baseProps} onOpenWorkspaceChat={onOpenWorkspaceChat} showPriority snapshot={{
+      ...prioritySnapshot,
+      workspaces: [workspace("w-blocked", "Blocked task"), workspace("w-second", "Second task")],
+      sessions: [
+        session("w-blocked", "blocked", MINUTES_AGO_5),
+        session("w-second", "blocked", MINUTES_AGO_10)
+      ]
+    }} />);
+    const source = screen.getByRole("button", { name: /Second task/ });
+    const target = screen.getByRole("button", { name: /Blocked task/ });
+    const rect = vi.spyOn(target.parentElement!, "getBoundingClientRect").mockReturnValue({
+      left: 0, right: 200, top: 0, bottom: 40, x: 0, y: 0, width: 200, height: 40, toJSON: () => ({})
+    });
+    const pointer = (type: string, clientY: number) => {
+      const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: 30, clientY });
+      Object.defineProperty(event, "pointerId", { value: 7 });
+      return event;
+    };
+    try {
+      fireEvent(source, pointer("pointerdown", 60));
+      fireEvent(window, pointer("pointermove", 20));
+      fireEvent(window, pointer("pointerup", 20));
+      fireEvent.click(source);
+      expect(onOpenWorkspaceChat).not.toHaveBeenCalled();
+      expect(screen.getAllByRole("button", { name: /Blocked task|Second task/ })[0]).toBe(source);
+      expect(JSON.parse(window.localStorage.getItem("argmax.sidebar.workspaceOrder")!)).toEqual({
+        priority: ["w-second", "w-blocked"]
+      });
+    } finally {
+      rect.mockRestore();
+      resetWorkspaceDragForTests();
+    }
   });
 
   it("removes a priority row from its home group", () => {

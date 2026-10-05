@@ -693,10 +693,9 @@ function AgentActivityRun({
   // child is still a rendered run, not a pane still waiting for one.
   const hasRenderedActivity =
     activityChildren.length > 0 || toolItems.length > 0 || finalOutput !== null;
-  const waitingForRunningAgentActivity = Boolean(
-    (parentSession?.state === "running" || activity.status === "running") &&
-    activity.limited
-  );
+  // Key on the agent's own status, not the parent's: a follow-up turn sets the
+  // parent running again while an agent the cancelled turn left behind is dead.
+  const waitingForRunningAgentActivity = activity.status === "running" && activity.limited;
   const showLoadFailureNotice = failedAgentKey === agentKey;
   const showAgentActivityThinking = (
     (loadingAgentKey === agentKey || initialAgentEventsLoadPending || waitingForRunningAgentActivity) &&

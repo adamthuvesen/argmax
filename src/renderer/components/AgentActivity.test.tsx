@@ -446,6 +446,33 @@ describe("AgentActivity", () => {
     expect(screen.getByRole("article", { name: "Thinking" })).toBeInTheDocument();
   });
 
+  it("does not show a cancelled turn's silent agent as thinking once a follow-up turn runs", () => {
+    render(
+      <AgentActivity
+        events={[
+          event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+            id: "task-1",
+            name: "task",
+            input: { description: "Advisor", prompt: "Decide." }
+          }),
+          event("agent-start", "agent.started", "2026-05-12T15:00:01.000Z", "Advisor", {
+            agentRootToolUseId: "task-1",
+            agentRunId: "task-1"
+          }),
+          event("cancel", "session.cancelled", "2026-05-12T15:00:05.000Z", "Provider chat cancelled."),
+          event("follow-up", "user.message", "2026-05-12T15:00:06.000Z", "Go on"),
+          event("streaming", "session.streaming", "2026-05-12T15:00:07.000Z", "")
+        ]}
+        parentSession={{ ...session, provider: "opencode" }}
+        parentToolUseId="task-1"
+        workspace={workspace}
+      />
+    );
+
+    expect(screen.queryByRole("article", { name: "Thinking" })).toBeNull();
+    expect(screen.getByText("This provider reported the agent launch, but did not stream child activity.")).toBeInTheDocument();
+  });
+
   it("folds a run into collapsed group headers, the same shape as the chat", () => {
     render(
       <AgentActivity

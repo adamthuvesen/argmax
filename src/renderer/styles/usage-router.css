@@ -2,29 +2,63 @@
    breakdown's, bled to the card edge the same way. */
 
 .usage-router {
-  gap: var(--space-4);
   overflow: hidden;
 }
 
+/* The tier name sits on the card inset like every first column on the page;
+   the chevron hangs in the gutter to its left. */
+.usage-router-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .usage-router-tier {
-  display: block;
   color: var(--text);
   font-weight: var(--weight-medium);
 }
 
-/* The model mix wraps under the tier name rather than widening the column. */
+/* The models under the tier, in the breakdown's dot-and-name voice. Past two
+   they fold into "+N more"; on a narrow card they wrap between models, never
+   inside one, so the figures keep their columns. */
 .usage-router-mix {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--text-xs);
-  color: var(--muted-strong);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-3);
   white-space: normal;
+  margin-top: 3px;
+  font-size: var(--text-xs);
+  color: var(--text-soft);
+}
+
+.usage-router-model {
+  display: inline-flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: var(--space-1_5);
+}
+
+.usage-router-model .usage-series-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.usage-router-model-share,
+.usage-router-more {
+  color: var(--muted);
+}
+
+.usage-router-more {
+  margin-left: var(--space-1_5);
 }
 
 .usage-router-toggle {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  /* Chevron (14px) plus the gap, pulled into the cell's left padding. */
+  margin-left: calc(-14px - var(--space-1));
   padding: 0;
   border: 0;
   background: none;
@@ -33,13 +67,39 @@
   border-radius: var(--radius-xs);
 }
 
+.usage-router-toggle svg {
+  color: var(--muted);
+  transition: transform var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+
+.usage-router-toggle:hover svg,
+.usage-router-toggle[aria-expanded="true"] svg {
+  color: var(--text);
+}
+
 .usage-router-toggle[aria-expanded="true"] svg {
   transform: rotate(90deg);
 }
 
 .usage-router-toggle:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 4px;
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* The tier column takes the slack, so the models stay on one line while the
+   card has room and the figures pack against the right edge. */
+.usage-router-tiers > thead > tr > th:first-child {
+  width: 100%;
+}
+
+/* Seven short figures: a tighter gutter between them leaves the models room.
+   The figures line up with the tier name, not the middle of the row. */
+.usage-router-tiers > * > tr > .usage-table-num:not(:last-child) {
+  padding-inline: var(--space-2_5);
+}
+
+.usage-router-tiers > tbody > tr > td.usage-table-num {
+  vertical-align: top;
 }
 
 .usage-table td.usage-router-detail-cell {
@@ -66,6 +126,22 @@
   white-space: normal;
   overflow-wrap: anywhere;
   vertical-align: top;
+}
+
+/* Flush with the caption above it: the detail cell already carries the inset,
+   and its sunken fill already sets the table apart. */
+.usage-router-decisions th:first-child,
+.usage-router-decisions td:first-child {
+  padding-left: 0;
+}
+
+.usage-router-decisions th:last-child,
+.usage-router-decisions td:last-child {
+  padding-right: 0;
+}
+
+.usage-router-decisions thead th {
+  background: transparent;
 }
 
 .usage-router-decisions th:nth-child(1) { width: 16%; }

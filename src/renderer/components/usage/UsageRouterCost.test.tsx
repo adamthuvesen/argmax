@@ -80,8 +80,10 @@ describe("RouterCostCard", () => {
 
     const table = await screen.findByRole("table", { name: "Router cost by tier" });
     const rows = within(table).getAllByRole("row").slice(1);
-    const names = rows.map((row) => within(row).getByRole("rowheader").firstChild?.textContent);
-    expect(names).toEqual(["Frontier", "Balance", "Speed", "Cost"]);
+    const names = rows.map((row) => within(row).getByRole("rowheader").textContent ?? "");
+    for (const [index, name] of ["Frontier", "Balance", "Speed", "Cost"].entries()) {
+      expect(names[index]).toMatch(new RegExp(`^${name}`));
+    }
 
     // Frontier: measured only, so no ≈; $8 over 4 turns.
     expect(within(rows[0]).getByText("$8.00")).toBeInTheDocument();
@@ -93,8 +95,11 @@ describe("RouterCostCard", () => {
     // Speed: an estimate, and the unpriced turn is left out of the per-turn figure.
     expect(within(rows[2]).getByText("≈$0.50")).toBeInTheDocument();
     expect(within(rows[2]).getByText("≈$0.13")).toBeInTheDocument();
-    expect(within(rows[2]).getByText(/mystery-model ×1/)).toBeInTheDocument();
-    expect(within(rows[2]).getByText("4/5 turns priced")).toBeInTheDocument();
+    // The mix names each model with its share of the tier's turns.
+    expect(within(rows[2]).getByTitle("mystery-model, Cursor: 1 turn")).toHaveTextContent("mystery-model20.0%");
+    // Only a tier with unpriced turns is flagged.
+    expect(within(rows[2]).getByText("1 unpriced")).toHaveAttribute("title", "4/5 turns priced");
+    expect(within(rows[0]).queryByText(/unpriced/)).toBeNull();
     expect(within(table).getByRole("columnheader", { name: "First activity" })).toBeInTheDocument();
   });
 
@@ -138,7 +143,7 @@ describe("RouterCostCard", () => {
     stubRouterCost({ tiers: [tier({ turns: 2, unpricedTurns: 2 })] });
     render(<RouterCostCard usageWindow="7d" visible />);
     const table = await screen.findByRole("table", { name: "Router cost by tier" });
-    expect(within(table).getByText("0/2 turns priced")).toBeInTheDocument();
+    expect(within(table).getByText("2 unpriced")).toBeInTheDocument();
     expect(within(table).queryByText("$0.00")).toBeNull();
     expect(within(table).getAllByText("—")).toHaveLength(4);
   });

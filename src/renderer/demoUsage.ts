@@ -1,5 +1,7 @@
 import type {
   ProviderId,
+  RouterCostSummary,
+  RouterTierCost,
   UsageDayRow,
   UsageModelRow,
   UsageProviderSummary,
@@ -381,6 +383,89 @@ export function demoUsageRemaining(): UsageRemaining {
         message: null,
         messageUrl: null
       }
+    ]
+  };
+}
+
+function demoTier(
+  tier: RouterTierCost["tier"],
+  counts: Pick<RouterTierCost, "chats" | "turns" | "escalations" | "measuredCostUsd" | "estimatedCostUsd" | "unpricedTurns">,
+  timing: [turnSeconds: number, firstAnswerSeconds: number],
+  models: ReadonlyArray<[ProviderId, string, number, number]>
+): RouterTierCost {
+  return {
+    tier,
+    ...counts,
+    reroutes: 0,
+    models: models.map(([provider, modelId, turns, costUsd]) => ({
+      provider,
+      modelId,
+      turns,
+      costUsd,
+      estimated: provider === "cursor"
+    })),
+    decisions: models.map(([provider, modelId, turns], index) => ({
+      provider,
+      modelId,
+      reasoningEffort: index === 0 ? "high" : "medium",
+      kind: index === 0 ? "Feature" : "Bug fix",
+      difficulty: index === 0 ? "Hard" : "Moderate",
+      decision: index === 0 ? "launch" : "kept",
+      reason: index === 0 ? "Multi-file change with a design decision" : "Follow-up stays on the same model",
+      count: Math.max(1, Math.round(turns / 4)),
+      turns
+    })),
+    medianTurnSeconds: timing[0],
+    medianFirstAnswerSeconds: timing[1]
+  };
+}
+
+export function demoRouterCost(): RouterCostSummary {
+  return {
+    tiers: [
+      demoTier(
+        "intelligence",
+        { chats: 18, turns: 127, escalations: 0, measuredCostUsd: 358.33, estimatedCostUsd: 0, unpricedTurns: 1 },
+        [63, 8.1],
+        [
+          ["claude", "claude-opus-5-5", 105, 301.2],
+          ["codex", "gpt-6-astra", 21, 52.4],
+          ["claude", "claude-fable-5-1", 1, 4.73]
+        ]
+      ),
+      demoTier(
+        "balanced",
+        { chats: 25, turns: 112, escalations: 1, measuredCostUsd: 61.4, estimatedCostUsd: 6.52, unpricedTurns: 0 },
+        [33, 8.1],
+        [
+          ["claude", "claude-opus-5-5", 76, 48.1],
+          ["claude", "claude-sonnet-5-5", 18, 9.3],
+          ["cursor", "composer-2.5", 11, 2.9],
+          ["cursor", "claude-opus-5-5-medium", 7, 3.62]
+        ]
+      ),
+      demoTier(
+        "cost",
+        { chats: 45, turns: 179, escalations: 1, measuredCostUsd: 109.9, estimatedCostUsd: 0.18, unpricedTurns: 0 },
+        [44, 7.4],
+        [
+          ["claude", "claude-sonnet-5-5", 112, 96.2],
+          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 61, 9.1],
+          ["claude", "claude-opus-5-5", 4, 4.3],
+          ["cursor", "composer-2.5", 1, 0.18],
+          ["grok", "grok-4.7", 1, 0.3]
+        ]
+      ),
+      demoTier(
+        "economy",
+        { chats: 13, turns: 22, escalations: 0, measuredCostUsd: 11.74, estimatedCostUsd: 0, unpricedTurns: 0 },
+        [71, 5.6],
+        [
+          ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 15, 2.1],
+          ["codex", "gpt-6.1-sol", 6, 8.9],
+          ["claude", "claude-sonnet-5-5", 1, 0.74]
+        ]
+      )
     ]
   };
 }

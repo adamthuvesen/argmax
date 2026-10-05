@@ -208,6 +208,18 @@ Overrides on top of the grid:
 - **A launch never runs above high.** xhigh and max are only reached by
   escalation.
 
+**The prompt can steer the launch** ([directive.rs](../src-tauri/src/routing/directive.rs)).
+A prompt that opens with, or ends on a line of, `use <model> [effort]` (for
+example `use astra high`) launches that model, and Jev is not called. The
+request counts only when the tier's own grid can reach it: the allowed efforts
+for a model are the efforts `table::route` launches it at on that tier, over
+every kind and difficulty. Frontier honors `use astra high` but not
+`use deepseek` or `use astra max`. A request outside the tier is ignored: the
+grid routes as usual and the reason ends `(ignored the request: …)`. With no
+effort named, the request takes medium if the tier reaches it, else the next
+level up. A mention deeper in the text is not a request. Follow-ups are not
+steered yet.
+
 If Jev fails, the tier's **fallback** is used and recorded with the reason
 `unrouted: …`: Cost → Sol 6.1 · medium, Speed → Sonnet 5.5 · medium,
 Balance and Frontier → Opus 5.5 · medium.

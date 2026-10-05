@@ -189,6 +189,10 @@ rmcp = { version = "3.2", default-features = false, features = [
 # `takeSnapshotWithConfiguration:completionHandler:` itself. All of these are
 # already in the tree via wry at the same versions; nothing new is downloaded.
 #
+# The script-message, frame-info and content-world features are the agent's
+# way into iframes: browser/frames.rs learns each child frame's `WKFrameInfo`
+# from an isolated-world probe and evaluates in it directly. See frames.rs.
+#
 # `NSAlert` and friends answer a tab's `alert` / `confirm` / `prompt`, which
 # wry's UI delegate leaves unimplemented. See browser/js_dialogs.rs.
 #
@@ -204,6 +208,7 @@ objc2-foundation = { version = "0.3", features = [
     "NSDictionary",
     "NSError",
     "NSDistributedNotificationCenter",
+    "NSJSONSerialization",
     "NSNotification",
     "NSOperation",
     "NSProcessInfo",
@@ -243,8 +248,14 @@ objc2-web-kit = { version = "0.3", default-features = false, features = [
     "std",
     "WKContentRuleList",
     "WKContentRuleListStore",
+    "WKContentWorld",
+    "WKError",
+    "WKFrameInfo",
+    "WKScriptMessage",
+    "WKScriptMessageHandler",
     "WKSnapshotConfiguration",
     "WKUserContentController",
+    "WKUserScript",
     "WKWebView",
     "WKWebViewConfiguration",
     "block2",

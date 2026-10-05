@@ -160,6 +160,8 @@ pub enum BrowserRequest {
         #[serde(default)]
         tab: Option<String>,
         expression: String,
+        #[serde(default)]
+        frame: Option<String>,
     },
     Console {
         #[serde(default)]
@@ -400,10 +402,14 @@ async fn run(
                 png_base64: (!oversized).then_some(encoded),
             })
         }
-        BrowserRequest::Evaluate { tab, expression } => {
+        BrowserRequest::Evaluate {
+            tab,
+            expression,
+            frame,
+        } => {
             let target = owned_target(app, session_id, tab)?;
             Ok(BrowserOutcome::json(
-                automation::evaluate(app, &target, &expression).await?,
+                automation::evaluate(app, &target, &expression, frame.as_deref()).await?,
             ))
         }
         BrowserRequest::Console { tab, limit, clear } => {

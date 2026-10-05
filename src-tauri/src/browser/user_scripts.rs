@@ -20,10 +20,22 @@ use tauri::Webview;
 
 use crate::error::{ArgmaxError, ArgmaxResult};
 
-/// One injected script and whether every frame gets it.
+/// One injected script, whether every frame gets it, and which JavaScript
+/// world it runs in.
 pub struct PageScript {
     pub source: String,
     pub all_frames: bool,
+    pub world: ScriptWorld,
+}
+
+/// `Page` shares globals with the page's own scripts, which the agent API
+/// needs (it wraps `fetch`, `alert`, `requestAnimationFrame`). `Agent` is
+/// Argmax's isolated world: the same DOM, none of the page's globals, and the
+/// only world that can see the frame probe's message handler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScriptWorld {
+    Page,
+    Agent,
 }
 
 /// Replaces the webview's user scripts with exactly `scripts`, at document
@@ -37,11 +49,11 @@ pub fn replace(webview: &Webview, scripts: &[PageScript]) -> ArgmaxResult<()> {
 fn replace_platform(webview: &Webview, scripts: &[PageScript]) -> tauri::Result<()> {
     use objc2::{MainThreadMarker, MainThreadOnly};
     use objc2_foundation::NSString;
-    use objc2_web_kit::{WKUserScript, WKUserScriptInjectionTime, WKWebView};
+    use objc2_web_kit::{WKContentWorld, WKUserScript, WKUserScriptInjectionTime, WKWebView};
 
-    let sources: Vec<(String, bool)> = scripts
+    let sources: Vec<(String, bool, ScriptWorld)> = scripts
         .iter()
-        .map(|script| (script.source.clone(), script.all_frames))
+        .map(|script| (script.source.clone(), script.all_frames, script.world))
         .collect();
 
     webview.with_webview(move |platform| {
@@ -56,13 +68,19 @@ fn replace_platform(webview: &Webview, scripts: &[PageScript]) -> tauri::Result<
             let view: &WKWebView = &*platform.inner().cast();
             let controller = view.configuration().userContentController();
             controller.removeAllUserScripts();
-            for (source, all_frames) in &sources {
-                let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly(
-                    WKUserScript::alloc(mtm),
-                    &NSString::from_str(source),
-                    WKUserScriptInjectionTime::AtDocumentStart,
-                    !all_frames,
-                );
+            for (source, all_frames, world) in &sources {
+                let world = match world {
+                    ScriptWorld::Page => WKContentWorld::pageWorld(mtm),
+                    ScriptWorld::Agent => super::frames::agent_world(mtm),
+                };
+                let script =
+                    WKUserScript::initWithSource_injectionTime_forMainFrameOnly_inContentWorld(
+                        WKUserScript::alloc(mtm),
+                        &NSString::from_str(source),
+                        WKUserScriptInjectionTime::AtDocumentStart,
+                        !all_frames,
+                        &world,
+                    );
                 controller.addUserScript(&script);
             }
         }

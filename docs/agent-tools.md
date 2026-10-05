@@ -409,7 +409,7 @@ may still be accepted without asking the user.
 | `browser_drag` | `ref`, `to_ref?` \| `delta_x`/`delta_y`, `start_x?`, `start_y?`, `end_x?`, `end_y?`, `steps?`, `tab?` | `{tabId, url, detail}` |
 | `browser_wait_for` | `text?`, `ref?`, `url_includes?`, `quiet_ms?`, `min_count?`, `timeout_s?`, `tab?` | `{tabId, url, detail, matched, state}` — a miss is `matched: false` with page state, not an error |
 | `browser_screenshot` | `tab?`, `ref?` | an image content block, plus `{width, height, bytes, dropped, path}` |
-| `browser_evaluate` | `expression`, `tab?` | `{tabId, result}` |
+| `browser_evaluate` | `expression`, `frame?`, `tab?` | `{tabId, result, frame?}` |
 | `browser_console` | `tab?`, `limit?`, `clear?` | Captured console calls, uncaught errors, and unhandled rejections |
 | `browser_network` | `tab?`, `limit?`, `clear?` | Captured fetch, XHR, and resource timing records |
 | `browser_handle_dialog` | `accept`, `prompt_text?`, `tab?` | `{tabId, armed, answered}` |
@@ -426,6 +426,18 @@ the page as a `data-argmax-ref` attribute, so it stays valid while its element
 does and dies with the document: after a navigation, a reload, or a
 single-page-app route change, take a fresh snapshot. A ref that no longer
 resolves fails with a message that says exactly that.
+
+**Iframes.** A page inside an `<iframe>`, cross-origin and sandboxed ones
+included (a Claude artifact, an embedded deck or form), reads and drives like
+the rest of the tab. The snapshot prints `- iframe "…" [frame=f3] url=…` and
+splices that frame's tree under it, with refs like `f3e5`; every ref tool
+routes them into the frame. `browser_find`, `browser_get_text`,
+`browser_extract`, `browser_wait_for` (text and counts), `browser_console`,
+and `browser_network` cover every frame. A key press follows focus into a
+frame, and after a click or typing in one, keys go there. A scroll the page
+cannot take moves its largest frame. `browser_evaluate` takes `frame: "f3"`.
+A frame that cannot run script (a sandbox without `allow-scripts`) prints
+`(content not readable)`. See [browser.md](browser.md#frames).
 
 **Reading a page: three tools, cheapest first.** `browser_extract` is the one
 to reach for when the question is *what does this page say*: it returns the

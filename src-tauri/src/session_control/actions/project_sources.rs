@@ -501,6 +501,7 @@ async fn wait_for_url_source_ready(
                 BrowserRequest::Evaluate {
                     tab: Some(tab.to_string()),
                     expression: "({ ready: document.readyState === 'complete' && !!document.body && document.body.innerText.trim().length > 0 })".to_string(),
+                    frame: None,
                 },
             ),
         )

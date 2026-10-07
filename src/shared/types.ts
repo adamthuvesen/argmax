@@ -133,6 +133,7 @@ export type CheckStatus = "queued" | "running" | "passed" | "failed" | "cancelle
 export type EventType = Bindings.TimelineEvent["type"];
 
 export type ProjectSettings = Bindings.ProjectSettings;
+export type MergeCleanup = Bindings.MergeCleanup;
 
 export type RegisterProjectInput = Bindings.ProjectsRegisterInput;
 export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
@@ -355,6 +356,8 @@ export type WorkspaceSummary = Retype<
     lastViewedAt?: string | null;
     /** The snooze shelf holds the row until this instant. Past or absent means not snoozed. */
     snoozedUntil?: string | null;
+    /** Set when Argmax removed this archived chat's checkout after its PR merged. Absent otherwise. */
+    checkoutRemovedAt?: string | null;
   }
 >;
 
@@ -657,6 +660,7 @@ export interface ArgmaxApi {
   workspace: {
     listFiles: (target: WorkspaceTarget) => Promise<WorkspaceFileEntry[]>;
     readFile: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFilePreview>;
+    readVisualization: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFilePreview>;
     writeFile: (
       target: WorkspaceTarget,
       filePath: string,

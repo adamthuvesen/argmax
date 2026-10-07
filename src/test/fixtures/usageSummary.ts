@@ -127,7 +127,7 @@ export function usageSummaryFixture(overrides: Partial<UsageSummary> = {}): Usag
       },
       {
         provider: "codex",
-        modelId: "codex-auto-review",
+        modelId: "gpt-7-preview",
         sessions: 1,
         tokens: tokens(10_000, 50_000, 2_000, 4_000),
         costUsd: 0,

@@ -42,7 +42,7 @@ export const AUTO_TIER_DESCRIPTIONS: Record<AutoTier, string> = {
   cost: "Sonnet and DeepSeek, reviews included",
   balanced: "Sonnet for everyday work, Opus for heavy work and reviews",
   intelligence: "Frontier models, deeper reasoning",
-  economy: "DeepSeek for routine work, Sol for larger work; Sonnet for reviews"
+  economy: "Luna for routine work, Sol for larger work; Sonnet for reviews"
 };
 
 /** Picker row and recency key for an Auto row, apart from every `provider:modelId`. */

@@ -23,6 +23,11 @@ const COPY_BURST_GAP_MS: i64 = 1000;
 /// named one.
 const UNKNOWN_MODEL: &str = "unknown";
 
+/// The reviewer Codex runs on its own rollout to judge approvals
+/// (`approvals_reviewer = "auto_review"`). It is part of Codex's approval
+/// machinery, not a model the user picked, so its calls stay off the ledger.
+const AUTO_REVIEW_MODEL: &str = "codex-auto-review";
+
 /// Turns one Codex rollout (or the tail of one) into usage records.
 pub fn parse_codex_rollout(text: &str, ctx: &TranscriptContext) -> Vec<UsageRecord> {
     parse_codex_rollout_with_state(text, RolloutState::new(ctx)).0
@@ -73,10 +78,14 @@ pub(crate) fn parse_codex_rollout_with_state(
         if tokens.is_empty() {
             continue;
         }
+        let model_id = state.model_id();
+        if model_id == AUTO_REVIEW_MODEL {
+            continue;
+        }
 
         records.push(UsageRecord {
             provider: ProviderId::Codex,
-            model_id: state.model_id(),
+            model_id,
             session_id: state.session_id.clone(),
             at_ms,
             tokens,
@@ -329,6 +338,15 @@ mod tests {
         assert_eq!(records[1].tokens.cache_read, 85_888);
         assert_eq!(records[1].tokens.output, 405);
         assert_ne!(records[0].dedupe_key, records[1].dedupe_key);
+    }
+
+    #[test]
+    fn codex_auto_review_calls_stay_off_the_ledger() {
+        let text = include_str!("../../tests/fixtures/usage/codex-duplicate-token-count.jsonl")
+            .replace("\"model\":\"gpt-5.5\"", "\"model\":\"codex-auto-review\"");
+        let path =
+            Path::new("/s/rollout-2026-06-15T07-49-15-019ec9d3-b501-7370-8f2e-46d4d7a504c4.jsonl");
+        assert!(parse_codex_rollout(&text, &context(path)).is_empty());
     }
 
     #[test]

@@ -43,6 +43,7 @@
   "workspace:list-files",
   "workspace:read-external-file",
   "workspace:read-file",
+  "workspace:read-visualization",
   "workspace:stat-external-file",
   "workspace:stat-file",
   "workspace:status"

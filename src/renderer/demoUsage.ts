@@ -130,7 +130,6 @@ const MODELS: ReadonlyArray<{ provider: ProviderId; modelId: string; weight: num
   { provider: "claude", modelId: "claude-opus-5", weight: 0.66 },
   { provider: "claude", modelId: "claude-haiku-4-5", weight: 0.34 },
   { provider: "codex", modelId: "gpt-5.6-terra", weight: 0.81 },
-  { provider: "codex", modelId: "codex-auto-review", weight: 0.19, unpriced: true },
   { provider: "opencode", modelId: "openrouter/z-ai/glm-5.3-flash", weight: 1 },
   { provider: "grok", modelId: "grok-code-fast-1", weight: 1 },
   { provider: "cursor", modelId: "composer-2.5", weight: 0.72 },
@@ -391,6 +390,7 @@ function demoTier(
   tier: RouterTierCost["tier"],
   counts: Pick<RouterTierCost, "chats" | "turns" | "escalations" | "measuredCostUsd" | "estimatedCostUsd" | "unpricedTurns">,
   timing: [turnSeconds: number, firstAnswerSeconds: number],
+  tokens: [medianTurnTokens: number, pricedTokens: number],
   models: ReadonlyArray<[ProviderId, string, number, number]>
 ): RouterTierCost {
   return {
@@ -416,7 +416,9 @@ function demoTier(
       turns
     })),
     medianTurnSeconds: timing[0],
-    medianFirstAnswerSeconds: timing[1]
+    medianFirstAnswerSeconds: timing[1],
+    medianTurnTokens: tokens[0],
+    pricedTokens: tokens[1]
   };
 }
 
@@ -427,6 +429,7 @@ export function demoRouterCost(): RouterCostSummary {
         "intelligence",
         { chats: 18, turns: 127, escalations: 0, measuredCostUsd: 358.33, estimatedCostUsd: 0, unpricedTurns: 1 },
         [63, 8.1],
+        [2_400_000, 301_000_000],
         [
           ["claude", "claude-opus-5-5", 105, 301.2],
           ["codex", "gpt-6-astra", 21, 52.4],
@@ -437,6 +440,7 @@ export function demoRouterCost(): RouterCostSummary {
         "balanced",
         { chats: 25, turns: 112, escalations: 1, measuredCostUsd: 61.4, estimatedCostUsd: 6.52, unpricedTurns: 0 },
         [33, 8.1],
+        [1_700_000, 172_000_000],
         [
           ["claude", "claude-opus-5-5", 76, 48.1],
           ["claude", "claude-sonnet-5-5", 18, 9.3],
@@ -448,6 +452,7 @@ export function demoRouterCost(): RouterCostSummary {
         "cost",
         { chats: 45, turns: 179, escalations: 1, measuredCostUsd: 109.9, estimatedCostUsd: 0.18, unpricedTurns: 0 },
         [44, 7.4],
+        [1_900_000, 338_000_000],
         [
           ["claude", "claude-sonnet-5-5", 112, 96.2],
           ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 61, 9.1],
@@ -460,6 +465,7 @@ export function demoRouterCost(): RouterCostSummary {
         "economy",
         { chats: 13, turns: 22, escalations: 0, measuredCostUsd: 11.74, estimatedCostUsd: 0, unpricedTurns: 0 },
         [71, 5.6],
+        [3_100_000, 59_000_000],
         [
           ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 15, 2.1],
           ["codex", "gpt-6.1-sol", 6, 8.9],

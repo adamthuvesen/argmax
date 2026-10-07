@@ -727,7 +727,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: "/tmp/argmax-question-fixture/.worktrees".to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

@@ -750,6 +750,25 @@ export function useDashboardSession(
     };
   }, [selectedSession?.state, selectedSessionId, selectedWorkspaceId, loadSessionEvents, timelines]);
 
+  // A blocked session is not idle: it is a turn parked on a question or an
+  // approval, and that is when the push fallback matters most. The poll above
+  // tears down the instant the state leaves `running`, so a `question.asked`
+  // delta that is dropped on a flaky event loop leaves the card invisible and
+  // the agent silently waiting. Pull the tail once on entering `waiting`, the
+  // same way a running session would have, so the durable question event
+  // reaches the transcript no matter how the state change arrived.
+  useEffect(() => {
+    if (!window.argmax || selectedSessionId === null || selectedSession?.state !== "waiting") {
+      return;
+    }
+    void loadSessionEvents(selectedSessionId).catch((error: unknown) => {
+      logger.warn("renderer.dashboard", "blocked-session catch-up failed", {
+        sessionId: selectedSessionId,
+        error: errorMessage(error)
+      });
+    });
+  }, [selectedSession?.state, selectedSessionId, loadSessionEvents]);
+
   // Per-session backfill is owned by SessionPane's mount-effect (one call per
   // visible pane). The visibility-change effect above refreshes the currently
   // selected session on tab refocus.

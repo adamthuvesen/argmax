@@ -13,7 +13,7 @@ Each refresh spawns `gh pr view`, so the poller only refreshes every tick (60s) 
 
 A session with a PR watch never backs off. It refreshes on every tick, even when its workspace is archived. See [PR Watch](#pr-watch).
 
-The cadence does not depend on window visibility or focus. Check-failure follow-ups and archive-on-merge have to act while the user is away.
+The cadence does not depend on window visibility or focus. Check-failure follow-ups and merge cleanup have to act while the user is away.
 
 ## The Check-Failure Follow-Up
 
@@ -27,7 +27,7 @@ Only verified work on the checkout’s branch can launch a follow-up. References
 
 ## Arc PR/CI Events
 
-A PR with WORK evidence — the same rule `resolve_workspace_id_for_pr_action` applies above — on a session whose Arc is live gets a message to that Arc's coordinator instead of (checks failing) or alongside (checks passing, merged) the ordinary hooks. `gh::poller::ArcEventHook` fires on three transitions, independent of the check-failure hook's own gating (busy checkout) and of `on_pr_merged`'s (the `archive_on_merge` project setting, which this ignores):
+A PR with WORK evidence — the same rule `resolve_workspace_id_for_pr_action` applies above — on a session whose Arc is live gets a message to that Arc's coordinator instead of (checks failing) or alongside (checks passing, merged) the ordinary hooks. `gh::poller::ArcEventHook` fires on three transitions, independent of the check-failure hook's own gating (busy checkout) and of `on_pr_merged`'s (the `merge_cleanup` project setting, which this ignores):
 
 - **Checks failing**: `check_state` transitions to `failure` on an `OPEN` PR, from anything other than `failure`.
 - **Checks passing**: `check_state` transitions to `success`, from `failure`. This is the simplest correct rule, not "from `failure` or `pending`": each kind is detected from a snapshot of `gh_pull_requests` read once at the top of the tick, before that tick's own refreshes upsert it, so a `failure` → `pending` → `success` sequence spread across separate ticks reports passing only when the poller's immediately preceding snapshot was `failure` — a `pending` tick in between suppresses it. Accept one extra notice on GitHub's `failure` → `pending` → `failure` flap (the middle tick's snapshot never becomes `pending` from the Arc event's point of view, so the second `failure` reads as a fresh transition).
@@ -111,19 +111,27 @@ A watch on an archived chat keeps polling, but an archived chat cannot take a tu
 
 - A watched PR suppresses the check-failure follow-up (above). Arc events are unchanged: a watched Arc member's coordinator hears about it as before.
 - The ordinary poller keeps running. The watch only adds cadence and events for watched PRs.
-- Archive on merge waits while a session in the workspace watches the merged PR. The merged notice starts a turn in the chat, and archiving in the same tick would cancel it. The watch ends with that notice, the busy-checkout rule then waits for the turn, and a later tick archives. PR cleanup on merge runs in the watch pass, so it finishes before that archive.
+- Merge cleanup waits while a session in the workspace watches the merged PR. The merged notice starts a turn in the chat, and archiving in the same tick would cancel it. The watch ends with that notice, the busy-checkout rule then waits for the turn, and a later tick archives. PR cleanup on merge runs in the watch pass, so it finishes before that archive.
 
-## Archive On Merge
+## Merge Cleanup
 
-Settings → Projects carries a per-project opt-in, `projects.archive_on_merge` (off by default, saved through `projects:update-settings`). With it on, a tick can archive the workspace when its primary PR has merged and every worked PR is merged. An open, closed-unmerged, unknown, or stale worked PR defers archive. Its checkout and branch are retained in the archive location and the sidebar row is hidden. This preserves local files but does not reclaim their disk space. Without it a merged PR only repaints the marker.
+Settings → Projects carries a per-project choice, `projects.merge_cleanup` (saved through `projects:update-settings`), for what a merged PR does to an isolated workspace:
 
-The workspace is resolved at fire time. A ledger entry keyed `merged:workspace:pr` means one merge archives once however many sessions in the checkout observed it. A busy workspace defers because archive drains its processes before moving the checkout. A workspace where a session watches the merged PR also defers, so its merged notice is delivered first (see [PR Watch](#overlap)). A merged PR stays merged, so the hook is re-evaluated on every tick while the session is still polled and deduped by the ledger. An archived workspace leaves the poll set on its own. Startup recovery validates a retained checkout and repairs Git registration after an interrupted move.
+- `off` (the default): nothing. A merged PR only repaints the marker.
+- `archive`: archive the workspace. Its checkout and branch are retained in the archive location and the sidebar row moves to Archived. This preserves local files for 48 to 72 hours, and the branch for good.
+- `remove-checkout`: delete the checkout, then run [PR cleanup](workspaces.md#pr-cleanup), which can now delete the local branch because nothing has it checked out. The chat stays in its sidebar section, read-only. See [ADR 0014](adr/0014-merged-chats-stay-listed-without-a-checkout.md).
+
+With either on, a tick acts when the workspace's primary PR has merged and every worked PR is merged. An open, closed-unmerged, unknown, or stale worked PR defers it. The hook is `archive_merged_workspace` in [lib.rs](../src-tauri/src/lib.rs); `MergedPrContext` carries the mode, the observing session, and the merged head.
+
+The workspace is resolved at fire time. A ledger entry keyed `merged:workspace:pr` means one merge acts once however many sessions in the checkout observed it. A busy workspace defers because both modes drain its processes before touching the checkout. A workspace where a session watches the merged PR also defers, so its merged notice is delivered first (see [PR Watch](#overlap)). A merged PR stays merged, so the hook is re-evaluated on every tick while the session is still polled and deduped by the ledger. An archived workspace leaves the poll set on its own. Startup recovery validates a retained checkout and repairs Git registration after an interrupted move.
 
 It acts on merges the poller sees, not on history: a workspace whose PR was already recorded as `MERGED` before the setting went on is out of the poll set entirely, so turning the setting on does not sweep up what has already piled up. Those are archived by hand.
 
-The archive is never forced. A worktree with uncommitted changes returns to `kept`, and the poller logs that it did — work that outlived the PR is not ours to delete. See [workspaces.md](workspaces.md).
+Neither mode is ever forced. A worktree with uncommitted or untracked changes returns to `kept`, and the poller logs that it did — work that outlived the PR is not ours to delete. `remove-checkout` also keeps a checkout whose HEAD the merged PR does not contain (commits after the merge). It fetches the merged head first when the branch moved on GitHub, and keeps the checkout when that fetch fails. It runs `git worktree remove` without `--force`. Ignored files, such as build output, go with the checkout. A branch with commits after the merged head survives PR cleanup.
 
-Isolated workspaces only. Archiving a shared checkout deletes nothing, so applying this there would not be cleanup — it would close a chat in a tree the user is still working in. The opt-in query excludes them ([projects.rs](../src-tauri/src/persistence/projects.rs)).
+A removed checkout leaves the row `archived` with `workspaces.checkout_removed_at` set. The renderer keeps that row in its normal section (`isInArchivedSection` in [archivedSection.ts](../src/renderer/lib/archivedSection.ts)), while every capability check stays on `state`, so the composer is disabled. The row's Archive action clears the column and moves it to Archived. The phone apps list it with the other archived chats.
+
+Isolated workspaces only. Archiving a shared checkout deletes nothing, so applying this there would not be cleanup — it would close a chat in a tree the user is still working in. The settings query reads a shared checkout as `off` ([projects.rs](../src-tauri/src/persistence/projects.rs)).
 
 ## Session PRs
 

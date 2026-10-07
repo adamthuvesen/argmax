@@ -77,6 +77,12 @@ pub struct WorkspaceSummary {
     /// an expired snooze, and the renderer treats it as none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub snoozed_until: Option<String>,
+    /// When Argmax removed this archived workspace's checkout because its PR
+    /// merged (project setting `merge_cleanup = remove-checkout`). Display
+    /// metadata: such a row stays in its normal sidebar section instead of
+    /// the Archived section, and is read-only like any archived chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkout_removed_at: Option<String>,
     /// State of the displayed session's primary PR, filled in from canonical
     /// PR state and session evidence on every read path. The renderer merges
     /// workspace deltas by whole-object replacement, so a summary published
@@ -781,6 +787,46 @@ pub fn set_workspace_snoozed_until(
     find_workspace_by_id(connection, workspace_id)
 }
 
+/// Ends a workspace whose checkout Argmax removed after its PR merged: the
+/// state becomes `archived` and `checkout_removed_at` keeps the row in its
+/// sidebar section. One statement, so no reader sees one without the other.
+pub fn mark_workspace_checkout_removed(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let timestamp = now_iso();
+    let changes = connection
+        .prepare_cached(
+            "UPDATE workspaces SET state = 'archived', checkout_removed_at = ?1, updated_at = ?1 WHERE id = ?2",
+        )
+        .map_err(sqlite_error)?
+        .execute((timestamp.as_str(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("workspace", workspace_id));
+    }
+    find_workspace_by_id(connection, workspace_id)
+}
+
+/// Moves a merged chat whose checkout was removed into the Archived section.
+/// Nothing else changes: it was archived already.
+pub fn clear_workspace_checkout_removed(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<WorkspaceSummary> {
+    let changes = connection
+        .prepare_cached(
+            "UPDATE workspaces SET checkout_removed_at = NULL, updated_at = ? WHERE id = ?",
+        )
+        .map_err(sqlite_error)?
+        .execute((now_iso(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("workspace", workspace_id));
+    }
+    find_workspace_by_id(connection, workspace_id)
+}
+
 /// Parses to UTC and stores the canonical millisecond form, so the renderer's
 /// string comparison against `now` and the stored value agree.
 fn validate_snooze_until(until: &str) -> ArgmaxResult<String> {
@@ -863,6 +909,7 @@ pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSumm
         priority_dismissed_at: row.get("priority_dismissed_at")?,
         priority_added_at: row.get("priority_added_at")?,
         snoozed_until: row.get("snoozed_until")?,
+        checkout_removed_at: row.get("checkout_removed_at")?,
         icon: row.get("icon")?,
         icon_color: row.get("icon_color")?,
         // PR fields are not workspace columns; attach_latest_pr fills them in
@@ -899,7 +946,7 @@ mod tests {
                 current_branch: "main".to_owned(),
                 default_branch: Some("main".to_owned()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: format!("/tmp/{id}/worktrees"),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

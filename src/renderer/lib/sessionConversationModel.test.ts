@@ -1444,6 +1444,29 @@ describe("buildSessionToolCalls", () => {
     });
   });
 
+  it("keeps a blocking question running past the reasoning OpenCode streams after it", () => {
+    // OpenCode finishes the turn's reasoning part after the `question` tool
+    // starts. Only the question service's own completion settles the question.
+    const events = [
+      event("thought", "message.delta", "2026-10-06T05:18:42.878Z", "Let me ask.", {
+        type: "reasoning",
+        thinking: true
+      }),
+      event("ask", "command.started", "2026-10-06T05:18:42.832Z", "AskUserQuestion", {
+        id: "que_1",
+        name: "AskUserQuestion",
+        status: "running",
+        input: {
+          delivery: "blocking",
+          requestId: "request-1",
+          questions: [{ id: "q1", question: "Next?", header: "Next", options: [{ label: "Stop" }] }]
+        }
+      })
+    ];
+
+    expect(buildSessionToolCalls(events, true)[0]).toMatchObject({ status: "running", completedAt: null });
+  });
+
   it("settles an uncompleted agent launch at the session end that outlived it", () => {
     // A Codex spawn_agent read back from the on-disk rollout trace carries no
     // agent.started/agent.completed pair, and an interrupted turn kills the

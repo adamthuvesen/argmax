@@ -95,7 +95,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -112,7 +112,7 @@ async fn authenticated_request_launches_a_sidebar_session_with_inherited_setting
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: destination_repo
                         .path()
                         .join("worktrees")
@@ -427,7 +427,7 @@ async fn launch_caps_and_self_messaging_are_refused_with_a_readable_error() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -604,7 +604,7 @@ async fn observing_stopping_and_waiting_on_a_launched_session() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -933,7 +933,7 @@ fn seed_sessions(database: &Database, repo_path: &str, sessions: &[(&str, &str, 
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
-                archive_on_merge: false,
+                merge_cleanup: Default::default(),
                 worktree_location: format!("{repo_path}/worktrees"),
                 setup_command: String::new(),
                 check_commands: Vec::new(),
@@ -1848,7 +1848,7 @@ async fn a_scheduled_move_outlives_the_run_and_still_starts_the_destination() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: destination_repo
                         .path()
                         .join("worktrees")
@@ -2933,7 +2933,7 @@ async fn project_list_reports_every_registered_repository_with_its_checks() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: other.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: vec!["npm test".to_string(), "npm run lint".to_string()],
@@ -3181,7 +3181,7 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: other.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -3537,7 +3537,7 @@ fn seed_outside_session(database: &Database, repo_path: &str, session_id: &str, 
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
-                archive_on_merge: false,
+                merge_cleanup: Default::default(),
                 worktree_location: format!("{repo_path}/elsewhere-worktrees"),
                 setup_command: String::new(),
                 check_commands: Vec::new(),

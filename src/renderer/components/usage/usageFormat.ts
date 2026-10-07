@@ -19,6 +19,22 @@ export function formatUsd(value: number): string {
 }
 
 /** `$25.1k` — the axis tick shape, where two decimals would crowd the gutter. */
+/**
+ * A price per million tokens: `$45.80`, and a third decimal under a dime
+ * (`$0.016`), where cheap models live and two decimals would round them
+ * together or to zero.
+ */
+export function formatUsdRate(value: number): string {
+  const safe = Number.isFinite(value) ? value : 0;
+  const digits = safe > 0 && safe < 0.1 ? 3 : 2;
+  return safe.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  });
+}
+
 export function formatUsdCompact(value: number): string {
   const safe = Number.isFinite(value) ? value : 0;
   const abs = Math.abs(safe);

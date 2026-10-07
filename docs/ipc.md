@@ -124,6 +124,12 @@ immediate and drain revision pages before settling.
 
 ## Adding a Channel
 
+`workspace:read-visualization` takes `{ kind, id, filePath }` and returns a
+`WorkspaceFilePreview`. `filePath` must name an absolute HTML file. The service
+resolves symlinks and confines it to the target checkout or
+`~/.argmax/visualizations`. The existing text preview cap applies. The remote
+bridge exposes the same read operation.
+
 1. Define input/output types in `src-tauri/src/ipc/inputs.rs` or the subsystem module.
 2. Implement the handler in `src-tauri/src/ipc/*.rs` with `#[tauri::command(rename = "namespace:name")]`.
 3. Add one entry to `ipc/catalogue.rs` with its handler and remote access policy.

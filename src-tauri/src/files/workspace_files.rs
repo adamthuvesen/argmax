@@ -139,6 +139,21 @@ impl WorkspaceFilesService {
         read_file_at_path(&self.root_path(kind, id)?, file_path).await
     }
 
+    pub async fn read_visualization(
+        &self,
+        kind: WorkspaceTargetKind,
+        id: &str,
+        file_path: &str,
+    ) -> ArgmaxResult<WorkspaceFilePreview> {
+        let resolved = resolve_visualization_path(
+            Path::new(&self.root_path(kind, id)?),
+            &crate::sync::home_dir().join(".argmax/visualizations"),
+            file_path,
+        )
+        .await?;
+        read_resolved_file(&resolved).await
+    }
+
     pub async fn stat_file(
         &self,
         kind: WorkspaceTargetKind,
@@ -470,6 +485,51 @@ async fn looks_binary(path: &Path) -> ArgmaxResult<bool> {
     Ok(buffer[..read].contains(&0))
 }
 
+async fn resolve_visualization_path(
+    checkout_root: &Path,
+    visualization_root: &Path,
+    file_path: &str,
+) -> ArgmaxResult<PathBuf> {
+    let path = Path::new(file_path);
+    let is_html = |path: &Path| {
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("html") || extension.eq_ignore_ascii_case("htm")
+            })
+    };
+    if !path.is_absolute() || !is_html(path) {
+        return Err(ArgmaxError::service(
+            "WORKSPACE_PATH_INVALID",
+            "visualization path must be an absolute .html or .htm file path",
+        ));
+    }
+    let resolved = tokio_fs::canonicalize(path).await.map_err(io_error)?;
+    if !is_html(&resolved) {
+        return Err(ArgmaxError::service(
+            "WORKSPACE_PATH_INVALID",
+            "visualization path must resolve to an .html or .htm file",
+        ));
+    }
+    match tokio_fs::canonicalize(checkout_root).await {
+        Ok(root) if resolved.starts_with(&root) => return Ok(resolved),
+        Ok(_) => {}
+        // A retained chat can keep its artifact after its checkout is removed.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error(error)),
+    }
+    match tokio_fs::canonicalize(visualization_root).await {
+        Ok(root) if resolved.starts_with(&root) => Ok(resolved),
+        Ok(_) => Err(path_error(PathError::Escapes(
+            resolved.display().to_string(),
+        ))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(path_error(
+            PathError::Escapes(resolved.display().to_string()),
+        )),
+        Err(error) => Err(io_error(error)),
+    }
+}
+
 /// Expands `~`/`~/…` against `$HOME`, requires an absolute path, and resolves
 /// symlinks so the preview reads what the path really names. `~user` forms
 /// are rejected rather than guessed.
@@ -549,7 +609,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: repo_path.join(".worktrees").to_string_lossy().into_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -631,6 +691,139 @@ mod tests {
         match preview {
             WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "dash file\n"),
             other => panic!("expected text preview, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_visualization_reads_html_for_workspace_and_project() {
+        let repo = TempDir::new().unwrap();
+        let file = repo.path().join("chart.html");
+        std::fs::write(&file, "<h1>Chart</h1>").unwrap();
+        let data_dir = TempDir::new().unwrap();
+        let database = Arc::new(Database::open(data_dir.path().join("argmax.sqlite")).unwrap());
+        let workspace_id = fixture_workspace(&database, repo.path());
+        let svc = WorkspaceFilesService::new(database);
+        for (kind, id) in [
+            (WorkspaceTargetKind::Workspace, workspace_id.as_str()),
+            (WorkspaceTargetKind::Project, "p1"),
+        ] {
+            let preview = svc
+                .read_visualization(kind, id, file.to_str().unwrap())
+                .await
+                .unwrap();
+            match preview {
+                WorkspaceFilePreview::Text { content, .. } => assert_eq!(content, "<h1>Chart</h1>"),
+                other => panic!("expected HTML preview, got {other:?}"),
+            }
+        }
+        let oversized = repo.path().join("large.html");
+        std::fs::write(&oversized, vec![b'x'; MAX_PREVIEW_BYTES as usize + 1]).unwrap();
+        assert_eq!(
+            svc.read_visualization(
+                WorkspaceTargetKind::Workspace,
+                &workspace_id,
+                oversized.to_str().unwrap(),
+            )
+            .await
+            .unwrap(),
+            WorkspaceFilePreview::Skipped {
+                reason: SkippedReason::TooLarge,
+                size: Some(MAX_PREVIEW_BYTES + 1),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn read_visualization_confines_artifacts_to_allowed_roots() {
+        let checkout = TempDir::new().unwrap();
+        let home = TempDir::new().unwrap();
+        let artifacts = home.path().join(".argmax/visualizations");
+        std::fs::create_dir_all(&artifacts).unwrap();
+        let file = artifacts.join("chart.htm");
+        std::fs::write(&file, "<p>Artifact</p>").unwrap();
+        assert_eq!(
+            resolve_visualization_path(checkout.path(), &artifacts, file.to_str().unwrap())
+                .await
+                .unwrap(),
+            file.canonicalize().unwrap()
+        );
+        let outside = home.path().join("chart.html");
+        std::fs::write(&outside, "outside").unwrap();
+        let sibling = home.path().join(".argmax/visualizations-other");
+        std::fs::create_dir_all(&sibling).unwrap();
+        let sibling_file = sibling.join("chart.html");
+        std::fs::write(&sibling_file, "sibling").unwrap();
+        for path in [outside.as_path(), sibling_file.as_path()] {
+            let error =
+                resolve_visualization_path(checkout.path(), &artifacts, path.to_str().unwrap())
+                    .await
+                    .unwrap_err();
+            assert!(
+                matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "WORKSPACE_PATH_INVALID")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn read_visualization_artifact_survives_checkout_removal() {
+        let checkout = TempDir::new().unwrap();
+        let checkout_path = checkout.path().to_path_buf();
+        let home = TempDir::new().unwrap();
+        let artifacts = home.path().join(".argmax/visualizations");
+        std::fs::create_dir_all(&artifacts).unwrap();
+        let file = artifacts.join("chart.html");
+        std::fs::write(&file, "<p>Retained artifact</p>").unwrap();
+        checkout.close().unwrap();
+
+        let resolved =
+            resolve_visualization_path(&checkout_path, &artifacts, file.to_str().unwrap())
+                .await
+                .unwrap();
+        match read_resolved_file(&resolved).await.unwrap() {
+            WorkspaceFilePreview::Text { content, .. } => {
+                assert_eq!(content, "<p>Retained artifact</p>");
+            }
+            other => panic!("expected retained HTML preview, got {other:?}"),
+        }
+        let outside = home.path().join("outside.html");
+        std::fs::write(&outside, "outside").unwrap();
+        assert!(
+            resolve_visualization_path(&checkout_path, &artifacts, outside.to_str().unwrap())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn read_visualization_rejects_symlink_escapes_and_non_html() {
+        let checkout = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let artifacts = outside.path().join("visualizations");
+        std::fs::create_dir(&artifacts).unwrap();
+        let secret = outside.path().join("secret.html");
+        std::fs::write(&secret, "secret").unwrap();
+        let checkout_link = checkout.path().join("escape.html");
+        let artifact_link = artifacts.join("escape.html");
+        std::os::unix::fs::symlink(&secret, &checkout_link).unwrap();
+        std::os::unix::fs::symlink(&secret, &artifact_link).unwrap();
+        let text = checkout.path().join("secret.txt");
+        std::fs::write(&text, "text").unwrap();
+        let disguised_text = checkout.path().join("disguised.html");
+        std::os::unix::fs::symlink(&text, &disguised_text).unwrap();
+        for path in [
+            checkout_link.to_str().unwrap(),
+            artifact_link.to_str().unwrap(),
+            text.to_str().unwrap(),
+            disguised_text.to_str().unwrap(),
+            "chart.html",
+            "~/chart.html",
+        ] {
+            let error = resolve_visualization_path(checkout.path(), &artifacts, path)
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "WORKSPACE_PATH_INVALID")
+            );
         }
     }
 

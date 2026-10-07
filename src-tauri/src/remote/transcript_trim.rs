@@ -535,7 +535,7 @@ mod tests {
                 current_branch: "main".to_owned(),
                 default_branch: Some("main".to_owned()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: "~/.argmax".to_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

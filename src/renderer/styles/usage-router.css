@@ -5,38 +5,48 @@
   overflow: hidden;
 }
 
-/* The tier name sits on the card inset like every first column on the page;
-   the chevron hangs in the gutter to its left. */
+/* ---------- Tier column ---------- */
+
+/* The tier name leads the row; its models sit under it as a quiet list. The
+   chevron hangs in the gutter to the name's left. */
 .usage-router-name {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-2);
 }
 
 .usage-router-tier {
   color: var(--text);
+  font-size: var(--text-sm-plus);
   font-weight: var(--weight-medium);
 }
 
-/* The models under the tier, in the breakdown's dot-and-name voice. Past two
-   they fold into "+N more"; on a narrow card they wrap between models, never
-   inside one, so the figures keep their columns. */
+.usage-router-unpriced {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-ui);
+  white-space: nowrap;
+}
+
+/* One model per line: dot, name, share. The lines share one grid, so every
+   share lines up in a column however long the names run. */
 .usage-router-mix {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 6px max-content max-content;
+  justify-content: start;
   align-items: center;
-  gap: 2px var(--space-3);
-  white-space: normal;
-  margin-top: 3px;
+  column-gap: var(--space-2);
+  row-gap: 3px;
+  margin-top: var(--space-2);
   font-size: var(--text-xs);
   color: var(--text-soft);
 }
 
 .usage-router-model {
-  display: inline-flex;
-  white-space: nowrap;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: var(--space-1_5);
 }
 
 .usage-router-model .usage-series-dot {
@@ -44,13 +54,15 @@
   height: 6px;
 }
 
-.usage-router-model-share,
-.usage-router-more {
+.usage-router-model-share {
+  justify-self: end;
+  padding-left: var(--space-2);
   color: var(--muted);
 }
 
 .usage-router-more {
-  margin-left: var(--space-1_5);
+  grid-column: 2 / -1;
+  color: var(--muted);
 }
 
 .usage-router-toggle {
@@ -68,6 +80,7 @@
 }
 
 .usage-router-toggle svg {
+  align-self: center;
   color: var(--muted);
   transition: transform var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
 }
@@ -86,20 +99,116 @@
   box-shadow: var(--ring);
 }
 
-/* The tier column takes the slack, so the models stay on one line while the
-   card has room and the figures pack against the right edge. */
+/* The tier column takes the slack, so the figures pack against the right
+   edge. */
 .usage-router-tiers > thead > tr > th:first-child {
   width: 100%;
 }
 
-/* Seven short figures: a tighter gutter between them leaves the models room.
-   The figures line up with the tier name, not the middle of the row. */
-.usage-router-tiers > * > tr > .usage-table-num:not(:last-child) {
-  padding-inline: var(--space-2_5);
+/* Rows breathe: the tier and its model list are the row's content, so the
+   row is sized for them rather than for one line of figures. */
+.usage-router-tiers > tbody > tr > th,
+.usage-router-tiers > tbody > tr > td {
+  padding-block: var(--space-4);
+  vertical-align: top;
 }
 
-.usage-router-tiers > tbody > tr > td.usage-table-num {
-  vertical-align: top;
+/* ---------- Figure families ---------- */
+
+/* The figures come in four families, each with one hue. The header names the
+   family over a thin rule in that hue; each figure sits on a chip of it whose
+   tint deepens with the figure (`--router-heat`, its share of the column's
+   largest), so the tiers compare down a column at a glance. The chips leave
+   gutters between them, so the table reads as figures, not as a quilt, and
+   even the deepest tint keeps the numbers in the page's ink. */
+.usage-router-tiers {
+  --router-volume: #7a7f87;
+  --router-spend: #b08039;
+  --router-tokens: #4f7cc4;
+  --router-pace: #3f8f6e;
+  --router-tint: 7%;
+  --router-tint-span: 20%;
+}
+
+:root[data-theme="dark"] .usage-router-tiers {
+  --router-volume: #9aa0a8;
+  --router-spend: #d9a566;
+  --router-tokens: #7ea6e0;
+  --router-pace: #6cbf98;
+  --router-tint: 9%;
+  --router-tint-span: 22%;
+}
+
+.usage-router-tiers [data-group="volume"] { --router-hue: var(--router-volume); }
+.usage-router-tiers [data-group="spend"] { --router-hue: var(--router-spend); }
+.usage-router-tiers [data-group="tokens"] { --router-hue: var(--router-tokens); }
+.usage-router-tiers [data-group="pace"] { --router-hue: var(--router-pace); }
+
+/* Each chip fills its column, so a column reads as one even strip of tiles.
+   Its padding is pulled back out with a negative margin, so the figure stays
+   on the tier name's line and on the column's right edge, and neighbouring
+   chips keep a gutter between them. */
+.usage-router-figure {
+  display: block;
+  margin: -4px calc(-1 * var(--space-2));
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: color-mix(
+    in oklab,
+    var(--router-hue) calc(var(--router-tint) + var(--router-heat, 0) * var(--router-tint-span)),
+    transparent
+  );
+}
+
+/* Zero is a real figure but not news: it keeps its chip and drops its ink. */
+.usage-router-figure[data-zero] {
+  color: var(--muted);
+}
+
+.usage-router-none {
+  color: var(--muted);
+}
+
+/* ---------- Header ---------- */
+
+/* Eight short figures: a tighter gutter between them leaves the models room. */
+.usage-router-tiers > * > tr > .usage-table-num:not(:last-child) {
+  padding-inline: var(--space-3);
+}
+
+/* The family row: not sticky (the column row is), no rule of its own. The
+   family's rule is inset by the figure gutters, so neighbouring families read
+   apart and the last one stops at the card inset. */
+.usage-router-groups > * {
+  position: static;
+  border-bottom: 0;
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-1_5);
+}
+
+.usage-table thead .usage-router-groups > th[data-group] {
+  --router-rule-inset: var(--space-3);
+  text-align: left;
+  padding-left: var(--space-3);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--router-hue) 70%, var(--text));
+  background:
+    linear-gradient(var(--router-hue), var(--router-hue)) var(--router-rule-inset) bottom /
+      calc(100% - 2 * var(--router-rule-inset)) 1.5px no-repeat,
+    var(--panel);
+}
+
+.usage-table thead .usage-router-groups > th[data-group]:last-child {
+  background-size: calc(100% - var(--router-rule-inset) - var(--space-6)) 1.5px, auto;
+}
+
+/* Column names stay neutral: the family above already carries the colour. */
+.usage-router-tiers > thead > tr:not(.usage-router-groups) > th {
+  padding-top: var(--space-2);
 }
 
 .usage-table td.usage-router-detail-cell {
@@ -138,6 +247,14 @@
 .usage-router-decisions th:last-child,
 .usage-router-decisions td:last-child {
   padding-right: 0;
+}
+
+/* The quiet second line under each decision cell. */
+.usage-router-note {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--text-xs);
+  color: var(--text-soft);
 }
 
 .usage-router-decisions thead th {

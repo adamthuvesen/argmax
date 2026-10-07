@@ -392,6 +392,7 @@ pub fn run() {
     };
 
     builder
+        .plugin(windows::chat_navigation_guard())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
@@ -1017,8 +1018,10 @@ pub fn run() {
                             // the hook resolves it from app state at fire time
                             // rather than capturing it here.
                             let merged_app = app.handle().clone();
+                            let merged_database = Arc::clone(&database);
                             let merged_hook = Arc::new(move |context: gh::poller::MergedPrContext| {
                                 let app = merged_app.clone();
+                                let database = Arc::clone(&merged_database);
                                 tauri::async_runtime::spawn(async move {
                                     let workspaces = tauri::Manager::state::<state::AppState>(&app)
                                         .workspaces
@@ -1030,7 +1033,7 @@ pub fn run() {
                                         );
                                         return;
                                     };
-                                    archive_merged_workspace(workspaces, context).await;
+                                    archive_merged_workspace(workspaces, database, context).await;
                                 });
                             });
                             let arc_event_database = Arc::clone(&database);
@@ -1536,42 +1539,84 @@ async fn handle_gh_arc_event(
 }
 
 /// Disposes of a workspace whose PR has merged, for projects that asked for
-/// it. Never forced: `archive` returns a dirty worktree to `kept` instead of
-/// deleting it, and uncommitted work outliving a merged PR is exactly the case
+/// it. Never forced: a dirty worktree returns to `kept` instead of being
+/// deleted, and uncommitted work outliving a merged PR is exactly the case
 /// worth keeping.
 async fn archive_merged_workspace(
     workspaces: Arc<workspaces::WorkspaceService>,
+    database: Arc<persistence::database::Database>,
     context: gh::poller::MergedPrContext,
 ) {
-    let workspace_id = match ipc::validation::WorkspaceId::try_from(context.workspace_id.clone()) {
-        Ok(workspace_id) => workspace_id,
-        Err(error) => {
-            tracing::warn!(workspace_id = %context.workspace_id, ?error, "archive on merge: invalid workspace id");
-            return;
+    use persistence::projects::MergeCleanup;
+    let result = match context.cleanup {
+        MergeCleanup::Off => return,
+        MergeCleanup::Archive => {
+            let workspace_id = match ipc::validation::WorkspaceId::try_from(
+                context.workspace_id.clone(),
+            ) {
+                Ok(workspace_id) => workspace_id,
+                Err(error) => {
+                    tracing::warn!(workspace_id = %context.workspace_id, ?error, "archive on merge: invalid workspace id");
+                    return;
+                }
+            };
+            workspaces
+                .archive(ipc::inputs::WorkspacesArchiveInput {
+                    workspace_id,
+                    force: Some(false),
+                })
+                .await
+        }
+        MergeCleanup::RemoveCheckout => {
+            workspaces
+                .remove_merged_checkout(&context.workspace_id, &context.merged_head)
+                .await
         }
     };
-    let input = ipc::inputs::WorkspacesArchiveInput {
-        workspace_id,
-        force: Some(false),
-    };
-    match workspaces.archive(input).await {
+    match result {
         Ok(result) if result.workspace.state == "kept" => tracing::info!(
             workspace_id = %result.workspace.id,
             pr_number = context.pr_number,
             changed_files = result.workspace.changed_files,
-            "archive on merge: kept the workspace, its worktree has uncommitted changes",
+            "merge cleanup: kept the workspace and its worktree",
         ),
-        Ok(result) => tracing::info!(
-            workspace_id = %result.workspace.id,
-            pr_number = context.pr_number,
-            state = %result.workspace.state,
-            "archive on merge: archived the workspace, its PR merged",
-        ),
+        Ok(result) => {
+            tracing::info!(
+                workspace_id = %result.workspace.id,
+                pr_number = context.pr_number,
+                cleanup = context.cleanup.as_wire(),
+                "merge cleanup: the PR merged, so the workspace was archived",
+            );
+            // With the checkout gone, nothing has the branch checked out, so
+            // PR cleanup can delete it when its tip is the merged head.
+            if result.workspace.checkout_removed_at.is_some() {
+                let service = gh::service::GhService::new(Arc::clone(&database));
+                match git::pr_cleanup::cleanup_merged_pr(
+                    &database,
+                    &service,
+                    &context.session_id,
+                    context.pr_number,
+                )
+                .await
+                {
+                    Ok(report) => tracing::info!(
+                        pr_number = context.pr_number,
+                        report = %report.text,
+                        "merge cleanup: PR cleanup after removing the checkout",
+                    ),
+                    Err(error) => tracing::warn!(
+                        pr_number = context.pr_number,
+                        ?error,
+                        "merge cleanup: PR cleanup after removing the checkout failed",
+                    ),
+                }
+            }
+        }
         Err(error) => tracing::warn!(
             workspace_id = %context.workspace_id,
             pr_number = context.pr_number,
             ?error,
-            "archive on merge: archive failed",
+            "merge cleanup failed",
         ),
     }
 }

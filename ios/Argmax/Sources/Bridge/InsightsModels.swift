@@ -433,11 +433,22 @@ struct RouterTierCost: Codable, Hashable, Sendable, Identifiable {
     var medianTurnSeconds: Double?
     /// Send to the model's first text, reasoning, or tool call.
     var medianFirstAnswerSeconds: Double?
+    /// Tokens processed in the priced turns, cache included. Nil from a Mac
+    /// that predates the field.
+    var pricedTokens: Int?
+    /// Median tokens processed per turn. Nil without usage, or from a Mac
+    /// that predates the field.
+    var medianTurnTokens: Double?
 
     var id: String { tier }
     var costUsd: Double { measuredCostUsd + estimatedCostUsd }
     var isEstimated: Bool { estimatedCostUsd > 0 }
     var pricedTurns: Int { turns - unpricedTurns }
+    /// Dollars per million tokens processed; nil without priced tokens.
+    var costPerMillionTokens: Double? {
+        guard let pricedTokens, pricedTokens > 0, pricedTurns > 0 else { return nil }
+        return costUsd / Double(pricedTokens) * 1_000_000
+    }
 }
 
 /// `RouterCostSummary` — Frontier, Balance, Speed in that order; a tier with

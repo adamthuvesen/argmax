@@ -1,4 +1,5 @@
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
+import { isInArchivedSection } from "./archivedSection.js";
 
 /**
  * The snooze shelf. A snooze is display metadata: `snoozedUntil` hides a row in
@@ -57,7 +58,7 @@ export function computeSnoozeShelf(
     // An archived chat belongs in the Archived section whatever its snooze says.
     // The poller archives a merged PR's chat without asking, so a snoozed row
     // that was archived would otherwise be in neither section.
-    if (workspace.state === "archived") continue;
+    if (isInArchivedSection(workspace)) continue;
     const until = activeSnoozeUntil(workspace, nowMs);
     if (until === null) continue;
     nextExpiryAt = nextExpiryAt === null ? until : Math.min(nextExpiryAt, until);

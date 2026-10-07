@@ -10,7 +10,7 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       currentBranch: "main",
       defaultBranch: "main",
       settings: {
-        archiveOnMerge: false,
+        mergeCleanup: "off",
         worktreeLocation: "/tmp/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm test"]
@@ -129,7 +129,7 @@ export function secondProject(): DashboardSnapshot["projects"][number] {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
-      archiveOnMerge: false,
+      mergeCleanup: "off",
       worktreeLocation: "/tmp/dotfiles-worktrees",
       setupCommand: "",
       checkCommands: []

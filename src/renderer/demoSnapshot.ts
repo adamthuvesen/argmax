@@ -10,7 +10,7 @@ export const demoSnapshot: DashboardSnapshot = {
       currentBranch: "main",
       defaultBranch: "main",
       settings: {
-        archiveOnMerge: false,
+        mergeCleanup: "off",
         worktreeLocation: "~/code/.argmax/worktrees",
         setupCommand: "npm install",
         checkCommands: ["npm run lint", "npm test", "npm run tauri:build"]

@@ -531,7 +531,7 @@ mod tests {
                     worktree_location: "/tmp/worktrees".to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                 },
             },
         )

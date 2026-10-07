@@ -37,7 +37,9 @@ use super::watcher::WatcherRegistry;
 use crate::approvals::service::ApprovalService;
 use crate::checks::service::{CheckService, RunWorkspaceCheckInput};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::git::exec::{run_git_text, run_git_text_blocking, GIT_DEFAULT_TIMEOUT};
+use crate::git::exec::{
+    run_git_text, run_git_text_blocking, run_git_text_with_allowed_exit_codes, GIT_DEFAULT_TIMEOUT,
+};
 use crate::persistence::arcs::{get_arc, set_arc_coordinator_session};
 use crate::persistence::database::Database;
 use crate::persistence::events::{
@@ -54,11 +56,12 @@ use crate::persistence::sessions::{
     PersistSessionInput, SessionSummary,
 };
 use crate::persistence::workspaces::{
-    find_workspace_by_id, mark_workspaces_viewed, persist_workspace, set_workspace_icon,
-    set_workspace_label, set_workspace_label_auto, set_workspace_pinned,
-    set_workspace_priority_added, set_workspace_priority_dismissed, set_workspace_snoozed_until,
-    update_workspace_state, update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput,
-    WorkspaceSummary, WorkspaceViewedObservation,
+    clear_workspace_checkout_removed, find_workspace_by_id, mark_workspace_checkout_removed,
+    mark_workspaces_viewed, persist_workspace, set_workspace_icon, set_workspace_label,
+    set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
+    set_workspace_priority_dismissed, set_workspace_snoozed_until, update_workspace_state,
+    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
+    WorkspaceViewedObservation,
 };
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
@@ -112,6 +115,18 @@ pub struct SessionMoveResult {
 pub struct WorkspaceArchiveResult {
     pub workspace: WorkspaceSummary,
     pub recovery_path: Option<String>,
+}
+
+/// What an archive does with an isolated workspace's checkout once every
+/// process in it has stopped.
+enum ArchiveDisposition {
+    /// Move the checkout into recovery storage. The chat goes to the
+    /// Archived section.
+    Retain,
+    /// Delete the checkout, because its PR merged at `merged_head`. Only a
+    /// checkout whose HEAD the merge already contains is removed. The chat
+    /// stays in its sidebar section.
+    RemoveMergedCheckout { merged_head: String },
 }
 
 impl std::ops::Deref for WorkspaceArchiveResult {
@@ -1872,18 +1887,75 @@ impl WorkspaceService {
         self: &Arc<Self>,
         input: WorkspacesArchiveInput,
     ) -> ArgmaxResult<WorkspaceArchiveResult> {
-        let workspace_id = input.workspace_id.as_str().to_string();
+        self.archive_with(
+            input.workspace_id.as_str().to_string(),
+            input.force.unwrap_or(false),
+            ArchiveDisposition::Retain,
+        )
+        .await
+    }
+
+    /// Ends an isolated workspace whose PR merged at `merged_head` and
+    /// deletes its checkout, keeping the chat in its sidebar section. Never
+    /// forced: a checkout with uncommitted changes, or with a HEAD the merge
+    /// does not contain, returns to `kept` with its files in place. The
+    /// branch is left to PR cleanup.
+    pub async fn remove_merged_checkout(
+        self: &Arc<Self>,
+        workspace_id: &str,
+        merged_head: &str,
+    ) -> ArgmaxResult<WorkspaceArchiveResult> {
+        self.archive_with(
+            workspace_id.to_string(),
+            false,
+            ArchiveDisposition::RemoveMergedCheckout {
+                merged_head: merged_head.to_string(),
+            },
+        )
+        .await
+    }
+
+    async fn archive_with(
+        self: &Arc<Self>,
+        workspace_id: String,
+        force: bool,
+        disposition: ArchiveDisposition,
+    ) -> ArgmaxResult<WorkspaceArchiveResult> {
         let prior = {
             let connection = self.database.connection();
             find_workspace_by_id(&connection, &workspace_id)?
         };
         if prior.state == "archived" {
+            // Archiving a merged chat whose checkout is already gone only
+            // moves it from its sidebar section to the Archived section.
+            let workspace = if prior.checkout_removed_at.is_some()
+                && matches!(disposition, ArchiveDisposition::Retain)
+            {
+                let workspace = {
+                    let connection = self.database.connection();
+                    clear_workspace_checkout_removed(&connection, &workspace_id)?
+                };
+                self.publish(DashboardDelta {
+                    workspaces: vec![workspace.clone()],
+                    ..DashboardDelta::default()
+                });
+                workspace
+            } else {
+                prior
+            };
             return Ok(WorkspaceArchiveResult {
-                recovery_path: self.existing_archive_recovery_path(&prior),
-                workspace: prior,
+                recovery_path: self.existing_archive_recovery_path(&workspace),
+                workspace,
             });
         }
-        let force = input.force.unwrap_or(false);
+        if prior.shared_workspace
+            && matches!(disposition, ArchiveDisposition::RemoveMergedCheckout { .. })
+        {
+            return Err(ArgmaxError::service(
+                "WORKSPACE_SHARED_CHECKOUT",
+                "A shared checkout is not Argmax's to remove.",
+            ));
+        }
         let recovery_path = if prior.shared_workspace {
             None
         } else {
@@ -2117,22 +2189,7 @@ impl WorkspaceService {
                     }
                 };
                 if !recheck.trim().is_empty() {
-                    let kept = {
-                        let connection = self.database.connection();
-                        update_workspace_state(&connection, &workspace_id, "kept")?
-                    };
-                    self.publish(DashboardDelta {
-                        workspaces: vec![kept.clone()],
-                        ..DashboardDelta::default()
-                    });
-                    if let Err(error) = super::watcher::watch_during_archive(self, &workspace_id) {
-                        tracing::warn!(workspace_id = %workspace_id, ?error, "failed to restore watcher after dirty archive refusal");
-                    }
-                    lease.finish(ArchiveOutcome::Reopened);
-                    return Ok(WorkspaceArchiveResult {
-                        workspace: kept,
-                        recovery_path: None,
-                    });
+                    return self.keep_after_declined_archive(&workspace_id, lease);
                 }
             }
         }
@@ -2187,6 +2244,11 @@ impl WorkspaceService {
         }
 
         let active_path = Path::new(&workspace.path);
+        if let ArchiveDisposition::RemoveMergedCheckout { merged_head } = &disposition {
+            return self
+                .finish_merged_checkout_removal(&workspace, &project.repo_path, merged_head, lease)
+                .await;
+        }
         if active_path.exists() {
             if recovery_path.exists() {
                 self.mark_archive_failed(&workspace_id);
@@ -2275,6 +2337,159 @@ impl WorkspaceService {
                 .exists()
                 .then(|| recovery_path.display().to_string()),
             workspace: archived,
+        })
+    }
+
+    /// The last step of `remove_merged_checkout`, after every process in the
+    /// checkout has stopped and its tree was found clean: delete the checkout
+    /// and mark the row. A HEAD the merge does not contain means work after
+    /// the merge, so that checkout is kept instead.
+    async fn finish_merged_checkout_removal(
+        self: &Arc<Self>,
+        workspace: &WorkspaceSummary,
+        repo_path: &str,
+        merged_head: &str,
+        lease: WorkspaceArchiveLease,
+    ) -> ArgmaxResult<WorkspaceArchiveResult> {
+        let workspace_id = workspace.id.as_str();
+        let checkout = Path::new(&workspace.path);
+        if checkout.exists() {
+            // GitHub's merged head is missing locally when the branch moved
+            // on GitHub ("Update branch", a suggestion committed there).
+            // Fetch it; if that fails, the check below keeps the checkout.
+            let present = run_git_text_with_allowed_exit_codes(
+                checkout,
+                ["cat-file", "-e", &format!("{merged_head}^{{commit}}")],
+                &[1, 128],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await
+            .is_ok_and(|exit| exit.exit_code == 0);
+            if !present {
+                if let Err(error) = run_git_text(
+                    checkout,
+                    ["fetch", "origin", merged_head],
+                    GIT_DEFAULT_TIMEOUT,
+                )
+                .await
+                {
+                    tracing::info!(
+                        workspace_id,
+                        merged_head,
+                        ?error,
+                        "merge cleanup: could not fetch the merged head"
+                    );
+                }
+            }
+            // Exit 128: the merged head is still unknown here, so whether the
+            // merge contains HEAD cannot be proven.
+            let contained = run_git_text_with_allowed_exit_codes(
+                checkout,
+                ["merge-base", "--is-ancestor", "HEAD", merged_head],
+                &[1, 128],
+                Duration::from_millis(GIT_TIMEOUT_MS),
+            )
+            .await;
+            match contained {
+                Ok(exit) if exit.exit_code == 0 => {}
+                Ok(_) => {
+                    tracing::info!(
+                        workspace_id,
+                        merged_head,
+                        "merge cleanup: kept the checkout, its HEAD is not in the merged PR"
+                    );
+                    return self.keep_after_declined_archive(workspace_id, lease);
+                }
+                Err(error) => {
+                    self.mark_archive_failed(workspace_id);
+                    lease.finish(ArchiveOutcome::Failed);
+                    return Err(error);
+                }
+            }
+            // No `--force`: Git refuses a tree with changes the status read
+            // above missed, which keeps the files instead of losing them.
+            let removed = {
+                let _registry = lock_worktree_registry(Path::new(repo_path)).await;
+                run_git_text(
+                    Path::new(repo_path),
+                    &["worktree", "remove", workspace.path.as_str()],
+                    Duration::from_millis(GIT_TIMEOUT_MS),
+                )
+                .await
+            };
+            if let Err(error) = removed {
+                self.mark_archive_failed(workspace_id);
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(invalid_workspace(
+                    format!("Could not remove the merged worktree. {error}"),
+                    "Review the worktree and archive the chat by hand.",
+                ));
+            }
+        } else {
+            // Same rule as archive: only Git's word that the worktree is gone
+            // completes a removal whose directory has already vanished.
+            let registration =
+                worktree_is_registered(repo_path.to_string(), checkout.to_path_buf()).await;
+            if !matches!(registration, Ok(false)) {
+                self.mark_archive_failed(workspace_id);
+                lease.finish(ArchiveOutcome::Failed);
+                return Err(registration.err().unwrap_or_else(|| {
+                    ArgmaxError::service(
+                        "WORKSPACE_ARCHIVE_INCOMPLETE",
+                        "The worktree path is missing but Git still registers it; the removal was not completed.",
+                    )
+                }));
+            }
+        }
+        let removed = {
+            let connection = self.database.connection();
+            match mark_workspace_checkout_removed(&connection, workspace_id) {
+                Ok(workspace) => workspace,
+                Err(error) => {
+                    drop(connection);
+                    self.mark_archive_failed(workspace_id);
+                    lease.finish(ArchiveOutcome::Failed);
+                    return Err(error);
+                }
+            }
+        };
+        self.publish(DashboardDelta {
+            workspaces: vec![removed.clone()],
+            ..DashboardDelta::default()
+        });
+        lease.finish(ArchiveOutcome::Archived);
+        Ok(WorkspaceArchiveResult {
+            workspace: removed,
+            recovery_path: None,
+        })
+    }
+
+    /// Returns a workspace whose drained checkout an archive declined to
+    /// touch to `kept`, with its watcher back.
+    fn keep_after_declined_archive(
+        self: &Arc<Self>,
+        workspace_id: &str,
+        lease: WorkspaceArchiveLease,
+    ) -> ArgmaxResult<WorkspaceArchiveResult> {
+        let kept = {
+            let connection = self.database.connection();
+            update_workspace_state(&connection, workspace_id, "kept")?
+        };
+        self.publish(DashboardDelta {
+            workspaces: vec![kept.clone()],
+            ..DashboardDelta::default()
+        });
+        if let Err(error) = super::watcher::watch_during_archive(self, workspace_id) {
+            tracing::warn!(
+                workspace_id,
+                ?error,
+                "failed to restore watcher after a declined archive"
+            );
+        }
+        lease.finish(ArchiveOutcome::Reopened);
+        Ok(WorkspaceArchiveResult {
+            workspace: kept,
+            recovery_path: None,
         })
     }
 
@@ -3139,7 +3354,7 @@ fn ensure_scratch_project(
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
-                archive_on_merge: false,
+                merge_cleanup: Default::default(),
                 worktree_location: scratch_root.display().to_string(),
                 setup_command: String::new(),
                 check_commands: Vec::new(),

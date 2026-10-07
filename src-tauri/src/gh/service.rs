@@ -1350,21 +1350,17 @@ fn shell_heredoc_delimiter(line: &str) -> Option<String> {
     if let Some(without_tabs_flag) = rest.strip_prefix('-') {
         rest = without_tabs_flag.trim_start();
     }
-    let (quote, rest) = match rest.as_bytes().first().copied() {
-        Some(b'\'') => (Some('\''), &rest[1..]),
-        Some(b'"') => (Some('"'), &rest[1..]),
-        _ => (None, rest),
-    };
-    let end = rest
-        .char_indices()
-        .find(|(_, character)| match quote {
-            Some(quote) => *character == quote,
-            None => character.is_whitespace() || matches!(*character, ';' | '&' | '|' | ')' | '('),
+    // Quote removal: a script passed as `zsh -lc '…'` writes `<<'EOF'` as
+    // `<<'"'EOF'"'`, so the word is every character up to whitespace or an
+    // operator with the quote characters dropped.
+    let delimiter: String = rest
+        .chars()
+        .take_while(|character| {
+            !character.is_whitespace() && !matches!(*character, ';' | '&' | '|' | ')' | '(')
         })
-        .map(|(index, _)| index)
-        .unwrap_or(rest.len());
-    let delimiter = &rest[..end];
-    (!delimiter.is_empty()).then(|| delimiter.to_owned())
+        .filter(|character| !matches!(*character, '\'' | '"' | '\\'))
+        .collect();
+    (!delimiter.is_empty()).then_some(delimiter)
 }
 
 fn is_shell_command_prefix(prefix: &[&str]) -> bool {
@@ -2034,7 +2030,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: format!("{repo_path}/.worktrees"),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -2872,6 +2868,14 @@ gh pr create --base main --head feature/x --body-file /tmp/pr-body.md 2>&1 | tai
         );
         assert_eq!(
             classify_pr_relationship(Some(create_after_body), 42, 1, &remote),
+            "worked"
+        );
+
+        // Provider shells re-quote the whole script, which turns `<<'EOF'`
+        // into `<<'"'EOF'"'`. The heredoc must still close on `EOF`.
+        let escaped_heredoc = "/bin/zsh -lc 'cat > \"$body_path\" <<'\"'EOF'\"'\nBody mentions gh pr view 99\nEOF\ngh pr create --base main --head feature/x --body-file \"$body_path\"\nexit $?'";
+        assert_eq!(
+            classify_pr_relationship(Some(escaped_heredoc), 42, 1, &remote),
             "worked"
         );
 

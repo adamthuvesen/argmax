@@ -106,6 +106,10 @@ final class ChannelDecodingTests: XCTestCase {
         XCTAssertEqual(balanced.models.map(\.modelId), ["claude-sonnet-5-5", "composer-2"])
         XCTAssertEqual(summary.tiers[0].pricedTurns, 30)
         XCTAssertNil(summary.tiers[2].medianFirstAnswerSeconds)
+        XCTAssertEqual(try XCTUnwrap(summary.tiers[0].costPerMillionTokens), 0.306, accuracy: 0.001)
+        XCTAssertEqual(summary.tiers[0].medianTurnTokens, 1_500_000)
+        // A Mac that predates the field sends no token count.
+        XCTAssertNil(summary.tiers[1].costPerMillionTokens)
     }
 
     // MARK: - activity:summary

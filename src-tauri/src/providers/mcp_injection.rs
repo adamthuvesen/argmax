@@ -103,6 +103,8 @@ pub const PROJECT_SOURCES_INSTRUCTION: &str = "Near the beginning of project wor
 /// session with those tools off must not be told it has a browser.
 pub const DIAGRAM_INSTRUCTION: &str = "A diagram reaches the user as a fenced `mermaid` or `mmd` block in your answer. Argmax draws it as SVG in the transcript, wider than the prose. Prefer mermaid for architecture, sequence, and flow; prefer a Markdown image for a screenshot or a chart already on disk. Keep labels short, use subgraphs for groups, stadium or rounded nodes for architecture, and skip hex `classDef` / `style` colors — Argmax themes the diagram from Light / Dark / accent.";
 
+pub const VISUALIZATION_INSTRUCTION: &str = r#"Interactive HTML reaches the desktop transcript through a standalone reference: visualize{"path":"/absolute/path/chart.html"}. Separate it from prose with blank lines. Save the HTML inside the checkout or ~/.argmax/visualizations. Add "mode":"wide" for an app mockup and an optional "title". Keep files under 1 MB. Argmax supplies an isolated script sandbox, theme variables, and basic styles. Use local interactions. Codex's window.openai and Tweak APIs are unavailable."#;
+
 /// The clause in [`AGENT_TOOLS_INSTRUCTION`] that promises a browser. Cut out
 /// rather than duplicated, so the browser-on text stays the one live copy and
 /// the two spellings cannot drift apart.
@@ -146,7 +148,7 @@ pub fn agent_tools_instruction(browser_tools: bool) -> String {
          session_wait, then session_read.{browser} An image you read lands in your \
          context, not on the user's screen: to show them one, write a Markdown image on \
          its own line — `![what it shows](path)` — {image_source}. Remote `http(s)` \
-         images are drawn as a link, not fetched. {DIAGRAM_INSTRUCTION} {OWN_SHELL_INSTRUCTION} {PROJECT_SOURCES_INSTRUCTION}"
+         images are drawn as a link, not fetched. {DIAGRAM_INSTRUCTION} {VISUALIZATION_INSTRUCTION} {OWN_SHELL_INSTRUCTION} {PROJECT_SOURCES_INSTRUCTION}"
     )
 }
 
@@ -1220,6 +1222,7 @@ mod tests {
     fn agent_tool_instruction_without_browser_still_teaches_mermaid() {
         let instruction = agent_tools_instruction(false);
         assert!(instruction.contains(DIAGRAM_INSTRUCTION));
+        assert!(instruction.contains(VISUALIZATION_INSTRUCTION));
         assert!(!instruction.to_ascii_lowercase().contains("browser"));
     }
 

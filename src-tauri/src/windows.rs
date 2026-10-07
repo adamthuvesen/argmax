@@ -10,7 +10,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use tauri::{
-    AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent,
+    AppHandle, Emitter, Manager, Runtime, Url, WebviewUrl, WebviewWindowBuilder, Window,
+    WindowEvent,
 };
 
 use crate::error::{ArgmaxError, ArgmaxResult};
@@ -71,6 +72,42 @@ impl ChatWindows {
 /// True for the app's own shell windows: main and every torn-off chat.
 pub fn is_chat_window(label: &str) -> bool {
     label == MAIN_WINDOW_LABEL || label.starts_with(CHAT_WINDOW_LABEL_PREFIX)
+}
+
+fn navigation_allowed(label: &str, url: &Url) -> bool {
+    if !is_chat_window(label) {
+        return true;
+    }
+    if url.as_str() == "about:srcdoc" {
+        return true;
+    }
+
+    let app_path = matches!(url.path(), "/" | "/index.html");
+    let app_protocol = url.scheme() == "tauri" && url.host_str() == Some("localhost");
+    let app_host =
+        matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost");
+    let dev_server = cfg!(debug_assertions)
+        && url.scheme() == "http"
+        && matches!(url.host_str(), Some("localhost" | "127.0.0.1"))
+        && url.port() == Some(5173);
+
+    app_path && (app_protocol || app_host || dev_server)
+}
+
+pub fn chat_navigation_guard<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::<R>::new("chat-navigation-guard")
+        .on_navigation(|webview, url| {
+            if navigation_allowed(webview.label(), url) {
+                return true;
+            }
+            tracing::warn!(
+                window = webview.label(),
+                scheme = url.scheme(),
+                "blocked navigation outside the Argmax chat"
+            );
+            false
+        })
+        .build()
 }
 
 /// The app window that last had focus. Menu commands go here: the menu is
@@ -279,5 +316,44 @@ mod tests {
         assert!(is_chat_window("chat-3"));
         assert!(!is_chat_window("browser-abc"));
         assert!(!is_chat_window("browser-popup-user-1"));
+    }
+
+    #[test]
+    fn chat_navigation_allows_only_app_documents_and_srcdoc() {
+        let allowed = [
+            "about:srcdoc",
+            "tauri://localhost/index.html?session=abc",
+            "https://tauri.localhost/index.html?session=abc",
+        ];
+        for raw_url in allowed {
+            assert!(
+                navigation_allowed("main", &Url::parse(raw_url).unwrap()),
+                "{raw_url}"
+            );
+        }
+
+        let blocked = [
+            "about:blank",
+            "data:text/html,attacker",
+            "https://attacker.example/collect",
+            "https://tauri.localhost/attacker.html",
+        ];
+        for raw_url in blocked {
+            assert!(
+                !navigation_allowed("main", &Url::parse(raw_url).unwrap()),
+                "{raw_url}"
+            );
+        }
+
+        if cfg!(debug_assertions) {
+            assert!(navigation_allowed(
+                "chat-1",
+                &Url::parse("http://localhost:5173/index.html").unwrap()
+            ));
+        }
+        assert!(navigation_allowed(
+            "browser-tab",
+            &Url::parse("https://example.com/next").unwrap()
+        ));
     }
 }

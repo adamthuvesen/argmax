@@ -21,7 +21,7 @@ The directory on disk a workspace's `path` points at. Shared by every workspace 
 _Avoid_: Workspace, worktree, repo
 
 **Isolated workspace**:
-A workspace backed by its own `git worktree`, forked onto a branch named by the **branch template** (`argmax/{word}-{id}` unless the project or the app sets another). Archiving one moves its checkout into recoverable storage, retaining its files for 14 days and its branch for good.
+A workspace backed by its own `git worktree`, forked onto a branch named by the **branch template** (`argmax/{word}-{id}` unless the project or the app sets another). Archiving one moves its checkout into recoverable storage, retaining its files for 48 to 72 hours and its branch for good.
 _Avoid_: Worktree workspace, forked workspace
 
 **Shared checkout**:
@@ -63,11 +63,15 @@ The git ref an isolated workspace forked from, and the merge-base used for a bra
 The human-readable name of a workspace, shown on its sidebar row. Auto-titled from the opening prompt, renameable.
 _Avoid_: Title, name, description
 
+**Merge cleanup**:
+The project setting for what a merged PR does to an isolated workspace: nothing, archive it, or remove its checkout and keep the chat listed. Shared checkouts are never touched. `projects.merge_cleanup`.
+_Avoid_: Archive on merge (the old boolean it replaced)
+
 **Keep**:
 Declining to archive a workspace, leaving its checkout live. The resting state after a dirty archive is refused.
 
 **Archive**:
-Ending a workspace: close admission, drain providers, checks, terminals, and pending approvals, then preserve an isolated checkout in the archive location. A shared checkout stays in place.
+Ending a workspace: close admission, drain providers, checks, terminals, and pending approvals, then preserve an isolated checkout in the archive location. A shared checkout stays in place. An archive after a merge can delete the isolated checkout instead; that chat stays in its sidebar section, read-only ([ADR 0014](docs/adr/0014-merged-chats-stay-listed-without-a-checkout.md)).
 _Avoid_: Delete, close, clean up
 
 ### Agents at work
@@ -205,7 +209,7 @@ The message a PR watch sends to its session through the inbox: every new event s
 _Avoid_: PR event, PR alert, PR notification
 
 **PR cleanup**:
-The deterministic git cleanup after a PR merges: delete the remote branch while it still points at the merged head, fast-forward the base where it is checked out, delete an unowned local branch, and prune. Argmax runs it with no model turn. It never archives or hides the chat and keeps its checkout.
+The deterministic git cleanup after a PR merges: delete the remote branch while it still points at the merged head, fast-forward the base where it is checked out, delete an unowned local branch, and prune. Argmax runs it with no model turn. It never archives or hides the chat and keeps its checkout. Merge cleanup set to remove the worktree deletes the checkout first, so PR cleanup can delete the branch.
 _Avoid_: post-merge archive, tidy-up
 
 **Approval**:

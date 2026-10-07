@@ -5,6 +5,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters.js";
+import { remarkVisualizationReferences } from "../lib/visualizationReference.js";
 
 /**
  * Math-enabled markdown, split out of the eager renderer graph.
@@ -31,7 +32,7 @@ export function ChatMathMarkdown({
 }): JSX.Element {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkVisualizationReferences]}
       rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
       urlTransform={urlTransform}
       components={components}

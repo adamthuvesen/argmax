@@ -58,6 +58,38 @@ static LINKED_REPOSITORY_SUMMARY_COLUMNS: phf::Map<&'static str, &'static [&'sta
 const LINKED_REPOSITORY_SUMMARIES: &str =
     "ALTER TABLE project_linked_repos ADD COLUMN summary TEXT;";
 
+// v68 replaces the `archive_on_merge` boolean with a three-way
+// `merge_cleanup` setting, and gives `workspaces` the column that keeps a
+// chat in its sidebar section after Argmax removed its checkout on merge.
+static MERGE_CLEANUP_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &[
+        "branch_template", "check_commands_json", "created_at", "current_branch",
+        "default_branch", "id", "merge_cleanup", "name", "repo_path", "repo_remote_name",
+        "repo_remote_owner", "setup_command", "ui_preferences_json", "updated_at",
+        "worktree_location",
+    ] as &'static [&'static str],
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at", "dirty",
+        "icon", "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path",
+        "pinned", "priority_added_at", "priority_dismissed_at", "project_id",
+        "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto",
+        "updated_at",
+    ] as &'static [&'static str],
+};
+
+// `merge_cleanup` is what a merged PR does to an isolated workspace: 'off',
+// 'archive' (the old `archive_on_merge = 1`), or 'remove-checkout'. A project
+// that had archive on merge keeps it. `checkout_removed_at` is set when Argmax
+// removed an archived workspace's checkout because its PR merged; such a row
+// stays in its sidebar section instead of the Archived section.
+const MERGE_CLEANUP: &str = r#"
+ALTER TABLE projects ADD COLUMN merge_cleanup TEXT NOT NULL DEFAULT 'off'
+  CHECK (merge_cleanup IN ('off', 'archive', 'remove-checkout'));
+UPDATE projects SET merge_cleanup = 'archive' WHERE archive_on_merge = 1;
+ALTER TABLE projects DROP COLUMN archive_on_merge;
+ALTER TABLE workspaces ADD COLUMN checkout_removed_at TEXT;
+"#;
+
 pub static FINITE_GOAL_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "goals" => &[
         "active_elapsed_ms", "active_started_at", "attempt_count", "candidate_snapshot",
@@ -1300,6 +1332,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: LINKED_REPOSITORY_SUMMARIES,
         affected_tables: &["project_linked_repos"],
         expected_columns: &LINKED_REPOSITORY_SUMMARY_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 68,
+        name: "merge_cleanup",
+        up: MERGE_CLEANUP,
+        affected_tables: &["projects", "workspaces"],
+        expected_columns: &MERGE_CLEANUP_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -3180,8 +3220,7 @@ mod tests {
         // projects, sessions, and workspaces gained columns in later
         // migrations, so verify them against the head shapes rather than the
         // v1 EXPECTED_COLUMNS.
-        verify_table_columns(&connection, &WORKSPACE_IMPROVEMENTS_COLUMNS, "projects")
-            .expect("projects");
+        verify_table_columns(&connection, &MERGE_CLEANUP_COLUMNS, "projects").expect("projects");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "sessions").expect("sessions");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "turn_routes")
             .expect("turn_routes");
@@ -3190,7 +3229,7 @@ mod tests {
         for table in ["arcs", "arc_events"] {
             verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, table).expect(table);
         }
-        verify_table_columns(&connection, &WORKSPACE_IMPROVEMENTS_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &MERGE_CLEANUP_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -3346,6 +3385,7 @@ mod tests {
                 ),
                 (66, compute_migration_checksum(PROMPT_AUTHORSHIP)),
                 (67, compute_migration_checksum(LINKED_REPOSITORY_SUMMARIES)),
+                (68, compute_migration_checksum(MERGE_CLEANUP)),
             ]
         );
 
@@ -3443,7 +3483,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &WORKSPACE_IMPROVEMENTS_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &MERGE_CLEANUP_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 
@@ -3658,7 +3698,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: "/tmp/routines-arc-check/.worktrees".to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),

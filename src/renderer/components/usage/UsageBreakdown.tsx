@@ -8,11 +8,13 @@ import {
   formatMetric,
   formatPercent,
   formatTokens,
-  formatUsd
+  formatUsd,
+  formatUsdRate
 } from "./usageFormat.js";
 import {
   isEstimatedProvider,
   isUnpriced,
+  modelDisplayId,
   processedTokens,
   providerLabel,
   shareOfTotal,
@@ -50,7 +52,7 @@ interface BreakdownRow {
 }
 
 /** The columns, in the order they are drawn. */
-type SortColumn = "name" | "sessions" | "primary" | "share" | "secondary";
+type SortColumn = "name" | "sessions" | "primary" | "share" | "secondary" | "rate";
 type SortDirection = "asc" | "desc";
 
 interface SortState {
@@ -70,7 +72,17 @@ function defaultSort(mode: BreakdownMode): SortState {
 
 /** The column a figure in dollars lands in, whichever metric is active. */
 function isCostColumn(column: SortColumn, metric: UsageMetric): boolean {
+  if (column === "rate") return true;
   return metric === "cost" ? column === "primary" || column === "share" : column === "secondary";
+}
+
+/**
+ * Dollars per million tokens processed, cache included: what the row's tokens
+ * cost, whatever its volume. `null` when there is no price or no tokens.
+ */
+function costPerMillionTokens(row: BreakdownRow): number | null {
+  if (row.unpriced || row.tokens <= 0) return null;
+  return (row.costUsd / row.tokens) * 1_000_000;
 }
 
 /**
@@ -79,6 +91,7 @@ function isCostColumn(column: SortColumn, metric: UsageMetric): boolean {
  */
 function columnValue(row: BreakdownRow, column: SortColumn, metric: UsageMetric): number {
   if (column === "sessions") return row.sessions;
+  if (column === "rate") return costPerMillionTokens(row) ?? 0;
   if (column === "secondary") return metric === "cost" ? row.tokens : row.costUsd;
   return metric === "cost" ? row.costUsd : row.tokens;
 }
@@ -98,6 +111,11 @@ function sortRows(
     // An unpriced row has no dollar figure at all, so on a cost sort it sits
     // after every row that does — in both directions, never ranked as a $0.
     if (parkUnpriced && a.unpriced !== b.unpriced) return a.unpriced ? 1 : -1;
+    // The same for a row with no tokens to divide by.
+    if (sort.column === "rate") {
+      const aKnown = costPerMillionTokens(a) !== null;
+      if (aKnown !== (costPerMillionTokens(b) !== null)) return aKnown ? -1 : 1;
+    }
     if (sort.column === "name") return direction * compareName(a, b);
     const delta = columnValue(a, sort.column, metric) - columnValue(b, sort.column, metric);
     if (delta !== 0) return direction * delta;
@@ -127,11 +145,13 @@ function modelRows(models: readonly UsageModelRow[]): BreakdownRow[] {
   return models.map((row) => ({
     key: `${row.provider}:${row.modelId}`,
     provider: row.provider,
-    sortName: row.modelId,
+    sortName: modelDisplayId(row.modelId),
     name: (
       <span className="usage-table-model usage-series" data-provider={row.provider}>
         <span className="usage-series-dot" aria-hidden="true" />
-        <span className="usage-table-model-id">{row.modelId}</span>
+        <span className="usage-table-model-id" title={row.modelId}>
+          {modelDisplayId(row.modelId)}
+        </span>
         <span className="usage-table-model-provider">{providerLabel(row.provider)}</span>
       </span>
     ),
@@ -162,12 +182,14 @@ function dayRows(days: readonly UsageDayRow[], summary: UsageSummary): Breakdown
 function SortHeader({
   column,
   label,
+  title,
   numeric,
   sort,
   onSort
 }: {
   column: SortColumn;
   label: string;
+  title?: string;
   numeric?: boolean;
   sort: SortState;
   onSort: (column: SortColumn) => void;
@@ -178,6 +200,7 @@ function SortHeader({
       scope="col"
       className={numeric ? "usage-table-num" : undefined}
       aria-sort={ariaSort(column, sort)}
+      title={title}
     >
       <button
         type="button"
@@ -239,6 +262,8 @@ export function UsageBreakdown({
   const hiddenSessions = hidden.reduce((sum, row) => sum + row.sessions, 0);
   const hiddenTokens = hidden.reduce((sum, row) => sum + row.tokens, 0);
   const hiddenCost = hidden.reduce((sum, row) => (row.unpriced ? sum : sum + row.costUsd), 0);
+  // The tail's rate divides its priced dollars by its priced tokens only.
+  const hiddenPricedTokens = hidden.reduce((sum, row) => (row.unpriced ? sum : sum + row.tokens), 0);
   const hiddenPrimary = metric === "cost" ? hiddenCost : hiddenTokens;
   const countLabel =
     visible.length === sorted.length
@@ -291,6 +316,14 @@ export function UsageBreakdown({
                   sort={sort}
                   onSort={onSort}
                 />
+                <SortHeader
+                  column="rate"
+                  label="$ / 1M"
+                  title="Cost per million tokens processed, cache included"
+                  numeric
+                  sort={sort}
+                  onSort={onSort}
+                />
               </tr>
             </thead>
             <tbody>
@@ -300,6 +333,7 @@ export function UsageBreakdown({
                 const excluded = metric === "cost" && row.unpriced;
                 const share = excluded ? null : shareOfTotal(primary, shareTotal);
                 const estimated = isEstimatedProvider(row.provider);
+                const rate = costPerMillionTokens(row);
                 return (
                   <tr key={row.key} className="usage-series" data-provider={row.provider}>
                     <th scope="row">{row.name}</th>
@@ -326,6 +360,9 @@ export function UsageBreakdown({
                           ? "—"
                           : approximately(formatUsd(secondary), estimated)}
                     </td>
+                    <td className="usage-table-num">
+                      {rate === null ? "—" : approximately(formatUsdRate(rate), estimated)}
+                    </td>
                   </tr>
                 );
               })}
@@ -345,10 +382,15 @@ export function UsageBreakdown({
                     <td className="usage-table-num">
                       {metric === "cost" ? formatTokens(hiddenTokens) : formatUsd(hiddenCost)}
                     </td>
+                    <td className="usage-table-num">
+                      {hiddenPricedTokens > 0
+                        ? formatUsdRate((hiddenCost / hiddenPricedTokens) * 1_000_000)
+                        : "—"}
+                    </td>
                   </tr>
                 ) : null}
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <button
                       type="button"
                       className="usage-table-toggle"

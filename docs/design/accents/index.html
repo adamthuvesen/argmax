@@ -139,7 +139,7 @@
          the script below so the mockup can never drift from the shipped file. -->
     <script>
       (async () => {
-        const css = await (await fetch("/src/renderer/styles/tokens.css")).text();
+        const css = await (await fetch("/src/renderer/styles/tokens.css?direct")).text();
         const theme = new URLSearchParams(location.search).get("theme");
         if (!theme) return;
         // Lift every `:root[...][data-accent="x"] { … }` block onto `.cell[data-accent="x"]`,
@@ -166,7 +166,7 @@
       /* The values shipped before 2026-09-12, for `?set=previous`. Only the
          tokens that moved are listed; everything else reads the live file. */
       const PREVIOUS_LIGHT = `
-        .cell[data-accent="orange"] { --accent: #b15810; --accent-soft: #fff0e2; --accent-deep: #934308; }
+        .cell[data-accent="orange"] { --accent: #b15810; --accent-soft: #fff0e2; --accent-deep: #934308; --user-message-bg: var(--accent); --user-message-fg: #ffffff; }
         .cell[data-accent="blue"]   { --accent: #446b95; --accent-soft: #e8eef5; --accent-deep: #305176; }
         .cell[data-accent="coral"]  { --accent: #a35450; --accent-soft: #f6eae8; --accent-deep: #803b38; }
       `;

@@ -140,8 +140,11 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
         expect(contrast(readHex(palette, "accent"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
         expect(contrast(readHex(palette, "accent-deep"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
       }
-      const bubble = readHex(palette, theme === "dark" ? "user-message-bg" : "accent");
-      expect(contrast("#ffffff", bubble)).toBeGreaterThanOrEqual(4.5);
+      const bubble = readHex(palette, palette.includes("--user-message-bg:") ? "user-message-bg" : "accent");
+      const bubbleInk = palette.includes("--user-message-fg:")
+        ? readHex(palette, "user-message-fg")
+        : readHex(base, "bubble-on-ink");
+      expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4.5);
       if (theme === "dark") {
         expect(luminance(bubble)).toBeLessThan(luminance(readHex(palette, "accent")));
       }

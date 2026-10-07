@@ -17,8 +17,17 @@ semantic chips the tint must never be confused with (rose, amber, sage), and
 the soft / accent / deep steps as bare swatches.
 
 `?set=previous` overlays the values shipped before 2026-09-12 so the two can
-be flicked between. `previous.png` and `shipped.png` are those two captures
+be compared. `previous.png` and `shipped.png` are the historical September captures
 (`scripts/ui-screenshot.mjs --url … --width 1920 --height 960`).
+
+## Update (2026-10-07)
+
+The user requested vivid orange on paper and a brighter, stronger purple.
+Light purple now uses `#8650d4` with white bubble ink.
+Light orange uses `#ff8308` for bubbles and `#3b210f` for bubble ink.
+Orange chrome uses `#b94c00` so small accent text stays readable on paper.
+The light soft and deep steps follow each new hue. Dark values stay unchanged.
+The live comparison reads these tokens. The September ladder below records the earlier decision.
 
 ## Decision (2026-09-12)
 
@@ -59,7 +68,7 @@ What that fixed:
 - The Settings list carried a neutral swatch (`#2f2f2b`) that matched no
   token; it now shows the accent it applies.
 
-## Ladder
+## September ladder
 
 | accent | light `--accent` | light `--accent-deep` | dark `--accent` | dark `--accent-deep` | dark bubble |
 | --- | --- | --- | --- | --- | --- |
@@ -72,8 +81,8 @@ What that fixed:
 | coral | `#944b3e` L.50 C.100 H32 | `#753428` | `#d18e82` L.71 | `#e2a79c` L.78 | `#7d453a` L.46 |
 
 Floors, pinned by `accentTokens.test.ts`: accent and deep ≥ 4.5:1 on `--bg`,
-`--sidebar`, `--panel`; white on every bubble ≥ 4.5:1 (orange 4.9, the rest
-≥ 5.5); dark bubbles darker than their accent.
+`--sidebar`, `--panel`; actual foreground on every bubble ≥ 4.5:1;
+dark bubbles darker than their accent.
 
 The phone keeps its own accent table in `ios/Argmax/Sources/Design/Theme.swift`
 and re-derives from its ground, so it is not a mirror of these values.

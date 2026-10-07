@@ -328,10 +328,9 @@
   --overlay-panel-raised: var(--panel-sunken);
   --selection-bg: color-mix(in oklab, var(--accent) 24%, transparent);
   --bubble-on-ink: #ffffff;
-  /* User message bubbles fill with the active accent. Light accents are
-     mid-tone, so white ink from --bubble-on-ink is the readable pair. Dark
-     overrides the fill on --user-message-bg so chrome --accent can stay
-     lifted. */
+  /* User message bubbles follow the accent unless a palette needs a separate
+     fill and ink. Bright orange uses dark ink in light. Dark palettes keep
+     chrome lifted while their bubble fills stay deeper. */
   --user-message-bg: var(--accent);
   --user-message-fg: var(--bubble-on-ink);
   --user-message-shadow: none;
@@ -770,9 +769,9 @@
    stay on --sage, --amber, --rose, and the diff tokens so code additions
    remain green. */
 :root[data-accent="purple"] {
-  --accent: #70558f;
-  --accent-soft: #eee9f3;
-  --accent-deep: #553b73;
+  --accent: #8650d4;
+  --accent-soft: #f1e9fc;
+  --accent-deep: #6833b4;
 }
 
 :root[data-accent="neutral"] {
@@ -782,9 +781,12 @@
 }
 
 :root[data-accent="orange"] {
-  --accent: #a35300;
-  --accent-soft: #faece0;
-  --accent-deep: #8b4500;
+  --accent: #b94c00;
+  --accent-soft: #fff0e1;
+  --accent-deep: #9d3f00;
+  /* The vivid fill needs dark ink. Chrome keeps a deeper orange for text. */
+  --user-message-bg: #ff8308;
+  --user-message-fg: #3b210f;
 }
 
 :root[data-accent="teal"] {

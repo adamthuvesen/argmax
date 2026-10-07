@@ -37,8 +37,8 @@ export const ACCENT_OPTIONS: AccentOption[] = [
   {
     id: "purple",
     label: "Purple",
-    hint: "A soft purple accent for chrome.",
-    swatch: { color: "#70558f", soft: "#eee9f3" }
+    hint: "A vivid purple accent for chrome.",
+    swatch: { color: "#8650d4", soft: "#f1e9fc" }
   },
   {
     id: "neutral",
@@ -56,7 +56,7 @@ export const ACCENT_OPTIONS: AccentOption[] = [
     id: "orange",
     label: "Orange",
     hint: "A warm orange accent for chrome without changing warnings or diffs.",
-    swatch: { color: "#af5b00", soft: "#faece0" }
+    swatch: { color: "#ff8308", soft: "#fff0e1" }
   },
   {
     id: "blue",

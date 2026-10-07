@@ -94,15 +94,13 @@ retains its exact colors.
   bubbles read `--user-message-bg` / `--user-message-fg`: in dark,
   green/purple/orange/blue/coral/neutral use a deeper fill with white ink so `--accent` can stay
   lifted for chrome. Black fills the bubble with the cream accent and charcoal ink.
-  - Teal, purple, orange, blue, and coral use restrained saturation with deeper accents on paper and
-    lifted accents on charcoal. Dark message fills stay separate from small highlights. Appearance
-    swatches follow the theme. The family shares one OKLCH lightness per role (light accents L 0.50,
-    dark accents L 0.71, dark bubbles L 0.44–0.47, deeps a step past the accent in each theme's
-    contrast direction, green's dark deep included) and varies only chroma and hue, so no tint is
-    the loud column. Orange is the one exception: at the family lightness it is brown, so it runs at
-    the top of the sRGB orange gamut (L 0.56 on paper, white ink at 4.9:1) and is allowed to be the
-    warmest column; coral sits at hue 32, a step off rose, so a coral bubble and a failed check
-    never share a colour. The seven are compared side by side in `docs/design/accents`. This follows
+  - Teal, blue, and coral use restrained saturation. Light purple uses a brighter violet
+    (`#8650d4`) with white bubble ink. Light orange separates readable chrome (`#b94c00`)
+    from a vivid bubble fill (`#ff8308`) with dark ink (`#3b210f`). Dark message fills
+    stay separate from small highlights. Appearance swatches follow the theme.
+    Accent text, deep text, and bubble ink must retain their contrast floors.
+    Coral stays distinct from error rose. The accents are compared side by side in
+    `docs/design/accents`. This follows
     the role separation in [Radix
     Colors](https://www.radix-ui.com/colors/docs/palette-composition/understanding-the-scale) and
     [Atlassian color tokens](https://atlassian.design/foundations/color).

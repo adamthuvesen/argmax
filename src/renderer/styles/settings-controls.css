@@ -247,7 +247,7 @@
 }
 
 .accent-picker-chip[data-accent-id="purple"] {
-  --accent-swatch-color: #70558f;
+  --accent-swatch-color: #8650d4;
 }
 
 .accent-picker-chip[data-accent-id="neutral"] {
@@ -263,7 +263,7 @@
 }
 
 .accent-picker-chip[data-accent-id="orange"] {
-  --accent-swatch-color: #af5b00;
+  --accent-swatch-color: #ff8308;
 }
 
 .accent-picker-chip[data-accent-id="teal"] {

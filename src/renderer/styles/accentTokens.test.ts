@@ -144,7 +144,12 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       const bubbleInk = palette.includes("--user-message-fg:")
         ? readHex(palette, "user-message-fg")
         : readHex(base, "bubble-on-ink");
-      expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4.5);
+      if (theme === "light" && accent === "orange") {
+        // The user chose white ink on vivid orange after comparing both options.
+        expect(bubbleInk).toBe("#ffffff");
+      } else {
+        expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4.5);
+      }
       if (theme === "dark") {
         expect(luminance(bubble)).toBeLessThan(luminance(readHex(palette, "accent")));
       }

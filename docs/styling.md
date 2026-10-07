@@ -96,9 +96,10 @@ retains its exact colors.
   lifted for chrome. Black fills the bubble with the cream accent and charcoal ink.
   - Teal, blue, and coral use restrained saturation. Light purple uses a brighter violet
     (`#8650d4`) with white bubble ink. Light orange separates readable chrome (`#b94c00`)
-    from a vivid bubble fill (`#ff8308`) with dark ink (`#3b210f`). Dark message fills
+    from a vivid bubble fill (`#ff8308`) with white ink, chosen after a visual comparison. Dark message fills
     stay separate from small highlights. Appearance swatches follow the theme.
-    Accent text, deep text, and bubble ink must retain their contrast floors.
+    Accent text, deep text, and bubble ink must retain their contrast floors,
+    except for the chosen light orange bubble ink.
     Coral stays distinct from error rose. The accents are compared side by side in
     `docs/design/accents`. This follows
     the role separation in [Radix

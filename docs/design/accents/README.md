@@ -24,7 +24,9 @@ be compared. `previous.png` and `shipped.png` are the historical September captu
 
 The user requested vivid orange on paper and a brighter, stronger purple.
 Light purple now uses `#8650d4` with white bubble ink.
-Light orange uses `#ff8308` for bubbles and `#3b210f` for bubble ink.
+Light orange uses `#ff8308` for bubbles and white bubble ink.
+The user chose white after comparing it with black on the same orange.
+This choice is an explicit exception to the bubble contrast floor.
 Orange chrome uses `#b94c00` so small accent text stays readable on paper.
 The light soft and deep steps follow each new hue. Dark values stay unchanged.
 The live comparison reads these tokens. The September ladder below records the earlier decision.
@@ -81,7 +83,7 @@ What that fixed:
 | coral | `#944b3e` L.50 C.100 H32 | `#753428` | `#d18e82` L.71 | `#e2a79c` L.78 | `#7d453a` L.46 |
 
 Floors, pinned by `accentTokens.test.ts`: accent and deep ≥ 4.5:1 on `--bg`,
-`--sidebar`, `--panel`; actual foreground on every bubble ≥ 4.5:1;
+`--sidebar`, `--panel`; actual foreground on bubbles ≥ 4.5:1, except light orange;
 dark bubbles darker than their accent.
 
 The phone keeps its own accent table in `ios/Argmax/Sources/Design/Theme.swift`

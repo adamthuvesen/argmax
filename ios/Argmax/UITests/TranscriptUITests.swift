@@ -281,6 +281,57 @@ final class TranscriptUITests: XCTestCase {
         openAndClose("View full diagram")
     }
 
+    func testVisualizationReturnsToItsOriginalInlineHeightAndRestoresState() {
+        verifyVisualizationPresentation(viewport: false)
+    }
+
+    func testViewportVisualizationReturnsToItsOriginalInlineHeightAndRestoresState() {
+        verifyVisualizationPresentation(viewport: true)
+    }
+
+    private func verifyVisualizationPresentation(viewport: Bool) {
+        app.terminate()
+        app.launchArguments += ["-scenario-visualization"]
+        if viewport { app.launchArguments.append("-scenario-viewport-visualization") }
+        app.launch()
+        let inline = app.descendants(matching: .any).matching(identifier: "Inline visualization").firstMatch
+        XCTAssertTrue(inline.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Selected 7"].waitForExistence(timeout: 5))
+        let expectedHeight: CGFloat = viewport ? 240 : 180
+        let initialSizing = NSPredicate { _, _ in abs(inline.frame.height - expectedHeight) <= 2 }
+        wait(for: [XCTNSPredicateExpectation(predicate: initialSizing, object: nil)], timeout: 5)
+        let originalHeight = inline.frame.height
+        let variant = viewport ? "viewport" : "short"
+        screenshot("visualization-\(variant)-inline")
+
+        for cycle in 0..<2 {
+            let expandedSelection = 8 + cycle * 2
+            let returnedSelection = expandedSelection + 1
+            app.buttons["Change selection"].tap()
+            XCTAssertTrue(app.staticTexts["Selected \(expandedSelection)"].waitForExistence(timeout: 5))
+            app.buttons["Expand visualization"].tap()
+            let fullScreen = app.descendants(matching: .any).matching(identifier: "Full-screen visualization").firstMatch
+            XCTAssertTrue(fullScreen.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["Selected \(expandedSelection)"].waitForExistence(timeout: 5))
+            let expandedSizing = NSPredicate { _, _ in fullScreen.frame.height > originalHeight + 100 }
+            wait(for: [XCTNSPredicateExpectation(predicate: expandedSizing, object: nil)], timeout: 5)
+            XCTAssertGreaterThan(fullScreen.frame.height, originalHeight + 100)
+            XCTAssertFalse(inline.exists, "The hidden transcript must not retain another live webview")
+            screenshot("visualization-\(variant)-fullscreen-\(cycle)")
+
+            app.buttons["Change selection"].tap()
+            XCTAssertTrue(app.staticTexts["Selected \(returnedSelection)"].waitForExistence(timeout: 5))
+            app.buttons["Close visualization"].tap()
+            XCTAssertTrue(inline.waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["Selected \(returnedSelection)"].waitForExistence(timeout: 5))
+            let restoredSizing = NSPredicate { _, _ in abs(inline.frame.height - originalHeight) <= 2 }
+            wait(for: [XCTNSPredicateExpectation(predicate: restoredSizing, object: nil)], timeout: 5)
+            XCTAssertEqual(inline.frame.height, originalHeight, accuracy: 2)
+            XCTAssertFalse(fullScreen.exists)
+            screenshot("visualization-\(variant)-returned-\(cycle)")
+        }
+    }
+
     private func openAndClose(_ label: String) {
         let button = app.buttons[label]
         for _ in 0..<4 where !button.isHittable {

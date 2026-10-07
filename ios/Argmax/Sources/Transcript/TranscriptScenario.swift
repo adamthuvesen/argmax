@@ -17,6 +17,14 @@ struct TranscriptScenario: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        if ProcessInfo.processInfo.arguments.contains("-scenario-visualization") {
+            TranscriptVisualizationScenario()
+        } else {
+            transcript
+        }
+    }
+
+    private var transcript: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 HStack {

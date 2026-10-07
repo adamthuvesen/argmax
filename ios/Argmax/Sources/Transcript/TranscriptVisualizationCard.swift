@@ -20,10 +20,13 @@ struct TranscriptVisualizationCard: View {
     @State private var renderedImage: UIImage?
     @State private var failure: String?
     @State private var visible = false
-    @State private var expanded = false
+    @State private var fullScreenOpen = false
+    @State private var switchingSurface = false
+    @State private var pendingFollowUp: String?
     @State private var sourceOpen = false
     @State private var retry = 0
-    @State private var height: CGFloat = 240
+    @State private var inlineHeight: CGFloat = 240
+    @State private var fullScreenHeight: CGFloat = 240
     @State private var followUp: String?
     @State private var externalLink: URL?
     @State private var controls: [TranscriptVisualizationControls] = []
@@ -37,24 +40,81 @@ struct TranscriptVisualizationCard: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        let identity = TranscriptVisualizationLoadIdentity(reference: reference, retry: retry,
-                                                         visible: visible, leaseID: viewers.leases[viewerID])
-        return VStack(alignment: .leading, spacing: Spacing.snug) {
-            HStack {
-                Text(title).typeSubtitle(weight: .semibold)
-                Spacer(minLength: 0)
-                Button { expanded.toggle() } label: {
-                    Image(systemName: expanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                        .typeSymbol(.footnote).frame(width: 44, height: 44)
-                }.accessibilityLabel(expanded ? "Collapse visualization" : "Expand visualization")
-                Menu {
-                    Button("View source", systemImage: "chevron.left.forwardslash.chevron.right") { sourceOpen = true }
-                    Button("Export", systemImage: "square.and.arrow.up") { Task { await export() } }
-                        .disabled(loaded == nil || exporting)
-                    Button("Reload", systemImage: "arrow.clockwise") { retry += 1 }
-                } label: {
-                    Image(systemName: "ellipsis").typeSymbol(.footnote).frame(width: 44, height: 44)
-                }.accessibilityLabel("Visualization actions")
+        let identity = loadIdentity
+        return content(fullScreen: false)
+            .padding(Spacing.snug)
+            .background(Theme.raised, in: .rect(cornerRadius: Radius.card))
+            .onAppear {
+                visible = true
+                if format != "image" && loaded?.artifact.format != "image" { viewers.activate(viewerID) }
+            }
+            .onDisappear {
+                visible = false
+                // A cover can hide the transcript. The active full-screen surface
+                // retains this card's lease until it closes.
+                guard !fullScreenOpen, !switchingSurface else { return }
+                viewers.release(viewerID)
+                let previous = host
+                Task {
+                    await previous?.flushState()
+                    if host === previous { host = nil }
+                }
+            }
+            .task(id: identity) {
+                guard !fullScreenOpen else { return }
+                await load(identity)
+            }
+            .fullScreenCover(isPresented: $fullScreenOpen, onDismiss: restoreInline) {
+                NavigationStack {
+                    GeometryReader { geometry in
+                        ScrollView {
+                            content(fullScreen: true, viewportHeight: max(120, geometry.size.height - 2 * Spacing.snug))
+                                .padding(Spacing.snug)
+                        }
+                    }
+                    .background(Theme.ground)
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Done") { Task { await dismissFullScreen() } }
+                                .disabled(switchingSurface)
+                                .accessibilityLabel("Close visualization")
+                        }
+                        ToolbarItem(placement: .topBarTrailing) { actions }
+                    }
+                }
+                .interactiveDismissDisabled()
+                .task(id: identity) {
+                    guard fullScreenOpen else { return }
+                    await load(identity)
+                }
+            }
+    }
+
+    private var actions: some View {
+        Menu {
+            Button("View source", systemImage: "chevron.left.forwardslash.chevron.right") { sourceOpen = true }
+            Button("Export", systemImage: "square.and.arrow.up") { Task { await export() } }
+                .disabled(loaded == nil || exporting)
+            Button("Reload", systemImage: "arrow.clockwise") { retry += 1 }
+        } label: {
+            Image(systemName: "ellipsis").typeSymbol(.footnote).frame(width: 44, height: 44)
+        }.accessibilityLabel("Visualization actions")
+    }
+
+    private func content(fullScreen: Bool, viewportHeight: CGFloat = 0) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.snug) {
+            if !fullScreen {
+                HStack {
+                    Text(title).typeSubtitle(weight: .semibold)
+                    Spacer(minLength: 0)
+                    Button { Task { await presentFullScreen() } } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .typeSymbol(.footnote).frame(width: 44, height: 44)
+                    }.accessibilityLabel("Expand visualization").disabled(switchingSurface)
+                    actions
+                }
             }
             if !summary.isEmpty { Text(summary).typeMeta() }
             if let persistenceFailure { Text(persistenceFailure).typeMeta().foregroundStyle(Theme.rose) }
@@ -65,22 +125,30 @@ struct TranscriptVisualizationCard: View {
             } else if let loaded {
                 if loaded.artifact.format == "image", let renderedImage {
                     Image(uiImage: renderedImage).resizable().scaledToFit()
-                        .frame(maxHeight: expanded ? nil : 480).accessibilityLabel(summary.isEmpty ? title : summary)
-                } else if visible, let leaseID = viewers.leases[viewerID], renderedLeaseID == leaseID {
-                    TranscriptVisualizationWeb(document: loaded, client: client, sessionID: sessionID,
-                                               appearance: appearance, height: $height, host: $host,
-                                               onFollowUp: { followUp = $0 }, onLink: { externalLink = $0 },
-                                               onControls: { controls = $0 }, onPersistenceFailure: { persistenceFailure = $0 }, onFailure: { failure = $0 })
-                        .id(retry)
-                        .frame(height: expanded ? max(640, height) : min(480, height))
+                        .frame(maxHeight: fullScreen ? viewportHeight : 480)
                         .accessibilityLabel(summary.isEmpty ? title : summary)
+                } else if !switchingSurface, fullScreen == fullScreenOpen, loadIdentity.visible,
+                          let leaseID = viewers.leases[viewerID], renderedLeaseID == leaseID {
+                    TranscriptVisualizationWeb(document: loaded, client: client, sessionID: sessionID,
+                                               appearance: appearance,
+                                               height: fullScreen ? $fullScreenHeight : $inlineHeight, host: $host,
+                                               onFollowUp: { followUp = $0 }, onLink: { externalLink = $0 },
+                                               onControls: { controls = $0 }, onPersistenceFailure: { persistenceFailure = $0 },
+                                               onFailure: { failure = $0 })
+                        .id(retry)
+                        .frame(height: fullScreen ? viewportHeight : min(480, inlineHeight))
+                        .accessibilityLabel(summary.isEmpty ? title : summary)
+                        .accessibilityIdentifier(fullScreen ? "Full-screen visualization" : "Inline visualization")
                 } else {
-                    if viewers.leases[viewerID] != nil {
-                        ProgressView("Restoring visualization").typeMeta().frame(maxWidth: .infinity, minHeight: 120)
-                    } else {
-                        Button("Activate visualization") { viewers.activate(viewerID, replacing: true) }
-                            .typeChrome().frame(maxWidth: .infinity, minHeight: 120)
-                    }
+                    ZStack {
+                        if viewers.leases[viewerID] != nil || switchingSurface || fullScreenOpen {
+                            ProgressView("Restoring visualization").typeMeta()
+                        } else {
+                            Button("Activate visualization") { viewers.activate(viewerID, replacing: true) }
+                                .typeChrome().frame(minHeight: 44)
+                        }
+                    }.frame(maxWidth: .infinity)
+                        .frame(height: fullScreen ? viewportHeight : min(480, inlineHeight))
                 }
                 if !loaded.artifact.externalDependencies.isEmpty {
                     Text("Some resources require an internet connection.").typeMeta()
@@ -90,8 +158,11 @@ struct TranscriptVisualizationCard: View {
                         Text(followUp).typeStyle(.body).lineLimit(5)
                         HStack {
                             Button("Prepare follow-up") {
-                                if owningComposerSessionID == sessionID { prepareFollowUp?(followUp) }
                                 self.followUp = nil
+                                if fullScreen {
+                                    pendingFollowUp = followUp
+                                    Task { await dismissFullScreen() }
+                                } else if owningComposerSessionID == sessionID { prepareFollowUp?(followUp) }
                             }.disabled(prepareFollowUp == nil || owningComposerSessionID != sessionID)
                             Button("Dismiss") { self.followUp = nil }
                         }.typeChrome().frame(minHeight: 44)
@@ -118,7 +189,7 @@ struct TranscriptVisualizationCard: View {
                             visualizationControl(control)
                         }
                     } label: { Text(group.label).typeChrome() }
-                    .disabled(!visible || viewers.leases[viewerID] == nil || renderedLeaseID != viewers.leases[viewerID])
+                    .disabled(switchingSurface || fullScreen != fullScreenOpen || !loadIdentity.visible || viewers.leases[viewerID] == nil || renderedLeaseID != viewers.leases[viewerID])
                 }
             } else if viewers.leases[viewerID] == nil {
                 Button("Activate visualization") { viewers.activate(viewerID, replacing: true) }
@@ -127,29 +198,13 @@ struct TranscriptVisualizationCard: View {
                 ProgressView("Loading visualization").typeMeta().frame(maxWidth: .infinity, minHeight: 120)
             }
         }
-        .padding(Spacing.snug)
-        .background(Theme.raised, in: .rect(cornerRadius: Radius.card))
-        .onAppear {
-            visible = true
-            if format != "image" && loaded?.artifact.format != "image" { viewers.activate(viewerID) }
-        }
-        .onDisappear {
-            visible = false
-            viewers.release(viewerID)
-            let previous = host
-            Task {
-                await previous?.flushState()
-                if host === previous { host = nil }
-            }
-        }
-        .task(id: identity) { await load(identity) }
-        .sheet(isPresented: $exportOpen, onDismiss: {
+        .sheet(isPresented: Binding(get: { exportOpen && fullScreenOpen == fullScreen }, set: { exportOpen = $0 }), onDismiss: {
             if let exportURL { try? FileManager.default.removeItem(at: exportURL) }
             exportURL = nil
         }) {
             if let exportURL { TranscriptVisualizationShare(file: exportURL) }
         }
-        .sheet(isPresented: $sourceOpen) {
+        .sheet(isPresented: Binding(get: { sourceOpen && fullScreenOpen == fullScreen }, set: { sourceOpen = $0 })) {
             NavigationStack {
                 ScrollView {
                     Text(loaded?.source ?? "Source unavailable").typeStyle(.footnote, mono: true)
@@ -159,6 +214,37 @@ struct TranscriptVisualizationCard: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { sourceOpen = false } } }
             }
         }
+    }
+
+    private func presentFullScreen() async {
+        guard !fullScreenOpen, !switchingSurface else { return }
+        switchingSurface = true
+        let previous = host
+        await previous?.flushState()
+        if host === previous { host = nil }
+        renderedLeaseID = nil
+        if format != "image" && loaded?.artifact.format != "image" { viewers.activate(viewerID, replacing: true) }
+        retry += 1
+        fullScreenOpen = true
+        switchingSurface = false
+    }
+
+    private func dismissFullScreen() async {
+        guard fullScreenOpen, !switchingSurface else { return }
+        switchingSurface = true
+        let previous = host
+        await previous?.flushState()
+        if host === previous { host = nil }
+        renderedLeaseID = nil
+        fullScreenOpen = false
+    }
+
+    private func restoreInline() {
+        switchingSurface = false
+        retry += 1
+        if !visible { viewers.release(viewerID) }
+        if let pendingFollowUp, owningComposerSessionID == sessionID { prepareFollowUp?(pendingFollowUp) }
+        pendingFollowUp = nil
     }
 
     @ViewBuilder private func visualizationControl(_ control: TranscriptVisualizationControls.Control) -> some View {
@@ -213,11 +299,12 @@ struct TranscriptVisualizationCard: View {
     }
 
     private var loadIdentity: TranscriptVisualizationLoadIdentity {
-        .init(reference: reference, retry: retry, visible: visible, leaseID: viewers.leases[viewerID])
+        .init(reference: reference, retry: retry, visible: visible || fullScreenOpen, leaseID: viewers.leases[viewerID])
     }
 
     private func load(_ identity: TranscriptVisualizationLoadIdentity) async {
-        guard identity.visible, identity == loadIdentity, identity.leaseID != nil || format == "image" else { return }
+        guard !switchingSurface, identity.visible, identity == loadIdentity,
+              identity.leaseID != nil || format == "image" || loaded?.artifact.format == "image" else { return }
         let leaseID = identity.leaseID
         failure = nil
         do {

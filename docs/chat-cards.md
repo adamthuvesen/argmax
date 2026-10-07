@@ -41,6 +41,8 @@ blocks API requests, forms, frames, and unapproved resources.
 Both hosts expose theme updates, responsive height, expand, source inspection,
 export, retry, and design controls. Offscreen desktop frames can unmount. Native
 iOS limits live visualization webviews to three and offers activation when needed.
+On iOS, expand opens a full-screen viewer with a separate height measurement.
+Closing reloads saved state and restores the inline card's original height.
 
 `window.openai.widgetState`, `setWidgetState`, and `openai:set_globals` restore
 meaningful interactions. Snapshots stay under 16 KiB. `privateContent` stays out

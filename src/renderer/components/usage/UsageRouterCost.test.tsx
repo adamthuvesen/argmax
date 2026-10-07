@@ -26,8 +26,8 @@ function tier(overrides: Partial<RouterTierCost>): RouterTierCost {
     medianTurnSeconds: null,
     medianFirstAnswerSeconds: null,
     outputTokensPerSecond: null,
-    medianTurnTokens: null,
-    pricedTokens: 0,
+    medianTurnOutputTokens: null,
+    pricedOutputTokens: 0,
     ...overrides
   };
 }
@@ -60,8 +60,8 @@ describe("RouterCostCard", () => {
           medianTurnSeconds: 84.4,
           medianFirstAnswerSeconds: 4.84,
           outputTokensPerSecond: 41.6,
-          medianTurnTokens: 1_500_000,
-          pricedTokens: 16_000_000,
+          medianTurnOutputTokens: 12_000,
+          pricedOutputTokens: 16_000,
           models: [
             { provider: "claude", modelId: "claude-opus-5-5", turns: 4, costUsd: 8, estimated: false }
           ]
@@ -94,9 +94,9 @@ describe("RouterCostCard", () => {
     // Frontier: measured only, so no ≈; $8 over 4 turns.
     expect(within(rows[0]).getByText("$8.00")).toBeInTheDocument();
     expect(within(rows[0]).getByText("$2.00")).toBeInTheDocument();
-    // Usage: median tokens per turn, and $8 over 16M priced tokens is $0.50 per 1M.
-    expect(within(rows[0]).getByText("1.5M")).toBeInTheDocument();
-    expect(within(rows[0]).getByText("$0.50")).toBeInTheDocument();
+    // Usage: median output tokens per turn, and $8 over 16k priced output tokens is $500 per 1M.
+    expect(within(rows[0]).getByText("12k")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("$500.00")).toBeInTheDocument();
     // Medians: minutes past a minute, tenths under ten seconds, a dash with none.
     expect(within(rows[0]).getByText("1m 24s")).toBeInTheDocument();
     // Output tokens per second rounds to a whole number.

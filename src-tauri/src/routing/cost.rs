@@ -46,12 +46,13 @@ pub struct RouterTierCost {
     /// knows: counted, never $0. A turn the model never answered is not
     /// counted anywhere.
     pub unpriced_turns: u32,
-    /// Tokens processed (uncached input, cache reads and writes, output) in
-    /// the priced turns: the denominator of cost per million tokens.
-    pub priced_tokens: u64,
-    /// Median tokens processed per turn, over the turns that recorded usage.
+    /// Output tokens in the priced turns: the denominator of cost per million
+    /// output tokens. Input and cache reads are left out, since they track
+    /// context size rather than work produced.
+    pub priced_output_tokens: u64,
+    /// Median output tokens per turn, over the turns that recorded usage.
     /// `None` when none did.
-    pub median_turn_tokens: Option<f64>,
+    pub median_turn_output_tokens: Option<f64>,
     /// Most turns first.
     pub models: Vec<RouterModelCost>,
     /// Route decisions behind the counted turns, most decisions first.
@@ -63,8 +64,7 @@ pub struct RouterTierCost {
     /// call.
     pub median_first_answer_seconds: Option<f64>,
     /// Output tokens per second of turn time: the tier's output tokens over the
-    /// turn seconds of the turns that reported output. `None` when no turn did
-    /// (Cursor's output is estimated, so it never counts).
+    /// turn seconds of the turns that reported output. `None` when no turn did.
     pub output_tokens_per_second: Option<f64>,
 }
 
@@ -190,9 +190,8 @@ struct RouteTurn {
     first_answer_at: Option<String>,
     has_usage: bool,
     cost: TurnCost,
-    /// Tokens processed across the turn's calls, priced or not.
-    tokens: u64,
-    /// Output tokens the provider reported; 0 for Cursor's estimated calls.
+    /// Output tokens across the turn's calls, priced or not. Cursor's are the
+    /// transcript estimate.
     output_tokens: u64,
     unknown_usage: bool,
 }
@@ -206,7 +205,6 @@ impl RouteTurn {
             first_answer_at: None,
             has_usage: false,
             cost: None,
-            tokens: 0,
             output_tokens: 0,
             unknown_usage: false,
         }
@@ -216,9 +214,8 @@ impl RouteTurn {
         self.first_answer_at.is_some() || self.has_usage
     }
 
-    fn add_usage(&mut self, cost: TurnCost, tokens: u64, output_tokens: u64) {
+    fn add_usage(&mut self, cost: TurnCost, output_tokens: u64) {
         self.has_usage = true;
-        self.tokens += tokens;
         self.output_tokens += output_tokens;
         match cost {
             Some(usd) if !self.unknown_usage => {
@@ -422,7 +419,7 @@ struct TierTally {
     chats: HashSet<String>,
     turn_seconds: Vec<f64>,
     first_answer_seconds: Vec<f64>,
-    turn_tokens: Vec<f64>,
+    turn_output_tokens: Vec<f64>,
     /// Output tokens and turn seconds of the timed turns that reported output.
     output_tokens: u64,
     output_seconds: f64,
@@ -440,8 +437,8 @@ impl TierTally {
                 measured_cost_usd: 0.0,
                 estimated_cost_usd: 0.0,
                 unpriced_turns: 0,
-                priced_tokens: 0,
-                median_turn_tokens: None,
+                priced_output_tokens: 0,
+                median_turn_output_tokens: None,
                 models: Vec::new(),
                 decisions: Vec::new(),
                 median_turn_seconds: None,
@@ -451,7 +448,7 @@ impl TierTally {
             chats: HashSet::new(),
             turn_seconds: Vec::new(),
             first_answer_seconds: Vec::new(),
-            turn_tokens: Vec::new(),
+            turn_output_tokens: Vec::new(),
             output_tokens: 0,
             output_seconds: 0.0,
         }
@@ -507,12 +504,12 @@ impl TierTally {
             match turn.cost {
                 Some(usd) => {
                     route_cost += usd;
-                    tally.priced_tokens += turn.tokens;
+                    tally.priced_output_tokens += turn.output_tokens;
                 }
                 None => tally.unpriced_turns += 1,
             }
-            if turn.tokens > 0 {
-                self.turn_tokens.push(turn.tokens as f64);
+            if turn.output_tokens > 0 {
+                self.turn_output_tokens.push(turn.output_tokens as f64);
             }
         }
         if estimated {
@@ -545,7 +542,7 @@ impl TierTally {
         self.cost.chats = self.chats.len() as u32;
         self.cost.median_turn_seconds = median(self.turn_seconds);
         self.cost.median_first_answer_seconds = median(self.first_answer_seconds);
-        self.cost.median_turn_tokens = median(self.turn_tokens);
+        self.cost.median_turn_output_tokens = median(self.turn_output_tokens);
         if self.output_seconds > 0.0 {
             self.cost.output_tokens_per_second =
                 Some(self.output_tokens as f64 / self.output_seconds);
@@ -685,10 +682,8 @@ fn price_measured_turns(
     for row in rows {
         let (at, model_id, counts, reported) = row.map_err(sqlite_error)?;
         if let Some(index) = turn_index(turns, &at) {
-            let tokens = counts.input + counts.output + counts.cache_read + counts.cache_write;
             turns[index].add_usage(
                 usage_cost(route.provider, &model_id, counts, reported),
-                tokens,
                 counts.output,
             );
         }
@@ -730,11 +725,7 @@ fn price_cursor_turns(
         }
         if let Some(index) = turn_index(turns, &call.created_at) {
             let rate = cursor_rates(&route.model_id, &call.created_at);
-            turns[index].add_usage(
-                rate.map(|rate| rate.cost(call)),
-                call.input + call.cache_read + call.output,
-                0,
-            );
+            turns[index].add_usage(rate.map(|rate| rate.cost(call)), call.output);
         }
     }
 }
@@ -981,8 +972,8 @@ mod tests {
         assert_eq!(balance.median_turn_seconds, Some(15.0));
         assert_eq!(balance.median_first_answer_seconds, Some(3.0));
         // Only turn 1 recorded usage; the others have no tokens to median.
-        assert_eq!(balance.priced_tokens, 1_000);
-        assert_eq!(balance.median_turn_tokens, Some(1_000.0));
+        assert_eq!(balance.priced_output_tokens, 1_000);
+        assert_eq!(balance.median_turn_output_tokens, Some(1_000.0));
         // 1,000 output tokens over turn 1's 20s; turn 2 reported none.
         assert_eq!(balance.output_tokens_per_second, Some(50.0));
     }

@@ -436,21 +436,21 @@ struct RouterTierCost: Codable, Hashable, Sendable, Identifiable {
     /// Output tokens per second of turn time. Nil without reported output, or
     /// from a Mac that predates the field.
     var outputTokensPerSecond: Double?
-    /// Tokens processed in the priced turns, cache included. Nil from a Mac
-    /// that predates the field.
-    var pricedTokens: Int?
-    /// Median tokens processed per turn. Nil without usage, or from a Mac
-    /// that predates the field.
-    var medianTurnTokens: Double?
+    /// Output tokens in the priced turns. Nil from a Mac that predates the
+    /// field.
+    var pricedOutputTokens: Int?
+    /// Median output tokens per turn. Nil without usage, or from a Mac that
+    /// predates the field.
+    var medianTurnOutputTokens: Double?
 
     var id: String { tier }
     var costUsd: Double { measuredCostUsd + estimatedCostUsd }
     var isEstimated: Bool { estimatedCostUsd > 0 }
     var pricedTurns: Int { turns - unpricedTurns }
-    /// Dollars per million tokens processed; nil without priced tokens.
-    var costPerMillionTokens: Double? {
-        guard let pricedTokens, pricedTokens > 0, pricedTurns > 0 else { return nil }
-        return costUsd / Double(pricedTokens) * 1_000_000
+    /// Dollars per million output tokens; nil without priced output.
+    var costPerMillionOutputTokens: Double? {
+        guard let pricedOutputTokens, pricedOutputTokens > 0, pricedTurns > 0 else { return nil }
+        return costUsd / Double(pricedOutputTokens) * 1_000_000
     }
 }
 

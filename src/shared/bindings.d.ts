@@ -2826,15 +2826,16 @@ estimatedCostUsd: number;
  */
 unpricedTurns: number;
 /**
- * Tokens processed (uncached input, cache reads and writes, output) in
- * the priced turns: the denominator of cost per million tokens.
+ * Output tokens in the priced turns: the denominator of cost per million
+ * output tokens. Input and cache reads are left out, since they track
+ * context size rather than work produced.
  */
-pricedTokens: number;
+pricedOutputTokens: number;
 /**
- * Median tokens processed per turn, over the turns that recorded usage.
+ * Median output tokens per turn, over the turns that recorded usage.
  * `None` when none did.
  */
-medianTurnTokens: number | null;
+medianTurnOutputTokens: number | null;
 /**
  * Most turns first.
  */
@@ -2855,8 +2856,7 @@ medianTurnSeconds: number | null;
 medianFirstAnswerSeconds: number | null;
 /**
  * Output tokens per second of turn time: the tier's output tokens over the
- * turn seconds of the turns that reported output. `None` when no turn did
- * (Cursor's output is estimated, so it never counts).
+ * turn seconds of the turns that reported output. `None` when no turn did.
  */
 outputTokensPerSecond: number | null }
 export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; arcId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }

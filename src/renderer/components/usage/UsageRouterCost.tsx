@@ -24,6 +24,11 @@ function formatCost(usd: number, estimated: boolean): string {
   return `${estimated ? "≈" : ""}${formatUsd(usd)}`;
 }
 
+/** A tier with Cursor turns builds its output figures on a transcript estimate. */
+function estimatedMark(tier: RouterTierCost): string {
+  return tier.estimatedCostUsd > 0 ? "≈" : "";
+}
+
 /** Tenths under ten seconds, where first activity usually lands. */
 function formatSeconds(seconds: number | null): string {
   if (seconds === null) return "—";
@@ -179,20 +184,20 @@ const FIGURES: readonly Figure[] = [
   },
   {
     group: "tokens",
-    header: "Per turn",
-    title: "Median tokens processed per turn, cache included",
-    value: (tier) => tier.medianTurnTokens,
-    format: formatTokens
+    header: "Out / turn",
+    title: "Median output tokens per turn; input and cache reads are left out",
+    value: (tier) => tier.medianTurnOutputTokens,
+    format: (value, tier) => `${estimatedMark(tier)}${formatTokens(value)}`
   },
   {
     group: "tokens",
-    header: "$ / 1M",
-    title: "Cost per million tokens processed, cache included",
+    header: "$ / 1M out",
+    title: "Cost per million output tokens, input and cache reads paid for included",
     value: (tier) =>
-      pricedTurnsOf(tier) > 0 && tier.pricedTokens > 0
-        ? (totalCost(tier) / tier.pricedTokens) * 1_000_000
+      pricedTurnsOf(tier) > 0 && tier.pricedOutputTokens > 0
+        ? (totalCost(tier) / tier.pricedOutputTokens) * 1_000_000
         : null,
-    format: (value, tier) => `${tier.estimatedCostUsd > 0 ? "≈" : ""}${formatUsdRate(value)}`
+    format: (value, tier) => `${estimatedMark(tier)}${formatUsdRate(value)}`
   },
   { group: "pace", header: "Turn time", value: (tier) => tier.medianTurnSeconds, format: formatSeconds },
   {
@@ -200,7 +205,7 @@ const FIGURES: readonly Figure[] = [
     header: "Tok / s",
     title: "Output tokens per second of turn time, approval waits excluded",
     value: (tier) => tier.outputTokensPerSecond,
-    format: (value) => (value === null ? "—" : String(Math.round(value)))
+    format: (value, tier) => (value === null ? "—" : `${estimatedMark(tier)}${Math.round(value)}`)
   },
   { group: "pace", header: "Escalations", value: (tier) => tier.escalations, format: formatCount }
 ];

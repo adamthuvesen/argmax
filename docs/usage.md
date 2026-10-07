@@ -94,9 +94,9 @@ for Cursor", from `UsageSummary::estimated_cost_usd` / `estimated_tokens`).
 Below the remaining card, a **Router** card shows what each Auto tier cost in
 the page's window: Frontier, Balance, Speed, Cost, each with the model mix and
 four families of figures. **Volume** is chats and turns, **Spend** is total
-cost and cost per turn, **Tokens** is median tokens per turn and cost per
-million tokens, and **Pace** is median turn time, output tokens per second, and escalations. Each family
-has one hue: the family's name over a thin rule in that hue, and each figure
+cost and cost per turn, **Tokens** is median output tokens per turn and cost per
+million output tokens, and **Pace** is median turn time, output tokens per
+second, and escalations. Each family has one hue: the family's name over a thin rule in that hue, and each figure
 on a tile of it whose tint deepens with the figure's share of the column's
 largest, so tiers compare at a glance and close figures shade close. An
 unknown figure has no tile; a figure with no other tier to compare against,
@@ -153,13 +153,14 @@ hides the card when the read fails or the Mac predates the channel.
   start, clipped at the next route, because final usage can be recorded just
   after completion. A continuation without usage stays unpriced even when
   an earlier turn on the same route has usage.
-- **Tokens are everything the turn processed:** uncached input, cache reads,
-  cache writes and output, summed over the turn's calls. Cursor's are the
-  transcript estimate (no cache writes), so its figures carry the "≈". Tokens
-  per turn is a median over turns that recorded usage, because one long agentic
-  turn would carry a mean. Cost per million tokens is the tier's total cost over
-  the tokens of its *priced* turns, so an unpriced turn is in neither number.
-  Unlike cost per turn, it does not depend on how big the tier's turns are. A
+- **Tokens are output tokens only:** what the model produced, summed over the
+  turn's calls. Input and cache reads track context size, not work, so they
+  are left out (cost still pays for them). Cursor's are the transcript
+  estimate, so a tier with Cursor turns carries the "≈". Out / turn is a median
+  over turns that recorded usage, because one long agentic turn would carry a
+  mean. $ / 1M out is the tier's total cost over the output tokens of its
+  *priced* turns, so an unpriced turn is in neither number. Unlike cost per
+  turn, it does not depend on how big the tier's turns are. A
   Mac that predates the fields shows "—" for both on the iPhone.
 - **Times are medians per tier.** Turn time runs from the send to the turn's
   `session.completed` / `session.cancelled`, less any time an approval waited
@@ -174,7 +175,7 @@ hides the card when the read fails or the Mac predates the channel.
   (approval waits excluded) of the timed turns that reported output, so one
   huge or tiny turn cannot swing it. It is a throughput proxy, not a quality
   measure: a tool-heavy turn still reads slow. Cursor's output is a transcript
-  estimate, so a Cursor-only tier shows "—".
+  estimate, so a tier with Cursor turns carries the "≈".
 - **Each row is priced by its own provider.** A Cursor chat that escalated to
   Claude prices its Claude rows from usage and only its Cursor rows as below.
 - **Cursor is estimated** the way the Usage page estimates it (see

@@ -16,8 +16,8 @@
       "medianTurnSeconds": 94.2,
       "medianFirstAnswerSeconds": 4.6,
       "outputTokensPerSecond": 38.4,
-      "medianTurnTokens": 1500000,
-      "pricedTokens": 31000000
+      "medianTurnOutputTokens": 12000,
+      "pricedOutputTokens": 310000
     },
     {
       "tier": "balanced",

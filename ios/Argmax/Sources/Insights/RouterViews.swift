@@ -99,17 +99,17 @@ struct RouterFigure {
         ) {
             InsightsFormat.routerCost($0, estimated: $1.isEstimated)
         },
-        RouterFigure(family: .tokens, label: "Per turn", value: { $0.medianTurnTokens }) { value, _ in
-            InsightsFormat.compact(value)
+        RouterFigure(family: .tokens, label: "Out / turn", value: { $0.medianTurnOutputTokens }) { value, tier in
+            (tier.isEstimated ? "≈" : "") + InsightsFormat.compact(value)
         },
-        RouterFigure(family: .tokens, label: "$ / 1M", value: { $0.costPerMillionTokens }) {
+        RouterFigure(family: .tokens, label: "$ / 1M out", value: { $0.costPerMillionOutputTokens }) {
             ($1.isEstimated ? "≈" : "") + InsightsFormat.usdRate($0)
         },
         RouterFigure(family: .pace, label: "Turn time", value: { $0.medianTurnSeconds }) { value, _ in
             InsightsFormat.seconds(value)
         },
-        RouterFigure(family: .pace, label: "Tok / s", value: { $0.outputTokensPerSecond }) { value, _ in
-            value.isFinite ? String(Int(value.rounded())) : "—"
+        RouterFigure(family: .pace, label: "Tok / s", value: { $0.outputTokensPerSecond }) { value, tier in
+            value.isFinite ? (tier.isEstimated ? "≈" : "") + String(Int(value.rounded())) : "—"
         },
         RouterFigure(family: .pace, label: "Escalated", value: { Double($0.escalations) }) { value, _ in
             InsightsFormat.compact(value)

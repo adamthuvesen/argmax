@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef, useState, type JSX } from "react";
 import { formatElapsedSeconds } from "../formatElapsed.js";
 import { registerLiveTimer } from "../lib/liveTimer.js";
-import { useReadingWave } from "../lib/readingWave.js";
 import { THINKING_WORDS } from "../lib/thinkingWords.js";
+import { WorkingNest } from "./WorkingNest.js";
 
 /** Below this the count is noise: a normal beat between two tool calls is over
  *  before it would read, and a number that flickers in and out on every short
@@ -85,8 +85,6 @@ export function ThinkingLabel({
   // lifetime rule, clocked off performance.now like the tests that pin it).
   const [mountAnchor] = useState(() => performance.now());
   const elapsedRef = useRef<HTMLSpanElement | null>(null);
-  const streamRef = useRef<HTMLDivElement | null>(null);
-  useReadingWave(streamRef, true, word);
   // Commit phase, as in TurnBlock: the span renders empty and the timer fills
   // it, so a passive effect would paint an empty span first and shift the line.
   useLayoutEffect(() => {
@@ -110,16 +108,15 @@ export function ThinkingLabel({
         ? { "data-leaving": "true", "aria-hidden": true }
         : { "aria-live": "polite" as const, "aria-label": "Thinking" })}
     >
-      {/* The word carries the motion; the seconds stay still, since a band
-          crossing a ticking number jitters. */}
       <div
-        ref={streamRef}
         className="thinking-label-stream"
         data-testid="thinking-label"
-        data-reading-wave="true"
         aria-hidden="true"
       >
-        <span className="thinking-label reading-wave-text">{word}</span>
+        <span className="thinking-mark-slot">
+          <WorkingNest active size={16} phaseKey={phaseKey} />
+        </span>
+        <span className="thinking-label">{word}</span>
         <span className="thinking-elapsed" ref={elapsedRef} />
       </div>
     </article>

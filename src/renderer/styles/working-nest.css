@@ -2,7 +2,7 @@
    by the sidebar's session rows, sub-agent launch rows in the transcript, agent
    tabs, and the agent pane header (components/WorkingNest.tsx).
 
-   Five styles, chosen in Settings → Appearance → Activity mark
+   Eight styles, chosen in Settings → Appearance → Activity mark
    (lib/activityMark.ts) and selected here off `[data-mark]`. They share the box,
    the colours and the landing; only the parts inside differ.
 
@@ -458,6 +458,274 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────── squares
+   Adapted from Nawsome's sliding squares: https://uiverse.io/Nawsome/blue-dragon-70
+   This compact choreography keeps every tile inside a 3x3 field.
+
+   MIT License
+   Copyright (c) 2026 Nawsome
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+   THE SOFTWARE. */
+.working-nest[data-mark="squares"] {
+  --working-nest-cycle: 4s;
+  --working-nest-square-cell: round(down, calc(var(--working-nest-box) * 0.18), 1px);
+  /* A pitch of two tiles keeps adjacent tiles separate while they turn corners. */
+  --working-nest-square-pitch: calc(var(--working-nest-square-cell) * 2);
+  --working-nest-square-inset: calc((var(--working-nest-box) - var(--working-nest-square-pitch) * 2 - var(--working-nest-square-cell)) / 2);
+}
+
+.working-nest[data-mark="squares"] .working-nest-part {
+  left: calc(var(--working-nest-square-inset) + var(--working-nest-square-x) * var(--working-nest-square-pitch));
+  top: calc(var(--working-nest-square-inset) + var(--working-nest-square-y) * var(--working-nest-square-pitch));
+  width: var(--working-nest-square-cell);
+  height: var(--working-nest-square-cell);
+  border-radius: 18%;
+  background: currentColor;
+  opacity: 0.76;
+}
+
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="1"] { --working-nest-square-x: 0; --working-nest-square-y: 0; --working-nest-square-motion: working-nest-square-1; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="2"] { --working-nest-square-x: 1; --working-nest-square-y: 0; --working-nest-square-motion: working-nest-square-2; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="3"] { --working-nest-square-x: 2; --working-nest-square-y: 0; --working-nest-square-motion: working-nest-square-3; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="4"] { --working-nest-square-x: 0; --working-nest-square-y: 1; --working-nest-square-motion: working-nest-square-4; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="5"] { --working-nest-square-x: 1; --working-nest-square-y: 1; --working-nest-square-motion: working-nest-square-5; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="6"] { --working-nest-square-x: 2; --working-nest-square-y: 1; --working-nest-square-motion: working-nest-square-6; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="7"] { --working-nest-square-x: 0; --working-nest-square-y: 2; --working-nest-square-motion: working-nest-square-7; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="8"] { --working-nest-square-x: 1; --working-nest-square-y: 2; --working-nest-square-motion: working-nest-square-8; }
+.working-nest[data-mark="squares"] .working-nest-part[data-dot="9"] { --working-nest-square-x: 2; --working-nest-square-y: 2; --working-nest-square-motion: working-nest-square-9; }
+
+.working-nest[data-mark="squares"] .working-nest-part:is([data-dot="1"], [data-dot="5"]) {
+  background: var(--working-nest-lead, currentColor);
+  opacity: 1;
+}
+
+.working-nest[data-active="true"][data-mark="squares"] .working-nest-part {
+  animation: var(--working-nest-square-motion) var(--working-nest-cycle) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation-play-state: var(--loop-play-state, running);
+  animation-delay: var(--working-nest-phase-offset);
+}
+
+@keyframes working-nest-square-1 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), 0px); }
+  25% { transform: translate(calc(var(--working-nest-square-pitch) * 2), 0px); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * 2), calc(var(--working-nest-square-pitch) * 1)); }
+  50% { transform: translate(calc(var(--working-nest-square-pitch) * 2), calc(var(--working-nest-square-pitch) * 2)); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * 2)); }
+  75% { transform: translate(0px, calc(var(--working-nest-square-pitch) * 2)); }
+  87.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * 1)); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes working-nest-square-2 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), 0px); }
+  25% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * 1)); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * 2)); }
+  50% { transform: translate(0px, calc(var(--working-nest-square-pitch) * 2)); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * 2)); }
+  75% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * 1)); }
+  87.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), 0px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes working-nest-square-3 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * 1)); }
+  25% { transform: translate(0px, calc(var(--working-nest-square-pitch) * 2)); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * 2)); }
+  50% { transform: translate(calc(var(--working-nest-square-pitch) * -2), calc(var(--working-nest-square-pitch) * 2)); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * -2), calc(var(--working-nest-square-pitch) * 1)); }
+  75% { transform: translate(calc(var(--working-nest-square-pitch) * -2), 0px); }
+  87.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), 0px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes working-nest-square-4 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * -1)); }
+  25% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * -1)); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * 2), calc(var(--working-nest-square-pitch) * -1)); }
+  50% { transform: translate(calc(var(--working-nest-square-pitch) * 2), 0px); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * 2), calc(var(--working-nest-square-pitch) * 1)); }
+  75% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * 1)); }
+  87.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * 1)); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes working-nest-square-5 {
+  0%, 100% { transform: scale(0.82); opacity: 0.68; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes working-nest-square-6 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * 1)); }
+  25% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * 1)); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * -2), calc(var(--working-nest-square-pitch) * 1)); }
+  50% { transform: translate(calc(var(--working-nest-square-pitch) * -2), 0px); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * -2), calc(var(--working-nest-square-pitch) * -1)); }
+  75% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * -1)); }
+  87.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * -1)); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes working-nest-square-7 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * -1)); }
+  25% { transform: translate(0px, calc(var(--working-nest-square-pitch) * -2)); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * -2)); }
+  50% { transform: translate(calc(var(--working-nest-square-pitch) * 2), calc(var(--working-nest-square-pitch) * -2)); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * 2), calc(var(--working-nest-square-pitch) * -1)); }
+  75% { transform: translate(calc(var(--working-nest-square-pitch) * 2), 0px); }
+  87.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), 0px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes working-nest-square-8 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), 0px); }
+  25% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * -1)); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * -2)); }
+  50% { transform: translate(0px, calc(var(--working-nest-square-pitch) * -2)); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * -2)); }
+  75% { transform: translate(calc(var(--working-nest-square-pitch) * 1), calc(var(--working-nest-square-pitch) * -1)); }
+  87.5% { transform: translate(calc(var(--working-nest-square-pitch) * 1), 0px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+@keyframes working-nest-square-9 {
+  0% { transform: translate(0px, 0px); }
+  12.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), 0px); }
+  25% { transform: translate(calc(var(--working-nest-square-pitch) * -2), 0px); }
+  37.5% { transform: translate(calc(var(--working-nest-square-pitch) * -2), calc(var(--working-nest-square-pitch) * -1)); }
+  50% { transform: translate(calc(var(--working-nest-square-pitch) * -2), calc(var(--working-nest-square-pitch) * -2)); }
+  62.5% { transform: translate(calc(var(--working-nest-square-pitch) * -1), calc(var(--working-nest-square-pitch) * -2)); }
+  75% { transform: translate(0px, calc(var(--working-nest-square-pitch) * -2)); }
+  87.5% { transform: translate(0px, calc(var(--working-nest-square-pitch) * -1)); }
+  100% { transform: translate(0px, 0px); }
+}
+
+/* ───────────────────────────────────────────────────────────── wave
+   Ten blocks light in mirrored pairs. The quiet track stays visible between
+   pulses. Percentage widths let the same figure expand in the thinking row. */
+.working-nest[data-mark="wave"] {
+  --working-nest-cycle: 2s;
+}
+
+.working-nest[data-mark="wave"] .working-nest-part {
+  left: calc(var(--working-nest-wave-index) * 10% + 1%);
+  top: 27%;
+  width: 8%;
+  height: 46%;
+  border-radius: 0.5px;
+  background: var(--working-nest-rest, currentColor);
+  opacity: 0.4;
+}
+
+.working-nest[data-mark="wave"] .working-nest-part::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--working-nest-lead, currentColor);
+  opacity: 0;
+}
+
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="1"] { --working-nest-wave-index: 0; --working-nest-wave-motion: working-nest-wave-outer; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="2"] { --working-nest-wave-index: 1; --working-nest-wave-motion: working-nest-wave-near-outer; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="3"] { --working-nest-wave-index: 2; --working-nest-wave-motion: working-nest-wave-middle; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="4"] { --working-nest-wave-index: 3; --working-nest-wave-motion: working-nest-wave-near-inner; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="5"] { --working-nest-wave-index: 4; --working-nest-wave-motion: working-nest-wave-inner; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="6"] { --working-nest-wave-index: 5; --working-nest-wave-motion: working-nest-wave-inner; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="7"] { --working-nest-wave-index: 6; --working-nest-wave-motion: working-nest-wave-near-inner; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="8"] { --working-nest-wave-index: 7; --working-nest-wave-motion: working-nest-wave-middle; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="9"] { --working-nest-wave-index: 8; --working-nest-wave-motion: working-nest-wave-near-outer; }
+.working-nest[data-mark="wave"] .working-nest-part[data-dot="10"] { --working-nest-wave-index: 9; --working-nest-wave-motion: working-nest-wave-outer; }
+
+.working-nest[data-active="true"][data-mark="wave"] .working-nest-part {
+  opacity: 1;
+}
+
+.working-nest[data-active="true"][data-mark="wave"] .working-nest-part::after {
+  animation: var(--working-nest-wave-motion) var(--working-nest-cycle) var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+  animation-delay: var(--working-nest-phase-offset);
+}
+
+@keyframes working-nest-wave-outer {
+  0%, 24%, 76%, 100% { opacity: 0.08; }
+  10%, 90% { opacity: 1; }
+}
+
+@keyframes working-nest-wave-near-outer {
+  0%, 32%, 68%, 100% { opacity: 0.08; }
+  18%, 82% { opacity: 1; }
+}
+
+@keyframes working-nest-wave-middle {
+  0%, 12%, 40%, 60%, 88%, 100% { opacity: 0.08; }
+  26%, 74% { opacity: 1; }
+}
+
+@keyframes working-nest-wave-near-inner {
+  0%, 20%, 48%, 52%, 80%, 100% { opacity: 0.08; }
+  34%, 66% { opacity: 1; }
+}
+
+@keyframes working-nest-wave-inner {
+  0%, 28%, 72%, 100% { opacity: 0.08; }
+  42%, 58% { opacity: 1; }
+}
+
+/* ───────────────────────────────────────────────────────────── bars
+   A regular, centred pulse distinguishes these from Meter's uneven bars that
+   rise from a baseline. The middle bar holds the deeper accent. */
+.working-nest[data-mark="bars"] {
+  --working-nest-cycle: 1.2s;
+}
+
+.working-nest[data-mark="bars"] .working-nest-part {
+  top: 10%;
+  width: 20%;
+  height: 80%;
+  border-radius: 999px;
+  background: currentColor;
+  transform: scaleY(0.5);
+  opacity: 0.7;
+}
+
+.working-nest[data-mark="bars"] .working-nest-part[data-dot="1"] { left: 12%; --working-nest-bar-offset: 0s; }
+.working-nest[data-mark="bars"] .working-nest-part[data-dot="2"] { left: 40%; --working-nest-bar-offset: -0.14s; background: var(--working-nest-lead, currentColor); transform: scaleY(0.9); }
+.working-nest[data-mark="bars"] .working-nest-part[data-dot="3"] { left: 68%; --working-nest-bar-offset: -0.28s; transform: scaleY(0.65); }
+
+.working-nest[data-active="true"][data-mark="bars"] .working-nest-part {
+  animation: working-nest-bars var(--working-nest-cycle) var(--ease-in-out) infinite;
+  animation-play-state: var(--loop-play-state, running);
+  animation-delay: calc(var(--working-nest-phase-offset) + var(--working-nest-bar-offset));
+}
+
+@keyframes working-nest-bars {
+  0%, 70%, 100% { transform: scaleY(0.24); opacity: 0.45; }
+  35% { transform: scaleY(1); opacity: 1; }
+}
+
 /* ─────────────────────────────────────────────────────────── landing
    Work ending is the one beat the mark never had: the loop simply stopped and
    the parts were suddenly muted. Now the whole mark takes one short breath —
@@ -537,6 +805,10 @@
 .working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
 .working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
 .working-nest[data-still="true"][data-mark="halo"] .working-nest-part[data-dot="1"] { opacity: 0.9; }
+.working-nest[data-still="true"][data-mark="wave"] .working-nest-part { opacity: 0.65; }
+.working-nest[data-still="true"][data-mark="bars"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
+.working-nest[data-still="true"][data-mark="bars"] .working-nest-part[data-dot="2"] { transform: scaleY(0.9); }
+.working-nest[data-still="true"][data-mark="bars"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
 
 @keyframes working-nest-enter {
   from {
@@ -554,6 +826,7 @@
    on its track, or a bright ring around a fixed core. The accent color carries
    the signal on its own. */
 @media (prefers-reduced-motion: reduce) {
+  .working-nest[data-active="true"],
   .working-nest[data-active="true"] .working-nest-part,
   .working-nest[data-active="true"] .working-nest-part::before,
   .working-nest[data-active="true"] .working-nest-part::after,
@@ -571,4 +844,8 @@
   .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
   .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
   .working-nest[data-active="true"][data-mark="halo"] .working-nest-part[data-dot="1"] { opacity: 0.9; }
+  .working-nest[data-active="true"][data-mark="wave"] .working-nest-part { opacity: 0.65; }
+  .working-nest[data-active="true"][data-mark="bars"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
+  .working-nest[data-active="true"][data-mark="bars"] .working-nest-part[data-dot="2"] { transform: scaleY(0.9); }
+  .working-nest[data-active="true"][data-mark="bars"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
 }

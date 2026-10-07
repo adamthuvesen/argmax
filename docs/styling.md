@@ -328,11 +328,10 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   own, and a phrase reads as content (five such strings had once drifted into five sizes and
   colours). Every shape takes a `label` ("Loading settings", "Loading usage"), because
   `role="status"` is all a screen reader gets and it does not take its name from content — hence the
-  explicit `aria-label`. All of them are built from `.loading-block`: one `--overlay-med` box with
+  explicit `aria-label`. The skeletons are built from `.loading-block`: one `--overlay-med` box with
   one `--overlay-strong` sweep across it, on `transform` so it stays on the compositor, opting into
-  the hidden-document pause like every other loop. That is the app's only loading motion; a second
-  one drawn by hand is how the codebase ended up with two `@keyframes skeleton-shimmer` in different
-  files, where the last in document order silently won for both. A page with a strong shape of its
+  the hidden-document pause like every other loop. LoadingLine uses the selected activity mark.
+  Reuse these components rather than adding another skeleton animation. A page with a strong shape of its
   own draws that shape instead of the generic pane — `.usage-skeleton` lays out total, provider
   tiles, chart, token flow, table in the page's own order, and the chart block is `clip-path`ed into
   a rising silhouette because at 240px a plain rectangle reads as a hole in the page. There is no
@@ -343,20 +342,25 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   intact. A surface that animates out stays mounted through `useMotionPresence`; an anchored popover
   reads `--popover-transform-origin` from `useAnchoredPopover`; and tablists with unequal labels use
   `SlidingTabIndicator` so the indicator follows the selected tab's measured position and width.
-- **The activity mark is one shape with five styles.** Settings → Appearance → Activity mark is a
+- **The activity mark has eight styles.** Settings → Appearance → Activity mark is a
   list picker. Each option carries a live mark as its glyph because the motion is what the user
   chooses. The styles are `nest` (four dots relaying round a 2x2), `cascade` (a wave down a 3x3
   field), `meter` (three bars on unrelated periods), `orbit` (a comet on a track), and `halo` (a
-  still core with a breathing ring). The choice is stored in localStorage and selected off
+  still core with a breathing ring). `squares` slides tiles around a 3x3 field,
+  `wave` pulses ten mirrored cells, and `bars` grows three bars from their centers.
+  Nest remains the default. The choice is stored in localStorage and selected off
   `[data-mark]` in [working-nest.css](../src/renderer/styles/working-nest.css). Every style shares
   the box, the settle, and `--working-nest-lead` / `--working-nest-rest`, so a surface with its own
   identity colour ([agent-emblems.css](../src/renderer/styles/agent-emblems.css),
-  [shell-session-icons.css](../src/renderer/styles/shell-session-icons.css)) keeps tinting all five.
+  [shell-session-icons.css](../src/renderer/styles/shell-session-icons.css)) keeps tinting every style.
   The value lives in a store ([activityMark.ts](../src/renderer/lib/activityMark.ts)) rather than in
   appearance props because the mark renders in about ten leaf components. A caller's `size` arrives
   as `--working-nest-size`. A stylesheet that needs the mark to track a type scale sets
   `--working-nest-size-override`, which is read first because an inline dimension would outrank
-  every rule that tried.
+  every rule that tried. The picker previews run at 24px. Wave widens to 48px there
+  and 40px beside the thinking label so its cells remain distinct. A fixed thinking
+  slot keeps the label still when the style changes. Every style respects reduced motion
+  and the shared loop pause.
 - **Transcript activity icons have one color-mode gate.** Settings → Appearance → Activity icons
   chooses semantic Color, the default, or muted Monochrome. The semantic palette is stable rather
   than following the selected accent: blue for information retrieval across local files and the web,

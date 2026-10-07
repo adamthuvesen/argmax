@@ -211,17 +211,6 @@
   margin-left: var(--thread-inset);
 }
 
-/* Keep the wait slot's height unchanged: the mark is shorter than the label's
-   line box at every supported type size. Only its inline inset changes. */
-.conversation-tail .thinking-label-stream::before {
-  content: "";
-  flex: 0 0 var(--activity-mark-size);
-  width: var(--activity-mark-size);
-  height: 1em;
-  margin-right: calc(var(--space-2) - var(--space-1_5));
-  background: radial-gradient(circle, var(--activity-purple) 2.5px, transparent 3px) center / 100% 100% no-repeat;
-}
-
 /* The wait cue lives outside TurnBlock to preserve scroll height. It joins
    only a live turn whose final visible row is activity. */
 .conversation-content > .turn-block[data-running]:has(+ .conversation-tail > .thinking-indicator) > .turn-block-body:last-child > .turn-body-item[data-activity]:last-child::after {

@@ -36,8 +36,8 @@ describe("<WorkingNest />", () => {
     expect(container.querySelector(".working-nest")).toHaveAttribute("data-phase", expectedPhase);
   });
 
-  it("anchors every animated part to the document timeline", () => {
-    const animations = Array.from({ length: 4 }, () => ({ startTime: 900 }));
+  it.each(["nest", "squares", "wave", "bars"] as const)("anchors every %s part to the document timeline", (markId) => {
+    const animations = Array.from({ length: ACTIVITY_MARK_PART_COUNT[markId] }, () => ({ startTime: 900 }));
     const getAnimations = vi.fn(function (this: Element) {
       const dot = Number(this.getAttribute("data-dot"));
       return [animations[dot - 1]];
@@ -47,9 +47,9 @@ describe("<WorkingNest />", () => {
       value: getAnimations
     });
 
-    render(<WorkingNest active phaseKey="session-alpha" />);
+    render(<WorkingNest active phaseKey="session-alpha" markId={markId} />);
 
-    expect(getAnimations).toHaveBeenCalledTimes(4);
+    expect(getAnimations).toHaveBeenCalledTimes(animations.length);
     // The nest's colour layers are pseudo-element animations, which only a
     // subtree read returns.
     expect(getAnimations).toHaveBeenCalledWith({ subtree: true });
@@ -96,13 +96,13 @@ describe("<WorkingNest />", () => {
     expect(part?.children).toHaveLength(5);
   });
 
-  it("follows the stored style when no override is given", () => {
-    window.localStorage.setItem(ACTIVITY_MARK_STORAGE_KEY, "meter");
+  it.each(["meter", "squares", "wave", "bars"] as const)("restores the stored %s style without an override", (markId) => {
+    window.localStorage.setItem(ACTIVITY_MARK_STORAGE_KEY, markId);
     resetActivityMarkForTests();
 
     const { container } = render(<WorkingNest active />);
 
-    expect(container.querySelector(".working-nest")).toHaveAttribute("data-mark", "meter");
+    expect(container.querySelector(".working-nest")).toHaveAttribute("data-mark", markId);
   });
 
   it("falls back to the nest when the stored style is not one we ship", () => {

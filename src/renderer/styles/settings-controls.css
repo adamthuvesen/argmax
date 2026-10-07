@@ -140,6 +140,39 @@
   white-space: nowrap;
 }
 
+.activity-mark-picker {
+  width: min(240px, 100%);
+  margin-left: auto;
+}
+
+.activity-mark-picker .settings-picker-trigger,
+.project-picker-popover.settings-picker-popover:has(.activity-mark-preview) .project-picker-item {
+  min-height: 40px;
+}
+
+.project-picker-popover.settings-picker-popover:has(.activity-mark-preview) .picker-lead {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 28px;
+}
+
+.project-picker-popover.settings-picker-popover:has(.activity-mark-preview) {
+  max-height: min(360px, 60vh);
+}
+
+.activity-mark-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 28px;
+}
+
+.activity-mark-preview > .working-nest[data-mark="wave"] {
+  width: 48px;
+}
+
 /* Opt-in upward menu for a picker that sits at the bottom edge of its section,
    where a downward menu would cover the next section's copy. Qualified with
    `.project-picker-popover` to outrank the downward default in

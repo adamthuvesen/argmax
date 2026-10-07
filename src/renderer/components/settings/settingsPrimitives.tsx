@@ -472,19 +472,25 @@ export function ActivityMarkPicker({
   inputId?: string;
 }): JSX.Element {
   return (
-    <SettingsListPicker
-      ariaLabel="Activity mark"
-      inputId={inputId}
-      value={value}
-      onChange={onChange}
-      options={ACTIVITY_MARK_OPTIONS.map((option) => ({
-        value: option.id,
-        label: option.label,
-        // Running, not a still frame: the motion is the thing being chosen, and
-        // the static geometry does not show each option's cadence.
-        icon: <WorkingNest active size={14} markId={option.id} />
-      }))}
-    />
+    <div className="activity-mark-picker">
+      <SettingsListPicker
+        ariaLabel="Activity mark"
+        inputId={inputId}
+        portaled
+        value={value}
+        onChange={onChange}
+        options={ACTIVITY_MARK_OPTIONS.map((option) => ({
+          value: option.id,
+          label: option.label,
+          // The motion is the choice, so each preview runs at a readable size.
+          icon: (
+            <span className="activity-mark-preview">
+              <WorkingNest active size={24} markId={option.id} />
+            </span>
+          )
+        }))}
+      />
+    </div>
   );
 }
 

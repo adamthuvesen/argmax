@@ -552,6 +552,28 @@
   user-select: none;
 }
 
+/* A fixed slot keeps the word and timer still when the mark changes. Wave
+   uses the full width so its ten cells remain distinct at chat size. Compact
+   marks stay on the transcript connector's axis. */
+.thinking-mark-slot {
+  --working-nest-size-override: min(16px, calc(var(--text-base) * 1.2));
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 40px;
+  width: 40px;
+  height: var(--working-nest-size-override);
+}
+
+.thinking-mark-slot > .working-nest {
+  margin-inline-start: calc((var(--activity-mark-size) - var(--working-nest-size-override)) / 2);
+}
+
+.thinking-mark-slot > .working-nest[data-mark="wave"] {
+  width: 40px;
+  margin-inline-start: 0;
+}
+
 /* Every transcript activity mark occupies the same type-scale-aware column and
    draws at the same 14px size. The centered wrapper opts icons out of the
    sentence's baseline alignment, so switching activity never moves the mark's

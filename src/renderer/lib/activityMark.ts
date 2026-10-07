@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
  * Appearance → Activity mark.
  *
  * The mark itself is `components/WorkingNest.tsx`, drawn by
- * `styles/working-nest.css`. All five styles share the same box, the same
+ * `styles/working-nest.css`. All styles share the same compact box, the same
  * `--working-nest-lead` / `--working-nest-rest` colours and the same settle
  * behaviour; they differ only in what moves inside.
  *
@@ -27,7 +27,7 @@ import { useSyncExternalStore } from "react";
  * the other CSS-only preferences use, so that the two halves of one settings
  * group are read the same way.
  */
-export type ActivityMarkId = "nest" | "cascade" | "meter" | "orbit" | "halo";
+export type ActivityMarkId = "nest" | "cascade" | "meter" | "orbit" | "halo" | "squares" | "wave" | "bars";
 
 type ActivityMarkOption = {
   id: ActivityMarkId;
@@ -63,6 +63,21 @@ export const ACTIVITY_MARK_OPTIONS: readonly ActivityMarkOption[] = [
     id: "halo",
     label: "Halo",
     hint: "A still core with a softly breathing ring. The quietest mark for a busy sidebar."
+  },
+  {
+    id: "squares",
+    label: "Squares",
+    hint: "Nine tiles slide through a small puzzle, then return to their starting positions."
+  },
+  {
+    id: "wave",
+    label: "Wave",
+    hint: "Ten blocks light inward and outward in a calm, mirrored wave."
+  },
+  {
+    id: "bars",
+    label: "Bars",
+    hint: "Three rounded bars grow from the centre in a soft, staggered rhythm."
   }
 ] as const;
 
@@ -72,7 +87,10 @@ export const ACTIVITY_MARK_PART_COUNT: Record<ActivityMarkId, number> = {
   cascade: 9,
   meter: 3,
   orbit: 1,
-  halo: 2
+  halo: 2,
+  squares: 9,
+  wave: 10,
+  bars: 3
 };
 
 const ACTIVITY_MARK_IDS = new Set<string>(ACTIVITY_MARK_OPTIONS.map((option) => option.id));

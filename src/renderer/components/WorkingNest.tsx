@@ -26,8 +26,10 @@ export const WORKING_NEST_SETTLE_MS = 220;
  * Which shape it takes is Settings → Appearance → Activity mark
  * (`lib/activityMark.ts`): four dots relaying round a 2x2 (`nest`), a wave down
  * a 3x3 field (`cascade`), three bars on unrelated periods (`meter`), a comet
- * on a track (`orbit`), or a still core with a breathing ring (`halo`). Every
- * style is the same box, the same colours and the same settle; only the parts
+ * on a track (`orbit`), a still core with a breathing ring (`halo`), sliding
+ * tiles (`squares`), a mirrored block wave (`wave`), or centred bars (`bars`).
+ * Every style shares the same colours and settle. Wave can use a wider box
+ * in the thinking row and settings preview. Only the parts
  * inside differ. The sequences all live in CSS (`styles/working-nest.css`), so
  * `prefers-reduced-motion` can pin any of them to a still frame. `phaseKey`
  * gives styles a stable job-specific offset when their motion benefits from

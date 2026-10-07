@@ -323,6 +323,8 @@ private struct TranscriptMultitaskDetail: View {
     @State private var loadInFlight = false
     @State private var reloadRequested = false
     @State private var dismissedQuestions: Set<String> = []
+    @State private var following = true
+    @State private var scrollRequest = 0
     @StateObject private var actions: TranscriptInteractionCoordinator
     @FocusState private var composerFocused: Bool
     @EnvironmentObject private var dashboard: DashboardStore
@@ -356,26 +358,47 @@ private struct TranscriptMultitaskDetail: View {
                             .accessibilityLabel("Loading multitask")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if let snapshot {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: Spacing.tight) {
-                                if let displayedFailure {
-                                    Text(displayedFailure)
-                                        .typeStyle(.footnote)
-                                        .foregroundStyle(Theme.rose)
-                                        .accessibilityLabel("Action failed. \(displayedFailure)")
-                                }
-                                ForEach(MobileTranscriptRow.rows(
+                        VStack(spacing: 0) {
+                            if let displayedFailure {
+                                Text(displayedFailure)
+                                    .typeStyle(.footnote)
+                                    .foregroundStyle(Theme.rose)
+                                    .accessibilityLabel("Action failed. \(displayedFailure)")
+                                    .screenGutter()
+                            }
+                            NativeTranscriptList(
+                                items: MobileTranscriptRow.rows(
                                     snapshot.items, detail: detail,
                                     latestTurnIsLive: snapshot.sendContext.isRunning
-                                )) { row in
-                                    MobileTranscriptRowView(row: row) { item in
-                                        detailRow(item, context: snapshot.sendContext)
-                                    }
+                                ),
+                                sessionID: childSessionID,
+                                scrollRequest: scrollRequest,
+                                turnAnchorID: turnAnchorID,
+                                presentationID: String(detail.rawValue),
+                                following: $following
+                            ) { row in
+                                MobileTranscriptRowView(row: row) { item in
+                                    detailRow(item, context: snapshot.sendContext)
                                 }
                             }
                             .environment(\.transcriptWorkspacePath, snapshot.workspacePath)
-                            .screenGutter()
-                            .padding(.vertical, Spacing.row)
+                            .overlay(alignment: .bottom) {
+                                if !following && !snapshot.items.isEmpty {
+                                    Button { scrollRequest += 1 } label: {
+                                        Label {
+                                            Text("Jump to latest").typeStyle(.footnote, weight: .medium)
+                                        } icon: {
+                                            Image(systemName: "arrow.down").typeSymbol(.footnote, weight: .medium)
+                                        }
+                                        .padding(.horizontal, Spacing.row)
+                                        .frame(minHeight: 44)
+                                        .background(Theme.raised, in: .capsule)
+                                        .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+                                    }
+                                    .buttonStyle(PressDim())
+                                    .padding(.bottom, Spacing.snug)
+                                }
+                            }
                         }
                     } else {
                         EmptyState(
@@ -446,6 +469,13 @@ private struct TranscriptMultitaskDetail: View {
 
     private var displayedFailure: String? {
         actions.failure ?? failure
+    }
+
+    private var turnAnchorID: String? {
+        for item in (snapshot?.items ?? []).reversed() {
+            if case .user(let message) = item, !message.isSteering { return message.id }
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -614,7 +644,7 @@ struct TranscriptComposerMultitaskSection: View {
                     }
                 }
             }
-            .background(Theme.raised, in: .rect(cornerRadius: Radius.control, style: .continuous))
+            .background(Theme.raised, in: .rect(cornerRadius: Radius.composer, style: .continuous))
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("composer-multitask-lane")
             .onAppear {

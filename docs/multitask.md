@@ -48,6 +48,8 @@ The group opens unfolded when it holds three chats or fewer and folded when it h
 
 Because a multitask shares the dock's tab strip with the subagents, it is counted in the workspace card's section beside it too ([subagentSummary.ts](../src/renderer/lib/subagentSummary.ts)); that section is named `Alongside` rather than `Subagents` once a multitask is in it.
 
+On native iOS, the multitask group uses the composer's 22pt corner radius. Its chat sheet uses the same `NativeTranscriptList` as the main chat. A new regular user message anchors at the viewport's top. Short replies keep that anchor, then longer replies follow the output. Scrolling into history preserves the reading position and shows **Jump to latest**. Steering messages remain part of the current turn and preserve the reading position.
+
 ## Not in the sidebar
 
 A multitask belongs to the chat that dispatched it, so it has no sidebar row: `hiddenMultitaskWorkspaceIds` ([multitask.ts](../src/renderer/lib/multitask.ts)) drops its workspace from every sidebar section and from the phone list. The one exception is an orphan — a multitask whose launching chat has left the snapshot. There is nowhere else to reach it from and its checkout may hold uncommitted work, so its row comes back.

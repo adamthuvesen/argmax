@@ -346,7 +346,8 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   chooses. The styles are `nest` (four dots relaying round a 2x2), `cascade` (a wave down a 3x3
   field), `meter` (three bars on unrelated periods), `orbit` (a comet on a track), and `halo` (a
   still core with a breathing ring). `squares` slides tiles around a 3x3 field,
-  `wave` pulses ten mirrored cells, and `bars` grows three bars from their centers.
+  `wave` pulses ten mirrored cells from a dim track to full leader color,
+  and `bars` grows three bars from their centers.
   Nest remains the default. The choice is stored in localStorage and selected off
   `[data-mark]` in [working-nest.css](../src/renderer/styles/working-nest.css). Every style shares
   the box, the settle, and `--working-nest-lead` / `--working-nest-rest`, so a surface with its own

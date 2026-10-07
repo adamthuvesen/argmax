@@ -562,7 +562,16 @@ async fn delete_local_branch(
             ),
         );
     }
-    if tip != merged_head {
+    let tip_is_in_merged_head = tip == merged_head
+        || run_git_text_with_allowed_exit_codes(
+            cwd,
+            ["merge-base", "--is-ancestor", tip.as_str(), merged_head],
+            &[1],
+            GIT_DEFAULT_TIMEOUT,
+        )
+        .await
+        .is_ok_and(|exit| exit.exit_code == 0);
+    if !tip_is_in_merged_head {
         let has_later_commits = run_git_text_with_allowed_exit_codes(
             cwd,
             ["merge-base", "--is-ancestor", merged_head, tip.as_str()],
@@ -587,7 +596,7 @@ async fn delete_local_branch(
     }
     if let Err(error) = run_git_text(
         cwd,
-        ["update-ref", "-d", local_ref.as_str(), merged_head],
+        ["update-ref", "-d", local_ref.as_str(), tip.as_str()],
         GIT_DEFAULT_TIMEOUT,
     )
     .await
@@ -887,6 +896,51 @@ Base: main fast-forwarded in {}\nLocal: fix-parser deleted\nChat: kept, checkout
         );
         assert_eq!(local_branch(&repo).await, None);
         assert!(repo.chat.is_dir(), "the chat's checkout stays");
+    }
+
+    #[tokio::test]
+    async fn cleanup_deletes_a_local_branch_behind_the_merged_head() {
+        let mut repo = merged_repo(false).await;
+        let tree = git(
+            &repo.main,
+            &["rev-parse", &format!("{}^{{tree}}", repo.merged_head)],
+        )
+        .await;
+        let updated_head = git(
+            &repo.main,
+            &[
+                "commit-tree",
+                &tree,
+                "-p",
+                &repo.merged_head,
+                "-m",
+                "update branch",
+            ],
+        )
+        .await;
+        git(
+            &repo.main,
+            &[
+                "push",
+                "-q",
+                "origin",
+                &format!("{updated_head}:refs/heads/{BRANCH}"),
+            ],
+        )
+        .await;
+        repo.merged_head = updated_head;
+
+        let run = database(&repo);
+        let report = cleanup(&run, &repo, "acme").await;
+
+        assert_eq!(
+            report.local.outcome,
+            PrCleanupOutcome::Done,
+            "{}",
+            report.text
+        );
+        assert_eq!(report.local.detail, "fix-parser deleted");
+        assert_eq!(local_branch(&repo).await, None);
     }
 
     #[tokio::test]

@@ -149,6 +149,30 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
         };
     }
 
+    // A DeepSeek chat started as a light question, and a short "yes" or "try
+    // again" then turns it into agentic work: 10-56 shell commands a turn,
+    // up to 405 s (2026-10-04..07). Jev scores those light, so the grid would
+    // keep DeepSeek. A continuation moves to Sonnet at Speed's normal medium;
+    // a reported-wrong answer still climbs to high through the ladder.
+    if state.provider == ProviderId::Opencode
+        && state.model_id == table::DEEPSEEK.model_id
+        && classification.follow_up_scope != Some(super::jev::FollowUpScope::NewTask)
+        && classification.scope_confidence.unwrap_or(0.0) >= EFFORT_UP
+        && (state.available.is_empty() || state.available.contains(&table::SONNET.provider))
+    {
+        return decision_from(
+            state.tier,
+            RoutedModel {
+                model: &table::SONNET,
+                effort: Some(Medium),
+            },
+            Some(classification),
+            settled,
+            RouteDecisionKind::Reroute,
+            format!("{summary} (a continuation of a DeepSeek chat moves to Sonnet)"),
+        );
+    }
+
     let mut reason = summary;
     if !notes.is_empty() {
         reason.push_str(&format!(" ({})", notes.join("; ")));
@@ -566,6 +590,23 @@ mod tests {
     fn with_levels(mut task: Classification, levels: [f64; 5]) -> Classification {
         task.level_probabilities = Some(levels);
         task
+    }
+
+    #[test]
+    fn a_deepseek_continuation_moves_to_sonnet_but_a_new_task_stays() {
+        let deepseek = state(ProviderId::Opencode, table::DEEPSEEK.model_id, Some(High));
+        let mut task = classified(TaskKind::Question, 0.5, 0.9);
+        task.follow_up_scope = Some(FollowUpScope::Continuation);
+        let moved = follow_up_route(&deepseek, &task);
+        assert_eq!(moved.decision, RouteDecisionKind::Reroute);
+        assert_eq!(moved.model_id, table::SONNET.model_id);
+        assert_eq!(moved.effort, Some(Medium));
+
+        task.follow_up_scope = Some(FollowUpScope::NewTask);
+        assert_eq!(
+            follow_up_route(&deepseek, &task).decision,
+            RouteDecisionKind::Kept
+        );
     }
 
     #[test]

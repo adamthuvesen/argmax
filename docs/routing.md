@@ -291,7 +291,7 @@ The provider targets are:
 | Claude | Opus with supported low, medium, or high effort, except a Speed chat, which stays on Sonnet 5.5, reviews included. Frontier heavy questions and research target Fable. A retained stronger model can reduce or restore effort in place. |
 | Codex | Sol for coding and mechanical work at any difficulty, and for lighter work of any kind. Astra for heavy review, research and questions, and Frontier standard review or research. A chat launched on Astra for a review moves to Sol for the code that follows when the switch pays. |
 | Cursor | Composer for lighter work, Cursor Opus for review, more demanding work, and Balance UI work (low). Model downgrades stay blocked while pricing is unavailable. |
-| OpenCode | None. The grid never launches OpenCode, so a routed chat never runs there. |
+| OpenCode | A DeepSeek chat keeps its model on a new task. A continuation (scope confidence ≥ 0.6) moves to Sonnet 5.5 medium on Claude Code, from the visible transcript (a reported-wrong answer still climbs to high). Short "yes" / "try again" follow-ups turned light questions into 10–56 command turns of up to 405 s (2026-10-04..07). |
 | Grok Build | The grid never launches Grok. A chat already there stays on Grok 4.7 with effort by difficulty: low, medium, high. |
 
 Cost follow-ups on Codex use the same Luna/Sol task cells. A review in an

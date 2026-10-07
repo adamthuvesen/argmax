@@ -14,7 +14,9 @@
         { "provider": "codex", "modelId": "gpt-5.5", "turns": 7, "costUsd": 1.38, "estimated": false }
       ],
       "medianTurnSeconds": 94.2,
-      "medianFirstAnswerSeconds": 4.6
+      "medianFirstAnswerSeconds": 4.6,
+      "medianTurnTokens": 1500000,
+      "pricedTokens": 31000000
     },
     {
       "tier": "balanced",

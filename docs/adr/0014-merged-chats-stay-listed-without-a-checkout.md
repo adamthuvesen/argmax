@@ -1,0 +1,11 @@
+# A merged chat without a checkout is archived, not a new state
+
+The person wants merged worktrees and branches gone, and the merged chats still in the sidebar, so they can see what merged. Archive on merge did half of that: it hid the chat in the Archived section and kept the checkout in recovery storage for 48 to 72 hours, and the branch for good. So `merge_cleanup` has a third value, `remove-checkout`. When the PR merges, Argmax stops the chat's processes, deletes its checkout with `git worktree remove`, and runs PR cleanup, which can now delete the local branch because nothing has it checked out.
+
+The row after that is `archived` with `workspaces.checkout_removed_at` set, not a new `merged` state. Everything `archived` means is what this row needs: no processes, no sends, no watcher, out of the poll set, and skipped by the startup reconcile that archives a live row whose checkout is gone. `archived` never promised a recovery checkout: a shared checkout has none, and the expiry sweep deletes one and leaves the row `archived`. A new state would have meant auditing about 60 `archived` checks, and every one would have come out "same as archived". The only difference is where the sidebar lists the row, which is display metadata like `snoozed_until`.
+
+So the renderer has two kinds of `archived` check. Placement (`isInArchivedSection`) keeps a row with `checkout_removed_at` in its normal section. Capability (the composer, the IDE handoff, the grid drop, Priority) stays on `state`, so the chat is read-only. Archiving such a chat clears the column, which moves it to the Archived section.
+
+Removal is never forced. A checkout with uncommitted or untracked changes, or with a HEAD the merged PR does not contain, returns to `kept` with its files in place. `git worktree remove` runs without `--force`, so Git refuses a tree the status read missed. Ignored files, such as build output, go with the checkout: they are what piles up.
+
+Known gap: a crash after the checkout is deleted and before the row is marked leaves the row `archiving`. Startup recovery completes it as an ordinary archive, so the chat lands in the Archived section and PR cleanup does not run. The branch survives, which loses nothing.

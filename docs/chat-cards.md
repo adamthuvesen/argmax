@@ -2,6 +2,40 @@
 
 The chat surface renders assistant bubbles, tools, and interactive cards: **QuestionDock** for `AskUserQuestion` / Cursor's `askQuestionToolCall` while the agent is waiting, and **TodoCard**, the agent's own running plan.
 
+## Inline HTML visualizations
+
+An assistant can embed an interactive HTML file with a standalone reference:
+
+```text
+visualize{"path":"/absolute/checkout/chart.html","mode":"wide","title":"Trends"}
+```
+
+Separate the reference from prose with blank lines. `mode` and `title` are optional.
+Markers inside code remain literal. Incomplete streamed references show a loading
+status. Invalid references and unavailable files show an error.
+
+[HtmlVisualization.tsx](../src/renderer/components/HtmlVisualization.tsx) loads the
+file through `workspace:read-visualization`. The canonical path must stay inside
+the target checkout or `~/.argmax/visualizations`. Symlinks cannot escape those
+roots. The reader accepts HTML text files up to 1 MB.
+
+The viewer runs local interactions in an iframe with an opaque origin. Its sandbox
+does not grant app access, popups, downloads, or form submission. A content security
+policy restricts resources to the visualization CDN list and blocks API requests.
+Argmax supplies theme variables and basic layout utilities. It does not implement
+Codex's `window.openai` or `Tweak` APIs. Interaction state lasts while the viewer
+stays mounted. Reopening the chat reloads the file.
+
+Use HTML fragments. Full documents retain their content, styles, and scripts,
+but their original `html` and `body` attributes are discarded. The runtime supplies
+accessible tab switching and the bundled Lucide runtime. `lucide.createIcons()`
+also renders icons added during local interactions.
+
+`wide` uses available transcript space up to 1,024px without covering the workspace
+card. Expand increases the viewer's height and preserves its interactions.
+The paired web renderer uses the same viewer and read command. The native Swift
+iPhone transcript does not render HTML visualizations.
+
 ## Components and Structure
 
 Settings → General → **Escape stops a running chat** optionally binds Escape

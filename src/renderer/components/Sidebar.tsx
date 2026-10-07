@@ -34,6 +34,7 @@ import { APP_VERSION } from "../../shared/appVersion.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { PickerLead } from "./PickerLead.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
+import { isInArchivedSection } from "../lib/archivedSection.js";
 import {
   groupWorkspacesByDate,
   loadCollapsedDateGroupIds,
@@ -694,7 +695,7 @@ export function Sidebar({
         sidebarWorkspaces.filter(
           (workspace) =>
             workspace.pinned &&
-            workspace.state !== "archived" &&
+            !isInArchivedSection(workspace) &&
             workspaceIdsWithSessions.has(workspace.id)
         ),
         workspaceOrders[PINNED_GROUP_KEY] ?? []
@@ -716,7 +717,7 @@ export function Sidebar({
         sidebarWorkspaces.filter(
           (workspace) =>
             !workspace.pinned &&
-            workspace.state !== "archived" &&
+            !isInArchivedSection(workspace) &&
             !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
@@ -734,7 +735,7 @@ export function Sidebar({
           (workspace) =>
             workspace.kind === "scratch" &&
             !workspace.pinned &&
-            workspace.state !== "archived" &&
+            !isInArchivedSection(workspace) &&
             !priorityWorkspaceIds.has(workspace.id) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
@@ -751,7 +752,7 @@ export function Sidebar({
         .filter(
           (workspace) =>
             snoozeShelf.shelfIds.has(workspace.id) &&
-            workspace.state !== "archived" &&
+            !isInArchivedSection(workspace) &&
             workspaceIdsWithSessions.has(workspace.id)
         )
         .sort((a, b) => (a.snoozedUntil ?? "").localeCompare(b.snoozedUntil ?? "")),
@@ -763,7 +764,7 @@ export function Sidebar({
       sidebarWorkspaces
         .filter(
           (workspace) =>
-            workspace.state === "archived" && workspaceIdsWithSessions.has(workspace.id)
+            isInArchivedSection(workspace) && workspaceIdsWithSessions.has(workspace.id)
         )
         .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt)),
     [sidebarWorkspaces, workspaceIdsWithSessions]
@@ -881,7 +882,7 @@ export function Sidebar({
   useEffect(() => {
     if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedWorkspaceId) return;
     const workspace = sidebarWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
-    if (!workspace || workspace.state === "archived") return;
+    if (!workspace || isInArchivedSection(workspace)) return;
     lastExpandedForWorkspaceId.current = selectedWorkspaceId;
     revealWorkspaceGroup(workspace);
   }, [revealWorkspaceGroup, selectedWorkspaceId, sidebarWorkspaces]);
@@ -908,7 +909,7 @@ export function Sidebar({
     for (const workspace of allSidebarWorkspaces) {
       if (next.has(workspace.id)) continue;
       next.add(workspace.id);
-      if (workspace.state === "archived" || snoozeShelf.shelfIds.has(workspace.id)) continue;
+      if (isInArchivedSection(workspace) || snoozeShelf.shelfIds.has(workspace.id)) continue;
       revealWorkspaceGroup(workspace);
     }
     knownWorkspaceIdsRef.current = next;
@@ -1643,7 +1644,7 @@ export function Sidebar({
                   (workspace) =>
                     !workspace.pinned &&
                     workspace.projectId === project.id &&
-                    workspace.state !== "archived" &&
+                    !isInArchivedSection(workspace) &&
                     !priorityWorkspaceIds.has(workspace.id) &&
                     workspaceIdsWithSessions.has(workspace.id)
                 ),

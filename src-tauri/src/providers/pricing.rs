@@ -307,12 +307,11 @@ mod tests {
     }
 
     #[test]
-    fn codex_auto_review_is_unpriced() {
-        // Codex's own reviewer model has no published rate. It must stay out
-        // of both tables so the usage page counts its tokens and says
-        // "unpriced" instead of quietly billing them at $0.
-        assert_eq!(normalize_model_id("codex-auto-review"), "codex-auto-review");
-        assert!(list_price("codex-auto-review").is_none());
+    fn an_unknown_model_is_unpriced() {
+        // A model no table knows must stay unpriced, so the usage page counts
+        // its tokens and says "unpriced" instead of quietly billing them at $0.
+        assert_eq!(normalize_model_id("gpt-7-preview"), "gpt-7-preview");
+        assert!(list_price("gpt-7-preview").is_none());
         assert_eq!(
             price_record(
                 &UsageRecordTokens {
@@ -321,7 +320,7 @@ mod tests {
                     output: 4_000,
                     ..UsageRecordTokens::default()
                 },
-                "codex-auto-review",
+                "gpt-7-preview",
             ),
             None,
         );

@@ -147,7 +147,7 @@ fn fixture() -> Fixture {
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: format!("{repo_path}/.argmax/worktrees"),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -1011,7 +1011,7 @@ fn second_project(fixture: &Fixture) -> String {
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
-                archive_on_merge: false,
+                merge_cleanup: Default::default(),
                 worktree_location: format!("{repo_path}/.argmax/worktrees"),
                 setup_command: String::new(),
                 check_commands: Vec::new(),

@@ -11,7 +11,7 @@ const PROJECT: ProjectSummary = {
   currentBranch: "main",
   defaultBranch: "main",
   settings: {
-    archiveOnMerge: false,
+    mergeCleanup: "off",
     worktreeLocation: "/repo/argmax/.worktrees",
     setupCommand: "",
     checkCommands: []

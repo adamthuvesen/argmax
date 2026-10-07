@@ -1,16 +1,16 @@
 import { useCallback, useMemo, useState, type JSX } from "react";
-import type { ProjectSummary } from "../../../shared/types.js";
+import type { MergeCleanup, ProjectSummary } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
 import { BranchTemplatePanel } from "./BranchTemplatePanel.js";
 import { LinkedReposPanel } from "./LinkedReposPanel.js";
 import { ProjectSourcesPanel } from "./ProjectSourcesPanel.js";
-import { SettingGroup, SettingRow, SettingsListPicker, Toggle } from "./settingsPrimitives.js";
+import { SegmentedControl, SettingGroup, SettingRow, SettingsListPicker } from "./settingsPrimitives.js";
 
 /**
  * Per-project settings editor (Settings → Projects). Every field here is
  * consumed by the runtime: worktree location places isolated worktrees, the
  * setup command runs once in each fresh worktree before the agent launches,
- * check commands run from the changed-files card, and archive-on-merge lets
+ * check commands run from the changed-files card, and merge cleanup lets
  * the gh poller dispose of a workspace once its PR lands. The model is not a
  * project setting — Settings → Agents holds one default agent for the app.
  */
@@ -63,6 +63,20 @@ export function ProjectsSettings({
   );
 }
 
+const MERGE_CLEANUP_OPTIONS: ReadonlyArray<{ value: MergeCleanup; label: string }> = [
+  { value: "off", label: "Keep" },
+  { value: "remove-checkout", label: "Remove worktree" },
+  { value: "archive", label: "Archive chat" }
+];
+
+const MERGE_CLEANUP_DESCRIPTIONS: Record<MergeCleanup, string> = {
+  off: "Nothing changes when GitHub reports the pull request merged. The sidebar row shows it merged.",
+  "remove-checkout":
+    "Deletes the chat's worktree, then runs PR cleanup: deletes the local and remote branch and fast-forwards the base branch where it is checked out. The chat stays in the sidebar, read-only. Only chats with their own worktree. One with uncommitted changes or commits after the merge is kept.",
+  archive:
+    "Moves the chat to Archived and keeps its worktree for recovery for two days. The branch is kept. Only chats with their own worktree. One with uncommitted changes is kept."
+};
+
 /** Keyed by project id, so switching projects remounts with fresh values. */
 function ProjectSettingsForm({
   project,
@@ -74,7 +88,7 @@ function ProjectSettingsForm({
   const [worktreeLocation, setWorktreeLocation] = useState(project.settings.worktreeLocation);
   const [setupCommand, setSetupCommand] = useState(project.settings.setupCommand);
   const [checkCommandsText, setCheckCommandsText] = useState(project.settings.checkCommands.join("\n"));
-  const [archiveOnMerge, setArchiveOnMerge] = useState(project.settings.archiveOnMerge);
+  const [mergeCleanup, setMergeCleanup] = useState<MergeCleanup>(project.settings.mergeCleanup);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ kind: "saved" | "error"; message: string } | null>(null);
 
@@ -91,7 +105,7 @@ function ProjectSettingsForm({
     worktreeLocation.trim() !== project.settings.worktreeLocation ||
     setupCommand.trim() !== project.settings.setupCommand ||
     checkCommands.join("\n") !== project.settings.checkCommands.join("\n") ||
-    archiveOnMerge !== project.settings.archiveOnMerge;
+    mergeCleanup !== project.settings.mergeCleanup;
 
   const save = useCallback(async (): Promise<void> => {
     setStatus(null);
@@ -114,7 +128,7 @@ function ProjectSettingsForm({
           setupCommand: setupCommand.trim(),
           worktreeLocation: location,
           checkCommands,
-          archiveOnMerge
+          mergeCleanup
         }
       });
       onProjectUpdated(updated);
@@ -124,7 +138,7 @@ function ProjectSettingsForm({
     } finally {
       setSaving(false);
     }
-  }, [project, worktreeLocation, setupCommand, checkCommands, archiveOnMerge, onProjectUpdated]);
+  }, [project, worktreeLocation, setupCommand, checkCommands, mergeCleanup, onProjectUpdated]);
 
   return (
     <div className="settings-card">
@@ -189,13 +203,15 @@ function ProjectSettingsForm({
       </div>
 
       <SettingRow
-        label="Archive a workspace when its PR merges"
-        description="Removes the worktree and deletes the local branch once GitHub reports the pull request merged. Only chats with their own worktree; one with uncommitted changes is kept instead."
+        label="When a PR merges"
+        description={MERGE_CLEANUP_DESCRIPTIONS[mergeCleanup]}
         control={
-          <Toggle
-            ariaLabel="Archive a workspace when its PR merges"
-            checked={archiveOnMerge}
-            onChange={setArchiveOnMerge}
+          <SegmentedControl
+            ariaLabel="When a PR merges"
+            name={`merge-cleanup-${project.id}`}
+            value={mergeCleanup}
+            onChange={(next) => setMergeCleanup(next as MergeCleanup)}
+            options={MERGE_CLEANUP_OPTIONS}
           />
         }
       />

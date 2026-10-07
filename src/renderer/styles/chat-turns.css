@@ -158,6 +158,11 @@
 .turn-block-chip {
   display: inline-flex;
   align-items: center;
+  /* "Working for 1m 33s" is one label, not two. A narrow header column — a
+     small window beside the review panel, or the agent-activity viewport —
+     otherwise shrinks the chip below its max-content and breaks the label
+     between the words and the elapsed time. */
+  white-space: nowrap;
   gap: var(--space-1_5);
   padding: 1px 6px 1px 0;
   border: 0;

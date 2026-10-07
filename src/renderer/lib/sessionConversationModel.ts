@@ -593,9 +593,13 @@ export function buildSessionToolCalls(
       // can prove the unpaired tool is no longer in flight. Agent tools are the
       // exception: the parent model can narrate while a spawned agent is still
       // working, so keep them running until their own completion arrives.
+      // A blocking question is the same: the question service always writes
+      // its completion, and OpenCode streams the turn's reasoning after the
+      // question starts, which must not settle it.
       const isAgent = getToolTypeBucket(name) === "agent";
+      const isBlockingQuestion = input.delivery === "blocking";
       const inferredDone =
-        !sessionRunning || (!isAgent && hasLaterVisibleProgress);
+        !sessionRunning || (!isAgent && !isBlockingQuestion && hasLaterVisibleProgress);
       const status: ToolCall["status"] = completion
         ? isError
           ? "error"

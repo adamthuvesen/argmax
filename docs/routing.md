@@ -105,25 +105,23 @@ Cost has its own launch grid:
 
 | Kind | Light | Standard | Heavy |
 |---|---|---|---|
-| coding | DeepSeek V4.1 Flash · high | Sol 6.1 · medium | Sol 6.1 · high |
-| mechanical | DeepSeek V4.1 Flash · low | DeepSeek V4.1 Flash · low | DeepSeek V4.1 Flash · low |
-| research | DeepSeek V4.1 Flash · high | Sol 6.1 · medium | Sol 6.1 · high |
-| question | DeepSeek V4.1 Flash · high | DeepSeek V4.1 Flash · high | Sol 6.1 · high |
+| coding | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
+| mechanical | Luna · medium | Luna · medium | Luna · medium |
+| research | Luna · medium | Sol 6.1 · medium | Sol 6.1 · high |
+| question | Luna · medium | Luna · medium | Sol 6.1 · high |
 | review | Sonnet 5.5 · low | Sonnet 5.5 · medium | Sonnet 5.5 · high |
 
 When Codex is unavailable, Cost launches on Sonnet for lighter work,
 mechanical edits, and reviews, and Opus for other heavy work.
 
-DeepSeek V4.1 Flash took every Luna cell and heavy mechanical work on
-2026-10-04, because it bills cache reads at $0.003 per million tokens against
-Luna's $0.01 and cache reads are most agent tokens. Both figures match
-OpenRouter's catalog (2026-10-04): DeepSeek's own host charges $0.15 in /
-$0.60 out, while hosts range from $0.02 to $0.30 in and $0.003 to $0.048 for
-cache reads, so OpenRouter's choice of host moves the real bill. Artificial
-Analysis lists the common $0.30 / $1.20 host. Its CLI offers low,
-high and max: mechanical edits run at low, other cells at high. No quality
-comparison on agent tasks exists. A Codex or Claude chat keeps its native
-model on follow-ups (Luna medium or Sonnet).
+DeepSeek V4.1 Flash held these Luna cells from 2026-10-04 to 2026-10-06,
+on its $0.003 cache-read rate against Luna's $0.01. Luna came back because
+the whole-task cost favours it: Artificial Analysis scores the two alike
+(Intelligence Index 38 vs 39) but prices a Luna index task at $0.07 against
+DeepSeek's $0.27. DeepSeek writes more tokens, doubles its price at peak
+hours, and OpenRouter's host choice moves its cache-read rate from $0.003 to
+$0.048. DeepSeek keeps the cells where its latency is the point, on Speed and
+Balance. A Claude chat keeps its native model on follow-ups (Sonnet).
 
 Luna is GPT-6 Luna. Cost optimizes API-equivalent completion cost rather
 than subscription allowance or provider. The initial policy follows the
@@ -189,8 +187,11 @@ Overrides on top of the grid:
 - **Balance standard coding and research launch on Sonnet 5.5 · high.** Heavy
   coding and research stay on Opus 5.5 · high.
 - **Frontier light mechanical work launches on Sonnet 5.5 · medium.**
-- Frontier · Heavy sends **research to GPT-6 Astra** and **questions to Fable
-  5.1**; coding stays on Opus 5.5.
+- Frontier · Heavy sends **research and questions to Fable 5.1**; coding stays
+  on Opus 5.5. Fable beats Astra on research-style benchmarks (HLE 65.6 vs
+  57.2, GDPval 1735 vs 1542, 2026-10-06). Astra keeps Frontier reviews, so a
+  second model family checks the work. A Codex chat on Frontier heavy research
+  still follows up on Astra.
 - **DeepSeek V4.1 Flash replaced Composer 2.5 on the mechanical cells
   (2026-10-04).** It launches on OpenCode through OpenRouter, so it needs
   OpenCode installed and an OpenRouter key; without OpenCode the route moves to
@@ -287,7 +288,7 @@ The provider targets are:
 
 | Provider | Follow-up policy |
 |---|---|
-| Claude | Opus with supported low, medium, or high effort, except a Speed chat, which stays on Sonnet 5.5, reviews included. Frontier heavy questions target Fable. A retained stronger model can reduce or restore effort in place. |
+| Claude | Opus with supported low, medium, or high effort, except a Speed chat, which stays on Sonnet 5.5, reviews included. Frontier heavy questions and research target Fable. A retained stronger model can reduce or restore effort in place. |
 | Codex | Sol for coding and mechanical work at any difficulty, and for lighter work of any kind. Astra for heavy review, research and questions, and Frontier standard review or research. A chat launched on Astra for a review moves to Sol for the code that follows when the switch pays. |
 | Cursor | Composer for lighter work, Cursor Opus for review, more demanding work, and Balance UI work (low). Model downgrades stay blocked while pricing is unavailable. |
 | OpenCode | None. The grid never launches OpenCode, so a routed chat never runs there. |

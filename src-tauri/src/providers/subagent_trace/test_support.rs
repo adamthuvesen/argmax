@@ -28,7 +28,7 @@ pub(super) fn seed_session(connection: &Connection, provider: &str, session_id: 
             current_branch: "main".to_string(),
             default_branch: Some("main".to_string()),
             settings: ProjectSettings {
-                archive_on_merge: false,
+                merge_cleanup: Default::default(),
                 worktree_location: "/tmp/worktrees".to_string(),
                 setup_command: String::new(),
                 check_commands: Vec::new(),

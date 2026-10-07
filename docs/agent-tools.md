@@ -13,6 +13,11 @@ Namespace `argmax`; Claude, Codex, and Cursor show them as
 
 ### Sessions
 
+Provider context explains inline images, Mermaid diagrams, and HTML visualization
+references. HTML files must stay inside the checkout or `~/.argmax/visualizations`.
+See [Inline HTML visualizations](chat-cards.md#inline-html-visualizations) for the
+reference format and sandbox limits.
+
 | Tool | Arguments | Returns |
 |---|---|---|
 | `session_list` | `project?`, `all?`, `query?` | `{sessions: [{sessionId, projectId, projectName, taskLabel, provider, state, attention, lastActivityAt, launchedBySessionId?, unreadable?, matched?}], truncated}` — newest activity first, the caller excluded, capped at 40 rows. `unreadable` marks a session the caller may not read. With `query`, only readable sessions are kept: task-label hits first (`matched.source` `title`), then conversation hits (`content`, with `itemId` and a plain `snippet`) |

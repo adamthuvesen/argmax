@@ -15,7 +15,7 @@ import { resetWorkspaceDragForTests } from "../state/workspaceDrag.js";
 import { Sidebar } from "./Sidebar.js";
 
 const projectSettings = {
-  archiveOnMerge: false,
+  mergeCleanup: "off" as const,
   worktreeLocation: "/tmp/worktrees",
   setupCommand: "",
   checkCommands: []
@@ -2100,6 +2100,20 @@ describe("Sidebar — archived chats", () => {
     expect(onOpenWorkspaceChat).toHaveBeenCalledWith("archived-chat", { ctrlOrMeta: false, alt: false });
     fireEvent.click(screen.getByRole("button", { name: "Hide Archived chats" }));
     expect(screen.queryByRole("button", { name: /Old discussion/ })).toBeNull();
+  });
+
+  it.each(["projects", "sessions"] as const)("keeps a merged chat whose worktree was removed in its %s section", (viewMode) => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify(viewMode));
+    const mergedSnapshot: DashboardSnapshot = {
+      ...archivedSnapshot,
+      workspaces: [{ ...archivedSnapshot.workspaces[0], checkoutRemovedAt: "2026-05-12T16:00:00.000Z" }]
+    };
+    render(<Sidebar {...baseProps} snapshot={mergedSnapshot} />);
+
+    expect(screen.queryByRole("button", { name: "Show Archived chats" })).toBeNull();
+    // The project group or the Older bucket, collapsed for a chat this old.
+    fireEvent.click(screen.getByRole("button", { name: viewMode === "projects" ? "Show Argmax chats" : "Show Older chats" }));
+    expect(screen.getByRole("button", { name: /Old discussion/ })).toBeInTheDocument();
   });
 
   it("removes the Archived section when the setting is off", () => {

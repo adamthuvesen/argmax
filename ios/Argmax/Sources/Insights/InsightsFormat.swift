@@ -14,6 +14,16 @@ enum InsightsFormat {
         return formatter
     }()
 
+    /// `usd` with a third decimal, for rates under a dime.
+    private static let usdFine: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "USD"
+        formatter.maximumFractionDigits = 3
+        formatter.minimumFractionDigits = 3
+        return formatter
+    }()
+
     private static let grouped: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -144,6 +154,15 @@ enum InsightsFormat {
     static func routerCost(_ usd: Double, estimated: Bool) -> String {
         let text = usd > 0 && usd < 0.01 ? "<\(usdFull(0.01))" : usdFull(usd)
         return estimated ? "≈\(text)" : text
+    }
+
+    /// `$45.80`, `$0.016` — a price per million tokens. Under a dime it keeps
+    /// a third decimal, where cheap models live and two would round them
+    /// together or to zero.
+    static func usdRate(_ usd: Double) -> String {
+        let safe = usd.isFinite ? usd : 0
+        let formatter = safe > 0 && safe < 0.1 ? usdFine : Self.usd
+        return formatter.string(from: NSNumber(value: safe)) ?? "$0.00"
     }
 
     /// `Sep 11` — card subtitles and review dates.

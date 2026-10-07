@@ -1,5 +1,5 @@
 use rusqlite::{named_params, Connection, Row};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::Path;
 
@@ -55,9 +55,45 @@ pub struct ProjectSettings {
     pub worktree_location: String,
     pub setup_command: String,
     pub check_commands: Vec<String>,
-    /// Archive a workspace once the PR on its branch merges, retaining its
-    /// checkout and branch in recovery storage. Off unless the project opts in.
-    pub archive_on_merge: bool,
+    /// What a merged PR does to the isolated workspace on its branch. Off
+    /// unless the project opts in.
+    pub merge_cleanup: MergeCleanup,
+}
+
+/// What the gh poller does to an isolated workspace once the PR on its branch
+/// merges. Shared checkouts are never touched, whatever the setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum MergeCleanup {
+    /// Nothing happens; the sidebar row only shows the merged marker.
+    #[default]
+    Off,
+    /// Archive the workspace: the chat moves to the Archived section and its
+    /// checkout and branch are retained in recovery storage.
+    Archive,
+    /// Remove the checkout, then run PR cleanup: delete the remote and local
+    /// branch and fast-forward the base where it is checked out. The chat
+    /// stays in its sidebar section and becomes read-only.
+    RemoveCheckout,
+}
+
+impl MergeCleanup {
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Archive => "archive",
+            Self::RemoveCheckout => "remove-checkout",
+        }
+    }
+
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "off" => Some(Self::Off),
+            "archive" => Some(Self::Archive),
+            "remove-checkout" => Some(Self::RemoveCheckout),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]
@@ -148,12 +184,12 @@ pub fn persist_project(
         INSERT INTO projects (
           id, name, repo_path, current_branch, default_branch,
           worktree_location, setup_command,
-          check_commands_json, archive_on_merge, ui_preferences_json,
+          check_commands_json, merge_cleanup, ui_preferences_json,
           created_at, updated_at
         ) VALUES (
           @id, @name, @repo_path, @current_branch, @default_branch,
           @worktree_location, @setup_command,
-          @check_commands_json, @archive_on_merge, '{}',
+          @check_commands_json, @merge_cleanup, '{}',
           @created_at, @updated_at
         )
         ON CONFLICT(repo_path) DO UPDATE SET
@@ -174,7 +210,7 @@ pub fn persist_project(
             "@worktree_location": input.settings.worktree_location,
             "@setup_command": input.settings.setup_command,
             "@check_commands_json": check_commands_json,
-            "@archive_on_merge": input.settings.archive_on_merge,
+            "@merge_cleanup": input.settings.merge_cleanup.as_wire(),
             "@created_at": timestamp,
             "@updated_at": timestamp,
         })
@@ -198,7 +234,7 @@ pub fn update_project_settings(
           worktree_location = @worktree_location,
           setup_command = @setup_command,
           check_commands_json = @check_commands_json,
-          archive_on_merge = @archive_on_merge,
+          merge_cleanup = @merge_cleanup,
           updated_at = @updated_at
         WHERE id = @project_id
         "#,
@@ -210,7 +246,7 @@ pub fn update_project_settings(
             "@worktree_location": settings.worktree_location,
             "@setup_command": settings.setup_command,
             "@check_commands_json": check_commands_json,
-            "@archive_on_merge": settings.archive_on_merge,
+            "@merge_cleanup": settings.merge_cleanup.as_wire(),
             "@updated_at": now_iso(),
         })
         .map_err(sqlite_error)?;
@@ -237,36 +273,41 @@ pub fn set_project_branch_template(
     require_project(connection, project_id)
 }
 
-/// Whether the project owning this workspace archives it once its PR merges.
+/// What a merged pull request should do to this workspace on its own.
 /// Resolved from the workspace so the gh poller, which only knows the
 /// workspace, does not need a second lookup.
-/// Whether a merged pull request should dispose of this workspace on its own.
 ///
 /// Isolated workspaces only. The setting exists to stop merged worktrees piling
-/// up on disk, and archiving one of those is exactly that: the worktree and its
-/// branch go. Archiving a shared checkout deletes nothing — it would only close
-/// a chat the user is still sitting in, which is not cleanup.
-pub fn workspace_project_archives_on_merge(
+/// up on disk. A shared checkout is not Argmax's to dispose of: archiving one
+/// deletes nothing and would only close a chat the user is still sitting in,
+/// so it always reads `Off`.
+pub fn workspace_merge_cleanup(
     connection: &Connection,
     workspace_id: &str,
-) -> ArgmaxResult<bool> {
+) -> ArgmaxResult<MergeCleanup> {
     let mut statement = connection
         .prepare_cached(
             r#"
-        SELECT p.archive_on_merge AND NOT w.shared_workspace
+        SELECT CASE WHEN w.shared_workspace THEN 'off' ELSE p.merge_cleanup END
         FROM workspaces w
         JOIN projects p ON p.id = w.project_id
         WHERE w.id = ?
         "#,
         )
         .map_err(sqlite_error)?;
-    match statement.query_row([workspace_id], |row| row.get::<_, bool>(0)) {
-        Ok(enabled) => Ok(enabled),
+    let value = match statement.query_row([workspace_id], |row| row.get::<_, String>(0)) {
+        Ok(value) => value,
         Err(rusqlite::Error::QueryReturnedNoRows) => {
-            Err(ArgmaxError::record_not_found("workspace", workspace_id))
+            return Err(ArgmaxError::record_not_found("workspace", workspace_id))
         }
-        Err(error) => Err(sqlite_error(error)),
-    }
+        Err(error) => return Err(sqlite_error(error)),
+    };
+    MergeCleanup::from_wire(&value).ok_or_else(|| {
+        ArgmaxError::service(
+            "PROJECT_SETTING_INVALID",
+            format!("unknown merge cleanup setting {value}"),
+        )
+    })
 }
 
 pub fn update_project_branch(
@@ -483,7 +524,16 @@ fn project_summary_from_row(
             worktree_location: row.get("worktree_location")?,
             setup_command: row.get("setup_command")?,
             check_commands: parse_string_array(row.get("check_commands_json")?),
-            archive_on_merge: row.get("archive_on_merge")?,
+            merge_cleanup: {
+                let value: String = row.get("merge_cleanup")?;
+                MergeCleanup::from_wire(&value).ok_or_else(|| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        format!("unknown merge cleanup setting {value}").into(),
+                    )
+                })?
+            },
         },
         branch_template: row.get("branch_template")?,
         counts,
@@ -558,7 +608,7 @@ mod tests {
                     worktree_location: "/tmp/w".to_owned(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                 },
             },
         )

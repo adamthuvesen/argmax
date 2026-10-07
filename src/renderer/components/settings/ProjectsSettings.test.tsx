@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, ProjectSummary } from "../../../shared/types.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
@@ -18,7 +18,7 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     currentBranch: "main",
     defaultBranch: "main",
     settings: {
-      archiveOnMerge: false,
+      mergeCleanup: "off",
       worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
       setupCommand: "npm install",
       checkCommands: ["npm run lint"]
@@ -65,7 +65,7 @@ describe("ProjectsSettings", () => {
       projectId: "project-1",
       settings: {
         setupCommand: "npm ci",
-        archiveOnMerge: false,
+        mergeCleanup: "off",
         worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
         checkCommands: ["npm run lint", "npm test"]
       }
@@ -74,15 +74,15 @@ describe("ProjectsSettings", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Project settings saved.");
   });
 
-  it("saves the archive-on-merge opt-in", async () => {
+  it("saves the merge cleanup choice", async () => {
     const updateSettings = vi.fn().mockResolvedValue(project());
     installUpdateStub(updateSettings);
 
     render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
 
-    const toggle = screen.getByRole("checkbox", { name: "Archive a workspace when its PR merges" });
-    expect(toggle).not.toBeChecked();
-    fireEvent.click(toggle);
+    const choices = screen.getByRole("radiogroup", { name: "When a PR merges" });
+    expect(within(choices).getByRole("radio", { name: "Keep" })).toBeChecked();
+    fireEvent.click(within(choices).getByRole("radio", { name: "Remove worktree" }));
     fireEvent.click(screen.getByRole("button", { name: "Save project settings" }));
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
@@ -92,7 +92,7 @@ describe("ProjectsSettings", () => {
         setupCommand: "npm install",
         worktreeLocation: "/Users/dev/argmax/.argmax/worktrees",
         checkCommands: ["npm run lint"],
-        archiveOnMerge: true
+        mergeCleanup: "remove-checkout"
       }
     });
   });
@@ -130,7 +130,7 @@ describe("ProjectsSettings", () => {
       name: "Other",
       repoPath: "/Users/dev/other",
       settings: {
-        archiveOnMerge: false,
+        mergeCleanup: "off",
         worktreeLocation: "/Users/dev/other/.argmax/worktrees",
         setupCommand: "",
         checkCommands: []

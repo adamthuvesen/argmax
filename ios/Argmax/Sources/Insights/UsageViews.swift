@@ -410,7 +410,9 @@ struct UsageBreakdown: View {
                         Circle()
                             .fill(InsightsPalette.provider(row.provider))
                             .frame(width: 7, height: 7)
-                        Text(row.modelId)
+                        // Without the routing prefix, as on the Mac:
+                        // `openrouter/deepseek/x` reads `x`.
+                        Text(row.modelId.split(separator: "/").last.map(String.init) ?? row.modelId)
                             .typeStyle(.callout, mono: true).foregroundStyle(Theme.ink)
                             .lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 4)
@@ -425,9 +427,7 @@ struct UsageBreakdown: View {
                         .typeContent().monospacedDigit().foregroundStyle(Theme.ink)
                     }
                     HStack(spacing: Spacing.snug) {
-                        Text(
-                            "\(ProviderMark.displayName(row.provider)) · \(InsightsFormat.compact(Double(row.sessions))) sessions"
-                        )
+                        Text(modelMeta(row))
                         .typeMeta().foregroundStyle(Theme.muted).lineLimit(1)
                         Spacer(minLength: 4)
                         InsightsShareBar(
@@ -443,6 +443,21 @@ struct UsageBreakdown: View {
                 }
             }
         }
+    }
+
+    /// Provider, sessions, and the Mac's $ / 1M column folded into the
+    /// second line: cost per million processed tokens, left off when the
+    /// model has no price or no tokens.
+    private func modelMeta(_ row: UsageModelRow) -> String {
+        var parts = [
+            ProviderMark.displayName(row.provider),
+            "\(InsightsFormat.compact(Double(row.sessions))) sessions",
+        ]
+        if row.costSource != "unpriced", row.tokens.processed > 0 {
+            let rate = row.costUsd / row.tokens.processed * 1_000_000
+            parts.append("\(approximately(InsightsFormat.usdRate(rate), row.provider)) / 1M")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var dayRows: some View {

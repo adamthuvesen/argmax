@@ -88,7 +88,7 @@ describe("useDashboardSession — refresh / delta race", () => {
           currentBranch: "main",
           defaultBranch: "main",
           settings: {
-            archiveOnMerge: false,
+            mergeCleanup: "off",
             worktreeLocation: "/tmp/wt",
             setupCommand: "",
             checkCommands: []
@@ -534,6 +534,52 @@ describe("useDashboardSession — refresh / delta race", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("pulls a blocked session's tail once it enters waiting so a dropped question push still shows the card", async () => {
+    // A turn parked on a question is `waiting`, not `running`, so the 250 ms
+    // poll has already torn down when the question arrives. A `question.asked`
+    // delta dropped on the flaky macOS event loop then leaves the card
+    // invisible and the agent silently waiting until the chat is reopened.
+    // Entering `waiting` must pull the durable tail once.
+    baseSnapshot = {
+      ...baseSnapshot,
+      sessions: [makeSession({ state: "waiting", attention: "question-asked" })]
+    };
+    const questionEvent: TimelineEvent = {
+      id: "ev-question",
+      sessionId: "session-existing",
+      type: "command.started",
+      message: "AskUserQuestion",
+      payload: {
+        id: "que_1",
+        name: "AskUserQuestion",
+        delivery: "blocking",
+        input: { delivery: "blocking", requestId: "req-1", questions: [] }
+      },
+      createdAt: "2026-05-12T15:00:20.000Z",
+      rowCursor: 20
+    };
+    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>)
+      .mockResolvedValueOnce({
+        events: [questionEvent],
+        rawOutputs: [],
+        eventCursor: 20,
+        rawOutputCursor: 0,
+        changeCursor: 20
+      });
+    const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+
+    act(() => {
+      result.current.setSelectedWorkspaceId("ws-existing");
+      result.current.setSelectedSessionId("session-existing");
+    });
+
+    await waitFor(() =>
+      expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([questionEvent])
+    );
   });
 
   it("ignores terminal events from earlier turns when deciding to reconcile", async () => {

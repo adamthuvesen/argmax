@@ -20,6 +20,7 @@ use crate::persistence::dashboard::{
 use crate::persistence::database::Database;
 use crate::persistence::gh::{list_open_gh_pr_session_ids, list_session_prs, GhPrRecord};
 use crate::persistence::pr_watches::{list_pr_watches, watched_pr_state};
+use crate::persistence::projects::MergeCleanup;
 use crate::providers::flush_queue::DashboardDelta;
 
 use super::service::GhService;
@@ -63,14 +64,20 @@ pub struct CheckFailureContext {
 }
 
 /// Optional hook fired once per workspace when the PR on its branch reaches
-/// `MERGED`, and only for projects with `archive_on_merge` on. The caller
-/// archives the workspace; the poller owns the deduplication.
+/// `MERGED`, and only for projects whose `merge_cleanup` is not off. The
+/// caller archives the workspace or removes its checkout; the poller owns the
+/// deduplication.
 pub type MergedPrHook = Arc<dyn Fn(MergedPrContext) + Send + Sync>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergedPrContext {
+    /// The polled session that saw the merge; PR cleanup runs as it.
+    pub session_id: String,
     pub workspace_id: String,
     pub pr_number: i64,
+    /// The PR head GitHub merged.
+    pub merged_head: String,
+    pub cleanup: MergeCleanup,
 }
 
 /// Optional hook fired when a PR with WORK evidence on a session belonging to
@@ -80,7 +87,7 @@ pub struct MergedPrContext {
 /// `on_check_failure` / `on_pr_merged`: a live Arc's member gets this instead
 /// of the automatic check-failure follow-up (see `arc_id` on the session
 /// resolved in `detect_transition`), and gets it regardless of the
-/// `archive_on_merge` project setting.
+/// `merge_cleanup` project setting.
 pub type ArcEventHook = Arc<dyn Fn(ArcEventContext) + Send + Sync>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -893,8 +900,9 @@ fn detect_transition(
                 // session in the checkout sees the same merge, and a merged PR
                 // keeps reporting the same commit on every later tick.
                 let ledger_key = format!("merged:{}:{}", workspace_id, latest.pr_number);
+                let cleanup = merge_cleanup(inner, &workspace_id);
                 if !inner.ledger_has(&ledger_key)
-                    && archives_on_merge(inner, &workspace_id)
+                    && cleanup != MergeCleanup::Off
                     && workspace_prs_are_merged(inner, &workspace_id)
                 {
                     if workspace_is_busy(inner, &workspace_id) {
@@ -921,8 +929,11 @@ fn detect_transition(
                     } else {
                         inner.ledger_add(ledger_key);
                         transition.merged = Some(MergedPrContext {
+                            session_id: session_id.to_string(),
                             workspace_id,
                             pr_number: latest.pr_number,
+                            merged_head: latest.head_sha.clone(),
+                            cleanup,
                         });
                     }
                 }
@@ -943,7 +954,7 @@ fn detect_transition(
     // Arc's member session with WORK evidence — the same rule
     // `resolve_workspace_id_for_pr_action` already applies for the ordinary
     // hooks above. Evaluated independently of their own gating (busy
-    // checkout, `archive_on_merge`): the coordinator decides what to do next,
+    // checkout, `merge_cleanup`): the coordinator decides what to do next,
     // not the poller. A coordinator that is itself the PR's worker still gets
     // it — nothing here excludes `session_id == coordinator_session_id`.
     //
@@ -1078,16 +1089,17 @@ fn reserve_checkout(
     }
 }
 
-/// Only projects that opted in archive a workspace when its PR merges. A
-/// lookup error means we don't know, and archiving the wrong checkout is the
+/// Only projects that opted in dispose of a workspace when its PR merges. A
+/// lookup error means we don't know, and removing the wrong checkout is the
 /// expensive mistake, so treat it as opted out and retry next tick.
-fn archives_on_merge(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
+fn merge_cleanup(inner: &Arc<PollerInner>, workspace_id: &str) -> MergeCleanup {
     let conn = inner.database.connection();
-    crate::persistence::projects::workspace_project_archives_on_merge(&conn, workspace_id)
-        .unwrap_or_else(|error| {
-            tracing::warn!(%workspace_id, ?error, "gh poller: archive-on-merge lookup failed");
-            false
-        })
+    crate::persistence::projects::workspace_merge_cleanup(&conn, workspace_id).unwrap_or_else(
+        |error| {
+            tracing::warn!(%workspace_id, ?error, "gh poller: merge cleanup lookup failed");
+            MergeCleanup::Off
+        },
+    )
 }
 
 /// Persisted twin of the in-memory ledger, so a restart mid-failure does not
@@ -1286,7 +1298,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: "/tmp/argmax-gh-poller/.worktrees".to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -1344,7 +1356,7 @@ mod tests {
                 default_branch: Some("main".to_string()),
                 current_branch: "main".to_string(),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: "/tmp/argmax-gh-poller-2/.worktrees".to_string(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -1402,7 +1414,7 @@ mod tests {
     fn enable_archive_on_merge(database: &Arc<Database>) {
         let conn = database.connection();
         conn.execute(
-            "UPDATE projects SET archive_on_merge = 1 WHERE id = 'p1'",
+            "UPDATE projects SET merge_cleanup = 'archive' WHERE id = 'p1'",
             [],
         )
         .expect("enable archive on merge");
@@ -1671,11 +1683,9 @@ mod tests {
         assert_eq!(
             detect_transition(&poller.inner, "s1", &merged, &mut reserved, &HashMap::new())
                 .unwrap()
-                .merged,
-            Some(MergedPrContext {
-                workspace_id: "w1".into(),
-                pr_number: 101
-            })
+                .merged
+                .map(|context| (context.workspace_id, context.pr_number)),
+            Some(("w1".to_string(), 101))
         );
     }
 
@@ -2120,11 +2130,15 @@ mod tests {
 
         let contexts = merged.lock().expect("merged contexts poisoned");
         assert_eq!(
-            contexts.as_slice(),
-            &[MergedPrContext {
-                workspace_id: "w1".to_string(),
-                pr_number: 42,
-            }],
+            contexts
+                .iter()
+                .map(|context| (
+                    context.workspace_id.as_str(),
+                    context.pr_number,
+                    context.cleanup
+                ))
+                .collect::<Vec<_>>(),
+            vec![("w1", 42, MergeCleanup::Archive)],
             "one merge archives the workspace once",
         );
     }
@@ -2929,7 +2943,7 @@ mod tests {
     }
 
     /// A merged PR sends exactly one coordinator message, regardless of the
-    /// project's `archive_on_merge` setting (off in the fixture).
+    /// project's `merge_cleanup` setting (off in the fixture).
     #[tokio::test]
     async fn arc_event_fires_once_on_merge_regardless_of_archive_setting() {
         let (_dir, database) = open_db();

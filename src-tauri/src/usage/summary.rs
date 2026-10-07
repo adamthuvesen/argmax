@@ -563,7 +563,7 @@ mod tests {
         .unwrap();
         usage_scan::add_hourly_bucket(
             &connection,
-            &delta("codex", "codex-auto-review", "s4", this_hour, million, None),
+            &delta("codex", "gpt-7-preview", "s4", this_hour, million, None),
         )
         .unwrap();
         // Outside the window.
@@ -612,7 +612,7 @@ mod tests {
         let unpriced = summary
             .models
             .iter()
-            .find(|row| row.model_id == "codex-auto-review")
+            .find(|row| row.model_id == "gpt-7-preview")
             .expect("unpriced row");
         assert_eq!(unpriced.cost_source, UsageCostSource::Unpriced);
         assert_eq!(unpriced.cost_usd, 0.0);

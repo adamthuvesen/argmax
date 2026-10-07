@@ -15,7 +15,7 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
     repoPath: "/Users/dev/argmax",
     currentBranch: "main",
     defaultBranch: "main",
-    settings: { archiveOnMerge: false, worktreeLocation: "/w", setupCommand: "", checkCommands: [] },
+    settings: { mergeCleanup: "off", worktreeLocation: "/w", setupCommand: "", checkCommands: [] },
     counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
     latestActivityAt: null,
     ...overrides

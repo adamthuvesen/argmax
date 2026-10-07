@@ -81,7 +81,7 @@ fn build_project_with_setup(
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
-                archive_on_merge: false,
+                merge_cleanup: Default::default(),
                 worktree_location: worktree_location.to_owned(),
                 setup_command: setup_command.to_owned(),
                 check_commands: vec![],
@@ -108,7 +108,7 @@ fn build_named_project(
             current_branch: "main".to_owned(),
             default_branch: Some("main".to_owned()),
             settings: ProjectSettings {
-                archive_on_merge: false,
+                merge_cleanup: Default::default(),
                 worktree_location: worktree_location.to_owned(),
                 setup_command: String::new(),
                 check_commands: vec![],
@@ -757,7 +757,7 @@ async fn create_current_records_project_default_as_base_ref() {
                 current_branch: "feature".to_owned(),
                 default_branch: Some("main".to_owned()),
                 settings: ProjectSettings {
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                     worktree_location: repo.path().join("worktrees").display().to_string(),
                     setup_command: String::new(),
                     check_commands: vec![],
@@ -3242,6 +3242,138 @@ async fn archive_retains_ignored_files_and_repeated_calls_find_the_same_recovery
         repeated.recovery_path.as_deref(),
         Some(recovery_path.as_str())
     );
+}
+
+#[tokio::test]
+async fn merged_checkout_removal_deletes_the_worktree_and_keeps_the_chat_listed() {
+    let repo = seed_git_repo(&[(".gitignore", "ignored/\n"), ("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("merged work".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+    let checkout = std::path::Path::new(&workspace.path);
+    // Build output is what piles up; it goes with the checkout.
+    std::fs::create_dir_all(checkout.join("ignored")).expect("ignored dir");
+    std::fs::write(checkout.join("ignored/build.bin"), "output").expect("ignored file");
+    let merged_head = run_git_stdout(checkout, &["rev-parse", "HEAD"]);
+
+    let removed = service
+        .remove_merged_checkout(&workspace.id, merged_head.trim())
+        .await
+        .expect("remove merged checkout");
+
+    assert_eq!(removed.state, "archived");
+    assert!(removed.checkout_removed_at.is_some());
+    assert_eq!(removed.recovery_path, None);
+    assert!(!checkout.exists(), "the checkout is deleted, not moved");
+    let worktrees = run_git_stdout(repo.path(), &["worktree", "list", "--porcelain"]);
+    assert!(!worktrees.contains(&workspace.path));
+    // The branch is PR cleanup's to delete, after this.
+    let branches = run_git_stdout(repo.path(), &["branch", "--list", &workspace.branch]);
+    assert!(branches.contains(&workspace.branch));
+
+    let repeated = service
+        .remove_merged_checkout(&workspace.id, merged_head.trim())
+        .await
+        .expect("repeated removal");
+    assert_eq!(
+        repeated.checkout_removed_at, removed.checkout_removed_at,
+        "a second merge notice changes nothing"
+    );
+
+    let hidden = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: WorkspaceId::try_from(workspace.id.clone()).expect("workspace id"),
+            force: None,
+        })
+        .await
+        .expect("archive the merged chat");
+    assert_eq!(hidden.state, "archived");
+    assert_eq!(
+        hidden.checkout_removed_at, None,
+        "archiving moves the chat to the Archived section"
+    );
+}
+
+#[tokio::test]
+async fn merged_checkout_removal_keeps_a_checkout_with_commits_after_the_merge() {
+    let repo = seed_git_repo(&[("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("follow-up work".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+    let checkout = std::path::Path::new(&workspace.path);
+    let merged_head = run_git_stdout(checkout, &["rev-parse", "HEAD"]);
+    std::fs::write(checkout.join("next.txt"), "after the merge").expect("write");
+    run_git_stdout(checkout, &["add", "next.txt"]);
+    run_git_stdout(checkout, &["commit", "-m", "after the merge"]);
+
+    let result = service
+        .remove_merged_checkout(&workspace.id, merged_head.trim())
+        .await
+        .expect("remove merged checkout");
+
+    assert_eq!(result.state, "kept");
+    assert_eq!(result.checkout_removed_at, None);
+    assert!(checkout.join("next.txt").exists());
+}
+
+#[tokio::test]
+async fn merged_checkout_removal_keeps_the_checkout_when_the_merged_head_is_unknown() {
+    let repo = seed_git_repo(&[("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let workspace = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+            task_label: TaskLabel::try_from("updated on github".to_owned()).expect("task label"),
+            base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+        })
+        .await
+        .expect("isolated workspace");
+
+    // A head GitHub made that this repo never fetched, and no remote to
+    // fetch it from.
+    let result = service
+        .remove_merged_checkout(&workspace.id, "0123456789abcdef0123456789abcdef01234567")
+        .await
+        .expect("remove merged checkout");
+
+    assert_eq!(
+        result.state, "kept",
+        "unprovable, so kept rather than failed"
+    );
+    assert!(std::path::Path::new(&workspace.path).exists());
 }
 
 fn days_ago(days: u64) -> std::time::SystemTime {

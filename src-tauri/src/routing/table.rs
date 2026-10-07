@@ -222,15 +222,18 @@ fn difficulty_effort(difficulty: Difficulty) -> ReasoningEffort {
 /// Opus's per-token price; a reported-wrong review still climbs the Cost
 /// ladder. Standard questions edit nothing, so they take Luna at 1/20 of
 /// Sol's price. Mechanical edits stop at medium.
+///
+/// Luna came back from DeepSeek V4.1 Flash on 2026-10-06. Artificial Analysis
+/// scores them alike (index 38 vs 39), but Luna costs $0.07 per index task
+/// against DeepSeek's $0.27: DeepSeek writes more tokens, doubles its price at
+/// peak hours, and OpenRouter's host choice moves its cache-read rate.
+/// DeepSeek keeps the cells where its latency is the point, on Speed and Balance.
 fn cost_route(kind: TaskKind, difficulty: Difficulty) -> RoutedModel {
     let (model, effort) = match (kind, difficulty) {
         (TaskKind::Review, _) => (&SONNET, difficulty_effort(difficulty)),
-        // DeepSeek V4.1 Flash took every Luna cell and the heavy mechanical
-        // cell (2026-10-04): it bills cache reads at $0.003 per million, which
-        // is most of an agent turn's tokens. Mechanical edits run at low, the
-        // rest at high, the levels its CLI offers.
-        (TaskKind::Mechanical, _) => (&DEEPSEEK, Low),
-        (_, Difficulty::Light) | (TaskKind::Question, Difficulty::Standard) => (&DEEPSEEK, High),
+        (TaskKind::Mechanical, _)
+        | (_, Difficulty::Light)
+        | (TaskKind::Question, Difficulty::Standard) => (&LUNA, Medium),
         (_, Difficulty::Standard) => (&SOL, Medium),
         (_, Difficulty::Heavy) => (&SOL, High),
     };
@@ -261,13 +264,16 @@ pub fn route(tier: AutoTier, kind: TaskKind, difficulty: Difficulty, ui: bool) -
         effort = Low;
     }
     let model = match (tier, difficulty, kind) {
-        // Frontier's heaviest work spreads across families, where latency no
-        // longer counts: Astra takes deep investigations (and draws on the
-        // Codex plan), Fable the big design and architecture questions.
-        // Coding stays on Opus, which outscores Fable high on CursorBench
-        // (56.0% vs 49.2%); Fable is the step after Opus high on its ladder.
-        (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Research) => &ASTRA,
-        (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Question) => &FABLE,
+        // Frontier's heaviest thinking goes to Fable, where latency no longer
+        // counts: deep investigations and the big design and architecture
+        // questions. On research-style benchmarks Fable beats Astra (HLE 65.6
+        // vs 57.2, GDPval 1735 vs 1542, 2026-10-06). Coding stays on Opus,
+        // which outscores Fable high on CursorBench (56.0% vs 49.2%); Fable is
+        // the step after Opus high on its ladder. Astra keeps Frontier reviews,
+        // so a second model family checks the work.
+        (AutoTier::Intelligence, Difficulty::Heavy, TaskKind::Research | TaskKind::Question) => {
+            &FABLE
+        }
         // Frontier light is the value column, which is DeepSeek for a
         // rename. A small mechanical edit there still gets Sonnet medium.
         (AutoTier::Intelligence, Difficulty::Light, TaskKind::Mechanical) => &SONNET,
@@ -329,24 +335,8 @@ pub fn follow_up_target(
 ) -> Option<RoutedModel> {
     if tier == AutoTier::Economy {
         let target = cost_route(kind, difficulty);
-        // Native Codex and Claude chats never ran DeepSeek's low or high, so a
-        // DeepSeek cell maps to the medium they used before it.
-        let native_effort = if target.model == &DEEPSEEK {
-            Some(Medium)
-        } else {
-            target.effort
-        };
         match provider {
             ProviderId::Codex => {
-                // A budget DeepSeek cell keeps a Codex chat on its cheap native
-                // model at Luna's usual medium effort. Heavy mechanical work
-                // in a Codex chat goes to Sol.
-                if target.model == &DEEPSEEK && difficulty != Difficulty::Heavy {
-                    return Some(RoutedModel {
-                        model: &LUNA,
-                        effort: Some(Medium),
-                    });
-                }
                 return Some(RoutedModel {
                     // Keep the native Codex conversation for a review. A reported
                     // wrong answer can cross to Opus through the Cost ladder.
@@ -355,7 +345,7 @@ pub fn follow_up_target(
                     } else {
                         &SOL
                     },
-                    effort: native_effort,
+                    effort: target.effort,
                 });
             }
             ProviderId::Claude => {
@@ -365,7 +355,7 @@ pub fn follow_up_target(
                     && !matches!(kind, TaskKind::Mechanical | TaskKind::Review);
                 return Some(RoutedModel {
                     model: if heavy { &OPUS } else { &SONNET },
-                    effort: native_effort,
+                    effort: target.effort,
                 });
             }
             _ => {}
@@ -386,7 +376,7 @@ pub fn follow_up_target(
         ProviderId::Claude => {
             if tier == AutoTier::Intelligence
                 && difficulty == Difficulty::Heavy
-                && kind == TaskKind::Question
+                && matches!(kind, TaskKind::Question | TaskKind::Research)
             {
                 &FABLE
             } else if tier == AutoTier::Cost {
@@ -605,11 +595,7 @@ mod tests {
             (
                 Research,
                 Heavy,
-                [
-                    "Sonnet 5.5 · medium",
-                    "Opus 5.5 · high",
-                    "GPT-6 Astra · high",
-                ],
+                ["Sonnet 5.5 · medium", "Opus 5.5 · high", "Fable 5.1 · high"],
             ),
             (
                 Review,
@@ -671,12 +657,12 @@ mod tests {
         use TaskKind::{Coding, Mechanical, Question, Research, Review};
         for kind in [Coding, Research, Question] {
             let standard = if kind == Question {
-                "DeepSeek V4.1 Flash · high"
+                "GPT-6 Luna · medium"
             } else {
                 "GPT-6.1 Sol · medium"
             };
             for (difficulty, expected) in [
-                (Light, "DeepSeek V4.1 Flash · high"),
+                (Light, "GPT-6 Luna · medium"),
                 (Standard, standard),
                 (Heavy, "GPT-6.1 Sol · high"),
             ] {
@@ -687,9 +673,9 @@ mod tests {
             }
         }
         for (kind, difficulty, expected) in [
-            (Mechanical, Light, "DeepSeek V4.1 Flash · low"),
-            (Mechanical, Standard, "DeepSeek V4.1 Flash · low"),
-            (Mechanical, Heavy, "DeepSeek V4.1 Flash · low"),
+            (Mechanical, Light, "GPT-6 Luna · medium"),
+            (Mechanical, Standard, "GPT-6 Luna · medium"),
+            (Mechanical, Heavy, "GPT-6 Luna · medium"),
             (Review, Light, "Sonnet 5.5 · low"),
             (Review, Standard, "Sonnet 5.5 · medium"),
             (Review, Heavy, "Sonnet 5.5 · high"),
@@ -737,7 +723,7 @@ mod tests {
                 )
                 .unwrap()
             ),
-            "GPT-6.1 Sol · medium"
+            "GPT-6 Luna · medium"
         );
         assert_eq!(
             cell_text(

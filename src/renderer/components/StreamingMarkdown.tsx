@@ -10,6 +10,7 @@ import type * as MarkdownBlocks from "../lib/markdownBlocks.js";
 import type { MarkdownBlock, MarkdownBlockSplit } from "../lib/markdownBlocks.js";
 import { revealBoundary } from "../lib/streamingText.js";
 import { needsMath } from "../lib/needsMath.js";
+import { remarkVisualizationReferences, VISUALIZATION_START } from "../lib/visualizationReference.js";
 import { importChunk } from "../lib/importChunk.js";
 import {
   FRESH_RUN_FADE_MS,
@@ -38,6 +39,33 @@ const MermaidDiagram = lazy(() =>
     default: (await import("./MermaidDiagram.js")).MermaidDiagram
   }))
 );
+
+const HtmlVisualization = lazy(() =>
+  importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }))
+);
+
+function VisualizationBlock({ properties }: { properties: Record<string, unknown> }): JSX.Element {
+  const streaming = useContext(StreamingCodeContext);
+  const { workspace } = useContext(MarkdownContext);
+  const state = properties["data-visualization"];
+  if (state !== "ready") {
+    const pending = state === "pending" && streaming;
+    return <p role={pending ? "status" : "alert"}>{pending
+      ? "Loading visualization reference"
+      : typeof properties["data-error"] === "string" ? properties["data-error"] : "Incomplete visualization reference."}</p>;
+  }
+  if (!workspace?.id) return <p role="alert">Visualization requires a workspace.</p>;
+  return (
+    <Suspense fallback={<p role="status">Loading visualization</p>}>
+      <HtmlVisualization
+        workspaceId={workspace.id}
+        path={String(properties["data-path"])}
+        mode={properties["data-mode"] === "wide" ? "wide" : undefined}
+        title={typeof properties["data-title"] === "string" ? properties["data-title"] : undefined}
+      />
+    </Suspense>
+  );
+}
 
 const ChatMathMarkdown = lazy(() =>
   importChunk(async () => ({
@@ -438,6 +466,10 @@ function isBoldOnlyLine(node: InlineNode): boolean {
 }
 
 const markdownComponents: Components = {
+  div: function MarkdownDivision({ node, children, ...rest }) {
+    if (node?.properties["data-visualization"]) return <VisualizationBlock properties={node.properties} />;
+    return <div {...rest}>{children}</div>;
+  },
   p: function MarkdownParagraph({ node, children, ...rest }) {
     if (node && isBoldOnlyLine(node)) {
       return (
@@ -590,7 +622,7 @@ function parsedMarkdownTree(text: string): JSX.Element {
   }
   const tree = ReactMarkdown({
     children: text,
-    remarkPlugins: [remarkGfm],
+    remarkPlugins: [remarkGfm, remarkVisualizationReferences],
     urlTransform: chatUrlTransform,
     components: markdownComponents
   });
@@ -633,13 +665,13 @@ const MarkdownBody = memo(function MarkdownBody({
   // block settling keeps its DOM (and a code block its scroll position).
   const plain = withMath ? (
     // Only the fallback while the math chunk loads, so it stays lazy.
-    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={chatUrlTransform} components={markdownComponents}>
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkVisualizationReferences]} urlTransform={chatUrlTransform} components={markdownComponents}>
       {text}
     </ReactMarkdown>
   ) : !settled || rehypePlugins
       ? ReactMarkdown({
           children: text,
-          remarkPlugins: [remarkGfm],
+          remarkPlugins: [remarkGfm, remarkVisualizationReferences],
           rehypePlugins,
           urlTransform: chatUrlTransform,
           components: markdownComponents
@@ -777,7 +809,8 @@ export function StreamingMarkdown({
       return (
         <StreamingCodeContext.Provider key={block.start} value={open}>
           <MarkdownBody
-            text={open && tools ? tools.healStreamingTail(block.text) : block.text}
+            text={open && tools && !block.text.trimStart().startsWith(VISUALIZATION_START)
+              ? tools.healStreamingTail(block.text) : block.text}
             freshRuns={blockFreshRuns(freshRuns, block, blockRunsRef.current)}
             settled={index < split.blocks.length - 2 || !live}
             workspace={workspace}

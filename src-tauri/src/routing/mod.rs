@@ -182,12 +182,7 @@ pub(crate) fn with_available_provider(
             route.difficulty == Some(Difficulty::Heavy) && route.kind != Some(TaskKind::Mechanical);
         Some(RoutedModel {
             model: if heavy { &table::OPUS } else { &table::SONNET },
-            // DeepSeek's low and high mean nothing to Sonnet: use medium.
-            effort: if route.model_id == table::DEEPSEEK.model_id {
-                Some(crate::ipc::validation::ReasoningEffort::Medium)
-            } else {
-                route.effort
-            },
+            effort: route.effort,
         })
     } else {
         route
@@ -420,12 +415,12 @@ mod tests {
     }
 
     #[test]
-    fn a_cost_deepseek_pick_without_opencode_runs_sonnet_at_medium() {
+    fn a_cost_luna_pick_without_codex_runs_sonnet_at_medium() {
         let route = decide(
             AutoTier::Economy,
             &classification(TaskKind::Question, 1.0, 0.2, 0.9),
         );
-        assert_eq!(route.provider, ProviderId::Opencode);
+        assert_eq!(route.model_id, "gpt-6-luna");
         let moved = with_available_provider(route, &[ProviderId::Claude]);
         assert_eq!(moved.model_id, "claude-sonnet-5-5");
         assert_eq!(

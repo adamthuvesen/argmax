@@ -596,6 +596,12 @@ command_catalogue! {
             encode(workspace_files::workspace_read_file_impl(state, input).await?)
         };
 
+    "workspace:read-visualization" => workspace_files::workspace_read_visualization, read,
+    |state, input, default_agent, channel| {
+            let input: WorkspaceReadVisualizationInput = parse(channel, input)?;
+            encode(workspace_files::workspace_read_visualization_impl(state, input).await?)
+        };
+
     "workspace:write-file" => workspace_files::workspace_write_file, control,
     |state, input, default_agent, channel| {
             let input: WorkspaceWriteFileInput = parse(channel, input)?;

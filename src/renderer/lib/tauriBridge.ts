@@ -401,6 +401,8 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand("workspace:list-files", target),
       readFile: (target: WorkspaceTarget, filePath: string) =>
         invokeCommand("workspace:read-file", { ...target, filePath }),
+      readVisualization: (target: WorkspaceTarget, filePath: string) =>
+        invokeCommand("workspace:read-visualization", { ...target, filePath }),
       writeFile: (target: WorkspaceTarget, filePath: string, content: string, expectedMtimeMs: number | null) =>
         invokeCommand("workspace:write-file", {
           ...target,

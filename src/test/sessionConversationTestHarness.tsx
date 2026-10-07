@@ -78,7 +78,7 @@ export const project: ProjectSummary = {
   currentBranch: "main",
   defaultBranch: "main",
   settings: {
-    archiveOnMerge: false,
+    mergeCleanup: "off",
     worktreeLocation: "/tmp/worktrees",
     setupCommand: "",
     checkCommands: []

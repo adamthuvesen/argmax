@@ -14,6 +14,15 @@ export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = [
   "grok"
 ];
 
+/**
+ * A model id without its routing prefix: `openrouter/deepseek/deepseek-v4.1-flash`
+ * reads `deepseek-v4.1-flash`. The provider label beside it already names
+ * where the call ran, and the full id stays on the row's tooltip.
+ */
+export function modelDisplayId(modelId: string): string {
+  return modelId.slice(modelId.lastIndexOf("/") + 1) || modelId;
+}
+
 export function providerLabel(provider: ProviderId): string {
   return PROVIDER_DISPLAY_NAMES[provider];
 }

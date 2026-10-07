@@ -306,7 +306,10 @@ function SidebarSessionRowInner({
     workspace.state === "failed" ||
     workspace.state === "archive-failed" ||
     workspace.state === "cancelled" ||
-    workspace.state === "kept";
+    workspace.state === "kept" ||
+    // A merged chat whose checkout is gone: archiving it only moves it to
+    // the Archived section.
+    (workspace.state === "archived" && Boolean(workspace.checkoutRemovedAt));
 
   const hasPath = Boolean(workspace.path);
   const guiIdes = useMemo(
@@ -324,7 +327,9 @@ function SidebarSessionRowInner({
   const ideDisabled = workspace.state === "archived" || !hasPath || !hasIdes || effectiveDefault === null;
   // Surfaced on the (disabled) menu item so the user learns why it's inert.
   const disabledReason = workspace.state === "archived"
-    ? "This chat is archived"
+    ? workspace.checkoutRemovedAt
+      ? "This chat's PR merged and its worktree was removed"
+      : "This chat is archived"
     : !hasPath
       ? "Worktree not ready yet"
       : !hasIdes

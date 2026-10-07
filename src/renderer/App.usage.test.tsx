@@ -121,15 +121,17 @@ describe("App usage", () => {
     await openUsage();
 
     const table = await screen.findByRole("table", { name: "Usage by model" });
-    const unpriced = within(table).getByRole("row", { name: /codex-auto-review/ });
+    const unpriced = within(table).getByRole("row", { name: /gpt-7-preview/ });
     expect(within(unpriced).getByText("Unpriced")).toBeInTheDocument();
     // 60 of the 100 priced dollars, not of the 100 plus an unpriced row's $0.
     const opus = within(table).getByRole("row", { name: /claude-opus-5/ });
     const terra = within(table).getByRole("row", { name: /gpt-5\.6-terra/ });
     expect(within(opus).getByText("60.0%")).toBeInTheDocument();
     expect(within(terra).getByText("40.0%")).toBeInTheDocument();
-    // The unpriced row claims no share at all rather than a confident 0.0%.
-    expect(within(unpriced).getByText("—")).toBeInTheDocument();
+    // The unpriced row claims no share or rate rather than a confident 0.0%.
+    expect(within(unpriced).getAllByText("—")).toHaveLength(2);
+    // $60 over Opus's 1.31M processed tokens.
+    expect(within(opus).getByText("$45.80")).toBeInTheDocument();
   });
 
   it("publishes the chart's numbers as a table", async () => {

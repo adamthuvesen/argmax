@@ -25,6 +25,8 @@ function tier(overrides: Partial<RouterTierCost>): RouterTierCost {
     decisions: [],
     medianTurnSeconds: null,
     medianFirstAnswerSeconds: null,
+    medianTurnTokens: null,
+    pricedTokens: 0,
     ...overrides
   };
 }
@@ -56,6 +58,8 @@ describe("RouterCostCard", () => {
           measuredCostUsd: 8,
           medianTurnSeconds: 84.4,
           medianFirstAnswerSeconds: 4.84,
+          medianTurnTokens: 1_500_000,
+          pricedTokens: 16_000_000,
           models: [
             { provider: "claude", modelId: "claude-opus-5-5", turns: 4, costUsd: 8, estimated: false }
           ]
@@ -79,7 +83,7 @@ describe("RouterCostCard", () => {
     render(<RouterCostCard usageWindow="24h" visible />);
 
     const table = await screen.findByRole("table", { name: "Router cost by tier" });
-    const rows = within(table).getAllByRole("row").slice(1);
+    const rows = within(table).getAllByRole("row").slice(2); // Past the family and column header rows.
     const names = rows.map((row) => within(row).getByRole("rowheader").textContent ?? "");
     for (const [index, name] of ["Frontier", "Balance", "Speed", "Cost"].entries()) {
       expect(names[index]).toMatch(new RegExp(`^${name}`));
@@ -88,10 +92,13 @@ describe("RouterCostCard", () => {
     // Frontier: measured only, so no ≈; $8 over 4 turns.
     expect(within(rows[0]).getByText("$8.00")).toBeInTheDocument();
     expect(within(rows[0]).getByText("$2.00")).toBeInTheDocument();
+    // Usage: median tokens per turn, and $8 over 16M priced tokens is $0.50 per 1M.
+    expect(within(rows[0]).getByText("1.5M")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("$0.50")).toBeInTheDocument();
     // Medians: minutes past a minute, tenths under ten seconds, a dash with none.
     expect(within(rows[0]).getByText("1m 24s")).toBeInTheDocument();
-    expect(within(rows[0]).getByText("4.8s")).toBeInTheDocument();
-    expect(within(rows[1]).getAllByText("—")).toHaveLength(2);
+    // Tokens, $/1M and turn time have no data.
+    expect(within(rows[1]).getAllByText("—")).toHaveLength(3);
     // Speed: an estimate, and the unpriced turn is left out of the per-turn figure.
     expect(within(rows[2]).getByText("≈$0.50")).toBeInTheDocument();
     expect(within(rows[2]).getByText("≈$0.13")).toBeInTheDocument();
@@ -100,7 +107,21 @@ describe("RouterCostCard", () => {
     // Only a tier with unpriced turns is flagged.
     expect(within(rows[2]).getByText("1 unpriced")).toHaveAttribute("title", "4/5 turns priced");
     expect(within(rows[0]).queryByText(/unpriced/)).toBeNull();
-    expect(within(table).getByRole("columnheader", { name: "First activity" })).toBeInTheDocument();
+    // Each column shades a tier by its share of the column's largest: Frontier's
+    // $8 is the deepest cost, the Cost tier's $0.02 a quarter of a percent of
+    // it, and an unknown figure has none.
+    const heat = (row: HTMLElement, text: string): number =>
+      Number(within(row).getByText(text).style.getPropertyValue("--router-heat"));
+    expect(heat(rows[0], "$8.00")).toBe(1);
+    expect(heat(rows[3], "$0.02")).toBeCloseTo(0.0025);
+    for (const cell of within(rows[1]).getAllByText("—")) {
+      expect(cell.style.getPropertyValue("--router-heat")).toBe("");
+    }
+    // The figures sit under their families; first activity is not shown.
+    for (const family of ["Volume", "Spend", "Tokens", "Pace"]) {
+      expect(within(table).getByRole("columnheader", { name: family })).toBeInTheDocument();
+    }
+    expect(within(table).queryByRole("columnheader", { name: "First activity" })).toBeNull();
   });
 
   it("expands grouped decisions with effort, classification, and the recorded reason", async () => {
@@ -145,6 +166,6 @@ describe("RouterCostCard", () => {
     const table = await screen.findByRole("table", { name: "Router cost by tier" });
     expect(within(table).getByText("2 unpriced")).toBeInTheDocument();
     expect(within(table).queryByText("$0.00")).toBeNull();
-    expect(within(table).getAllByText("—")).toHaveLength(4);
+    expect(within(table).getAllByText("—")).toHaveLength(5);
   });
 });

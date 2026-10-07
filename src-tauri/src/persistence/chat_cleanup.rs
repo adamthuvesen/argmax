@@ -214,7 +214,7 @@ mod tests {
         run_migrations(&mut connection).expect("run migrations");
         connection
             .execute(
-                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at, archive_on_merge) VALUES ('p1', 'Project', '/tmp/project', 'main', '/tmp/worktrees', ?, ?, 0)",
+                "INSERT INTO projects (id, name, repo_path, current_branch, worktree_location, created_at, updated_at, merge_cleanup) VALUES ('p1', 'Project', '/tmp/project', 'main', '/tmp/worktrees', ?, ?, 'off')",
                 (OLD, OLD),
             )
             .expect("insert project");

@@ -75,6 +75,25 @@ pub(crate) async fn workspace_read_file_impl(
         .await
 }
 
+#[tauri::command(rename = "workspace:read-visualization")]
+#[specta::specta]
+pub async fn workspace_read_visualization(
+    state: State<'_, AppState>,
+    input: WorkspaceReadVisualizationInput,
+) -> ArgmaxResult<WorkspaceFilePreview> {
+    workspace_read_visualization_impl(&state, input).await
+}
+
+pub(crate) async fn workspace_read_visualization_impl(
+    state: &AppState,
+    input: WorkspaceReadVisualizationInput,
+) -> ArgmaxResult<WorkspaceFilePreview> {
+    let database = live_database(state)?;
+    WorkspaceFilesService::new(database)
+        .read_visualization(input.kind, input.id.as_str(), input.file_path.as_str())
+        .await
+}
+
 #[tauri::command(rename = "workspace:write-file")]
 #[specta::specta]
 pub async fn workspace_write_file(

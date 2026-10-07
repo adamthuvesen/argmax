@@ -651,7 +651,7 @@ mod tests {
                     worktree_location: String::new(),
                     setup_command: String::new(),
                     check_commands: vec![],
-                    archive_on_merge: false,
+                    merge_cleanup: Default::default(),
                 },
             },
         )

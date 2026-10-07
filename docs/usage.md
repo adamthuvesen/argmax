@@ -8,6 +8,19 @@ Argmax launched, so it is the same number a terminal-only user would get.
 Cursor is the exception: it keeps no token log, so its figures are estimated
 from the chats Argmax ran (see [Cursor estimate](#cursor-estimate)).
 
+Both breakdowns name a model without its routing prefix
+(`openrouter/deepseek/deepseek-v4.1-flash` reads `deepseek-v4.1-flash`); the
+provider label already says where it ran, and the desktop row's tooltip keeps
+the full id.
+
+The breakdown's **$ / 1M** (the desktop's last column, the end of each
+iPhone model row's second line) is the row's cost over its
+processed tokens (uncached input, cache reads and writes, output), so models
+compare on price per token rather than on volume. An unpriced row has no rate
+("—" on the desktop, where it sorts last); the folded tail divides its priced dollars by its priced tokens. A
+day row includes the tokens of any unpriced model that day, which pulls that
+day's rate down. Rates under $0.10 keep a third decimal (`$0.016`).
+
 The iPhone model breakdown shows the top 12 models in descending order of the
 selected metric (tokens or cost). Its bars use that same metric.
 
@@ -79,10 +92,19 @@ for Cursor", from `UsageSummary::estimated_cost_usd` / `estimated_tokens`).
 ## Router cost
 
 Below the remaining card, a **Router** card shows what each Auto tier cost in
-the page's window: Frontier, Balance, Speed, each with chats, turns, total
-cost, cost per turn, median turn time and time to first activity, escalations,
-and the model mix. The mix names the top two models by share of the tier's
-turns, with provider dots, and folds the rest into "+N more". It appears only
+the page's window: Frontier, Balance, Speed, Cost, each with the model mix and
+four families of figures. **Volume** is chats and turns, **Spend** is total
+cost and cost per turn, **Tokens** is median tokens per turn and cost per
+million tokens, and **Pace** is median turn time and escalations. Each family
+has one hue: the family's name over a thin rule in that hue, and each figure
+on a tile of it whose tint deepens with the figure's share of the column's
+largest, so tiers compare at a glance and close figures shade close. An
+unknown figure has no tile; a figure with no other tier to compare against,
+or a zero, keeps the base tint, and a zero drops to muted ink
+([usage-router.css](../src/renderer/styles/usage-router.css)). Under the tier
+name, the mix lists the top three models by share of the tier's turns, one
+per line with provider dots and the shares in a column, and folds the rest
+into "+N more". It appears only
 when a chat was routed in the window. The browser preview draws it from
 `demoRouterCost` in [demoUsage.ts](../src/renderer/demoUsage.ts). The read is `usage:router-cost`
 ([routing/cost.rs](../src-tauri/src/routing/cost.rs)).
@@ -96,16 +118,19 @@ windows as the totals, excluding pins and unanswered windows. Missing
 classification or effort stays explicitly unrecorded. Escalations measure
 router actions, not successful outcomes or all user corrections.
 
-Desktop flags a tier with unpriced turns with an "N unpriced" badge; its
-tooltip gives priced turns / total turns. A fully priced tier carries no badge.
-On desktop and iPhone, **First activity** includes reasoning and tool calls, not only a
-text answer. Its existing wire field remains `medianFirstAnswerSeconds`.
+Desktop shows a small, muted "N unpriced" note beside the tier name.
+Its tooltip gives priced turns / total turns. A fully priced tier carries no note.
+The read still carries the median time to first activity
+(`medianFirstAnswerSeconds`), which includes reasoning and tool calls, but
+neither surface shows it any more.
 
 The iPhone Usage tab shows the same card under its remaining card
 ([RouterViews.swift](../ios/Argmax/Sources/Insights/RouterViews.swift)). The
 table is too wide for a phone, so a bar splits the turns across tiers, and
-each tier is a block: cost beside its name, chats, turns and cost per turn
-under it, then turn time, first activity and escalations in a stat strip. The
+each tier is a block: its name, its top three models one per line with their
+shares, then the four families as a two-by-two grid of tiles (Volume and
+Spend, Tokens and Pace) in the Mac's hues and with its value shading. The Cost
+tile is compact (`$358.3`); the card's title carries the exact total. The
 phone fetches it beside `usage:summary`, caches it with that summary, and
 hides the card when the read fails or the Mac predates the channel.
 
@@ -128,6 +153,14 @@ hides the card when the read fails or the Mac predates the channel.
   start, clipped at the next route, because final usage can be recorded just
   after completion. A continuation without usage stays unpriced even when
   an earlier turn on the same route has usage.
+- **Tokens are everything the turn processed:** uncached input, cache reads,
+  cache writes and output, summed over the turn's calls. Cursor's are the
+  transcript estimate (no cache writes), so its figures carry the "≈". Tokens
+  per turn is a median over turns that recorded usage, because one long agentic
+  turn would carry a mean. Cost per million tokens is the tier's total cost over
+  the tokens of its *priced* turns, so an unpriced turn is in neither number.
+  Unlike cost per turn, it does not depend on how big the tier's turns are. A
+  Mac that predates the fields shows "—" for both on the iPhone.
 - **Times are medians per tier.** Turn time runs from the send to the turn's
   `session.completed` / `session.cancelled`, less any time an approval waited
   on the user; first activity runs from the send to the first text, reasoning,
@@ -312,6 +345,10 @@ re-prices history without a rescan.
   out.
 - `PARSER_VERSION` in the scanner is stored in `usage_scan_meta`; bumping it
   empties the ledger and rescans.
+- Codex's approval reviewer (`codex-auto-review`, on its own rollout when
+  `approvals_reviewer = "auto_review"`) is left out of the ledger. It is
+  Codex's approval machinery, not a model the user picked (parser version 4,
+  2026-10-06).
 - The first sweep is cold and runs in the background when the page is first
   opened; the page shows "Scanning N of M transcripts". Later sweeps are warm,
   run inline on every `usage:summary`, and take well under a second.

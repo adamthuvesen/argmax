@@ -730,6 +730,14 @@ async workspaceReadFile(input: WorkspaceReadFileInput) : Promise<Result<Workspac
     else return { status: "error", error: e  as any };
 }
 },
+async workspaceReadVisualization(input: WorkspaceReadVisualizationInput) : Promise<Result<WorkspaceFilePreview, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("workspace_read_visualization", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async workspaceWriteFile(input: WorkspaceWriteFileInput) : Promise<Result<WorkspaceFileWriteResult, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("workspace_write_file", { input }) };
@@ -2321,6 +2329,26 @@ export type LogEntry = {
  */
 seq: number; timestamp: string; level: string; scope: string; message: string; fields: Partial<{ [key in string]: string }> }
 export type MenuCommand = "new-session" | "next-chat" | "previous-chat" | "open-settings" | "toggle-sidebar" | "toggle-left-sidebar" | "toggle-debug-log" | "open-command-palette" | "open-cheat-sheet" | "check-for-updates" | "open-docs" | "report-issue" | "close-surface"
+/**
+ * What the gh poller does to an isolated workspace once the PR on its branch
+ * merges. Shared checkouts are never touched, whatever the setting.
+ */
+export type MergeCleanup =
+/**
+ * Nothing happens; the sidebar row only shows the merged marker.
+ */
+"off" |
+/**
+ * Archive the workspace: the chat moves to the Archived section and its
+ * checkout and branch are retained in recovery storage.
+ */
+"archive" |
+/**
+ * Remove the checkout, then run PR cleanup: delete the remote and local
+ * branch and fast-forward the base where it is checked out. The chat
+ * stays in its sidebar section and becomes read-only.
+ */
+"remove-checkout"
 export type MessageContent = "answer" | "thinking"
 export type MessageDelivery = "steer"
 /**
@@ -2505,17 +2533,17 @@ export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: bool
 export type ProjectId = string
 export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[];
 /**
- * Archive a workspace once the PR on its branch merges, retaining its
- * checkout and branch in recovery storage. Off unless the project opts in.
+ * What a merged PR does to the isolated workspace on its branch. Off
+ * unless the project opts in.
  */
-archiveOnMerge: boolean }
+mergeCleanup: MergeCleanup }
 export type ProjectSettingsInput = { worktreeLocation: NonEmptyString; setupCommand: string; checkCommands: string[];
 /**
- * Archive a workspace when the PR on its branch merges. Required rather
+ * What a merged PR does to the workspace on its branch. Required rather
  * than defaulted: a caller that omitted it would silently turn the
  * setting off on every other save.
  */
-archiveOnMerge: boolean }
+mergeCleanup: MergeCleanup }
 export type ProjectSource = { id: string; projectId: string; title: string; kind: ProjectSourceKind; location: string; guidance: string; addedBy: ProjectSourceAddedBy; addedBySessionId: string | null; createdAt: string; updatedAt: string }
 export type ProjectSourceAddedBy = "user" | "agent"
 export type ProjectSourceKind = "file" | "url"
@@ -2797,6 +2825,16 @@ estimatedCostUsd: number;
  * counted anywhere.
  */
 unpricedTurns: number;
+/**
+ * Tokens processed (uncached input, cache reads and writes, output) in
+ * the priced turns: the denominator of cost per million tokens.
+ */
+pricedTokens: number;
+/**
+ * Median tokens processed per turn, over the turns that recorded usage.
+ * `None` when none did.
+ */
+medianTurnTokens: number | null;
 /**
  * Most turns first.
  */
@@ -3266,6 +3304,7 @@ export type WorkspaceGrepContentInput = { kind: WorkspaceTargetKind; id: Workspa
 export type WorkspaceId = string
 export type WorkspaceListFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId }
 export type WorkspaceReadFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
+export type WorkspaceReadVisualizationInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: OpenPath }
 export type WorkspaceStatFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
@@ -3302,6 +3341,13 @@ priorityAddedAt: string | null;
  * an expired snooze, and the renderer treats it as none.
  */
 snoozedUntil?: string | null;
+/**
+ * When Argmax removed this archived workspace's checkout because its PR
+ * merged (project setting `merge_cleanup = remove-checkout`). Display
+ * metadata: such a row stays in its normal sidebar section instead of
+ * the Archived section, and is read-only like any archived chat.
+ */
+checkoutRemovedAt?: string | null;
 /**
  * State of the displayed session's primary PR, filled in from canonical
  * PR state and session evidence on every read path. The renderer merges

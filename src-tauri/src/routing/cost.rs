@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -168,9 +168,10 @@ pub fn router_cost(
     }))
 }
 
-/// Timeline events that only exist once the model has answered: text or
-/// reasoning, or a tool call.
-const ANSWER_EVENTS: [&str; 3] = ["message.delta", "message.completed", "command.started"];
+/// Timeline events that only exist once the model has answered: a finished
+/// message or a tool call. Streamed text (`message.delta`) also counts, but
+/// it is 82% of the timeline, so `first_delta_at` reads only the first one.
+const ANSWER_EVENTS: [&str; 2] = ["message.completed", "command.started"];
 
 /// Timeline events that reliably end a turn. A plain `error` may describe
 /// other failures, so activity or usage is enough to count an unended turn.
@@ -230,14 +231,14 @@ fn turns_in_route(
     route: &RouteRow,
     until: Option<&str>,
 ) -> ArgmaxResult<Vec<RouteTurn>> {
-    let [a, b, c] = ANSWER_EVENTS;
+    let [b, c] = ANSWER_EVENTS;
     let [completed, cancelled] = TURN_END_EVENTS;
     let events = connection
         .prepare_cached(
             r#"
-            SELECT created_at, type FROM events
+            SELECT created_at, type FROM events INDEXED BY idx_events_session_type_created
             WHERE session_id = ?1 AND created_at >= ?2 AND (?3 IS NULL OR created_at < ?3)
-              AND type IN ('user.message', ?4, ?5, ?6, ?7, ?8)
+              AND type IN ('user.message', ?4, ?5, ?6, ?7)
             ORDER BY created_at, rowid
             "#,
         )
@@ -247,7 +248,6 @@ fn turns_in_route(
                 route.session_id.as_str(),
                 route.created_at.as_str(),
                 until,
-                a,
                 b,
                 c,
                 completed,
@@ -274,7 +274,47 @@ fn turns_in_route(
             turn.first_answer_at = Some(at);
         }
     }
+    for index in 0..turns.len() {
+        let window_end = turns
+            .get(index + 1)
+            .map_or(until, |next| Some(next.start_at.as_str()))
+            .map(str::to_owned);
+        let delta_at = first_delta_at(
+            connection,
+            &route.session_id,
+            &turns[index].start_at,
+            window_end.as_deref(),
+        )?;
+        let turn = &mut turns[index];
+        turn.first_answer_at = match (turn.first_answer_at.take(), delta_at) {
+            (Some(other), Some(delta)) => Some(other.min(delta)),
+            (other, delta) => other.or(delta),
+        };
+    }
     Ok(turns)
+}
+
+/// The first streamed text in `start..end`: one seek into the covering index.
+fn first_delta_at(
+    connection: &Connection,
+    session_id: &str,
+    start: &str,
+    end: Option<&str>,
+) -> ArgmaxResult<Option<String>> {
+    connection
+        .prepare_cached(
+            r#"
+            SELECT created_at FROM events INDEXED BY idx_events_session_type_created
+            WHERE session_id = ?1 AND created_at >= ?2 AND (?3 IS NULL OR created_at < ?3)
+              AND type = 'message.delta'
+            ORDER BY created_at
+            LIMIT 1
+            "#,
+        )
+        .map_err(sqlite_error)?
+        .query_row((session_id, start, end), |row| row.get(0))
+        .optional()
+        .map_err(sqlite_error)
 }
 
 struct TurnTiming {

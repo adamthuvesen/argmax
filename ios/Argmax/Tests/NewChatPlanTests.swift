@@ -111,7 +111,7 @@ final class NewChatPlanTests: XCTestCase {
                 project: nil,
                 baseRef: nil,
                 model: AutoTier.balanced.selection,
-                titleModelId: "claude-haiku-4-5",
+                titleModelId: "claude-haiku-5-5",
                 prompt: "Tidy the chat list"
             )
         )
@@ -160,8 +160,8 @@ final class NewChatPlanTests: XCTestCase {
                 baseRef: nil,
                 model: ModelSelection(
                     provider: "claude",
-                    label: "Haiku 4.5",
-                    modelId: "claude-haiku-4-5",
+                    label: "Haiku 5.5",
+                    modelId: "claude-haiku-5-5",
                     reasoningEffort: nil
                 ),
                 titleModelId: "claude-sonnet-5-5",

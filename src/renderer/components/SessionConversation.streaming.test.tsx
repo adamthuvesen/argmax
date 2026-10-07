@@ -164,8 +164,8 @@ describe("SessionConversation — streaming & composer", () => {
     // object reference with the same id, even one carrying a server-side model
     // swap, must NOT clobber a pick the user made for this chat.
     const v2 = baseSession({
-      modelLabel: "Haiku 4.5",
-      modelId: "claude-haiku-4-5",
+      modelLabel: "Haiku 5.5",
+      modelId: "claude-haiku-5-5",
       reasoningEffort: undefined
     });
     rerender(
@@ -201,8 +201,8 @@ describe("SessionConversation — streaming & composer", () => {
     const switched = baseSession({
       id: "session-b",
       provider: "claude",
-      modelLabel: "Haiku 4.5",
-      modelId: "claude-haiku-4-5",
+      modelLabel: "Haiku 5.5",
+      modelId: "claude-haiku-5-5",
       reasoningEffort: undefined
     });
     rerender(
@@ -222,7 +222,7 @@ describe("SessionConversation — streaming & composer", () => {
     );
 
     const pickerAfter = screen.getByRole("button", { name: "Chat model" });
-    expect(pickerAfter.textContent).toContain("Haiku 4.5");
+    expect(pickerAfter.textContent).toContain("Haiku 5.5");
   });
 
   it("keeps the branch and changed files reachable behind the compact \"…\" trigger", () => {

@@ -66,7 +66,7 @@ final class ProviderCatalogTests: XCTestCase {
     }
 
     func testAFastModelHasNoEffortControl() throws {
-        let haiku = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-haiku-4-5"))
+        let haiku = try XCTUnwrap(catalog.model(provider: "claude", modelId: "claude-haiku-5-5"))
         XCTAssertFalse(haiku.supportsReasoningEffort)
         XCTAssertNil(haiku.defaultEffort)
         XCTAssertNil(catalog.resolveEffort(.high, for: haiku), "there is no rung to carry an effort onto")

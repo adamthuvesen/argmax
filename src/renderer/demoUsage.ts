@@ -128,7 +128,7 @@ function previousPeriods(count: number): Map<ProviderId, DemoPreviousPeriod> {
 
 const MODELS: ReadonlyArray<{ provider: ProviderId; modelId: string; weight: number; unpriced?: boolean }> = [
   { provider: "claude", modelId: "claude-opus-5", weight: 0.66 },
-  { provider: "claude", modelId: "claude-haiku-4-5", weight: 0.34 },
+  { provider: "claude", modelId: "claude-haiku-5-5", weight: 0.34 },
   { provider: "codex", modelId: "gpt-5.6-terra", weight: 0.81 },
   { provider: "opencode", modelId: "openrouter/z-ai/glm-5.3-flash", weight: 1 },
   { provider: "grok", modelId: "grok-code-fast-1", weight: 1 },

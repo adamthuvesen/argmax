@@ -11,7 +11,7 @@ afterEach(() => {
   window.localStorage.removeItem(LAUNCH_MODEL_RECENCY_KEY);
 });
 
-const HAIKU: ProviderModelSelection = { label: "Haiku 4.5", modelId: "claude-haiku-4-5" };
+const HAIKU: ProviderModelSelection = { label: "Haiku 5.5", modelId: "claude-haiku-5-5" };
 const OPUS_MEDIUM: ProviderModelSelection = {
   label: "Opus 5.5",
   modelId: "claude-opus-5-5",
@@ -38,14 +38,14 @@ describe("ModelSelector — one row per model", () => {
 
   it("picking a fast model selects it with no effort", () => {
     const onChange = openClaudePicker({ label: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: "high" });
-    fireEvent.click(screen.getByText("Haiku 4.5"));
-    expect(onChange).toHaveBeenCalledWith({ label: "Haiku 4.5", modelId: "claude-haiku-4-5" });
+    fireEvent.click(screen.getByText("Haiku 5.5"));
+    expect(onChange).toHaveBeenCalledWith({ label: "Haiku 5.5", modelId: "claude-haiku-5-5" });
   });
 
   it("lists only the locked provider's catalog, with no Recent block", () => {
     window.localStorage.setItem(
       LAUNCH_MODEL_RECENCY_KEY,
-      JSON.stringify(["claude:claude-haiku-4-5", "codex:gpt-6-luna"])
+      JSON.stringify(["claude:claude-haiku-5-5", "codex:gpt-6-luna"])
     );
     openClaudePicker(OPUS_MEDIUM);
 
@@ -55,7 +55,7 @@ describe("ModelSelector — one row per model", () => {
       "Fable 5.1",
       "Opus 5.5",
       "Sonnet 5.5",
-      "Haiku 4.5"
+      "Haiku 5.5"
     ]);
   });
 
@@ -130,7 +130,7 @@ describe("ModelSelector type to filter", () => {
     openClaudePicker(OPUS_MEDIUM);
     const list = screen.getByRole("listbox", { name: "Chat model" });
     const options = within(list).getAllByRole("option");
-    // Fable 5.1 (0), Opus 5.5 (1), Sonnet 5.5 (2), Haiku 4.5 (3)
+    // Fable 5.1 (0), Opus 5.5 (1), Sonnet 5.5 (2), Haiku 5.5 (3)
     expect(options[0]).not.toHaveAttribute("data-active");
     expect(options[0]).toHaveAttribute("aria-selected", "false");
     expect(options[1]).toHaveAttribute("data-active", "true");
@@ -172,7 +172,7 @@ describe("ModelSelector type to filter", () => {
 
     fireEvent.keyDown(list, { key: "h" });
 
-    expect(within(list).getByText("Haiku 4.5")).toBeInTheDocument();
+    expect(within(list).getByText("Haiku 5.5")).toBeInTheDocument();
     expect(within(list).queryByText("Opus 5.5")).not.toBeInTheDocument();
     // The query is echoed with a match count. A list that silently shrank
     // would leave the user guessing.
@@ -629,11 +629,11 @@ describe("LaunchModelSelector — effort carries across model switches", () => {
       modelId: "claude-opus-5-5",
       reasoningEffort: "ultra"
     });
-    fireEvent.click(screen.getByText("Haiku 4.5"));
+    fireEvent.click(screen.getByText("Haiku 5.5"));
     expect(onChange).toHaveBeenCalledWith({
       provider: "claude",
-      label: "Haiku 4.5",
-      modelId: "claude-haiku-4-5"
+      label: "Haiku 5.5",
+      modelId: "claude-haiku-5-5"
     });
   });
 });

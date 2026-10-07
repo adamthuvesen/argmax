@@ -709,11 +709,12 @@ fn claude_settings_args(
 // PROVIDER_MODELS.claude (providerModels.ts). Only the launch flag carries the
 // suffix — the CLI reports the bare id back on every message, so usage rows and
 // pricing keep matching MODEL_PRICING.
-const CLAUDE_LONG_CONTEXT_MODELS: [&str; 4] = [
+const CLAUDE_LONG_CONTEXT_MODELS: [&str; 5] = [
     "claude-fable-5-1",
     "claude-opus-5-5",
     "claude-opus-5",
     "claude-sonnet-5-5",
+    "claude-haiku-5-5",
 ];
 
 // A retired id launches as the model that replaced it, so a routine or chat
@@ -721,6 +722,7 @@ const CLAUDE_LONG_CONTEXT_MODELS: [&str; 4] = [
 pub(super) fn successor_model_id(provider: ProviderId, model_id: &str) -> &str {
     match (provider, model_id) {
         (ProviderId::Claude, "claude-sonnet-5") => "claude-sonnet-5-5",
+        (ProviderId::Claude, "claude-haiku-4-5") => "claude-haiku-5-5",
         (ProviderId::Codex, "gpt-6-sol") => "gpt-6.1-sol",
         _ => model_id,
     }
@@ -826,7 +828,8 @@ mod tests {
             ("claude-fable-5-1", "claude-fable-5-1[1m]"),
             ("claude-sonnet-5-5", "claude-sonnet-5-5[1m]"),
             ("claude-sonnet-5", "claude-sonnet-5-5[1m]"),
-            ("claude-haiku-4-5", "claude-haiku-4-5"),
+            ("claude-haiku-5-5", "claude-haiku-5-5[1m]"),
+            ("claude-haiku-4-5", "claude-haiku-5-5[1m]"),
         ] {
             let input = ProviderLaunchInput {
                 model_id: model_id.to_string(),

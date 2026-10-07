@@ -200,7 +200,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Opus 5.5", modelId: "claude-opus-5-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
     { label: "Sonnet 5.5", modelId: "claude-sonnet-5-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "Haiku 4.5", modelId: "claude-haiku-4-5", contextWindow: 200_000 }
+    { label: "Haiku 5.5", modelId: "claude-haiku-5-5", contextWindow: 1_000_000 }
   ],
   // The GPT-6 models' Codex CLI catalog reports a 272_000 default context. Live
   // rollouts can replace it with the model_context_window value they report.
@@ -378,6 +378,8 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "claude-opus-5-5":     { input: 4,    output: 20,  cacheRead: 0.2,   cacheWrite: 5 },
   "claude-opus-5":       { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
   "claude-sonnet-5-5":   { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
+  // Short-prompt rates (up to 100K). Above 100K Haiku 5.5 bills $0.50 / $2.50; that surcharge is not modeled.
+  "claude-haiku-5-5":    { input: 0.1,  output: 0.5, cacheRead: 0.01,  cacheWrite: 0.125 },
   "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
 
   // Short-context rates (<272K). Long-context multipliers are not modeled.
@@ -498,7 +500,7 @@ export function normalizeModelId(modelId: string): string {
  * providerModels.json.
  */
 export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<string, string>>>> = {
-  claude: { "claude-sonnet-5": "claude-sonnet-5-5" },
+  claude: { "claude-sonnet-5": "claude-sonnet-5-5", "claude-haiku-4-5": "claude-haiku-5-5" },
   codex: { "gpt-6-sol": "gpt-6.1-sol" }
 };
 

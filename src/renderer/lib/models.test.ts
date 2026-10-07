@@ -85,13 +85,13 @@ describe("modelSelectionFromSession", () => {
     const fast: SessionSummary = {
       ...BASE_SESSION,
       provider: "claude",
-      modelLabel: "Haiku 4.5",
-      modelId: "claude-haiku-4-5-20251001"
+      modelLabel: "Haiku 5.5",
+      modelId: "claude-haiku-5-5"
     };
 
     expect(modelSelectionFromSession(fast)).toEqual({
-      label: "Haiku 4.5",
-      modelId: "claude-haiku-4-5-20251001"
+      label: "Haiku 5.5",
+      modelId: "claude-haiku-5-5"
     });
   });
 

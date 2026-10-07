@@ -22,6 +22,7 @@ roots. The reader accepts HTML text files up to 1 MB.
 The viewer runs local interactions in an iframe with an opaque origin. Its sandbox
 does not grant app access, popups, downloads, or form submission. A content security
 policy restricts resources to the visualization CDN list and blocks API requests.
+The desktop app also blocks frame navigations outside Argmax before they load.
 Argmax supplies theme variables and basic layout utilities. It does not implement
 Codex's `window.openai` or `Tweak` APIs. Interaction state lasts while the viewer
 stays mounted. Reopening the chat reloads the file.

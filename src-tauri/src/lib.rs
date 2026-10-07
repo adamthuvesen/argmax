@@ -392,6 +392,7 @@ pub fn run() {
     };
 
     builder
+        .plugin(windows::chat_navigation_guard())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())

@@ -1,5 +1,5 @@
 import { Compartment, EditorState } from "@codemirror/state";
-import { EditorView, placeholder as placeholderExtension } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, type JSX } from "react";
 import type { ComposerField } from "./composerEditor/composerField.js";
@@ -57,7 +57,6 @@ export function ComposerEditorView({
   const applyingValue = useRef(false);
 
   const attributes = useRef(new Compartment());
-  const placeholderSlot = useRef(new Compartment());
   const editable = useRef(new Compartment());
   const chatSlot = useRef(new Compartment());
   const skillSlot = useRef(new Compartment());
@@ -66,7 +65,8 @@ export function ComposerEditorView({
     role: "textbox",
     "aria-multiline": "true",
     "aria-label": ariaLabel,
-    // CodeMirror's own placeholder is decoration, hidden from assistive tech.
+    // Also what the CSS draws while the prompt is empty (see .composer-editor
+    // .cm-content::before): no placeholder widget sits beside the caret.
     "aria-placeholder": placeholder,
     "aria-autocomplete": "list",
     "aria-expanded": String(expanded),
@@ -81,7 +81,6 @@ export function ComposerEditorView({
   const configuration = (): Extension[] => [
     promptExtensions(callbacks),
     attributes.current.of(EditorView.contentAttributes.of(contentAttributes())),
-    placeholderSlot.current.of(placeholderExtension(placeholder)),
     editable.current.of(editability(disabled)),
     chatSlot.current.of(chatChipEnvironment.of(chats)),
     skillSlot.current.of(skillTokenPredicate.of(isSkill ?? (() => false))),
@@ -140,7 +139,6 @@ export function ComposerEditorView({
     viewRef.current?.dispatch({
       effects: [
         attributes.current.reconfigure(EditorView.contentAttributes.of(contentAttributes())),
-        placeholderSlot.current.reconfigure(placeholderExtension(placeholder)),
         editable.current.reconfigure(editability(disabled)),
         chatSlot.current.reconfigure(chatChipEnvironment.of(chats)),
         skillSlot.current.reconfigure(skillTokenPredicate.of(isSkill ?? (() => false)))

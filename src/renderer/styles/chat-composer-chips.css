@@ -1000,28 +1000,40 @@
   min-height: var(--composer-field-min-height);
   padding: var(--space-2);
   caret-color: var(--text);
+  position: relative;
 }
 
 .composer-editor .cm-line {
   padding: 0;
 }
 
-/* Inline, not CodeMirror's inline-block: the native caret beside a wrapped
-   inline-block placeholder takes the whole block's height. Inline text wraps
-   in ordinary line boxes, so the caret keeps one line's height. */
-.composer-editor .cm-line .cm-placeholder {
-  display: inline;
-  color: var(--muted);
+/* The placeholder is drawn by CSS, not by CodeMirror's placeholder widget. The
+   widget put an inline span and two zero-width <img> buffers on the empty line
+   beside the caret, and WebKit left a second caret painted at the line start
+   once the first character replaced them. An empty prompt is one line holding
+   only a <br>; the text comes from aria-placeholder, so the two cannot differ.
+   It is one line, ellipsized: it must not grow the field or add a scrollbar. */
+.composer-editor .cm-content:has(> .cm-line:only-child > br:only-child)::before {
+  content: attr(aria-placeholder);
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  right: var(--space-2);
+  overflow: hidden;
+  color: var(--composer-placeholder-ink, var(--muted));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
-.composer-editor[data-placeholder-kind="suggested-follow-up"] .cm-placeholder {
-  color: var(--composer-suggestion);
+.composer-editor[data-placeholder-kind="suggested-follow-up"] {
+  --composer-placeholder-ink: var(--composer-suggestion);
 }
 
 /* The router's reason for a switch borrows the placeholder's line while the
    draft is empty; the placeholder steps aside until it has gone. */
-.composer-editor[data-route-caption] .cm-placeholder {
-  color: transparent;
+.composer-editor[data-route-caption] {
+  --composer-placeholder-ink: transparent;
 }
 
 .composer-editor[data-disabled="true"] {

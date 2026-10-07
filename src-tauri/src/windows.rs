@@ -82,7 +82,8 @@ fn navigation_allowed(label: &str, url: &Url) -> bool {
         return true;
     }
 
-    let app_path = matches!(url.path(), "/" | "/index.html");
+    // Tauri loads the bundled index as `tauri://localhost`, with no path.
+    let app_path = matches!(url.path(), "" | "/" | "/index.html");
     let app_protocol = url.scheme() == "tauri" && url.host_str() == Some("localhost");
     let app_host =
         matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost");
@@ -322,6 +323,8 @@ mod tests {
     fn chat_navigation_allows_only_app_documents_and_srcdoc() {
         let allowed = [
             "about:srcdoc",
+            "tauri://localhost",
+            "tauri://localhost/",
             "tauri://localhost/index.html?session=abc",
             "https://tauri.localhost/index.html?session=abc",
         ];

@@ -2,7 +2,7 @@
    by the sidebar's session rows, sub-agent launch rows in the transcript, agent
    tabs, and the agent pane header (components/WorkingNest.tsx).
 
-   Eight styles, chosen in Settings → Appearance → Activity mark
+   Seven styles, chosen in Settings → Appearance → Activity mark
    (lib/activityMark.ts) and selected here off `[data-mark]`. They share the box,
    the colours and the landing; only the parts inside differ.
 
@@ -622,67 +622,6 @@
   100% { transform: translate(0px, 0px); }
 }
 
-/* ───────────────────────────────────────────────────────────── wave
-   Ten blocks light in mirrored pairs. Each whole cell fades to a quiet track
-   between pulses, so the base fill cannot wash out the contrast.
-   Percentage widths let the same figure expand in the thinking row. */
-.working-nest[data-mark="wave"] {
-  --working-nest-cycle: 2s;
-}
-
-.working-nest[data-mark="wave"] .working-nest-part {
-  left: calc(var(--working-nest-wave-index) * 10% + 1%);
-  top: 27%;
-  width: 8%;
-  height: 46%;
-  border-radius: 0.5px;
-  background: var(--working-nest-rest, currentColor);
-  opacity: 0.4;
-}
-
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="1"] { --working-nest-wave-index: 0; --working-nest-wave-motion: working-nest-wave-outer; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="2"] { --working-nest-wave-index: 1; --working-nest-wave-motion: working-nest-wave-near-outer; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="3"] { --working-nest-wave-index: 2; --working-nest-wave-motion: working-nest-wave-middle; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="4"] { --working-nest-wave-index: 3; --working-nest-wave-motion: working-nest-wave-near-inner; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="5"] { --working-nest-wave-index: 4; --working-nest-wave-motion: working-nest-wave-inner; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="6"] { --working-nest-wave-index: 5; --working-nest-wave-motion: working-nest-wave-inner; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="7"] { --working-nest-wave-index: 6; --working-nest-wave-motion: working-nest-wave-near-inner; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="8"] { --working-nest-wave-index: 7; --working-nest-wave-motion: working-nest-wave-middle; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="9"] { --working-nest-wave-index: 8; --working-nest-wave-motion: working-nest-wave-near-outer; }
-.working-nest[data-mark="wave"] .working-nest-part[data-dot="10"] { --working-nest-wave-index: 9; --working-nest-wave-motion: working-nest-wave-outer; }
-
-.working-nest[data-active="true"][data-mark="wave"] .working-nest-part {
-  background: var(--working-nest-lead, currentColor);
-  animation: var(--working-nest-wave-motion) var(--working-nest-cycle) var(--ease-in-out) infinite;
-  animation-play-state: var(--loop-play-state, running);
-  animation-delay: var(--working-nest-phase-offset);
-}
-
-@keyframes working-nest-wave-outer {
-  0%, 24%, 76%, 100% { opacity: 0.16; }
-  10%, 90% { opacity: 1; }
-}
-
-@keyframes working-nest-wave-near-outer {
-  0%, 32%, 68%, 100% { opacity: 0.16; }
-  18%, 82% { opacity: 1; }
-}
-
-@keyframes working-nest-wave-middle {
-  0%, 12%, 40%, 60%, 88%, 100% { opacity: 0.16; }
-  26%, 74% { opacity: 1; }
-}
-
-@keyframes working-nest-wave-near-inner {
-  0%, 20%, 48%, 52%, 80%, 100% { opacity: 0.16; }
-  34%, 66% { opacity: 1; }
-}
-
-@keyframes working-nest-wave-inner {
-  0%, 28%, 72%, 100% { opacity: 0.16; }
-  42%, 58% { opacity: 1; }
-}
-
 /* ───────────────────────────────────────────────────────────── bars
    A regular, centred pulse distinguishes these from Meter's uneven bars that
    rise from a baseline. The middle bar holds the deeper accent. */
@@ -794,7 +733,6 @@
 .working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
 .working-nest[data-still="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
 .working-nest[data-still="true"][data-mark="halo"] .working-nest-part[data-dot="1"] { opacity: 0.9; }
-.working-nest[data-still="true"][data-mark="wave"] .working-nest-part { animation: none; opacity: 0.65; }
 .working-nest[data-still="true"][data-mark="bars"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
 .working-nest[data-still="true"][data-mark="bars"] .working-nest-part[data-dot="2"] { transform: scaleY(0.9); }
 .working-nest[data-still="true"][data-mark="bars"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
@@ -833,7 +771,6 @@
   .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="2"] { transform: scaleY(0.85); }
   .working-nest[data-active="true"][data-mark="meter"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }
   .working-nest[data-active="true"][data-mark="halo"] .working-nest-part[data-dot="1"] { opacity: 0.9; }
-  .working-nest[data-active="true"][data-mark="wave"] .working-nest-part { animation: none; opacity: 0.65; }
   .working-nest[data-active="true"][data-mark="bars"] .working-nest-part[data-dot="1"] { transform: scaleY(0.5); }
   .working-nest[data-active="true"][data-mark="bars"] .working-nest-part[data-dot="2"] { transform: scaleY(0.9); }
   .working-nest[data-active="true"][data-mark="bars"] .working-nest-part[data-dot="3"] { transform: scaleY(0.65); }

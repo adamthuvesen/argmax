@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe("<ThinkingLabel />", () => {
-  it.each(["squares", "wave", "bars"] as const)(
+  it.each(["squares", "bars"] as const)(
     "uses the selected %s mark for thinking and loading without restarting the wait",
     (markId) => {
       vi.spyOn(performance, "now").mockReturnValue(0);

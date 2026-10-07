@@ -27,7 +27,7 @@ import { useSyncExternalStore } from "react";
  * the other CSS-only preferences use, so that the two halves of one settings
  * group are read the same way.
  */
-export type ActivityMarkId = "nest" | "cascade" | "meter" | "orbit" | "halo" | "squares" | "wave" | "bars";
+export type ActivityMarkId = "nest" | "cascade" | "meter" | "orbit" | "halo" | "squares" | "bars";
 
 type ActivityMarkOption = {
   id: ActivityMarkId;
@@ -70,11 +70,6 @@ export const ACTIVITY_MARK_OPTIONS: readonly ActivityMarkOption[] = [
     hint: "Nine tiles slide through a small puzzle, then return to their starting positions."
   },
   {
-    id: "wave",
-    label: "Wave",
-    hint: "Ten blocks light inward and outward in a calm, mirrored wave."
-  },
-  {
     id: "bars",
     label: "Bars",
     hint: "Three rounded bars grow from the centre in a soft, staggered rhythm."
@@ -89,7 +84,6 @@ export const ACTIVITY_MARK_PART_COUNT: Record<ActivityMarkId, number> = {
   orbit: 1,
   halo: 2,
   squares: 9,
-  wave: 10,
   bars: 3
 };
 

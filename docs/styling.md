@@ -341,14 +341,14 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   intact. A surface that animates out stays mounted through `useMotionPresence`; an anchored popover
   reads `--popover-transform-origin` from `useAnchoredPopover`; and tablists with unequal labels use
   `SlidingTabIndicator` so the indicator follows the selected tab's measured position and width.
-- **The activity mark has eight styles.** Settings → Appearance → Activity mark is a
+- **The activity mark has seven styles.** Settings → Appearance → Activity mark is a
   list picker. Each option carries a live mark as its glyph because the motion is what the user
   chooses. The styles are `nest` (four dots relaying round a 2x2), `cascade` (a wave down a 3x3
   field), `meter` (three bars on unrelated periods), `orbit` (a comet on a track), and `halo` (a
   still core with a breathing ring). `squares` slides tiles around a 3x3 field,
-  `wave` pulses ten mirrored cells from a dim track to full leader color,
   and `bars` grows three bars from their centers.
-  Nest remains the default. The choice is stored in localStorage and selected off
+  Nest remains the default. Saved selections of the removed Wave style fall back to Nest.
+  The choice is stored in localStorage and selected off
   `[data-mark]` in [working-nest.css](../src/renderer/styles/working-nest.css). Every style shares
   the box, the settle, and `--working-nest-lead` / `--working-nest-rest`, so a surface with its own
   identity colour ([agent-emblems.css](../src/renderer/styles/agent-emblems.css),
@@ -357,8 +357,7 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   appearance props because the mark renders in about ten leaf components. A caller's `size` arrives
   as `--working-nest-size`. A stylesheet that needs the mark to track a type scale sets
   `--working-nest-size-override`, which is read first because an inline dimension would outrank
-  every rule that tried. The picker previews run at 24px. Wave widens to 48px there
-  and 40px beside the thinking label so its cells remain distinct. A fixed thinking
+  every rule that tried. The picker previews run at 24px. A fixed thinking
   slot keeps the label still when the style changes. Every style respects reduced motion
   and the shared loop pause.
 - **Transcript activity icons have one color-mode gate.** Settings → Appearance → Activity icons

@@ -36,7 +36,7 @@ describe("<WorkingNest />", () => {
     expect(container.querySelector(".working-nest")).toHaveAttribute("data-phase", expectedPhase);
   });
 
-  it.each(["nest", "squares", "wave", "bars"] as const)("anchors every %s part to the document timeline", (markId) => {
+  it.each(["nest", "squares", "bars"] as const)("anchors every %s part to the document timeline", (markId) => {
     const animations = Array.from({ length: ACTIVITY_MARK_PART_COUNT[markId] }, () => ({ startTime: 900 }));
     const getAnimations = vi.fn(function (this: Element) {
       const dot = Number(this.getAttribute("data-dot"));
@@ -96,7 +96,7 @@ describe("<WorkingNest />", () => {
     expect(part?.children).toHaveLength(5);
   });
 
-  it.each(["meter", "squares", "wave", "bars"] as const)("restores the stored %s style without an override", (markId) => {
+  it.each(["meter", "squares", "bars"] as const)("restores the stored %s style without an override", (markId) => {
     window.localStorage.setItem(ACTIVITY_MARK_STORAGE_KEY, markId);
     resetActivityMarkForTests();
 
@@ -105,8 +105,8 @@ describe("<WorkingNest />", () => {
     expect(container.querySelector(".working-nest")).toHaveAttribute("data-mark", markId);
   });
 
-  it("falls back to the nest when the stored style is not one we ship", () => {
-    window.localStorage.setItem(ACTIVITY_MARK_STORAGE_KEY, "trace");
+  it.each(["trace", "wave"])("falls back to the nest for the unsupported stored style %s", (markId) => {
+    window.localStorage.setItem(ACTIVITY_MARK_STORAGE_KEY, markId);
     resetActivityMarkForTests();
 
     const { container } = render(<WorkingNest active />);

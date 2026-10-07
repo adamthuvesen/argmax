@@ -169,10 +169,6 @@
   height: 28px;
 }
 
-.activity-mark-preview > .working-nest[data-mark="wave"] {
-  width: 48px;
-}
-
 /* Opt-in upward menu for a picker that sits at the bottom edge of its section,
    where a downward menu would cover the next section's copy. Qualified with
    `.project-picker-popover` to outrank the downward default in

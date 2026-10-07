@@ -108,6 +108,9 @@ struct RouterFigure {
         RouterFigure(family: .pace, label: "Turn time", value: { $0.medianTurnSeconds }) { value, _ in
             InsightsFormat.seconds(value)
         },
+        RouterFigure(family: .pace, label: "Tok / s", value: { $0.outputTokensPerSecond }) { value, _ in
+            value.isFinite ? String(Int(value.rounded())) : "—"
+        },
         RouterFigure(family: .pace, label: "Escalated", value: { Double($0.escalations) }) { value, _ in
             InsightsFormat.compact(value)
         },

@@ -25,6 +25,7 @@ function tier(overrides: Partial<RouterTierCost>): RouterTierCost {
     decisions: [],
     medianTurnSeconds: null,
     medianFirstAnswerSeconds: null,
+    outputTokensPerSecond: null,
     medianTurnTokens: null,
     pricedTokens: 0,
     ...overrides
@@ -58,6 +59,7 @@ describe("RouterCostCard", () => {
           measuredCostUsd: 8,
           medianTurnSeconds: 84.4,
           medianFirstAnswerSeconds: 4.84,
+          outputTokensPerSecond: 41.6,
           medianTurnTokens: 1_500_000,
           pricedTokens: 16_000_000,
           models: [
@@ -97,8 +99,10 @@ describe("RouterCostCard", () => {
     expect(within(rows[0]).getByText("$0.50")).toBeInTheDocument();
     // Medians: minutes past a minute, tenths under ten seconds, a dash with none.
     expect(within(rows[0]).getByText("1m 24s")).toBeInTheDocument();
-    // Tokens, $/1M and turn time have no data.
-    expect(within(rows[1]).getAllByText("—")).toHaveLength(3);
+    // Output tokens per second rounds to a whole number.
+    expect(within(rows[0]).getByText("42")).toBeInTheDocument();
+    // Tokens, $/1M, turn time and tokens per second have no data.
+    expect(within(rows[1]).getAllByText("—")).toHaveLength(4);
     // Speed: an estimate, and the unpriced turn is left out of the per-turn figure.
     expect(within(rows[2]).getByText("≈$0.50")).toBeInTheDocument();
     expect(within(rows[2]).getByText("≈$0.13")).toBeInTheDocument();
@@ -166,6 +170,6 @@ describe("RouterCostCard", () => {
     const table = await screen.findByRole("table", { name: "Router cost by tier" });
     expect(within(table).getByText("2 unpriced")).toBeInTheDocument();
     expect(within(table).queryByText("$0.00")).toBeNull();
-    expect(within(table).getAllByText("—")).toHaveLength(5);
+    expect(within(table).getAllByText("—")).toHaveLength(6);
   });
 });

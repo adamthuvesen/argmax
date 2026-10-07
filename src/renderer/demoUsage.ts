@@ -389,7 +389,7 @@ export function demoUsageRemaining(): UsageRemaining {
 function demoTier(
   tier: RouterTierCost["tier"],
   counts: Pick<RouterTierCost, "chats" | "turns" | "escalations" | "measuredCostUsd" | "estimatedCostUsd" | "unpricedTurns">,
-  timing: [turnSeconds: number, firstAnswerSeconds: number],
+  timing: [turnSeconds: number, firstAnswerSeconds: number, outputTokensPerSecond: number],
   tokens: [medianTurnTokens: number, pricedTokens: number],
   models: ReadonlyArray<[ProviderId, string, number, number]>
 ): RouterTierCost {
@@ -417,6 +417,7 @@ function demoTier(
     })),
     medianTurnSeconds: timing[0],
     medianFirstAnswerSeconds: timing[1],
+    outputTokensPerSecond: timing[2],
     medianTurnTokens: tokens[0],
     pricedTokens: tokens[1]
   };
@@ -428,7 +429,7 @@ export function demoRouterCost(): RouterCostSummary {
       demoTier(
         "intelligence",
         { chats: 18, turns: 127, escalations: 0, measuredCostUsd: 358.33, estimatedCostUsd: 0, unpricedTurns: 1 },
-        [63, 8.1],
+        [63, 8.1, 38],
         [2_400_000, 301_000_000],
         [
           ["claude", "claude-opus-5-5", 105, 301.2],
@@ -439,7 +440,7 @@ export function demoRouterCost(): RouterCostSummary {
       demoTier(
         "balanced",
         { chats: 25, turns: 112, escalations: 1, measuredCostUsd: 61.4, estimatedCostUsd: 6.52, unpricedTurns: 0 },
-        [33, 8.1],
+        [33, 8.1, 54],
         [1_700_000, 172_000_000],
         [
           ["claude", "claude-opus-5-5", 76, 48.1],
@@ -451,7 +452,7 @@ export function demoRouterCost(): RouterCostSummary {
       demoTier(
         "cost",
         { chats: 45, turns: 179, escalations: 1, measuredCostUsd: 109.9, estimatedCostUsd: 0.18, unpricedTurns: 0 },
-        [44, 7.4],
+        [44, 7.4, 82],
         [1_900_000, 338_000_000],
         [
           ["claude", "claude-sonnet-5-5", 112, 96.2],
@@ -464,7 +465,7 @@ export function demoRouterCost(): RouterCostSummary {
       demoTier(
         "economy",
         { chats: 13, turns: 22, escalations: 0, measuredCostUsd: 11.74, estimatedCostUsd: 0, unpricedTurns: 0 },
-        [71, 5.6],
+        [71, 5.6, 30],
         [3_100_000, 59_000_000],
         [
           ["opencode", "openrouter/deepseek/deepseek-v4.1-flash", 15, 2.1],

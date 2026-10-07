@@ -108,6 +108,8 @@ final class ChannelDecodingTests: XCTestCase {
         XCTAssertNil(summary.tiers[2].medianFirstAnswerSeconds)
         XCTAssertEqual(try XCTUnwrap(summary.tiers[0].costPerMillionTokens), 0.306, accuracy: 0.001)
         XCTAssertEqual(summary.tiers[0].medianTurnTokens, 1_500_000)
+        XCTAssertEqual(summary.tiers[0].outputTokensPerSecond, 38.4)
+        XCTAssertNil(summary.tiers[1].outputTokensPerSecond)
         // A Mac that predates the field sends no token count.
         XCTAssertNil(summary.tiers[1].costPerMillionTokens)
     }

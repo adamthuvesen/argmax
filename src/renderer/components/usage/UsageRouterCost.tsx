@@ -195,6 +195,13 @@ const FIGURES: readonly Figure[] = [
     format: (value, tier) => `${tier.estimatedCostUsd > 0 ? "≈" : ""}${formatUsdRate(value)}`
   },
   { group: "pace", header: "Turn time", value: (tier) => tier.medianTurnSeconds, format: formatSeconds },
+  {
+    group: "pace",
+    header: "Tok / s",
+    title: "Output tokens per second of turn time, approval waits excluded",
+    value: (tier) => tier.outputTokensPerSecond,
+    format: (value) => (value === null ? "—" : String(Math.round(value)))
+  },
   { group: "pace", header: "Escalations", value: (tier) => tier.escalations, format: formatCount }
 ];
 

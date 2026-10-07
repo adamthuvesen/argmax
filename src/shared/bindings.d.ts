@@ -2852,7 +2852,13 @@ medianTurnSeconds: number | null;
  * Median seconds from send to the model's first text, reasoning, or tool
  * call.
  */
-medianFirstAnswerSeconds: number | null }
+medianFirstAnswerSeconds: number | null;
+/**
+ * Output tokens per second of turn time: the tier's output tokens over the
+ * turn seconds of the turns that reported output. `None` when no turn did
+ * (Cursor's output is estimated, so it never counts).
+ */
+outputTokensPerSecond: number | null }
 export type Routine = { id: string; name: string; projectId: string; prompt: string; provider: string; modelLabel: string; modelId: string; worktree: boolean; runTarget: RoutineRunTarget; lastSessionId: string | null; arcId: string | null; cronExpr: string | null; runOnceAt: string | null; enabled: boolean; lastRunAt: string | null; nextRunAt: string | null; lastError: string | null; createdBy: RoutineAuthor; createdAt: string; updatedAt: string }
 /**
  * Who put a scheduled task in the list. `Agent` is a wake a chat set for

@@ -95,7 +95,7 @@ Below the remaining card, a **Router** card shows what each Auto tier cost in
 the page's window: Frontier, Balance, Speed, Cost, each with the model mix and
 four families of figures. **Volume** is chats and turns, **Spend** is total
 cost and cost per turn, **Tokens** is median tokens per turn and cost per
-million tokens, and **Pace** is median turn time and escalations. Each family
+million tokens, and **Pace** is median turn time, output tokens per second, and escalations. Each family
 has one hue: the family's name over a thin rule in that hue, and each figure
 on a tile of it whose tint deepens with the figure's share of the column's
 largest, so tiers compare at a glance and close figures shade close. An
@@ -169,6 +169,12 @@ hides the card when the read fails or the Mac predates the channel.
   starts nothing. Running and unanswered turns have no time. Medians, because
   one long agentic turn would carry an average. Both are wall clock: the only
   figure every provider has, and the one the user waits through.
+- **Tok / s is work over time.** Turn time alone rewards a tier that gets small
+  tasks. Tok / s is the tier's reported output tokens over the turn seconds
+  (approval waits excluded) of the timed turns that reported output, so one
+  huge or tiny turn cannot swing it. It is a throughput proxy, not a quality
+  measure: a tool-heavy turn still reads slow. Cursor's output is a transcript
+  estimate, so a Cursor-only tier shows "—".
 - **Each row is priced by its own provider.** A Cursor chat that escalated to
   Claude prices its Claude rows from usage and only its Cursor rows as below.
 - **Cursor is estimated** the way the Usage page estimates it (see

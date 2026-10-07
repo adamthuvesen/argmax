@@ -433,6 +433,9 @@ struct RouterTierCost: Codable, Hashable, Sendable, Identifiable {
     var medianTurnSeconds: Double?
     /// Send to the model's first text, reasoning, or tool call.
     var medianFirstAnswerSeconds: Double?
+    /// Output tokens per second of turn time. Nil without reported output, or
+    /// from a Mac that predates the field.
+    var outputTokensPerSecond: Double?
     /// Tokens processed in the priced turns, cache included. Nil from a Mac
     /// that predates the field.
     var pricedTokens: Int?

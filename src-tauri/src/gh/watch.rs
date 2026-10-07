@@ -9,6 +9,8 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use sha2::{Digest, Sha256};
+
 use super::service::{
     entry_check_state, gh_working_directory, GhCheckState, GhService, PrAuthor, PrFeedbackGraph,
     PrReviewThread, PrWatchView, RollupEntry, PR_UNAVAILABLE_ERROR,
@@ -16,9 +18,9 @@ use super::service::{
 use crate::error::ArgmaxResult;
 use crate::persistence::database::Database;
 use crate::persistence::pr_watches::{
-    clear_pr_watch_notice, delete_pr_watch_by_id, list_pr_watches, set_pr_watch_not_found_count,
-    stage_pr_watch_notice, update_pr_watch_cursors, watched_pr_state, ConflictState,
-    PendingPrWatchNotice, PrWatchCursors, PrWatchRecord, WatchedPrState,
+    clear_pr_watch_notice, delete_pr_watch_by_id, list_pr_watches, record_pr_watch_fetch_failure,
+    set_pr_watch_not_found_count, stage_pr_watch_notice, update_pr_watch_cursors, watched_pr_state,
+    ConflictState, PendingPrWatchNotice, PrWatchCursors, PrWatchRecord, WatchedPrState,
 };
 
 /// A notice body stays under this many characters, URL included.
@@ -50,6 +52,7 @@ pub type PrWatchNoticeHook = Arc<
 
 /// Consecutive ticks on which GitHub had no such PR before the watch ends.
 const MAX_NOT_FOUND_TICKS: i64 = 10;
+const DEGRADED_FETCH_COUNT: i64 = 3;
 
 /// Every watch's PR, once. Each failure is logged and skips only that PR.
 /// `tick_started_at` is when this tick's refresh fanout began: a row older
@@ -164,7 +167,16 @@ async fn run_one_watch(
         Ok(view) => view,
         Err(error) => {
             log_fetch_error(watch, "pr view", &error);
-            return Ok(());
+            return record_fetch_failure(
+                database,
+                deliver,
+                watch,
+                &pr,
+                recipient_archived,
+                "PR details",
+                &error,
+            )
+            .await;
         }
     };
     // A push landed between the fanout's read and this one. The next tick
@@ -180,6 +192,8 @@ async fn run_one_watch(
         && (head_changed || watch.reported_ready_sha.as_deref() != Some(pr.head_sha.as_str()));
     let wants_threads = terminal.is_none()
         && (watch.seen_feedback_ids.is_none()
+            || watch.feedback_fingerprints.is_none()
+            || watch.fetch_failure_count > 0
             || head_changed
             || green_candidate
             || view.updated_at != watch.last_pr_updated_at);
@@ -194,12 +208,26 @@ async fn run_one_watch(
                 Ok(feedback) => Some(feedback),
                 Err(error) => {
                     log_fetch_error(watch, "review threads", &error);
-                    return Ok(());
+                    return record_fetch_failure(
+                        database,
+                        deliver,
+                        watch,
+                        &pr,
+                        recipient_archived,
+                        "review threads",
+                        &error,
+                    )
+                    .await;
                 }
             }
         }
         _ => None,
     };
+    // A prior failed thread read is only recovered by reading threads. An
+    // unavailable repository identity must not turn a partial read into success.
+    if watch.fetch_failure_count > 0 && terminal.is_none() && feedback.is_none() {
+        return Ok(());
+    }
 
     // Cleanup runs before the merged notice, and so before archive on merge,
     // which waits for this watch to end. It never archives the chat.
@@ -235,7 +263,10 @@ async fn run_one_watch(
         cleanup.as_deref(),
     );
     let Some(body) = pass.body.clone() else {
-        if watch.seen_feedback_ids.is_none() || pass.cursors != current_cursors(watch) {
+        if watch.seen_feedback_ids.is_none()
+            || watch.feedback_fingerprints.is_none()
+            || pass.cursors != current_cursors(watch)
+        {
             let connection = database.connection();
             update_pr_watch_cursors(&connection, &watch.id, &pass.cursors)?;
         }
@@ -308,6 +339,43 @@ fn log_fetch_error(watch: &PrWatchRecord, what: &str, error: &super::service::Gh
     }
 }
 
+async fn record_fetch_failure(
+    database: &Arc<Database>,
+    deliver: &PrWatchNoticeHook,
+    watch: &PrWatchRecord,
+    pr: &WatchedPrState,
+    recipient_archived: bool,
+    what: &str,
+    error: &super::service::GhFetchError,
+) -> ArgmaxResult<()> {
+    let count = (watch.fetch_failure_count + 1).min(DEGRADED_FETCH_COUNT);
+    let notice = (count == DEGRADED_FETCH_COUNT && !watch.fetch_degraded && !recipient_archived)
+        .then(|| PendingPrWatchNotice {
+            id: notice_id(watch, &pr.head_sha),
+            body: notice_body(
+                watch.pr_number,
+                pr,
+                &["watch degraded".to_string()],
+                &[format!(
+                    "Could not complete watch reads on 3 consecutive polls. Feedback and check notices may be delayed. Argmax will keep retrying.\nLast failed read: {what}.\nLast error: {}",
+                    first_line(Some(&error.message))
+                )],
+            ),
+            ends_watch: false,
+        });
+    record_pr_watch_fetch_failure(
+        &database.connection(),
+        &watch.id,
+        count,
+        watch.fetch_degraded || notice.is_some(),
+        notice.as_ref(),
+    )?;
+    if let Some(notice) = notice {
+        deliver_staged(database, deliver, watch, notice, recipient_archived).await?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Terminal {
     Merged,
@@ -346,6 +414,9 @@ fn current_cursors(watch: &PrWatchRecord) -> PrWatchCursors {
         head_sha: watch.head_sha.clone(),
         seen_check_failures: watch.seen_check_failures.clone(),
         seen_feedback_ids: watch.seen_feedback_ids.clone().unwrap_or_default(),
+        feedback_fingerprints: watch.feedback_fingerprints.clone().unwrap_or_default(),
+        fetch_failure_count: watch.fetch_failure_count,
+        fetch_degraded: watch.fetch_degraded,
         reported_ready_sha: watch.reported_ready_sha.clone(),
         last_pr_updated_at: watch.last_pr_updated_at.clone(),
         conflict_state: watch.conflict_state,
@@ -375,6 +446,7 @@ struct WatchPass {
 
 struct FeedbackItem {
     line: String,
+    edited: bool,
 }
 
 fn plan_watch_pass(
@@ -399,6 +471,9 @@ fn plan_watch_pass(
             watch.seen_check_failures.clone()
         },
         seen_feedback_ids: watch.seen_feedback_ids.clone().unwrap_or_default(),
+        feedback_fingerprints: watch.feedback_fingerprints.clone().unwrap_or_default(),
+        fetch_failure_count: 0,
+        fetch_degraded: false,
         reported_ready_sha: if head_changed {
             None
         } else {
@@ -436,6 +511,14 @@ fn plan_watch_pass(
         }
         sections.push("This watch has ended.".to_string());
         return finish(watch.pr_number, pr, summary, sections, cursors, true);
+    }
+
+    if watch.fetch_degraded {
+        summary.push("watch recovered".to_string());
+        sections.push(
+            "PR details and review threads are readable again. Watch notices have resumed."
+                .to_string(),
+        );
     }
 
     // Checks failing: each `workflow/name@sha` once per failure. A check seen
@@ -508,17 +591,41 @@ fn plan_watch_pass(
         .map(String::as_str)
         .collect();
     let mut feedback: Vec<FeedbackItem> = Vec::new();
-    let mut observe = |id: &str, at: Option<&str>, reportable: bool, line: String| {
-        if seen.contains(id) || cursors.seen_feedback_ids.iter().any(|known| known == id) {
+    let mut observed_ids = HashSet::new();
+    let mut observe = |id: &str,
+                       at: Option<&str>,
+                       body: Option<&str>,
+                       state: &str,
+                       reportable: bool,
+                       line: String| {
+        if !observed_ids.insert(id.to_string()) {
             return;
         }
-        cursors.seen_feedback_ids.push(id.to_string());
+        let fingerprint = feedback_fingerprint(body, state);
+        let previous = cursors
+            .feedback_fingerprints
+            .insert(id.to_string(), fingerprint.clone());
+        let edited = previous.as_ref().is_some_and(|old| old != &fingerprint);
+        if seen.contains(id) && !edited {
+            // A legacy ID without a hash seeds its baseline without replay.
+            return;
+        }
+        if !seen.contains(id) {
+            cursors.seen_feedback_ids.push(id.to_string());
+        }
         let predates_watch = seeding_before.is_some_and(|created| {
             at.and_then(parse_time)
                 .is_none_or(|item_at| item_at < created)
         });
         if reportable && !predates_watch {
-            feedback.push(FeedbackItem { line });
+            feedback.push(FeedbackItem {
+                line: if edited {
+                    format!("edited {line}")
+                } else {
+                    line
+                },
+                edited,
+            });
         }
     };
     for review in view.reviews.as_deref().unwrap_or_default() {
@@ -540,7 +647,14 @@ fn plan_watch_pass(
             &snippet,
             None,
         );
-        observe(&review.id, review.submitted_at.as_deref(), reportable, line);
+        observe(
+            &review.id,
+            review.submitted_at.as_deref(),
+            review.body.as_deref(),
+            state,
+            reportable,
+            line,
+        );
     }
     for comment in view.comments.as_deref().unwrap_or_default() {
         let line = with_snippet(
@@ -551,6 +665,8 @@ fn plan_watch_pass(
         observe(
             &comment.id,
             comment.created_at.as_deref(),
+            comment.body.as_deref(),
+            "",
             comment.viewer_did_author != Some(true),
             line,
         );
@@ -569,19 +685,34 @@ fn plan_watch_pass(
             observe(
                 &comment.id,
                 comment.created_at.as_deref(),
+                comment.body.as_deref(),
+                "",
                 comment.viewer_did_author != Some(true),
                 line,
             );
         }
     }
     if !feedback.is_empty() {
+        let has_edits = feedback.iter().any(|item| item.edited);
         summary.push(plural(
             feedback.len(),
-            "new feedback item",
-            "new feedback items",
+            if has_edits {
+                "new or edited feedback item"
+            } else {
+                "new feedback item"
+            },
+            if has_edits {
+                "new or edited feedback items"
+            } else {
+                "new feedback items"
+            },
         ));
         sections.push(section(
-            "New feedback:",
+            if has_edits {
+                "New or edited feedback:"
+            } else {
+                "New feedback:"
+            },
             feedback.iter().map(|item| item.line.clone()).collect(),
         ));
     }
@@ -765,6 +896,17 @@ fn first_line(body: Option<&str>) -> String {
     } else {
         line.to_string()
     }
+}
+
+fn feedback_fingerprint(body: Option<&str>, state: &str) -> String {
+    let mut hash = Sha256::new();
+    hash.update((state.len() as u64).to_be_bytes());
+    hash.update(state.as_bytes());
+    hash.update(body.unwrap_or_default().as_bytes());
+    hash.finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn plural(count: usize, one: &str, many: &str) -> String {

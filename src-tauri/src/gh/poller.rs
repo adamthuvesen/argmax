@@ -3149,6 +3149,7 @@ mod tests {
         pr: Mutex<String>,
         threads: Mutex<String>,
         watch_view_error: Mutex<Option<String>>,
+        thread_error: Mutex<Option<String>>,
         calls: AtomicUsize,
     }
 
@@ -3158,6 +3159,7 @@ mod tests {
                 pr: Mutex::new(pr.payload()),
                 threads: Mutex::new(threads_payload(serde_json::json!([]))),
                 watch_view_error: Mutex::new(None),
+                thread_error: Mutex::new(None),
                 calls: AtomicUsize::new(0),
             })
         }
@@ -3174,11 +3176,18 @@ mod tests {
             *self.watch_view_error.lock().expect("error poisoned") = error.map(str::to_string);
         }
 
+        fn fail_threads(&self, error: Option<&str>) {
+            *self.thread_error.lock().expect("error poisoned") = error.map(str::to_string);
+        }
+
         fn runner(self: Arc<Self>) -> GhRunner {
             Arc::new(move |_cwd, args: Vec<String>| {
                 self.calls.fetch_add(1, Ordering::SeqCst);
                 let result = if args.first().map(String::as_str) == Some("api") {
-                    Ok(self.threads.lock().expect("threads poisoned").clone())
+                    match self.thread_error.lock().expect("error poisoned").clone() {
+                        Some(error) => Err(ArgmaxError::service("GH_NON_ZERO_EXIT", error)),
+                        None => Ok(self.threads.lock().expect("threads poisoned").clone()),
+                    }
                 } else if args.iter().any(|arg| arg.contains("reviews")) {
                     match self
                         .watch_view_error
@@ -3377,6 +3386,131 @@ mod tests {
             rows[1].1
         );
         assert!(!rows[1].1.contains("coderabbitai"), "nothing is repeated");
+    }
+
+    #[tokio::test]
+    async fn watch_reports_full_body_and_review_state_edits_after_green() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: green_checks(),
+            comments: serde_json::json!([
+                {"id": "IC_bot", "author": {"login": "bot[bot]"}, "body": "Summary\nRunning", "createdAt": OLD},
+                {"id": "IC_mine", "author": {"login": "me"}, "body": "My reply", "viewerDidAuthor": true, "createdAt": OLD}
+            ]),
+            reviews: serde_json::json!([
+                {"id": "PRR_1", "author": {"login": "bob"}, "body": "Review", "state": "COMMENTED", "submittedAt": OLD}
+            ]),
+            ..Default::default()
+        });
+        runner.set_threads(serde_json::json!([{
+            "id": "T1", "isResolved": true, "path": "src/x.rs", "line": 12,
+            "comments": {"nodes": [{"id": "RC1", "author": {"login": "bot[bot]"}, "body": "Finding\nRunning", "createdAt": OLD}]}
+        }]));
+        let (_notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, hook)
+            .tick_for_test()
+            .await
+            .expect("seed and green");
+        assert_eq!(inbox(&database).len(), 1);
+
+        runner.set(WatchedPr {
+            rollup: green_checks(),
+            comments: serde_json::json!([
+                {"id": "IC_bot", "author": {"login": "bot[bot]"}, "body": "Summary\nCompleted without findings", "createdAt": OLD},
+                {"id": "IC_mine", "author": {"login": "me"}, "body": "My edited reply", "viewerDidAuthor": true, "createdAt": OLD}
+            ]),
+            reviews: serde_json::json!([
+                {"id": "PRR_1", "author": {"login": "bob"}, "body": "Review", "state": "APPROVED", "submittedAt": OLD}
+            ]),
+            updated_at: "2026-10-02T00:00:00Z",
+            ..Default::default()
+        });
+        runner.set_threads(serde_json::json!([{
+            "id": "T1", "isResolved": true, "path": "src/x.rs", "line": 12,
+            "comments": {"nodes": [{"id": "RC1", "author": {"login": "bot[bot]"}, "body": "Finding\nCompleted", "createdAt": OLD}]}
+        }]));
+        let (_notices, hook) = notice_recorder(&database);
+        let restarted = watch_poller(&database, &runner, hook);
+        restarted.tick_for_test().await.expect("edited feedback");
+        restarted.tick_for_test().await.expect("unchanged feedback");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2, "edits wake once after green: {rows:?}");
+        assert!(rows[1].1.contains("3 new or edited feedback items"));
+        assert!(rows[1].1.contains("edited comment by bot[bot]: Summary"));
+        assert!(rows[1].1.contains("edited review by bob: APPROVED"));
+        assert!(rows[1]
+            .1
+            .contains("edited thread comment by bot[bot] on src/x.rs:12: Finding"));
+        assert!(!rows[1].1.contains("My edited reply"));
+        assert!(!rows[1].1.contains("checks green"));
+    }
+
+    #[tokio::test]
+    async fn upgraded_watch_seeds_feedback_hashes_without_replaying_legacy_ids() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr::default());
+        runner.set_threads(serde_json::json!([{
+            "id": "T1", "isResolved": false, "path": "src/x.rs", "line": 12,
+            "comments": {"nodes": [{"id": "RC1", "author": {"login": "bob"}, "body": "Existing feedback", "createdAt": OLD}]}
+        }]));
+        database
+            .connection()
+            .execute(
+                "UPDATE pr_watches SET head_sha = 'feedface', seen_feedback_ids = '[\"RC1\"]',
+             last_pr_updated_at = '2026-10-01T00:00:00Z' WHERE id = 'watch-1'",
+                [],
+            )
+            .expect("legacy state");
+        let (_notices, hook) = notice_recorder(&database);
+        let poller = watch_poller(&database, &runner, hook);
+        poller
+            .tick_for_test()
+            .await
+            .expect("baseline after upgrade");
+        assert!(inbox(&database).is_empty());
+        assert!(
+            watch_row(&database)
+                .expect("watch")
+                .feedback_fingerprints
+                .expect("baseline persisted")
+                .contains_key("RC1"),
+            "threads read despite unchanged updatedAt"
+        );
+
+        runner.set(WatchedPr {
+            updated_at: "2026-10-02T00:00:00Z",
+            ..Default::default()
+        });
+        runner.set_threads(serde_json::json!([{
+            "id": "T1", "isResolved": false, "path": "src/x.rs", "line": 12,
+            "comments": {"nodes": [{"id": "RC1", "author": {"login": "bob"}, "body": "Updated feedback", "createdAt": OLD}]}
+        }]));
+        poller.tick_for_test().await.expect("edit after upgrade");
+        poller.tick_for_test().await.expect("quiet after edit");
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].1.contains("edited thread comment by bob"));
+
+        database.connection().execute(
+            "UPDATE pr_watches SET seen_feedback_ids = '[]', feedback_fingerprints = NULL WHERE id = 'watch-1'",
+            [],
+        ).expect("empty legacy baseline");
+        runner.set_threads(serde_json::json!([]));
+        poller
+            .tick_for_test()
+            .await
+            .expect("empty baseline after upgrade");
+        assert_eq!(
+            watch_row(&database).expect("watch").feedback_fingerprints,
+            Some(Default::default()),
+            "an empty baseline must also persist"
+        );
     }
 
     #[tokio::test]
@@ -3743,10 +3877,138 @@ Apply the merge gate before merging.\n{PR_URL}"
         let watch = watch_row(&database).expect("watch");
         assert_eq!(watch.head_sha, "", "no cursor moved");
         assert!(watch.seen_feedback_ids.is_none());
+        assert_eq!(watch.fetch_failure_count, 1);
+        assert!(!watch.fetch_degraded);
 
         runner.fail_watch_view(None);
         poller.tick_for_test().await.expect("recovered tick");
         assert_eq!(inbox(&database).len(), 1);
+        assert_eq!(watch_row(&database).expect("watch").fetch_failure_count, 0);
+        assert!(
+            !inbox(&database)[0].1.contains("watch recovered"),
+            "a transient failure has no health notice"
+        );
+    }
+
+    #[tokio::test]
+    async fn watch_fetch_health_survives_restarts_and_outbox_redelivery() {
+        let (_dir, database) = open_db();
+        fixture(&database);
+        complete_session_long_ago(&database, "s1");
+        seed_watch(&database);
+        let runner = WatchRunner::new(WatchedPr {
+            rollup: failing_build(),
+            ..Default::default()
+        });
+        runner.fail_watch_view(Some("gh failed: API rate limit exceeded for user"));
+        for count in 1..=2 {
+            let (_notices, hook) = notice_recorder(&database);
+            watch_poller(&database, &runner, hook)
+                .tick_for_test()
+                .await
+                .expect("failed view");
+            assert_eq!(
+                watch_row(&database).expect("watch").fetch_failure_count,
+                count
+            );
+            assert!(inbox(&database).is_empty());
+        }
+        runner.fail_watch_view(None);
+        runner.fail_threads(Some("gh failed: review read unavailable"));
+        let failing_delivery: PrWatchNoticeHook = Arc::new(|_| {
+            Box::pin(async { Err(ArgmaxError::service("SEND_FAILED", "delivery unavailable")) })
+        });
+        watch_poller(&database, &runner, failing_delivery)
+            .tick_for_test()
+            .await
+            .expect("degraded staging");
+        let staged = watch_row(&database).expect("watch");
+        assert_eq!(
+            staged.fetch_failure_count, 3,
+            "a successful view does not reset failed threads"
+        );
+        assert!(staged.fetch_degraded);
+        assert!(
+            staged.seen_feedback_ids.is_none(),
+            "failed reads do not seed feedback"
+        );
+        assert!(staged.feedback_fingerprints.is_none());
+        let staged_id = staged.pending_notice.expect("degraded outbox").id;
+        assert!(inbox(&database).is_empty());
+
+        let (_notices, hook) = notice_recorder(&database);
+        watch_poller(&database, &runner, hook)
+            .tick_for_test()
+            .await
+            .expect("degraded retry");
+        assert_eq!(inbox(&database)[0].0, staged_id);
+        assert!(inbox(&database)[0].1.contains("watch degraded"));
+        assert!(inbox(&database)[0].1.contains("review threads"));
+        for _ in 0..2 {
+            let (_notices, hook) = notice_recorder(&database);
+            watch_poller(&database, &runner, hook)
+                .tick_for_test()
+                .await
+                .expect("still degraded");
+            assert_eq!(inbox(&database).len(), 1, "one notice per streak");
+        }
+
+        runner.fail_threads(None);
+        let stored_then_crashed: PrWatchNoticeHook = {
+            let (_notices, store) = notice_recorder(&database);
+            Arc::new(move |notice| {
+                let stored = store(notice);
+                Box::pin(async move {
+                    stored.await.expect("store");
+                    Err(ArgmaxError::service("CRASH", "died before outbox cleared"))
+                })
+            })
+        };
+        watch_poller(&database, &runner, stored_then_crashed)
+            .tick_for_test()
+            .await
+            .expect("recovery with crash");
+        let recovered = watch_row(&database).expect("watch");
+        assert_eq!(recovered.fetch_failure_count, 0);
+        assert!(!recovered.fetch_degraded);
+        assert!(recovered.pending_notice.is_some());
+        let rows = inbox(&database);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[1].1.contains("watch recovered"));
+        assert!(
+            rows[1].1.contains("check failing"),
+            "delayed events join recovery"
+        );
+        let (_notices, hook) = notice_recorder(&database);
+        let restarted = watch_poller(&database, &runner, hook);
+        restarted
+            .tick_for_test()
+            .await
+            .expect("recovery redelivery");
+        restarted
+            .tick_for_test()
+            .await
+            .expect("quiet recovered watch");
+        assert_eq!(inbox(&database), rows, "inbox ignores replayed recovery ID");
+        assert!(watch_row(&database)
+            .expect("watch")
+            .pending_notice
+            .is_none());
+
+        runner.fail_threads(Some("review read unavailable again"));
+        runner.set(WatchedPr {
+            rollup: failing_build(),
+            updated_at: "2026-10-02T00:00:00Z",
+            ..Default::default()
+        });
+        for _ in 0..3 {
+            restarted.tick_for_test().await.expect("new failure streak");
+        }
+        assert_eq!(
+            inbox(&database).len(),
+            3,
+            "a new streak reports degradation again"
+        );
     }
 
     #[tokio::test]

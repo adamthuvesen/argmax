@@ -2,6 +2,8 @@
 // merges, closes, or is unwatched (docs/gh.md#pr-watch). The gh poller reads
 // these rows on its own tick and is the only writer of their cursors.
 
+use std::collections::BTreeMap;
+
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use super::{json_error, sqlite_error, time::now_iso};
@@ -77,6 +79,11 @@ pub struct PrWatchRecord {
     /// Review, comment, and review-thread comment ids already reported or
     /// seeded. `None` until the first pass has seeded it.
     pub seen_feedback_ids: Option<Vec<String>>,
+    /// Full feedback content hashes. NULL until the first pass after v70.
+    pub feedback_fingerprints: Option<BTreeMap<String, String>>,
+    pub fetch_failure_count: i64,
+    /// Whether a degraded-watch notice was staged for this failure streak.
+    pub fetch_degraded: bool,
     pub reported_ready_sha: Option<String>,
     pub last_pr_updated_at: Option<String>,
     /// The conflict state last reported or seeded; see [`ConflictState`].
@@ -105,6 +112,9 @@ pub struct PrWatchCursors {
     pub head_sha: String,
     pub seen_check_failures: Vec<String>,
     pub seen_feedback_ids: Vec<String>,
+    pub feedback_fingerprints: BTreeMap<String, String>,
+    pub fetch_failure_count: i64,
+    pub fetch_degraded: bool,
     pub reported_ready_sha: Option<String>,
     pub last_pr_updated_at: Option<String>,
     pub conflict_state: Option<ConflictState>,
@@ -238,6 +248,9 @@ pub fn update_pr_watch_cursors(
               reported_ready_sha = ?5,
               last_pr_updated_at = ?6,
               conflict_state = ?8,
+              feedback_fingerprints = ?9,
+              fetch_failure_count = ?10,
+              fetch_degraded = ?11,
               updated_at = ?7
             WHERE id = ?1
             "#,
@@ -252,6 +265,9 @@ pub fn update_pr_watch_cursors(
             cursors.last_pr_updated_at,
             now_iso(),
             cursors.conflict_state.map(ConflictState::as_str),
+            serde_json::to_string(&cursors.feedback_fingerprints).map_err(json_error)?,
+            cursors.fetch_failure_count,
+            cursors.fetch_degraded,
         ])
         .map_err(sqlite_error)?;
     Ok(())
@@ -279,7 +295,10 @@ pub fn stage_pr_watch_notice(
               pending_notice_body = ?8,
               pending_ends_watch = ?9,
               updated_at = ?10,
-              conflict_state = ?11
+              conflict_state = ?11,
+              feedback_fingerprints = ?12,
+              fetch_failure_count = ?13,
+              fetch_degraded = ?14
             WHERE id = ?1
             "#,
         )
@@ -296,6 +315,9 @@ pub fn stage_pr_watch_notice(
             notice.ends_watch,
             now_iso(),
             cursors.conflict_state.map(ConflictState::as_str),
+            serde_json::to_string(&cursors.feedback_fingerprints).map_err(json_error)?,
+            cursors.fetch_failure_count,
+            cursors.fetch_degraded,
         ])
         .map_err(sqlite_error)?;
     Ok(())
@@ -327,16 +349,54 @@ pub fn set_pr_watch_not_found_count(
     Ok(())
 }
 
+/// A failed read must preserve unseeded feedback cursors. Stage its health
+/// notice with the failure state in one write, using the same outbox.
+pub fn record_pr_watch_fetch_failure(
+    connection: &Connection,
+    id: &str,
+    count: i64,
+    degraded: bool,
+    notice: Option<&PendingPrWatchNotice>,
+) -> ArgmaxResult<()> {
+    connection
+        .prepare_cached(
+            "UPDATE pr_watches SET fetch_failure_count = ?2, fetch_degraded = ?3,
+             notice_seq = notice_seq + CASE WHEN ?4 IS NULL THEN 0 ELSE 1 END,
+             pending_notice_id = ?4, pending_notice_body = ?5, pending_ends_watch = 0,
+             updated_at = ?6 WHERE id = ?1",
+        )
+        .map_err(sqlite_error)?
+        .execute(params![
+            id,
+            count,
+            degraded,
+            notice.map(|notice| notice.id.as_str()),
+            notice.map(|notice| notice.body.as_str()),
+            now_iso(),
+        ])
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
 const COLUMNS: &str = "id, session_id, project_id, pr_number, cleanup_on_merge, head_sha, \
      seen_check_failures, seen_feedback_ids, reported_ready_sha, last_pr_updated_at, created_at, \
      notice_seq, pending_notice_id, pending_notice_body, pending_ends_watch, not_found_count, \
-     conflict_state";
+     conflict_state, feedback_fingerprints, fetch_failure_count, fetch_degraded";
 
 /// The JSON cursors decode outside rusqlite's error type, so a corrupt row
 /// surfaces as an `ArgmaxError` rather than a column-type error.
 fn row_to_watch(row: &Row<'_>) -> rusqlite::Result<ArgmaxResult<PrWatchRecord>> {
     let seen_check_failures: String = row.get(6)?;
     let seen_feedback_ids: Option<String> = row.get(7)?;
+    let fingerprints: Option<String> = row.get(17)?;
+    let feedback_fingerprints = match fingerprints
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+    {
+        Ok(value) => value,
+        Err(error) => return Ok(Err(json_error(error))),
+    };
     let decoded = serde_json::from_str(&seen_check_failures).and_then(|failures| {
         seen_feedback_ids
             .as_deref()
@@ -367,6 +427,9 @@ fn row_to_watch(row: &Row<'_>) -> rusqlite::Result<ArgmaxResult<PrWatchRecord>> 
         head_sha: row.get(5)?,
         seen_check_failures,
         seen_feedback_ids,
+        feedback_fingerprints,
+        fetch_failure_count: row.get(18)?,
+        fetch_degraded: row.get(19)?,
         reported_ready_sha: row.get(8)?,
         last_pr_updated_at: row.get(9)?,
         created_at: row.get(10)?,
@@ -449,6 +512,9 @@ mod tests {
                 head_sha: "bbb".into(),
                 seen_check_failures: vec!["build@bbb".into()],
                 seen_feedback_ids: vec!["IC_1".into()],
+                feedback_fingerprints: BTreeMap::from([("IC_1".into(), "hash".into())]),
+                fetch_failure_count: 0,
+                fetch_degraded: false,
                 reported_ready_sha: None,
                 last_pr_updated_at: Some("2026-10-01T00:00:00Z".into()),
                 conflict_state: Some(ConflictState::Conflicting),

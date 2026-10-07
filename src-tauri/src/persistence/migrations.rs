@@ -352,6 +352,20 @@ pub static PR_WATCHES_COLUMNS: phf::Map<&'static str, &'static [&'static str]> =
     ] as &'static [&'static str],
 };
 
+const PR_WATCH_FEEDBACK_AND_FETCH_HEALTH: &str = "ALTER TABLE pr_watches ADD COLUMN feedback_fingerprints TEXT;
+             ALTER TABLE pr_watches ADD COLUMN fetch_failure_count INTEGER NOT NULL DEFAULT 0 CHECK (fetch_failure_count >= 0);
+             ALTER TABLE pr_watches ADD COLUMN fetch_degraded INTEGER NOT NULL DEFAULT 0 CHECK (fetch_degraded IN (0, 1));";
+
+static PR_WATCH_FEEDBACK_AND_FETCH_HEALTH_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "pr_watches" => &[
+        "cleanup_on_merge", "conflict_state", "created_at", "feedback_fingerprints",
+        "fetch_degraded", "fetch_failure_count", "head_sha", "id", "last_pr_updated_at",
+        "not_found_count", "notice_seq", "pending_ends_watch", "pending_notice_body",
+        "pending_notice_id", "pr_number", "project_id", "reported_ready_sha",
+        "seen_check_failures", "seen_feedback_ids", "session_id", "updated_at",
+    ] as &'static [&'static str],
+};
+
 // v63 gives `pr_watches` its conflict cursor, adds the linked-repository table,
 // and gives `projects` and `workspaces` one nullable column each.
 pub static WORKSPACE_IMPROVEMENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -1348,6 +1362,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: EVENTS_SESSION_TYPE_INDEX,
         affected_tables: &[],
         expected_columns: &EMPTY_EXPECTED_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 70,
+        name: "pr_watch_feedback_and_fetch_health",
+        up: PR_WATCH_FEEDBACK_AND_FETCH_HEALTH,
+        affected_tables: &["pr_watches"],
+        expected_columns: &PR_WATCH_FEEDBACK_AND_FETCH_HEALTH_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -3027,6 +3049,41 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
 
     #[test]
+    fn pr_watch_health_upgrade_preserves_legacy_cursors_and_outbox() {
+        let mut connection = Connection::open_in_memory().expect("database");
+        run_migrations_with(&mut connection, &MIGRATIONS[..69]).expect("migrate through v69");
+        seed_minimal_session(&connection);
+        connection
+            .execute_batch(
+                "INSERT INTO pr_watches (id, session_id, project_id, pr_number, head_sha,
+             seen_feedback_ids, seen_check_failures, notice_seq, pending_notice_id,
+             pending_notice_body, conflict_state, created_at, updated_at)
+             VALUES ('watch-1', 's1', 'p1', 42, 'feedface', '[\"RC1\"]', '[\"build@feedface\"]',
+             2, 'notice-2', 'pending notice', 'conflicting', 'created', 'updated');",
+            )
+            .expect("legacy watch");
+        run_migrations(&mut connection).expect("upgrade");
+        let watch = crate::persistence::pr_watches::find_pr_watch(&connection, "s1", "p1", 42)
+            .expect("read upgraded watch")
+            .expect("watch retained");
+        assert_eq!(watch.head_sha, "feedface");
+        assert_eq!(watch.seen_feedback_ids, Some(vec!["RC1".to_string()]));
+        assert_eq!(watch.seen_check_failures, vec!["build@feedface"]);
+        assert_eq!(watch.notice_seq, 2);
+        assert_eq!(
+            watch.pending_notice.expect("outbox retained").body,
+            "pending notice"
+        );
+        assert_eq!(
+            watch.conflict_state,
+            Some(crate::persistence::pr_watches::ConflictState::Conflicting)
+        );
+        assert!(watch.feedback_fingerprints.is_none());
+        assert_eq!(watch.fetch_failure_count, 0);
+        assert!(!watch.fetch_degraded);
+    }
+
+    #[test]
     fn linked_repository_summary_upgrade_preserves_existing_roots() {
         let mut connection = Connection::open_in_memory().unwrap();
         run_migrations_with(&mut connection, &MIGRATIONS[..66]).unwrap();
@@ -3406,6 +3463,10 @@ mod tests {
                 (67, compute_migration_checksum(LINKED_REPOSITORY_SUMMARIES)),
                 (68, compute_migration_checksum(MERGE_CLEANUP)),
                 (69, compute_migration_checksum(EVENTS_SESSION_TYPE_INDEX)),
+                (
+                    70,
+                    compute_migration_checksum(PR_WATCH_FEEDBACK_AND_FETCH_HEALTH)
+                ),
             ]
         );
 

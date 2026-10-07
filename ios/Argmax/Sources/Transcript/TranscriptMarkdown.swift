@@ -8,8 +8,10 @@ import SwiftUI
 struct TranscriptMarkdown: View {
     @State private var prepared: (key: TranscriptMarkdownKey, document: TranscriptMarkdownDocument)?
     let text: String
+    let sourceEventID: String?
     let isThinking: Bool
     @Environment(\.transcriptWorkspacePath) private var workspacePath
+    @Environment(\.visualizationSessionID) private var visualizationSessionID
     @Environment(\.foldedNarration) private var foldedNarration
     @Environment(\.proseInkOverride) private var proseInkOverride
     let client: BridgeClient?
@@ -17,11 +19,13 @@ struct TranscriptMarkdown: View {
 
     init(
         text: String,
+        sourceEventID: String? = nil,
         client: BridgeClient? = nil,
         onOpenFile: @escaping (String) -> Void = { _ in },
         isThinking: Bool = false
     ) {
         self.text = text
+        self.sourceEventID = sourceEventID
         self.isThinking = isThinking
         self.client = client
         self.onOpenFile = onOpenFile
@@ -102,6 +106,21 @@ struct TranscriptMarkdown: View {
             TranscriptCodeBlock(language: language, source: source, onOpenFile: onOpenFile)
         case .table(let table):
             TranscriptTableBlock(table: table)
+        case .visualization(let marker):
+            if let client, let visualizationSessionID {
+                switch marker {
+                case .ready(let reference):
+                    let identified = Self.identifiedReference(reference, sourceEventID: sourceEventID)
+                    TranscriptVisualizationCard(sessionID: visualizationSessionID, reference: .legacy(identified),
+                                                title: reference.title ?? "Visualization", summary: "", client: client)
+                case .pending:
+                    ProgressView("Preparing visualization").typeMeta()
+                case .invalid:
+                    Text("This visualization reference is invalid.").typeMeta().foregroundStyle(Theme.rose)
+                }
+            } else {
+                Text("Open this visualization in its chat.").typeMeta()
+            }
         case .image(let image):
             TranscriptMarkdownImage(image: image, client: client, onOpenFile: onOpenFile)
         case .math(let source, let display):
@@ -109,6 +128,12 @@ struct TranscriptMarkdown: View {
         case .thematicBreak:
             Divider().overlay(Theme.line)
         }
+    }
+
+    static func identifiedReference(_ reference: TranscriptVisualizationLegacyReference, sourceEventID: String?) -> TranscriptVisualizationLegacyReference {
+        var reference = reference
+        reference.sourceEventID = sourceEventID
+        return reference
     }
 
     private func listRow(

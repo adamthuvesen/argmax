@@ -25,6 +25,7 @@ function isConversationVisible(event: TimelineEvent): boolean {
   const isVisibleKind =
     event.type === "todo.updated" ||
     canonical.kind === "message" ||
+    canonical.kind === "visualization" ||
     canonical.kind === "error" ||
     canonical.kind === "multitask" ||
     (canonical.kind === "lifecycle" &&

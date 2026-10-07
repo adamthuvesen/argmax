@@ -162,7 +162,7 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
           if (!entry) return;
           if (entry.fetchingTranscript) return;
           if (frame.error?.sub_code === "REMOTE_RESPONSE_TOO_LARGE"
-            && ["session:events-since", "session:agent-events"].includes(entry.channel)) {
+            && ["session:events-since", "session:agent-events", "visualization:read", "visualization:export"].includes(entry.channel)) {
             entry.fetchingTranscript = true;
             fetch(`http://127.0.0.1:${port}/api/transcript`, {
               method: "POST",

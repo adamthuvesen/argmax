@@ -45,7 +45,7 @@ Tracked by [src-tauri/src/util/startup_timer.rs](../src-tauri/src/util/startup_t
 
 `npm run check:bundle` (scripts/check-bundle.mjs) caps the cold-start module
 graph — the entry chunk plus every `<link rel="modulepreload">` Vite emits —
-at 1.81 MiB desktop / 1.61 MiB mobile. The desktop allowance includes a small
+at 1.84 MiB desktop / 1.62 MiB mobile. The desktop allowance includes a small
 startup tradeoff for navigation readiness. Measured 2026-09-09 from the existing
 build: 1.70 MiB desktop and 1.57 MiB mobile. Desktop rose 0.05 MiB to cover
 todo cards, goals, and the rest of that stack, then again for the chat timeline
@@ -74,6 +74,10 @@ graph statically imports it, and cold start preloads all of KaTeX again
 (measured 1.56 MiB eager with the rule, 1.05 MiB without). Automatic chunking
 already places KaTeX in a lazy chunk reached only via MathMarkdown,
 FilePreview, and Mermaid.
+
+The visualization viewer loads through a lazy import in each chat surface.
+Lucide uses automatic chunking. A shared manual icon chunk would pull icons
+from deferred features into both initial module graphs.
 
 ## Renderer Benchmarks
 

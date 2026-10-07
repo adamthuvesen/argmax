@@ -441,6 +441,7 @@ impl ArgmaxTools {
 
     pub(super) fn with_browser_tools(browser_tools: bool) -> Self {
         let mut tool_router = Self::tool_router();
+        tool_router += Self::visualization_tool_router();
         if browser_tools {
             tool_router += Self::browser_tool_router();
         }

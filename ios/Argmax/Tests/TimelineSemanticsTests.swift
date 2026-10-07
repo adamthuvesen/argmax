@@ -12,7 +12,10 @@ final class TimelineSemanticsTests: XCTestCase {
 
     func testSharedWireContractKeepsToolOutcomesAndChildIdentity() throws {
         let events = try fixtureEvents()
-        XCTAssertEqual(events.count, 6)
+        XCTAssertEqual(events.count, 7)
+        XCTAssertEqual(events[6].visualizationMeaning?.artifactId, "ba83f9e1-cc26-4bb8-b63b-75c41dc6b938")
+        XCTAssertEqual(events[6].visualizationMeaning?.format, "html")
+        XCTAssertEqual(events[6].visualizationMeaning?.mode, "wide")
         XCTAssertEqual(events[0].toolMeaning?.toolUseId, "toolu_1")
         XCTAssertEqual(events[0].toolMeaning?.outcome, "failed")
         XCTAssertEqual(events[0].timelineContext?.providerInvocationId, "turn-1")

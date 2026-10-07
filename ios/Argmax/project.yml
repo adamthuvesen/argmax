@@ -138,6 +138,9 @@ targets:
       - path: ../../src/shared/timelineSemanticFixtures.json
         buildPhase: resources
         group: Shared
+      - path: ../../assets/visualization-runtime.json
+        buildPhase: resources
+        group: Shared
     dependencies:
       - target: Argmax
     settings:

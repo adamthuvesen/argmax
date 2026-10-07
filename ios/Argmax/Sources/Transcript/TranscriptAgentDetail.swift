@@ -87,6 +87,7 @@ struct TranscriptAgentDetail: View {
                 }
             }
         }
+        .environment(\.visualizationSessionID, agent.parentSessionId)
         .task(id: agent.id) { await requestReload() }
         .onReceive(dashboard.transcriptChanged) { changed in
             // Provider-native children write under the parent session.
@@ -143,6 +144,10 @@ struct TranscriptAgentActivityRow: View {
 
     var body: some View {
         switch item {
+        case .visualization(let visualization):
+            TranscriptVisualizationCard(sessionID: visualization.sessionID,
+                                        reference: .artifact(visualization.artifactID),
+                                        title: visualization.title, summary: visualization.summary, format: visualization.format, client: client)
         case .user(let message), .assistant(let message):
             // Every word in this sheet is the one agent's, so a role chip over
             // each paragraph only repeats itself. The transcript's own message

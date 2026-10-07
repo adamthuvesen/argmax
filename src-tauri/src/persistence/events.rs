@@ -707,9 +707,15 @@ pub fn persist_copied_event(
         .optional()
         .map_err(sqlite_error)?
         .flatten();
+    let mut copied = input.clone();
+    if let Some(payload) = copied.payload.as_object_mut() {
+        payload
+            .entry("_argmaxOriginalEventId")
+            .or_insert_with(|| Value::String(source_event_id.to_owned()));
+    }
     insert_timeline_event(
         connection,
-        input,
+        &copied,
         PromptAuthor::from_column(column.as_deref()),
     )
 }

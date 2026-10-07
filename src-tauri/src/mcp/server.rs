@@ -153,6 +153,8 @@ mod tests {
             "pr_watch",
             "pr_unwatch",
             "pr_cleanup",
+            "visualization_preview",
+            "visualization_publish",
             "browser_open",
             "browser_snapshot",
             "browser_console",

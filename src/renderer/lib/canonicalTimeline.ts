@@ -201,6 +201,15 @@ type CanonicalErrorEvent = CanonicalCommon & {
   isPayloadTruncation: boolean;
 };
 
+type CanonicalVisualizationEvent = CanonicalCommon & {
+  kind: "visualization";
+  artifactId: string;
+  title: string;
+  summary: string;
+  format: "html" | "image";
+  mode: "wide" | null;
+};
+
 type CanonicalUnknownEvent = Omit<CanonicalCommon, "raw"> & {
   raw: RawTimelineEvent;
   kind: "unknown";
@@ -215,6 +224,7 @@ export type CanonicalTimelineEvent =
   | CanonicalAgentEvent
   | CanonicalMultitaskEvent
   | CanonicalErrorEvent
+  | CanonicalVisualizationEvent
   | CanonicalUnknownEvent;
 
 const decodedEvents = new WeakMap<RawTimelineEvent, CanonicalTimelineEvent>();
@@ -524,6 +534,10 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     decoded = decodeLifecycle(validRaw, payload);
   } else if (meaning?.kind === "multitask") {
     decoded = decodeMultitask(validRaw, payload);
+  } else if (meaning?.kind === "visualization") {
+    decoded = { ...common(validRaw, payload), ...meaning };
+  } else if (!meaning && raw.type === "visualization.published" && typeof payload.artifactId === "string" && typeof payload.title === "string" && typeof payload.summary === "string" && (payload.format === "html" || payload.format === "image")) {
+    decoded = { ...common(validRaw, payload), kind: "visualization", artifactId: payload.artifactId, title: payload.title, summary: payload.summary, format: payload.format, mode: payload.mode === "wide" ? "wide" : null };
   } else if (meaning?.kind === "error") {
     decoded = decodeError(validRaw, payload);
   } else if (meaning?.kind === "unknown") {

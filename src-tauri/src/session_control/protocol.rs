@@ -32,6 +32,8 @@ pub enum SessionControlAction {
     /// tools send the action here and the app runs it — see
     /// [`crate::mcp::browser_bridge`].
     Browser(BrowserRequest),
+    VisualizationPreview(crate::visualizations::tools::VisualizationSource),
+    VisualizationPublish(VisualizationPublishAction),
     Status(StatusAction),
     Read(ReadAction),
     Stop(StopAction),
@@ -61,6 +63,12 @@ pub enum SessionControlAction {
     PrWatch(PrWatchAction),
     PrUnwatch(PrUnwatchAction),
     PrCleanup(PrCleanupAction),
+}
+
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VisualizationPublishAction {
+    pub draft_id: String,
 }
 
 /// Which session an inspection is about. Every session-addressable action
@@ -481,6 +489,8 @@ pub enum SessionControlResult {
     Listed(SessionList),
     Messaged(MessageDelivery),
     Browsed(BrowserOutcome),
+    VisualizationPreview(crate::visualizations::tools::VisualizationPreviewResult),
+    VisualizationPublished(crate::visualizations::VisualizationArtifact),
     Status(SessionStatus),
     Read(SessionRead),
     Stopped(SessionStopped),

@@ -212,7 +212,7 @@ struct TranscriptThinking: Hashable {
         for item in turn.reversed() {
             switch item {
             case .thought(let thought): return thought.id
-            case .assistant, .tools, .agents, .question, .approval, .error: return nil
+            case .assistant, .visualization, .tools, .agents, .question, .approval, .error: return nil
             default: continue
             }
         }
@@ -236,7 +236,7 @@ struct TranscriptThinking: Hashable {
             case .user(let message) where message.isSteering: continue
             case .notice, .todo, .multitask: continue
             case .thought(let thought) where thought.isStreaming: return nil
-            case .assistant, .error: return nil
+            case .assistant, .visualization, .error: return nil
             case .user:
                 // Nothing has come back yet, so this is the turn's first beat
                 // and serves the floor rather than the turn's rhythm.

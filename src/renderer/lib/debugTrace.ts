@@ -51,6 +51,8 @@ function canonicalDiagnostic(event: CanonicalTimelineEvent): Record<string, unkn
   if (event.traceImported) diagnostic.traceImported = true;
 
   switch (event.kind) {
+    case "visualization":
+      return { ...diagnostic, artifactId: event.artifactId, format: event.format };
     case "message":
       return {
         ...diagnostic,

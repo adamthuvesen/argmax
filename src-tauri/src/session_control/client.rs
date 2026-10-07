@@ -80,7 +80,9 @@ pub fn send_session_control(
         .shutdown(Shutdown::Write)
         .map_err(|error| protocol_error("REQUEST_WRITE_FAILED", error.to_string()))?;
     let response_cap = match request.action {
-        SessionControlAction::Browser(_) => MAX_BROWSER_RESPONSE_BYTES,
+        SessionControlAction::Browser(_) | SessionControlAction::VisualizationPreview(_) => {
+            MAX_BROWSER_RESPONSE_BYTES
+        }
         SessionControlAction::Inbox(_) | SessionControlAction::Wait(_) => MAX_INBOX_RESPONSE_BYTES,
         // A diff and a terminal's scrollback are capped in characters, and JSON
         // escaping spends up to six bytes on one — so the frame that always
@@ -110,6 +112,14 @@ pub fn send_session_control(
         (SessionControlAction::List(_), SessionControlResult::Listed(_)) => true,
         (SessionControlAction::Message(_), SessionControlResult::Messaged(_)) => true,
         (SessionControlAction::Browser(_), SessionControlResult::Browsed(_)) => true,
+        (
+            SessionControlAction::VisualizationPreview(_),
+            SessionControlResult::VisualizationPreview(_),
+        ) => true,
+        (
+            SessionControlAction::VisualizationPublish(_),
+            SessionControlResult::VisualizationPublished(_),
+        ) => true,
         (SessionControlAction::Status(_), SessionControlResult::Status(_)) => true,
         (SessionControlAction::Read(_), SessionControlResult::Read(_)) => true,
         (SessionControlAction::Stop(_), SessionControlResult::Stopped(_)) => true,

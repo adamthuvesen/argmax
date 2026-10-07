@@ -45,6 +45,15 @@ struct TranscriptMarkdownPreparation {
                 continue
             }
 
+            let indentation = line.prefix { $0 == " " || $0 == "\t" }
+            let indentedCode = indentation.count >= 4 || indentation.contains("\t")
+            if !indentedCode, let visualization = TranscriptVisualizationMarker(line: trimmed) {
+                let marker = blockMarker()
+                lifted[marker] = .visualization(visualization)
+                appendLifted(marker, indent: line)
+                index += 1
+                continue
+            }
             if let display = Self.displayMath(startingAt: index, lines: lines) {
                 let marker = blockMarker()
                 lifted[marker] = .math(source: display.source, display: true)

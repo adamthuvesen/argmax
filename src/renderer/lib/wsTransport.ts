@@ -167,7 +167,7 @@ function transcriptUrl(socketUrl: string): string {
 }
 
 function canFetchTranscript(channel: IpcChannel): boolean {
-  return channel === "session:events-since" || channel === "session:agent-events";
+  return channel === "session:events-since" || channel === "session:agent-events" || channel === "visualization:read" || channel === "visualization:export";
 }
 
 function asFrame(value: unknown): Record<string, unknown> | null {

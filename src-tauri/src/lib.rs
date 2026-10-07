@@ -47,6 +47,7 @@ pub mod terminal;
 pub mod updater;
 pub mod usage;
 pub mod util;
+pub mod visualizations;
 pub mod window_snapshot;
 pub mod windows;
 pub mod workspace_assets;

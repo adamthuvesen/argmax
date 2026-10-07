@@ -68,6 +68,7 @@ enum MobileTranscriptRow: Equatable, Identifiable {
     /// `JSONSerialization` in a scratch harness.
     static func isProgressNarration(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: jsWhitespace)
+        if trimmed.contains("\u{E200}visualize\u{E202}") { return false }
         let length = trimmed.utf16.count
         if length > narrationMaxCharacters { return false }
         let whole = NSRange(location: 0, length: length)

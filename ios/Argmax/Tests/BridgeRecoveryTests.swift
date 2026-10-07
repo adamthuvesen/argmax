@@ -1,3 +1,5 @@
+import SwiftUI
+import WebKit
 import XCTest
 @testable import Argmax
 
@@ -185,6 +187,184 @@ final class BridgeRecoveryTests: XCTestCase {
         XCTAssertEqual(envelope["channel"] as? String, "session:events-since")
         XCTAssertEqual(envelope["input"] as? NSDictionary, sent["input"] as? NSDictionary)
         await client.disconnect()
+    }
+
+    @MainActor
+    func testNativeTweakEditsPersistOutsideWidgetStateAndRestore() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let runtimeURL = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "visualization-runtime", withExtension: "json"))
+        let runtime = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: runtimeURL)) as? [String: Any])
+        let script = try XCTUnwrap(runtime["script"] as? String)
+        let csp = try XCTUnwrap(runtime["csp"] as? String)
+        let artifact = TranscriptVisualizationArtifact(id: "ba83f9e1-cc26-4bb8-b63b-75c41dc6b938", sessionId: "s-1", title: "Design", summary: "", format: "html", runtimeVersion: 1, externalDependencies: [])
+        var coordinator: TranscriptVisualizationWeb.Coordinator?
+        var groups: [TranscriptVisualizationControls] = []
+        func view(value: Int?, identity: String) -> AnyView {
+            let storedControls = value.map { "'control-1':\($0)" } ?? ""
+            let html = "<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"\(csp)\"><script>window.__argmaxVisualizationConfig={instanceId:'\(artifact.id)',appearance:{dark:false,variables:{}},controlValues:{\(storedControls)},capabilities:{controls:true}};</script><script>\(script)</script></head><body><div id='design'>Design</div><script>window.settings={gap:14};const t=new Tweak({container:document.getElementById('design'),onChange:()=>{}});t.addSlider(window.settings,'gap',{min:4,max:40,step:1});</script></body></html>"
+            let document = TranscriptVisualizationDocument(artifact: artifact, source: "Design", document: html,
+                state: .init(modelContent: .null, privateContent: .null), controlValues: value.map { ["control-1": .number(Double($0))] } ?? [:])
+            return AnyView(TranscriptVisualizationWeb(document: document, client: client, sessionID: "s-1", appearance: ["dark": false, "variables": [:]],
+                height: .constant(240), host: Binding(get: { coordinator }, set: { coordinator = $0 }),
+                onFollowUp: { _ in }, onLink: { _ in }, onControls: { groups = $0 },
+                onPersistenceFailure: { if let error = $0 { XCTFail(error) } }, onFailure: { XCTFail($0) }).id(identity))
+        }
+        let controller = UIHostingController(rootView: view(value: nil, identity: "first"))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 400))
+        window.rootViewController = controller
+        controller.view.frame = window.bounds
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        for _ in 0..<500 {
+            if !groups.isEmpty, coordinator?.webView?.isLoading == false { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let first = try XCTUnwrap(coordinator)
+        XCTAssertFalse(groups.isEmpty)
+        XCTAssertTrue(socket.requests.isEmpty, "Initial control restoration does not write")
+        first.send(["type": "argmax:visualization-control", "id": "control-1", "value": 22])
+        controller.rootView = AnyView(Text("Paused"))
+        let sent = try await request(on: socket)
+        XCTAssertEqual(sent["channel"] as? String, "visualization:set-controls")
+        let input = try XCTUnwrap(sent["input"] as? [String: Any])
+        XCTAssertEqual((input["controlValues"] as? [String: Int])?["control-1"], 22)
+        XCTAssertNil(input["state"], "Design edits never replace model/private widget state")
+        socket.reply(to: sent, ok: ["control-1": 22])
+        await first.flushState()
+        groups = []
+        controller.rootView = view(value: 22, identity: "restored")
+        for _ in 0..<500 {
+            if !groups.isEmpty, coordinator?.webView?.isLoading == false { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let restored = try XCTUnwrap(coordinator?.webView)
+        let value = try await restored.evaluateJavaScript("window.settings.gap") as? Int
+        XCTAssertEqual(value, 22)
+        XCTAssertEqual(socket.requests.count, 1, "Restoring saved controls does not write defaults")
+        let restoredCoordinator = try XCTUnwrap(coordinator)
+        let groupID = try XCTUnwrap(groups.first?.id)
+        restoredCoordinator.send(["type": "argmax:visualization-reset", "groupId": groupID])
+        controller.rootView = AnyView(Text("Paused"))
+        let reset = try await request(on: socket, count: 2)
+        let resetInput = try XCTUnwrap(reset["input"] as? [String: Any])
+        XCTAssertEqual((resetInput["controlValues"] as? [String: Int])?.count, 0)
+        socket.reply(to: reset, ok: [:])
+        await restoredCoordinator.flushState()
+        groups = []
+        controller.rootView = view(value: nil, identity: "reset")
+        for _ in 0..<500 {
+            if !groups.isEmpty, coordinator?.webView?.isLoading == false { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let resetView = try XCTUnwrap(coordinator?.webView)
+        let resetValue = try await resetView.evaluateJavaScript("window.settings.gap") as? Int
+        XCTAssertEqual(resetValue, 14, "Reset restores immutable source defaults after immediate eviction")
+        await client.disconnect()
+    }
+
+    @MainActor
+    func testVisualizationPoolRemountWaitsForStateAndReadsFreshDocument() async throws {
+        let socket = TestBridgeSocket()
+        let (client, directory) = try makeClient([socket])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pool = TranscriptVisualizationViewers.shared
+        for id in pool.active { pool.release(id) }
+        let runtimeURL = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "visualization-runtime", withExtension: "json"))
+        let runtime = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: runtimeURL)) as? [String: Any])
+        let script = try XCTUnwrap(runtime["script"] as? String)
+        let csp = try XCTUnwrap(runtime["csp"] as? String)
+        let artifactID = "ba83f9e1-cc26-4bb8-b63b-75c41dc6b938"
+        func response(filter: Int) -> [String: Any] {
+            let html = "<html><head><meta http-equiv=\"Content-Security-Policy\" content=\"\(csp)\"><script>window.__argmaxVisualizationConfig={instanceId:'\(artifactID)',appearance:{dark:false,variables:{}},state:{modelContent:{filter:\(filter)},privateContent:null}};</script><script>\(script)</script></head><body><p>Filter \(filter)</p></body></html>"
+            return ["artifact": ["id": artifactID, "sessionId": "s-1", "title": "Chart", "summary": "Filter", "format": "html", "runtimeVersion": 1, "externalDependencies": []],
+                    "source": "<p>Filter</p>", "document": html,
+                    "state": ["modelContent": ["filter": filter], "privateContent": NSNull()], "controlValues": [:]]
+        }
+        func webView(in view: UIView) -> WKWebView? {
+            if let webView = view as? WKWebView { return webView }
+            return view.subviews.lazy.compactMap { webView(in: $0) }.first
+        }
+        func reads() -> [[String: Any]] { socket.requests.filter { $0["channel"] as? String == "visualization:read" } }
+        let card = TranscriptVisualizationCard(sessionID: "s-1", reference: .artifact(artifactID), title: "Chart", summary: "Filter", client: client)
+            .environment(\.visualizationSessionID, "s-1")
+        let controller = UIHostingController(rootView: card)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 640))
+        window.rootViewController = controller
+        controller.view.frame = window.bounds
+        @MainActor func waitUI(_ phase: String, _ condition: @MainActor () -> Bool, line: UInt = #line) async throws {
+            let deadline = Date().addingTimeInterval(5)
+            while !condition() {
+                controller.view.setNeedsLayout()
+                controller.view.layoutIfNeeded()
+                window.layoutIfNeeded()
+                guard Date() < deadline else {
+                    XCTFail("Timed out waiting for visualization UI phase \(phase). Bounds: \(controller.view.bounds), active: \(pool.active.count), leases: \(pool.leases.count), requests: \(socket.requests.map { $0["channel"] as? String ?? "unknown" }), hierarchy: \(controller.view.subviews.map { String(describing: type(of: $0)) })", line: line)
+                    throw BridgeError.disconnected
+                }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            for id in pool.active { pool.release(id) }
+        }
+        try await waitUI("first read") { reads().count == 1 }
+        let initialResponse = response(filter: 7)
+        _ = try JSONDecoder().decode(TranscriptVisualizationDocument.self, from: JSONSerialization.data(withJSONObject: initialResponse))
+        socket.reply(to: reads()[0], ok: initialResponse)
+        try await waitUI("viewer loaded") { webView(in: controller.view)?.isLoading == false }
+        let original = try XCTUnwrap(webView(in: controller.view))
+        _ = try await original.evaluateJavaScript("window.openai.setWidgetState({modelContent:{filter:19},privateContent:null});void 0")
+        try await waitUI("state write") { socket.requests.contains { $0["channel"] as? String == "visualization:set-state" } }
+        let save = try XCTUnwrap(socket.requests.first { $0["channel"] as? String == "visualization:set-state" })
+        let cardID = try XCTUnwrap(pool.active.first)
+        for _ in 0..<3 { pool.activate(UUID(), replacing: true) }
+        try await waitUI("evicted") { webView(in: controller.view) == nil }
+        pool.activate(cardID, replacing: true)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(reads().count, 1, "Restoring waits for the pending state write")
+        XCTAssertNil(webView(in: controller.view), "Cached source cannot mount while restoration waits")
+        socket.reply(to: save, ok: ["modelContent": ["filter": 19], "privateContent": NSNull()])
+        try await waitUI("restored read") { reads().count == 2 }
+        socket.reply(to: reads()[1], ok: response(filter: 19))
+        try await waitUI("viewer loaded") { webView(in: controller.view)?.isLoading == false }
+        let restored = try XCTUnwrap(webView(in: controller.view))
+        XCTAssertFalse(original === restored)
+        let filter = try await restored.evaluateJavaScript("window.openai.widgetState.modelContent.filter") as? Int
+        XCTAssertEqual(filter, 19)
+        window.isHidden = true
+        window.rootViewController = nil
+        for id in pool.active { pool.release(id) }
+        await client.disconnect()
+    }
+
+    func testVisualizationReadsAndExportUseAuthenticatedOversizedFallback() async throws {
+        let answer = String(repeating: "x", count: 4 * 1024 * 1024 + 1)
+        for channel in ["visualization:read", "visualization:export"] {
+            let socket = TestBridgeSocket()
+            let responseData = try JSONSerialization.data(withJSONObject: ["ok": ["source": answer]])
+            let recorder = TestHTTPLoader(result: .success(responseData))
+            let (client, directory) = try makeClient([socket], httpLoader: recorder.load)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let input = TranscriptVisualizationIdentity(sessionId: "s-1", artifactId: "ba83f9e1-cc26-4bb8-b63b-75c41dc6b938")
+            let call = Task { try await client.request(channel, input: input) }
+            let sent = try await request(on: socket)
+            socket.reply(to: sent, error: "REMOTE_RESPONSE_TOO_LARGE", settled: false)
+            let payload = try await call.value
+            let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+            XCTAssertEqual(decoded["source"] as? String, answer)
+            let http = try XCTUnwrap(recorder.requests.first)
+            XCTAssertEqual(http.value(forHTTPHeaderField: "Authorization"), "Bearer test")
+            XCTAssertEqual(http.url?.path, "/api/transcript")
+            let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(http.httpBody)) as? [String: Any])
+            XCTAssertEqual(envelope["channel"] as? String, channel)
+            XCTAssertEqual(envelope["input"] as? NSDictionary, sent["input"] as? NSDictionary)
+            await client.disconnect()
+        }
     }
 
     func testTranscriptHTTPErrorUsesHostErrorAndMutationDoesNotFallback() async throws {

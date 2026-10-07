@@ -15,6 +15,7 @@ pub mod browser_bridge;
 mod browser_tools;
 mod server;
 mod session_tools;
+mod visualization_tools;
 
 /// Dispatch `argmax mcp` before the GUI boots, mirroring
 /// [`crate::session_control::try_run_session_control_cli`]. Returns `None` when

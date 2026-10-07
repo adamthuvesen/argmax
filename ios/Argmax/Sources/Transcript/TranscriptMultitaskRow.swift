@@ -382,6 +382,11 @@ private struct TranscriptMultitaskDetail: View {
                                 }
                             }
                             .environment(\.transcriptWorkspacePath, snapshot.workspacePath)
+                            .environment(\.visualizationSessionID, childSessionID)
+                            .environment(\.visualizationFollowUp, { prompt in
+                                draft = draft.isEmpty ? prompt : draft + "\n\n" + prompt
+                                composerFocused = true
+                            })
                             .overlay(alignment: .bottom) {
                                 if !following && !snapshot.items.isEmpty {
                                     Button { scrollRequest += 1 } label: {

@@ -33,8 +33,9 @@ pub use protocol::{
     SourceAddedOutcome, SourceReadOutcome, SourceRecord, SourcesAddAction, SourcesListAction,
     SourcesListOutcome, SourcesReadAction, StatusAction, StopAction, TerminalCloseAction,
     TerminalClosed, TerminalOutput, TerminalReadAction, TerminalSpawnAction, TerminalStarted,
-    TerminalSummary, TerminalWriteAction, TerminalWritten, WaitAction, WaitOutcome, WaitedSession,
-    WorkspaceDiffAction, WorkspaceDiffOutcome, WorkspaceStatusAction, WorkspaceStatusOutcome,
+    TerminalSummary, TerminalWriteAction, TerminalWritten, VisualizationPublishAction, WaitAction,
+    WaitOutcome, WaitedSession, WorkspaceDiffAction, WorkspaceDiffOutcome, WorkspaceStatusAction,
+    WorkspaceStatusOutcome,
 };
 pub use registry::{AfterTurn, LinkedRoot, SessionLaunchProcessConfig, SessionLaunchRegistry};
 pub use server::{SessionLaunchError, SessionLaunchServer};
@@ -44,7 +45,9 @@ use std::time::Duration;
 use crate::error::ArgmaxError;
 
 const PROTOCOL_VERSION: u32 = 1;
-const MAX_REQUEST_BYTES: usize = 256 * 1024;
+// A 1 MB inline HTML source can use six JSON bytes per source byte.
+// Visualization ingestion validates the decoded source before it writes a draft.
+const MAX_REQUEST_BYTES: usize = 6 * 1024 * 1024 + 64 * 1024;
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// A screenshot's base64 PNG rides in the reply, so the browser action gets
 /// its own ceiling. `mcp::browser_bridge` caps the image well below this.

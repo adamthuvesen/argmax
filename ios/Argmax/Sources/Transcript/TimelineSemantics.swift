@@ -61,6 +61,21 @@ extension TranscriptEvent {
         return multitask
     }
 
+    var visualizationMeaning: TimelineSemantics.Visualization? {
+        if let timelineMeaning {
+            guard case .visualization(let value) = timelineMeaning else { return nil }
+            return value
+        }
+        let payload = payloadObject
+        guard type == "visualization.published",
+              let artifactID = payload["artifactId"]?.string, UUID(uuidString: artifactID) != nil,
+              let title = payload["title"]?.string,
+              let summary = payload["summary"]?.string,
+              let format = payload["format"]?.string, ["html", "image"].contains(format) else { return nil }
+        return .init(kind: "visualization", artifactId: artifactID, title: title, format: format,
+                     summary: summary, mode: payload["mode"]?.string == "wide" ? "wide" : nil)
+    }
+
     var errorMeaning: TimelineSemantics.Error? {
         guard let timelineMeaning, case .error(let error) = timelineMeaning else { return nil }
         return error

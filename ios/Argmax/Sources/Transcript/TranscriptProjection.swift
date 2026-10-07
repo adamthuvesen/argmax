@@ -46,6 +46,13 @@ enum TranscriptProjection {
                 answerSegment += 1
                 answerOpen = false
             }
+            if let visualization = event.visualizationMeaning {
+                items.append(.visualization(TranscriptVisualization(
+                    id: event.id, sessionID: event.sessionId, artifactID: visualization.artifactId, format: visualization.format,
+                    title: visualization.title, summary: visualization.summary, createdAt: event.createdAt
+                )))
+                continue
+            }
             if event.isUserMessage {
                 let steering = event.messageMeaning.map { $0.delivery == "steer" }
                     ?? (payload["delivery"]?.string == "steer")
@@ -63,7 +70,8 @@ enum TranscriptProjection {
                     isStreaming: false,
                     isSteering: steering,
                     originLabel: payload["origin"]?.object?["label"]?.string,
-                    attachments: attachments(payload["attachments"])
+                    attachments: attachments(payload["attachments"]),
+                    sourceEventID: event.id
                 )))
                 continue
             }
@@ -383,7 +391,11 @@ enum TranscriptProjection {
         let id = "answer-\(blockID)"
         let attachments = attachments(event.payloadObject["attachments"])
         if case .assistant(var previous)? = items.last, previous.id == id {
-            if previous.text == event.message { return }
+            previous.sourceEventID = event.id
+            if previous.text == event.message {
+                items[items.count - 1] = .assistant(previous)
+                return
+            }
             previous.text = combinedText(previous.text, event.message)
             previous.isStreaming = streaming
             if !attachments.isEmpty { previous.attachments = attachments }
@@ -398,7 +410,8 @@ enum TranscriptProjection {
             isStreaming: streaming,
             isSteering: false,
             originLabel: nil,
-            attachments: attachments
+            attachments: attachments,
+            sourceEventID: event.id
         )))
     }
 
@@ -408,6 +421,7 @@ enum TranscriptProjection {
         to items: inout [TranscriptItem]
     ) {
         if case .thought(var previous)? = items.last {
+            previous.sourceEventID = event.id
             if event.payloadObject["providerEventType"]?.string == "item.completed" {
                 previous.text = completedThoughtText(existing: previous.text, event: event)
             } else {
@@ -421,7 +435,8 @@ enum TranscriptProjection {
             id: "thought-\(event.id)",
             text: splitCollapsedThoughtTitles(event.message),
             createdAt: event.createdAt,
-            isStreaming: streaming
+            isStreaming: streaming,
+            sourceEventID: event.id
         )))
     }
 

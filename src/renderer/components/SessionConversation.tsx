@@ -1,4 +1,5 @@
 import { usePrMilestone } from "../hooks/usePrMilestone.js";
+import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import { TurnExhale } from "./TurnExhale.js";
 import { showErrorToast } from "../state/toast.js";
 import {
@@ -1477,6 +1478,7 @@ export function SessionConversation({
       : null;
 
   return (
+    <VisualizationSessionContext.Provider value={session?.id ?? null}>
     <ActivityBeatContext.Provider value={activityBeatToolId}>
     <section
       className="conversation-surface"
@@ -1780,5 +1782,6 @@ export function SessionConversation({
       )}
     </section>
     </ActivityBeatContext.Provider>
+    </VisualizationSessionContext.Provider>
   );
 }

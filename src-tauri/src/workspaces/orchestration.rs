@@ -1549,6 +1549,11 @@ impl WorkspaceService {
                         }
                         None => (destination_session, false),
                     };
+                crate::visualizations::copy_history_artifacts(
+                    &transaction,
+                    source_session_id,
+                    &destination_session.id,
+                )?;
                 let mut copied_ids = Vec::new();
                 for event in list_all_session_events(&transaction, source_session_id)? {
                     let copy_id = Uuid::new_v4().to_string();

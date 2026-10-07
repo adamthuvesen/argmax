@@ -161,6 +161,38 @@ pub(super) async fn handle_session_control(
         SessionControlAction::PrWatch(action) => watch_pr(action, parent, database),
         SessionControlAction::PrUnwatch(action) => unwatch_pr(action, parent, database),
         SessionControlAction::PrCleanup(action) => cleanup_pr(action, parent, database).await,
+        SessionControlAction::VisualizationPreview(input) => {
+            let app = app.ok_or_else(|| {
+                protocol_error(
+                    "VISUALIZATION_UNAVAILABLE",
+                    "This instance has no visualization host",
+                )
+            })?;
+            let state = tauri::Manager::state::<crate::state::AppState>(&app);
+            crate::visualizations::tools::preview(&state, Some(&app), &parent.session_id, input)
+                .await
+                .map(|result| {
+                    SessionControlResponse::new(SessionControlResult::VisualizationPreview(result))
+                })
+                .map_err(argmax_protocol_error)
+        }
+        SessionControlAction::VisualizationPublish(input) => {
+            let app = app.ok_or_else(|| {
+                protocol_error(
+                    "VISUALIZATION_UNAVAILABLE",
+                    "This instance has no visualization host",
+                )
+            })?;
+            let state = tauri::Manager::state::<crate::state::AppState>(&app);
+            crate::visualizations::tools::publish(&state, &parent.session_id, &input.draft_id)
+                .await
+                .map(|result| {
+                    SessionControlResponse::new(SessionControlResult::VisualizationPublished(
+                        result,
+                    ))
+                })
+                .map_err(argmax_protocol_error)
+        }
         SessionControlAction::Browser(request) => {
             let app = app.ok_or_else(|| {
                 protocol_error(

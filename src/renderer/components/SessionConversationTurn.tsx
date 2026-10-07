@@ -1,4 +1,5 @@
-import { Fragment, memo, useMemo, useState, type JSX, type ReactNode } from "react";
+import { Fragment, Suspense, lazy, memo, useMemo, useState, type JSX, type ReactNode } from "react";
+import { importChunk } from "../lib/importChunk.js";
 import { CornerDownRight } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
@@ -47,6 +48,8 @@ import {
 } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ALWAYS_FOLLOWING, type TranscriptFollow } from "../hooks/useConversationScroll.js";
+
+const HtmlVisualization = lazy(() => importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization })));
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
 
@@ -257,6 +260,10 @@ function SessionConversationTurnInner({
       ));
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
+      if (group.visualization) {
+        const visualization = group.visualization;
+        return { kind: "assistant", id: group.id, node: <Suspense fallback={<p role="status">Loading visualization</p>}><HtmlVisualization sessionId={visualization.sessionId} artifactId={visualization.artifactId} title={visualization.title} mode={visualization.mode ?? undefined} /></Suspense>, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+      }
       const groupLive = thinkingLive && group.id === liveThoughtGroupId;
       // Single-line mode folds completed Thought blocks away entirely — only
       // the live "Thinking" indicator (governed by groupLive) survives, until
@@ -289,6 +296,7 @@ function SessionConversationTurnInner({
                 would trail by seconds, then snap when the thought ends. */}
             <StreamingMarkdown
               text={group.text}
+              sourceEventId={group.sourceEventId}
               streaming={groupLive}
               paced={false}
               workspace={workspace}
@@ -334,6 +342,7 @@ function SessionConversationTurnInner({
         >
           <StreamingMarkdown
             text={group.text}
+            sourceEventId={group.sourceEventId}
             streaming={group.streaming}
             restoring={restoringTranscript}
             revealKey={session ? `${session.id}:${group.createdAt}:${group.id}` : null}

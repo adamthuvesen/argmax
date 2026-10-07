@@ -730,9 +730,57 @@ async workspaceReadFile(input: WorkspaceReadFileInput) : Promise<Result<Workspac
     else return { status: "error", error: e  as any };
 }
 },
-async workspaceReadVisualization(input: WorkspaceReadVisualizationInput) : Promise<Result<WorkspaceFilePreview, ArgmaxError>> {
+async visualizationImport(input: VisualizationImportInput) : Promise<Result<VisualizationArtifact, ArgmaxError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("workspace_read_visualization", { input }) };
+    return { status: "ok", data: await TAURI_INVOKE("visualization_import", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async visualizationRead(input: VisualizationReadInput) : Promise<Result<VisualizationRead, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("visualization_read", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async visualizationExport(input: VisualizationReadInput) : Promise<Result<string, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("visualization_export", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async visualizationSetState(input: VisualizationSetStateInput) : Promise<Result<VisualizationWidgetState, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("visualization_set_state", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async visualizationSetControls(input: VisualizationSetControlsInput) : Promise<Result<Partial<{ [key in string]: JsonValue }>, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("visualization_set_controls", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async visualizationPublish(input: VisualizationPublishInput) : Promise<Result<VisualizationArtifact, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("visualization_publish", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async visualizationPreview(input: VisualizationPreviewInput) : Promise<Result<VisualizationPreviewResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("visualization_preview", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2908,7 +2956,7 @@ export type SaveImageResult = { filePath: string; sizeBytes: number }
  */
 export type ScratchWorkspaceKind = "scratch" | "popup"
 export type SearchQuery = string
-export type SemanticEvent = { kind: "message"; role: MessageRole; phase: MessagePhase; content: MessageContent; delivery: MessageDelivery | null; rawStream: boolean; cumulativeText: string | null } | { kind: "tool"; phase: ToolPhase; toolUseId: string | null; name: string; providerName: string | null; outcome: ToolOutcome | null; running: boolean; surface: string | null; traceSyntheticLaunch: boolean } | { kind: "approval"; phase: ApprovalPhase; approvalId: string | null; provider: string | null; providerRequestId: string | null; toolUseId: string | null; resolution: string | null } | { kind: "agent"; phase: AgentPhase; status: string | null } | { kind: "lifecycle"; name: LifecycleName } | { kind: "multitask"; phase: MultitaskPhase; childSessionId: string | null; state: string | null; taskLabel: string | null; prompt: string | null; worktree: boolean; answer: string | null } | { kind: "error"; code: string | null; operation: string | null } | { kind: "unknown"; reason: UnknownReason }
+export type SemanticEvent = { kind: "message"; role: MessageRole; phase: MessagePhase; content: MessageContent; delivery: MessageDelivery | null; rawStream: boolean; cumulativeText: string | null } | { kind: "tool"; phase: ToolPhase; toolUseId: string | null; name: string; providerName: string | null; outcome: ToolOutcome | null; running: boolean; surface: string | null; traceSyntheticLaunch: boolean } | { kind: "approval"; phase: ApprovalPhase; approvalId: string | null; provider: string | null; providerRequestId: string | null; toolUseId: string | null; resolution: string | null } | { kind: "agent"; phase: AgentPhase; status: string | null } | { kind: "lifecycle"; name: LifecycleName } | { kind: "multitask"; phase: MultitaskPhase; childSessionId: string | null; state: string | null; taskLabel: string | null; prompt: string | null; worktree: boolean; answer: string | null } | { kind: "visualization"; artifactId: string; title: string; format: VisualizationFormat; summary: string; mode: VisualizationMode | null } | { kind: "error"; code: string | null; operation: string | null } | { kind: "unknown"; reason: UnknownReason }
 export type SendInputResult = { ok: boolean; queued: boolean }
 export type SessionAgentEventsInput = { sessionId: SessionId; parentToolUseId: NonEmptyString; providerParentConversationId?: NonEmptyString | null; providerChildSessionId?: NonEmptyString | null }
 export type SessionClearInput = { sessionId: SessionId }
@@ -3270,6 +3318,30 @@ provider?: ProviderId | null }
  */
 export type UsageTokenTotals = { inputUncached: number; cacheRead: number; cacheWrite: number; output: number; reasoning: number }
 export type UsageWindow = "24h" | "7d" | "30d"
+export type VisualizationArtifact = { id: string; sessionId: string; title: string; summary: string; format: VisualizationFormat; mode: VisualizationMode | null; runtimeVersion: number; externalDependencies: string[] }
+export type VisualizationFormat = "html" | "image"
+export type VisualizationImportInput = { sessionId: string; path: string; title: string | null; summary: string | null; mode: VisualizationMode | null; sourceEventId: string | null }
+export type VisualizationMode = "wide"
+export type VisualizationPreviewInput = ({
+/**
+ * HTML source, at most 1 MB. Provide exactly one of html or path.
+ */
+html: string | null;
+/**
+ * Absolute HTML or PNG/JPEG/GIF/WebP file in the owning checkout or visualization folder.
+ */
+path: string | null; title: string | null; summary: string | null;
+/**
+ * Optional wide presentation.
+ */
+mode: VisualizationMode | null; width: number | null; height: number | null }) & { sessionId: string }
+export type VisualizationPreviewResult = { draftId: string; artifact: VisualizationArtifact; width: number; height: number; contentHeight: number | null; diagnostics: string[]; screenshotPath: string | null }
+export type VisualizationPublishInput = { sessionId: string; draftId: string }
+export type VisualizationRead = { artifact: VisualizationArtifact; source: string; document: string; state: VisualizationWidgetState; controlValues: Partial<{ [key in string]: JsonValue }> }
+export type VisualizationReadInput = { sessionId: string; artifactId: string }
+export type VisualizationSetControlsInput = { sessionId: string; artifactId: string; controlValues: Partial<{ [key in string]: JsonValue }> }
+export type VisualizationSetStateInput = { sessionId: string; artifactId: string; state: VisualizationWidgetState }
+export type VisualizationWidgetState = { modelContent?: JsonValue; privateContent?: JsonValue }
 export type WindowOpenSessionInput = { sessionId: string }
 export type WindowOpenSessionResult = { label: string }
 export type WindowSetSessionInput = { sessionId: string | null }
@@ -3310,7 +3382,6 @@ export type WorkspaceGrepContentInput = { kind: WorkspaceTargetKind; id: Workspa
 export type WorkspaceId = string
 export type WorkspaceListFilesInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId }
 export type WorkspaceReadFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
-export type WorkspaceReadVisualizationInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: OpenPath }
 export type WorkspaceStatFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }

@@ -12,6 +12,7 @@ enum TranscriptMarkdownBlock: Sendable {
     case code(language: String?, source: String)
     case table(TranscriptTable)
     case image(TranscriptMarkdownImageSource)
+    case visualization(TranscriptVisualizationMarker)
     case math(source: String, display: Bool)
     case thematicBreak
 }

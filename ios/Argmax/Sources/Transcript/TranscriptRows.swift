@@ -95,7 +95,7 @@ struct TranscriptMessageRow: View {
             // Markdown delimiters and cuts mid-token. This is the message as
             // the row drew it, in the row's own column, ending in the fade a
             // collapsed prompt already uses.
-            TranscriptMarkdown(text: message.text, client: client)
+            TranscriptMarkdown(text: message.text, sourceEventID: message.sourceEventID, client: client)
                 .frame(width: max(rowSize.width - 2 * Spacing.row, 240), alignment: .topLeading)
                 // Before the height cap, or the stack pays for it by
                 // truncating every paragraph in the answer to one line.
@@ -121,7 +121,7 @@ struct TranscriptMessageRow: View {
                     .foregroundStyle(secondaryInk)
             }
             if !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                TranscriptMarkdown(text: message.text, client: client, onOpenFile: onOpenFile)
+                TranscriptMarkdown(text: message.text, sourceEventID: message.sourceEventID, client: client, onOpenFile: onOpenFile)
             }
             if let origin = message.originLabel {
                 Text(origin).typeStyle(.footnote).foregroundStyle(secondaryInk)
@@ -151,7 +151,7 @@ struct TranscriptThoughtRow: View {
 
     var body: some View {
         if detail == .detailed {
-            TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
+            TranscriptMarkdown(text: thought.text, sourceEventID: thought.sourceEventID, client: client, onOpenFile: onOpenFile, isThinking: true)
         } else {
         // Steps previews the burst still being written and folds every settled
         // one to its header, the way `ThoughtBlock` does at `display: "preview"`
@@ -160,7 +160,7 @@ struct TranscriptThoughtRow: View {
         // reasoning where the desktop shows twenty one-line titles.
         VStack(alignment: .leading, spacing: Spacing.tight) {
             DisclosureGroup {
-                TranscriptMarkdown(text: thought.text, client: client, onOpenFile: onOpenFile, isThinking: true)
+                TranscriptMarkdown(text: thought.text, sourceEventID: thought.sourceEventID, client: client, onOpenFile: onOpenFile, isThinking: true)
                     .padding(.top, Spacing.tight)
                     .padding(.bottom, Spacing.snug)
                     .padding(.leading, TranscriptActivityRow<EmptyView>.targetInset)

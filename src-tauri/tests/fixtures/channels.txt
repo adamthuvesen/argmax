@@ -86,7 +86,13 @@ checkpoints:preview-rewind
 checkpoints:rewind-files
 workspace:list-files
 workspace:read-file
-workspace:read-visualization
+visualization:import
+visualization:read
+visualization:export
+visualization:set-state
+visualization:set-controls
+visualization:publish
+visualization:preview
 workspace:write-file
 workspace:stat-file
 workspace:read-external-file

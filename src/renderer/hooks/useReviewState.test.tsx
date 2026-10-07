@@ -295,7 +295,6 @@ describe("useReviewState — IPC fan-out resistance", () => {
             : writeWorkspaceFile(target, path, content, mtime),
           statFile: statWorkspaceFile,
           readExternalFile: readExternalFile,
-          readVisualization: vi.fn().mockRejectedValue(new Error("not available in this test")),
           statExternalFile: vi.fn().mockResolvedValue({ mtimeMs: 1, size: 5 }),
           grepContent: vi.fn().mockResolvedValue({ files: [], truncated: false })
         }

@@ -1,4 +1,5 @@
 import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type JSX, type ReactNode } from "react";
+import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { WorkspaceSummary } from "../../shared/types.js";
@@ -45,8 +46,9 @@ const HtmlVisualization = lazy(() =>
 );
 
 function VisualizationBlock({ properties }: { properties: Record<string, unknown> }): JSX.Element {
+  const sessionId = useContext(VisualizationSessionContext);
+  const { sourceEventId } = useContext(MarkdownContext);
   const streaming = useContext(StreamingCodeContext);
-  const { workspace } = useContext(MarkdownContext);
   const state = properties["data-visualization"];
   if (state !== "ready") {
     const pending = state === "pending" && streaming;
@@ -54,11 +56,12 @@ function VisualizationBlock({ properties }: { properties: Record<string, unknown
       ? "Loading visualization reference"
       : typeof properties["data-error"] === "string" ? properties["data-error"] : "Incomplete visualization reference."}</p>;
   }
-  if (!workspace?.id) return <p role="alert">Visualization requires a workspace.</p>;
+  if (!sessionId) return <p role="alert">Visualization requires an owning chat.</p>;
   return (
     <Suspense fallback={<p role="status">Loading visualization</p>}>
       <HtmlVisualization
-        workspaceId={workspace.id}
+        sessionId={sessionId}
+        sourceEventId={sourceEventId}
         path={String(properties["data-path"])}
         mode={properties["data-mode"] === "wide" ? "wide" : undefined}
         title={typeof properties["data-title"] === "string" ? properties["data-title"] : undefined}
@@ -431,6 +434,7 @@ function MermaidDiagramFallback(): JSX.Element {
 }
 
 type MarkdownContextValue = {
+  sourceEventId?: string;
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 };
@@ -641,6 +645,7 @@ const MarkdownBody = memo(function MarkdownBody({
   text,
   freshRuns,
   settled = false,
+  sourceEventId,
   workspace,
   onOpenFile
 }: MarkdownContextValue & {
@@ -650,7 +655,7 @@ const MarkdownBody = memo(function MarkdownBody({
       live one. Only settled text is worth keeping parsed. */
   settled?: boolean;
 }): JSX.Element {
-  const context = useMemo(() => ({ workspace, onOpenFile }), [workspace, onOpenFile]);
+  const context = useMemo(() => ({ workspace, onOpenFile, sourceEventId }), [workspace, onOpenFile, sourceEventId]);
   const withMath = needsMath(text);
   // Math renders through its own pipeline, where a span cut into a formula's
   // source would be a rendering bug rather than a fade.
@@ -724,6 +729,7 @@ export function StreamingMarkdown({
   paced = true,
   restoring = false,
   revealKey,
+  sourceEventId,
   workspace,
   onOpenFile
 }: {
@@ -739,6 +745,7 @@ export function StreamingMarkdown({
   /** Stable identity for this block of text, unique across sessions and turns.
       Without one, a streaming block restarts its reveal on every remount. */
   revealKey?: string | null;
+  sourceEventId?: string;
   workspace?: WorkspaceSummary | null;
   onOpenFile?: (path: string, options?: FileChipOpenOptions) => void;
 }): JSX.Element | null {
@@ -796,7 +803,7 @@ export function StreamingMarkdown({
         <LogBlock key={`log-${index}`} text={segment.text} />
       ) : (
         <div key={`md-${index}`} className="markdown">
-          <MarkdownBody text={segment.text} settled={!live} workspace={workspace} onOpenFile={onOpenFile} />
+          <MarkdownBody text={segment.text} sourceEventId={sourceEventId} settled={!live} workspace={workspace} onOpenFile={onOpenFile} />
         </div>
       )
     );
@@ -812,6 +819,7 @@ export function StreamingMarkdown({
             text={open && tools && !block.text.trimStart().startsWith(VISUALIZATION_START)
               ? tools.healStreamingTail(block.text) : block.text}
             freshRuns={blockFreshRuns(freshRuns, block, blockRunsRef.current)}
+            sourceEventId={sourceEventId}
             settled={index < split.blocks.length - 2 || !live}
             workspace={workspace}
             onOpenFile={onOpenFile}
@@ -823,6 +831,7 @@ export function StreamingMarkdown({
     body = (
       <MarkdownBody
         text={markdownText}
+        sourceEventId={sourceEventId}
         freshRuns={freshRuns}
         settled={!live}
         workspace={workspace}

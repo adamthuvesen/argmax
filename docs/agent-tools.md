@@ -11,12 +11,26 @@ tools are the same across providers, and they run on the same wire protocol the
 Namespace `argmax`; Claude, Codex, and Cursor show them as
 `mcp__argmax__<tool>`.
 
-### Sessions
+Provider context explains images, Mermaid diagrams, and durable HTML visualizations.
+See [Inline visualizations](chat-cards.md#inline-visualizations) for the shared runtime,
+legacy references, storage limits, and sandbox policy.
 
-Provider context explains inline images, Mermaid diagrams, and HTML visualization
-references. HTML files must stay inside the checkout or `~/.argmax/visualizations`.
-See [Inline HTML visualizations](chat-cards.md#inline-html-visualizations) for the
-reference format and sandbox limits.
+### Visualizations
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `visualization_preview` | `html` or `path`, `title`, `summary?`, `mode?`, `width?`, `height?` | An immutable draft, diagnostics, and a native preview image when capture succeeds. Paths must belong to the checkout, the owning session attachments, or `~/.argmax/visualizations`. |
+| `visualization_publish` | `draftId` | The published artifact. Repeating publication returns the same artifact without another timeline card. |
+
+Preview captures run in an isolated desktop WKWebView. They have no app IPC,
+browser cookies, navigation, or permission to send chat messages. Publication
+adds a normalized timeline event. Desktop and iOS read the same stored source
+and shared runtime. Saved widget state and design controls survive reopening.
+
+Native provider subagents share the session's MCP credentials. Their publications
+belong to that session. Argmax multitasks have their own session credentials.
+
+### Sessions
 
 | Tool | Arguments | Returns |
 |---|---|---|

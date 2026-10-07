@@ -63,7 +63,11 @@ scenario and persistence checks must still pass.
 | Branch names, linked repositories, snooze shelf | [workspace-settings.md](workspace-settings.md) | scenario:workspace-settings | 2026-10-04 pass at cb42e859 |
 | Stop chat | [cancellation.md](cancellation.md) | scenario:cancellation | 2026-10-04 pass at cb42e859 |
 | Provider failure | [provider-error.md](provider-error.md) | scenario:provider-error | 2026-10-04 pass at cb42e859 |
+| Durable interactive visualizations | [visualizations.md](visualizations.md) | scenario:visualizations | 2026-10-07 pass at a1538eb with visualization changes |
 
 Native evidence: `.verify/runs/2026-10-04T09-16-13-773Z-073201eb-cb42e85/manifest.txt` (local artifact).
 All nine scenarios passed without retries. The negative control returned `fail-observed`, and the command tripwire was empty.
 These runs use scripted providers and synthetic key events. Screen Recording and Accessibility were missing, so OS capture and physical shortcut delivery remain unverified.
+
+Visualization evidence: `.verify/runs/2026-10-07T16-07-16-713Z-ba896fcb-a1538eb-dirty/drive-visualizations-1791389297835/verdict.json` (local artifact).
+The visualization drive passed. Its negative control returned `fail-observed`, cleanup passed, and the command tripwire was empty.

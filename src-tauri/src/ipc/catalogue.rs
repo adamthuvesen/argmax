@@ -596,11 +596,20 @@ command_catalogue! {
             encode(workspace_files::workspace_read_file_impl(state, input).await?)
         };
 
-    "workspace:read-visualization" => workspace_files::workspace_read_visualization, read,
-    |state, input, default_agent, channel| {
-            let input: WorkspaceReadVisualizationInput = parse(channel, input)?;
-            encode(workspace_files::workspace_read_visualization_impl(state, input).await?)
-        };
+    "visualization:import" => visualizations::visualization_import, control,
+    |state, input, default_agent, channel| { encode(visualizations::visualization_import_impl(state, parse(channel,input)?).await?) };
+    "visualization:read" => visualizations::visualization_read, read,
+    |state, input, default_agent, channel| { encode(visualizations::visualization_read_impl(state, parse(channel,input)?).await?) };
+    "visualization:export" => visualizations::visualization_export, read,
+    |state, input, default_agent, channel| { encode(visualizations::visualization_export_impl(state, parse(channel,input)?).await?) };
+    "visualization:set-state" => visualizations::visualization_set_state, control,
+    |state, input, default_agent, channel| { encode(visualizations::visualization_set_state_impl(state, parse(channel,input)?).await?) };
+    "visualization:set-controls" => visualizations::visualization_set_controls, control,
+    |state, input, default_agent, channel| { encode(visualizations::visualization_set_controls_impl(state, parse(channel,input)?).await?) };
+    "visualization:publish" => visualizations::visualization_publish, control,
+    |state, input, default_agent, channel| { encode(visualizations::visualization_publish_impl(state, parse(channel,input)?).await?) };
+    "visualization:preview" => visualizations::visualization_preview, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 
     "workspace:write-file" => workspace_files::workspace_write_file, control,
     |state, input, default_agent, channel| {

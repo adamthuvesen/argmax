@@ -94,7 +94,8 @@ An individual event or raw-output row may exceed the budget. The host then
 returns `REMOTE_RESPONSE_TOO_LARGE` in a small WebSocket response. The browser,
 native client, and command-line bridge retry the identical read through authenticated
 `POST /api/transcript` with `{channel,input}`. This endpoint accepts only
-`session:events-since` and `session:agent-events`, uses the same dispatcher and
+`session:events-since`, `session:agent-events`, `visualization:read`, and
+`visualization:export`, uses the same dispatcher and
 remote payload trimming, and returns `{ok}` or `{error}`. HTTP carries the
 complete page without splitting a logical event or truncating its content.
 The client applies only the successful read's cursors. Older clients report

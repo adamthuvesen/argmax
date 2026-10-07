@@ -678,14 +678,6 @@ pub struct WorkspaceReadFileInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WorkspaceReadVisualizationInput {
-    pub kind: WorkspaceTargetKind,
-    pub id: WorkspaceTargetId,
-    pub file_path: OpenPath,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceWriteFileInput {
     pub kind: WorkspaceTargetKind,
     pub id: WorkspaceTargetId,
@@ -1006,23 +998,6 @@ mod tests {
             "input structs missing #[serde(deny_unknown_fields)]: {}",
             missing.join(", ")
         );
-    }
-
-    #[test]
-    fn visualization_input_accepts_absolute_paths_and_rejects_traversal() {
-        let input = serde_json::json!({
-            "kind": "workspace",
-            "id": "w1",
-            "filePath": "/tmp/chart.html"
-        });
-        let parsed: WorkspaceReadVisualizationInput = serde_json::from_value(input).unwrap();
-        assert_eq!(parsed.file_path.as_str(), "/tmp/chart.html");
-        let traversal = serde_json::json!({
-            "kind": "workspace",
-            "id": "w1",
-            "filePath": "/tmp/../secret.html"
-        });
-        assert!(serde_json::from_value::<WorkspaceReadVisualizationInput>(traversal).is_err());
     }
 
     #[test]

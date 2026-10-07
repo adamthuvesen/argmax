@@ -139,6 +139,7 @@ actor BridgeClient {
     private static let maxInFlight = 16
     private static let httpTranscriptChannels: Set<String> = [
         "session:events-since", "session:agent-events",
+        "visualization:read", "visualization:export",
     ]
 
     private let token: String

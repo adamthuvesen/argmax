@@ -115,6 +115,7 @@ struct TranscriptMessage: Hashable, Sendable, Identifiable {
     var isSteering: Bool
     var originLabel: String?
     var attachments: [TranscriptAttachment]
+    var sourceEventID: String? = nil
 }
 
 struct TranscriptThought: Hashable, Sendable, Identifiable {
@@ -122,6 +123,7 @@ struct TranscriptThought: Hashable, Sendable, Identifiable {
     var text: String
     var createdAt: String
     var isStreaming: Bool
+    var sourceEventID: String? = nil
 
     /// The first line of the reasoning with its markdown emphasis and any
     /// heading marks stripped, or nil for an empty burst. The phone's folded
@@ -652,7 +654,18 @@ struct TranscriptError: Hashable, Sendable, Identifiable {
     }
 }
 
+struct TranscriptVisualization: Hashable, Sendable, Identifiable {
+    var id: String
+    var sessionID: String
+    var artifactID: String
+    var format: String
+    var title: String
+    var summary: String
+    var createdAt: String
+}
+
 enum TranscriptItem: Hashable, Sendable, Identifiable {
+    case visualization(TranscriptVisualization)
     case user(TranscriptMessage)
     case assistant(TranscriptMessage)
     case thought(TranscriptThought)
@@ -667,6 +680,7 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
 
     var id: String {
         switch self {
+        case .visualization(let value): return value.id
         case .user(let value): return value.id
         case .assistant(let value): return value.id
         case .thought(let value): return value.id
@@ -683,6 +697,7 @@ enum TranscriptItem: Hashable, Sendable, Identifiable {
 
     var createdAt: String {
         switch self {
+        case .visualization(let value): return value.createdAt
         case .user(let value), .assistant(let value): return value.createdAt
         case .thought(let value): return value.createdAt
         case .tools(let value): return value.createdAt

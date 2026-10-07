@@ -320,6 +320,10 @@ struct TranscriptContentRow: View {
 
     var body: some View {
         switch item {
+        case .visualization(let visualization):
+            TranscriptVisualizationCard(sessionID: visualization.sessionID,
+                                        reference: .artifact(visualization.artifactID),
+                                        title: visualization.title, summary: visualization.summary, format: visualization.format, client: client)
         case .user(let message), .assistant(let message):
             TranscriptMessageRow(message: message, client: client, onOpenFile: onOpenFile)
         case .thought(let thought):

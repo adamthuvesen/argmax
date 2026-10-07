@@ -82,5 +82,19 @@
     },
     "createdAt": "2026-09-05T10:00:05Z",
     "rowCursor": 6
+  },
+  {
+    "id": "visualization-1",
+    "sessionId": "session-1",
+    "type": "visualization.published",
+    "message": "A chart of requests",
+    "payload": { "artifactId": "ba83f9e1-cc26-4bb8-b63b-75c41dc6b938", "title": "Requests", "format": "html", "summary": "A chart of requests", "mode": "wide" },
+    "semantic": {
+      "version": 1,
+      "context": { "parentToolUseId": null, "providerThreadId": null, "providerInvocationId": null, "providerChildSessionId": null, "providerParentConversationId": null, "agentRunId": null, "agentRootToolUseId": null, "agentCodename": null, "agentModelId": null, "agentReasoningEffort": null, "isRaw": false, "traceSuperseded": false, "traceImported": false },
+      "event": { "kind": "visualization", "artifactId": "ba83f9e1-cc26-4bb8-b63b-75c41dc6b938", "title": "Requests", "format": "html", "summary": "A chart of requests", "mode": "wide" }
+    },
+    "createdAt": "2026-10-07T10:00:00Z",
+    "rowCursor": 99
   }
 ]

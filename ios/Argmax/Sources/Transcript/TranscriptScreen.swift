@@ -31,6 +31,11 @@ struct TranscriptScreen: View {
                 onOpenDiff: { openReview(diffPath: $0) }
             )
             .equatable()
+            .environment(\.visualizationSessionID, row.session.id)
+            .environment(\.visualizationFollowUp, { prompt in
+                draft = draft.isEmpty ? prompt : draft + "\n\n" + prompt
+                focusRequest += 1
+            })
             .environment(\.transcriptWorkspacePath,
                          store.snapshot.workspaces.first { $0.id == row.workspace.id }?.path ?? row.workspace.path)
             .background(Theme.ground.ignoresSafeArea())

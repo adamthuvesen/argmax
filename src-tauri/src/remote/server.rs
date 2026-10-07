@@ -106,7 +106,13 @@ pub async fn serve(app: AppHandle, config: RemoteConfig) {
 /// Only transcript reads may bypass the WebSocket message ceiling. Re-reading
 /// the same cursors is safe because the rejected WS reply was never applied.
 pub(super) fn is_transcript_channel(channel: &str) -> bool {
-    matches!(channel, "session:events-since" | "session:agent-events")
+    matches!(
+        channel,
+        "session:events-since"
+            | "session:agent-events"
+            | "visualization:read"
+            | "visualization:export"
+    )
 }
 
 #[derive(Deserialize)]
@@ -552,7 +558,12 @@ mod tests {
             header::AUTHORIZATION,
             HeaderValue::from_static("Bearer secret"),
         );
-        for channel in ["session:events-since", "session:agent-events"] {
+        for channel in [
+            "session:events-since",
+            "session:agent-events",
+            "visualization:read",
+            "visualization:export",
+        ] {
             let input =
                 serde_json::json!({"sessionId": "s1", "changeCursor": 37, "eventCursor": 8});
             let body = serde_json::json!({"channel": channel, "input": input}).to_string();
@@ -563,6 +574,9 @@ mod tests {
         for channel in [
             "providers:launch",
             "session:stop",
+            "visualization:publish",
+            "visualization:import",
+            "visualization:set-state",
             "dashboard:list",
             "unknown",
         ] {

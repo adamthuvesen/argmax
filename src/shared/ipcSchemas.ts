@@ -92,7 +92,13 @@ export const IPC_CHANNELS = [
   "checkpoints:rewind-files",
   "workspace:list-files",
   "workspace:read-file",
-  "workspace:read-visualization",
+  "visualization:import",
+  "visualization:read",
+  "visualization:export",
+  "visualization:set-state",
+  "visualization:set-controls",
+  "visualization:publish",
+  "visualization:preview",
   "workspace:write-file",
   "workspace:stat-file",
   "workspace:read-external-file",
@@ -292,7 +298,13 @@ export interface IpcCommands {
   "checkpoints:rewind-files": Commands["checkpointsRewindFiles"];
   "workspace:list-files": Commands["workspaceListFiles"];
   "workspace:read-file": Commands["workspaceReadFile"];
-  "workspace:read-visualization": Commands["workspaceReadVisualization"];
+  "visualization:import": Commands["visualizationImport"];
+  "visualization:read": Commands["visualizationRead"];
+  "visualization:export": Commands["visualizationExport"];
+  "visualization:set-state": Commands["visualizationSetState"];
+  "visualization:set-controls": Commands["visualizationSetControls"];
+  "visualization:publish": Commands["visualizationPublish"];
+  "visualization:preview": Commands["visualizationPreview"];
   "workspace:write-file": Commands["workspaceWriteFile"];
   "workspace:stat-file": Commands["workspaceStatFile"];
   "workspace:read-external-file": Commands["workspaceReadExternalFile"];

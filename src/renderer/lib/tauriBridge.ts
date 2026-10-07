@@ -313,6 +313,15 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       saveImage: (input: AttachmentSaveImageInput) =>
         invokeCommand("attachments:save-image", input)
     },
+    visualization: {
+      import: (input) => invokeCommand("visualization:import", input),
+      read: (input) => invokeCommand("visualization:read", input),
+      setState: (input) => invokeCommand("visualization:set-state", input),
+      setControls: (input) => invokeCommand("visualization:set-controls", input),
+      preview: (input) => invokeCommand("visualization:preview", input),
+      publish: (input) => invokeCommand("visualization:publish", input),
+      export: (input) => invokeCommand("visualization:export", input)
+    },
     approvals: {
       pending: () => invokeCommand("approvals:pending").then(rows => rows.map(decode.approval)),
       resolve: (input: ResolveApprovalInput) =>
@@ -401,8 +410,6 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand("workspace:list-files", target),
       readFile: (target: WorkspaceTarget, filePath: string) =>
         invokeCommand("workspace:read-file", { ...target, filePath }),
-      readVisualization: (target: WorkspaceTarget, filePath: string) =>
-        invokeCommand("workspace:read-visualization", { ...target, filePath }),
       writeFile: (target: WorkspaceTarget, filePath: string, content: string, expectedMtimeMs: number | null) =>
         invokeCommand("workspace:write-file", {
           ...target,

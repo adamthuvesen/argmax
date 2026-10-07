@@ -1,7 +1,11 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render as originalRender, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { VISUALIZATION_START } from "../lib/visualizationReference.js";
+
+import { VisualizationSessionContext } from "../lib/visualizationSession.js";
+import type { ReactElement } from "react";
+const render = (node: ReactElement) => originalRender(<VisualizationSessionContext.Provider value="session-1">{node}</VisualizationSessionContext.Provider>);
 
 const viewer = vi.hoisted(() => vi.fn());
 vi.mock("./HtmlVisualization.js", () => ({
@@ -19,7 +23,7 @@ describe("visualizations in Markdown", () => {
   it("renders an inline viewer between ordinary prose", async () => {
     render(<StreamingMarkdown text={`Before.\n\n${marker}\n\nAfter.`} streaming={false} workspace={workspace} />);
     await screen.findByRole("figure", { name: "Visualization" });
-    expect(viewer).toHaveBeenCalledWith({ workspaceId: "workspace-1", path: "/tmp/my_[chart].html", mode: "wide", title: "Trends" });
+    expect(viewer).toHaveBeenCalledWith({ sessionId: "session-1", path: "/tmp/my_[chart].html", mode: "wide", title: "Trends", sourceEventId: undefined });
     expect(screen.getByText("Before.")).toBeInTheDocument();
     expect(screen.getByText("After.")).toBeInTheDocument();
   });

@@ -522,6 +522,11 @@ impl WorkspaceService {
                 set_session_resume_fork(&transaction, &session.id)?;
             }
         }
+        crate::visualizations::copy_history_artifacts(
+            &transaction,
+            &source_session.id,
+            &session.id,
+        )?;
         // The visible prefix only. Raw provider output and usage stay with the
         // source: they describe work the fork did not perform.
         for event in list_all_session_events(&transaction, &source_session.id)?

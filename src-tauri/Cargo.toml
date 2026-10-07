@@ -132,6 +132,7 @@ serde = { version = "1", features = ["derive"] }
 # Reads back a window snapshot to prove it is a real, non-transparent image
 # before it is attached (src/window_snapshot/capture.rs). Already in the tree.
 png = "0.17"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 serde_json = "1"
 thiserror = "1"
 # Push bodies are rendered by native notification surfaces, so they need a
@@ -157,6 +158,7 @@ chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
 cron = "0.15"
 sha2 = "0.11"
 regex = "1"
+lol_html = "3"
 walkdir = "2"
 nix = { version = "0.31", features = ["signal", "fs", "term", "process", "poll", "resource"] }
 phf = { version = "0.13", features = ["macros"] }

@@ -31,6 +31,7 @@ struct TimelineSemantics: Codable, Hashable, Sendable {
         case agent(Agent)
         case lifecycle(Lifecycle)
         case multitask(Multitask)
+        case visualization(Visualization)
         case error(Error)
         case unknown
 
@@ -45,6 +46,7 @@ struct TimelineSemantics: Codable, Hashable, Sendable {
             case "agent": self = .agent(try Agent(from: decoder))
             case "lifecycle": self = .lifecycle(try Lifecycle(from: decoder))
             case "multitask": self = .multitask(try Multitask(from: decoder))
+            case "visualization": self = .visualization(try Visualization(from: decoder))
             case "error": self = .error(try Error(from: decoder))
             default: self = .unknown
             }
@@ -58,6 +60,7 @@ struct TimelineSemantics: Codable, Hashable, Sendable {
             case .agent(let value): try value.encode(to: encoder)
             case .lifecycle(let value): try value.encode(to: encoder)
             case .multitask(let value): try value.encode(to: encoder)
+            case .visualization(let value): try value.encode(to: encoder)
             case .error(let value): try value.encode(to: encoder)
             case .unknown:
                 var container = encoder.container(keyedBy: CodingKeys.self)
@@ -118,6 +121,15 @@ struct TimelineSemantics: Codable, Hashable, Sendable {
         var prompt: String?
         var worktree: Bool
         var answer: String?
+    }
+
+    struct Visualization: Codable, Hashable, Sendable {
+        var kind: String
+        var artifactId: String
+        var title: String
+        var format: String
+        var summary: String
+        var mode: String?
     }
 
     struct Error: Codable, Hashable, Sendable {

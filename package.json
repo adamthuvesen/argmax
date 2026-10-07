@@ -10,7 +10,7 @@
     "tauri:dev:isolated": "ARGMAX_DATA_DIR=\"${ARGMAX_DATA_DIR:-$HOME/.argmax-dev}\" tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:universal": "tauri build --target universal-apple-darwin",
-    "build:renderer": "vite build",
+    "build:renderer": "node scripts/build-visualization-runtime.mjs --check && vite build",
     "build:icons": "node scripts/build-icons.mjs",
     "export:provider-models": "node scripts/export-provider-models.mjs",
     "export:ios-tool-icons": "node scripts/export-ios-tool-icons.mjs",
@@ -37,8 +37,8 @@
     "check:ios-fonts": "node scripts/check-ios-fonts.mjs",
     "check:provider-models": "node scripts/export-provider-models.mjs --check",
     "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit",
-    "generate:contracts": "npm run generate:bindings && node scripts/export-remote-contracts.mjs && node scripts/export-swift-contracts.mjs",
-    "check:contracts": "node scripts/check-architecture.mjs && node scripts/export-remote-contracts.mjs --check && node scripts/export-swift-contracts.mjs --check"
+    "generate:contracts": "node scripts/build-visualization-runtime.mjs && npm run generate:bindings && node scripts/export-remote-contracts.mjs && node scripts/export-swift-contracts.mjs",
+    "check:contracts": "node scripts/build-visualization-runtime.mjs --check && node scripts/check-architecture.mjs && node scripts/export-remote-contracts.mjs --check && node scripts/export-swift-contracts.mjs --check"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

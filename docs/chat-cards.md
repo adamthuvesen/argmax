@@ -2,40 +2,73 @@
 
 The chat surface renders assistant bubbles, tools, and interactive cards: **QuestionDock** for `AskUserQuestion` / Cursor's `askQuestionToolCall` while the agent is waiting, and **TodoCard**, the agent's own running plan.
 
-## Inline HTML visualizations
+## Inline visualizations
 
-An assistant can embed an interactive HTML file with a standalone reference:
+Agents use `visualization_preview` with one HTML or file source, then
+`visualization_publish` with the returned `draftId`. Preview captures a saved
+draft, screenshot, content height, console/resource diagnostics, and external
+dependencies. Publication uses that exact draft and is idempotent. Capture is
+currently macOS-only. An unavailable preview reports its failure and still lets
+the agent publish the draft.
+
+Published HTML and image artifacts belong to the caller's chat. Rust persists
+one `visualization.published` event with normalized semantics. The main chat,
+agent views, and multitask chats consume that meaning. A child publishes in its
+own chat, accessible through the parent's multitask view.
+
+Artifacts use immutable IDs under the owning session's attachment directory.
+They survive original-file and checkout removal, and workspace archive. Hard
+chat deletion removes them with the session's attachments. Fork and copied
+history clone referenced artifacts into the destination session.
+
+HTML source is capped at 1,000,000 bytes. Ingestion validates image bytes and
+embeds confined local image references, including `srcset`, CSS URLs, and
+supported quoted script paths. Individual images are capped at 10 MiB and the
+complete snapshot at 25 MiB. External resources remain visible in the card.
+Offline durability requires a snapshot with no external dependencies.
+
+One generated, versioned runtime lives in `assets/visualization-runtime.json`.
+`scripts/build-visualization-runtime.mjs` builds it from
+`src/shared/visualization/` and bundled licensed Lucide. Rust builds the complete
+HTML document for desktop, native iOS, preview, and standalone export.
+
+Desktop uses an opaque iframe with `sandbox="allow-scripts"`. Native iOS uses a
+nonpersistent WKWebView with restricted navigation and no app IPC or browser
+cookies. Preview uses a separate incognito native window, removes injected app
+scripts, and supplies a timer animation-frame clock for hidden layout. The CSP
+blocks API requests, forms, frames, and unapproved resources.
+
+Both hosts expose theme updates, responsive height, expand, source inspection,
+export, retry, and design controls. Offscreen desktop frames can unmount. Native
+iOS limits live visualization webviews to three and offers activation when needed.
+
+`window.openai.widgetState`, `setWidgetState`, and `openai:set_globals` restore
+meaningful interactions. Snapshots stay under 16 KiB. `privateContent` stays out
+of model context. State writes do not start a turn. Tweak control edits persist
+separately, so they do not replace the page's widget state. Reset and temporary
+original preview use the original source values.
+
+`sendFollowUpMessage` shows a host-owned request. The reader chooses Prepare
+follow-up to merge it into that chat's composer, then sends through the normal
+flow. Scripts cannot send a provider message. Links use a host Open action.
+Standalone exports retain local state and report unavailable chat actions.
+
+The exposed visualize skill can still emit a standalone marker:
 
 ```text
 visualize{"path":"/absolute/checkout/chart.html","mode":"wide","title":"Trends"}
 ```
 
-Separate the reference from prose with blank lines. `mode` and `title` are optional.
-Markers inside code remain literal. Incomplete streamed references show a loading
-status. Invalid references and unavailable files show an error.
+The marker adapter imports the file into the same artifact service. Rust resolves
+the source event's user turn and preserves that turn's origin through copied history.
+Desktop and iOS therefore reopen the same snapshot and saved state. Repeated
+markers within one turn share a snapshot. A later turn can reuse the path and
+receive a new snapshot. Use publication IDs for distinct revisions within one turn. Markers inside code
+remain literal. Incomplete references show loading. Invalid or missing sources
+show an explicit error. `mode` and `title` remain optional.
 
-[HtmlVisualization.tsx](../src/renderer/components/HtmlVisualization.tsx) loads the
-file through `workspace:read-visualization`. The canonical path must stay inside
-the target checkout or `~/.argmax/visualizations`. Symlinks cannot escape those
-roots. The reader accepts HTML text files up to 1 MB.
-
-The viewer runs local interactions in an iframe with an opaque origin. Its sandbox
-does not grant app access, popups, downloads, or form submission. A content security
-policy restricts resources to the visualization CDN list and blocks API requests.
-The desktop app also blocks frame navigations outside Argmax before they load.
-Argmax supplies theme variables and basic layout utilities. It does not implement
-Codex's `window.openai` or `Tweak` APIs. Interaction state lasts while the viewer
-stays mounted. Reopening the chat reloads the file.
-
-Use HTML fragments. Full documents retain their content, styles, and scripts,
-but their original `html` and `body` attributes are discarded. The runtime supplies
-accessible tab switching and the bundled Lucide runtime. `lucide.createIcons()`
-also renders icons added during local interactions.
-
-`wide` uses available transcript space up to 1,024px without covering the workspace
-card. Expand increases the viewer's height and preserves its interactions.
-The paired web renderer uses the same viewer and read command. The native Swift
-iPhone transcript does not render HTML visualizations.
+Native Mermaid, math, Markdown tables, and images keep their existing renderers.
+They do not need an HTML artifact to appear in chat.
 
 ## Components and Structure
 

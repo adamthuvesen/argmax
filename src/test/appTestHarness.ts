@@ -577,6 +577,15 @@ export function setupAppTestMocks(): void {
       costSummary: sessionCostSummary,
       search: () => Promise.resolve([])
     },
+    visualization: {
+      import: () => Promise.reject(new Error("Visualization not stubbed")),
+      read: () => Promise.reject(new Error("Visualization not stubbed")),
+      setState: () => Promise.reject(new Error("Visualization not stubbed")),
+      setControls: () => Promise.reject(new Error("Visualization not stubbed")),
+      preview: () => Promise.reject(new Error("Visualization not stubbed")),
+      publish: () => Promise.reject(new Error("Visualization not stubbed")),
+      export: () => Promise.reject(new Error("Visualization not stubbed"))
+    },
     goals: {
       list: () => Promise.resolve([]),
       get: () => Promise.resolve(null),
@@ -618,7 +627,6 @@ export function setupAppTestMocks(): void {
         : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       readExternalFile: () => Promise.reject(new Error("not available in the harness")),
-      readVisualization: () => Promise.reject(new Error("not available in the harness")),
       statExternalFile: () => Promise.reject(new Error("not available in the harness")),
       grepContent: () => Promise.resolve({ files: [], truncated: false })
     },

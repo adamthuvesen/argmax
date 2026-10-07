@@ -83,6 +83,14 @@ pub enum SemanticEvent {
         worktree: bool,
         answer: Option<String>,
     },
+    #[specta(rename_all = "camelCase")]
+    Visualization {
+        artifact_id: String,
+        title: String,
+        format: crate::visualizations::VisualizationFormat,
+        summary: String,
+        mode: Option<crate::visualizations::VisualizationMode>,
+    },
     Error {
         code: Option<String>,
         operation: Option<String>,
@@ -366,6 +374,33 @@ pub fn derive(event_type: &str, event_id: &str, payload: &Value) -> TimelineSema
                 AgentPhase::Completed
             },
             status: field(payload, "status").map(str::to_owned),
+        }
+    } else if event_type == "visualization.published" {
+        match (
+            field(payload, "artifactId"),
+            field(payload, "title"),
+            field(payload, "summary"),
+            field(payload, "format"),
+        ) {
+            (Some(id), Some(title), Some(summary), Some(format @ ("html" | "image")))
+                if uuid::Uuid::parse_str(id).is_ok() =>
+            {
+                SemanticEvent::Visualization {
+                    artifact_id: id.into(),
+                    title: title.into(),
+                    summary: summary.into(),
+                    format: if format == "html" {
+                        crate::visualizations::VisualizationFormat::Html
+                    } else {
+                        crate::visualizations::VisualizationFormat::Image
+                    },
+                    mode: (field(payload, "mode") == Some("wide"))
+                        .then_some(crate::visualizations::VisualizationMode::Wide),
+                }
+            }
+            _ => SemanticEvent::Unknown {
+                reason: UnknownReason::InvalidPayload,
+            },
         }
     } else if let Some(name) = lifecycle_name(event_type) {
         SemanticEvent::Lifecycle { name }

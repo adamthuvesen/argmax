@@ -22,6 +22,17 @@ function assistantEvent(
 }
 
 describe("coalesceAssistantGroups", () => {
+  it("keeps published visualizations between prose without swallowing continuation text", () => {
+    const artifact: TimelineEvent = { id: "viz", sessionId: "s1", type: "visualization.published", message: "Chart", createdAt: "2026-05-12T15:00:02.000Z", payload: { artifactId: "saved-chart", title: "Chart", summary: "Chart summary", format: "html", mode: null } };
+    const groups = coalesceAssistantGroups([
+      assistantEvent("before", "message.completed", "Before.", "2026-05-12T15:00:01.000Z"),
+      artifact,
+      assistantEvent("after", "message.completed", " and this is the explanation.", "2026-05-12T15:00:03.000Z")
+    ]);
+    expect(groups).toHaveLength(3);
+    expect(groups[1]?.visualization).toMatchObject({ artifactId: "saved-chart", sessionId: "s1" });
+    expect(groups[2]?.text).toBe(" and this is the explanation.");
+  });
   it.each([
     "## Fix\n\nUse the cached result.",
     "```ts\nconst fixed = true;\n```",

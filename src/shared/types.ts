@@ -3,6 +3,9 @@ import type * as Bindings from "./bindings.js";
 // `ArgmaxApi` and renderer-only domain shapes remain hand-written below.
 export type AgentMode = Bindings.AgentMode;
 export type AttachmentMimeType = Bindings.AttachmentMimeType;
+export type VisualizationArtifact = Bindings.VisualizationArtifact;
+export type VisualizationRead = Bindings.VisualizationRead;
+export type VisualizationWidgetState = Bindings.VisualizationWidgetState;
 export type WindowSnapshotAttach = Bindings.WindowSnapshotAttach;
 export type WindowSnapshotFailure = Bindings.SnapshotFailure;
 export type WindowSnapshotStatus = Bindings.WindowSnapshotStatus;
@@ -583,6 +586,15 @@ export interface ArgmaxApi {
   attachments: {
     saveImage: (input: AttachmentSaveImageInput) => Promise<AttachmentSaveImageResult>;
   };
+  visualization: {
+    import: (input: Bindings.VisualizationImportInput) => Promise<VisualizationArtifact>;
+    read: (input: Bindings.VisualizationReadInput) => Promise<VisualizationRead>;
+    setState: (input: Bindings.VisualizationSetStateInput) => Promise<VisualizationWidgetState>;
+    setControls: (input: Bindings.VisualizationSetControlsInput) => Promise<Partial<Record<string, Bindings.JsonValue>>>;
+    preview: (input: Bindings.VisualizationPreviewInput) => Promise<Bindings.VisualizationPreviewResult>;
+    publish: (input: Bindings.VisualizationPublishInput) => Promise<VisualizationArtifact>;
+    export: (input: Bindings.VisualizationReadInput) => Promise<string>;
+  };
   approvals: {
     pending: () => Promise<ApprovalRequest[]>;
     resolve: (input: ResolveApprovalInput) => Promise<ApprovalRequest>;
@@ -660,7 +672,6 @@ export interface ArgmaxApi {
   workspace: {
     listFiles: (target: WorkspaceTarget) => Promise<WorkspaceFileEntry[]>;
     readFile: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFilePreview>;
-    readVisualization: (target: WorkspaceTarget, filePath: string) => Promise<WorkspaceFilePreview>;
     writeFile: (
       target: WorkspaceTarget,
       filePath: string,

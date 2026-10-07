@@ -39,11 +39,12 @@
   "usage:remaining",
   "usage:router-cost",
   "usage:summary",
+  "visualization:export",
+  "visualization:read",
   "workspace:grep-content",
   "workspace:list-files",
   "workspace:read-external-file",
   "workspace:read-file",
-  "workspace:read-visualization",
   "workspace:stat-external-file",
   "workspace:stat-file",
   "workspace:status"

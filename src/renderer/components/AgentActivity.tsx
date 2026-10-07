@@ -1,11 +1,13 @@
 import { ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from "react";
 import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSummary } from "../../shared/types.js";
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
 import { buildAgentActivity, persistentAgentRuns, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
+import { importChunk } from "../lib/importChunk.js";
+import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import { emblemForCodename } from "../lib/agentEmblems.js";
 import { fallbackCodename } from "../lib/agentNames.js";
 import { foldConversationItems } from "../lib/foldConversation.js";
@@ -38,6 +40,8 @@ import { ToolCallGroupBubble } from "./ToolCallGroupBubble.js";
 import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
+
+const HtmlVisualization = lazy(() => importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization })));
 
 /**
  * The run's masthead: what the agent was asked to do as the title, and one
@@ -129,6 +133,7 @@ function renderAssistantGroup({
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   restoring?: boolean;
 }): JSX.Element | null {
+  if (group.visualization) return <Suspense fallback={<p role="status">Loading visualization</p>}><HtmlVisualization sessionId={group.visualization.sessionId} artifactId={group.visualization.artifactId} title={group.visualization.title} mode={group.visualization.mode ?? undefined} /></Suspense>;
   if (group.thinking) {
     return (
       <ThoughtBlock
@@ -150,6 +155,7 @@ function renderAssistantGroup({
             prefix stops being re-parsed on every reasoning delta. */}
         <StreamingMarkdown
           text={group.text}
+        sourceEventId={group.sourceEventId}
           streaming={thinkingLive}
           paced={false}
           workspace={workspace}
@@ -167,6 +173,7 @@ function renderAssistantGroup({
     <ChatBubble key={group.id} kind="assistant" rawMarkdown={group.text}>
       <StreamingMarkdown
         text={group.text}
+        sourceEventId={group.sourceEventId}
         streaming={group.streaming}
         restoring={restoring}
         revealKey={agentKey ? `${agentKey}:${group.createdAt}:${group.id}` : null}
@@ -738,6 +745,7 @@ function AgentActivityRun({
   const runChanges = useMemo(() => collectTurnFileChanges(toolItems), [toolItems]);
 
   return (
+    <VisualizationSessionContext.Provider value={parentSession?.id ?? null}>
     <section
       className="agent-activity"
       aria-label={codename ? `Agent activity: ${codename} — ${activity.title}` : `Agent activity: ${activity.title}`}
@@ -842,6 +850,7 @@ function AgentActivityRun({
         {ownsScroll ? <ScrollToLatestButton follow={follow} onClick={scrollToBottom} /> : null}
       </div>
     </section>
+    </VisualizationSessionContext.Provider>
   );
 }
 

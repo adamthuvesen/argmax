@@ -21,7 +21,7 @@
 // WebView; IPC and SQLite are the second read. Nothing here mocks a production
 // path except native folder selection, whose result is scripted below.
 
-import { access, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 
@@ -1793,4 +1793,129 @@ export async function verifyBrowserFrames({ bridge, browser, source, workspace, 
     browser: phases,
     assertions,
   };
+}
+
+// The production artifact service and native preview, exercised without real agents.
+export async function verifyVisualizations({ bridge, browser, source, workspace, repoPath, outputDir, databasePath, timeoutMs, verifyUi }) {
+  const evidenceDir = path.join(outputDir, "native");
+  await mkdir(evidenceDir, { recursive: true });
+  const assertions = (progress.assertions = []);
+  await waitForCompleted(bridge, source.id, timeoutMs, "visualization source chat");
+  const imagePath = path.join(repoPath, "visualization-image.png");
+  const sourcePath = path.join(repoPath, "visualization.html");
+  await writeFile(imagePath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64"));
+  await writeFile(sourcePath, `<div class="card" aria-label="Visualization verification"><h2>Verified visualization</h2><p>Desktop and phone share this saved source.</p><div class="viz-grid"><svg viewBox="0 0 360 160" role="img" aria-label="Animated bar chart"><rect id="bar" x="20" y="20" width="0" height="100" fill="var(--viz-series-1)"/><text x="20" y="145" fill="var(--foreground)">Verified chart</text></svg><div><img src="${imagePath}" alt="Embedded local image"><label>Selection <input id="selection" type="range" min="1" max="9" value="3"></label><output id="selected">3</output><button id="ask" class="btn">Ask in chat</button></div></div></div><script>
+  requestAnimationFrame(() => document.getElementById('bar').setAttribute('width','300'));
+  const selection = document.getElementById('selection');
+  function restore() { selection.value = window.openai.widgetState?.modelContent?.selected ?? 3; document.getElementById('selected').textContent=selection.value; }
+  restore(); addEventListener('openai:set_globals',restore);
+  selection.addEventListener('input',() => { document.getElementById('selected').textContent=selection.value; window.openai.setWidgetState({modelContent:{selected:Number(selection.value)},privateContent:{panel:'saved'}}); });
+  document.getElementById('ask').addEventListener('click',() => window.openai.sendFollowUpMessage({prompt:'Explain selected value '+selection.value}));
+  const mock = {radius:10}; if(globalThis.Tweak) {const tweak=new Tweak({container:document.querySelector('.card'),onChange:()=>document.querySelector('.card').style.borderRadius=mock.radius+'px'});tweak.addSlider(mock,'radius',{label:'Corner radius',min:0,max:30});}
+  addEventListener('message',event=>{
+    if(event.source!==parent)return;
+    if(event.data?.type==='verification:select'){selection.value=String(event.data.value);selection.dispatchEvent(new Event('input',{bubbles:true}));}
+    if(event.data?.type==='verification:ask')document.getElementById('ask').click();
+  });
+  console.log('visualization fixture initialized');
+  </script>`);
+  // Preview is desktop-only and intentionally bypasses the paired HTTP surface.
+  const previews = [];
+  for (const width of [390, 900]) {
+    await browser.execute(function previewVisualization(sessionId, filePath, width) {
+      window.__verifyVisualizationPreview = null;
+      void window.argmax.visualization.preview({sessionId,path:filePath,title:'Verified visualization',summary:'Saved interactive chart',width,height:700}).then(result => {window.__verifyVisualizationPreview={result};},error => {window.__verifyVisualizationPreview={error:String(error)};});
+    }, source.id, sourcePath, width);
+    const outcome = await browser.waitUntil(() => browser.execute(() => window.__verifyVisualizationPreview).catch(() => null), {timeout:timeoutMs,interval:250,timeoutMsg:'Native visualization preview did not finish'});
+    if(outcome.error) throw new Error(outcome.error);
+    const {pngBase64: _previewBytes, ...result}=outcome.result;
+    check(assertions, `native-preview-${width}-produces-image`, !!result.screenshotPath && result.width>0 && result.height>0 && result.contentHeight>0, result);
+    check(assertions, `native-preview-${width}-runs-source`, result.diagnostics.some(line=>line.includes('visualization fixture initialized')), result.diagnostics);
+    const previewFile = path.join(evidenceDir,`visualization-preview-${width}.png`);
+    await copyFile(result.screenshotPath,previewFile);
+    previews.push({...result,screenshotPath:previewFile});
+  }
+  const draftId=previews[0].draftId;
+  const artifact=await bridge.call('visualization:publish',{sessionId:source.id,draftId});
+  await bridge.call('visualization:publish',{sessionId:source.id,draftId});
+  await rm(sourcePath); await rm(imagePath);
+  const saved=await bridge.call('visualization:read',{sessionId:source.id,artifactId:artifact.id});
+  check(assertions,'saved-source-survives-original-removal',saved.source.includes('data:image/png;base64,') && saved.source.includes('Verified visualization'));
+  const events=await readAllEvents(bridge,source.id);
+  check(assertions,'publish-retry-does-not-duplicate-card',events.filter(event=>event.type==='visualization.published').length===1);
+  check(assertions,'publication-has-normalized-semantics',events.find(event=>event.type==='visualization.published')?.semantic?.event?.kind==='visualization');
+  await bridge.call('visualization:set-state',{sessionId:source.id,artifactId:artifact.id,state:{modelContent:{selected:7},privateContent:{panel:'saved'}}});
+  const standalone=await bridge.call('visualization:export',{sessionId:source.id,artifactId:artifact.id});
+  check(assertions,'standalone-export-restores-state',standalone.includes('"selected":7')&&standalone.includes('"standalone":true'));
+  await openWorkspaceRow(browser,workspace.id,timeoutMs);
+  const phases=[await verifyUi({name:'visualization-published',expectedTexts:['Verified visualization'],expectIdle:true})];
+  const frame=await browser.$('iframe[title="Verified visualization"]');
+  await frame.waitForExist({timeout:timeoutMs});
+  check(assertions,'desktop-frame-has-opaque-script-sandbox',await frame.getAttribute('sandbox')==='allow-scripts');
+  // The native driver's DOM queries cannot cross an opaque origin. The fixture
+  // receives a command, dispatches its own input event, and uses the real runtime.
+  await browser.execute(()=>document.querySelector('iframe[title="Verified visualization"]').contentWindow.postMessage({type:'verification:select',value:8},'*'));
+  await browser.waitUntil(async()=> (await bridge.call('visualization:read',{sessionId:source.id,artifactId:artifact.id})).state.modelContent?.selected===8,{timeout:timeoutMs,timeoutMsg:'Widget state was not persisted'});
+  check(assertions,'widget-state-persists-without-a-turn',(await sessionUserMessages(databasePath,source.id)).length===1);
+  await browser.execute(()=>document.querySelector('iframe[title="Verified visualization"]').closest('figure').scrollIntoView({block:'start'}));
+  const shots=[await screenshot(browser,evidenceDir,'visualization-inline')];
+  await browser.$('[aria-label="Expand visualization"]').click();
+  await browser.$('[aria-label="Collapse visualization"]').waitForExist({timeout:timeoutMs});
+  // The native driver's key map omits PageUp. Deliver the same DOM gesture and
+  // its movement together before the scroll hook's two-frame no-movement guard.
+  diagnose('expanded-capture-position',await browser.execute(() => {
+    const transcript = document.querySelector('[aria-label="Conversation messages"]');
+    const figure = document.querySelector('iframe[title="Verified visualization"]').closest('figure');
+    const before = transcript.scrollTop;
+    transcript.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));
+    const target = before+figure.getBoundingClientRect().top-transcript.getBoundingClientRect().top;
+    const maxTop = Math.max(0,transcript.scrollHeight-transcript.clientHeight);
+    transcript.scrollTop = Math.max(0,Math.min(target,maxTop));
+    transcript.dispatchEvent(new Event('scroll'));
+    return {before,after:transcript.scrollTop,maxTop,figureTop:figure.getBoundingClientRect().top,viewportTop:transcript.getBoundingClientRect().top};
+  }));
+  let previousTop = null;
+  await browser.waitUntil(async()=>{
+    const geometry=await browser.execute(()=>{
+      const figure=document.querySelector('iframe[title="Verified visualization"]').closest('figure').getBoundingClientRect();
+      const transcript=document.querySelector('[aria-label="Conversation messages"]').getBoundingClientRect();
+      return {top:figure.top,viewportTop:transcript.top,viewportBottom:transcript.bottom};
+    });
+    const stable=previousTop!==null&&Math.abs(geometry.top-previousTop)<1;
+    previousTop=geometry.top;
+    return stable&&geometry.top>=geometry.viewportTop-1&&geometry.top+100<geometry.viewportBottom;
+  },{timeout:timeoutMs,interval:100,timeoutMsg:'Expanded visualization header did not settle in view'});
+  shots.push(await screenshot(browser,evidenceDir,'visualization-expanded'));
+  await browser.$('[aria-label="Design controls"]').click();
+  check(assertions,'host-design-controls-appear',await browser.$('input[aria-label="Corner radius"]').isExisting());
+  await browser.execute(() => {
+    const slider=document.querySelector('input[aria-label="Corner radius"]');
+    const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+    setter.call(slider,'22'); slider.dispatchEvent(new Event('input',{bubbles:true})); slider.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  await browser.waitUntil(async()=>Object.values((await bridge.call('visualization:read',{sessionId:source.id,artifactId:artifact.id})).controlValues).includes(22),{timeout:timeoutMs,timeoutMsg:'Host control edit did not persist'});
+  await browser.execute(()=>document.querySelector('iframe[title="Verified visualization"]').contentWindow.postMessage({type:'verification:ask'},'*'));
+  const prepare=await browser.$('button=Prepare follow-up');
+  await prepare.waitForExist({timeout:timeoutMs});
+  const draftsBeforePrepare=await readDrafts(browser);
+  const owningDraftBeforePrepare=draftsBeforePrepare.find(draft=>draft.key===source.id)??null;
+  const messagesBeforePrepare=(await sessionUserMessages(databasePath,source.id)).length;
+  check(assertions,'widget-follow-up-awaits-host-action',messagesBeforePrepare===1&&!owningDraftBeforePrepare?.text.includes('Explain selected value'),{sessionId:source.id,owningDraft:owningDraftBeforePrepare,userMessages:messagesBeforePrepare,otherMatchingDrafts:draftsBeforePrepare.filter(draft=>draft.key!==source.id&&draft.text.includes('Explain selected value')).length});
+  await prepare.click();
+  await browser.waitUntil(async()=>(await readDrafts(browser)).some(draft=>draft.key===source.id&&draft.text.includes('Explain selected value 8')),{timeout:timeoutMs,timeoutMsg:'Explicit host follow-up did not prepare owning composer'});
+  check(assertions,'prepared-follow-up-does-not-start-turn',(await sessionUserMessages(databasePath,source.id)).length===1,{sessionId:source.id,owningDraft:(await readDrafts(browser)).find(draft=>draft.key===source.id)});
+  const child=await bridge.call('session:multitask',{sessionId:source.id,prompt:VERIFICATION_SCENARIOS.composerSource.prompt,taskLabel:'Visualization child',worktree:false});
+  await waitForCompleted(bridge,child.sessionId,timeoutMs,'visualization child chat');
+  const childSource=path.join(repoPath,'child-visualization.html');
+  await writeFile(childSource,'<div class="card"><h2>Child visualization</h2><p>This artifact belongs to the multitask chat.</p></div>');
+  const childArtifact=await bridge.call('visualization:import',{sessionId:child.sessionId,path:childSource,title:'Child visualization',summary:'Multitask artifact',mode:null,sourceEventId:null});
+  await bridge.call('visualization:publish',{sessionId:child.sessionId,draftId:childArtifact.id});
+  await rm(childSource);
+  const multitask=await browser.$('button[aria-label="Open multitask: Visualization child"]');
+  await multitask.waitForExist({timeout:timeoutMs}); await multitask.click();
+  await browser.$('.multitask-panel iframe[title="Child visualization"]').waitForExist({timeout:timeoutMs});
+  check(assertions,'child-artifact-renders-in-multitask',(await readAllEvents(bridge,child.sessionId)).some(event=>event.type==='visualization.published') && (await readAllEvents(bridge,source.id)).filter(event=>event.type==='visualization.published').length===1);
+  shots.push(await screenshot(browser,evidenceDir,'visualization-multitask'));
+  await writeJson(path.join(evidenceDir,'visualizations.json'),{artifact,previews,assertions,screenshots:shots});
+  return {session:await waitForCompleted(bridge,source.id,5000,'visualization finished chat'),workspace,records:(await readAllEvents(bridge,source.id)).map(event=>({kind:'event',...event})),browser:phases,assertions};
 }

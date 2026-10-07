@@ -33,6 +33,16 @@
   white-space: nowrap;
 }
 
+.html-visualization-actions { display: flex; align-items: center; gap: 4px; }
+.html-visualization-image { display: block; max-width: 100%; margin: auto; object-fit: contain; }
+.html-visualization-source { padding: 12px; overflow: auto; max-height: 400px; white-space: pre-wrap; font: var(--text-xs)/1.5 var(--font-mono); }
+.html-visualization-controls { padding: 12px; display: grid; gap: 12px; }
+.html-visualization-controls fieldset { border: 1px solid var(--line); border-radius: var(--radius-sm); display: grid; gap: 8px; }
+.html-visualization-controls label { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.html-visualization-controls input[type="range"] { flex: 1; min-width: 0; }
+.html-visualization-dependencies { padding: 8px 12px; color: var(--muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.html-visualization-placeholder { display: grid; place-items: center; }
+
 .html-visualization-expand,
 .html-visualization-retry {
   display: inline-flex;

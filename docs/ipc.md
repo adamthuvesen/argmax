@@ -124,11 +124,18 @@ immediate and drain revision pages before settling.
 
 ## Adding a Channel
 
-`workspace:read-visualization` takes `{ kind, id, filePath }` and returns a
-`WorkspaceFilePreview`. `filePath` must name an absolute HTML file. The service
-resolves symlinks and confines it to the target checkout or
-`~/.argmax/visualizations`. The existing text preview cap applies. The remote
-bridge exposes the same read operation.
+Visualizations expose `visualization:import`, `visualization:read`,
+`visualization:set-state`, `visualization:set-controls`, `visualization:publish`,
+and `visualization:export`. Inputs include the owning `sessionId` and an opaque
+artifact or draft ID. Import additionally accepts a confined file path and a
+stable `referenceId` for historical Markdown markers. Read and export are
+available in remote read mode. Import, state/control updates, and publication
+require control mode. `visualization:preview` is desktop-only.
+
+Read returns metadata, source, shared runtime document, widget state, and design
+control values. Large read/export replies use the authenticated HTTP fallback.
+The previous `workspace:read-visualization` operation has been retired. Its
+historical marker syntax now uses import and artifact reads.
 
 1. Define input/output types in `src-tauri/src/ipc/inputs.rs` or the subsystem module.
 2. Implement the handler in `src-tauri/src/ipc/*.rs` with `#[tauri::command(rename = "namespace:name")]`.

@@ -41,6 +41,7 @@ pub mod sync;
 pub mod system;
 pub mod terminal;
 pub mod usage;
+pub mod visualizations;
 pub mod window_snapshot;
 pub mod windows;
 pub mod workspace_files;

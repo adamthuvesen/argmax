@@ -808,6 +808,53 @@ pub fn mark_workspace_checkout_removed(
     find_workspace_by_id(connection, workspace_id)
 }
 
+/// The branch an isolated launch created, and the commit it created it at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreatedBranch {
+    pub name: String,
+    pub oid: String,
+}
+
+pub fn record_workspace_created_branch(
+    connection: &Connection,
+    workspace_id: &str,
+    created: &CreatedBranch,
+) -> ArgmaxResult<()> {
+    let changes = connection
+        .prepare_cached(
+            "UPDATE workspaces SET created_branch = ?, created_branch_oid = ? WHERE id = ?",
+        )
+        .map_err(sqlite_error)?
+        .execute((created.name.as_str(), created.oid.as_str(), workspace_id))
+        .map_err(sqlite_error)?;
+    if changes == 0 {
+        return Err(ArgmaxError::record_not_found("workspace", workspace_id));
+    }
+    Ok(())
+}
+
+/// `None` for a workspace created before v71 or on a checkout Argmax did not
+/// create.
+pub fn find_workspace_created_branch(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<Option<CreatedBranch>> {
+    connection
+        .prepare_cached(
+            "SELECT created_branch, created_branch_oid FROM workspaces
+             WHERE id = ? AND created_branch IS NOT NULL AND created_branch_oid IS NOT NULL",
+        )
+        .map_err(sqlite_error)?
+        .query_row([workspace_id], |row| {
+            Ok(CreatedBranch {
+                name: row.get(0)?,
+                oid: row.get(1)?,
+            })
+        })
+        .optional()
+        .map_err(sqlite_error)
+}
+
 /// Moves a merged chat whose checkout was removed into the Archived section.
 /// Nothing else changes: it was archived already.
 pub fn clear_workspace_checkout_removed(

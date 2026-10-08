@@ -43,6 +43,8 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 
 - v70 (`pr_watch_feedback_and_fetch_health`) adds `pr_watches.feedback_fingerprints`, a JSON map from feedback ID to full body and review state hash. It is `NULL` until the first complete watch pass after an upgrade. Existing seen IDs seed hashes silently. `fetch_failure_count` counts consecutive failed watch reads, capped at three. `fetch_degraded` records whether the degradation notice was staged. Recovery resets both fields with its staged notice. These writes use the watch outbox, so delivery failure and restart cannot repeat a health transition.
 
+- `workspaces.created_branch` and `workspaces.created_branch_oid` (v71, nullable) record the branch an isolated launch created and the commit it created it at. `workspaces.branch` follows the checkout, so without them an agent's `git switch -c fix/...` left the generated branch with nothing pointing at it. Archive and merged-checkout removal delete it while it is not the workspace's branch and still sits at `created_branch_oid`. Rows from before v71 and checkouts Argmax did not create hold NULL. See [gh.md](gh.md#merge-cleanup).
+
 - v67 (`linked_repository_summaries`) adds nullable `project_linked_repos.summary`. Existing links keep `NULL` until the user generates a summary. See [memory.md](memory.md#linked-repositories).
 
 - v68 (`merge_cleanup`) replaces `projects.archive_on_merge` with `projects.merge_cleanup` (`off`, `archive`, or `remove-checkout`; a project that had archive on merge reads `archive`), and adds nullable `workspaces.checkout_removed_at`, set when Argmax removed an archived workspace's checkout after its PR merged. See [gh.md](gh.md#merge-cleanup).

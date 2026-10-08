@@ -366,6 +366,24 @@ static PR_WATCH_FEEDBACK_AND_FETCH_HEALTH_COLUMNS: phf::Map<&'static str, &'stat
     ] as &'static [&'static str],
 };
 
+// v71 records the branch an isolated launch created and the commit it was
+// created at. An agent that starts its own branch leaves the generated one
+// behind, and disposal can only delete it if it knows which one it was and
+// that nothing moved it. Both are NULL for workspaces created before v71 and
+// for checkouts Argmax did not create.
+const WORKSPACE_CREATED_BRANCH: &str = "ALTER TABLE workspaces ADD COLUMN created_branch TEXT;
+             ALTER TABLE workspaces ADD COLUMN created_branch_oid TEXT;";
+
+static WORKSPACE_CREATED_BRANCH_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &[
+        "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at",
+        "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind",
+        "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at",
+        "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state",
+        "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
 // v63 gives `pr_watches` its conflict cursor, adds the linked-repository table,
 // and gives `projects` and `workspaces` one nullable column each.
 pub static WORKSPACE_IMPROVEMENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -1370,6 +1388,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: PR_WATCH_FEEDBACK_AND_FETCH_HEALTH,
         affected_tables: &["pr_watches"],
         expected_columns: &PR_WATCH_FEEDBACK_AND_FETCH_HEALTH_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 71,
+        name: "workspace_created_branch",
+        up: WORKSPACE_CREATED_BRANCH,
+        affected_tables: &["workspaces"],
+        expected_columns: &WORKSPACE_CREATED_BRANCH_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -3305,7 +3331,7 @@ mod tests {
         for table in ["arcs", "arc_events"] {
             verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, table).expect(table);
         }
-        verify_table_columns(&connection, &MERGE_CLEANUP_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_CREATED_BRANCH_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -3467,6 +3493,7 @@ mod tests {
                     70,
                     compute_migration_checksum(PR_WATCH_FEEDBACK_AND_FETCH_HEALTH)
                 ),
+                (71, compute_migration_checksum(WORKSPACE_CREATED_BRANCH)),
             ]
         );
 
@@ -3564,7 +3591,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &MERGE_CLEANUP_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &WORKSPACE_CREATED_BRANCH_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 

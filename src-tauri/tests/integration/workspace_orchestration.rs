@@ -3307,6 +3307,61 @@ async fn merged_checkout_removal_deletes_the_worktree_and_keeps_the_chat_listed(
     );
 }
 
+/// An agent that starts its own branch leaves the generated one behind. It
+/// goes with the checkout while it still points where the launch created it.
+#[tokio::test]
+async fn merged_checkout_removal_deletes_the_created_branch_the_agent_left() {
+    let repo = seed_git_repo(&[("README.md", "hello")]);
+    ensure_main_branch(repo.path());
+    let database = Arc::new(Database::open_in_memory().expect("db"));
+    build_project(
+        &database,
+        &repo.path().display().to_string(),
+        &repo.path().join("worktrees").display().to_string(),
+    );
+    let (service, _recovery) = service_with_archive_recovery(&database);
+    let mut created_branches = Vec::new();
+    for (label, commit_on_created) in [("left untouched", false), ("committed to", true)] {
+        let workspace = service
+            .create_isolated(WorkspacesCreateIsolatedInput {
+                project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
+                task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
+                base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
+            })
+            .await
+            .expect("isolated workspace");
+        let checkout = std::path::Path::new(&workspace.path);
+        if commit_on_created {
+            std::fs::write(checkout.join("early.txt"), "early").expect("write");
+            run_git_stdout(checkout, &["add", "early.txt"]);
+            run_git_stdout(checkout, &["commit", "-m", "early work"]);
+        }
+        let own_branch = format!("fix/{}", label.replace(' ', "-"));
+        run_git_stdout(checkout, &["switch", "-c", &own_branch]);
+        std::fs::write(checkout.join("fix.txt"), label).expect("write");
+        run_git_stdout(checkout, &["add", "fix.txt"]);
+        run_git_stdout(checkout, &["commit", "-m", "fix"]);
+        let merged_head = run_git_stdout(checkout, &["rev-parse", "HEAD"]);
+
+        service
+            .remove_merged_checkout(&workspace.id, merged_head.trim())
+            .await
+            .expect("remove merged checkout");
+
+        let own = run_git_stdout(repo.path(), &["branch", "--list", &own_branch]);
+        assert!(own.contains(&own_branch), "the PR branch is PR cleanup's");
+        created_branches.push(workspace.branch);
+    }
+
+    let untouched = run_git_stdout(repo.path(), &["branch", "--list", &created_branches[0]]);
+    assert!(untouched.trim().is_empty(), "{untouched}");
+    let committed = run_git_stdout(repo.path(), &["branch", "--list", &created_branches[1]]);
+    assert!(
+        committed.contains(&created_branches[1]),
+        "a created branch with its own commit stays"
+    );
+}
+
 #[tokio::test]
 async fn merged_checkout_removal_keeps_a_checkout_with_commits_after_the_merge() {
     let repo = seed_git_repo(&[("README.md", "hello")]);

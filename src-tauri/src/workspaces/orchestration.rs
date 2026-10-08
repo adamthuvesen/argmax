@@ -56,12 +56,13 @@ use crate::persistence::sessions::{
     PersistSessionInput, SessionSummary,
 };
 use crate::persistence::workspaces::{
-    clear_workspace_checkout_removed, find_workspace_by_id, mark_workspace_checkout_removed,
-    mark_workspaces_viewed, persist_workspace, set_workspace_icon, set_workspace_label,
+    clear_workspace_checkout_removed, find_workspace_by_id, find_workspace_created_branch,
+    mark_workspace_checkout_removed, mark_workspaces_viewed, persist_workspace,
+    record_workspace_created_branch, set_workspace_icon, set_workspace_label,
     set_workspace_label_auto, set_workspace_pinned, set_workspace_priority_added,
     set_workspace_priority_dismissed, set_workspace_snoozed_until, update_workspace_state,
-    update_workspace_status, PersistWorkspaceInput, WorkspaceStatusInput, WorkspaceSummary,
-    WorkspaceViewedObservation,
+    update_workspace_status, CreatedBranch, PersistWorkspaceInput, WorkspaceStatusInput,
+    WorkspaceSummary, WorkspaceViewedObservation,
 };
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
@@ -853,6 +854,14 @@ impl WorkspaceService {
                     kind: "git".to_string(),
                     dirty: false,
                     changed_files: 0,
+                },
+            )?;
+            record_workspace_created_branch(
+                &connection,
+                &workspace.id,
+                &CreatedBranch {
+                    name: branch.clone(),
+                    oid: branch_oid.clone(),
                 },
             )?;
             self.publish(DashboardDelta {
@@ -2336,6 +2345,8 @@ impl WorkspaceService {
             workspaces: vec![archived.clone()],
             ..DashboardDelta::default()
         });
+        self.delete_abandoned_created_branch(&project.repo_path, &workspace)
+            .await;
         lease.finish(ArchiveOutcome::Archived);
         Ok(WorkspaceArchiveResult {
             recovery_path: recovery_path
@@ -2446,6 +2457,8 @@ impl WorkspaceService {
                 }));
             }
         }
+        self.delete_abandoned_created_branch(repo_path, workspace)
+            .await;
         let removed = {
             let connection = self.database.connection();
             match mark_workspace_checkout_removed(&connection, workspace_id) {
@@ -2467,6 +2480,50 @@ impl WorkspaceService {
             workspace: removed,
             recovery_path: None,
         })
+    }
+
+    /// Deletes the branch the launch created when the workspace has moved to
+    /// another branch and left it at the commit it was created at. An agent
+    /// that starts its own branch (`git switch -c fix/...`) otherwise strands
+    /// the generated `argmax/...` branch for good. The branch stays when it
+    /// is still the workspace's branch, gained a commit, or is checked out
+    /// anywhere (`branch -D` refuses that). Best-effort: disposal already
+    /// succeeded, and a leftover branch is not worth failing it for.
+    async fn delete_abandoned_created_branch(&self, repo_path: &str, workspace: &WorkspaceSummary) {
+        let created = {
+            let connection = self.database.read_connection();
+            find_workspace_created_branch(&connection, &workspace.id)
+        };
+        let created = match created {
+            Ok(Some(created)) if created.name != workspace.branch => created,
+            Ok(_) => return,
+            Err(error) => {
+                tracing::warn!(workspace_id = %workspace.id, ?error, "created branch lookup failed");
+                return;
+            }
+        };
+        let repo = Path::new(repo_path);
+        let timeout = Duration::from_millis(GIT_TIMEOUT_MS);
+        let reference = format!("refs/heads/{}", created.name);
+        let tip = run_git_text(
+            repo,
+            &["rev-parse", "--verify", "--quiet", &reference],
+            timeout,
+        )
+        .await
+        .map(|tip| tip.trim().to_string());
+        if tip.as_deref().ok() != Some(created.oid.as_str()) {
+            return;
+        }
+        let _registry = lock_worktree_registry(repo).await;
+        if let Err(error) = run_git_text(repo, &["branch", "-D", &created.name], timeout).await {
+            tracing::info!(
+                workspace_id = %workspace.id,
+                branch = %created.name,
+                ?error,
+                "kept the created branch"
+            );
+        }
     }
 
     /// Returns a workspace whose drained checkout an archive declined to

@@ -45,6 +45,35 @@ describe("<SessionConversationUserMessage />", () => {
     );
   });
 
+  it("folds a PR watch notice into one line that opens to the full text", () => {
+    const notice =
+      "PR #1666 (fix(backoffice): Separate signing): 1 new or edited feedback item.\n" +
+      "New or edited feedback:\n- edited comment by vercel [bot]: [vc]: #abc\n" +
+      "https://github.com/o/r/pull/1666";
+    render(
+      <SessionConversationUserMessage
+        event={{
+          id: "evt-1",
+          message: notice,
+          createdAt: 0,
+          payload: {
+            origin: {
+              kind: "message",
+              label: "PR #1666 watch",
+              messageId: "pr-watch:w1:8:65b7d7c",
+              sessionId: "s1"
+            }
+          }
+        } as never}
+        attachments={[]}
+      />
+    );
+
+    expect(screen.getByText("PR #1666 · 1 new or edited feedback item")).toBeInTheDocument();
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(screen.getByText(/edited comment by vercel/)).not.toBeVisible();
+  });
+
   it("opens a link in the system browser on a plain click", () => {
     const openPath = vi.fn(() => Promise.resolve({ ok: true as const }));
     (window as { argmax?: unknown }).argmax = { system: { openPath } };

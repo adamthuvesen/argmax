@@ -107,6 +107,9 @@ pub struct SessionPrSummary {
     pub is_primary: bool,
     pub is_pinned: bool,
     pub refresh_error: Option<String>,
+    /// The session holds a `pr_watch` on this PR, so Argmax wakes it when
+    /// the PR changes.
+    pub is_watched: bool,
 }
 
 /// All non-dismissed PRs linked to a session. The first row is the stable
@@ -131,7 +134,13 @@ pub fn list_session_prs(
                    prs.updated_at,
                    prs.last_seen_check_state,
                    links.is_pinned,
-                   prs.refresh_error
+                   prs.refresh_error,
+                   EXISTS (
+                     SELECT 1 FROM pr_watches watches
+                     WHERE watches.session_id = links.session_id
+                       AND watches.project_id = links.project_id
+                       AND watches.pr_number = links.pr_number
+                   )
             FROM session_pr_links links
             JOIN gh_pull_requests prs
               ON prs.project_id = links.project_id
@@ -168,6 +177,7 @@ pub fn list_session_prs(
                 is_primary: false,
                 is_pinned: row.get::<_, i64>(10)? != 0,
                 refresh_error: row.get(11)?,
+                is_watched: row.get(12)?,
             })
         })
         .map_err(sqlite_error)?
@@ -1919,6 +1929,24 @@ mod tests {
         let rows = list_session_prs(&connection, "s1").unwrap();
         assert_eq!(rows[0].pr_number, 11);
         assert!(rows[0].is_primary);
+        assert!(!rows[0].is_watched);
+
+        crate::persistence::pr_watches::upsert_pr_watch(
+            &connection,
+            "watch-1",
+            "s1",
+            "p1",
+            11,
+            false,
+            "",
+        )
+        .unwrap();
+        let watched: Vec<_> = list_session_prs(&connection, "s1")
+            .unwrap()
+            .into_iter()
+            .map(|pr| (pr.pr_number, pr.is_watched))
+            .collect();
+        assert_eq!(watched, [(11, true), (10, false)]);
 
         newer.updated_at = "2026-09-07T14:00:00.000Z".to_owned();
         store_gh_pr_observation(&connection, &newer).unwrap();

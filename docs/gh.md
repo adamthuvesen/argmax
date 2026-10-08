@@ -101,6 +101,8 @@ https://github.com/acme/widgets/pull/42
 
 ### Delivery and dedupe
 
+In the chat, a watch notice is one quiet line, such as `PR #42 · 1 check failing on feedfac`, that opens to the full text. The agent still receives the whole notice. While the watch is active and the PR is open, the PR's row on the workspace card says `Watching` (`SessionPrSummary.isWatched`).
+
 Delivery is `send_system_notice`, like the Arc events. The tick awaits it. The notice id is `pr-watch:<watchId>:<seq>:<headSha7>`, where `seq` is the watch's own notice count. A head that returns to an earlier sha still gets a new id.
 
 `send_system_notice` cannot share a transaction with the watch row, so the watch row is an outbox. One statement moves the cursors and stages the notice. Then the notice is delivered, and then it is cleared. A failed send leaves it staged, and the next pass delivers that exact notice before it reads anything new. A crash after the inbox row is stored does the same, and the inbox's `INSERT OR IGNORE` ignores the repeated id. New events that arrive in between go in the next notice. Nothing is lost and nothing is sent twice.

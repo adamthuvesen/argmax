@@ -1,6 +1,6 @@
 import { Fragment, Suspense, lazy, memo, useMemo, useState, type JSX, type ReactNode } from "react";
 import { importChunk } from "../lib/importChunk.js";
-import { CornerDownRight } from "lucide-react";
+import { CornerDownRight, Eye } from "lucide-react";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { FORK_CAPABLE_PROVIDERS } from "../../shared/providerModels.js";
 import { findChatReferences } from "../lib/composerContext.js";
@@ -678,6 +678,25 @@ function readMessageOrigin(payload: unknown): UserMessageOrigin | null {
   return { sessionId, label: label.trim() };
 }
 
+/** True for a notice Argmax's PR watch sent this chat. Its id is
+ *  `pr-watch:<watchId>:<seq>:<head>` (docs/gh.md#delivery-and-dedupe). */
+function readIsWatchNotice(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return false;
+  const origin = (payload as { origin?: unknown }).origin;
+  if (typeof origin !== "object" || origin === null) return false;
+  const messageId = (origin as { messageId?: unknown }).messageId;
+  return typeof messageId === "string" && messageId.startsWith("pr-watch:");
+}
+
+/** `PR #42 (Fix parser): 1 check failing on feedfac.` → `PR #42 · 1 check
+ *  failing on feedfac`. The title can hold `): ` itself, so the greedy group
+ *  takes everything up to the last one. */
+function watchNoticeSummary(text: string): string {
+  const firstLine = text.split("\n", 1)[0] ?? "";
+  const match = /^PR #(\d+) \((.*)\): (.+?)\.?$/.exec(firstLine);
+  return match ? `PR #${match[1]} · ${match[3]}` : firstLine;
+}
+
 /** True when Rust marked this `user.message` as delivered mid-turn (steer)
  *  rather than queued for the next turn. */
 function readMessageIsSteer(payload: unknown): boolean {
@@ -702,12 +721,30 @@ export function SessionConversationUserMessage({
 }): JSX.Element {
   const origin = readMessageOrigin(event.payload);
   const isSteer = readMessageIsSteer(event.payload);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  if (readIsWatchNotice(event.payload)) {
+    // The agent reads the whole notice. The chat only needs to show that the
+    // watch woke it, so the text stays one line until opened.
+    return (
+      <div
+        className="user-message-group"
+        {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}
+      >
+        <details className="watch-notice">
+          <summary className="watch-notice-summary">
+            <Eye size={12} aria-hidden="true" />
+            <span>{watchNoticeSummary(event.message)}</span>
+          </summary>
+          <pre className="watch-notice-body">{event.message.trim()}</pre>
+        </details>
+      </div>
+    );
+  }
   let displayMessage = event.message;
   for (const a of attachments) {
     displayMessage = displayMessage.split(`@${a.filePath}`).join("");
   }
   displayMessage = displayMessage.replace(/[ \t]+(?=\n|$)/g, "").trim();
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   return (
     <div
       className="user-message-group"

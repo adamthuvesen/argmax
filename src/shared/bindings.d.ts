@@ -3018,7 +3018,12 @@ worktree?: boolean;
  * Sidebar label for the new chat. Falls back to the prompt's first line.
  */
 taskLabel: NonEmptyString | null }
-export type SessionPrSummary = { sessionId: string; prNumber: number; url: string | null; title: string | null; prState: string | null; headRefName: string | null; relationship: string; activityAt: string; updatedAt: string; checkState: string; isPrimary: boolean; isPinned: boolean; refreshError: string | null }
+export type SessionPrSummary = { sessionId: string; prNumber: number; url: string | null; title: string | null; prState: string | null; headRefName: string | null; relationship: string; activityAt: string; updatedAt: string; checkState: string; isPrimary: boolean; isPinned: boolean; refreshError: string | null;
+/**
+ * The session holds a `pr_watch` on this PR, so Argmax wakes it when
+ * the PR changes.
+ */
+isWatched: boolean }
 export type SessionSearchInput = { query: SessionSearchQuery; limit: Limit200 | null }
 export type SessionSearchQuery = string
 /**

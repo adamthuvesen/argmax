@@ -47,6 +47,7 @@ function pr(overrides: Partial<WorkspaceSessionPr> = {}): WorkspaceSessionPr {
     checkState: "success",
     isPrimary: true,
     isPinned: false,
+    isWatched: false,
     refreshError: null,
     ...overrides
   };

@@ -334,7 +334,13 @@ fn attach_latest_prs(
                        links.is_pinned,
                        prs.refresh_error,
                        prs.pr_created_at,
-                       prs.pr_merged_at
+                       prs.pr_merged_at,
+                       EXISTS (
+                         SELECT 1 FROM pr_watches watches
+                         WHERE watches.session_id = links.session_id
+                           AND watches.project_id = links.project_id
+                           AND watches.pr_number = links.pr_number
+                       )
                 FROM session_pr_links links
                 JOIN gh_pull_requests prs
                   ON prs.project_id = links.project_id
@@ -373,6 +379,7 @@ fn attach_latest_prs(
                     is_primary: false,
                     is_pinned: row.get::<_, i64>(10)? != 0,
                     refresh_error: row.get(11)?,
+                    is_watched: row.get(14)?,
                 };
                 let pr_created_at: Option<String> = row.get(12)?;
                 let pr_merged_at: Option<String> = row.get(13)?;

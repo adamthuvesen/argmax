@@ -284,6 +284,7 @@ describe("SessionActionsMenu", () => {
           checkState: "success",
           isPrimary: true,
           isPinned: false,
+          isWatched: false,
           refreshError: null
         }
       ]

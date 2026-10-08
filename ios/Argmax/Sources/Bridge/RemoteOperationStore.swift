@@ -6,10 +6,16 @@ struct UnresolvedRemoteOperation: Codable, Equatable, Sendable {
     let identity: RemoteOperation
     var uncertain = false
     var hostInterrupted = false
+    /// Nil on records written before expiry existed; those count as expired.
+    var createdAt: Date? = Date()
 }
 
 /// Durable submitted actions, separate from evictable content. Owned by the bridge actor.
 struct RemoteOperationStore {
+    /// Nobody repeats an action a day later to recover its result, so an
+    /// older record only holds journal space.
+    static let lifetime: TimeInterval = 24 * 60 * 60
+
     let directory: URL
     let scope: String
 
@@ -25,7 +31,9 @@ struct RemoteOperationStore {
         guard FileManager.default.fileExists(atPath: file.path) else { return [] }
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= 16 * 1_024 * 1_024 else { throw storageFailure }
+        let cutoff = Date().addingTimeInterval(-Self.lifetime)
         return try JSONDecoder().decode([UnresolvedRemoteOperation].self, from: Data(contentsOf: file))
+            .filter { ($0.createdAt ?? .distantPast) > cutoff }
     }
 
     func save(_ operations: [UnresolvedRemoteOperation]) throws {

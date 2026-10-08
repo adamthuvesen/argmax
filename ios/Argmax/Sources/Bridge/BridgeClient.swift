@@ -488,9 +488,6 @@ actor BridgeClient {
                     message: "Update the Argmax host before sending remote actions.")
             }
             var saved = try operationStore.load()
-            // Builds before chores were exempt journaled them; free that space.
-            saved.removeAll { RemoteChannels.chores.contains($0.channel)
-                && !activeOperationIDs.contains($0.identity.operationId) }
             // Only an explicit repeated action adopts a result left unresolved by an earlier call.
             let match = saved.first { $0.channel == channel && Self.canonicalInput($0.input) == encoded
                 && !activeOperationIDs.contains($0.identity.operationId) }

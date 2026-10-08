@@ -182,8 +182,11 @@ after inspecting the affected chat. Clearing a record never submits an action.
 Only host-interrupted records can be cleared. A submitted or pending record
 retains its identity across relaunch until repeating the action recovers a
 confirmed result.
-The journal refuses new submissions at its capacity limit instead of evicting
-unresolved actions.
+A record expires 24 hours after it was journaled, because an action is rarely
+repeated a day later. Background chores (`workspaces:mark-viewed`,
+`workspaces:autotitle`) and actions that never reached the socket keep no record
+after a failure. The journal refuses new submissions at its capacity limit
+instead of evicting unresolved actions younger than a day.
 
 A sleeping Mac or broken Tailscale route cannot be repaired by phone retries.
 For long remote sessions, the Mac's existing Keep computer awake setting

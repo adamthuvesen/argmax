@@ -336,11 +336,8 @@ function WorkspacePrRow({
   useDismissOnOutsideOrEscape(actionsRef, actionsOpen, () => setActionsOpen(false));
   const state = pr.prState?.toLowerCase() ?? "unknown";
   const stateLabel = `${state.charAt(0).toUpperCase()}${state.slice(1)}`;
-  const details = [
-    pr.relationship === "referenced" ? "Referenced" : null,
-    pr.isWatched && pr.prState === "OPEN" ? "Watching" : null,
-    pr.headRefName
-  ].filter(Boolean).join(" · ");
+  const details = [pr.relationship === "referenced" ? "Referenced" : null, pr.headRefName]
+    .filter(Boolean).join(" · ");
   const rowTitle = pr.url
     ? `Open pull request #${pr.prNumber} on GitHub (${state})`
     : `Pull request #${pr.prNumber} (${state}) has no URL. Refresh its GitHub state to open it.`;

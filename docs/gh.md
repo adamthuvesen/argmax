@@ -101,7 +101,7 @@ https://github.com/acme/widgets/pull/42
 
 ### Delivery and dedupe
 
-In the chat, a watch notice is one quiet line, such as `PR #42 · 1 check failing on feedfac`, that opens to the full text. The agent still receives the whole notice. While the watch is active and the PR is open, the PR's row on the workspace card says `Watching` (`SessionPrSummary.isWatched`).
+In the chat, a watch notice is one quiet line, such as `PR #42 · 1 check failing on feedfac`, that opens to the full text. The agent still receives the whole notice. While the watch is active and the PR is open, a `Watching PR #42` pill sits on top of the composer and opens the PR (`SessionPrSummary.isWatched`).
 
 Delivery is `send_system_notice`, like the Arc events. The tick awaits it. The notice id is `pr-watch:<watchId>:<seq>:<headSha7>`, where `seq` is the watch's own notice count. A head that returns to an earlier sha still gets a new id.
 

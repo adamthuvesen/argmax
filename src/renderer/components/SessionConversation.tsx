@@ -67,6 +67,7 @@ import { isCompacting } from "../lib/compaction.js";
 import type { ToolCall } from "../lib/toolCalls.js";
 import { ChangedFilesCard } from "./ChangedFilesCard.js";
 import { ForkBar } from "./ForkBar.js";
+import { PrWatchPill } from "./PrWatchPill.js";
 import { CompactionNotice } from "./CompactionNotice.js";
 import { multitaskDisplayStatus, type MultitaskChild } from "../lib/multitask.js";
 import { ProjectMoveNotice } from "./ProjectMoveNotice.js";
@@ -1717,6 +1718,7 @@ export function SessionConversation({
             onLoadSessionEvents={onLoadSessionEvents}
           />
         ) : null}
+        <PrWatchPill prs={workspace?.prs ?? []} />
       </div>
       {goalInComposer || !goalStatus ? null : (
         <div

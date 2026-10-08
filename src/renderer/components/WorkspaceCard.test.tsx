@@ -211,15 +211,6 @@ describe("WorkspaceCard", () => {
     expect(viewOrCreatePr).not.toHaveBeenCalled();
   });
 
-  it("marks an open PR the chat is watching, and drops the mark once it merges", () => {
-    renderCard({ workspace: workspaceWithPrs([sessionPr({ isWatched: true })]) });
-    expect(screen.getByTitle("Open · Watching · feat/alfred-slack-status")).toBeInTheDocument();
-    cleanup();
-
-    renderCard({ workspace: workspaceWithPrs([sessionPr({ isWatched: true, prState: "MERGED" })]) });
-    expect(screen.getByTitle("Merged · feat/alfred-slack-status")).toBeInTheDocument();
-  });
-
   it("keeps a PR without a stored URL disabled instead of falling back to creation", () => {
     const viewOrCreatePr = vi.fn();
     (window as { argmax?: unknown }).argmax = { git: { viewOrCreatePr } };

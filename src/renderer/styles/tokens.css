@@ -817,8 +817,9 @@
   --accent: #ad94d0;
   --accent-soft: rgba(173, 148, 208, 0.14);
   --accent-deep: #c1ace1;
-  /* Keep small highlights lifted without brightening the whole bubble. */
-  --user-message-bg: #5c4778;
+  /* A more saturated violet than the dusty #5c4778, picked from mockups
+     (docs/design/accents/dark-purple-bubble.html); white ink holds 6.7:1. */
+  --user-message-bg: #6a4aa6;
   --user-message-fg: #ffffff;
 }
 

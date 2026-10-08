@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dark purple bubble</title>
+<style>
+  body { margin: 0; background: #141414; color: #ebe9e4; font: 15px/1.6 "Geist Variable", "Geist Sans", -apple-system, system-ui, sans-serif; padding: 22px 40px; }
+  h1 { font-size: 13px; font-weight: 500; color: #8a857b; margin: 0 0 20px; letter-spacing: .02em; }
+  .row { display: grid; grid-template-columns: 210px 1fr; gap: 24px; align-items: center; margin-bottom: 14px; }
+  .label b { display: block; font-weight: 590; color: #ebe9e4; }
+  .label span { color: #8a857b; font-size: 12.5px; font-family: ui-monospace, "SF Mono", monospace; }
+  .bubble { color: #fff; border-radius: 22px; padding: 14px 22px; max-width: 760px; }
+  .reply { color: #ebe9e4; margin-top: 8px; font-size: 14px; }
+  .reply code { font-family: ui-monospace, "SF Mono", monospace; font-size: 13px; color: #c9b5ea; }
+</style>
+<h1>DARK PURPLE · USER BUBBLE OPTIONS (white ink, contrast shown)</h1>
+<div id="rows"></div>
+<script>
+const options = [
+  ["Current", "#5c4778"],
+  ["A · Lifted", "#6a5190"],
+  ["B · Violet", "#6a4aa6"],
+  ["C · Bright", "#7656a8"],
+  ["D · Orchid", "#7c4f9c"],
+  ["E · Lavender", "#8060b8"],
+];
+const lum = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16)/255)
+  .map(c => c <= 0.03928 ? c/12.92 : ((c+0.055)/1.055)**2.4)
+  .reduce((s,c,i) => s + c*[0.2126,0.7152,0.0722][i], 0);
+const contrast = h => (1.05/(lum(h)+0.05)).toFixed(1);
+document.getElementById("rows").innerHTML = options.map(([name, hex]) => `
+  <div class="row">
+    <div class="label"><b>${name}</b><span>${hex} · ${contrast(hex)}:1</span></div>
+    <div><div class="bubble" style="background:${hex}">let’s expire old records. i think 24 h is enough. if you mean records that i sent and might re-send? that is rare for more than a day</div></div>
+  </div>`).join("");
+</script>

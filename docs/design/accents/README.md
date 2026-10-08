@@ -20,6 +20,12 @@ the soft / accent / deep steps as bare swatches.
 be compared. `previous.png` and `shipped.png` are the historical September captures
 (`scripts/ui-screenshot.mjs --url … --width 1920 --height 960`).
 
+## Update (2026-10-08)
+
+The dark purple bubble moved from the dusty `#5c4778` to the violet `#6a4aa6`
+(white ink 6.7:1). The user chose it from five candidates in
+`dark-purple-bubble.html`, captured in `dark-purple-bubble.png`.
+
 ## Update (2026-10-07)
 
 The user requested vivid orange on paper and a brighter, stronger purple.

@@ -1718,7 +1718,7 @@ export function SessionConversation({
             onLoadSessionEvents={onLoadSessionEvents}
           />
         ) : null}
-        <PrWatchPill prs={workspace?.prs ?? []} />
+        <PrWatchPill prs={workspace?.prs ?? []} chatFontSize={chatFontSize} />
       </div>
       {goalInComposer || !goalStatus ? null : (
         <div

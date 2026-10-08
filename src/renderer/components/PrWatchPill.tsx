@@ -9,11 +9,22 @@ import { openWebUrl } from "../lib/openWebUrl.js";
  * without the notices taking up the chat. The phone draws its PR pill in the
  * same place.
  */
-export function PrWatchPill({ prs }: { prs: readonly SessionPrSummary[] }): JSX.Element | null {
+export function PrWatchPill({
+  prs,
+  chatFontSize
+}: {
+  prs: readonly SessionPrSummary[];
+  /** The composer's type scale, so the pill sizes with its chips. */
+  chatFontSize?: number;
+}): JSX.Element | null {
   const watched = prs.filter((pr) => pr.isWatched && pr.prState === "OPEN");
   if (watched.length === 0) return null;
   return (
-    <div className="pr-watch-pills">
+    <div
+      className="pr-watch-pills"
+      data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+      data-type-scale={chatFontSize === undefined ? "composer" : undefined}
+    >
       {watched.map((pr) => (
         <button
           key={pr.prNumber}

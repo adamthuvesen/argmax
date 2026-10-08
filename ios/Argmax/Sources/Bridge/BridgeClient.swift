@@ -503,6 +503,9 @@ actor BridgeClient {
         // read for want of an operation. Reads have no side effects, so it is
         // sent once more under a throwaway identity nothing here keeps.
         var olderHostReadIdentity: RemoteOperation?
+        // Until a frame is handed to the socket the Mac cannot have run the
+        // action, so a failure before that leaves no unconfirmed outcome.
+        var frameSubmitted = false
         do {
             while true {
                 try Task.checkCancellation()
@@ -511,6 +514,7 @@ actor BridgeClient {
                     try await waitUntilAuthenticated()
                     guard lifecycle == startedLifecycle else { throw BridgeError.disconnected }
                     if isMutation, !operationReplay { throw Self.unknownOutcome }
+                    frameSubmitted = true
                     let reply = try await sendOnce(
                         channel: channel,
                         encodedInput: encoded,
@@ -556,6 +560,11 @@ actor BridgeClient {
         } catch {
             if let operation {
                 var saved = try operationStore.load()
+                if !frameSubmitted {
+                    saved.removeAll { $0.identity == operation.identity }
+                    try operationStore.save(saved)
+                    throw error
+                }
                 if let index = saved.firstIndex(where: { $0.identity == operation.identity }) {
                     saved[index].uncertain = true
                     if case BridgeError.host(_, let subCode, _) = error, subCode == "REMOTE_OUTCOME_UNKNOWN" {

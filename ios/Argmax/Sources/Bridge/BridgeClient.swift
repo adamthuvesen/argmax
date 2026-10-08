@@ -109,6 +109,12 @@ enum RemoteChannels {
     }()
 
     static func isMutation(_ channel: String) -> Bool { !read.contains(channel) }
+
+    /// Background chores nobody repeats by hand, so an unconfirmed one could
+    /// never be recovered and would fill the journal. Each is safe to lose:
+    /// the next chat open marks it viewed again, and a missed title stays
+    /// editable.
+    static let chores: Set<String> = ["workspaces:mark-viewed", "workspaces:autotitle"]
 }
 
 /// One authenticated WebSocket to the paired Mac.
@@ -482,6 +488,9 @@ actor BridgeClient {
                     message: "Update the Argmax host before sending remote actions.")
             }
             var saved = try operationStore.load()
+            // Builds before chores were exempt journaled them; free that space.
+            saved.removeAll { RemoteChannels.chores.contains($0.channel)
+                && !activeOperationIDs.contains($0.identity.operationId) }
             // Only an explicit repeated action adopts a result left unresolved by an earlier call.
             let match = saved.first { $0.channel == channel && Self.canonicalInput($0.input) == encoded
                 && !activeOperationIDs.contains($0.identity.operationId) }
@@ -560,7 +569,7 @@ actor BridgeClient {
         } catch {
             if let operation {
                 var saved = try operationStore.load()
-                if !frameSubmitted {
+                if !frameSubmitted || RemoteChannels.chores.contains(channel) {
                     saved.removeAll { $0.identity == operation.identity }
                     try operationStore.save(saved)
                     throw error

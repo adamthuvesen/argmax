@@ -845,7 +845,9 @@
   --accent: #e79647;
   --accent-soft: rgba(231, 150, 71, 0.14);
   --accent-deep: #fab36d;
-  --user-message-bg: #a65100;
+  /* Lifted past the 4.5:1 white-ink floor (4.1:1) after comparing mockups;
+     the darker steps read as brown on charcoal. */
+  --user-message-bg: #c56100;
   --user-message-fg: #ffffff;
 }
 

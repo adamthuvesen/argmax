@@ -147,6 +147,9 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       if (theme === "light" && accent === "orange") {
         // The user chose white ink on vivid orange after comparing both options.
         expect(bubbleInk).toBe("#ffffff");
+      } else if (accent === "orange") {
+        // Dark orange trades the 4.5:1 floor for a lighter fill, picked from mockups.
+        expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4);
       } else {
         expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4.5);
       }

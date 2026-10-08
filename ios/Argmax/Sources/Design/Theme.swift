@@ -255,14 +255,14 @@ enum AccentTint: String, CaseIterable, Identifiable, Sendable {
     /// a pastel lifted for chrome and white ink on it reads about 2:1.
     var bubbleColor: Color {
         switch self {
-        case .green: return Color(Theme.dynamic(light: 0x44_6C_56, dark: 0x3A_66_4C))
+        case .green: return Color(Theme.dynamic(light: 0x44_6C_56, dark: 0x44_84_5F))
         case .teal: return Color(Theme.dynamic(light: 0x20_70_70, dark: 0x20_62_62))
         case .purple: return Color(Theme.dynamic(light: 0x70_55_8F, dark: 0x5C_47_78))
         case .neutral: return Color(Theme.dynamic(light: 0x6C_69_60, dark: 0x4F_4D_47))
         case .black: return color
-        case .orange: return Color(Theme.dynamic(light: 0xAF_5B_00, dark: 0xA6_51_00))
-        case .blue: return Color(Theme.dynamic(light: 0x39_66_96, dark: 0x3E_59_78))
-        case .coral: return Color(Theme.dynamic(light: 0x94_4B_3E, dark: 0x7D_45_3A))
+        case .orange: return Color(Theme.dynamic(light: 0xAF_5B_00, dark: 0xC5_61_00))
+        case .blue: return Color(Theme.dynamic(light: 0x39_66_96, dark: 0x4C_73_A0))
+        case .coral: return Color(Theme.dynamic(light: 0x94_4B_3E, dark: 0xB3_5D_4C))
         }
     }
 

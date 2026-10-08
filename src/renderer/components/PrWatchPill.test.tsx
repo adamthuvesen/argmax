@@ -37,7 +37,7 @@ describe("<PrWatchPill />", () => {
       />
     );
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Watching PR #1666"
+      "Babysitting PR #1666"
     ]);
   });
 

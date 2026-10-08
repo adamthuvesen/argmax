@@ -20,13 +20,13 @@ export function PrWatchPill({ prs }: { prs: readonly SessionPrSummary[] }): JSX.
           type="button"
           className="pr-watch-pill"
           disabled={!pr.url}
-          title={pr.title ? `Watching PR #${pr.prNumber}: ${pr.title}` : `Watching PR #${pr.prNumber}`}
+          title={pr.title ? `Babysitting PR #${pr.prNumber}: ${pr.title}` : `Babysitting PR #${pr.prNumber}`}
           onClick={(event) => {
             if (pr.url) openWebUrl(pr.url, { flip: event.metaKey || event.ctrlKey });
           }}
         >
           <Eye size={13} aria-hidden="true" />
-          Watching PR #{pr.prNumber}
+          Babysitting PR #{pr.prNumber}
         </button>
       ))}
     </div>

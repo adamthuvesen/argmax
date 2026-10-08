@@ -89,8 +89,20 @@ What that fixed:
 | coral | `#944b3e` L.50 C.100 H32 | `#753428` | `#d18e82` L.71 | `#e2a79c` L.78 | `#7d453a` L.46 |
 
 Floors, pinned by `accentTokens.test.ts`: accent and deep ≥ 4.5:1 on `--bg`,
-`--sidebar`, `--panel`; actual foreground on bubbles ≥ 4.5:1, except light orange;
-dark bubbles darker than their accent.
+`--sidebar`, `--panel`; actual foreground on bubbles ≥ 4.5:1, except light orange
+and dark orange (≥ 4:1); dark bubbles darker than their accent.
+
+## October lift (2026-10-08)
+
+Four dark bubbles read as muddy on charcoal, so they moved up the same hue
+after a mockup comparison. Teal, purple, and neutral keep their September values.
+
+| accent | dark bubble | white ink |
+| --- | --- | --- |
+| green | `#3a664c` → `#44845f` L.56 | 4.5:1 |
+| orange | `#a65100` → `#c56100` L.60 | 4.1:1 |
+| blue | `#3e5978` → `#4c73a0` L.55 | 4.9:1 |
+| coral | `#7d453a` → `#b35d4c` L.58 | 4.6:1 |
 
 The phone keeps its own accent table in `ios/Argmax/Sources/Design/Theme.swift`
 and re-derives from its ground, so it is not a mirror of these values.

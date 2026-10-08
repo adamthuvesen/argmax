@@ -654,7 +654,7 @@
      bubble recedes. Orange, blue, and neutral override the fill. Purple
      and black keep filling with --accent (black uses charcoal ink on the
      cream fill). */
-  --user-message-bg: #3a664c;
+  --user-message-bg: #44845f;
   --user-message-fg: #ffffff;
   --user-message-shadow: none;
 
@@ -856,7 +856,7 @@
   --accent: #7ea6cf;
   --accent-soft: rgba(126, 166, 207, 0.14);
   --accent-deep: #9abbde;
-  --user-message-bg: #3e5978;
+  --user-message-bg: #4c73a0;
   --user-message-fg: #ffffff;
 }
 

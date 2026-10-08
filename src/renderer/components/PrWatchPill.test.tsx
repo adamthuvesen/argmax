@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionPrSummary } from "../../shared/types.js";
 import { PrWatchPill } from "./PrWatchPill.js";
 
@@ -24,7 +24,20 @@ function pr(overrides: Partial<SessionPrSummary>): SessionPrSummary {
 }
 
 describe("<PrWatchPill />", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    delete (window as { argmax?: unknown }).argmax;
+  });
+
+  it("opens the PR when clicked", () => {
+    const openPath = vi.fn().mockResolvedValue({ ok: true });
+    (window as { argmax?: unknown }).argmax = { system: { openPath } };
+    render(<PrWatchPill prs={[pr({})]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Babysitting PR #1666" }));
+
+    expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/1666" });
+  });
 
   it("shows each open PR the chat watches and nothing else", () => {
     render(

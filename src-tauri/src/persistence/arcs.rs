@@ -615,12 +615,13 @@ pub fn set_arc_archived(
         .map_err(sqlite_error)?
         .execute((archived.then_some(now.as_str()), now.as_str(), arc_id))
         .map_err(sqlite_error)?;
-    let event = NewArcEvent::new(
+    let mut event = NewArcEvent::new(
         format!("archive:{}", Uuid::new_v4()),
         arc_id,
         ArcEventKind::StateChanged,
         if archived { "Archived" } else { "Unarchived" },
     );
+    event.status = Some(if archived { "archived" } else { "unarchived" }.to_string());
     record_arc_event(connection, &event)?;
     get_arc(connection, arc_id)
 }
@@ -1159,6 +1160,22 @@ mod tests {
         let unarchived = set_arc_archived(&connection, &arc.id, false).unwrap();
         assert_eq!(unarchived.archived_at, None);
         assert_eq!(unarchived.state, ArcState::Done);
+
+        // The timeline reads a missing status as a resume, so each archive
+        // event has to name its own.
+        let timeline =
+            crate::persistence::arc_events::list_arc_timeline(&connection, &arc.id, None, 50)
+                .unwrap();
+        let statuses: Vec<Option<&str>> = timeline
+            .events
+            .iter()
+            .filter(|event| event.title == "Archived" || event.title == "Unarchived")
+            .map(|event| event.status.as_deref())
+            .collect();
+        assert_eq!(
+            statuses,
+            vec![Some("unarchived"), Some("archived"), Some("archived")]
+        );
     }
 
     #[test]

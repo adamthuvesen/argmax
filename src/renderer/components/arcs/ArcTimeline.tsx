@@ -1,4 +1,5 @@
 import {
+  Archive,
   Bot,
   CircleCheck,
   CircleSlash,
@@ -52,6 +53,7 @@ const GLYPHS: Record<ArcEventGlyph, LucideIcon> = {
   brief: FilePen,
   paused: Pause,
   resumed: Play,
+  archived: Archive,
   done: SquareCheck,
   schedule: Clock
 };

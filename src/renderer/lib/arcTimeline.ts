@@ -57,6 +57,7 @@ export type ArcEventGlyph =
   | "brief"
   | "paused"
   | "resumed"
+  | "archived"
   | "done"
   | "schedule";
 
@@ -142,6 +143,9 @@ function presentStateChange(event: ArcTimelineEvent): ArcEventPresentation {
   switch (event.status) {
     case "paused":
       return { ...shared, glyph: "paused", tone: "warning" };
+    case "archived":
+    case "unarchived":
+      return { ...shared, glyph: "archived", tone: "quiet" };
     case "done":
       return { ...shared, glyph: "done", tone: "quiet" };
     default:

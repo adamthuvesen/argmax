@@ -109,13 +109,25 @@ describe("precheck CLI", () => {
     for (const check of checks) expect(result.checks).toContain(check);
   });
 
-  it("skips checks for documentation-only changes", () => {
+  it("runs only the docs check for documentation-only changes", () => {
     const repo = fixture();
     repo.change("docs/testing.md");
     const result = repo.run();
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("nothing to check");
-    expect(result.checks).toBe("");
+    expect(result.stdout).toContain("docs only");
+    expect(
+      result.checks
+        .trim()
+        .split("\n")
+        .map((line) => line.split("/").pop())
+    ).toEqual([
+      "check-tauri-bridge.mjs",
+      "check-docs.mjs",
+      "check-architecture.mjs",
+      "export-remote-contracts.mjs --check",
+      "export-swift-contracts.mjs --check",
+      "check-main-thread-handlers.mjs"
+    ]);
   });
 
   it("rejects an invalid explicit base before running checks", () => {

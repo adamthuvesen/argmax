@@ -107,6 +107,7 @@ Subscribed in `tauriBridge.ts`:
 - `window-snapshot:failed`
 - `terminal:data`
 - `terminal:exit`
+- `terminal:agent-open`
 - `menu:command` (to the window that last had focus; see [runtime.md](runtime.md#chat-windows))
 - `window:focus-session` (selects the notified chat in the window being raised)
 - `browser:state`

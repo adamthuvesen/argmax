@@ -1,5 +1,7 @@
 # Plan: Auto model routing
 
+> **Status: Shipped.** This is a dated snapshot, not kept current. The governing doc is [docs/routing.md](../routing.md).
+
 Decided 2026-09-27 with the user. This file is the governing artifact for the
 build on `adam/feat-auto-routing`.
 

@@ -1,11 +1,13 @@
 # Plan — browser reads agents can trust
 
+> **Status: Shipped.** This is a dated snapshot, not kept current. The governing doc is [docs/browser.md](../browser.md).
+
 Make Argmax's browser tools easy for any agent on any site. No domain-specific
 schemas, no new tools, no flight (or any other vertical) vocabulary.
 
 Cookie banners, challenge pages, SPAs that keep spinning, and card-shaped
 result lists are the same problem on docs, dashboards, search, and shops. The
-browser tools already cost 27 of 55 MCP tools and about 37% of the prefix —
+browser tools already cost 27 of the MCP tools and about 35% of the prefix —
 the fix is richer replies on the verbs that exist.
 
 ## Scope

@@ -244,11 +244,11 @@ Known gaps:
   ``Task #${id} created successfully: ${subject}``, and `TaskUpdate` addresses
   that id. When that literal changes the task still reaches the card, keyed by
   its tool-use id, and a `tracing::warn!` names the text that did not parse.
-- **Claude currently publishes no plan at all.** CLI 2.1.263 advertises no
-  `Task*` tool in the headless tool list, and a session told in as many words to
-  call `TaskCreate` reaches for Bash instead. The emitter is tested against real
-  payloads captured while Claude did emit them (2026-07-06) and will start
-  working the day the CLI exposes the tools again; nothing else has to change.
+- **Claude's task tools need an opt-in for current models.** Claude Code
+  2.1.282 enables `TaskCreate` / `TaskUpdate` only for the 4.x models, so the
+  inline `--settings` env sets `CLAUDE_CODE_ENABLE_TODO_TOOLS=true`; without
+  it no todo card ever appears. See
+  [providers.md](providers.md#the-agents-todo-list).
 
 The rows that carried an update are hidden by the `surface: "todo"` stamp the
 normalizer writes, never by tool name. Names move — Claude renamed `TodoWrite`

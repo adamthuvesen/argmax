@@ -1084,7 +1084,7 @@ not used — it would ungate the repo's hooks too.
 
 ## What the surface costs
 
-61 tools and ~54 KB of schema and server instructions, and a turn pays for all
+63 tools and ~54 KB of schema and server instructions, and a turn pays for all
 of it whether or not it calls one — tool definitions render ahead of the system
 prompt and the transcript, so they sit at the front of every cached prefix.
 
@@ -1115,7 +1115,7 @@ described in the schema, do not need restating in a tool description.
 ### Turning the browser tools off
 
 Removing a tool is the lever trimming prose cannot match, and the browser tools
-are the only group a user can do without and still have Argmax: 27 of the 61,
+are the only group a user can do without and still have Argmax: 27 of the 63,
 and about 35% of the bytes. Settings → Agents → Tools → **Browser tools** drops
 them — 52,562 bytes to 34,242 (the serialized tool list plus the instructions,
 with `pr_watch` and `pr_unwatch` adding 1,323 of each, measured before

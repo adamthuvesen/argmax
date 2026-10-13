@@ -4,26 +4,9 @@ Argmax pairs a Rust/Tauri runtime with a React/Vite renderer over a `window.argm
 
 ## Map
 
-| Topic | Doc |
-|---|---|
-| Runtime lifecycle | [runtime.md](runtime.md) |
-| IPC contract | [ipc.md](ipc.md) |
-| Providers | [providers.md](providers.md) |
-| SQLite | [data.md](data.md) |
-| Worktrees, review, files, git | [workspaces.md](workspaces.md) |
-| Scheduled tasks | [scheduled-tasks.md](scheduled-tasks.md) |
-| Approvals and checks | [approvals-checks.md](approvals-checks.md) |
-| Terminal panel | [terminal.md](terminal.md) |
-| In-app browser | [browser.md](browser.md) |
-| Mobile remote | [remote.md](remote.md) |
-| GitHub CI feedback | [gh.md](gh.md) |
-| Learnings | [memory.md](memory.md) |
-| Skills / slash autocomplete | [skills.md](skills.md) |
-| Chat surface and cards | [chat-cards.md](chat-cards.md) |
-| Styling | [styling.md](styling.md) |
-| Perf budgets | [performance.md](performance.md) |
-| Tests | [testing.md](testing.md) |
-| Release | [release.md](release.md) |
+The doc index is canonical in [AGENTS.md](../AGENTS.md#read-the-docs-first).
+This doc is the entry point: read it, then the subsystem doc for the area
+you are changing.
 
 ## Runtime: `src-tauri`
 
@@ -91,7 +74,7 @@ The renderer's [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) 
 Provider payload interpretation remains only for older hosts without the supported contract.
 Raw payloads remain available for diagnostics and tool input or output bodies.
 
-[SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages two pane types:
+[SessionMultiGrid.tsx](../src/renderer/components/SessionMultiGrid.tsx) manages two pane types, plus one review-panel mode:
 - **Session panes**: Primary conversation views.
 - **Launcher panes**: In-grid session creation. Each launcher has its own `projectId` via `setLauncherPaneProject` ([paneGrid.ts](../src/renderer/state/paneGrid.ts)), so launching in another repo does not change the global app selection.
 - **Agents view**: Subagent traces linked to a parent session and tool use ID, shown as one mode of that session's review panel (Changes / Files / Agents / Browser / Terminal). They live and die with the session's pane.

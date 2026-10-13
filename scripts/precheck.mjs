@@ -263,6 +263,7 @@ const vitestBase = runEverything ? null : scope.vitestBase;
 // Contract checks are sub-second and cross the Rust/TS boundary, so they run
 // whenever either side changed.
 step("IPC channel parity", "node", ["scripts/check-tauri-bridge.mjs"]);
+step("docs integrity", "node", ["scripts/check-docs.mjs"]);
 step("Architecture boundaries", "node", ["scripts/check-architecture.mjs"]);
 step("Remote contracts", "node", ["scripts/export-remote-contracts.mjs", "--check"]);
 step("Swift contracts", "node", ["scripts/export-swift-contracts.mjs", "--check"]);

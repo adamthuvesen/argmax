@@ -1,5 +1,7 @@
 # Plan — the agent todo list surface
 
+> **Status: Shipped.** This is a dated snapshot, not kept current. The governing doc is [docs/chat-cards.md](../chat-cards.md).
+
 Render the agent's own plan in the transcript, for every provider that can
 publish one. Design is settled: `docs/design/todo-list/README.md`, variant
 **A · Checklist**. This document is the architecture and the sequence.

@@ -545,6 +545,12 @@ command_catalogue! {
             encode(arcs::arc_set_state_impl(state, input).await?)
         };
 
+    "arc:set-archived" => arcs::arc_set_archived, control,
+    |state, input, default_agent, channel| {
+            let input = parse(channel, input)?;
+            encode(arcs::arc_set_archived_impl(state, input).await?)
+        };
+
     "arc:launch-coordinator" => arcs::arc_launch_coordinator, control,
     |state, input, default_agent, channel| {
             let input = parse(channel, input)?;

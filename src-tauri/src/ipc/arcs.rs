@@ -42,6 +42,13 @@ pub struct ArcSetStateInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArcSetArchivedInput {
+    pub id: NonEmptyString,
+    pub archived: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArcLaunchCoordinatorInput {
     pub arc_id: NonEmptyString,
     pub provider: ProviderId,
@@ -147,6 +154,28 @@ pub(crate) async fn arc_set_state_impl(
     let database = live_database(state)?;
     let updated = read_off_main(move || {
         arcs::set_arc_state(&database.connection(), input.id.as_str(), input.state)
+    })
+    .await?;
+    publish_dashboard_changed(state);
+    Ok(updated)
+}
+
+#[tauri::command(rename = "arc:set-archived")]
+#[specta::specta]
+pub async fn arc_set_archived(
+    state: State<'_, AppState>,
+    input: ArcSetArchivedInput,
+) -> ArgmaxResult<ArcRecord> {
+    arc_set_archived_impl(&state, input).await
+}
+
+pub(crate) async fn arc_set_archived_impl(
+    state: &AppState,
+    input: ArcSetArchivedInput,
+) -> ArgmaxResult<ArcRecord> {
+    let database = live_database(state)?;
+    let updated = read_off_main(move || {
+        arcs::set_arc_archived(&database.connection(), input.id.as_str(), input.archived)
     })
     .await?;
     publish_dashboard_changed(state);

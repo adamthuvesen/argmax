@@ -10,6 +10,8 @@ The Arc page opens with the name, a meta line led by the state, and the brief's 
 
 A brief is required. When the chosen folder already has a `BRIEF.md`, leave the brief empty and the file is used (`ARC_BRIEF_EXISTS` otherwise; `ARC_BRIEF_REQUIRED` when there is neither). Pointing an Arc at an existing folder is how a folder kept elsewhere, such as an hq mission, becomes its shared context.
 
+**Archive** on a done Arc's page takes it out of the sidebar's Arcs list and keeps everything else: the folder, the timeline, and the chats. **Show N archived** at the foot of the list brings archived arcs back into view, and **Unarchive** on the page returns one to the list, still done. Reopening an archived Arc also unarchives it.
+
 The **Show arcs** toggle in **Settings → Appearance** controls the desktop sidebar section and is on by default. When there are no arcs, the sidebar offers **New arc** without an empty Arcs heading. Pinned and Priority headings also disappear when their sections are empty.
 
 ## How it works

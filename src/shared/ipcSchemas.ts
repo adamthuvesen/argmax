@@ -83,6 +83,7 @@ export const IPC_CHANNELS = [
   "arc:get",
   "arc:update",
   "arc:set-state",
+  "arc:set-archived",
   "arc:launch-coordinator",
   "arc:timeline",
   "arc:draft-from-session",
@@ -289,6 +290,7 @@ export interface IpcCommands {
   "arc:get": Commands["arcGet"];
   "arc:update": Commands["arcUpdate"];
   "arc:set-state": Commands["arcSetState"];
+  "arc:set-archived": Commands["arcSetArchived"];
   "arc:launch-coordinator": Commands["arcLaunchCoordinator"];
   "arc:timeline": Commands["arcTimeline"];
   "arc:draft-from-session": Commands["arcDraftFromSession"];

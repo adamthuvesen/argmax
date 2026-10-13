@@ -2288,7 +2288,8 @@ describe("Sidebar — Arcs section", () => {
         dir: "/tmp/arcs/arc-1",
         memberCount: 1,
         updatedAt: "2026-05-12T15:54:00.000Z",
-        lastEventAt: null
+        lastEventAt: null,
+        archivedAt: null
       }
     ]
   };
@@ -2314,6 +2315,18 @@ describe("Sidebar — Arcs section", () => {
 
     expect(overlaysSnapshot().standalonePage).toBeNull();
     expect(overlaysSnapshot().selectedArcId).toBe("arc-1");
+  });
+
+  it("keeps archived arcs behind a toggle at the foot of the list", () => {
+    const archivedSnapshot = {
+      ...arcSnapshot,
+      arcs: (arcSnapshot.arcs ?? []).map((arc) => ({ ...arc, state: "done" as const, archivedAt: "2026-05-13T09:00:00.000Z" }))
+    };
+    render(<Sidebar {...baseProps} snapshot={archivedSnapshot} />);
+    expect(screen.queryByRole("button", { name: /^Pricing rollout/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 archived" }));
+    expect(screen.getByRole("button", { name: /^Pricing rollout/ })).toHaveTextContent("Archived");
   });
 
   it("hides arcs without hiding their member chats", () => {

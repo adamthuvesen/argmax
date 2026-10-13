@@ -41,6 +41,7 @@ function arc(overrides: Partial<ArcRecord> = {}): ArcRecord {
     dir: "/tmp/arcs/arc-1",
     createdAt: "2026-08-30T08:00:00.000Z",
     updatedAt: "2026-08-30T08:00:00.000Z",
+    archivedAt: null,
     ...overrides
   };
 }

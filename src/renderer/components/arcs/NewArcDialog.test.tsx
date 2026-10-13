@@ -32,7 +32,8 @@ const ARC_RECORD: ArcRecord = {
   coordinatorSessionId: null,
   dir: "/tmp/arcs/arc-1",
   createdAt: "2026-05-12T15:54:00.000Z",
-  updatedAt: "2026-05-12T15:54:00.000Z"
+  updatedAt: "2026-05-12T15:54:00.000Z",
+  archivedAt: null
 };
 
 function installArgmax(

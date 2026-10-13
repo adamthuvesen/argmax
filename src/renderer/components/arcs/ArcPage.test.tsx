@@ -39,6 +39,7 @@ function arcRecord(overrides: Partial<ArcRecord> = {}): ArcRecord {
     dir: "/tmp/arcs/arc-1",
     createdAt: "2026-05-10T09:00:00.000Z",
     updatedAt: "2026-05-12T15:54:00.000Z",
+    archivedAt: null,
     ...overrides
   };
 }
@@ -155,7 +156,8 @@ const SNAPSHOT: DashboardSnapshot = {
       dir: "/tmp/arcs/arc-1",
       memberCount: 1,
       updatedAt: "2026-05-12T15:54:00.000Z",
-      lastEventAt: null
+      lastEventAt: null,
+      archivedAt: null
     }
   ]
 };

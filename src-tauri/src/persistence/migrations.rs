@@ -384,6 +384,19 @@ static WORKSPACE_CREATED_BRANCH_COLUMNS: phf::Map<&'static str, &'static [&'stat
     ] as &'static [&'static str],
 };
 
+// v72 lets an Arc be archived: hidden from the sidebar's Arcs list without
+// deleting its folder, timeline, or chats. A column rather than a fourth
+// `state`, because widening the CHECK means rebuilding `arcs`, and
+// `arc_events` and `routines` cascade from it.
+const ARC_ARCHIVED_AT: &str = "ALTER TABLE arcs ADD COLUMN archived_at TEXT;";
+
+static ARC_ARCHIVED_AT_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "arcs" => &[
+        "archived_at", "brief", "coordinator_session_id", "created_at", "dir",
+        "home_project_id", "id", "name", "notes_snapshot", "state", "updated_at",
+    ] as &'static [&'static str],
+};
+
 // v63 gives `pr_watches` its conflict cursor, adds the linked-repository table,
 // and gives `projects` and `workspaces` one nullable column each.
 pub static WORKSPACE_IMPROVEMENTS_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
@@ -1396,6 +1409,14 @@ pub static MIGRATIONS: &[Migration] = &[
         up: WORKSPACE_CREATED_BRANCH,
         affected_tables: &["workspaces"],
         expected_columns: &WORKSPACE_CREATED_BRANCH_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 72,
+        name: "arc_archived_at",
+        up: ARC_ARCHIVED_AT,
+        affected_tables: &["arcs"],
+        expected_columns: &ARC_ARCHIVED_AT_COLUMNS,
         requires_foreign_keys_off: false,
     },
 ];
@@ -3328,9 +3349,9 @@ mod tests {
             .expect("turn_routes");
         verify_table_columns(&connection, &ROUTINE_ARC_TARGET_COLUMNS, "routines")
             .expect("routines");
-        for table in ["arcs", "arc_events"] {
-            verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, table).expect(table);
-        }
+        // `arcs` gained `archived_at` in v72.
+        verify_table_columns(&connection, &ARC_ARCHIVED_AT_COLUMNS, "arcs").expect("arcs");
+        verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, "arc_events").expect("arc_events");
         verify_table_columns(&connection, &WORKSPACE_CREATED_BRANCH_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
@@ -3494,6 +3515,7 @@ mod tests {
                     compute_migration_checksum(PR_WATCH_FEEDBACK_AND_FETCH_HEALTH)
                 ),
                 (71, compute_migration_checksum(WORKSPACE_CREATED_BRANCH)),
+                (72, compute_migration_checksum(ARC_ARCHIVED_AT)),
             ]
         );
 

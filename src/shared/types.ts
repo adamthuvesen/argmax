@@ -50,6 +50,7 @@ export type ArcListInput = Bindings.ArcListInput;
 export type ArcGetInput = Bindings.ArcGetInput;
 export type ArcUpdateFieldsInput = Bindings.ArcUpdateFieldsInput;
 export type ArcSetStateInput = Bindings.ArcSetStateInput;
+export type ArcSetArchivedInput = Bindings.ArcSetArchivedInput;
 export type ArcLaunchCoordinatorInput = Bindings.ArcLaunchCoordinatorInput;
 export type ArcEventKind = Bindings.ArcEventKind;
 export type ArcTimelineEvent = Bindings.ArcTimelineEvent;
@@ -646,6 +647,7 @@ export interface ArgmaxApi {
     get: (input: ArcGetInput) => Promise<ArcDetail>;
     update: (input: ArcUpdateFieldsInput) => Promise<ArcRecord>;
     setState: (input: ArcSetStateInput) => Promise<ArcRecord>;
+    setArchived: (input: ArcSetArchivedInput) => Promise<ArcRecord>;
     launchCoordinator: (input: ArcLaunchCoordinatorInput) => Promise<ArcRecord>;
     timeline: (input: ArcTimelineInput) => Promise<ArcTimelinePage>;
     draftFromSession: (input: ArcDraftFromSessionInput) => Promise<ArcDraft>;

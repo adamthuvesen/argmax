@@ -38,7 +38,14 @@ for (const file of docs) {
     if (/^(https?:|mailto:|argmax:)/.test(target)) continue;
     // Placeholder examples in prose, not links to files.
     if (target === "path" || target.includes("<")) continue;
-    const resolved = resolve(dirname(file), decodeURIComponent(target));
+    let decoded;
+    try {
+      decoded = decodeURIComponent(target);
+    } catch {
+      fail(`${file.slice(ROOT.length + 1)}: malformed link target ${target}`);
+      continue;
+    }
+    const resolved = resolve(dirname(file), decoded);
     if (!existsSync(resolved)) {
       fail(`${file.slice(ROOT.length + 1)}: broken link ${target}`);
     }
@@ -62,9 +69,15 @@ for (const group of ["plan", "design"]) {
   const index = readFileSync(indexPath, "utf8");
   for (const entry of readdirSync(join(ROOT, "docs", group))) {
     const full = join(ROOT, "docs", group, entry);
+    let isDirectory = false;
+    try {
+      isDirectory = statSync(full).isDirectory();
+    } catch {
+      isDirectory = false;
+    }
     const isEntry =
       (entry.endsWith(".md") && entry !== "README.md") ||
-      (statSync(full).isDirectory() && existsSync(join(full, "index.html")));
+      (isDirectory && existsSync(join(full, "index.html")));
     if (isEntry && !index.includes(entry.replace(/\.md$/, ""))) {
       fail(`docs/${group}/${entry} is not listed in docs/${group}/README.md`);
     }

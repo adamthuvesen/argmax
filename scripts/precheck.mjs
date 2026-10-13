@@ -253,16 +253,15 @@ const scope = decideScope();
 const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle", scope.ios && "ios"].filter(
   Boolean
 );
-if (lanes.length === 0) {
-  console.log(`precheck: nothing to check (${scope.reason}).`);
-  process.exit(0);
-}
-console.log(`precheck: ${lanes.join(" + ")} (${scope.reason})`);
+console.log(`precheck: ${lanes.length ? lanes.join(" + ") : "docs only"} (${scope.reason})`);
 const vitestBase = runEverything ? null : scope.vitestBase;
 
 // Contract checks are sub-second and cross the Rust/TS boundary, so they run
 // whenever either side changed.
 step("IPC channel parity", "node", ["scripts/check-tauri-bridge.mjs"]);
+// Sub-second, and the only gate that runs on a docs-only push: docs are
+// inert for every lane above, so without this step a broken link or a
+// stale count would pass unchecked.
 step("docs integrity", "node", ["scripts/check-docs.mjs"]);
 step("Architecture boundaries", "node", ["scripts/check-architecture.mjs"]);
 step("Remote contracts", "node", ["scripts/export-remote-contracts.mjs", "--check"]);

@@ -469,17 +469,18 @@ export function ArcPage({
             </h1>
           )}
           <div className="arc-hero-actions">
-            {arc.archivedAt ? (
-              <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetArchived(false)}>
-                Unarchive
-              </button>
-            ) : isDone ? (
+            {arc.archivedAt || isDone ? (
               <>
                 <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
                   Reopen
                 </button>
-                <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetArchived(true)}>
-                  Archive
+                <button
+                  type="button"
+                  className="settings-button"
+                  disabled={busy}
+                  onClick={() => void handleSetArchived(!arc.archivedAt)}
+                >
+                  {arc.archivedAt ? "Unarchive" : "Archive"}
                 </button>
               </>
             ) : (

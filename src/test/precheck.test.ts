@@ -32,6 +32,7 @@ function fixture() {
   for (const name of files) writeFileSync(path.join(repository, name), "initial\n");
   for (const name of [
     "check-tauri-bridge.mjs",
+    "check-docs.mjs",
     "check-architecture.mjs",
     "export-remote-contracts.mjs",
     "export-swift-contracts.mjs",

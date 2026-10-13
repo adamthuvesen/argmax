@@ -114,7 +114,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   }
   // OpenCode models that expose `--variant`, each with its own set; fall back
   // to low → xhigh for the rest (which won't set supportsReasoningEffort).
-  // Qwen3.8 Max and Muse Spark also offer a `minimal` variant below Low, which
+  // Qwen3.8 Max, Muse Spark, and Muse Wonder also offer a `minimal` variant below Low, which
   // has no rung on this ladder and is left out.
   const opencodeVariants: Record<string, readonly ReasoningEffort[]> = {
     "openrouter/z-ai/glm-5.3-flash": ["low", "high", "max"],
@@ -124,7 +124,8 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
     "openrouter/moonshotai/kimi-k3": ["low", "high", "max"],
     "openrouter/qwen/qwen3.8-max-0902": ["low", "medium", "high", "xhigh"],
     "openrouter/qwen/qwen3.8-flash": ["high", "max"],
-    "openrouter/meta/muse-spark-1.3-contributor": ["low", "medium", "high", "xhigh", "max"]
+    "openrouter/meta/muse-spark-1.3-contributor": ["low", "medium", "high", "xhigh", "max"],
+    "openrouter/meta/muse-wonder": ["low", "medium", "high", "xhigh", "max"]
   };
   if (provider === "opencode" && modelId in opencodeVariants) return opencodeVariants[modelId];
   // Grok Build's --reasoning-effort accepts only low/medium/high/xhigh; the CLI
@@ -284,6 +285,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsReasoningEffort: true,
       contextWindow: 1_048_576
     },
+    { label: "Muse Wonder", modelId: "openrouter/meta/muse-wonder", supportsReasoningEffort: true, contextWindow: 1_048_576 },
     // Groq's window, not the model's 204,800: the pin keeps it on Groq.
     { label: "MiniMax M2.7 (Groq)", modelId: "openrouter/minimax/minimax-m2.7", contextWindow: 196_608 }
   ],
@@ -423,6 +425,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "openrouter/qwen/qwen3.8-max-0902":           { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
   "openrouter/qwen/qwen3.8-flash":              { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
   "openrouter/meta/muse-spark-1.3-contributor": { input: 0.1,   output: 0.2,    cacheRead: 0.002, cacheWrite: 0.1 },
+  "openrouter/meta/muse-wonder":                { input: 4,     output: 20,     cacheRead: 0.2,   cacheWrite: 4 },
   // Groq offers no cached-input discount for this model.
   "openrouter/minimax/minimax-m2.7":            { input: 0.6,   output: 1.8,    cacheRead: 0.6,   cacheWrite: 0.6 },
 

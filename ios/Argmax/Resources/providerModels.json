@@ -411,6 +411,19 @@
           "defaultEffort": "medium"
         },
         {
+          "label": "Muse Wonder",
+          "modelId": "openrouter/meta/muse-wonder",
+          "contextWindow": 1048576,
+          "reasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultEffort": "medium"
+        },
+        {
           "label": "MiniMax M2.7 (Groq)",
           "modelId": "openrouter/minimax/minimax-m2.7",
           "contextWindow": 196608,

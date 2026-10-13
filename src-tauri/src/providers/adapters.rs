@@ -467,7 +467,7 @@ pub(crate) fn opencode_variant_args(
             ReasoningEffort::High,
             ReasoningEffort::Max,
         ][..],
-        // Qwen3.8 Max and Muse Spark also have a `minimal` variant below Low,
+        // Qwen3.8 Max, Muse Spark, and Muse Wonder also have a `minimal` variant below Low,
         // which has no rung on this ladder.
         "openrouter/qwen/qwen3.8-max-0902" => &[
             ReasoningEffort::Low,
@@ -475,7 +475,7 @@ pub(crate) fn opencode_variant_args(
             ReasoningEffort::High,
             ReasoningEffort::Xhigh,
         ][..],
-        "openrouter/meta/muse-spark-1.3-contributor" => &[
+        "openrouter/meta/muse-spark-1.3-contributor" | "openrouter/meta/muse-wonder" => &[
             ReasoningEffort::Low,
             ReasoningEffort::Medium,
             ReasoningEffort::High,

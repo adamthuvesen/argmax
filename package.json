@@ -38,7 +38,8 @@
     "check:provider-models": "node scripts/export-provider-models.mjs --check",
     "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit",
     "generate:contracts": "node scripts/build-visualization-runtime.mjs && npm run generate:bindings && node scripts/export-remote-contracts.mjs && node scripts/export-swift-contracts.mjs",
-    "check:contracts": "node scripts/build-visualization-runtime.mjs --check && node scripts/check-architecture.mjs && node scripts/export-remote-contracts.mjs --check && node scripts/export-swift-contracts.mjs --check"
+    "check:contracts": "node scripts/build-visualization-runtime.mjs --check && node scripts/check-architecture.mjs && node scripts/export-remote-contracts.mjs --check && node scripts/export-swift-contracts.mjs --check",
+    "check:docs": "node scripts/check-docs.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

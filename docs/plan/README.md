@@ -6,3 +6,14 @@ When a plan and the code disagree, the code and the matching subsystem doc
 (see the index in [AGENTS.md](../../AGENTS.md)) are right. Fix the subsystem
 doc in the same change as the code; touch a plan only to correct a fact that
 would mislead a reader of the snapshot.
+
+## Snapshots
+
+- [agent-tools.md](agent-tools.md)
+- [auto-model-routing.md](auto-model-routing.md)
+- [browser-agent-reads.md](browser-agent-reads.md)
+- [hybrid-native-phone.md](hybrid-native-phone.md)
+- [pr-watch.md](pr-watch.md)
+- [subagent-emblems.md](subagent-emblems.md)
+- [todo-list-surface.md](todo-list-surface.md)
+- [usage-dashboard.md](usage-dashboard.md)

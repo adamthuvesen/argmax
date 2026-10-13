@@ -90,38 +90,14 @@ npx vite --host 127.0.0.1
 
 ## Commands
 
-```bash
-npm run tauri:dev          # Start Tauri dev app
-npm run tauri:build        # Build production bundle
-npm run build:renderer     # Build renderer bundle
-npm run lint               # ESLint
-npm run typecheck          # TypeScript check
-npm run test:unit          # Vitest unit tests
-npm run test:perf          # Performance benchmarks
-npm run test:rust          # Cargo test suite
-npm test                   # Run all test suites
-npm run lint:rust          # cargo clippy, warnings are errors
-npm run precheck           # CI checks scoped to the branch's changes
-npm run check:tauri-bridge # Check IPC channel parity
-npm run check:bundle       # Verify bundle size budget
-npm run doctor             # Check local verification capabilities
-```
-
-See [package.json](package.json) for all commands, [testing](docs/testing.md) for checks, [verification](docs/verification.md) for end-to-end scenarios, and [release](docs/release.md) for packaging. Production bundles are written to `src-tauri/target/release/bundle/`.
+Canonical command list: [AGENTS.md](AGENTS.md#quickstart). See
+[testing](docs/testing.md) for checks, [verification](docs/verification.md)
+for end-to-end scenarios, and [release](docs/release.md) for packaging.
+Production bundles are written to `src-tauri/target/release/bundle/`.
 
 ## Layout
 
-```text
-src/
-├── renderer/     React UI, including the mobile interface
-├── shared/       Shared TypeScript types and generated bindings
-└── test/         Vitest configuration and test harness
-
-src-tauri/        Rust runtime, services, persistence, IPC handlers
-docs/            Subsystem documentation
-scripts/         CI and verification scripts
-assets/          Application icons, mascot sources, and screenshots
-```
+Canonical layout: [AGENTS.md](AGENTS.md#layout).
 
 Runtime database state is stored in `argmax.sqlite` under the Tauri app data folder. `ARGMAX_DATA_DIR` overrides the app data folder for a separate local profile. See [data](docs/data.md) for persistence details.
 

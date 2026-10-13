@@ -1,5 +1,7 @@
 # PR Watch and PR Cleanup
 
+> **Status: Shipped.** This is a dated snapshot, not kept current. The governing doc is [docs/gh.md](../gh.md).
+
 ## Problem
 
 The `ship --babysit` skill tells every agent to poll GitHub itself on a 30 second

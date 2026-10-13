@@ -55,3 +55,6 @@ frame each at 2x.
 
 **A · In the meta line**, chosen 2026-09-12. The elapsed time stays on the
 trailing edge. Not yet ported to `ChatListView.swift` / `ChatRowGlyph.swift`.
+
+> **Status: desktop decision shipped; phone port still open.** Do not read
+> this folder as the phone chat list's current shape.

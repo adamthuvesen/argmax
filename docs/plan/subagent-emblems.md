@@ -1,5 +1,7 @@
 # Plan: Subagent emblems
 
+> **Status: Shipped.** This is a dated snapshot, not kept current. The governing doc is [docs/chat-cards.md](../chat-cards.md).
+
 ## Scope
 
 **Objective.** Give every subagent a small geometric emblem, in the style of the Codex agent marks: a radially symmetric shape (trefoil, pinwheel, hourglass, diamond cluster, …) in one hue, shaded like a soft gem so it reads as an object rather than a line icon. The emblem is the agent's face everywhere the app shows it: the launch row in the chat, the tab in the Agents view, the pane masthead, and the workspace card's stack. Today those four surfaces show a muted dot, a generic `Bot` glyph, a `Bot` glyph again, and the codename's first letter.

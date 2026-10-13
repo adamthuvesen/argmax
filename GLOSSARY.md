@@ -77,7 +77,7 @@ _Avoid_: Delete, close, clean up
 ### Agents at work
 
 **Provider**:
-A coding-agent CLI Argmax drives — Claude Code, Codex, Cursor, or OpenCode. A provider is the program, not the model it runs.
+A coding-agent CLI Argmax drives — Claude Code, Codex, Cursor, OpenCode, or Grok Build. A provider is the program, not the model it runs.
 _Avoid_: Agent, CLI, tool, backend
 
 **Session**:
@@ -98,7 +98,7 @@ _Avoid_: Reset, new session, wipe
 One user prompt and everything the agent produces in response, grouped together on the chat surface until the next prompt starts new work. Steering messages add guidance within the active turn without ending it or starting another.
 
 **Launched by**:
-The session whose agent started this one with the `argmax` MCP tools, held on the row as `launched_by_session_id` with the chain's depth in `launch_depth`. It names lineage, not hierarchy: a launched session is a top-level sidebar session that outlives its launcher, not a subagent, and it is what the launch caps (two levels deep, ten per session) are counted over.
+The session whose agent started this one with the `argmax` MCP tools, held on the row as `launched_by_session_id` with the chain's depth in `launch_depth`. It names lineage, not hierarchy: a launched session is a top-level sidebar session that outlives its launcher, not a subagent, and it is what the launch caps (two levels deep, twenty per session) are counted over.
 _Avoid_: Parent session, child session, spawned session, subagent
 
 **Emblem**:

@@ -173,7 +173,7 @@ The frame probe and the message handler are agent-tab-only, like the other agent
 ## The MCP Path
 
 Settings → Agents → Tools → **Browser tools** decides whether an agent gets
-them at all. Off is a real saving — 27 of the server's 55 tools and about 37%
+them at all. Off is a real saving — 27 of the server's 63 tools and about 35%
 of its bytes, roughly 4,900 tokens off every turn — and it costs the panel
 nothing: the user still browses, and the chat's Browser tab still works. The
 choice is read when a launch is issued, so it reaches a chat on its next turn

@@ -1,5 +1,7 @@
 # Plan: Usage dashboard
 
+> **Status: Shipped.** This is a dated snapshot, not kept current. The governing doc is [docs/usage.md](../usage.md).
+
 ## Scope
 
 **Objective.** A Usage page in Argmax showing, per connected provider (Claude, Codex, Grok Build, OpenCode), cost at list price and tokens for Past 24h / 7 days / 30 days: a hero total with session count, per-provider rows with share and tokens, a daily (hourly for 24h) area chart, a totals row (processed, cached input, uncached input, output, cache savings), and a Model / Day breakdown table. Data comes from every local transcript on disk, not only Argmax-launched sessions.

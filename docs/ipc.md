@@ -93,7 +93,7 @@ completed replies.
 
 `activity:summary` takes `{ window: "24h" | "7d" | "30d" | "12m" | "year", projectId?, timeZone }` and returns the Activity page in one shape: totals, the previous-window comparison, per-repository rows, the chart series, a year-long heatmap, streaks, cadence, and the pull requests and reviews from `gh`. A `projectId` narrows everything but the repository rows and the heatmap. `timeZone` must be an IANA name — every bucket is cut on it, so an unresolvable name is rejected rather than silently read as UTC. The commit ledger is swept inline once it has completed before; the GitHub half is a cache the call refreshes in the background when stale and never waits on. Dispatched over the remote bridge like `usage:summary`. See [activity.md](activity.md).
 
-Scheduled tasks ("routines") expose `routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, and `routines:run-now`.
+Scheduled tasks ("routines") expose `routines:list`, `routines:upsert`, `routines:delete`, `routines:set-enabled`, `routines:run-now`, and `routines:reset-session`.
 
 The browser pane's own commands (`browser:open`, `browser:navigate`, …) address one tab by id. The agent-facing ones (`browser:list-tabs`, `browser:open-for-session`, `browser:snapshot`, `browser:find`, `browser:get-text`, `browser:act`, and `browser:screenshot`) take `{ tabId? , sessionId? }` instead: naming a session acts on the tab that session touched most recently. All of them are desktop-only — see [browser.md](browser.md).
 
@@ -102,6 +102,9 @@ The browser pane's own commands (`browser:open`, `browser:navigate`, …) addres
 Subscribed in `tauriBridge.ts`:
 
 - `dashboard:delta`
+- `ui:zoom`
+- `composer:attach-window-snapshot`
+- `window-snapshot:failed`
 - `terminal:data`
 - `terminal:exit`
 - `menu:command` (to the window that last had focus; see [runtime.md](runtime.md#chat-windows))

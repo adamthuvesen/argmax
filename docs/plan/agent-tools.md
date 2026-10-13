@@ -1,5 +1,7 @@
 # Plan: Argmax agent tools (sessions, messaging, browser) over MCP
 
+> **Status: Shipped.** This is a dated snapshot, not kept current. The governing doc is [docs/agent-tools.md](../agent-tools.md).
+
 ## Scope
 
 **Objective.** Every agent Argmax launches gets one MCP server, `argmax`, with tools to launch, observe, message, wait on, and stop other Argmax sessions, and to drive Argmax's built-in browser. The tools work the same across Claude Code, Codex, Cursor, OpenCode, and Grok Build.

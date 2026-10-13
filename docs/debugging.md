@@ -1,6 +1,6 @@
 # Debugging
 
-Two developer-facing surfaces, split by whether the numbers move.
+Three developer-facing surfaces, split by whether the numbers move.
 
 For a reproducible local failure, start with `npm run doctor`, then
 `npm run verify -- --scenario chat-resume`. The runner writes its report and

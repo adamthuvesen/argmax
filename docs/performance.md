@@ -421,7 +421,7 @@ measure real disk latency, native tab-switch latency, or WebKit memory usage.
 [src-tauri/src/util/ipc_latency.rs](../src-tauri/src/util/ipc_latency.rs) tracks latency histograms accessible in Settings → Diagnostics. Target p99 is < 100 ms.
 
 To prevent IPC bottlenecks:
-- General timeline push hints trigger `session:events-since`. There is no renderer polling interval.
+- General timeline push hints trigger `session:events-since`. There is no dashboard-wide poll; running sessions still pull their event tails at 250 ms (see [runtime.md](runtime.md)).
 - `session:agent-events` is only invoked when a subagent tab is open in a review panel's Agents view, bounded by `SESSION_AGENT_EVENT_SCAN_LIMIT` (2,000 rows).
 
 ## Native iOS

@@ -20,6 +20,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       js: ${{ steps.filter.outputs.js }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,6 +33,7 @@ jobs:
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
             echo "js=true" >> "$GITHUB_OUTPUT"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
             echo "deps=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -44,6 +46,7 @@ jobs:
           inert_pattern='^(docs/|\.githooks/|[^/]*\.md$|LICENSE$|\.gitignore$|\.gitattributes$)'
           rust=$(match "$rust_pattern")
           js=$(match "$js_pattern")
+          docs=$(match "$inert_pattern")
           unmatched=$(printf '%s\n' "$changed" | grep -Ev "$rust_pattern|$js_pattern|$inert_pattern" || true)
           if [ -z "$changed" ] || [ -n "$unmatched" ]; then
             printf 'Unclassified paths run both lanes:\n%s\n' "$unmatched"
@@ -52,6 +55,7 @@ jobs:
           fi
           echo "rust=$rust" >> "$GITHUB_OUTPUT"
           echo "js=$js" >> "$GITHUB_OUTPUT"
+          echo "docs=$docs" >> "$GITHUB_OUTPUT"
 
   rust:
     name: rust ${{ matrix.check }}
@@ -135,7 +139,7 @@ jobs:
   js-static:
     name: js lint · typecheck · parity
     needs: changes
-    if: ${{ needs.changes.outputs.js == 'true' || needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.js == 'true' || needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -165,6 +169,10 @@ jobs:
       # Both parity checks read Rust sources, so they run for Rust-only PRs too.
       - run: npm run check:tauri-bridge
       - run: npm run check:contracts
+
+      # check-docs reads the MCP tool registrations in src-tauri, so it
+      # rides this lane, which already runs for Rust-only PRs.
+      - run: npm run check:docs
 
       - run: npm run check:main-thread
 

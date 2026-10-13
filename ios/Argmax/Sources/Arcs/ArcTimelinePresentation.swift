@@ -68,6 +68,7 @@ func presentArcEvent(_ event: ArcTimelineEvent) -> ArcEventPresentation {
         switch event.status {
         case "paused": return .init(verb: event.title, glyph: .symbol("pause.circle"), tone: .warning)
         case "done": return .init(verb: event.title, glyph: .symbol("checkmark.square"), tone: .quiet)
+        case "archived", "unarchived": return .init(verb: event.title, glyph: .symbol("archivebox"), tone: .quiet)
         default: return .init(verb: event.title, glyph: .symbol("play.circle"), tone: .quiet)
         }
     case .scheduledRun:

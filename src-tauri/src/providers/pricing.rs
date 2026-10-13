@@ -72,6 +72,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "openrouter/qwen/qwen3.8-max-0902" => ModelPricing { input: 2.0, output: 6.0, cache_read: 0.25, cache_write: 2.5 },
     "openrouter/qwen/qwen3.8-flash" => ModelPricing { input: 0.15, output: 0.47, cache_read: 0.016, cache_write: 0.2 },
     "openrouter/meta/muse-spark-1.3-contributor" => ModelPricing { input: 0.1, output: 0.2, cache_read: 0.002, cache_write: 0.1 },
+    "openrouter/meta/muse-wonder" => ModelPricing { input: 4.0, output: 20.0, cache_read: 0.2, cache_write: 4.0 },
     "openrouter/minimax/minimax-m2.7" => ModelPricing { input: 0.6, output: 1.8, cache_read: 0.6, cache_write: 0.6 },
     // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
     // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list

@@ -73,6 +73,12 @@ defaulting to `active`), `home_project_id` (`ON DELETE CASCADE`),
 migration adds `sessions.arc_id` (`ON DELETE SET NULL`) so a chat can be
 attached to an Arc, and an index on it.
 
+`arcs.archived_at` (v72, nullable) marks an archived Arc, which the sidebar
+lists only on request. It is a column rather than a fourth `state` because
+widening the CHECK means rebuilding `arcs`, and `arc_events` and `routines`
+cascade from it. An archived Arc is always `done`: archiving sets `done` first,
+and any state change away from `done` clears `archived_at`.
+
 `persistence/arcs.rs` owns both the table and the small domain rules around
 it: a blank name is rejected, and every create/update keeps `dir`'s
 `BRIEF.md` in sync with the row's `brief` column. The brief has exactly one

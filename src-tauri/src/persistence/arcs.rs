@@ -97,6 +97,9 @@ pub struct ArcRecord {
     pub dir: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Set while the Arc is archived: out of the sidebar's list, everything
+    /// else kept. An archived Arc is always done.
+    pub archived_at: Option<String>,
 }
 
 /// The dashboard's lightweight view: enough to render a sidebar row without
@@ -112,6 +115,7 @@ pub struct ArcSummary {
     pub dir: String,
     pub member_count: i64,
     pub updated_at: String,
+    pub archived_at: Option<String>,
     /// When the newest timeline row was recorded, so an open Arc page knows
     /// to refetch its timeline.
     pub last_event_at: Option<String>,
@@ -321,7 +325,7 @@ pub fn list_arc_summaries(connection: &Connection) -> ArgmaxResult<Vec<ArcSummar
         .prepare_cached(
             r#"
             SELECT arcs.id, arcs.name, arcs.state, arcs.home_project_id,
-                   arcs.coordinator_session_id, arcs.dir, arcs.updated_at,
+                   arcs.coordinator_session_id, arcs.dir, arcs.updated_at, arcs.archived_at,
                    (SELECT COUNT(*) FROM sessions WHERE sessions.arc_id = arcs.id) AS member_count,
                    (SELECT MAX(occurred_at) FROM arc_events
                     WHERE arc_events.arc_id = arcs.id) AS last_event_at
@@ -561,7 +565,13 @@ pub fn set_arc_state(
 ) -> ArgmaxResult<ArcRecord> {
     let current = get_arc(connection, arc_id)?;
     connection
-        .prepare_cached("UPDATE arcs SET state = ?, updated_at = ? WHERE id = ?")
+        // Only a done Arc stays archived: reopening one brings it back.
+        .prepare_cached(
+            "UPDATE arcs SET state = ?1,
+                 archived_at = CASE WHEN ?1 = 'done' THEN archived_at END,
+                 updated_at = ?2
+             WHERE id = ?3",
+        )
         .map_err(sqlite_error)?
         .execute((state.as_str(), now_iso().as_str(), arc_id))
         .map_err(sqlite_error)?;
@@ -581,6 +591,37 @@ pub fn set_arc_state(
         event.status = Some(state.as_str().to_string());
         record_arc_event(connection, &event)?;
     }
+    get_arc(connection, arc_id)
+}
+
+/// Archives or unarchives the Arc. Archiving marks it done first, so an
+/// archived Arc never takes launches or wakes its coordinator; unarchiving
+/// leaves it done, and Reopen is a separate step.
+pub fn set_arc_archived(
+    connection: &Connection,
+    arc_id: &str,
+    archived: bool,
+) -> ArgmaxResult<ArcRecord> {
+    let current = get_arc(connection, arc_id)?;
+    if current.archived_at.is_some() == archived {
+        return Ok(current);
+    }
+    if archived && current.state != ArcState::Done {
+        set_arc_state(connection, arc_id, ArcState::Done)?;
+    }
+    let now = now_iso();
+    connection
+        .prepare_cached("UPDATE arcs SET archived_at = ?, updated_at = ? WHERE id = ?")
+        .map_err(sqlite_error)?
+        .execute((archived.then_some(now.as_str()), now.as_str(), arc_id))
+        .map_err(sqlite_error)?;
+    let event = NewArcEvent::new(
+        format!("archive:{}", Uuid::new_v4()),
+        arc_id,
+        ArcEventKind::StateChanged,
+        if archived { "Archived" } else { "Unarchived" },
+    );
+    record_arc_event(connection, &event)?;
     get_arc(connection, arc_id)
 }
 
@@ -740,8 +781,7 @@ fn require_project_exists(connection: &Connection, project_id: &str) -> ArgmaxRe
     Ok(())
 }
 
-const ARC_COLUMNS: &str =
-    "id, name, brief, state, home_project_id, coordinator_session_id, dir, created_at, updated_at";
+const ARC_COLUMNS: &str = "id, name, brief, state, home_project_id, coordinator_session_id, dir, created_at, updated_at, archived_at";
 
 fn row_to_arc(row: &Row<'_>) -> rusqlite::Result<ArcRecord> {
     let state: String = row.get("state")?;
@@ -756,6 +796,7 @@ fn row_to_arc(row: &Row<'_>) -> rusqlite::Result<ArcRecord> {
         dir: row.get("dir")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        archived_at: row.get("archived_at")?,
     })
 }
 
@@ -771,6 +812,7 @@ fn row_to_arc_summary(row: &Row<'_>) -> rusqlite::Result<ArcSummary> {
         dir: row.get("dir")?,
         member_count: row.get("member_count")?,
         updated_at: row.get("updated_at")?,
+        archived_at: row.get("archived_at")?,
         last_event_at: row.get("last_event_at")?,
     })
 }
@@ -963,6 +1005,7 @@ mod tests {
             dir: "/nonexistent/argmax-arc-dir".to_string(),
             created_at: "2026-01-01T00:00:00.000Z".to_string(),
             updated_at: "2026-01-01T00:00:00.000Z".to_string(),
+            archived_at: None,
         };
         assert_eq!(notes_size(&arc), None);
         assert_eq!(log_size(&arc), None);
@@ -1093,6 +1136,29 @@ mod tests {
         let done = set_arc_state(&connection, &arc.id, ArcState::Done).unwrap();
         assert_eq!(done.state, ArcState::Done);
         assert_eq!(get_arc(&connection, &arc.id).unwrap().state, ArcState::Done);
+    }
+
+    #[test]
+    fn archiving_marks_done_and_reopening_unarchives() {
+        let database = database_with_project();
+        let connection = database.connection();
+        let data_dir = tempfile::tempdir().unwrap();
+        let arc = create_arc(&connection, data_dir.path(), &create_input(None)).unwrap();
+
+        let archived = set_arc_archived(&connection, &arc.id, true).unwrap();
+        assert_eq!(archived.state, ArcState::Done);
+        assert!(archived.archived_at.is_some());
+        assert!(list_arc_summaries(&connection).unwrap()[0]
+            .archived_at
+            .is_some());
+
+        let reopened = set_arc_state(&connection, &arc.id, ArcState::Active).unwrap();
+        assert_eq!(reopened.archived_at, None);
+
+        set_arc_archived(&connection, &arc.id, true).unwrap();
+        let unarchived = set_arc_archived(&connection, &arc.id, false).unwrap();
+        assert_eq!(unarchived.archived_at, None);
+        assert_eq!(unarchived.state, ArcState::Done);
     }
 
     #[test]

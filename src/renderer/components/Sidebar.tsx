@@ -355,6 +355,7 @@ export function Sidebar({
       : new Set(BOOT_COLLAPSED_GROUP_KEYS)
   );
   const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [archivedArcsShown, setArchivedArcsShown] = useState(false);
   // The shelf starts collapsed on every launch: snoozing says "not now", and a
   // list that opens itself would say otherwise.
   const [snoozedExpanded, setSnoozedExpanded] = useState(false);
@@ -527,6 +528,12 @@ export function Sidebar({
       return rankDiff !== 0 ? rankDiff : b.updatedAt.localeCompare(a.updatedAt);
     });
   }, [snapshot.arcs]);
+  // Archived arcs leave the list but stay one click away at its foot. The one
+  // open in the workspace column keeps its row so the selection stays visible.
+  const archivedArcCount = arcs.filter((arc) => arc.archivedAt).length;
+  const listedArcs = arcs.filter(
+    (arc) => !arc.archivedAt || archivedArcsShown || arc.id === selectedArcId
+  );
 
   // A chat that belongs to an arc names it on the row, so a member reads as
   // part of a larger body of work rather than a chat someone opened cold.
@@ -1207,7 +1214,7 @@ export function Sidebar({
           </button>
         </span>
       </div>
-      {(arcsCollapsed ? [] : arcs).map((arc) => (
+      {(arcsCollapsed ? [] : listedArcs).map((arc) => (
         <div key={arc.id} className="session-row-wrap">
           <button
             type="button"
@@ -1219,12 +1226,24 @@ export function Sidebar({
           >
             <Workflow size={13} aria-hidden="true" />
             <span>{arc.name}</span>
-            {arc.state === "active" ? null : (
+            {arc.archivedAt ? (
+              <span className="arc-row-state">Archived</span>
+            ) : arc.state === "active" ? null : (
               <span className="arc-row-state">{ARC_STATE_LABEL[arc.state]}</span>
             )}
           </button>
         </div>
       ))}
+      {!arcsCollapsed && archivedArcCount > 0 ? (
+        <button
+          type="button"
+          className="sidebar-show-more"
+          aria-expanded={archivedArcsShown}
+          onClick={() => setArchivedArcsShown((shown) => !shown)}
+        >
+          {archivedArcsShown ? "Hide archived" : `Show ${archivedArcCount} archived`}
+        </button>
+      ) : null}
     </div>
   );
   const sideChatsCollapsed = collapsedDateGroups.has(SIDE_CHATS_GROUP_KEY);

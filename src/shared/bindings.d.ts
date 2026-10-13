@@ -658,6 +658,14 @@ async arcSetState(input: ArcSetStateInput) : Promise<Result<ArcRecord, ArgmaxErr
     else return { status: "error", error: e  as any };
 }
 },
+async arcSetArchived(input: ArcSetArchivedInput) : Promise<Result<ArcRecord, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("arc_set_archived", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async arcLaunchCoordinator(input: ArcLaunchCoordinatorInput) : Promise<Result<ArcRecord, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("arc_launch_coordinator", { input }) };
@@ -1913,14 +1921,20 @@ export type ArcPromoteInput = { sessionId: NonEmptyString; name: string; brief: 
  * The Arc row, named `ArcRecord` rather than `Arc` because every file in this
  * codebase already imports `std::sync::Arc`.
  */
-export type ArcRecord = { id: string; name: string; brief: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; createdAt: string; updatedAt: string }
+export type ArcRecord = { id: string; name: string; brief: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; createdAt: string; updatedAt: string;
+/**
+ * Set while the Arc is archived: out of the sidebar's list, everything
+ * else kept. An archived Arc is always done.
+ */
+archivedAt: string | null }
+export type ArcSetArchivedInput = { id: NonEmptyString; archived: boolean }
 export type ArcSetStateInput = { id: NonEmptyString; state: ArcState }
 export type ArcState = "active" | "paused" | "done"
 /**
  * The dashboard's lightweight view: enough to render a sidebar row without
  * carrying the full brief text on every snapshot.
  */
-export type ArcSummary = { id: string; name: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; memberCount: number; updatedAt: string;
+export type ArcSummary = { id: string; name: string; state: ArcState; homeProjectId: string; coordinatorSessionId: string | null; dir: string; memberCount: number; updatedAt: string; archivedAt: string | null;
 /**
  * When the newest timeline row was recorded, so an open Arc page knows
  * to refetch its timeline.

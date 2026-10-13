@@ -168,7 +168,8 @@ See [memory.md](memory.md).
 
 ## Arcs
 
-`arc:create`, `arc:list`, `arc:get`, `arc:update`, `arc:set-state`, and
+`arc:create`, `arc:list`, `arc:get`, `arc:update`, `arc:set-state`,
+`arc:set-archived`, and
 `arc:launch-coordinator` manage Arcs through `ipc/arcs.rs`, backed by
 `persistence/arcs.rs` and, for the launch, `arcs::launch_coordinator`.
 `arc:create` takes `{ name, brief, homeProjectId, dir? }`; an absolute `dir`
@@ -176,7 +177,8 @@ must already exist and its `BRIEF.md`/`NOTES.md` are never overwritten, while
 an omitted `dir` gets a fresh one under the app data dir. `arc:update` takes
 `{ id, name?, brief? }` — a new brief rewrites `BRIEF.md` in place.
 `arc:set-state` takes `{ id, state }` with `state` one of `active` / `paused`
-/ `done`. All nine are available over the remote bridge. Mutations call
+/ `done`. `arc:set-archived` takes `{ id, archived }`: archiving marks the Arc
+done first, and unarchiving leaves it done. All ten are available over the remote bridge. Mutations call
 `publish_dashboard_changed`, which sets `dashboardChanged` on the next
 `dashboard:delta` so `dashboard:list`'s `arcs` summaries refresh; there is no
 focused `arc:*` push channel the way `goal:*` has one.

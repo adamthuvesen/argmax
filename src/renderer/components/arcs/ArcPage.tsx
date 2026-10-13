@@ -93,7 +93,8 @@ function demoDetail(snapshot: DashboardSnapshot, arcId: string): ArcDetail | nul
       coordinatorSessionId: summary.coordinatorSessionId,
       dir: summary.dir,
       createdAt: summary.updatedAt,
-      updatedAt: summary.updatedAt
+      updatedAt: summary.updatedAt,
+      archivedAt: summary.archivedAt
     },
     members,
     membersTruncated: false,
@@ -334,6 +335,21 @@ export function ArcPage({
     [arc, applyArc]
   );
 
+  const handleSetArchived = useCallback(
+    async (archived: boolean): Promise<void> => {
+      if (!arc || !window.argmax) return;
+      setBusy(true);
+      try {
+        applyArc(await window.argmax.arcs.setArchived({ id: arc.id, archived }));
+      } catch (error) {
+        showErrorToast(errorMessage(error, "Could not update the arc."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [arc, applyArc]
+  );
+
   const handleSaveName = useCallback(async (): Promise<void> => {
     if (!arc || !window.argmax) return;
     const trimmed = nameDraft.trim();
@@ -453,10 +469,19 @@ export function ArcPage({
             </h1>
           )}
           <div className="arc-hero-actions">
-            {isDone ? (
-              <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
-                Reopen
+            {arc.archivedAt ? (
+              <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetArchived(false)}>
+                Unarchive
               </button>
+            ) : isDone ? (
+              <>
+                <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
+                  Reopen
+                </button>
+                <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetArchived(true)}>
+                  Archive
+                </button>
+              </>
             ) : (
               <>
                 {arc.state === "active" ? (
@@ -477,7 +502,7 @@ export function ArcPage({
         </div>
         <p className="arc-hero-meta">
           <span className="arc-hero-state" data-arc-state={arc.state}>
-            {ARC_STATE_LABEL[arc.state]}
+            {arc.archivedAt ? "Archived" : ARC_STATE_LABEL[arc.state]}
           </span>
           <span aria-hidden="true"> · </span>
           {project ? project.name : "Unknown project"}

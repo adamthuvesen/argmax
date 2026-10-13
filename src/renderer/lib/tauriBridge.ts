@@ -377,6 +377,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       get: (input) => invokeCommand("arc:get", input),
       update: (input) => invokeCommand("arc:update", input),
       setState: (input) => invokeCommand("arc:set-state", input),
+      setArchived: (input) => invokeCommand("arc:set-archived", input),
       launchCoordinator: (input) => invokeCommand("arc:launch-coordinator", input),
       timeline: (input) => invokeCommand("arc:timeline", input),
       draftFromSession: (input) => invokeCommand("arc:draft-from-session", input),

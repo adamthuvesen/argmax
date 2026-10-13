@@ -77,6 +77,7 @@ arc:list
 arc:get
 arc:update
 arc:set-state
+arc:set-archived
 arc:launch-coordinator
 arc:timeline
 arc:draft-from-session

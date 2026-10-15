@@ -16,6 +16,11 @@ const VERCEL_PLAN_LABEL: &str = "Vercel AI Gateway";
 
 pub fn fetch(source: &dyn RemainingSource) -> UsageProviderRemaining {
     let (gateway, saved_key) = source.opencode_gateway();
+    // A saved key that cannot be read must not fall back to another account's.
+    let saved_key = match saved_key {
+        Ok(saved_key) => saved_key,
+        Err(error) => return UsageProviderRemaining::error(ProviderId::Opencode, error),
+    };
     match gateway {
         OpencodeGateway::Openrouter => fetch_openrouter(source, saved_key),
         OpencodeGateway::Vercel => fetch_vercel(source, saved_key),
@@ -213,9 +218,27 @@ mod tests {
             200,
             json!({ "data": { "limit": 10, "limit_remaining": 5, "usage": 5 } }),
         );
-        source.opencode_key = Some("sk-or-v1-saved-in-argmax".into());
+        source.opencode_key = Ok(Some("sk-or-v1-saved-in-argmax".into()));
         let row = fetch(&source);
         assert_eq!(row.kind, UsagePlanKind::Subscription);
+    }
+
+    #[test]
+    fn an_unreadable_saved_key_is_an_error_not_a_fallback() {
+        let dir = tempfile::tempdir().expect("temp");
+        let mut source = FakeSource::new(dir.path().to_path_buf()).with_http(
+            USAGE_URL,
+            200,
+            json!({ "data": { "limit": 10, "limit_remaining": 5, "usage": 5 } }),
+        );
+        source.opencode_key =
+            Err("Could not read the OpenRouter API key from the Keychain.".into());
+        let row = fetch(&source);
+        assert_eq!(row.kind, UsagePlanKind::Error);
+        assert_eq!(
+            row.message.as_deref(),
+            Some("Could not read the OpenRouter API key from the Keychain.")
+        );
     }
 
     #[test]
@@ -227,7 +250,7 @@ mod tests {
             json!({ "balance": "95.50", "total_used": "4.50" }),
         );
         source.opencode_gateway = OpencodeGateway::Vercel;
-        source.opencode_key = Some("vck_0123456789abcdef".into());
+        source.opencode_key = Ok(Some("vck_0123456789abcdef".into()));
         let row = fetch(&source);
         assert_eq!(row.kind, UsagePlanKind::ApiKey);
         assert_eq!(row.plan_label.as_deref(), Some("Vercel AI Gateway"));

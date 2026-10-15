@@ -149,7 +149,10 @@ pub trait RemainingSource: Send + Sync {
     /// Official Codex remaining snapshot, if the app-server answered.
     fn codex_rate_limits(&self) -> Result<serde_json::Value, String>;
     /// The gateway OpenCode runs on, and the key Argmax holds for it.
-    fn opencode_gateway(&self) -> (OpencodeGateway, Option<String>);
+    /// The selected gateway and the key Argmax saved for it. `Err` is a
+    /// Keychain that could not be read, which must not fall back to another
+    /// account's key.
+    fn opencode_gateway(&self) -> (OpencodeGateway, Result<Option<String>, String>);
 }
 
 pub struct LiveRemainingSource {
@@ -213,10 +216,13 @@ impl RemainingSource for LiveRemainingSource {
         codex::fetch_app_server_rate_limits(&self.home)
     }
 
-    fn opencode_gateway(&self) -> (OpencodeGateway, Option<String>) {
-        // `stored` is fenced in verification mode.
+    fn opencode_gateway(&self) -> (OpencodeGateway, Result<Option<String>, String>) {
+        // `read` is fenced in verification mode.
         let gateway = crate::providers::opencode_gateway::selected();
-        (gateway, gateway.key().stored())
+        (
+            gateway,
+            gateway.key().read().map_err(|error| error.to_string()),
+        )
     }
 }
 
@@ -314,7 +320,7 @@ pub mod tests {
         pub keychain: HashMap<String, String>,
         pub codex_limits: Result<serde_json::Value, String>,
         pub opencode_gateway: OpencodeGateway,
-        pub opencode_key: Option<String>,
+        pub opencode_key: Result<Option<String>, String>,
     }
 
     impl FakeSource {
@@ -326,7 +332,7 @@ pub mod tests {
                 keychain: HashMap::new(),
                 codex_limits: Err("no app-server".into()),
                 opencode_gateway: OpencodeGateway::Openrouter,
-                opencode_key: None,
+                opencode_key: Ok(None),
             }
         }
 
@@ -363,7 +369,7 @@ pub mod tests {
             self.codex_limits.clone()
         }
 
-        fn opencode_gateway(&self) -> (OpencodeGateway, Option<String>) {
+        fn opencode_gateway(&self) -> (OpencodeGateway, Result<Option<String>, String>) {
             (self.opencode_gateway, self.opencode_key.clone())
         }
     }

@@ -1353,6 +1353,22 @@ export function Sidebar({
           <span className="rail-nav-label">New chat</span>
           <kbd aria-hidden="true">⌘N</kbd>
         </button>
+        {/* With no arcs there is no Arcs header to carry its "+", so New arc
+            sits beside New chat as the other way to start work. */}
+        {showArcs && arcs.length === 0 ? (
+          <button
+            className="rail-nav-item"
+            type="button"
+            title="New arc"
+            aria-label="New arc"
+            onClick={() => setNewArcDialogOpen(true)}
+          >
+            <span className="rail-nav-glyph" aria-hidden="true">
+              <Plus size={14} />
+            </span>
+            <span className="rail-nav-label">New arc</span>
+          </button>
+        ) : null}
         <button
           className="rail-nav-item"
           type="button"
@@ -1417,16 +1433,7 @@ export function Sidebar({
         ) : null}
         {/* Arcs sit above everything else: a body of work spanning several
             projects doesn't belong nested under any one of them. */}
-        {showArcs ? (arcs.length > 0 ? arcsSection : (
-          <button
-            className="rail-nav-item"
-            type="button"
-            onClick={() => setNewArcDialogOpen(true)}
-          >
-            <span className="rail-nav-glyph" aria-hidden="true"><Plus size={14} /></span>
-            <span className="rail-nav-label">New arc</span>
-          </button>
-        )) : null}
+        {showArcs && arcs.length > 0 ? arcsSection : null}
         {/* Pinned sits at the very top, above Priority: a pin is a standing
             user choice, while Priority is transient triage. */}
         {pinnedWorkspaces.length > 0 ? (

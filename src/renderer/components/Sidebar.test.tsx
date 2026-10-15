@@ -2346,7 +2346,10 @@ describe("Sidebar — Arcs section", () => {
     for (const label of ["Arcs", "Pinned", "Priority"]) {
       expect(screen.queryByText(label)).toBeNull();
     }
-    fireEvent.click(screen.getByRole("button", { name: "New arc" }));
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const navButtons = within(nav).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+    expect(navButtons.slice(0, 2)).toEqual(["New chat", "New arc"]);
+    fireEvent.click(within(nav).getByRole("button", { name: "New arc" }));
     expect(screen.getByRole("dialog", { name: "New arc" })).toBeInTheDocument();
   });
 

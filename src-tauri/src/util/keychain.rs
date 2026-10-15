@@ -77,6 +77,19 @@ impl KeychainSecret {
             self.service,
             keychain_account()
         ))?;
+        // `security -i` can report a failed add (a locked Keychain says "User
+        // interaction is not allowed") and still exit 0, so read the item back
+        // rather than trusting its stderr: a key only cached in memory would
+        // vanish at the next restart.
+        if read_keychain(self.service) != Some(Some(api_key.to_string())) {
+            return Err(ArgmaxError::service(
+                self.failed_code,
+                format!(
+                    "Could not save the {} to the Keychain. Unlock it and try again.",
+                    self.name
+                ),
+            ));
+        }
         *self.lock() = Some(Some(api_key.to_string()));
         Ok(())
     }

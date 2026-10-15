@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
 
-use crate::error::ArgmaxResult;
+use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::{sqlite_error, time::now_iso};
 use crate::util::keychain::KeychainSecret;
 
@@ -139,6 +139,43 @@ impl OpencodeGateway {
             provider["options"] = json!({ "apiKey": api_key });
         }
         json!({ "provider": { self.provider_id(): provider } })
+    }
+}
+
+/// Proves a key works with one authenticated read: OpenRouter's key endpoint
+/// or Vercel's credit balance, the same reads the Usage page makes. A
+/// rejection and an unreachable gateway both refuse the save, with different
+/// words, so a typo never reaches a turn.
+pub fn check_key(gateway: OpencodeGateway, api_key: &str) -> ArgmaxResult<()> {
+    let (url, name) = match gateway {
+        OpencodeGateway::Openrouter => (crate::usage::remaining::opencode::USAGE_URL, "OpenRouter"),
+        OpencodeGateway::Vercel => (
+            crate::usage::remaining::opencode::VERCEL_CREDITS_URL,
+            "Vercel AI Gateway",
+        ),
+    };
+    // The Keychain is fenced too, so the save fails there with its own words.
+    if super::verification::requested() {
+        return Ok(());
+    }
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(10))
+        .build();
+    match agent
+        .get(url)
+        .set("Authorization", &format!("Bearer {api_key}"))
+        .set("Accept", "application/json")
+        .call()
+    {
+        Ok(_) => Ok(()),
+        Err(ureq::Error::Status(401 | 403, _)) => Err(ArgmaxError::service(
+            "OPENCODE_GATEWAY_KEY_REJECTED",
+            format!("{name} rejected that key, so it was not saved."),
+        )),
+        Err(error) => Err(ArgmaxError::service(
+            "OPENCODE_GATEWAY_KEY_UNVERIFIED",
+            format!("Could not check the key with {name}, so it was not saved: {error}"),
+        )),
     }
 }
 

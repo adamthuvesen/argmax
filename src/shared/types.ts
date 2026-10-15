@@ -12,6 +12,8 @@ export type WindowSnapshotStatus = Bindings.WindowSnapshotStatus;
 export type DatabaseStats = Bindings.DatabaseStats;
 export type AgentToolsSettings = Bindings.AgentToolsSettings;
 export type RoutingSettings = Bindings.RoutingSettings;
+export type OpencodeGateway = Bindings.OpencodeGateway;
+export type OpencodeGatewaySettings = Bindings.OpencodeGatewaySettings;
 export type ProjectCheckMode = Bindings.ProjectCheckMode;
 export type ProjectCheck = Bindings.ProjectCheck;
 export type ProjectCheckOutcome = Bindings.ProjectCheckOutcome;
@@ -713,6 +715,11 @@ export interface ArgmaxApi {
     setRoutingKey: (input: { apiKey: string }) => Promise<RoutingSettings>;
     clearRoutingKey: () => Promise<RoutingSettings>;
     setProjectCheck: (input: { mode: ProjectCheckMode }) => Promise<RoutingSettings>;
+    /** Which gateway OpenCode runs on, and the keys saved for each. */
+    opencodeGateway: () => Promise<OpencodeGatewaySettings>;
+    setOpencodeGateway: (input: Bindings.SetOpencodeGatewayInput) => Promise<OpencodeGatewaySettings>;
+    setOpencodeGatewayKey: (input: Bindings.SetOpencodeGatewayKeyInput) => Promise<OpencodeGatewaySettings>;
+    clearOpencodeGatewayKey: (input: Bindings.ClearOpencodeGatewayKeyInput) => Promise<OpencodeGatewaySettings>;
     /** The app-wide branch template for new isolated workspaces. */
     branchTemplate: () => Promise<Bindings.BranchTemplateSettings>;
     setBranchTemplate: (input: Bindings.SetBranchTemplateInput) => Promise<Bindings.BranchTemplateSettings>;

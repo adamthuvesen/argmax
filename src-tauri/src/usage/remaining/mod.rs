@@ -22,7 +22,7 @@ mod codex;
 mod cursor;
 mod grok;
 mod http;
-mod opencode;
+pub(crate) mod opencode;
 #[cfg(feature = "verification")]
 pub mod verification;
 mod windows;

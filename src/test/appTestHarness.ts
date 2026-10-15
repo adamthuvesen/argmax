@@ -649,6 +649,10 @@ export function setupAppTestMocks(): void {
       setRoutingKey: () => Promise.reject(new Error("Routing key not stubbed")),
       clearRoutingKey: () => Promise.resolve({ enabled: false, projectCheck: "switch" }),
       setProjectCheck: ({ mode }) => Promise.resolve({ enabled: false, projectCheck: mode }),
+      opencodeGateway: () => Promise.resolve({ gateway: "openrouter" }),
+      setOpencodeGateway: ({ gateway }) => Promise.resolve({ gateway }),
+      setOpencodeGatewayKey: () => Promise.reject(new Error("Gateway key not stubbed")),
+      clearOpencodeGatewayKey: () => Promise.resolve({ gateway: "openrouter" }),
       branchTemplate: () => Promise.resolve({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
       setBranchTemplate: ({ template }) =>
         Promise.resolve({ template, defaultTemplate: "argmax/{word}-{id}" }),

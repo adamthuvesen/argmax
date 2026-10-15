@@ -54,6 +54,10 @@ settings:routing
 settings:set-project-check
 settings:set-routing-key
 settings:clear-routing-key
+settings:opencode-gateway
+settings:set-opencode-gateway
+settings:set-opencode-gateway-key
+settings:clear-opencode-gateway-key
 settings:preview-chat-cleanup
 settings:delete-old-chats
 window-snapshot:status

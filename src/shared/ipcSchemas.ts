@@ -60,6 +60,10 @@ export const IPC_CHANNELS = [
   "settings:set-project-check",
   "settings:set-routing-key",
   "settings:clear-routing-key",
+  "settings:opencode-gateway",
+  "settings:set-opencode-gateway",
+  "settings:set-opencode-gateway-key",
+  "settings:clear-opencode-gateway-key",
   "settings:preview-chat-cleanup",
   "settings:delete-old-chats",
   "window-snapshot:status",
@@ -267,6 +271,10 @@ export interface IpcCommands {
   "settings:set-project-check": Commands["settingsSetProjectCheck"];
   "settings:set-routing-key": Commands["settingsSetRoutingKey"];
   "settings:clear-routing-key": Commands["settingsClearRoutingKey"];
+  "settings:opencode-gateway": Commands["settingsOpencodeGateway"];
+  "settings:set-opencode-gateway": Commands["settingsSetOpencodeGateway"];
+  "settings:set-opencode-gateway-key": Commands["settingsSetOpencodeGatewayKey"];
+  "settings:clear-opencode-gateway-key": Commands["settingsClearOpencodeGatewayKey"];
   "settings:preview-chat-cleanup": Commands["settingsPreviewChatCleanup"];
   "settings:delete-old-chats": Commands["settingsDeleteOldChats"];
   "window-snapshot:status": Commands["windowSnapshotStatus"];

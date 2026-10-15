@@ -449,6 +449,10 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       setRoutingKey: (input) => invokeCommand("settings:set-routing-key", input),
       clearRoutingKey: () => invokeCommand("settings:clear-routing-key"),
       setProjectCheck: (input) => invokeCommand("settings:set-project-check", input),
+      opencodeGateway: () => invokeCommand("settings:opencode-gateway"),
+      setOpencodeGateway: (input) => invokeCommand("settings:set-opencode-gateway", input),
+      setOpencodeGatewayKey: (input) => invokeCommand("settings:set-opencode-gateway-key", input),
+      clearOpencodeGatewayKey: (input) => invokeCommand("settings:clear-opencode-gateway-key", input),
       branchTemplate: () => invokeCommand("settings:branch-template"),
       setBranchTemplate: (input) => invokeCommand("settings:set-branch-template", input),
       setBrowserTools: (input) =>

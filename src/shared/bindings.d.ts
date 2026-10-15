@@ -465,6 +465,45 @@ async settingsClearRoutingKey() : Promise<Result<RoutingSettings, ArgmaxError>> 
     else return { status: "error", error: e  as any };
 }
 },
+async settingsOpencodeGateway() : Promise<Result<OpencodeGatewaySettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_opencode_gateway") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Takes effect on the next launch, like every launch setting.
+ */
+async settingsSetOpencodeGateway(input: SetOpencodeGatewayInput) : Promise<Result<OpencodeGatewaySettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_opencode_gateway", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Saves a gateway key after one authenticated read proves the gateway takes
+ * it, so a typo is reported here rather than as a failed turn.
+ */
+async settingsSetOpencodeGatewayKey(input: SetOpencodeGatewayKeyInput) : Promise<Result<OpencodeGatewaySettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_set_opencode_gateway_key", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async settingsClearOpencodeGatewayKey(input: ClearOpencodeGatewayKeyInput) : Promise<Result<OpencodeGatewaySettings, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("settings_clear_opencode_gateway_key", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async settingsPreviewChatCleanup() : Promise<Result<ChatCleanupPreview, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("settings_preview_chat_cleanup") };
@@ -2152,6 +2191,7 @@ export type ChromeHistoryEntry = { url: string; title: string | null; visitedAt:
 export type ChromeHistoryImport = { entries: ChromeHistoryEntry[]; totalAvailable: number }
 export type ChromeProfile = { id: string; name: string }
 export type ChromeProfilesInput = Record<string, never>
+export type ClearOpencodeGatewayKeyInput = { gateway: OpencodeGateway }
 export type CloudEnvironment = { id: string; name: string }
 export type CloudHandoffPreview = { provider: CloudProvider; repository: string; branch: string; commit: string; brief: string; environments: CloudEnvironment[]; environmentDescription: string; environmentId: string }
 export type CloudHandoffResult = { url: string; warning?: string | null }
@@ -2459,6 +2499,12 @@ export type NumericSummary = { median: number; p95: number; peak: number }
 export type OpenFileApp = "finder" | "vscode" | "cursor" | "windsurf" | "zed"
 export type OpenIdeChoice = "default" | "vscode" | "cursor" | "windsurf" | "zed" | "terminal" | "iterm"
 export type OpenPath = string
+export type OpencodeGateway = "openrouter" | "vercel"
+/**
+ * Which gateway OpenCode runs on, and which keys Argmax holds for each.
+ * A gateway without a key here falls back to OpenCode's own login.
+ */
+export type OpencodeGatewaySettings = { gateway: OpencodeGateway; openrouterKeyHint?: string | null; vercelKeyHint?: string | null }
 export type PageExtraction = { tabId?: string; url: string; title: string; state?: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; items?: PageItem[]; fields?: PageField[]; truncated: boolean }
 export type PageField = { name: string; value: string; role: string; ref?: string | null }
 export type PageFindResult = { tabId: string; matches: FoundElement[] }
@@ -3106,6 +3152,8 @@ export type SetBranchTemplateInput = {
  */
 template: string | null }
 export type SetBrowserToolsInput = { enabled: boolean }
+export type SetOpencodeGatewayInput = { gateway: OpencodeGateway }
+export type SetOpencodeGatewayKeyInput = { gateway: OpencodeGateway; apiKey: string }
 export type SetProjectCheckInput = { mode: ProjectCheckMode }
 export type SetRoutingKeyInput = { apiKey: string }
 export type SettingsRoutingInput = Record<string, never>

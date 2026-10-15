@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::ipc::validation::ProviderId;
+use crate::providers::opencode_gateway::OpencodeGateway;
 use crate::sync::home_dir;
 use crate::util::login_shell;
 
@@ -21,7 +22,7 @@ mod codex;
 mod cursor;
 mod grok;
 mod http;
-mod opencode;
+pub(crate) mod opencode;
 #[cfg(feature = "verification")]
 pub mod verification;
 mod windows;
@@ -147,6 +148,11 @@ pub trait RemainingSource: Send + Sync {
     fn keychain_password(&self, service: &str) -> Option<String>;
     /// Official Codex remaining snapshot, if the app-server answered.
     fn codex_rate_limits(&self) -> Result<serde_json::Value, String>;
+    /// The gateway OpenCode runs on, and the key Argmax holds for it.
+    /// The selected gateway and the key Argmax saved for it. `Err` is a
+    /// Keychain that could not be read, which must not fall back to another
+    /// account's key.
+    fn opencode_gateway(&self) -> (OpencodeGateway, Result<Option<String>, String>);
 }
 
 pub struct LiveRemainingSource {
@@ -208,6 +214,15 @@ impl RemainingSource for LiveRemainingSource {
             return Err("Live remaining usage is disabled in verification mode.".into());
         }
         codex::fetch_app_server_rate_limits(&self.home)
+    }
+
+    fn opencode_gateway(&self) -> (OpencodeGateway, Result<Option<String>, String>) {
+        // `read` is fenced in verification mode.
+        let gateway = crate::providers::opencode_gateway::selected();
+        (
+            gateway,
+            gateway.key().read().map_err(|error| error.to_string()),
+        )
     }
 }
 
@@ -304,6 +319,8 @@ pub mod tests {
         pub http: Mutex<HashMap<String, HttpAnswer>>,
         pub keychain: HashMap<String, String>,
         pub codex_limits: Result<serde_json::Value, String>,
+        pub opencode_gateway: OpencodeGateway,
+        pub opencode_key: Result<Option<String>, String>,
     }
 
     impl FakeSource {
@@ -314,6 +331,8 @@ pub mod tests {
                 http: Mutex::new(HashMap::new()),
                 keychain: HashMap::new(),
                 codex_limits: Err("no app-server".into()),
+                opencode_gateway: OpencodeGateway::Openrouter,
+                opencode_key: Ok(None),
             }
         }
 
@@ -348,6 +367,10 @@ pub mod tests {
 
         fn codex_rate_limits(&self) -> Result<serde_json::Value, String> {
             self.codex_limits.clone()
+        }
+
+        fn opencode_gateway(&self) -> (OpencodeGateway, Result<Option<String>, String>) {
+            (self.opencode_gateway, self.opencode_key.clone())
         }
     }
 

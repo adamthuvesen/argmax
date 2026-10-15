@@ -15,6 +15,7 @@ import {
 import { CombinedModelSelector, type ProviderAvailability } from "../ModelSelector.js";
 import { WorkingNest } from "../WorkingNest.js";
 import { AutoRoutingSettings } from "./AutoRoutingSettings.js";
+import { OpencodeGatewaySettings } from "./OpencodeGatewaySettings.js";
 import {
   SettingGroup,
   SettingNote,
@@ -145,6 +146,8 @@ export function AgentsSettings({
       </SettingGroup>
 
       <AutoRoutingSettings routing={routing} onRoutingChange={onRoutingChange} />
+
+      <OpencodeGatewaySettings />
 
       <SettingGroup id="settings-permissions" label="Permissions">
         {defaultAgentSaveError ? (

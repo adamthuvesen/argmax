@@ -24,6 +24,7 @@ pub mod mcp_injection;
 pub mod measured_diffs;
 pub mod normalizer;
 pub mod one_shot;
+pub mod opencode_gateway;
 mod opencode_isolation;
 pub mod opencode_server;
 mod orphan_cleanup;

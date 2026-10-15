@@ -67,6 +67,25 @@ pub struct SetRoutingKeyInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetOpencodeGatewayInput {
+    pub gateway: crate::providers::opencode_gateway::OpencodeGateway,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SetOpencodeGatewayKeyInput {
+    pub gateway: crate::providers::opencode_gateway::OpencodeGateway,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClearOpencodeGatewayKeyInput {
+    pub gateway: crate::providers::opencode_gateway::OpencodeGateway,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetProjectCheckInput {
     pub mode: crate::persistence::app_settings::ProjectCheckMode,
 }

@@ -404,6 +404,18 @@ command_catalogue! {
     "settings:clear-routing-key" => settings::settings_clear_routing_key, desktop,
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 
+    "settings:opencode-gateway" => settings::settings_opencode_gateway, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "settings:set-opencode-gateway" => settings::settings_set_opencode_gateway, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "settings:set-opencode-gateway-key" => settings::settings_set_opencode_gateway_key, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "settings:clear-opencode-gateway-key" => settings::settings_clear_opencode_gateway_key, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
     "settings:preview-chat-cleanup" => settings::settings_preview_chat_cleanup, desktop,
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 

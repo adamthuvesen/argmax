@@ -8,8 +8,9 @@ use uuid::Uuid;
 
 use super::{
     inputs::{
-        DeleteOldChatsInput, SetBrowserToolsInput, SetProjectCheckInput, SetRoutingKeyInput,
-        SettingsRoutingInput,
+        ClearOpencodeGatewayKeyInput, DeleteOldChatsInput, SetBrowserToolsInput,
+        SetOpencodeGatewayInput, SetOpencodeGatewayKeyInput, SetProjectCheckInput,
+        SetRoutingKeyInput, SettingsRoutingInput,
     },
     live_database, read_off_main,
 };
@@ -22,6 +23,7 @@ use crate::persistence::app_settings::{
 use crate::persistence::chat_cleanup::{
     candidate_workspace_ids, delete_old_chats, eligible_session_ids, ChatCleanupPlan,
 };
+use crate::providers::opencode_gateway::{self, OpencodeGateway};
 use crate::state::AppState;
 use crate::util::sync::LockOrRecover;
 use crate::workspaces::lifecycle::ArchiveOutcome;
@@ -133,6 +135,83 @@ pub async fn settings_clear_routing_key(
 ) -> ArgmaxResult<RoutingSettings> {
     read_off_main(crate::routing::api_key::clear_key).await?;
     routing_settings(&state, None)
+}
+
+/// Which gateway OpenCode runs on, and which keys Argmax holds for each.
+/// A gateway without a key here falls back to OpenCode's own login.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct OpencodeGatewaySettings {
+    pub gateway: OpencodeGateway,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub openrouter_key_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vercel_key_hint: Option<String>,
+}
+
+async fn opencode_gateway_settings() -> ArgmaxResult<OpencodeGatewaySettings> {
+    // The first read of each key spawns `security`, so it stays off the main thread.
+    // A Keychain that cannot be read is an error, not "no key": showing an
+    // empty field would invite overwriting a key the launches still need.
+    read_off_main(|| {
+        let hint = |gateway: OpencodeGateway| -> ArgmaxResult<Option<String>> {
+            Ok(gateway
+                .key()
+                .read()?
+                .as_deref()
+                .map(crate::util::keychain::key_hint))
+        };
+        Ok(OpencodeGatewaySettings {
+            gateway: opencode_gateway::selected(),
+            openrouter_key_hint: hint(OpencodeGateway::Openrouter)?,
+            vercel_key_hint: hint(OpencodeGateway::Vercel)?,
+        })
+    })
+    .await
+}
+
+#[tauri::command(rename = "settings:opencode-gateway")]
+#[specta::specta]
+pub async fn settings_opencode_gateway() -> ArgmaxResult<OpencodeGatewaySettings> {
+    opencode_gateway_settings().await
+}
+
+/// Takes effect on the next launch, like every launch setting.
+#[tauri::command(rename = "settings:set-opencode-gateway")]
+#[specta::specta]
+pub async fn settings_set_opencode_gateway(
+    state: State<'_, AppState>,
+    input: SetOpencodeGatewayInput,
+) -> ArgmaxResult<OpencodeGatewaySettings> {
+    let database = live_database(&state)?;
+    read_off_main(move || opencode_gateway::select(&database.connection(), input.gateway)).await?;
+    opencode_gateway_settings().await
+}
+
+/// Saves a gateway key after one authenticated read proves the gateway takes
+/// it, so a typo is reported here rather than as a failed turn.
+#[tauri::command(rename = "settings:set-opencode-gateway-key")]
+#[specta::specta]
+pub async fn settings_set_opencode_gateway_key(
+    input: SetOpencodeGatewayKeyInput,
+) -> ArgmaxResult<OpencodeGatewaySettings> {
+    let gateway = input.gateway;
+    let api_key = gateway.key().validate_format(&input.api_key)?.to_string();
+    read_off_main(move || {
+        opencode_gateway::check_key(gateway, &api_key)?;
+        gateway.key().store(&api_key)
+    })
+    .await?;
+    opencode_gateway_settings().await
+}
+
+#[tauri::command(rename = "settings:clear-opencode-gateway-key")]
+#[specta::specta]
+pub async fn settings_clear_opencode_gateway_key(
+    input: ClearOpencodeGatewayKeyInput,
+) -> ArgmaxResult<OpencodeGatewaySettings> {
+    read_off_main(move || input.gateway.key().clear()).await?;
+    opencode_gateway_settings().await
 }
 
 #[tauri::command(rename = "settings:agent-tools")]

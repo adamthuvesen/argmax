@@ -95,7 +95,7 @@ export function AutoRoutingSettings({
               <>
                 <input
                   id="settings-routing-key"
-                  className="settings-text-input settings-routing-key-input"
+                  className="settings-text-input settings-key-input"
                   type="password"
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}

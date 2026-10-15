@@ -151,18 +151,20 @@ pub struct OpencodeGatewaySettings {
 
 async fn opencode_gateway_settings() -> ArgmaxResult<OpencodeGatewaySettings> {
     // The first read of each key spawns `security`, so it stays off the main thread.
+    // A Keychain that cannot be read is an error, not "no key": showing an
+    // empty field would invite overwriting a key the launches still need.
     read_off_main(|| {
-        let hint = |gateway: OpencodeGateway| {
-            gateway
+        let hint = |gateway: OpencodeGateway| -> ArgmaxResult<Option<String>> {
+            Ok(gateway
                 .key()
-                .stored()
+                .read()?
                 .as_deref()
-                .map(crate::util::keychain::key_hint)
+                .map(crate::util::keychain::key_hint))
         };
         Ok(OpencodeGatewaySettings {
             gateway: opencode_gateway::selected(),
-            openrouter_key_hint: hint(OpencodeGateway::Openrouter),
-            vercel_key_hint: hint(OpencodeGateway::Vercel),
+            openrouter_key_hint: hint(OpencodeGateway::Openrouter)?,
+            vercel_key_hint: hint(OpencodeGateway::Vercel)?,
         })
     })
     .await

@@ -193,8 +193,8 @@ Overrides on top of the grid:
   second model family checks the work. A Codex chat on Frontier heavy research
   still follows up on Astra.
 - **DeepSeek V4.1 Flash replaced Composer 2.5 on the mechanical cells
-  (2026-10-04).** It launches on OpenCode through OpenRouter, so it needs
-  OpenCode installed and an OpenRouter key; without OpenCode the route moves to
+  (2026-10-04).** It launches on OpenCode through the selected OpenCode gateway, so it needs
+  OpenCode installed and a key for that gateway; without OpenCode the route moves to
   the next installed provider. Raw API speed was measured (0.66 s to first token
   against Composer's 8.3 s through its CLI) at $0.15 in and $0.60 out per
   million tokens. No agent-task quality comparison exists yet. Its CLI takes low,

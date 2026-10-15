@@ -80,6 +80,10 @@ _Avoid_: Delete, close, clean up
 A coding-agent CLI Argmax drives — Claude Code, Codex, Cursor, OpenCode, or Grok Build. A provider is the program, not the model it runs.
 _Avoid_: Agent, CLI, tool, backend
 
+**OpenCode gateway**:
+The service OpenCode's models run through: OpenRouter or Vercel AI Gateway, chosen in Settings → Agents, each with an optional key Argmax keeps in the Keychain. Model ids stay OpenRouter's in the catalog and are mapped to the gateway at launch. A gateway is not a provider: the provider is still OpenCode.
+_Avoid_: Backend, OpenCode provider, proxy
+
 **Session**:
 One agent run inside one workspace: its provider, model, prompt, lifecycle state, token usage, and cost. The unit users think of as "a chat". A workspace holds exactly one — forking, importing, and agent-launched sessions all create a fresh workspace rather than a second session. The schema permits more, and peers launched into the same checkout do produce them, but nothing may rely on that: a workspace's chat is its most recently active session (`chatSessionByWorkspace`), and every surface must name the same one. This bounds identity, not parallelism: any number of sessions may run at once, each in its own workspace, including many against the same checkout and branch.
 _Avoid_: Conversation, chat, run, thread, agent

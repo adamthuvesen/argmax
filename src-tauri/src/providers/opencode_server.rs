@@ -95,7 +95,13 @@ pub async fn launch_turn(
     let mut environment = build_provider_environment(overrides);
     // One read per turn: the server's config and every prompt it is sent
     // name the same gateway even if Settings changes mid-turn.
-    let (gateway, gateway_config) = opencode_gateway::launch_config();
+    let (gateway, gateway_config) = match opencode_gateway::launch_config() {
+        Ok(launch) => launch,
+        Err(error) => {
+            launch_scratch.restore();
+            return Err(error);
+        }
+    };
     if let Err(error) = merge_launch_environment(&mut environment, mcp_environment)
         .and_then(|()| {
             merge_launch_environment(

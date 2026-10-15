@@ -170,10 +170,12 @@ pub fn selected() -> OpencodeGateway {
 }
 
 /// The selected gateway's inline config, with the key Argmax holds for it.
-pub fn launch_config() -> (OpencodeGateway, Value) {
+/// A Keychain that cannot be read fails the launch: an empty config would let
+/// OpenCode fall back to its own login and bill a different account.
+pub fn launch_config() -> ArgmaxResult<(OpencodeGateway, Value)> {
     let gateway = selected();
-    let key = gateway.key().stored();
-    (gateway, gateway.inline_config(key.as_deref()))
+    let key = gateway.key().read()?;
+    Ok((gateway, gateway.inline_config(key.as_deref())))
 }
 
 /// Reads the saved choice into the mirror. Called once the database opens; an

@@ -409,7 +409,7 @@ async fn ask_within(
     json_schema: Option<&str>,
 ) -> Option<String> {
     let command = if provider == ProviderId::Opencode {
-        let (gateway, config) = opencode_gateway::launch_config();
+        let (gateway, config) = opencode_gateway::launch_config().ok()?;
         let mut command = opencode_command(model_id, instruction, gateway);
         command.opencode_config = Some(config.to_string());
         command

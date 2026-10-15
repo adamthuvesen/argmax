@@ -1007,7 +1007,10 @@ impl ProviderSessionService {
                 session_id.clone(),
                 provider,
                 provider_invocation_id.clone(),
-                NormalizerSessionContext::for_provider(provider, input.model_id.as_str()),
+                NormalizerSessionContext::for_provider(
+                    provider,
+                    usage_model_id(provider, input.model_id.as_str()),
+                ),
             );
         self.mark_turn_start(&session_id, workspace_path.clone());
         self.handles
@@ -2056,7 +2059,7 @@ impl ProviderSessionService {
                 {
                     let context = NormalizerSessionContext::for_provider(
                         provider,
-                        launch_input.model_id.as_str(),
+                        usage_model_id(provider, launch_input.model_id.as_str()),
                     );
                     if provider == ProviderId::Codex
                         && launch_input.resume_conversation_id.is_some()
@@ -5180,6 +5183,17 @@ fn infer_cursor_provider_conversation_id(
 pub struct SendInputResult {
     pub ok: bool,
     pub queued: bool,
+}
+
+/// The id a turn's usage is recorded under. An OpenCode turn on Vercel names
+/// the model as Vercel does, matching what OpenCode stores, so its own cost
+/// figure (the bill there) is trusted rather than OpenRouter's table.
+fn usage_model_id(provider: ProviderId, model_id: &str) -> String {
+    if provider == ProviderId::Opencode {
+        super::opencode_gateway::selected().route_model_id(model_id)
+    } else {
+        model_id.to_string()
+    }
 }
 
 #[cfg(test)]

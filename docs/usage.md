@@ -88,8 +88,9 @@ prices those turns ([providers.md](providers.md#opencode)).
 Turns run on Vercel AI Gateway are recorded under OpenCode's own
 `vercel/<slug>` id and keep OpenCode's figure, which comes from Vercel's
 catalog rate; Vercel can bill by the host that served the turn, so treat it as
-an estimate too. A live chat prices its turns from the catalog id it launched
-with, so it uses the table whichever gateway ran it.
+an estimate too. A live chat records its turns under the same id (the
+catalog id routed to the selected gateway), so the Router card and the
+scanner agree on a Vercel turn.
 Cursor's figures, tokens and dollars alike, are estimates and read "≈"; when
 they are part of a larger total, the hero says how much ("≈$12.40 estimated
 for Cursor", from `UsageSummary::estimated_cost_usd` / `estimated_tokens`).

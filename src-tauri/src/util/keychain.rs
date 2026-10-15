@@ -41,9 +41,16 @@ impl KeychainSecret {
     }
 
     pub fn stored(&self) -> Option<String> {
+        self.read().ok().flatten()
+    }
+
+    /// The saved key, telling a failed read apart from no key. A caller that
+    /// would otherwise fall back to some other credential uses this, so a
+    /// locked Keychain fails the call instead of billing another account.
+    pub fn read(&self) -> ArgmaxResult<Option<String>> {
         // No key is the definite answer here, so nothing retries.
         if keychain_fenced() {
-            return None;
+            return Ok(None);
         }
         let mut cache = self.lock();
         if cache.is_none() {
@@ -52,10 +59,15 @@ impl KeychainSecret {
             // it would hide the key until the app restarted.
             match read_keychain(self.service) {
                 Some(found) => *cache = Some(found),
-                None => return None,
+                None => {
+                    return Err(ArgmaxError::service(
+                        self.failed_code,
+                        format!("Could not read the {} from the Keychain.", self.name),
+                    ))
+                }
             }
         }
-        cache.clone().flatten()
+        Ok(cache.clone().flatten())
     }
 
     pub fn store(&self, api_key: &str) -> ArgmaxResult<()> {

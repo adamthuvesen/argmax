@@ -73,11 +73,28 @@ impl KeychainSecret {
         if keychain_fenced() {
             return Ok(());
         }
-        // A missing item is already the state we want, so the exit code is moot.
-        let _ = Command::new("security")
+        let removal_error = |detail: String| {
+            ArgmaxError::service(
+                self.failed_code,
+                format!(
+                    "Could not remove the {} from the Keychain: {detail}",
+                    self.name
+                ),
+            )
+        };
+        let output = Command::new("security")
             .args(["delete-generic-password", "-s", self.service, "-a"])
             .arg(keychain_account())
-            .output();
+            .output()
+            .map_err(|error| removal_error(error.to_string()))?;
+        // 44 is a missing item, which is already the state we want. Anything
+        // else (a locked Keychain, denied access) leaves the key in place, so
+        // the cache keeps it and Settings keeps showing it.
+        if !output.status.success() && output.status.code() != Some(44) {
+            return Err(removal_error(
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            ));
+        }
         *self.lock() = Some(None);
         Ok(())
     }

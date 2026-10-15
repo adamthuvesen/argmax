@@ -66,11 +66,6 @@ const VERCEL_SLUGS: &[(&str, &str)] = &[
     ("meta/muse-wonder", "meta/muse-wonder-1.0"),
 ];
 
-/// MiniMax M2.7 is in the picker for its speed: Groq served it at 367 tok/s
-/// where its cheapest OpenRouter host ran near 50 (OpenRouter endpoint stats,
-/// 2026-10-04).
-const MINIMAX_M2_7: &str = "minimax/minimax-m2.7";
-
 impl OpencodeGateway {
     /// OpenCode's provider id for the gateway.
     pub fn provider_id(self) -> &'static str {
@@ -118,27 +113,15 @@ impl OpencodeGateway {
     }
 
     /// The gateway's part of OpenCode's inline config: its key, when Argmax
-    /// holds one, and the MiniMax host preference.
-    ///
-    /// On OpenRouter MiniMax is pinned to Groq with no fallbacks, so a Groq
-    /// outage fails the turn rather than quietly running it slowly. OpenCode
-    /// passes a model's `options` through as OpenRouter's `provider` routing
-    /// field. Vercel takes the same `options` as its gateway routing, but
-    /// whether Groq serves MiniMax there is not established, so it is only
-    /// preferred: a pin to a host that does not serve it would fail every turn.
+    /// holds one. Without one the config names nothing and OpenCode's own
+    /// login for the gateway applies.
     pub fn inline_config(self, api_key: Option<&str>) -> Value {
-        let minimax = match self {
-            Self::Openrouter => {
-                json!({ "options": { "provider": { "only": ["groq"], "allow_fallbacks": false } } })
+        match api_key {
+            Some(api_key) => {
+                json!({ "provider": { self.provider_id(): { "options": { "apiKey": api_key } } } })
             }
-            Self::Vercel => json!({ "options": { "order": ["groq"] } }),
-        };
-        let mut provider =
-            json!({ "models": { self.route(CATALOG_PROVIDER, MINIMAX_M2_7).1: minimax } });
-        if let Some(api_key) = api_key {
-            provider["options"] = json!({ "apiKey": api_key });
+            None => json!({}),
         }
-        json!({ "provider": { self.provider_id(): provider } })
     }
 }
 
@@ -275,10 +258,6 @@ mod tests {
                 "vercel/meta/muse-spark-1.3-contributor",
             ),
             ("openrouter/meta/muse-wonder", "vercel/meta/muse-wonder-1.0"),
-            (
-                "openrouter/minimax/minimax-m2.7",
-                "vercel/minimax/minimax-m2.7",
-            ),
         ] {
             assert_eq!(gateway.route_model_id(catalog), vercel, "{catalog}");
         }
@@ -293,27 +272,24 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_config_pins_minimax_to_groq_and_carries_the_key() {
+    fn a_saved_key_goes_in_the_gateways_options() {
         let config = OpencodeGateway::Openrouter.inline_config(Some("sk-or-v1-0123456789abcdef"));
-        let provider = &config["provider"]["openrouter"];
         assert_eq!(
-            provider["models"]["minimax/minimax-m2.7"]["options"]["provider"]["only"],
-            json!(["groq"])
+            config["provider"]["openrouter"]["options"]["apiKey"],
+            "sk-or-v1-0123456789abcdef"
         );
-        assert_eq!(provider["options"]["apiKey"], "sk-or-v1-0123456789abcdef");
         assert!(config["provider"].get("vercel").is_none());
+        let config = OpencodeGateway::Vercel.inline_config(Some("vck_0123456789abcdef"));
+        assert_eq!(
+            config["provider"]["vercel"]["options"]["apiKey"],
+            "vck_0123456789abcdef"
+        );
     }
 
     #[test]
-    fn vercel_config_prefers_groq_and_leaves_the_key_to_opencode_without_one() {
-        let config = OpencodeGateway::Vercel.inline_config(None);
-        let provider = &config["provider"]["vercel"];
-        assert_eq!(
-            provider["models"]["minimax/minimax-m2.7"]["options"]["order"],
-            json!(["groq"])
-        );
-        assert!(provider.get("options").is_none());
-        assert!(config["provider"].get("openrouter").is_none());
+    fn without_a_key_the_config_leaves_auth_to_opencode() {
+        assert_eq!(OpencodeGateway::Vercel.inline_config(None), json!({}));
+        assert_eq!(OpencodeGateway::Openrouter.inline_config(None), json!({}));
     }
 
     #[test]

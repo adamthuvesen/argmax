@@ -251,13 +251,12 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       contextWindow: 1_000_000
     }
   ],
-  // OpenCode runs every model through OpenRouter, on the OpenRouter key in
-  // OpenCode's own auth (`opencode auth login`). Ids keep the
-  // `openrouter/<vendor>/<model>` form the CLI's `-m` flag expects. Effort
-  // variants ride the CLI's `--variant` flag; keep the variant map in
-  // reasoningEffortsForModel and the Rust adapter in sync with these. No
-  // fast-mode control: MiniMax M2.7 is the fast model, pinned to Groq in the
-  // OpenCode server's inline config (openrouter_host_pins in opencode_server.rs).
+  // OpenCode runs every model through the OpenCode gateway chosen in Settings
+  // (OpenRouter or Vercel AI Gateway). Ids keep the
+  // `openrouter/<vendor>/<model>` form whatever the gateway; the launch maps
+  // them (opencode_gateway.rs). Effort variants ride the CLI's `--variant`
+  // flag; keep the variant map in reasoningEffortsForModel and the Rust
+  // adapter in sync with these. No fast-mode control.
   //
   // Muse Spark 1.3 Contributor is cheap because Meta trains on the prompts and
   // completions it sees, which is what "contributor" in its id means.
@@ -285,9 +284,7 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsReasoningEffort: true,
       contextWindow: 1_048_576
     },
-    { label: "Muse Wonder", modelId: "openrouter/meta/muse-wonder", supportsReasoningEffort: true, contextWindow: 1_048_576 },
-    // Groq's window, not the model's 204,800: the pin keeps it on Groq.
-    { label: "MiniMax M2.7 (Groq)", modelId: "openrouter/minimax/minimax-m2.7", contextWindow: 196_608 }
+    { label: "Muse Wonder", modelId: "openrouter/meta/muse-wonder", supportsReasoningEffort: true, contextWindow: 1_048_576 }
   ],
   // The picker offers Grok 4.7. It takes --reasoning-effort up to xhigh (the
   // CLI rejects max/ultra). Fast is the advertised SKU `grok-4.7-build-fast`.
@@ -415,7 +412,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // rates differ several-fold, and OpenCode's own `cost` is the catalog's
   // cheapest rate per field, which no host charges (about 20x low on a test
   // turn, 2026-10-04). So these are the model maker's own host rates on
-  // OpenRouter (Groq's for the pinned MiniMax): an estimate, not the bill.
+  // OpenRouter: an estimate, not the bill.
   // Cache writes bill as plain input. Keep in sync with the Rust pricing mirror.
   "openrouter/z-ai/glm-5.3-flash":              { input: 0.15,  output: 0.5,    cacheRead: 0.03,  cacheWrite: 0.15 },
   "openrouter/z-ai/glm-5.3":                    { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 1.4 },
@@ -426,8 +423,6 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   "openrouter/qwen/qwen3.8-flash":              { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
   "openrouter/meta/muse-spark-1.3-contributor": { input: 0.1,   output: 0.2,    cacheRead: 0.002, cacheWrite: 0.1 },
   "openrouter/meta/muse-wonder":                { input: 4,     output: 20,     cacheRead: 0.2,   cacheWrite: 4 },
-  // Groq offers no cached-input discount for this model.
-  "openrouter/minimax/minimax-m2.7":            { input: 0.6,   output: 1.8,    cacheRead: 0.6,   cacheWrite: 0.6 },
 
   // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
   // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list

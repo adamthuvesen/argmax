@@ -445,7 +445,7 @@ fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
 }
 
 // Reasoning-effort `--variant` for the OpenCode models that take one: every
-// OpenRouter model in the picker except MiniMax M2.7. Mirrors the variant map
+// OpenRouter model in the picker. Mirrors the variant map
 // in reasoningEffortsForModel (providerModels.ts). Clamps
 // unsupported efforts DOWN to the highest supported ≤ incoming; falls back to
 // the lowest supported.

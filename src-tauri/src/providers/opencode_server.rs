@@ -1763,7 +1763,8 @@ mod tests {
             OPENCODE_CONFIG_CONTENT.to_string(),
             json!({ "mcp": { "argmax": { "enabled": true } } }).to_string(),
         )];
-        let gateway_config = OpencodeGateway::Openrouter.inline_config(None);
+        let gateway_config =
+            OpencodeGateway::Openrouter.inline_config(Some("sk-or-v1-0123456789abcdef"));
         merge_launch_environment(
             &mut environment,
             vec![(
@@ -1775,9 +1776,8 @@ mod tests {
         let config: Value = serde_json::from_str(&environment[0].1).unwrap();
         assert_eq!(config["mcp"]["argmax"]["enabled"], true);
         assert_eq!(
-            config["provider"]["openrouter"]["models"]["minimax/minimax-m2.7"]["options"]
-                ["provider"],
-            json!({ "only": ["groq"], "allow_fallbacks": false })
+            config["provider"]["openrouter"]["options"]["apiKey"],
+            "sk-or-v1-0123456789abcdef"
         );
     }
 

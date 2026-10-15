@@ -60,10 +60,9 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "claude-opus-5-5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-sonnet-5-5-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
     "claude-opus-5-thinking-medium" => ModelPricing { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 },
-    // OpenCode via OpenRouter: the model maker's own host rate on OpenRouter
-    // (Groq's for the pinned MiniMax), an estimate rather than the bill. See
-    // `opencode_cost_is_billed` and the TS table for why. Cache writes bill as
-    // plain input; Groq gives MiniMax no cached-input discount.
+    // OpenCode via OpenRouter: the model maker's own host rate on OpenRouter,
+    // an estimate rather than the bill. See `opencode_cost_is_billed` and the
+    // TS table for why. Cache writes bill as plain input.
     "openrouter/z-ai/glm-5.3-flash" => ModelPricing { input: 0.15, output: 0.5, cache_read: 0.03, cache_write: 0.15 },
     "openrouter/z-ai/glm-5.3" => ModelPricing { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 1.4 },
     "openrouter/deepseek/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.15 },
@@ -73,7 +72,6 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     "openrouter/qwen/qwen3.8-flash" => ModelPricing { input: 0.15, output: 0.47, cache_read: 0.016, cache_write: 0.2 },
     "openrouter/meta/muse-spark-1.3-contributor" => ModelPricing { input: 0.1, output: 0.2, cache_read: 0.002, cache_write: 0.1 },
     "openrouter/meta/muse-wonder" => ModelPricing { input: 4.0, output: 20.0, cache_read: 0.2, cache_write: 4.0 },
-    "openrouter/minimax/minimax-m2.7" => ModelPricing { input: 0.6, output: 1.8, cache_read: 0.6, cache_write: 0.6 },
     // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
     // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
     // price (4.7 lists at $2 / $6; its SKU is 0.34x that). Every rate was solved
@@ -369,8 +367,13 @@ mod tests {
             ),
             4.5,
         );
-        // Groq charges MiniMax cached input at the full input rate.
-        let undiscounted = list_price("openrouter/minimax/minimax-m2.7").expect("known model");
+        // A host that charges cached input at the full input rate saves nothing.
+        let undiscounted = ModelPricing {
+            input: 0.6,
+            output: 1.8,
+            cache_read: 0.6,
+            cache_write: 0.6,
+        };
         assert_eq!(
             cache_savings(
                 &UsageRecordTokens {

@@ -10,7 +10,7 @@
 #[cfg(test)]
 use super::AgentMode;
 use super::{
-    adapters::get_provider_definition,
+    adapters::opencode_variant_args_on,
     environment::build_provider_environment,
     mcp_injection,
     normalizer::ProviderOutputStream,
@@ -401,7 +401,7 @@ fn prompt_body(input: &ProviderLaunchInput, gateway: OpencodeGateway) -> ArgmaxR
         "model": { "providerID": provider_id, "modelID": model_id },
         "parts": [{ "type": "text", "text": input.prompt }],
     });
-    if let Some(variant) = opencode_variant(input) {
+    if let Some(variant) = opencode_variant(input, gateway) {
         body["variant"] = Value::String(variant);
     }
     Ok(body)
@@ -1363,8 +1363,8 @@ fn deep_merge(target: &mut Value, incoming: Value) {
     }
 }
 
-fn opencode_variant(input: &ProviderLaunchInput) -> Option<String> {
-    let args = (get_provider_definition(ProviderId::Opencode).structured_args)(input, None);
+fn opencode_variant(input: &ProviderLaunchInput, gateway: OpencodeGateway) -> Option<String> {
+    let args = opencode_variant_args_on(&input.model_id, input.reasoning_effort, gateway);
     args.windows(2)
         .find(|pair| pair[0] == "--variant")
         .map(|pair| pair[1].clone())
@@ -1907,6 +1907,30 @@ mod tests {
         assert_eq!(body["model"]["providerID"], "vercel");
         assert_eq!(body["model"]["modelID"], "zai/glm-5.3-flash");
         assert_eq!(body["variant"], "high");
+    }
+
+    #[test]
+    fn qwen_variants_follow_vercels_ladder_on_vercel() {
+        let mut qwen = input(PermissionMode::AutoApprove, AgentMode::Auto);
+        qwen.model_id = "openrouter/qwen/qwen3.8-flash".into();
+        qwen.reasoning_effort = Some(super::super::ReasoningEffort::Max);
+        assert_eq!(
+            prompt_body(&qwen, OpencodeGateway::Openrouter).unwrap()["variant"],
+            "max"
+        );
+        assert_eq!(
+            prompt_body(&qwen, OpencodeGateway::Vercel).unwrap()["variant"],
+            "xhigh"
+        );
+        qwen.reasoning_effort = Some(super::super::ReasoningEffort::High);
+        assert_eq!(
+            prompt_body(&qwen, OpencodeGateway::Openrouter).unwrap()["variant"],
+            "high"
+        );
+        assert_eq!(
+            prompt_body(&qwen, OpencodeGateway::Vercel).unwrap()["variant"],
+            "medium"
+        );
     }
 
     #[test]

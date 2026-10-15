@@ -21,7 +21,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use super::{
-    adapters::{get_provider_definition, opencode_variant_args},
+    adapters::{get_provider_definition, opencode_variant_args_on},
     environment::build_provider_environment,
     opencode_gateway::{self, OpencodeGateway},
     opencode_isolation::IsolatedOpenCodeData,
@@ -599,7 +599,11 @@ fn opencode_command(model_id: &str, instruction: &str, gateway: OpencodeGateway)
         "-m".into(),
         gateway.route_model_id(model_id),
     ];
-    args.extend(opencode_variant_args(model_id, Some(ReasoningEffort::Low)));
+    args.extend(opencode_variant_args_on(
+        model_id,
+        Some(ReasoningEffort::Low),
+        gateway,
+    ));
     args.extend(["--".into(), instruction.into()]);
     OneShotCommand {
         args,

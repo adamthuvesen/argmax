@@ -1,3 +1,4 @@
+use super::opencode_gateway::OpencodeGateway;
 #[cfg(test)]
 use super::AgentMode;
 use super::{
@@ -453,11 +454,32 @@ pub(crate) fn opencode_variant_args(
     model_id: &str,
     effort: Option<ReasoningEffort>,
 ) -> Vec<String> {
+    opencode_variant_args_on(model_id, effort, OpencodeGateway::Openrouter)
+}
+
+/// The same `--variant` for a turn on `gateway`. Vercel AI Gateway offers the
+/// Qwen models a different ladder (low, medium, xhigh in its `/v1/models`
+/// catalog, 2026-10-15); every other model keeps OpenRouter's.
+pub(crate) fn opencode_variant_args_on(
+    model_id: &str,
+    effort: Option<ReasoningEffort>,
+    gateway: OpencodeGateway,
+) -> Vec<String> {
     let effort = match effort {
         Some(e) => e,
         None => return Vec::new(),
     };
+    const VERCEL_QWEN: &[ReasoningEffort] = &[
+        ReasoningEffort::Low,
+        ReasoningEffort::Medium,
+        ReasoningEffort::Xhigh,
+    ];
     let supported = match model_id {
+        "openrouter/qwen/qwen3.8-max-0902" | "openrouter/qwen/qwen3.8-flash"
+            if gateway == OpencodeGateway::Vercel =>
+        {
+            VERCEL_QWEN
+        }
         "openrouter/z-ai/glm-5.3-flash"
         | "openrouter/z-ai/glm-5.3"
         | "openrouter/deepseek/deepseek-v4.1-flash"

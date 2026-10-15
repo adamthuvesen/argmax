@@ -23,7 +23,9 @@ use tokio::process::Command;
 use super::{
     adapters::{get_provider_definition, opencode_variant_args},
     environment::build_provider_environment,
+    opencode_gateway::{self, OpencodeGateway},
     opencode_isolation::IsolatedOpenCodeData,
+    opencode_server::merge_launch_environment,
     ProviderId, ReasoningEffort,
 };
 use crate::goals::GoalVerdict;
@@ -406,7 +408,14 @@ async fn ask_within(
     instruction: &str,
     json_schema: Option<&str>,
 ) -> Option<String> {
-    let command = one_shot_command(provider, model_id, instruction, json_schema);
+    let command = if provider == ProviderId::Opencode {
+        let (gateway, config) = opencode_gateway::launch_config();
+        let mut command = opencode_command(model_id, instruction, gateway);
+        command.opencode_config = Some(config.to_string());
+        command
+    } else {
+        one_shot_command(provider, model_id, instruction, json_schema)
+    };
     let raw = run_capture(timeout, provider, command).await?;
     extract_answer(provider, &raw)
 }
@@ -448,6 +457,8 @@ struct OneShotCommand {
     /// `Some` when the prompt is delivered on stdin (Codex); `None` when it is
     /// carried as a positional arg after `--` (Claude/Cursor).
     stdin: Option<String>,
+    /// OpenCode's gateway config, merged into `OPENCODE_CONFIG_CONTENT`.
+    opencode_config: Option<String>,
 }
 
 /// Minimal, no-bypass invocation per provider. Deliberately separate from the
@@ -483,6 +494,7 @@ fn one_shot_command(
                 instruction.into(),
             ],
             stdin: None,
+            opencode_config: None,
         },
         // Cursor has no no-tools switch for `agent -p`; `--mode ask` keeps it in
         // read-only Q&A behavior and `--sandbox enabled` prevents shell writes.
@@ -504,6 +516,7 @@ fn one_shot_command(
                 instruction.into(),
             ],
             stdin: None,
+            opencode_config: None,
         },
         // `--json` gives a parseable event stream (plain `exec` stdout mixes in
         // chrome). `--sandbox read-only` blocks writes, `--ephemeral` prevents
@@ -526,24 +539,10 @@ fn one_shot_command(
                 "-".into(),
             ],
             stdin: Some(instruction.to_string()),
+            opencode_config: None,
         },
-        // OpenCode has no no-tools switch; the built-in `plan` agent is
-        // read-only, which is the closest lockdown. `--format json` gives a
-        // parseable event stream and the last `text` part carries the answer.
-        // The lowest effort the model offers: a title needs no thinking.
         ProviderId::Opencode => {
-            let mut args: Vec<String> = vec![
-                "run".into(),
-                "--format".into(),
-                "json".into(),
-                "--agent".into(),
-                "plan".into(),
-                "-m".into(),
-                model_id.into(),
-            ];
-            args.extend(opencode_variant_args(model_id, Some(ReasoningEffort::Low)));
-            args.extend(["--".into(), instruction.into()]);
-            OneShotCommand { args, stdin: None }
+            opencode_command(model_id, instruction, opencode_gateway::selected())
         }
         // `--tools ""` is not enough: Grok's stock profile injects `read_file`
         // first and treats an empty allowlist as unset. `--disallowed-tools`
@@ -576,8 +575,36 @@ fn one_shot_command(
             if let Some(schema) = json_schema {
                 args.extend(["--json-schema".into(), schema.into()]);
             }
-            OneShotCommand { args, stdin: None }
+            OneShotCommand {
+                args,
+                stdin: None,
+                opencode_config: None,
+            }
         }
+    }
+}
+
+/// OpenCode has no no-tools switch; the built-in `plan` agent is read-only,
+/// which is the closest lockdown. `--format json` gives a parseable event
+/// stream and the last `text` part carries the answer. The lowest effort the
+/// model offers: a title needs no thinking. The variant is looked up on the
+/// catalog id; `-m` names the model on the selected gateway.
+fn opencode_command(model_id: &str, instruction: &str, gateway: OpencodeGateway) -> OneShotCommand {
+    let mut args: Vec<String> = vec![
+        "run".into(),
+        "--format".into(),
+        "json".into(),
+        "--agent".into(),
+        "plan".into(),
+        "-m".into(),
+        gateway.route_model_id(model_id),
+    ];
+    args.extend(opencode_variant_args(model_id, Some(ReasoningEffort::Low)));
+    args.extend(["--".into(), instruction.into()]);
+    OneShotCommand {
+        args,
+        stdin: None,
+        opencode_config: None,
     }
 }
 
@@ -605,7 +632,14 @@ async fn run_capture(
     if let Some(isolation) = isolation.as_ref() {
         overrides.extend(isolation.env_overrides());
     }
-    let env = build_provider_environment(overrides);
+    let mut env = build_provider_environment(overrides);
+    if let Some(config) = command.opencode_config.as_ref() {
+        merge_launch_environment(
+            &mut env,
+            vec![("OPENCODE_CONFIG_CONTENT".to_string(), config.clone())],
+        )
+        .ok()?;
+    }
 
     let run = async {
         let mut child = Command::new(&binary)
@@ -1026,11 +1060,10 @@ mod tests {
 
     #[test]
     fn opencode_command_uses_read_only_plan_agent() {
-        let command = one_shot_command(
-            ProviderId::Opencode,
+        let command = opencode_command(
             "openrouter/z-ai/glm-5.3-flash",
             "META",
-            None,
+            OpencodeGateway::Openrouter,
         );
         assert!(command
             .args
@@ -1048,6 +1081,24 @@ mod tests {
         assert!(command.stdin.is_none());
         // Never hand the title call the auto-approve bypass.
         assert!(!command.args.iter().any(|a| a == "--auto"));
+    }
+
+    #[test]
+    fn opencode_command_names_the_model_on_the_selected_gateway() {
+        let command = opencode_command(
+            "openrouter/z-ai/glm-5.3-flash",
+            "META",
+            OpencodeGateway::Vercel,
+        );
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "-m" && args[1] == "vercel/zai/glm-5.3-flash"));
+        // The variant still comes from the catalog id.
+        assert!(command
+            .args
+            .windows(2)
+            .any(|args| args[0] == "--variant" && args[1] == "low"));
     }
 
     #[test]

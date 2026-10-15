@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::ipc::validation::ProviderId;
+use crate::providers::opencode_gateway::OpencodeGateway;
 use crate::sync::home_dir;
 use crate::util::login_shell;
 
@@ -147,6 +148,8 @@ pub trait RemainingSource: Send + Sync {
     fn keychain_password(&self, service: &str) -> Option<String>;
     /// Official Codex remaining snapshot, if the app-server answered.
     fn codex_rate_limits(&self) -> Result<serde_json::Value, String>;
+    /// The gateway OpenCode runs on, and the key Argmax holds for it.
+    fn opencode_gateway(&self) -> (OpencodeGateway, Option<String>);
 }
 
 pub struct LiveRemainingSource {
@@ -208,6 +211,12 @@ impl RemainingSource for LiveRemainingSource {
             return Err("Live remaining usage is disabled in verification mode.".into());
         }
         codex::fetch_app_server_rate_limits(&self.home)
+    }
+
+    fn opencode_gateway(&self) -> (OpencodeGateway, Option<String>) {
+        // `stored` is fenced in verification mode.
+        let gateway = crate::providers::opencode_gateway::selected();
+        (gateway, gateway.key().stored())
     }
 }
 
@@ -304,6 +313,8 @@ pub mod tests {
         pub http: Mutex<HashMap<String, HttpAnswer>>,
         pub keychain: HashMap<String, String>,
         pub codex_limits: Result<serde_json::Value, String>,
+        pub opencode_gateway: OpencodeGateway,
+        pub opencode_key: Option<String>,
     }
 
     impl FakeSource {
@@ -314,6 +325,8 @@ pub mod tests {
                 http: Mutex::new(HashMap::new()),
                 keychain: HashMap::new(),
                 codex_limits: Err("no app-server".into()),
+                opencode_gateway: OpencodeGateway::Openrouter,
+                opencode_key: None,
             }
         }
 
@@ -348,6 +361,10 @@ pub mod tests {
 
         fn codex_rate_limits(&self) -> Result<serde_json::Value, String> {
             self.codex_limits.clone()
+        }
+
+        fn opencode_gateway(&self) -> (OpencodeGateway, Option<String>) {
+            (self.opencode_gateway, self.opencode_key.clone())
         }
     }
 

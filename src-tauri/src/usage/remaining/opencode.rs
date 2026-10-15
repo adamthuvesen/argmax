@@ -1,20 +1,36 @@
-//! OpenCode remaining usage is the credit left on its OpenRouter key, the one
-//! account every OpenCode model in the picker bills to.
+//! OpenCode remaining usage is the credit left on the gateway every OpenCode
+//! model in the picker bills to: OpenRouter's key, or the Vercel AI Gateway
+//! team's balance, whichever Settings → Agents selects.
 
 use serde_json::Value;
 
 use crate::ipc::validation::ProviderId;
+use crate::providers::opencode_gateway::OpencodeGateway;
 
 use super::{RemainingSource, UsageLimitWindow, UsageProviderRemaining};
 
 pub const USAGE_URL: &str = "https://openrouter.ai/api/v1/key";
+pub const VERCEL_CREDITS_URL: &str = "https://ai-gateway.vercel.sh/v1/credits";
 const PLAN_LABEL: &str = "OpenRouter";
+const VERCEL_PLAN_LABEL: &str = "Vercel AI Gateway";
 
 pub fn fetch(source: &dyn RemainingSource) -> UsageProviderRemaining {
-    let Some(key) = openrouter_key(source) else {
+    let (gateway, saved_key) = source.opencode_gateway();
+    match gateway {
+        OpencodeGateway::Openrouter => fetch_openrouter(source, saved_key),
+        OpencodeGateway::Vercel => fetch_vercel(source, saved_key),
+    }
+}
+
+fn fetch_openrouter(
+    source: &dyn RemainingSource,
+    saved_key: Option<String>,
+) -> UsageProviderRemaining {
+    let Some(key) = saved_key.or_else(|| gateway_key(source, "OPENROUTER_API_KEY", "openrouter"))
+    else {
         return UsageProviderRemaining::unavailable(
             ProviderId::Opencode,
-            "OpenRouter is not signed in. Run opencode auth login and pick OpenRouter.",
+            "OpenRouter is not signed in. Add a key in Settings → Agents, or run opencode auth login and pick OpenRouter.",
         );
     };
     match source.http_get(
@@ -40,14 +56,46 @@ pub fn fetch(source: &dyn RemainingSource) -> UsageProviderRemaining {
     }
 }
 
-/// The key OpenCode itself uses: `OPENROUTER_API_KEY` first, as OpenCode
-/// reads it, then the one `opencode auth login` stored.
-fn openrouter_key(source: &dyn RemainingSource) -> Option<String> {
-    if let Some(key) = source.env("OPENROUTER_API_KEY") {
+fn fetch_vercel(source: &dyn RemainingSource, saved_key: Option<String>) -> UsageProviderRemaining {
+    let Some(key) = saved_key.or_else(|| gateway_key(source, "AI_GATEWAY_API_KEY", "vercel"))
+    else {
+        return UsageProviderRemaining::unavailable(
+            ProviderId::Opencode,
+            "Vercel AI Gateway is not signed in. Add a key in Settings → Agents, or run opencode auth login and pick Vercel AI Gateway.",
+        );
+    };
+    match source.http_get(
+        VERCEL_CREDITS_URL,
+        &[
+            ("Authorization", &format!("Bearer {key}")),
+            ("Accept", "application/json"),
+        ],
+    ) {
+        Ok((200, body)) => parse_vercel_credits(&body),
+        Ok((401 | 403, _)) => UsageProviderRemaining::unavailable(
+            ProviderId::Opencode,
+            "Vercel AI Gateway rejected the API key.",
+        ),
+        Ok((status, _)) => UsageProviderRemaining::error(
+            ProviderId::Opencode,
+            format!("Vercel AI Gateway credits returned HTTP {status}."),
+        ),
+        Err(_) => UsageProviderRemaining::error(
+            ProviderId::Opencode,
+            "Could not reach Vercel AI Gateway credits.",
+        ),
+    }
+}
+
+/// The key OpenCode itself would use without one saved in Argmax: the
+/// gateway's environment variable first, as OpenCode reads it, then the one
+/// `opencode auth login` stored.
+fn gateway_key(source: &dyn RemainingSource, env_name: &str, auth_id: &str) -> Option<String> {
+    if let Some(key) = source.env(env_name) {
         return Some(key);
     }
     let auth = read_auth_json(source.home())?;
-    auth.get("openrouter")
+    auth.get(auth_id)
         .and_then(|entry| entry.get("key"))
         .and_then(|v| v.as_str())
         .filter(|key| !key.is_empty())
@@ -67,6 +115,34 @@ fn read_auth_json(home: &std::path::Path) -> Option<Value> {
         }
     }
     None
+}
+
+/// Vercel reports a team balance with no allowance to measure it against
+/// (`{"balance":"95.50","total_used":"4.50"}`, both USD strings), so the row
+/// says what is left and what has been spent.
+fn parse_vercel_credits(body: &Value) -> UsageProviderRemaining {
+    let amount = |field: &str| {
+        body.get(field).and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+        })
+    };
+    let message = match (amount("balance"), amount("total_used")) {
+        (Some(balance), Some(used)) => format!("${balance:.2} left, ${used:.2} spent."),
+        (Some(balance), None) => format!("${balance:.2} left."),
+        _ => {
+            return UsageProviderRemaining::error(
+                ProviderId::Opencode,
+                "Vercel AI Gateway credits had no balance.",
+            )
+        }
+    };
+    UsageProviderRemaining {
+        plan_label: Some(VERCEL_PLAN_LABEL.into()),
+        message: Some(message),
+        ..UsageProviderRemaining::api_key(ProviderId::Opencode)
+    }
 }
 
 /// A key with a credit limit reads as one meter. A key without one has no
@@ -127,6 +203,49 @@ mod tests {
             row.message.as_deref(),
             Some("$12.50 spent. The key has no credit limit.")
         );
+    }
+
+    #[test]
+    fn a_key_saved_in_argmax_wins_over_opencode_auth() {
+        let dir = tempfile::tempdir().expect("temp");
+        let mut source = FakeSource::new(dir.path().to_path_buf()).with_http(
+            USAGE_URL,
+            200,
+            json!({ "data": { "limit": 10, "limit_remaining": 5, "usage": 5 } }),
+        );
+        source.opencode_key = Some("sk-or-v1-saved-in-argmax".into());
+        let row = fetch(&source);
+        assert_eq!(row.kind, UsagePlanKind::Subscription);
+    }
+
+    #[test]
+    fn vercel_reports_balance_and_spend() {
+        let dir = tempfile::tempdir().expect("temp");
+        let mut source = FakeSource::new(dir.path().to_path_buf()).with_http(
+            VERCEL_CREDITS_URL,
+            200,
+            json!({ "balance": "95.50", "total_used": "4.50" }),
+        );
+        source.opencode_gateway = OpencodeGateway::Vercel;
+        source.opencode_key = Some("vck_0123456789abcdef".into());
+        let row = fetch(&source);
+        assert_eq!(row.kind, UsagePlanKind::ApiKey);
+        assert_eq!(row.plan_label.as_deref(), Some("Vercel AI Gateway"));
+        assert_eq!(row.message.as_deref(), Some("$95.50 left, $4.50 spent."));
+    }
+
+    #[test]
+    fn vercel_without_a_key_names_vercel() {
+        let dir = tempfile::tempdir().expect("temp");
+        let mut source = FakeSource::new(dir.path().to_path_buf());
+        source.opencode_gateway = OpencodeGateway::Vercel;
+        let row = fetch(&source);
+        assert_eq!(row.kind, UsagePlanKind::Unavailable);
+        assert!(row
+            .message
+            .as_deref()
+            .unwrap_or("")
+            .contains("Vercel AI Gateway"));
     }
 
     #[test]

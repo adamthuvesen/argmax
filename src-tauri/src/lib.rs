@@ -598,6 +598,7 @@ pub fn run() {
                             let database = Arc::new(database);
                             let state = tauri::Manager::state::<state::AppState>(app);
                             let _ = state.db.set(Arc::clone(&database));
+                            providers::opencode_gateway::load(&database.read_connection());
                             // Off by default; registers the saved chord only if
                             // the user turned window snapshots on.
                             window_snapshot::shortcut::install(

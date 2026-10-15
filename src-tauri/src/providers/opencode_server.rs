@@ -14,6 +14,7 @@ use super::{
     environment::build_provider_environment,
     mcp_injection,
     normalizer::ProviderOutputStream,
+    opencode_gateway::{self, OpencodeGateway},
     runtime::{
         BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle,
@@ -92,8 +93,19 @@ pub async fn launch_turn(
         ("OPENCODE_SERVER_PASSWORD".to_string(), password),
     ]);
     let mut environment = build_provider_environment(overrides);
+    // One read per turn: the server's config and every prompt it is sent
+    // name the same gateway even if Settings changes mid-turn.
+    let (gateway, gateway_config) = opencode_gateway::launch_config();
     if let Err(error) = merge_launch_environment(&mut environment, mcp_environment)
-        .and_then(|()| merge_launch_environment(&mut environment, vec![openrouter_host_pins()]))
+        .and_then(|()| {
+            merge_launch_environment(
+                &mut environment,
+                vec![(
+                    OPENCODE_CONFIG_CONTENT.to_string(),
+                    gateway_config.to_string(),
+                )],
+            )
+        })
         .and_then(|()| apply_permission_override(&mut environment, input))
     {
         launch_scratch.restore();
@@ -137,7 +149,7 @@ pub async fn launch_turn(
         .timeout_read(HTTP_TIMEOUT)
         .timeout_write(HTTP_TIMEOUT)
         .build();
-    let setup = prepare_turn(&http, &endpoint, input).await;
+    let setup = prepare_turn(&http, &endpoint, input, gateway).await;
     let (native_session_id, event_rx, sse_cancel, sse_task) = match setup {
         Ok(setup) => setup,
         Err(error) => {
@@ -153,7 +165,7 @@ pub async fn launch_turn(
     let (done_tx, done) = watch::channel(false);
     let disposed = Arc::new(AtomicBool::new(false));
     let steering = Arc::new(Steering::default());
-    let steer_body = match prompt_body(input) {
+    let steer_body = match prompt_body(input, gateway) {
         Ok(body) => body,
         Err(error) => {
             let _ =
@@ -212,6 +224,7 @@ async fn prepare_turn(
     http: &ureq::Agent,
     endpoint: &str,
     input: &ProviderLaunchInput,
+    gateway: OpencodeGateway,
 ) -> ArgmaxResult<PreparedTurn> {
     wait_until_ready(http, endpoint).await?;
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
@@ -240,7 +253,7 @@ async fn prepare_turn(
     }
 
     let native_session_id = native_session(http, endpoint, input).await?;
-    prompt(http, endpoint, input, &native_session_id).await?;
+    prompt(http, endpoint, input, &native_session_id, gateway).await?;
     Ok((native_session_id, event_rx, sse_cancel, sse_task))
 }
 
@@ -317,11 +330,12 @@ async fn prompt(
     endpoint: &str,
     input: &ProviderLaunchInput,
     native_session_id: &str,
+    gateway: OpencodeGateway,
 ) -> ArgmaxResult<()> {
     if crate::providers::inputs::is_compact_command(&input.prompt) {
-        return compact(endpoint, input, native_session_id).await;
+        return compact(endpoint, input, native_session_id, gateway).await;
     }
-    let body = prompt_body(input)?;
+    let body = prompt_body(input, gateway)?;
     let http = http.clone();
     let endpoint = endpoint.to_string();
     let directory = input.workspace_path.to_string_lossy().into_owned();
@@ -349,8 +363,10 @@ async fn compact(
     endpoint: &str,
     input: &ProviderLaunchInput,
     native_session_id: &str,
+    gateway: OpencodeGateway,
 ) -> ArgmaxResult<()> {
     let (provider_id, model_id) = split_model_id(&input.model_id)?;
+    let (provider_id, model_id) = gateway.route(&provider_id, &model_id);
     let body = json!({ "providerID": provider_id, "modelID": model_id });
     let http = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_millis(250))
@@ -372,8 +388,9 @@ async fn compact(
     .map_err(|_| server_error("OPENCODE_SERVER_TASK", "OpenCode compaction stopped"))?
 }
 
-fn prompt_body(input: &ProviderLaunchInput) -> ArgmaxResult<Value> {
+fn prompt_body(input: &ProviderLaunchInput, gateway: OpencodeGateway) -> ArgmaxResult<Value> {
     let (provider_id, model_id) = split_model_id(&input.model_id)?;
+    let (provider_id, model_id) = gateway.route(&provider_id, &model_id);
     let mut body = json!({
         "model": { "providerID": provider_id, "modelID": model_id },
         "parts": [{ "type": "text", "text": input.prompt }],
@@ -1276,20 +1293,7 @@ fn apply_permission_override(
     Ok(())
 }
 
-/// OpenRouter models held to one host. By default OpenRouter sends a request
-/// to the cheapest host, and MiniMax M2.7 is in the picker for its speed:
-/// Groq served it at 367 tok/s where its cheapest host ran near 50 (OpenRouter
-/// endpoint stats, 2026-10-04). Without fallbacks a Groq outage fails the turn
-/// rather than quietly running it slowly. OpenCode passes a model's `options`
-/// through to OpenRouter's `provider` routing field.
-fn openrouter_host_pins() -> (String, String) {
-    let groq_only =
-        json!({ "options": { "provider": { "only": ["groq"], "allow_fallbacks": false } } });
-    let config = json!({ "provider": { "openrouter": { "models": { "minimax/minimax-m2.7": groq_only } } } });
-    (OPENCODE_CONFIG_CONTENT.to_string(), config.to_string())
-}
-
-fn merge_launch_environment(
+pub(crate) fn merge_launch_environment(
     environment: &mut Vec<(String, String)>,
     launch_environment: Vec<(String, String)>,
 ) -> ArgmaxResult<()> {
@@ -1754,12 +1758,20 @@ mod tests {
     }
 
     #[test]
-    fn host_pins_merge_into_the_inline_launch_config() {
+    fn gateway_config_merges_into_the_inline_launch_config() {
         let mut environment = vec![(
             OPENCODE_CONFIG_CONTENT.to_string(),
             json!({ "mcp": { "argmax": { "enabled": true } } }).to_string(),
         )];
-        merge_launch_environment(&mut environment, vec![openrouter_host_pins()]).unwrap();
+        let gateway_config = OpencodeGateway::Openrouter.inline_config(None);
+        merge_launch_environment(
+            &mut environment,
+            vec![(
+                OPENCODE_CONFIG_CONTENT.to_string(),
+                gateway_config.to_string(),
+            )],
+        )
+        .unwrap();
         let config: Value = serde_json::from_str(&environment[0].1).unwrap();
         assert_eq!(config["mcp"]["argmax"]["enabled"], true);
         assert_eq!(
@@ -1874,12 +1886,21 @@ mod tests {
         let auto = input(PermissionMode::AutoApprove, AgentMode::Auto);
         apply_permission_override(&mut environment, &auto).unwrap();
         assert!(!environment.is_empty());
-        let body = prompt_body(&auto).unwrap();
+        let body = prompt_body(&auto, OpencodeGateway::Openrouter).unwrap();
         assert!(body.get("agent").is_none());
         assert_eq!(body["model"]["providerID"], "openrouter");
         assert_eq!(body["model"]["modelID"], "z-ai/glm-5.3-flash");
         assert_eq!(body["variant"], "high");
         assert_eq!(body["parts"][0]["text"], "Do the work");
+    }
+
+    #[test]
+    fn prompt_names_the_vercel_slug_on_vercel() {
+        let auto = input(PermissionMode::AutoApprove, AgentMode::Auto);
+        let body = prompt_body(&auto, OpencodeGateway::Vercel).unwrap();
+        assert_eq!(body["model"]["providerID"], "vercel");
+        assert_eq!(body["model"]["modelID"], "zai/glm-5.3-flash");
+        assert_eq!(body["variant"], "high");
     }
 
     #[test]
@@ -2237,7 +2258,11 @@ mod tests {
             endpoint,
             directory: "/tmp/project".to_string(),
             native_session_id: "ses_root".to_string(),
-            steer_body: prompt_body(&input(PermissionMode::AutoApprove, AgentMode::Auto)).unwrap(),
+            steer_body: prompt_body(
+                &input(PermissionMode::AutoApprove, AgentMode::Auto),
+                OpencodeGateway::Openrouter,
+            )
+            .unwrap(),
         };
         handle.steering.observe(&status("busy"), "ses_root");
 

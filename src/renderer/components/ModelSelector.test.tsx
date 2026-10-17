@@ -63,7 +63,7 @@ describe("ModelSelector — one row per model", () => {
     window.localStorage.setItem(
       LAUNCH_MODEL_RECENCY_KEY,
       JSON.stringify([
-        "opencode:openrouter/deepseek/deepseek-v4.1-flash",
+        "opencode:openrouter/deepseek/deepseek-v4.1-flash-1017",
         "opencode:openrouter/deepseek/deepseek-v4-pro-0813",
         "grok:grok-4.7",
         "cursor:claude-opus-5-5-medium",
@@ -82,11 +82,11 @@ describe("ModelSelector — one row per model", () => {
     const labels = within(screen.getByRole("listbox", { name: "Launch model" }))
       .getAllByRole("option")
       .map((option) => optionName(option));
-    expect(labels.slice(0, 3)).toEqual(["DeepSeek V4.1 Flash", "DeepSeek V4 Pro", "Grok 4.7"]);
-    expect(labels).toContain("DeepSeek V4.1 Flash");
+    expect(labels.slice(0, 3)).toEqual(["DeepSeek V4.1 Flash 1017", "DeepSeek V4 Pro", "Grok 4.7"]);
+    expect(labels).toContain("DeepSeek V4.1 Flash 1017");
     expect(labels).toContain("Grok 4.7");
     expect(labels.some((label) => label.includes("Grok 4.6") || label.includes("Grok 4.5") || label.includes("Nemotron"))).toBe(false);
-    expect(labels.indexOf("DeepSeek V4.1 Flash")).toBeLessThan(labels.lastIndexOf("DeepSeek V4.1 Flash"));
+    expect(labels.indexOf("DeepSeek V4.1 Flash 1017")).toBeLessThan(labels.lastIndexOf("DeepSeek V4.1 Flash 1017"));
     expect(labels.indexOf("Grok 4.7")).toBeLessThan(labels.lastIndexOf("Grok 4.7"));
     expect(labels.slice(3, 4)).toEqual(["Fable 5.1"]);
   });

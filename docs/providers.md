@@ -740,12 +740,27 @@ A model id lives in more than one place. Work through this list, then run
   differs from OpenRouter's, with a case in its mapping test.
 - Tests that name the old id: `grep -rn "<old-id>" src src-tauri ios`.
 
+### DeepSeek Flash 1017
+
+The catalog uses `openrouter/deepseek/deepseek-v4.1-flash-1017`.
+Vercel launches it as `vercel/deepseek/deepseek-v4.1-flash-1017`.
+Both live catalogs confirmed a 1,048,576-token context window and low/high/max
+reasoning on 2026-10-17. Saved selections on the older Flash id follow this snapshot.
+Historical usage keeps the older id and its pricing.
+
+[OpenRouter's catalog](https://openrouter.ai/api/v1/models) lists $0.15 input,
+$0.60 output, and $0.003 cache reads per million tokens, with peak-time overrides.
+Argmax retains these base rates as its OpenRouter estimate.
+[Vercel's catalog](https://ai-gateway.vercel.sh/v1/models) lists $0.14 input,
+$0.42 output, and $0.0042 cache reads, with provider-dependent pricing.
+Vercel usage continues to use OpenCode's reported cost.
+
 ### Where a session's model label comes from
 
-The picker writes `modelLabel` on launch. Sessions that Argmax did not launch
-get it from `fallback_model_label` ([lib.rs](../src-tauri/src/lib.rs)): the
-agent-tool launch in `launch.rs` and the importer in `sync/engine.rs` both call
-it, so a model missing from the catalogue shows "Opus 5" and not the raw id.
+The picker writes `modelLabel` on launch. Agent-tool launches and imported
+sessions use `fallback_model_label` ([lib.rs](../src-tauri/src/lib.rs)).
+It formats Claude ids, such as `claude-opus-5` as "Opus 5", and preserves other ids.
+Clients prefer catalog labels and resolve retired ids through their successors.
 The iPhone resolves labels through `ProviderCatalog.swift`.
 
 ### Where Fast mode is decided

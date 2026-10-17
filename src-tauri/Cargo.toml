@@ -49,7 +49,8 @@ tauri = { version = "2.11", features = ["macos-private-api", "unstable"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
-tauri-plugin-updater = "2"
+# Legacy Tauri v1 bundles are unused and pull in the vulnerable zip crate.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 # System-wide chord for the window snapshot (src/window_snapshot). Registered
 # from Rust only, so no webview permission is granted for it. Pinned: newer releases
 # pull a newer tauri/wry into Cargo.lock.

@@ -3,6 +3,7 @@ import {
   effortForModel,
   REASONING_EFFORTS,
   reasoningEffortsForModel,
+  successorModelId,
   type ReasoningEffort
 } from "../../shared/providerModels.js";
 import { allModelOptions, type ModelPickerSelection } from "./models.js";
@@ -32,8 +33,12 @@ export function readStoredSessionModel(
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return fallback;
 
     const stored = parsed as { provider?: unknown; modelId?: unknown; reasoningEffort?: unknown };
+    const storedModelId = stored.modelId;
+    if (typeof storedModelId !== "string") return fallback;
     const option = allModelOptions.find(
-      (candidate) => candidate.provider === stored.provider && candidate.modelId === stored.modelId
+      (candidate) =>
+        candidate.provider === stored.provider &&
+        candidate.modelId === successorModelId(candidate.provider, storedModelId)
     );
     if (!option) return fallback;
 

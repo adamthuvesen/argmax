@@ -119,7 +119,7 @@ export function reasoningEffortsForModel(provider: ProviderId, modelId: string):
   const opencodeVariants: Record<string, readonly ReasoningEffort[]> = {
     "openrouter/z-ai/glm-5.3-flash": ["low", "high", "max"],
     "openrouter/z-ai/glm-5.3": ["low", "high", "max"],
-    "openrouter/deepseek/deepseek-v4.1-flash": ["low", "high", "max"],
+    "openrouter/deepseek/deepseek-v4.1-flash-1017": ["low", "high", "max"],
     "openrouter/deepseek/deepseek-v4-pro-0813": ["low", "high", "max"],
     "openrouter/moonshotai/kimi-k3": ["low", "high", "max"],
     "openrouter/qwen/qwen3.8-max-0902": ["low", "medium", "high", "xhigh"],
@@ -264,8 +264,8 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
     { label: "GLM-5.3-Flash", modelId: "openrouter/z-ai/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_048_576 },
     { label: "GLM-5.3", modelId: "openrouter/z-ai/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
     {
-      label: "DeepSeek V4.1 Flash",
-      modelId: "openrouter/deepseek/deepseek-v4.1-flash",
+      label: "DeepSeek V4.1 Flash 1017",
+      modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
       supportsReasoningEffort: true,
       contextWindow: 1_048_576
     },
@@ -416,7 +416,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Cache writes bill as plain input. Keep in sync with the Rust pricing mirror.
   "openrouter/z-ai/glm-5.3-flash":              { input: 0.15,  output: 0.5,    cacheRead: 0.03,  cacheWrite: 0.15 },
   "openrouter/z-ai/glm-5.3":                    { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 1.4 },
-  "openrouter/deepseek/deepseek-v4.1-flash":    { input: 0.15,  output: 0.6,    cacheRead: 0.003, cacheWrite: 0.15 },
+  "openrouter/deepseek/deepseek-v4.1-flash-1017":    { input: 0.15,  output: 0.6,    cacheRead: 0.003, cacheWrite: 0.15 },
   "openrouter/deepseek/deepseek-v4-pro-0813":   { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0.66 },
   "openrouter/moonshotai/kimi-k3":              { input: 3,     output: 15,     cacheRead: 0.3,   cacheWrite: 3 },
   "openrouter/qwen/qwen3.8-max-0902":           { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
@@ -439,6 +439,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
+  "openrouter/deepseek/deepseek-v4.1-flash": { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0.15 },
   "claude-fable-5":       { input: 10,   output: 50,   cacheRead: 1,     cacheWrite: 12.5 },
   "claude-sonnet-5":      { input: 2,    output: 10,   cacheRead: 0.2,   cacheWrite: 2.5 },
   "claude-opus-4-8":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
@@ -494,12 +495,13 @@ export function normalizeModelId(modelId: string): string {
  * session, routine, or launch preference follows Sonnet 5.5 instead of
  * falling through to the provider default. The stored row is left alone;
  * only the pick the user sees and the model the CLI runs move. Mirrored by
- * `claude_model_arg` (adapters.rs) and shipped to the phone in
+ * `successor_model_id` (adapters.rs) and shipped to the phone in
  * providerModels.json.
  */
 export const SUCCESSOR_MODEL_IDS: Partial<Record<ProviderId, Readonly<Record<string, string>>>> = {
   claude: { "claude-sonnet-5": "claude-sonnet-5-5", "claude-haiku-4-5": "claude-haiku-5-5" },
-  codex: { "gpt-6-sol": "gpt-6.1-sol" }
+  codex: { "gpt-6-sol": "gpt-6.1-sol" },
+  opencode: { "openrouter/deepseek/deepseek-v4.1-flash": "openrouter/deepseek/deepseek-v4.1-flash-1017" }
 };
 
 /** Catalog id that replaced a stored one, or the id itself. */

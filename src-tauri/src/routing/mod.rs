@@ -407,7 +407,10 @@ mod tests {
             &classification(TaskKind::Mechanical, 1.0, 0.2, 0.9),
         );
         assert_eq!(route.provider, ProviderId::Opencode);
-        assert_eq!(route.model_id, "openrouter/deepseek/deepseek-v4.1-flash");
+        assert_eq!(
+            route.model_id,
+            "openrouter/deepseek/deepseek-v4.1-flash-1017"
+        );
         let moved = with_available_provider(route, &[ProviderId::Claude]);
         assert_eq!(moved.provider, ProviderId::Claude);
         assert_eq!(moved.model_id, "claude-sonnet-5-5");

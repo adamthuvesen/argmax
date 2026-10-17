@@ -155,7 +155,7 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
     // keep DeepSeek. A continuation moves to Sonnet at Speed's normal medium;
     // a reported-wrong answer still climbs to high through the ladder.
     if state.provider == ProviderId::Opencode
-        && state.model_id == table::DEEPSEEK.model_id
+        && table::route_model(&state.model_id) == Some(&table::DEEPSEEK)
         && classification.follow_up_scope != Some(super::jev::FollowUpScope::NewTask)
         && classification.scope_confidence.unwrap_or(0.0) >= EFFORT_UP
         && (state.available.is_empty() || state.available.contains(&table::SONNET.provider))
@@ -410,6 +410,7 @@ fn next_rung(
     effort: Option<ReasoningEffort>,
     available: &[ProviderId],
 ) -> Option<RoutedModel> {
+    let model_id = table::route_model(model_id).map_or(model_id, |model| model.model_id);
     let rungs = if tier == AutoTier::Economy && provider == ProviderId::Codex {
         &[
             (&table::LUNA, Some(Medium)),
@@ -594,19 +595,29 @@ mod tests {
 
     #[test]
     fn a_deepseek_continuation_moves_to_sonnet_but_a_new_task_stays() {
-        let deepseek = state(ProviderId::Opencode, table::DEEPSEEK.model_id, Some(High));
-        let mut task = classified(TaskKind::Question, 0.5, 0.9);
-        task.follow_up_scope = Some(FollowUpScope::Continuation);
-        let moved = follow_up_route(&deepseek, &task);
-        assert_eq!(moved.decision, RouteDecisionKind::Reroute);
-        assert_eq!(moved.model_id, table::SONNET.model_id);
-        assert_eq!(moved.effort, Some(Medium));
+        for model_id in [
+            table::DEEPSEEK.model_id,
+            "openrouter/deepseek/deepseek-v4.1-flash",
+        ] {
+            let deepseek = state(ProviderId::Opencode, model_id, Some(High));
+            let mut task = classified(TaskKind::Question, 0.5, 0.9);
+            task.follow_up_scope = Some(FollowUpScope::Continuation);
+            let moved = follow_up_route(&deepseek, &task);
+            assert_eq!(moved.decision, RouteDecisionKind::Reroute);
+            assert_eq!(moved.model_id, table::SONNET.model_id);
+            assert_eq!(moved.effort, Some(Medium));
 
-        task.follow_up_scope = Some(FollowUpScope::NewTask);
-        assert_eq!(
-            follow_up_route(&deepseek, &task).decision,
-            RouteDecisionKind::Kept
-        );
+            task.follow_up_scope = Some(FollowUpScope::NewTask);
+            assert_eq!(
+                follow_up_route(&deepseek, &task).decision,
+                RouteDecisionKind::Kept
+            );
+            task.correction = Some(0.95);
+            let escalated = follow_up_route(&deepseek, &task);
+            assert_eq!(escalated.decision, RouteDecisionKind::Escalate);
+            assert_eq!(escalated.model_id, table::SONNET.model_id);
+            assert_eq!(escalated.effort, Some(High));
+        }
     }
 
     #[test]
@@ -907,7 +918,7 @@ mod tests {
     fn a_provider_without_a_policy_keeps_its_route() {
         let chat = state(
             ProviderId::Opencode,
-            "openrouter/deepseek/deepseek-v4.1-flash",
+            "openrouter/deepseek/deepseek-v4.1-flash-1017",
             Some(High),
         );
         let decision = follow_up_route(&chat, &classified(TaskKind::Coding, 3.0, 0.95));

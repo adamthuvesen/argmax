@@ -103,6 +103,7 @@ impl OpencodeGateway {
 
     /// `<provider>/<model>` for a CLI `-m` flag.
     pub fn route_model_id(self, model_id: &str) -> String {
+        let model_id = super::adapters::successor_model_id(super::ProviderId::Opencode, model_id);
         match model_id.split_once('/') {
             Some((provider, model)) => {
                 let (provider, model) = self.route(provider, model);
@@ -233,14 +234,27 @@ mod tests {
     }
 
     #[test]
+    fn retired_deepseek_cli_ids_follow_the_successor_on_both_gateways() {
+        for gateway in [OpencodeGateway::Openrouter, OpencodeGateway::Vercel] {
+            assert_eq!(
+                gateway.route_model_id("openrouter/deepseek/deepseek-v4.1-flash"),
+                format!(
+                    "{}/deepseek/deepseek-v4.1-flash-1017",
+                    gateway.provider_id()
+                )
+            );
+        }
+    }
+
+    #[test]
     fn vercel_maps_every_catalog_model_to_its_slug() {
         let gateway = OpencodeGateway::Vercel;
         for (catalog, vercel) in [
             ("openrouter/z-ai/glm-5.3-flash", "vercel/zai/glm-5.3-flash"),
             ("openrouter/z-ai/glm-5.3", "vercel/zai/glm-5.3"),
             (
-                "openrouter/deepseek/deepseek-v4.1-flash",
-                "vercel/deepseek/deepseek-v4.1-flash",
+                "openrouter/deepseek/deepseek-v4.1-flash-1017",
+                "vercel/deepseek/deepseek-v4.1-flash-1017",
             ),
             (
                 "openrouter/deepseek/deepseek-v4-pro-0813",

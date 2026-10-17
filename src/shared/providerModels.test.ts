@@ -22,6 +22,13 @@ afterEach(() => {
 });
 
 describe("PROVIDER_MODEL_DEFAULTS", () => {
+  it("keeps historical DeepSeek pricing after the snapshot upgrade", () => {
+    for (const modelId of ["openrouter/deepseek/deepseek-v4.1-flash", "openrouter/deepseek/deepseek-v4.1-flash-1017"]) {
+      expect(costOf(million, modelId)).toBe(0.15);
+      expect(contextWindowForModel(modelId)).toBe(1_048_576);
+    }
+  });
+
   // Tripwire: launch defaults and the effort they seed. Effort comes from
   // DEFAULT_REASONING_EFFORT via modelDefaultForProvider when unset here.
   it("matches the documented launch defaults", () => {

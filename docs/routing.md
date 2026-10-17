@@ -142,10 +142,13 @@ Tier × difficulty picks a column and an effort:
 
 Kind × column picks the model:
 
+DeepSeek cells use the 1017 snapshot from 2026-10-17. Earlier measurements
+below describe the previous snapshot. Routing and effort policies are unchanged.
+
 | Kind | Cheap | Value | Frontier |
 |---|---|---|---|
 | coding | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
-| mechanical | DeepSeek V4.1 Flash · low | DeepSeek V4.1 Flash · low | Opus 5.5 |
+| mechanical | DeepSeek V4.1 Flash 1017 · low | DeepSeek V4.1 Flash 1017 · low | Opus 5.5 |
 | research | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
 | review | Opus 5.5 · low | Opus 5.5 | GPT-6 Astra |
 | question | Sonnet 5.5 | Opus 5.5 | Opus 5.5 |
@@ -165,7 +168,7 @@ Overrides on top of the grid:
   follow-up can climb. Frontier keeps high.
 - **The launch grid does not pick Grok.** A chat already on Grok Build still
   follows difficulty: Light low, Standard medium, Heavy high.
-- **Speed's Light questions and research launch on DeepSeek V4.1 Flash ·
+- **Speed's Light questions and research launch on DeepSeek V4.1 Flash 1017 ·
   high** (2026-10-04). They edit nothing, so a weak answer is cheap to catch,
   and DeepSeek answers first (0.66 s to first token against Sonnet's 1.19 s in
   a raw API test). Light coding stays on Sonnet. No quality comparison on
@@ -182,7 +185,7 @@ Overrides on top of the grid:
   Analysis, 2026-10-02) at half the per-token price. No review benchmark backs
   the swap yet.
 - **Balance sends its standard and heavy mechanical work to Sonnet 5.5 ·
-  medium.** Light mechanical work stays on DeepSeek V4.1 Flash. Heavy mechanical effort
+  medium.** Light mechanical work stays on DeepSeek V4.1 Flash 1017. Heavy mechanical effort
   stays medium on every tier.
 - **Balance standard coding and research launch on Sonnet 5.5 · high.** Heavy
   coding and research stay on Opus 5.5 · high.
@@ -350,7 +353,7 @@ not price.
 | Claude | Opus 5.5 · medium → Opus 5.5 · high → Fable 5.1 · high → Fable 5.1 · xhigh |
 | Codex | GPT-6.1 Sol · medium → Sol · high → GPT-6 Astra · high → Astra · xhigh |
 | Cursor | Composer 2.5 → Claude Opus 5.5 (Cursor) · medium → · high |
-| OpenCode | DeepSeek V4.1 Flash · high → **Sonnet 5.5 · high on Claude** |
+| OpenCode | DeepSeek V4.1 Flash 1017 · high → **Sonnet 5.5 · high on Claude** |
 | Grok | Grok 4.7 · low → · medium → · high → **Opus 5.5 · high on Claude** |
 
 The last Grok and OpenCode rungs are the router's automatic provider switches: the send goes through the ordinary provider-switch path, which starts

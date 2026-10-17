@@ -104,8 +104,8 @@ pub const ASTRA: RouteModel = RouteModel {
 /// mechanical work asks for clamps down to low.
 pub const DEEPSEEK: RouteModel = RouteModel {
     provider: ProviderId::Opencode,
-    model_id: "openrouter/deepseek/deepseek-v4.1-flash",
-    label: "DeepSeek V4.1 Flash",
+    model_id: "openrouter/deepseek/deepseek-v4.1-flash-1017",
+    label: "DeepSeek V4.1 Flash 1017",
     efforts: &[Low, High, Max],
 };
 /// No longer a grid cell. Kept for chats already on Cursor, which follow up and
@@ -435,6 +435,7 @@ pub(crate) fn capability(model_id: &str) -> Option<usize> {
     match model_id {
         "composer-2.5"
         | "openrouter/deepseek/deepseek-v4.1-flash"
+        | "openrouter/deepseek/deepseek-v4.1-flash-1017"
         | "grok-4.7"
         | "claude-sonnet-5-5"
         | "gpt-6-luna" => Some(0),
@@ -469,6 +470,7 @@ pub fn fallback(tier: AutoTier) -> RoutedModel {
 pub fn route_model(model_id: &str) -> Option<&'static RouteModel> {
     let model_id = match model_id {
         "gpt-6-sol" => "gpt-6.1-sol",
+        "openrouter/deepseek/deepseek-v4.1-flash" => DEEPSEEK.model_id,
         other => other,
     };
     ROUTE_MODELS
@@ -551,8 +553,8 @@ mod tests {
                 Mechanical,
                 Light,
                 [
-                    "DeepSeek V4.1 Flash · low",
-                    "DeepSeek V4.1 Flash · low",
+                    "DeepSeek V4.1 Flash 1017 · low",
+                    "DeepSeek V4.1 Flash 1017 · low",
                     "Sonnet 5.5 · medium",
                 ],
             ),
@@ -560,7 +562,7 @@ mod tests {
                 Mechanical,
                 Standard,
                 [
-                    "DeepSeek V4.1 Flash · low",
+                    "DeepSeek V4.1 Flash 1017 · low",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -569,7 +571,7 @@ mod tests {
                 Mechanical,
                 Heavy,
                 [
-                    "DeepSeek V4.1 Flash · low",
+                    "DeepSeek V4.1 Flash 1017 · low",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -578,7 +580,7 @@ mod tests {
                 Research,
                 Light,
                 [
-                    "DeepSeek V4.1 Flash · high",
+                    "DeepSeek V4.1 Flash 1017 · high",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -620,7 +622,7 @@ mod tests {
                 Question,
                 Light,
                 [
-                    "DeepSeek V4.1 Flash · high",
+                    "DeepSeek V4.1 Flash 1017 · high",
                     "Sonnet 5.5 · medium",
                     "Opus 5.5 · medium",
                 ],
@@ -796,7 +798,7 @@ mod tests {
         assert_eq!(balanced(Mechanical, Light, true), "Opus 5.5 · low");
         assert_eq!(
             balanced(Mechanical, Light, false),
-            "DeepSeek V4.1 Flash · low"
+            "DeepSeek V4.1 Flash 1017 · low"
         );
         assert_eq!(balanced(Mechanical, Heavy, true), "Sonnet 5.5 · medium");
         assert_eq!(balanced(Coding, Light, true), "Sonnet 5.5 · medium");
@@ -804,7 +806,7 @@ mod tests {
         // Speed keeps DeepSeek for mechanical work, including UI work.
         assert_eq!(
             cell_text(route(AutoTier::Cost, Mechanical, Light, true)),
-            "DeepSeek V4.1 Flash · low"
+            "DeepSeek V4.1 Flash 1017 · low"
         );
         let cursor = follow_up_target(ProviderId::Cursor, AutoTier::Balanced, Coding, Light, true);
         assert_eq!(

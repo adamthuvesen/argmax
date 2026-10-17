@@ -431,6 +431,7 @@ fn opencode_structured_resume_args(
 }
 
 fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
+    let model_id = successor_model_id(ProviderId::Opencode, &input.model_id);
     let mut args = opencode_permission_args(input);
     args.extend(opencode_variant_args(
         &input.model_id,
@@ -438,7 +439,7 @@ fn opencode_common_args(input: &ProviderLaunchInput) -> Vec<String> {
     ));
     args.extend([
         "-m".to_string(),
-        input.model_id.clone(),
+        model_id.to_string(),
         "--".to_string(),
         input.prompt.clone(),
     ]);
@@ -465,6 +466,7 @@ pub(crate) fn opencode_variant_args_on(
     effort: Option<ReasoningEffort>,
     gateway: OpencodeGateway,
 ) -> Vec<String> {
+    let model_id = successor_model_id(ProviderId::Opencode, model_id);
     let effort = match effort {
         Some(e) => e,
         None => return Vec::new(),
@@ -482,7 +484,7 @@ pub(crate) fn opencode_variant_args_on(
         }
         "openrouter/z-ai/glm-5.3-flash"
         | "openrouter/z-ai/glm-5.3"
-        | "openrouter/deepseek/deepseek-v4.1-flash"
+        | "openrouter/deepseek/deepseek-v4.1-flash-1017"
         | "openrouter/deepseek/deepseek-v4-pro-0813"
         | "openrouter/moonshotai/kimi-k3" => &[
             ReasoningEffort::Low,
@@ -746,6 +748,9 @@ pub(super) fn successor_model_id(provider: ProviderId, model_id: &str) -> &str {
         (ProviderId::Claude, "claude-sonnet-5") => "claude-sonnet-5-5",
         (ProviderId::Claude, "claude-haiku-4-5") => "claude-haiku-5-5",
         (ProviderId::Codex, "gpt-6-sol") => "gpt-6.1-sol",
+        (ProviderId::Opencode, "openrouter/deepseek/deepseek-v4.1-flash") => {
+            "openrouter/deepseek/deepseek-v4.1-flash-1017"
+        }
         _ => model_id,
     }
 }
@@ -1539,6 +1544,30 @@ mod tests {
             .position(|a| a == "--model")
             .expect("model flag");
         assert_eq!(args[i + 1], "composer-2.5-fast");
+    }
+
+    #[test]
+    fn opencode_retired_flash_launches_and_resumes_as_its_successor() {
+        let input = ProviderLaunchInput {
+            model_id: "openrouter/deepseek/deepseek-v4.1-flash".to_string(),
+            reasoning_effort: Some(ReasoningEffort::Medium),
+            ..launch_input(ProviderId::Opencode)
+        };
+        for args in [
+            opencode_structured_args(&input, None),
+            opencode_structured_resume_args(&input, "conv-1", None),
+        ] {
+            let position = args.iter().position(|arg| arg == "-m").expect("-m");
+            assert_eq!(
+                args[position + 1],
+                "openrouter/deepseek/deepseek-v4.1-flash-1017"
+            );
+            let variant = args
+                .iter()
+                .position(|arg| arg == "--variant")
+                .expect("variant");
+            assert_eq!(args[variant + 1], "low");
+        }
     }
 
     #[test]

@@ -318,7 +318,9 @@
         "modelId": "openrouter/z-ai/glm-5.3-flash",
         "reasoningEffort": "high"
       },
-      "successors": {},
+      "successors": {
+        "openrouter/deepseek/deepseek-v4.1-flash": "openrouter/deepseek/deepseek-v4.1-flash-1017"
+      },
       "models": [
         {
           "label": "GLM-5.3-Flash",
@@ -343,8 +345,8 @@
           "defaultEffort": "low"
         },
         {
-          "label": "DeepSeek V4.1 Flash",
-          "modelId": "openrouter/deepseek/deepseek-v4.1-flash",
+          "label": "DeepSeek V4.1 Flash 1017",
+          "modelId": "openrouter/deepseek/deepseek-v4.1-flash-1017",
           "contextWindow": 1048576,
           "reasoningEfforts": [
             "low",

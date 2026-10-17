@@ -65,7 +65,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
     // TS table for why. Cache writes bill as plain input.
     "openrouter/z-ai/glm-5.3-flash" => ModelPricing { input: 0.15, output: 0.5, cache_read: 0.03, cache_write: 0.15 },
     "openrouter/z-ai/glm-5.3" => ModelPricing { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 1.4 },
-    "openrouter/deepseek/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.15 },
+    "openrouter/deepseek/deepseek-v4.1-flash-1017" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.15 },
     "openrouter/deepseek/deepseek-v4-pro-0813" => ModelPricing { input: 0.66, output: 1.98, cache_read: 0.022, cache_write: 0.66 },
     "openrouter/moonshotai/kimi-k3" => ModelPricing { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.0 },
     "openrouter/qwen/qwen3.8-max-0902" => ModelPricing { input: 2.0, output: 6.0, cache_read: 0.25, cache_write: 2.5 },
@@ -93,6 +93,7 @@ pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {
 };
 
 static STORED_MODEL_PRICING_ALIASES: phf::Map<&'static str, ModelPricing> = phf_map! {
+    "openrouter/deepseek/deepseek-v4.1-flash" => ModelPricing { input: 0.15, output: 0.6, cache_read: 0.003, cache_write: 0.15 },
     "claude-fable-5" => ModelPricing { input: 10.0, output: 50.0, cache_read: 1.0, cache_write: 12.5 },
     "claude-sonnet-5" => ModelPricing { input: 2.0, output: 10.0, cache_read: 0.2, cache_write: 2.5 },
     "claude-opus-4-8" => ModelPricing { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 },

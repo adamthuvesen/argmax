@@ -128,6 +128,20 @@ describe("modelSelectionFromSession", () => {
     });
   });
 
+  it("follows a saved DeepSeek Flash selection onto the 1017 snapshot", () => {
+    expect(modelSelectionFromSession({
+      ...BASE_SESSION,
+      provider: "opencode",
+      modelLabel: "DeepSeek V4.1 Flash",
+      modelId: "openrouter/deepseek/deepseek-v4.1-flash",
+      reasoningEffort: "high"
+    })).toEqual({
+      label: "DeepSeek V4.1 Flash 1017",
+      modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
+      reasoningEffort: "high"
+    });
+  });
+
   it("falls back to the provider's default when the model is not in the catalog", () => {
     const retired: SessionSummary = {
       ...BASE_SESSION,

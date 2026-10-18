@@ -22,6 +22,25 @@ Argmax does not create a worktree in every project folder.
 Arcs coordinate work within or across projects. Creating a project does not create an arc.
 See [arcs.md](arcs.md) for coordinator and member behavior.
 
+### Project overview
+
+Creating a named project starts a background overview generation. The project is usable immediately.
+The helper reads bounded samples from enabled folders, including the primary folder.
+It describes the project's purpose and folder roles, with references to sampled files.
+It does not run repository instructions or infer unsupported relationships.
+
+Settings → Projects shows the editable overview, its generation time, and sources.
+Existing projects can generate an overview there. Refresh produces a separate draft.
+Apply draft replaces the saved overview. Discard keeps the saved overview.
+Saving manual edits during generation prevents the initial result from replacing them.
+Concurrent changes in another window produce a conflict instead of overwriting newer edits.
+
+Generation failures keep the saved overview and expose a retry action.
+Restart interrupts unfinished generation. It does not automatically repeat provider calls.
+Results from an outdated folder configuration are rejected.
+Each new agent turn receives the saved overview as descriptive context to verify against current files.
+An unapplied draft never enters agent context. The overview describes the project, not an arc's progress.
+
 ## Workspaces
 
 [src-tauri/src/workspaces](../src-tauri/src/workspaces) handles workspace creation, status polling, pinning, archiving, and IDE launching.

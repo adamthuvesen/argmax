@@ -56,6 +56,38 @@ async projectsGetFolders(input: ProjectsGetFoldersInput) : Promise<Result<Projec
     else return { status: "error", error: e  as any };
 }
 },
+async projectsGenerateOverview(input: ProjectsGenerateOverviewInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_generate_overview", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsUpdateOverview(input: ProjectsUpdateOverviewInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_update_overview", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsApplyOverviewDraft(input: ProjectsOverviewDraftInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_apply_overview_draft", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsDiscardOverviewDraft(input: ProjectsOverviewDraftInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_discard_overview_draft", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Project check: whether the prompt reads like work for another project.
  * Never fails for want of an answer — no key, a Jev error or a short prompt
@@ -2477,6 +2509,9 @@ export type OpencodeGateway = "openrouter" | "vercel"
  * A gateway without a key here falls back to OpenCode's own login.
  */
 export type OpencodeGatewaySettings = { gateway: OpencodeGateway; openrouterKeyHint?: string | null; vercelKeyHint?: string | null }
+export type OverviewDocument = { text: string; sources: OverviewSource[]; generatedAt: string | null }
+export type OverviewSource = { folderId: string; path: string }
+export type OverviewStatus = "idle" | "generating" | "failed"
 export type PageExtraction = { tabId?: string; url: string; title: string; state?: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; items?: PageItem[]; fields?: PageField[]; truncated: boolean }
 export type PageField = { name: string; value: string; role: string; ref?: string | null }
 export type PageFindResult = { tabId: string; matches: FoundElement[] }
@@ -2613,6 +2648,7 @@ export type ProjectDirectoryPickResult = { cancelled: boolean; path: string | nu
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectFolderSummary = { id: string; projectId: string; name: string; rootPath: string; isPrimary: boolean; enabled: boolean; summary: string | null }
 export type ProjectId = string
+export type ProjectOverview = { revision: number; saved: OverviewDocument | null; draft: OverviewDocument | null; status: OverviewStatus; error: string | null }
 export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[];
 /**
  * What a merged PR does to the isolated workspace on its branch. Off
@@ -2636,7 +2672,7 @@ export type ProjectSummary = { id: string; name: string; repoPath: string; curre
  * settings form saves through `projects:update-settings`, and this value
  * has its own validated channel.
  */
-branchTemplate?: string | null; counts: ProjectCounts; latestActivityAt: string | null }
+branchTemplate?: string | null; overview?: ProjectOverview | null; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsCheckPromptInput = {
 /**
  * The project the launcher is aimed at.
@@ -2649,10 +2685,12 @@ projectId: ProjectId; prompt: Prompt;
 pickedByHand: boolean }
 export type ProjectsConfigureInput = { projectId: ProjectId; name: NonEmptyString; folders: string[]; primaryPath: string }
 export type ProjectsCreateInput = { name: NonEmptyString; folders: string[]; primaryPath: string }
+export type ProjectsGenerateOverviewInput = { projectId: ProjectId }
 export type ProjectsGetFoldersInput = { projectId: ProjectId }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListCheckoutsInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
+export type ProjectsOverviewDraftInput = { projectId: ProjectId; expectedRevision: number }
 export type ProjectsPickFolderInput = Record<string, never>
 export type ProjectsRefreshBranchInput = { projectId: ProjectId }
 export type ProjectsRegisterInput = { repoPath: RepoPath }
@@ -2668,6 +2706,7 @@ export type ProjectsSetBranchTemplateInput = { projectId: ProjectId;
  */
 template: string | null }
 export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
+export type ProjectsUpdateOverviewInput = { projectId: ProjectId; text: string; expectedRevision: number }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
 export type ProviderCapabilityReport = { provider: ProviderId; displayName: string; binaryName: string; installed: boolean; binaryPath: string | null; version: string | null;

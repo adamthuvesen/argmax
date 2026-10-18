@@ -1,7 +1,40 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import type { DashboardSnapshot, TimelineEvent } from "../../shared/types.js";
-import { emptySnapshot, mergeDashboardDelta, pruneSupersededDeltas } from "./snapshot.js";
+import type { DashboardSnapshot, ProjectSummary, TimelineEvent } from "../../shared/types.js";
+import { emptySnapshot, mergeDashboardDelta, mergeProjectSummary, pruneSupersededDeltas } from "./snapshot.js";
+
+describe("project overview revisions", () => {
+  const project: ProjectSummary = {
+    id: "p-1", name: "Argmax", repoPath: "/tmp/argmax", currentBranch: "main", defaultBranch: "main",
+    settings: { mergeCleanup: "off", worktreeLocation: "/tmp", setupCommand: "", checkCommands: [] },
+    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 }, latestActivityAt: null
+  };
+  const current: ProjectSummary = {
+    ...project,
+    overview: { revision: 3, saved: { text: "Saved overview", sources: [], generatedAt: null }, draft: null, status: "idle", error: null }
+  };
+
+  it("preserves the newer overview when a delayed action or delta updates other project fields", () => {
+    const delayed = {
+      ...project, name: "Renamed", currentBranch: "feature",
+      overview: { ...current.overview!, revision: 2, status: "generating" as const }
+    };
+    const merged = mergeProjectSummary(current, delayed);
+    expect(merged.name).toBe("Renamed");
+    expect(merged.currentBranch).toBe("feature");
+    expect(merged.overview).toBe(current.overview);
+    const delta = mergeDashboardDelta({ ...emptySnapshot, projects: [current] }, { projects: [delayed] });
+    expect(delta.projects[0]).toEqual(merged);
+    expect(mergeProjectSummary(current, project).overview).toBe(current.overview);
+  });
+
+  it("accepts newer and equal revisions and preserves their object identity", () => {
+    const next = { ...current, overview: { ...current.overview!, revision: 4, saved: null } };
+    expect(mergeProjectSummary(current, next)).toBe(next);
+    expect(mergeProjectSummary(current, current)).toBe(current);
+    expect(mergeProjectSummary(undefined, current)).toBe(current);
+  });
+});
 
 function event(
   id: string,

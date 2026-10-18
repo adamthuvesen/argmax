@@ -396,6 +396,28 @@
   line-height: 1.6;
 }
 
+.project-overview-input {
+  font-family: var(--font-ui);
+}
+
+.project-overview-draft {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.project-overview-sources .settings-note {
+  padding: 0;
+}
+
+.project-overview-sources ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  overflow-wrap: anywhere;
+}
+
 .settings-form-footer {
   display: flex;
   align-items: center;

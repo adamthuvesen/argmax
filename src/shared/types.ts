@@ -307,6 +307,8 @@ export type SkillSource = Bindings.SkillSource;
 export type SkillSummary = Bindings.SkillSummary;
 export type ConnectionSummary = Bindings.ConnectionSummary;
 export type ProjectSummary = Bindings.ProjectSummary;
+export type ProjectOverview = NonNullable<ProjectSummary["overview"]>;
+export type ProjectOverviewDocument = NonNullable<ProjectOverview["saved"]>;
 export type LinkedRepo = Bindings.LinkedRepo;
 
 /** Untagged on the wire, so the binding has `cancelled: boolean` on both arms. */
@@ -527,6 +529,10 @@ export interface ArgmaxApi {
     list: () => Promise<ProjectSummary[]>;
     create: (input: CreateProjectInput) => Promise<ProjectSummary>;
     configure: (input: ConfigureProjectInput) => Promise<ProjectSummary>;
+    generateOverview: (input: { projectId: string }) => Promise<ProjectSummary>;
+    updateOverview: (input: { projectId: string; text: string; expectedRevision: number }) => Promise<ProjectSummary>;
+    applyOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
+    discardOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
     getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>;
     pickDirectory: () => Promise<{ cancelled: boolean; path: string | null }>;
     pickFolder: () => Promise<ProjectFolderPickResult>;

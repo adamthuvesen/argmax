@@ -1329,6 +1329,15 @@ export async function runProviderFixture(args = process.argv.slice(2)) {
 
   const prompt = await promptFrom(args);
   const workflow = workflowTurn(prompt);
+  if (args.includes("text") && prompt.includes("PROJECT OVERVIEW GENERATION")) {
+    const folderId = prompt.match(/Folder ID: ([^\n]+)/)?.[1];
+    if (!folderId) throw new Error("Project overview fixture received no sampled folder");
+    process.stdout.write(JSON.stringify({
+      text: "Verification project overview: the primary application uses reference material from the supporting folder.",
+      sources: [{ folderId, path: "README.md" }],
+    }) + "\n");
+    return;
+  }
   if (args.includes("text") && prompt.includes("REPOSITORY SAMPLE:")) {
     process.stdout.write(JSON.stringify({ summary: "Shared API contracts and types for the application." }) + "\n");
     return;

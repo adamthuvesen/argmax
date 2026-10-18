@@ -11,6 +11,10 @@ export const IPC_CHANNELS = [
   "projects:create",
   "projects:configure",
   "projects:get-folders",
+  "projects:generate-overview",
+  "projects:update-overview",
+  "projects:apply-overview-draft",
+  "projects:discard-overview-draft",
   "projects:check-prompt",
   "projects:resolve-check",
   "dashboard:list",
@@ -221,6 +225,10 @@ export interface IpcCommands {
   "projects:create": Commands["projectsCreate"];
   "projects:configure": Commands["projectsConfigure"];
   "projects:get-folders": Commands["projectsGetFolders"];
+  "projects:generate-overview": Commands["projectsGenerateOverview"];
+  "projects:update-overview": Commands["projectsUpdateOverview"];
+  "projects:apply-overview-draft": Commands["projectsApplyOverviewDraft"];
+  "projects:discard-overview-draft": Commands["projectsDiscardOverviewDraft"];
   "projects:check-prompt": Commands["projectsCheckPrompt"];
   "projects:resolve-check": Commands["projectsResolveCheck"];
   "dashboard:list": Commands["dashboardList"];

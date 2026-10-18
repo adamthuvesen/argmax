@@ -197,7 +197,14 @@ pub async fn linked_repos_summarize(
 
 /// A small orientation sample keeps the helper cheap without sending the whole checkout.
 async fn repository_summary_context(repo: &LinkedRepo) -> ArgmaxResult<String> {
-    const CONTEXT_CHARS: usize = 24_000;
+    Ok(repository_summary_sample(repo, 24_000).await?.0)
+}
+
+pub(crate) async fn repository_summary_sample(
+    repo: &LinkedRepo,
+    context_chars: usize,
+) -> ArgmaxResult<(String, Vec<String>)> {
+    let mut sources = Vec::new();
     const FILE_CHARS: usize = 4_000;
     const FILES: &[&str] = &[
         "README.md",
@@ -239,14 +246,15 @@ async fn repository_summary_context(repo: &LinkedRepo) -> ArgmaxResult<String> {
         {
             continue;
         }
-        let remaining = CONTEXT_CHARS.saturating_sub(context.chars().count() + file.len() + 6);
+        let remaining = context_chars.saturating_sub(context.chars().count() + file.len() + 6);
         if remaining == 0 {
             break;
         }
         let read = linked_roots::read_text(repo, file, FILE_CHARS.min(remaining)).await?;
         context.push_str(&format!("\n--- {file}\n{}\n", read.content));
+        sources.push((*file).to_owned());
     }
-    Ok(context)
+    Ok((context.chars().take(context_chars).collect(), sources))
 }
 
 #[tauri::command(rename = "linked-repos:set-enabled")]

@@ -25,6 +25,7 @@ pub mod goals;
 pub mod health;
 pub mod learnings;
 pub mod linked_repos;
+pub mod project_overviews;
 pub mod projects;
 pub mod providers;
 pub mod prs;

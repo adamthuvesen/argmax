@@ -521,6 +521,7 @@ mod tests {
                 check_commands: Vec::new(),
             },
             branch_template: None,
+            overview: None,
             counts: ProjectCounts {
                 active: 0,
                 blocked: 0,

@@ -5,6 +5,10 @@ projects:pick-directory
 projects:create
 projects:configure
 projects:get-folders
+projects:generate-overview
+projects:update-overview
+projects:apply-overview-draft
+projects:discard-overview-draft
 projects:check-prompt
 projects:resolve-check
 dashboard:list

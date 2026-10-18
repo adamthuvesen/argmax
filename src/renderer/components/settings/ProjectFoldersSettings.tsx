@@ -3,6 +3,7 @@ import type { ProjectFolder, ProjectSummary } from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 import { ProjectFoldersForm, type ProjectFoldersDraft } from "../ProjectFoldersForm.js";
 import { ProjectFolderContext } from "./ProjectFolderContext.js";
+import { ProjectOverviewSettings } from "./ProjectOverviewSettings.js";
 
 export function ProjectFoldersSettings({ project, onProjectUpdated }: {
   project: ProjectSummary;
@@ -32,6 +33,7 @@ export function ProjectFoldersSettings({ project, onProjectUpdated }: {
   }
 
   return (
+    <>
     <section id="settings-project-folders" className="settings-card" aria-label="Project name and folders">
       {!api ? <p className="settings-note">Open Argmax on your Mac to edit project folders.</p> : null}
       {error ? <p className="settings-note" role="alert">{error}</p> : null}
@@ -47,5 +49,7 @@ export function ProjectFoldersSettings({ project, onProjectUpdated }: {
         }}
       /> : null}
     </section>
+    <ProjectOverviewSettings key={project.id} project={project} folders={folders ?? []} onProjectUpdated={onProjectUpdated} />
+    </>
   );
 }

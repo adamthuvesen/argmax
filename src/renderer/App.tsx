@@ -206,7 +206,7 @@ import {
   type AppNavigationDestination
 } from "./hooks/useAppNavigationHistory.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
-import { mergeDashboardDelta } from "./lib/snapshot.js";
+import { mergeDashboardDelta, mergeProjectSummary } from "./lib/snapshot.js";
 import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
 
 
@@ -1422,7 +1422,7 @@ export function App(): JSX.Element {
           if (p.id !== updated.id) return p;
           if (p === updated) return p;
           mutated = true;
-          return updated;
+          return mergeProjectSummary(p, updated);
         });
         return mutated ? { ...s, projects } : s;
       });

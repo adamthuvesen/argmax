@@ -14,7 +14,8 @@ import { logger } from "../../shared/logger.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import {
   emptySnapshot,
-  mergeDashboardDelta
+  mergeDashboardDelta,
+  mergeProjectSummary
 } from "../lib/snapshot.js";
 import { SessionTimelines } from "../lib/sessionTimelines.js";
 import { sessionMoveDestination, type SessionMoveDestination } from "../lib/projectMove.js";
@@ -265,11 +266,13 @@ export function useDashboardSession(
         data.rawOutputs.filter((output) => !pruned.sessions.has(output.sessionId) && !existingOutputIds.get(output.sessionId)?.has(output.id))
       );
       const metadata = { ...data, events: emptySnapshot.events, rawOutputs: emptySnapshot.rawOutputs };
-      setSnapshot(() => {
+      setSnapshot((current) => {
         // Pushes and successful launches while loadSnapshot() was in flight
         // are newer than this list. Upsert their confirmed entity rows without
         // resurrecting pruned event tails from the pre-load `current` snapshot.
-        const merged = mergeDashboardDelta(metadata, {
+        const existingProjects = new Map(current.projects.map((project) => [project.id, project]));
+        const projects = metadata.projects.map((project) => mergeProjectSummary(existingProjects.get(project.id), project));
+        const merged = mergeDashboardDelta({ ...metadata, projects }, {
           sessions: pruned.metadata.sessions,
           workspaces: pruned.metadata.workspaces,
           checks: pruned.metadata.checks,

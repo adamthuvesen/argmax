@@ -121,6 +121,8 @@ pub struct ProjectSummary {
     /// has its own validated channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overview: Option<super::project_overviews::ProjectOverview>,
     pub counts: ProjectCounts,
     pub latest_activity_at: Option<String>,
 }
@@ -533,6 +535,18 @@ fn project_summary_from_row(
             },
         },
         branch_template: row.get("branch_template")?,
+        overview: row
+            .get::<_, Option<String>>("overview_json")?
+            .map(|value| {
+                serde_json::from_str(&value).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })
+            })
+            .transpose()?,
         counts,
         latest_activity_at,
     })

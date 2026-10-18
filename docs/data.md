@@ -52,6 +52,12 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
 
+Project overviews (v74) use `projects.overview_json` for saved text, refresh drafts, sources, status, and revision.
+`overview_generation_json` stores the active generation token and folder configuration.
+Completion must match both before saving a result. Edits require the current revision.
+Database startup marks interrupted generations failed and clears their tokens. It does not restart provider calls.
+See [workspaces.md](workspaces.md#project-overview) for the user flow.
+
 `routines` (v19) stores scheduled tasks: a prompt plus schedule that the
 in-app scheduler launches as normal top-level sessions. `created_by` (v50)
 names who put the task in the list — `user` for anything saved from the panel,

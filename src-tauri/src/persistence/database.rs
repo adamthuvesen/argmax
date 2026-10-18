@@ -202,6 +202,7 @@ impl Database {
     fn from_connection(mut connection: Connection, path: Option<PathBuf>) -> ArgmaxResult<Self> {
         configure_connection(&connection)?;
         run_migrations(&mut connection)?;
+        super::project_overviews::recover_interrupted(&connection)?;
         super::projects::migrate_default_worktree_locations(
             &connection,
             &crate::util::data_dir::worktree_root()?,

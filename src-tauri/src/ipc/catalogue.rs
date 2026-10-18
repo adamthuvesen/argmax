@@ -95,6 +95,30 @@ command_catalogue! {
         encode(projects::projects_get_folders_impl(state, input).await?)
     };
 
+    "projects:generate-overview" => project_overviews::projects_generate_overview, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsGenerateOverviewInput = parse(channel, input)?;
+        encode(project_overviews::projects_generate_overview_impl(state, input).await?)
+    };
+
+    "projects:update-overview" => project_overviews::projects_update_overview, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsUpdateOverviewInput = parse(channel, input)?;
+        encode(project_overviews::projects_update_overview_impl(state, input).await?)
+    };
+
+    "projects:apply-overview-draft" => project_overviews::projects_apply_overview_draft, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsOverviewDraftInput = parse(channel, input)?;
+        encode(project_overviews::projects_apply_overview_draft_impl(state, input).await?)
+    };
+
+    "projects:discard-overview-draft" => project_overviews::projects_discard_overview_draft, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsOverviewDraftInput = parse(channel, input)?;
+        encode(project_overviews::projects_discard_overview_draft_impl(state, input).await?)
+    };
+
     "projects:check-prompt" => projects::projects_check_prompt, control,
     |state, input, default_agent, channel| {
             let input: ProjectsCheckPromptInput = parse(channel, input)?;

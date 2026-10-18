@@ -192,16 +192,24 @@ pub(crate) async fn projects_create_impl(
         .unchecked_transaction()
         .map_err(crate::persistence::sqlite_error)?;
     persist_project(&transaction, &project)?;
-    let result = crate::persistence::project_folders::configure_project_folders_in_transaction(
+    crate::persistence::project_folders::configure_project_folders_in_transaction(
         &transaction,
         &project_id,
         input.name.as_str(),
         &folders,
         &primary,
     )?;
+    let generation =
+        crate::persistence::project_overviews::begin_generation(&transaction, &project_id, true)?;
+    let result = require_project(&transaction, &project_id)?;
     transaction
         .commit()
         .map_err(crate::persistence::sqlite_error)?;
+    drop(connection);
+    if let Some(generation) = generation {
+        super::project_overviews::spawn_generation(state, database, project_id, generation);
+    }
+    super::publish_dashboard_changed(state);
     Ok(result)
 }
 

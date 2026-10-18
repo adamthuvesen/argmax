@@ -1427,7 +1427,21 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PROJECT_FOLDER_COLUMNS,
         requires_foreign_keys_off: true,
     },
+    Migration {
+        version: 74,
+        name: "project_overviews",
+        up: PROJECT_OVERVIEWS,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_OVERVIEW_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
 ];
+
+const PROJECT_OVERVIEWS: &str = "ALTER TABLE projects ADD COLUMN overview_json TEXT; ALTER TABLE projects ADD COLUMN overview_generation_json TEXT;";
+
+static PROJECT_OVERVIEW_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &["id", "name", "repo_path", "current_branch", "default_branch", "worktree_location", "setup_command", "check_commands_json", "ui_preferences_json", "created_at", "updated_at", "repo_remote_owner", "repo_remote_name", "branch_template", "merge_cleanup", "pr_repository_folder_id", "overview_json", "overview_generation_json"] as &'static [&'static str],
+};
 
 static PROJECT_FOLDER_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
     "projects" => &["id", "name", "repo_path", "current_branch", "default_branch", "worktree_location", "setup_command", "check_commands_json", "ui_preferences_json", "created_at", "updated_at", "repo_remote_owner", "repo_remote_name", "branch_template", "merge_cleanup", "pr_repository_folder_id"] as &'static [&'static str],
@@ -3477,7 +3491,7 @@ mod tests {
         // projects, sessions, and workspaces gained columns in later
         // migrations, so verify them against the head shapes rather than the
         // v1 EXPECTED_COLUMNS.
-        verify_table_columns(&connection, &PROJECT_FOLDER_COLUMNS, "projects").expect("projects");
+        verify_table_columns(&connection, &PROJECT_OVERVIEW_COLUMNS, "projects").expect("projects");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "sessions").expect("sessions");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "turn_routes")
             .expect("turn_routes");
@@ -3651,6 +3665,7 @@ mod tests {
                 (71, compute_migration_checksum(WORKSPACE_CREATED_BRANCH)),
                 (72, compute_migration_checksum(ARC_ARCHIVED_AT)),
                 (73, compute_migration_checksum(PROJECT_FOLDERS)),
+                (74, compute_migration_checksum(PROJECT_OVERVIEWS)),
             ]
         );
 

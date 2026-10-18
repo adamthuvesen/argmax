@@ -1180,7 +1180,7 @@ export async function verifyWorkspaceSettings({
   check(assertions, "unoccupied-branch-chat-runs-in-the-main-checkout", (await providerCwdFor(invocationLog, scenarios.occupiedCheckout.prompt)) === (await realpath(repoPath)) && checkoutChat.id !== oldChat.id);
   await stillAsItWas("unoccupied-branch");
 
-  await verifyNamedProject({ bridge, browser, repoPath, evidenceDir, screenshots, assertions });
+  await verifyNamedProject({ bridge, browser, repoPath, invocationLog, evidenceDir, screenshots, assertions });
 
   const events = await readAllEvents(bridge, source.id);
   const result = {
@@ -1195,7 +1195,7 @@ export async function verifyWorkspaceSettings({
 }
 
 
-async function verifyNamedProject({ bridge, browser, repoPath, evidenceDir, screenshots, assertions }) {
+async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, evidenceDir, screenshots, assertions }) {
   const secondary = path.join(path.dirname(repoPath), "project-secondary");
   await mkdir(secondary, { recursive: true });
   await git(secondary, "init", "-q", "-b", "main");
@@ -1243,6 +1243,7 @@ async function verifyNamedProject({ bridge, browser, repoPath, evidenceDir, scre
   check(assertions, "project-menu-stays-in-window", menuFits);
   screenshots.push(await screenshot(browser, evidenceDir, "project-actions"));
   await (await browser.$('//button[@role="menuitem" and normalize-space(.)="Edit project"]')).click();
+  await verifyProjectOverview({ bridge, browser, projectId: named.id, evidenceDir, screenshots, assertions });
   const makePrimary = await browser.$('[aria-label="Make project-secondary primary"]');
   await makePrimary.waitForDisplayed({ timeout: 10_000 });
   await makePrimary.click();
@@ -1271,6 +1272,8 @@ async function verifyNamedProject({ bridge, browser, repoPath, evidenceDir, scre
     cols: 120, rows: 32, attachments: null,
   });
   await waitForCompleted(bridge, chat.id, 30_000, "named project chat");
+  const overviewLaunch = (await readInvocations(invocationLog)).find((entry) => entry.prompt?.includes("Project overview (descriptive context"));
+  check(assertions, "saved-project-overview-reaches-agent", overviewLaunch?.prompt?.includes("Verification project overview"), overviewLaunch?.prompt);
   await clickByText(browser, "Back", 5_000);
   const chatRow = await browser.$(`[data-workspace-id="${original.id}"] button[data-status][title]`);
   await chatRow.waitForClickable({ timeout: 10_000 });
@@ -1286,6 +1289,35 @@ async function verifyNamedProject({ bridge, browser, repoPath, evidenceDir, scre
   const cardText = await browser.execute(() => document.querySelector('.workspace-card')?.textContent ?? "");
   check(assertions, "workspace-card-has-no-manual-git-actions", !/Chat checkout|Shared checkout|Create pull request/.test(cardText));
   await verifyNestedChats({ bridge, browser, sessionId: chat.id, evidenceDir, screenshots, assertions });
+}
+
+async function verifyProjectOverview({ bridge, browser, projectId, evidenceDir, screenshots, assertions }) {
+  const readOverview = async () => (await bridge.call("projects:list", {})).find((row) => row.id === projectId)?.overview;
+  await browser.waitUntil(async () => (await readOverview())?.status !== "generating", { timeout: 30_000, timeoutMsg: "automatic project overview generation did not finish" });
+  const initial = await readOverview();
+  check(assertions, "project-overview-generated-automatically", Boolean(initial?.saved?.text && initial.saved.generatedAt && initial.saved.sources.length), initial);
+  const editor = await browser.$('[aria-label="Project overview"]');
+  await editor.waitForDisplayed({ timeout: 10_000 });
+  await browser.waitUntil(async () => (await editor.getValue()) === initial.saved.text, { timeout: 5_000 });
+  screenshots.push(await screenshot(browser, evidenceDir, "project-overview-generated"));
+  await setInputValue(browser, editor, "My edited project overview.");
+  await clickByText(browser, "Save overview", 5_000);
+  await browser.waitUntil(async () => (await readOverview())?.saved?.text === "My edited project overview.", { timeout: 5_000 });
+  await clickByText(browser, "Refresh overview", 5_000);
+  await browser.waitUntil(async () => Boolean((await readOverview())?.draft), { timeout: 30_000 });
+  const refreshed = await readOverview();
+  check(assertions, "refresh-keeps-manual-overview-until-applied", refreshed.saved.text === "My edited project overview." && refreshed.draft.text.includes("Verification project overview"), refreshed);
+  await (await browser.$('//button[normalize-space(.)="Apply draft"]')).waitForClickable({ timeout: 10_000 });
+  screenshots.push(await screenshot(browser, evidenceDir, "project-overview-refresh-draft"));
+  await clickByText(browser, "Discard draft", 5_000);
+  await browser.waitUntil(async () => !(await readOverview())?.draft, { timeout: 5_000 });
+  check(assertions, "discard-overview-draft-retains-edits", (await readOverview()).saved.text === "My edited project overview.");
+  await clickByText(browser, "Refresh overview", 5_000);
+  await browser.waitUntil(async () => Boolean((await readOverview())?.draft), { timeout: 30_000 });
+  await clickByText(browser, "Apply draft", 10_000);
+  await browser.waitUntil(async () => (await readOverview())?.saved?.text.includes("Verification project overview"), { timeout: 5_000 });
+  const applied = await readOverview();
+  check(assertions, "apply-overview-draft-updates-saved-context", !applied.draft && applied.saved.text.includes("Verification project overview"));
 }
 
 async function verifyNestedChats({ bridge, browser, sessionId, evidenceDir, screenshots, assertions }) {

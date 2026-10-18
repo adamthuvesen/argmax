@@ -458,6 +458,22 @@ export function BrowserPanel({
     [browser, controlledTabId, surfaceOwnerId]
   );
 
+  // The scope's active tab can change outside this panel: the Artifacts row
+  // and links from a standalone page activate a tab in the store directly.
+  // Follow it here. Otherwise the page that was showing keeps its native
+  // webview painted over the app, and leaving the Browser page hides only the
+  // new active tab, so the old page stays stuck on top of every later view.
+  const shownTabIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (controlledTabId) return;
+    const previous = shownTabIdRef.current;
+    shownTabIdRef.current = scopeActiveTabId;
+    if (previous === null || previous === scopeActiveTabId) return;
+    if (tabs.some((tab) => tab.id === previous)) hideTabWebview(previous);
+    const next = tabs.find((tab) => tab.id === scopeActiveTabId);
+    if (next) showTabWebview(next);
+  }, [controlledTabId, hideTabWebview, scopeActiveTabId, showTabWebview, tabs]);
+
   /** Activate a tab the way a click on it does: its page takes keyboard focus,
    *  so the next keystroke is the page's. Re-activating the tab that is
    *  already showing only moves focus back to it. */

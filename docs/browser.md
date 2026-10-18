@@ -221,7 +221,7 @@ A screenshot taken through a tool starts at about 720 device pixels wide on Reti
 
 The catalogue marks these commands `desktop`: they manipulate the desktop app's native child webviews.
 
-Closing a tab (`browser:close`) disposes the webview. Leaving Browser mode sets `visible: false` to preserve page session state and scroll position.
+Closing a tab (`browser:close`) disposes the webview. Leaving Browser mode sets `visible: false` to preserve page session state and scroll position. A tab activated in the store from outside the panel, such as the Artifacts row or a link from a standalone page, hides the page that was showing and shows the new one. Without that, leaving the Browser page hid only the new active tab and left the old page painted over the app.
 
 ## Capture and Evaluation
 

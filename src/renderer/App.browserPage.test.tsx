@@ -52,6 +52,38 @@ describe("App browser page", () => {
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).filter((tab) => tab.url === "https://claude.ai/artifacts")).toHaveLength(1);
   });
 
+  it("swaps to the artifacts page while Browser is open, and leaves no page painted over a chat", async () => {
+    window.localStorage.setItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY, "true");
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 40, 800, 600));
+    // Native visibility per tab: open shows a page, set-bounds shows or hides it.
+    const shown = new Map<string, boolean>();
+    const api = window.argmax!.browser;
+    const open = api.open.bind(api);
+    vi.spyOn(api, "open").mockImplementation(async (input) => {
+      shown.set(input.tabId, true);
+      return open(input);
+    });
+    const setBounds = api.setBounds.bind(api);
+    vi.spyOn(api, "setBounds").mockImplementation(async (input) => {
+      shown.set(input.tabId, input.visible);
+      return setBounds(input);
+    });
+    const visibleUrls = (): string[] => [...shown]
+      .filter(([, visible]) => visible)
+      .map(([tabId]) => getBrowserTabs(BROWSER_PAGE_OWNER_ID).find((tab) => tab.id === tabId)?.url ?? tabId);
+    await renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "Browser" }));
+    await screen.findByRole("region", { name: "Browser" });
+    await waitFor(() => expect(visibleUrls()).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    await waitFor(() => expect(visibleUrls()).toEqual(["https://claude.ai/artifacts"]));
+
+    fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("region", { name: "Conversation" });
+    await waitFor(() => expect(visibleUrls()).toEqual([]));
+  });
+
   it("opens from the rail and keeps the session sidebar", async () => {
     await renderApp();
 

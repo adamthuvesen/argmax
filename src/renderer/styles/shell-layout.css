@@ -169,7 +169,7 @@
   border-radius: var(--radius-lg);
   background: transparent;
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
@@ -393,6 +393,19 @@
   padding-left: 0;
 }
 
+/* Sections (recency buckets, Pinned, Priority, Projects, Snoozed, Archived)
+   open with a gap, so a header reads as the start of a new group rather than
+   the last row of the one above. Projects inside the Projects section keep the
+   tight step: they are siblings, not sections. */
+.project-group.session-date-group:not(:first-child),
+.project-group.session-projects-group:not(:first-child) {
+  margin-top: var(--space-2_5);
+}
+
+.project-group:not(.session-date-group, .session-projects-group) + .project-group:not(.session-date-group, .session-projects-group) {
+  margin-top: var(--space-1);
+}
+
 /* Flat "by date" view: a collapsible date header reusing the full
    `.project-group` / `.project-row` chrome so spacing matches project groups
    exactly. The header isn't draggable, so drop the grab cursor. */
@@ -610,7 +623,7 @@
   width: 100%;
   min-width: 0;
   min-height: 30px;
-  padding: 0 var(--space-1_5) 0 var(--space-3);
+  padding: 0 var(--space-1_5) 0 var(--space-2_5);
   color: var(--muted);
   text-align: left;
   border: 0;
@@ -655,7 +668,7 @@
    that carries uppercase only loosens normal text. */
 .project-name.session-date-label .project-name-text {
   font-size: var(--text-xs-plus);
-  font-weight: var(--weight-ui);
+  font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
   text-transform: none;
 }
@@ -667,9 +680,30 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-transform: none;
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   font-weight: calc(400 + var(--font-weight-offset));
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
+}
+
+/* The folder glyph sits in the same 14px column as the nav glyphs and the chat
+   markers, so a project reads as a container of the rows under it. */
+.project-name-glyph {
+  display: inline-grid;
+  flex: 0 0 14px;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  transition: color var(--duration-fast) var(--ease);
+}
+
+.project-name:hover .project-name-glyph,
+.project-name.active .project-name-glyph {
+  color: var(--text-soft);
+}
+
+.project-name-glyph svg {
+  stroke-width: 1.8;
 }
 
 .project-visibility {

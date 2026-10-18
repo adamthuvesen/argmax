@@ -6,6 +6,8 @@ import {
   Command,
   Cpu,
   Eraser,
+  Folder,
+  FolderOpen,
   Globe,
   Info,
   Keyboard,
@@ -1755,6 +1757,9 @@ export function Sidebar({
                     onOpenProject(project.id);
                   }}
                 >
+                  <span className="project-name-glyph" aria-hidden="true">
+                    {isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
+                  </span>
                   <span className="project-name-text">{project.name}</span>
                 </button>
                 {onRemoveProject ? (

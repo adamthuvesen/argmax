@@ -1104,6 +1104,34 @@ export function ReviewPanel({
     registerReviewFileTabCloseHandler(() => { if (activeTabId) tabs.close(activeTabId); });
     return () => registerReviewFileTabCloseHandler(null);
   }, [activeTabId, isFocused, tabs]);
+  const openTabFromShortcut = (reopen: boolean): void => {
+    if (!tabs) return;
+    if (reopen) tabs.reopenClosed();
+    else tabs.openTool("new");
+  };
+  const openTabFromShortcutRef = useRef(openTabFromShortcut);
+  openTabFromShortcutRef.current = openTabFromShortcut;
+  // ⌘T and ⌘⇧T act on the focused chat's panel wherever keyboard focus is.
+  // Requiring focus inside the panel made them depend on where the last click
+  // landed: macOS WebKit does not focus a button on click, so picking a file in
+  // the Changes tree left focus in the composer and ⌘T did nothing. Keys from
+  // inside the panel still go through handlePanelKeys below; a dialog keeps
+  // the key for itself.
+  const hasTabs = tabs !== undefined;
+  useEffect(() => {
+    if (!hasTabs || !isFocused) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.isComposing || event.repeat) return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "t") return;
+      const panel = panelElementRef.current;
+      if (!panel || (event.target instanceof Node && panel.contains(event.target))) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      openTabFromShortcutRef.current(event.shiftKey);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [hasTabs, isFocused]);
   const handlePanelKeys = (event: ReactKeyboardEvent<HTMLElement>): void => {
     if (!tabs || event.defaultPrevented || event.nativeEvent.isComposing || event.repeat) return;
     if (event.metaKey || event.ctrlKey) {
@@ -1115,8 +1143,7 @@ export function ReviewPanel({
       } else if (key === "t" && !event.altKey) {
         event.preventDefault();
         event.stopPropagation();
-        if (event.shiftKey) tabs.reopenClosed();
-        else tabs.openTool("new");
+        openTabFromShortcut(event.shiftKey);
       } else if (event.ctrlKey && key === "tab" && tabs.items.length > 1) {
         event.preventDefault();
         event.stopPropagation();

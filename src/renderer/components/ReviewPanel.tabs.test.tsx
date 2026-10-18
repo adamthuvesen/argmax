@@ -117,6 +117,20 @@ describe("shared review tabs", () => {
     expect(tabs.reopenClosed).toHaveBeenCalledOnce();
   });
 
+  it("opens a new tab from ⌘T while focus sits outside the focused chat's panel", () => {
+    const tabs = controller([{ id: "tool:changes", kind: "tool", mode: "changes" }], ["tool:changes"]);
+    const { rerender } = render(<ReviewPanel review={reviewStub({ tabs })} />);
+    fireEvent.keyDown(document.body, { key: "t", metaKey: true });
+    expect(tabs.openTool).toHaveBeenCalledExactlyOnceWith("new");
+    fireEvent.keyDown(document.body, { key: "T", metaKey: true, shiftKey: true });
+    expect(tabs.reopenClosed).toHaveBeenCalledOnce();
+
+    // A chat beside the focused one leaves the key to that chat's panel.
+    rerender(<ReviewPanel isFocused={false} review={reviewStub({ tabs })} />);
+    fireEvent.keyDown(document.body, { key: "t", metaKey: true });
+    expect(tabs.openTool).toHaveBeenCalledOnce();
+  });
+
   it("shows the new-tab tools and browser input without a file tree or suggestions", () => {
     const tabs = controller([{ id: "tool:new", kind: "tool", mode: "new" }], ["tool:new"]);
     render(<ReviewPanel sideChat={sideChatContext()} review={reviewStub({

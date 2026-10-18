@@ -2689,9 +2689,11 @@ describe("Sidebar — launched chat nesting", () => {
     const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
     fireEvent.click(within(children).getByRole("button", { name: "Launched chat" }));
     expect(onOpenWorkspaceChat).toHaveBeenCalledWith("child", expect.any(Object));
-    fireEvent.click(screen.getByRole("button", { name: "Collapse chats launched from Parent chat" }));
+    fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }));
     expect(screen.queryByRole("button", { name: "Launched chat" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Expand chats launched from Parent chat" }));
+    fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Expand chats launched from Parent chat" }));
     expect(screen.getByRole("button", { name: "Launched chat" })).toBeInTheDocument();
   });
 

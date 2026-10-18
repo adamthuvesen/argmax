@@ -2,8 +2,6 @@ import {
   AppWindow,
   Archive,
   Check,
-  ChevronDown,
-  ChevronRight,
   CornerUpLeft,
   CircleEllipsis,
   CircleX,
@@ -527,22 +525,6 @@ function SidebarSessionRowInner({
       }}
       onContextMenu={isEditing ? undefined : handleContextMenu}
     >
-      {onToggleChildren ? (
-        <button
-          type="button"
-          className="session-children-toggle"
-          aria-label={`${childrenExpanded ? "Collapse" : "Expand"} chats launched from ${workspace.taskLabel || workspace.branch}`}
-          aria-expanded={childrenExpanded}
-          title={`${childCount ?? 0} launched chats${childActivity ? ` · ${childActivity}` : ""}`}
-          data-attention={childActivity ? "true" : undefined}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleChildren(workspace.id);
-          }}
-        >
-          {childrenExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        </button>
-      ) : null}
       {isEditing ? (
         // The row keeps its glyph, layout, and subtitle; only the title text
         // swaps for an unboxed input, so renaming edits the label in place
@@ -698,6 +680,25 @@ function SidebarSessionRowInner({
               aria-label="Chat actions"
               style={contextMenu.floatingStyles}
             >
+              {onToggleChildren ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    aria-label={`${childrenExpanded ? "Collapse" : "Expand"} chats launched from ${workspace.taskLabel || workspace.branch}`}
+                    title={`${childCount ?? 0} launched chats${childActivity ? ` · ${childActivity}` : ""}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onToggleChildren(workspace.id);
+                    }}
+                  >
+                    <MessageCircle size={13} aria-hidden="true" />
+                    {childrenExpanded ? "Hide launched chats" : "Show launched chats"}
+                  </button>
+                </li>
+              ) : null}
               {onDetach ? (
                 <li role="none">
                   <button

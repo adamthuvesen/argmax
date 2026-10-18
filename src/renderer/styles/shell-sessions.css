@@ -280,25 +280,6 @@
   padding-right: calc(2 * var(--sidebar-action-size) + 2px + var(--sidebar-action-inset) + var(--space-1));
 }
 
-.session-children-toggle {
-  flex: 0 0 20px;
-  display: grid;
-  place-items: center;
-  align-self: stretch;
-  min-height: 28px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.session-children-toggle:hover,
-.session-children-toggle[data-attention="true"] {
-  color: var(--accent);
-}
-
 .sidebar-chat-children {
   margin-left: var(--space-8);
 }

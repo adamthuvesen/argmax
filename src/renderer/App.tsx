@@ -292,7 +292,7 @@ export function App(): JSX.Element {
     [chatVerbosity]
   );
   const [sidebarClaudeArtifactsVisible, setSidebarClaudeArtifactsVisible] = useBooleanUiPreference(SIDEBAR_CLAUDE_ARTIFACTS_KEY, false);
-  const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, true);
+  const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, false);
   const [sidebarArchivedVisible, setSidebarArchivedVisible] = useBooleanUiPreference(SIDEBAR_ARCHIVED_KEY, true);
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [windowTranslucent, setWindowTranslucent] = useBooleanUiPreference(WINDOW_TRANSLUCENT_KEY, false);

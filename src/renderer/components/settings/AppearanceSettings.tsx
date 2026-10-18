@@ -489,7 +489,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Show arcs"
-          description="Show the Arcs section in the sidebar."
+          description="Show New arc and the Arcs section in the sidebar."
           control={
             <Toggle
               ariaLabel="Show arcs"

@@ -17,7 +17,7 @@ A brief is required. When the chosen folder already has a `BRIEF.md`, leave the 
 
 **Archive** on a done Arc's page takes it out of the sidebar's Arcs list and keeps everything else: the folder, the timeline, and the chats. **Show N archived** at the foot of the list brings archived arcs back into view, and **Unarchive** on the page returns one to the list, still done. Reopening an archived Arc also unarchives it.
 
-The **Show arcs** toggle in **Settings → Appearance** controls the desktop sidebar section and is on by default. When there are no arcs, **New arc** sits in the sidebar's top navigation right under **New chat**, with no empty Arcs heading. Pinned and Priority headings also disappear when their sections are empty.
+The **Show arcs** toggle in **Settings → Appearance** controls New arc and the desktop sidebar section. It is off by default. When there are no arcs, **New arc** sits in the sidebar's top navigation right under **New chat**, with no empty Arcs heading. Pinned and Priority headings also disappear when their sections are empty.
 
 ## How it works
 

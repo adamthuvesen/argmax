@@ -94,13 +94,26 @@
   position: relative;
 }
 
+/* The toolbar sits on the group's header row with no ground of its own, so
+   the row's hover fill runs under the icons. A panel-colored ground here read
+   as a dark slab on the lit row in dark mode. */
 .project-folder-change-group > .changes-tree-col > .workspace-tree-toolbar {
   position: absolute;
   top: 6px;
   right: var(--space-2);
   min-height: 20px;
   padding: 0;
-  background: var(--review-sidebar);
+}
+
+/* While the toolbar shows, the header gives up its width (two 20px buttons and
+   their gap), so a long name truncates before the icons instead of under them.
+   Pointing at the icons keeps the header lit: they act on that row. */
+.project-folder-change-group[open]:has(> .changes-tree-col):is(:hover, :focus-within) > summary {
+  padding-right: calc(var(--space-2) + 42px + var(--space-1));
+}
+
+.project-folder-change-group:has(> .changes-tree-col > .workspace-tree-toolbar:hover) > summary {
+  background: var(--row-hover);
 }
 
 .project-folder-change-group:hover > .changes-tree-col > .workspace-tree-toolbar,

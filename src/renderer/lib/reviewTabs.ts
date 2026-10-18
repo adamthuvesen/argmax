@@ -42,8 +42,8 @@ export function reviewToolTab(mode: ReviewToolMode): ReviewTab {
   return { id: `tool:${mode}`, kind: "tool", mode };
 }
 
-export function createReviewTabs(): ReviewTabsState {
-  const tab = reviewToolTab("changes");
+export function createReviewTabs(mode: ReviewToolMode = "changes"): ReviewTabsState {
+  const tab = reviewToolTab(mode);
   return { version: 2, tabs: [tab], paneTabIds: [tab.id], activeIndex: 0, ratio: 0.5 };
 }
 
@@ -131,7 +131,7 @@ export function removeReviewTab(state: ReviewTabsState, id: string): ReviewTabsS
   const index = state.tabs.findIndex((tab) => tab.id === id);
   if (index < 0) return state;
   const tabs = state.tabs.filter((tab) => tab.id !== id);
-  if (!tabs.length) return createReviewTabs();
+  if (!tabs.length) return createReviewTabs("new");
   const panes = state.paneTabIds.filter((pane) => pane !== id);
   if (panes.length === 0) panes.push(tabs[Math.min(index, tabs.length - 1)].id);
   const activeId = state.paneTabIds[state.activeIndex];

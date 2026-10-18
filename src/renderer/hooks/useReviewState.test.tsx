@@ -122,6 +122,24 @@ describe("useReviewState — IPC fan-out resistance", () => {
     }
   );
 
+  it.each(["new", "changes"] as const)("reopens only New tab after closing the final %s tab", (mode) => {
+    const source = workspaceSource(makeWorkspace());
+    const first = renderHook(() => useReviewState(source, null, { sessionId: "last-tab" }));
+    act(() => first.result.current.tabs!.openTool(mode));
+    for (const tab of first.result.current.tabs!.items.filter((item) => item.id !== `tool:${mode}`)) {
+      act(() => first.result.current.tabs!.close(tab.id));
+    }
+    act(() => first.result.current.tabs!.close(`tool:${mode}`));
+    expect(first.result.current.isPanelOpen).toBe(false);
+    first.unmount();
+
+    const restored = renderHook(() => useReviewState(source, null, { sessionId: "last-tab" }));
+    act(() => restored.result.current.togglePanel());
+    expect(restored.result.current.isPanelOpen).toBe(true);
+    expect(restored.result.current.tabs!.items.map((tab) => tab.id)).toEqual(["tool:new"]);
+    expect(restored.result.current.mode).toBe("new");
+  });
+
   it("preserves tabs but shows New tab when reopening a saved split layout", () => {
     const source = workspaceSource(makeWorkspace());
     const first = renderHook(() => useReviewState(source, null, { sessionId: "session-split" }));

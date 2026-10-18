@@ -11,6 +11,12 @@ interface DismissOptions {
    * picker and project picker do not need a trap.
    */
   trapFocus?: boolean;
+  /**
+   * Close on a mousedown outside `ref`. A modal with its own overlay turns this
+   * off and closes on an overlay click instead, so a click on a toast or other
+   * app chrome outside the overlay keeps the draft.
+   */
+  dismissOnOutsideMouseDown?: boolean;
 }
 
 interface EscapeDismissal {
@@ -57,7 +63,7 @@ export function useDismissOnOutsideOrEscape(
     closeRef.current = close;
   }, [close]);
 
-  const { trapFocus = false } = options;
+  const { trapFocus = false, dismissOnOutsideMouseDown = true } = options;
 
   useEffect(() => {
     if (!active) return;
@@ -68,6 +74,7 @@ export function useDismissOnOutsideOrEscape(
     };
     escapeDismissals.push(dismissal);
     const handleMouseDown = (event: MouseEvent): void => {
+      if (!dismissOnOutsideMouseDown) return;
       const target = event.target as Node;
       const insideMain = ref.current?.contains(target) ?? false;
       const insideExtra = extraRef?.current?.contains(target) ?? false;
@@ -127,5 +134,5 @@ export function useDismissOnOutsideOrEscape(
       document.removeEventListener("mousedown", handleMouseDown, { capture: true });
       document.removeEventListener("keydown", handleKeyDown, { capture: true });
     };
-  }, [active, ref, extraRef, trapFocus]);
+  }, [active, ref, extraRef, trapFocus, dismissOnOutsideMouseDown]);
 }

@@ -156,6 +156,9 @@ interface PendingLaunch {
   prompt: string;
   model: ModelPickerSelection;
   workspaceMode: WorkspaceMode;
+  /** The mode the user chose. `workspaceMode` is forced to "current" for a
+   *  non-git folder, which a launch moved to another project leaves behind. */
+  chosenWorkspaceMode: WorkspaceMode;
   attachments: ComposerAttachment[] | undefined;
   goalCondition: string | undefined;
   /** The branch picked when the prompt was sent, not whatever is picked when the
@@ -1138,6 +1141,7 @@ export function LaunchSurface({
       prompt: finalPrompt,
       model,
       workspaceMode: effectiveWorkspaceMode,
+      chosenWorkspaceMode: workspaceMode,
       attachments,
       goalCondition,
       checkout: checkout ?? undefined,
@@ -1168,18 +1172,19 @@ export function LaunchSurface({
     setIsSubmitting(true);
     // See the side-chat path above: the draft goes before the first await.
     if (draftKey) clearDraft(draftKey);
+    const movesProject = projectId !== undefined && projectId !== project?.id;
     try {
       const launched = await onLaunchTask(
         launch.prompt,
         launch.model,
         "auto",
-        launch.workspaceMode,
+        movesProject ? launch.chosenWorkspaceMode : launch.workspaceMode,
         launch.attachments,
         launch.goalCondition,
         projectId,
         undefined,
         launch.checkout,
-        projectId && projectId !== project?.id ? undefined : launch.projectFolderId
+        movesProject ? undefined : launch.projectFolderId
       );
       setPrompt("");
       clearAttachments();

@@ -6,6 +6,10 @@ import { showErrorToast } from "../state/toast.js";
 
 export type ProjectFoldersDraft = CreateProjectInput;
 
+function draftKey(draft: ProjectFoldersDraft): string {
+  return JSON.stringify([draft.name, draft.folders, draft.primaryPath]);
+}
+
 export function ProjectFoldersForm({
   initialValue,
   submitLabel,
@@ -29,8 +33,28 @@ export function ProjectFoldersForm({
   const [primaryPath, setPrimaryPath] = useState(initialValue.primaryPath);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [duplicateNote, setDuplicateNote] = useState<string | null>(null);
+  // A new initialValue (a refetch, or this form's own save landing) replaces
+  // the draft only while the draft is unedited since the last sync or save.
+  const initialKey = draftKey(initialValue);
+  const [synced, setSynced] = useState({ initialKey, draftKey: initialKey });
+  if (synced.initialKey !== initialKey) {
+    if (draftKey({ name, folders, primaryPath }) === synced.draftKey) {
+      setName(initialValue.name);
+      setFolders(initialValue.folders);
+      setPrimaryPath(initialValue.primaryPath);
+      setSynced({ initialKey, draftKey: initialKey });
+    } else {
+      setSynced({ initialKey, draftKey: synced.draftKey });
+    }
+  }
   const dirty = name.trim() !== initialValue.name || primaryPath !== initialValue.primaryPath ||
     folders.join("\n") !== initialValue.folders.join("\n");
+
+  function markChanged(): void {
+    setSaved(false);
+    setDuplicateNote(null);
+  }
 
   function updateBusy(value: boolean): void {
     setBusy(value);
@@ -44,10 +68,13 @@ export function ProjectFoldersForm({
       const selected = await window.argmax.projects.pickDirectory();
       if (selected.cancelled || !selected.path) return;
       const path = selected.path;
-      if (folders.includes(path)) return;
+      if (folders.includes(path)) {
+        setDuplicateNote(`${folderDisplayName(path)} is already in this project.`);
+        return;
+      }
       setFolders((current) => [...current, path]);
       if (!primaryPath) setPrimaryPath(path);
-      setSaved(false);
+      markChanged();
     } catch (error) {
       showErrorToast(validationMessage(error));
     } finally {
@@ -58,9 +85,12 @@ export function ProjectFoldersForm({
   async function save(): Promise<void> {
     if (busy || !name.trim() || !primaryPath || folders.length === 0) return;
     updateBusy(true);
-    setSaved(false);
+    markChanged();
+    const draft = { name: name.trim(), folders, primaryPath };
     try {
-      await onSubmit({ name: name.trim(), folders, primaryPath });
+      await onSubmit(draft);
+      setName(draft.name);
+      setSynced((current) => ({ ...current, draftKey: draftKey(draft) }));
       setSaved(true);
     } catch (error) {
       showErrorToast(validationMessage(error));
@@ -81,7 +111,7 @@ export function ProjectFoldersForm({
           autoComplete="off"
           placeholder="AI Analytics"
           disabled={busy}
-          onChange={(event) => { setName(event.target.value); setSaved(false); }}
+          onChange={(event) => { setName(event.target.value); markChanged(); }}
         />
       </div>
       <div className="project-folders-intro">
@@ -103,7 +133,7 @@ export function ProjectFoldersForm({
       ) : (
         <ul className="project-folders-list" aria-label="Project folders">
           {folders.map((path) => {
-            const folderName = path.replace(/\/+$/, "").split("/").pop() || path;
+            const folderName = folderDisplayName(path);
             const primary = path === primaryPath;
             return (
               <li key={path} data-primary={primary ? "true" : undefined}>
@@ -116,7 +146,7 @@ export function ProjectFoldersForm({
                   <label className="project-folder-primary-choice">
                     <input type="radio" name={`${nameId}-primary`} checked={primary} disabled={busy}
                       aria-label={`Make ${folderName} primary`}
-                      onChange={() => { setPrimaryPath(path); setSaved(false); }} />
+                      onChange={() => { setPrimaryPath(path); markChanged(); }} />
                     <span>Primary</span>
                   </label>
                   <button type="button" className="small-icon" disabled={busy}
@@ -125,7 +155,7 @@ export function ProjectFoldersForm({
                       const remaining = folders.filter((folder) => folder !== path);
                       setFolders(remaining);
                       if (primary) setPrimaryPath(remaining[0] ?? "");
-                      setSaved(false);
+                      markChanged();
                     }}>
                     <X size={14} aria-hidden="true" />
                   </button>
@@ -136,6 +166,7 @@ export function ProjectFoldersForm({
           })}
         </ul>
       )}
+      {duplicateNote ? <p className="project-folders-duplicate" role="status">{duplicateNote}</p> : null}
       <footer className="project-folders-actions">
         {saved ? <span className="settings-note" role="status">Project saved.</span> : null}
         {onCancel ? <button type="button" className="settings-button" onClick={onCancel} disabled={busy}>Cancel</button> : null}
@@ -146,4 +177,8 @@ export function ProjectFoldersForm({
       </footer>
     </form>
   );
+}
+
+function folderDisplayName(path: string): string {
+  return path.replace(/\/+$/, "").split("/").pop() || path;
 }

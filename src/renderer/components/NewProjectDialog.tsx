@@ -11,11 +11,13 @@ export function NewProjectDialog({ onClose, onCreate }: {
 }): JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
-  useDismissOnOutsideOrEscape(dialogRef, true, () => { if (!busy) onClose(); }, undefined, { trapFocus: true });
+  const dismiss = (): void => { if (!busy) onClose(); };
+  useDismissOnOutsideOrEscape(dialogRef, true, dismiss, undefined, { trapFocus: true, dismissOnOutsideMouseDown: false });
   useRestoreFocus(true);
 
   return createPortal(
-    <div className="project-dialog-overlay motion-modal-overlay" data-motion-state="open">
+    <div className="project-dialog-overlay motion-modal-overlay" data-motion-state="open"
+      onMouseDown={(event) => { if (event.target === event.currentTarget) dismiss(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="new-project-heading"
         className="project-dialog motion-modal-surface">
         <header className="project-dialog-header">

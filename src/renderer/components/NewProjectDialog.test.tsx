@@ -72,6 +72,32 @@ describe("NewProjectDialog", () => {
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
   });
 
+  it("closes on an overlay click but keeps the draft when a click lands outside the overlay", () => {
+    install(["/repos/app"]);
+    const onClose = vi.fn();
+    render(<NewProjectDialog onCreate={vi.fn()} onClose={onClose} />);
+    const toast = document.createElement("div");
+    toast.setAttribute("role", "alert");
+    document.body.append(toast);
+    fireEvent.mouseDown(toast);
+    fireEvent.mouseDown(screen.getByLabelText("Project name"));
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.mouseDown(screen.getByRole("dialog").parentElement!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    toast.remove();
+  });
+
+  it("shows a note when the picked folder is already in the project and clears it on the next change", async () => {
+    install(["/repos/app", "/repos/app"]);
+    render(<NewProjectDialog onCreate={vi.fn()} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
+    await screen.findByText("app");
+    fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
+    expect(await screen.findByText("app is already in this project.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "AI" } });
+    expect(screen.queryByText("app is already in this project.")).toBeNull();
+  });
+
   it("keeps the draft after a backend failure and prevents dismissal during creation", async () => {
     install(["/repos/app"]);
     let reject!: (reason: Error) => void;

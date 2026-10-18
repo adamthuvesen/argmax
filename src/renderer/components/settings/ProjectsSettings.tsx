@@ -17,13 +17,22 @@ import { SegmentedControl, SettingGroup, SettingRow, SettingsListPicker } from "
 export function ProjectsSettings({
   projects,
   initialProjectId,
+  navigationRequestId,
   onProjectUpdated
 }: {
   projects: ProjectSummary[];
   initialProjectId?: string;
+  navigationRequestId?: number;
   onProjectUpdated: (updated: ProjectSummary) => void;
 }): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? projects[0]?.id ?? null);
+  // Only a navigation that names a project moves the selection. A settings
+  // search jump keeps the open project and its unsaved drafts.
+  const [handledRequestId, setHandledRequestId] = useState(navigationRequestId);
+  if (navigationRequestId !== handledRequestId) {
+    setHandledRequestId(navigationRequestId);
+    if (initialProjectId) setSelectedId(initialProjectId);
+  }
   const selected = projects.find((project) => project.id === selectedId) ?? projects[0] ?? null;
 
   return (

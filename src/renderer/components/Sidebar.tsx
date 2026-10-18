@@ -63,7 +63,12 @@ import {
   type SidebarViewMode
 } from "../lib/projects.js";
 import { buildSidebarChatTree } from "../lib/sidebarChatTree.js";
-import { detachSidebarChat, useSidebarChatNesting } from "../lib/sidebarChatNesting.js";
+import {
+  detachSidebarChat,
+  loadCollapsedChatIds,
+  saveCollapsedChatIds,
+  useSidebarChatNesting
+} from "../lib/sidebarChatNesting.js";
 import { useLauncherSurface } from "../state/launcherSurface.js";
 import {
   showCommandPalette,
@@ -545,15 +550,10 @@ export function Sidebar({
     detachSidebarChat(workspaceId);
     setDetachedToReveal(workspaceId);
   }, []);
-  const [collapsedChats, setCollapsedChats] = useState<Set<string>>(() => new Set());
-  const toggleChatChildren = useCallback((workspaceId: string): void => {
-    setCollapsedChats((current) => {
-      const next = new Set(current);
-      if (next.has(workspaceId)) next.delete(workspaceId);
-      else next.add(workspaceId);
-      return next;
-    });
-  }, []);
+  const [collapsedChats, setCollapsedChats] = useState<Set<string>>(() => loadCollapsedChatIds());
+  useEffect(() => {
+    saveCollapsedChatIds(collapsedChats);
+  }, [collapsedChats]);
   const workingWorkspaces = useMemo(
     () => workingWorkspaceIds(snapshot.sessions),
     [snapshot.sessions]
@@ -565,6 +565,19 @@ export function Sidebar({
       ),
     [workspaceIdsWithSessions, snapshot.workspaces]
   );
+  const allSidebarWorkspacesRef = useRef(allSidebarWorkspaces);
+  allSidebarWorkspacesRef.current = allSidebarWorkspaces;
+  // Pruned on a click, not on every refresh: a partial dashboard load would
+  // otherwise forget collapsed chats that are only briefly missing.
+  const toggleChatChildren = useCallback((workspaceId: string): void => {
+    setCollapsedChats((current) => {
+      const listedIds = new Set(allSidebarWorkspacesRef.current.map((workspace) => workspace.id));
+      const next = new Set([...current].filter((id) => listedIds.has(id)));
+      if (current.has(workspaceId)) next.delete(workspaceId);
+      else next.add(workspaceId);
+      return next;
+    });
+  }, []);
   // A snooze lifts a row out of every section into the collapsed Snoozed shelf
   // until its time passes. Membership is derived from the clock, so there is no
   // poll: one timer is armed for the earliest expiry and re-derives the shelf.
@@ -866,17 +879,19 @@ export function Sidebar({
   // only takes git workspaces, so a running chat stays in its recency bucket
   // or the Chat group. Shared by the two reveal effects below.
   const revealWorkspaceGroup = useCallback(
-    (selectedWorkspace: DashboardSnapshot["workspaces"][number]): void => {
-      const ancestors: string[] = [];
-      let parentId = chatTree.parentByWorkspace.get(selectedWorkspace.id);
-      while (parentId) {
-        ancestors.push(parentId);
-        parentId = chatTree.parentByWorkspace.get(parentId);
+    (selectedWorkspace: DashboardSnapshot["workspaces"][number], expandCollapsedAncestors: boolean): void => {
+      if (expandCollapsedAncestors) {
+        const ancestors: string[] = [];
+        let parentId = chatTree.parentByWorkspace.get(selectedWorkspace.id);
+        while (parentId) {
+          ancestors.push(parentId);
+          parentId = chatTree.parentByWorkspace.get(parentId);
+        }
+        setCollapsedChats((current) => {
+          if (!ancestors.some((id) => current.has(id))) return current;
+          return new Set([...current].filter((id) => !ancestors.includes(id)));
+        });
       }
-      setCollapsedChats((current) => {
-        if (!ancestors.some((id) => current.has(id))) return current;
-        return new Set([...current].filter((id) => !ancestors.includes(id)));
-      });
       const rootId = chatTree.rootByWorkspace.get(selectedWorkspace.id) ?? selectedWorkspace.id;
       const workspace = sidebarWorkspaces.find((candidate) => candidate.id === rootId) ?? selectedWorkspace;
       const groupKey = workspace.pinned
@@ -912,7 +927,7 @@ export function Sidebar({
     if (!detachedToReveal || chatTree.parentByWorkspace.has(detachedToReveal)) return;
     const workspace = sidebarWorkspaces.find((candidate) => candidate.id === detachedToReveal);
     if (workspace) {
-      revealWorkspaceGroup(workspace);
+      revealWorkspaceGroup(workspace, true);
       setExpandedProjectIds((current) => new Set([...current, workspace.projectId]));
       const dateGroup = dateGroups.find((group) => group.items.some((item) => item.id === workspace.id));
       if (dateGroup) {
@@ -942,7 +957,7 @@ export function Sidebar({
     const workspace = unsnoozedWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
     if (!workspace || isInArchivedSection(workspace)) return;
     lastExpandedForWorkspaceId.current = `${selectedWorkspaceId}:${selectedRootId}`;
-    revealWorkspaceGroup(workspace);
+    revealWorkspaceGroup(workspace, true);
   }, [revealWorkspaceGroup, selectedWorkspaceId, selectedRootId, unsnoozedWorkspaces]);
 
   // A workspace that APPEARS without being selected — a fork, or a session an
@@ -968,7 +983,9 @@ export function Sidebar({
       if (next.has(workspace.id)) continue;
       next.add(workspace.id);
       if (isInArchivedSection(workspace) || snoozeShelf.shelfIds.has(workspace.id)) continue;
-      revealWorkspaceGroup(workspace);
+      // A chat collapsed over its launched chats stays collapsed: the user
+      // chose that, and the new chat surfaces once they open it.
+      revealWorkspaceGroup(workspace, false);
     }
     knownWorkspaceIdsRef.current = next;
   }, [revealWorkspaceGroup, allSidebarWorkspaces, snoozeShelf]);
@@ -1073,6 +1090,12 @@ export function Sidebar({
 
   const handleWorkspaceDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, workspaceId: string): void => {
     event.stopPropagation();
+    // Launched chats render inside their root's draggable wrapper. A drag that
+    // starts on one of them would otherwise move the root.
+    if (event.target instanceof Element && event.target.closest(".sidebar-chat-children")) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspaceId);
     event.dataTransfer.effectAllowed = "copyMove";
     setDraggingWorkspaceId(workspaceId);

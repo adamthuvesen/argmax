@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 export const SIDEBAR_CHAT_NESTING_STORAGE_KEY = "argmax.sidebar.chatNesting";
+export const SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY = "argmax.sidebar.collapsedChats";
 
 interface SidebarChatNesting {
   nested: boolean;
@@ -66,6 +67,29 @@ function subscribeSidebarChatNesting(listener: () => void): () => void {
 
 export function useSidebarChatNesting(): SidebarChatNesting {
   return useSyncExternalStore(subscribeSidebarChatNesting, sidebarChatNestingSnapshot, sidebarChatNestingSnapshot);
+}
+
+export function loadCollapsedChatIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY);
+    const stored: unknown = raw === null ? null : JSON.parse(raw);
+    if (Array.isArray(stored) && stored.every((id): id is string => typeof id === "string" && id.length > 0)) {
+      return new Set(stored);
+    }
+  } catch {
+    // A blocked or invalid preference starts with every chat expanded.
+  }
+  return new Set();
+}
+
+export function saveCollapsedChatIds(workspaceIds: ReadonlySet<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY, JSON.stringify([...workspaceIds]));
+  } catch {
+    // The collapse still applies when storage is unavailable.
+  }
 }
 
 export function resetSidebarChatNestingForTests(): void {

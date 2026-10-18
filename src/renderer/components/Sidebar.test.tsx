@@ -2697,6 +2697,32 @@ describe("Sidebar — launched chat nesting", () => {
     expect(screen.getByRole("button", { name: "Launched chat" })).toBeInTheDocument();
   });
 
+  it("keeps a collapsed parent collapsed when a new launched chat appears, and opens it when that chat is selected", () => {
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
+    fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }));
+    const withSecondChild = launchedSnapshot();
+    withSecondChild.workspaces.push(workspace("second-child", "Second launched chat"));
+    withSecondChild.sessions.push(session("second-child-session", "second-child", "parent-session"));
+
+    rerender(<Sidebar {...baseProps} snapshot={withSecondChild} />);
+    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Second launched chat" })).not.toBeInTheDocument();
+
+    rerender(<Sidebar {...baseProps} selectedWorkspaceId="second-child" snapshot={withSecondChild} />);
+    expect(screen.getByRole("button", { name: "Second launched chat" })).toBeInTheDocument();
+  });
+
+  it("remembers a collapsed parent after the sidebar remounts", () => {
+    const { unmount } = render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
+    fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Collapse chats launched from Parent chat" }));
+    unmount();
+    render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
+    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Launched chat" })).not.toBeInTheDocument();
+  });
+
   it("applies the Separate preference immediately and restores nesting when it is enabled", () => {
     render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     act(() => setSidebarChatsNested(false));

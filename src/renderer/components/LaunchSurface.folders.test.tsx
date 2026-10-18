@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, ProjectFolder } from "../../shared/types.js";
 import { getProjectFolders, primaryProject, setupAppTestMocks } from "../../test/appTestHarness.js";
+import { NO_PROJECT_CHECK } from "../hooks/useProjectCheck.js";
 import { LaunchSurface } from "./LaunchSurface.js";
 import { useLaunchFolder } from "../hooks/useLaunchFolder.js";
 
@@ -75,6 +76,27 @@ describe("launcher working folder", () => {
     await waitFor(() => expect(launch).toHaveBeenCalledOnce());
     expect(launch.mock.calls[0]?.[3]).toBe("current");
     expect(launch.mock.calls[0]?.[9]).toBe("notes");
+  });
+
+  it("keeps the chosen worktree mode when Project check moves a non-Git folder launch to another project", async () => {
+    const other = { ...project, id: "project-other", name: "Other", repoPath: "/repos/other" };
+    vi.spyOn(window.argmax!.projects, "checkPrompt").mockResolvedValue({
+      ...NO_PROJECT_CHECK, decision: "switch", checkId: "check-1", suggestedProjectId: other.id,
+      suggestedProbability: 0.98, currentProbability: 0.01, reasons: ["Mentions Other"]
+    });
+    const launch = vi.fn().mockResolvedValue({ sessionId: "session-new", workspaceId: "workspace-new" });
+    render(<LaunchSurface autoRouting model={{ provider: "claude", modelId: "claude-fable-5-1", label: "Fable", reasoningEffort: "medium" }}
+      project={project} projects={[project, other]} onAddProject={vi.fn()} onSelectProject={vi.fn()}
+      onBranchSwitch={vi.fn()} onLaunchTask={launch} onModelChange={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Worktree" }));
+    await pickFolder("notes");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Worktree" })).not.toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Task prompt"), { target: { value: "Fix the release notes in the other project" } });
+    fireEvent.submit(screen.getByLabelText("Task prompt").closest("form")!);
+    await waitFor(() => expect(launch).toHaveBeenCalledOnce());
+    expect(launch.mock.calls[0]?.[6]).toBe(other.id);
+    expect(launch.mock.calls[0]?.[3]).toBe("worktree");
+    expect(launch.mock.calls[0]?.[9]).toBeUndefined();
   });
 
   it("blocks launch on a folder read error", async () => {

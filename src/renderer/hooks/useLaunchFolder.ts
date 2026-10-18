@@ -9,6 +9,8 @@ export function useLaunchFolder(project: ProjectSummary | null) {
   const [failure, setFailure] = useState<{ projectId: string; source: "folders" | "context"; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const projectId = project?.id;
+  const projectRepoPath = project?.repoPath;
+  const projectName = project?.name;
   const updateProject = useCallback((updated: ProjectSummary) => {
     setContext((current) => current ? { ...current, project: updated } : null);
   }, []);
@@ -25,7 +27,9 @@ export function useLaunchFolder(project: ProjectSummary | null) {
       if (!cancelled) setFailure({ projectId, source: "folders", message: errorMessage(error) || "Could not load project folders." });
     });
     return () => { cancelled = true; };
-  }, [projectId, project, retryCount]);
+    // A save in Settings → Projects renames the project or moves its primary
+    // folder; activity counts change the summary too and must not refetch.
+  }, [projectId, projectRepoPath, projectName, retryCount]);
 
   const folders = foldersState && foldersState.projectId === projectId ? foldersState.folders : [];
   const selectedByHand = picked && picked.projectId === projectId ? picked : null;

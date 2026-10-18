@@ -477,9 +477,9 @@ export function SettingsPanel({
 
         {activeGroup === "projects" ? (
           <ProjectsSettings
-            key={navigationTarget?.requestId}
             projects={projects}
             initialProjectId={navigationTarget?.projectId}
+            navigationRequestId={navigationTarget?.requestId}
             onProjectUpdated={onProjectUpdated}
           />
         ) : null}

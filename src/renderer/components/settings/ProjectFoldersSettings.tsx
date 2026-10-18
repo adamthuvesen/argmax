@@ -39,7 +39,7 @@ export function ProjectFoldersSettings({ project, onProjectUpdated }: {
       {error ? <p className="settings-note" role="alert">{error}</p> : null}
       {api && !error && !folders ? <p className="settings-note" role="status">Loading project folders…</p> : null}
       {folders ? <ProjectFoldersForm
-        key={`${project.id}:${project.name}:${folders.map((folder) => `${folder.rootPath}:${folder.isPrimary}`).join("|")}`}
+        key={project.id}
         initialValue={{ name: project.name, folders: folders.map((folder) => folder.rootPath),
           primaryPath: folders.find((folder) => folder.isPrimary)?.rootPath ?? project.repoPath }}
         submitLabel="Save project" onSubmit={save}

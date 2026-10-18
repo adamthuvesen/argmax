@@ -61,6 +61,7 @@
   letter-spacing: -0.002em;
 }
 .project-folders-help { margin: 0; padding: 0; font-size: var(--text-xs-plus); line-height: 1.5; }
+.project-folders-duplicate { margin: 0; color: var(--muted); font-size: var(--text-xs-plus); line-height: 1.5; }
 
 .project-folders-empty {
   display: grid;

@@ -433,35 +433,10 @@
   cursor: pointer;
 }
 
-/* Bulk "mark the whole section done", in the header's second column where the
-   recency buckets keep their … / + cluster. Hover-only like the chevron: the
-   section is triage, so emptying it shouldn't be a click away at rest. Same
-   20px icon-button box and muted→text hover as the rest of the rail. */
-.session-priority-clear {
-  display: grid;
-  width: var(--sidebar-action-size);
-  height: var(--sidebar-action-size);
-  padding: 0;
-  place-items: center;
-  color: var(--muted-strong);
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  cursor: pointer;
-  opacity: 0;
-  transition: color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease),
-    opacity var(--duration-fast) var(--ease);
-}
-
-.session-priority-row:hover .session-priority-clear,
-.session-priority-row:focus-within .session-priority-clear {
-  opacity: 1;
-}
-
-.session-priority-clear:hover {
-  color: var(--text);
-  background: var(--row-hover);
+.priority-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-right: var(--sidebar-action-inset);
 }
 
 /* Projects view's list header. It sits where the newest recency bucket sits in
@@ -484,7 +459,7 @@
 
 .project-group.drag-over > .project-row {
   background: var(--panel-sunken);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xl);
   outline: 1.5px solid var(--line-strong);
   outline-offset: -1px;
 }
@@ -512,7 +487,7 @@
      hover background paints the padding box, so the highlight still spans the
      full width. */
   padding-right: var(--sidebar-action-inset);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xl);
   transition: background var(--duration-fast) var(--ease);
 }
 

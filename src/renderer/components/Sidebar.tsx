@@ -5,6 +5,7 @@ import {
   Clock,
   Command,
   Cpu,
+  Eraser,
   Globe,
   Info,
   Keyboard,
@@ -14,8 +15,7 @@ import {
   Settings2,
   Shapes,
   Trash2,
-  Workflow,
-  X
+  Workflow
 } from "lucide-react";
 import {
   useCallback,
@@ -699,16 +699,14 @@ export function Sidebar({
     () => new Set(priorityEntries.map((entry) => entry.workspace.id)),
     [priorityEntries]
   );
-  // "Done" clears attention and manual adds. A row that is only there because
-  // a turn is running has nothing to dismiss — it leaves when the turn ends —
-  // so it gets no Done action and the header's Clear skips it.
   const dismissablePriorityIds = useMemo(
     () =>
       rawPriorityEntries
         .filter((entry) => priorityWorkspaceIds.has(chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id))
+        .filter((entry) => !entry.working && !unreadWorkspaces.has(entry.workspace.id))
         .filter((entry) => entry.attention !== null || entry.workspace.priorityAddedAt)
         .map((entry) => entry.workspace.id),
-    [rawPriorityEntries, priorityWorkspaceIds, chatTree]
+    [rawPriorityEntries, priorityWorkspaceIds, chatTree, unreadWorkspaces]
   );
   // "Add to priority" only makes sense while the section exists.
   const addToPriority = showPriority ? onAddToPriority : undefined;
@@ -1584,6 +1582,20 @@ export function Sidebar({
             className="project-group session-date-group session-priority-group"
             data-collapsed={priorityCollapsed ? "true" : undefined}
           >
+            {onClearPriority ? (
+              <div className="priority-actions">
+                <button
+                  className="small-icon"
+                  type="button"
+                  title="Clear read chats from Priority"
+                  aria-label="Clear read chats from Priority"
+                  disabled={dismissablePriorityIds.length === 0}
+                  onClick={() => onClearPriority(dismissablePriorityIds)}
+                >
+                  <Eraser size={16} aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
             <div
               className="project-row session-date-row session-priority-row"
               onClick={() => toggleDateGroupVisibility(PRIORITY_GROUP_KEY)}
@@ -1592,22 +1604,6 @@ export function Sidebar({
                 <span className="project-name-text">Priority</span>
                 {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
               </span>
-              {onClearPriority && dismissablePriorityIds.length > 0 ? (
-                <button
-                  className="session-priority-clear"
-                  type="button"
-                  title="Clear priority"
-                  aria-label="Clear priority"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onClearPriority(dismissablePriorityIds);
-                  }}
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              ) : (
-                <span aria-hidden="true" />
-              )}
             </div>
             {priorityCollapsed ? null : priorityEntries.map((entry) => (
               <div

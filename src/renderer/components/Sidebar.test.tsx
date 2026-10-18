@@ -1257,13 +1257,20 @@ describe("Sidebar — Priority section", () => {
     expect(screen.getByRole("button", { name: /Calm task/ })).toBeInTheDocument();
   });
 
-  it("clears the whole section from the header", () => {
+  it("clears read inactive priority chats from the action above the section", () => {
     const onClearPriority = vi.fn();
     const mixedSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
       workspaces: [
         workspace("w-blocked", "Blocked task"),
-        { ...workspace("w-calm", "Calm task"), priorityAddedAt: MINUTES_AGO_15 }
+        { ...workspace("w-calm", "Calm task"), priorityAddedAt: MINUTES_AGO_15 },
+        { ...workspace("w-running", "Active task"), priorityAddedAt: MINUTES_AGO_15 },
+        { ...workspace("w-unread", "Unread task"), priorityAddedAt: MINUTES_AGO_15, lastViewedAt: "2026-05-12T14:00:00.000Z" }
+      ],
+      sessions: [
+        ...prioritySnapshot.sessions,
+        { ...session("w-running", "normal", MINUTES_AGO_10), state: "running" },
+        session("w-unread", "normal", MINUTES_AGO_10)
       ]
     };
 
@@ -1276,9 +1283,9 @@ describe("Sidebar — Priority section", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear priority" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear read chats from Priority" }));
 
-    // Both flavors of entry go: the attention row and the manually added one.
+    // Active and unread chats stay in Priority.
     expect(onClearPriority).toHaveBeenCalledWith(["w-blocked", "w-calm"]);
     // The click belongs to the button, not the header's collapse toggle.
     expect(screen.getByRole("button", { name: "Hide Priority chats" })).toBeInTheDocument();
@@ -2734,7 +2741,7 @@ describe("Sidebar — launched chat nesting", () => {
     fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
     expect(screen.queryByRole("menuitem", { name: "Done" })).not.toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
-    fireEvent.click(screen.getByRole("button", { name: "Clear priority" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear read chats from Priority" }));
     expect(onClearPriority).toHaveBeenCalledWith(["child"]);
   });
 

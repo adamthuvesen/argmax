@@ -695,7 +695,8 @@ function ReviewPanelPane({
     }
     if (key === "w" && files.activeTabPath) {
       event.preventDefault();
-      files.closeTab(files.activeTabPath);
+      if (review.tabs && tab) review.tabs.close(tab.id);
+      else files.closeTab(files.activeTabPath);
     }
   };
 
@@ -1071,6 +1072,8 @@ export function ReviewPanel({
   const browserTabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(review.browserScopeId));
   const terminalState = useSyncExternalStore(subscribeTerminalTabs, () => getWorkspaceTerminalState(review.terminalWorkspaceId));
   const tabs = review.tabs;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
   const [sideChatForms, setSideChatForms] = useState<Record<string, ReviewSideChatFormState>>({});
   useEffect(() => {
     const formIds = new Set((tabs?.items ?? []).filter((tab) => tab.kind === "tool" && tab.mode === "side-chat").map((tab) => tab.id));
@@ -1349,7 +1352,7 @@ export function ReviewPanel({
               sideChat={sideChat}
               sideChatFormState={tab ? sideChatForms[tab.id] ?? { prompt: "", launching: false, error: null } : undefined}
               onSideChatFormStateChange={tab ? (patch) => setSideChatForms((current) => {
-                if (!current[tab.id] && patch.prompt === undefined) return current;
+                if (!tabsRef.current?.items.some((item) => item.id === tab.id && item.kind === "tool" && item.mode === "side-chat")) return current;
                 return { ...current, [tab.id]: { ...(current[tab.id] ?? { prompt: "", launching: false, error: null }), ...patch } };
               }) : undefined}
               isFocused={isFocused && review.layout.activeIndex === paneIndex}

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reviewStub } from "../../test/reviewFixture.js";
 import { createBrowserTab, resetBrowserTabsForTests } from "../lib/browserPanel.js";
+import { writeDraftAttachments } from "../lib/composerDrafts.js";
 import type * as TauriBridge from "../lib/tauriBridge.js";
 import type { ReviewTab, ReviewTabsController } from "../lib/reviewTabs.js";
 import type { ReviewSideChatContext, ReviewSideChatSession } from "./ReviewSideChat.js";
@@ -52,7 +53,7 @@ function SideChatTabsHarness({ context }: { context: ReviewSideChatContext }) {
   })} />;
 }
 
-afterEach(() => { cleanup(); resetBrowserTabsForTests(); });
+afterEach(() => { cleanup(); resetBrowserTabsForTests(); window.localStorage.clear(); });
 
 describe("shared review tabs", () => {
   it("preserves the browser surface when expanding and restoring", () => {
@@ -114,6 +115,26 @@ describe("shared review tabs", () => {
     fireEvent.keyDown(tab, { key: "w", metaKey: true });
     expect(tabs.close).toHaveBeenCalledExactlyOnceWith("tool:changes");
     fireEvent.keyDown(tab, { key: "T", metaKey: true, shiftKey: true });
+    expect(tabs.reopenClosed).toHaveBeenCalledOnce();
+  });
+
+  it.each(["metaKey", "ctrlKey"])("routes Files %s close and reopen through the shared controller", (modifier) => {
+    const file: ReviewTab = { id: "file:index.ts", kind: "file", path: "index.ts", sourceKey: "workspace" };
+    const tabs = controller([file], [file.id]);
+    const review = reviewStub({ tabs, mode: "files" });
+    const closeFile = vi.fn();
+    review.workspaceFiles = {
+      ...review.workspaceFiles,
+      listState: "ready", entries: [{ path: "index.ts" }],
+      tabs: [{ path: "index.ts", isDirty: false, saveState: "idle", externalChange: false }],
+      activeTabPath: "index.ts", selectedPath: "index.ts", closeTab: closeFile
+    };
+    render(<ReviewPanel review={review} />);
+    const tree = screen.getByRole("tree", { name: "Workspace files" });
+    fireEvent.keyDown(tree, { key: "w", [modifier]: true });
+    expect(tabs.close).toHaveBeenCalledExactlyOnceWith(file.id);
+    expect(closeFile).not.toHaveBeenCalled();
+    fireEvent.keyDown(tree, { key: "T", [modifier]: true, shiftKey: true });
     expect(tabs.reopenClosed).toHaveBeenCalledOnce();
   });
 
@@ -208,6 +229,48 @@ describe("shared review tabs", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
     expect(screen.getByRole("textbox", { name: "Side chat message" })).toHaveValue("Keep my question");
     expect(screen.getByRole("button", { name: "Start side chat" })).toBeEnabled();
+  });
+
+  it("preserves an attachment-only launch and its error while switching tabs", async () => {
+    const context = sideChatContext();
+    let fail!: (error: Error) => void;
+    context.launch = vi.fn(() => new Promise<ReviewSideChatSession>((_resolve, reject) => { fail = reject; }));
+    writeDraftAttachments("side-chat-tool-side-chat", [{ filePath: "/attachments/shot.png", mimeType: "image/png", sizeBytes: 3 }]);
+    render(<SideChatTabsHarness context={context} />);
+    fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
+    expect(context.launch).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
+    expect(screen.getByRole("button", { name: "Start side chat" })).toBeDisabled();
+    fireEvent.submit(screen.getByRole("textbox", { name: "Side chat message" }).closest("form")!);
+    expect(context.launch).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
+    await act(async () => { fail(new Error("Provider unavailable")); await Promise.resolve(); });
+    fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
+    expect(screen.getByRole("button", { name: "View attachment" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Side chat message" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Start side chat" })).toBeEnabled();
+  });
+
+  it("ignores a failed launch after its form tab is removed", async () => {
+    const form: ReviewTab = { id: "tool:side-chat", kind: "tool", mode: "side-chat" };
+    const changes: ReviewTab = { id: "tool:changes", kind: "tool", mode: "changes" };
+    const context = sideChatContext();
+    let fail!: (error: Error) => void;
+    context.launch = vi.fn(() => new Promise<ReviewSideChatSession>((_resolve, reject) => { fail = reject; }));
+    const view = (open: boolean) => <ReviewPanel sideChat={context} review={reviewStub({
+      tabs: controller(open ? [changes, form] : [changes], [open ? form.id : changes.id]),
+      mode: open ? "side-chat" : "changes"
+    })} />;
+    const { rerender } = render(view(true));
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Discard this question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
+    rerender(view(false));
+    await act(async () => { fail(new Error("Provider unavailable")); await Promise.resolve(); });
+    rerender(view(true));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Side chat message" })).toHaveValue("");
   });
 
 });

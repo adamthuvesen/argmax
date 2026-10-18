@@ -921,7 +921,7 @@ export async function verifyWorkspaceSettings({
     tomorrow.setHours(9, 0, 0, 0);
     return tomorrow.toISOString();
   });
-  await clickByText(browser, "Snooze until tomorrow", 10_000);
+  await clickByText(browser, "Snooze Until Tomorrow", 10_000);
   const snoozedUntil = await waitForSnooze(bridge, workspace.id, (value) => value !== null, 10_000, "snooze");
   check(assertions, "snooze-until-tomorrow-morning", snoozedUntil === expectedSnooze, snoozedUntil);
   check(assertions, "snooze-leaves-execution-state-alone", (await waitForCompleted(bridge, source.id, 5_000, "snoozed chat")).state === seeded.state);
@@ -1246,7 +1246,7 @@ async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, ev
   });
   check(assertions, "project-menu-stays-in-window", menuFits);
   screenshots.push(await screenshot(browser, evidenceDir, "project-actions"));
-  await (await browser.$('//button[@role="menuitem" and normalize-space(.)="Edit project"]')).click();
+  await (await browser.$('//button[@role="menuitem" and normalize-space(.)="Edit Project"]')).click();
   await verifyProjectOverview({ bridge, browser, projectId: named.id, evidenceDir, screenshots, assertions });
   const makePrimary = await browser.$('[aria-label="Make project-secondary primary"]');
   await makePrimary.waitForDisplayed({ timeout: 10_000 });
@@ -1394,9 +1394,15 @@ async function verifyNestedChats({ bridge, browser, sessionId, evidenceDir, scre
   }, childRowSelector);
   check(assertions, "nested-chats-stack-below-parent", nestingLayout.childTop >= nestingLayout.parentBottom && nestingLayout.childWidth > 150, nestingLayout);
   screenshots.push(await screenshot(browser, evidenceDir, "nested-chats"));
+  const parentWorkspaceId = (await bridge.call("dashboard:list", {})).sessions.find((session) => session.id === sessionId).workspaceId;
+  const parentRowSelector = `[data-workspace-id="${parentWorkspaceId}"] button[data-status]`;
+  await openContextMenu(browser, parentRowSelector);
   const collapse = await browser.$('[aria-label="Collapse chats launched from Pinned original"]');
+  await collapse.waitForClickable({ timeout: 5_000 });
   await collapse.click();
   check(assertions, "chat-disclosure-collapses-children", !await childRow.isExisting());
+  await openContextMenu(browser, parentRowSelector);
+  await (await browser.$('[aria-label="Expand chats launched from Pinned original"]')).waitForClickable({ timeout: 5_000 });
   await (await browser.$('[aria-label="Expand chats launched from Pinned original"]')).click();
   await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 5_000 });
 
@@ -1421,7 +1427,7 @@ async function verifyNestedChats({ bridge, browser, sessionId, evidenceDir, scre
   await clickByText(browser, "Back", 5_000);
   await browser.waitUntil(isNested, { timeout: 5_000 });
   await openContextMenu(browser, `${childRowSelector} button[data-status]`);
-  const detach = await browser.$('//button[@role="menuitem" and normalize-space(.)="Detach to top level"]');
+  const detach = await browser.$('//button[@role="menuitem" and normalize-space(.)="Detach to Top Level"]');
   await detach.waitForClickable({ timeout: 5_000 });
   screenshots.push(await screenshot(browser, evidenceDir, "nested-chat-actions"));
   await detach.click();
@@ -1877,7 +1883,7 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, nativ
         tab(firstUrl).click();
         await wait(() => bounds[first.tabId]?.visible, 'first visible');
         tab(secondUrl).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 100 }));
-        (await wait(() => menuItem('Show below'), 'split menu')).click();
+        (await wait(() => menuItem('Show Below'), 'split menu')).click();
         await wait(() => bounds[first.tabId]?.visible && bounds[second.tabId]?.visible, 'both browser pages visible');
         const splitBounds = JSON.parse(JSON.stringify(bounds));
         const persisted = JSON.parse(localStorage.getItem(`argmax.reviewPanel.layout.${sessionId}`));
@@ -1903,7 +1909,7 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, nativ
         const afterClose = await api.listTabs({ sessionId });
         phase = 'reopen page';
         document.querySelector('[aria-label="New workspace tab"]').dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-        (await wait(() => menuItem('Reopen closed tab'), 'reopen action')).click();
+        (await wait(() => menuItem('Reopen Closed Tab'), 'reopen action')).click();
         await wait(() => tab(secondUrl), 'reopened browser tab');
         const afterReopen = await wait(async () => {
           const registry = await api.listTabs({});

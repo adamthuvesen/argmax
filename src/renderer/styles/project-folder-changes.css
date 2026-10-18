@@ -1,10 +1,23 @@
+.review-list-col:has(> .project-folder-changes) {
+  overflow-y: auto;
+}
+
+.review-list-col:has(> .project-folder-changes) > .changes-tree-col {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.review-list-col:has(> .project-folder-changes) .changes-tree {
+  flex: none;
+  overflow: visible;
+}
+
 .project-folder-changes {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 50%;
-  overflow: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 6px;
   border-top: 1px solid var(--line);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
 }
 
 .project-folder-changes-label {
@@ -13,50 +26,150 @@
   font-size: var(--text-xs);
 }
 
-.project-folder-changes summary {
-  padding: 6px 10px;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
-.project-folder-changes summary > span {
-  float: right;
-  color: var(--muted);
-}
-
-.project-folder-changes p {
-  margin: 4px 10px 8px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
-.project-folder-changes-scope {
-  font-size: var(--text-xs);
-}
-
-.project-folder-change-file {
+.project-folder-changes-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 4px 6px 6px;
+}
+
+.project-folder-changes-header .project-folder-changes-label {
+  padding: 0;
+}
+
+.project-folder-changes-shared {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+.project-folder-change-group summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  list-style: none;
+}
+
+.project-folder-change-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-folder-change-group summary > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.project-folder-change-group[open] > summary .project-folder-change-chevron {
+  transform: rotate(90deg);
+}
+
+.project-folder-change-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-folder-change-total {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.project-folder-changes p {
+  margin: 4px 6px 8px 38px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.project-folder-changes .project-folder-changes-error {
+  color: var(--rose);
+}
+
+.project-folder-change-file {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
-  padding: 4px 10px;
+  min-height: 28px;
+  padding: 4px 6px 4px 24px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-md);
+  color: var(--muted-strong);
   background: transparent;
+  font: inherit;
   text-align: left;
 }
 
-.project-folder-change-file > span:first-child {
+.project-folder-change-icon {
+  display: flex;
+  flex: 0 0 14px;
+}
+
+.project-folder-change-path {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1;
   min-width: 0;
+}
+
+.project-folder-change-basename,
+.project-folder-change-directory {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.project-folder-change-file:hover,
+.project-folder-change-basename {
+  flex: 0 1 auto;
+  color: var(--text);
+}
+
+.project-folder-change-directory {
+  flex: 1 2 0;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+.project-folder-change-file .change-count {
+  flex-shrink: 0;
+  font-size: var(--text-2xs);
+}
+
+.project-folder-change-group summary:hover,
+.project-folder-change-file:hover {
+  background: var(--row-hover);
+}
+
 .project-folder-change-file[aria-pressed="true"] {
-  background: var(--panel-soft);
+  background: var(--row-selected);
+}
+
+.project-folder-change-file[aria-pressed="true"]::before {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: var(--accent);
+  content: "";
+}
+
+.project-folder-change-group summary:focus-visible,
+.project-folder-change-file:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .project-folder-diff-heading {

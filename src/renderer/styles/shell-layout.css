@@ -446,12 +446,6 @@
   cursor: pointer;
 }
 
-.priority-actions {
-  display: flex;
-  justify-content: flex-end;
-  padding-right: var(--sidebar-action-inset);
-}
-
 /* Projects view's list header. It sits where the newest recency bucket sits in
    sessions view and hosts the same … / + cluster, so the two views share one
    vertical rhythm. It only names the grouping. Nothing collapses from here,

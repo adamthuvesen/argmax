@@ -1584,20 +1584,6 @@ export function Sidebar({
             className="project-group session-date-group session-priority-group"
             data-collapsed={priorityCollapsed ? "true" : undefined}
           >
-            {onClearPriority ? (
-              <div className="priority-actions">
-                <button
-                  className="small-icon"
-                  type="button"
-                  title="Clear read chats from Priority"
-                  aria-label="Clear read chats from Priority"
-                  disabled={dismissablePriorityIds.length === 0}
-                  onClick={() => onClearPriority(dismissablePriorityIds)}
-                >
-                  <Eraser size={16} aria-hidden="true" />
-                </button>
-              </div>
-            ) : null}
             <div
               className="project-row session-date-row session-priority-row"
               onClick={() => toggleDateGroupVisibility(PRIORITY_GROUP_KEY)}
@@ -1606,6 +1592,21 @@ export function Sidebar({
                 <span className="project-name-text">Priority</span>
                 {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
               </span>
+              {onClearPriority ? (
+                <button
+                  className="small-icon"
+                  type="button"
+                  title="Clear read chats from Priority"
+                  aria-label="Clear read chats from Priority"
+                  disabled={dismissablePriorityIds.length === 0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onClearPriority(dismissablePriorityIds);
+                  }}
+                >
+                  <Eraser size={16} aria-hidden="true" />
+                </button>
+              ) : null}
             </div>
             {priorityCollapsed ? null : priorityEntries.map((entry) => (
               <div

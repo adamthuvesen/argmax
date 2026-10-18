@@ -1257,7 +1257,7 @@ describe("Sidebar — Priority section", () => {
     expect(screen.getByRole("button", { name: /Calm task/ })).toBeInTheDocument();
   });
 
-  it("clears read inactive priority chats from the action above the section", () => {
+  it("clears read inactive priority chats from the action on the section header", () => {
     const onClearPriority = vi.fn();
     const mixedSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
@@ -1283,7 +1283,8 @@ describe("Sidebar — Priority section", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear read chats from Priority" }));
+    const header = screen.getByText("Priority").parentElement!.parentElement!;
+    fireEvent.click(within(header).getByRole("button", { name: "Clear read chats from Priority" }));
 
     // Active and unread chats stay in Priority.
     expect(onClearPriority).toHaveBeenCalledWith(["w-blocked", "w-calm"]);

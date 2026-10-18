@@ -3,7 +3,6 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding-left: var(--space-1_5);
 }
 
 /* Air between history rows so each title + project pair reads as one block. */

@@ -44,6 +44,7 @@ pub mod skills;
 pub mod state;
 pub mod sync;
 pub mod terminal;
+pub mod text_substitutions;
 pub mod updater;
 pub mod usage;
 pub mod util;
@@ -353,6 +354,8 @@ pub fn run() {
     if let Err(error) = util::file_limits::raise_open_file_limit() {
         eprintln!("argmax: failed to raise open-file limit: {error}");
     }
+
+    text_substitutions::disable();
 
     // rustls 0.23 needs a crypto provider picked explicitly once ring and
     // aws-lc-rs are both reachable in the dependency tree; reqwest's client

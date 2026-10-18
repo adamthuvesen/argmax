@@ -31,6 +31,18 @@ macOS GUI default of 256 descriptors into Codex, where concurrent skill reads
 can exhaust it. A failure to raise the limit is reported to stderr. The change
 takes effect after rebuilding and restarting Argmax.
 
+## Text Substitutions
+
+Next, before any window exists, Argmax turns off macOS autocorrection, text
+replacement, and smart quotes and dashes in its own user defaults
+([text_substitutions.rs](../src-tauri/src/text_substitutions.rs)). WebKit
+reads these `WebAutomatic…Enabled` keys from the host app once, when the first
+webview starts, so the order matters. The setting covers every field: inputs,
+the CodeMirror composer, and pages in the in-app browser. Spell-check underlines
+are separate: each field still opts in or out with `spellcheck`. A
+per-field `autoCorrect="off"` is redundant with this and is not needed on new
+inputs.
+
 ## Single Instance Lock
 
 On boot, Argmax acquires an advisory `flock` on `local-state/argmax.lock` ([util/instance_lock.rs](../src-tauri/src/util/instance_lock.rs)) before touching SQLite. If another instance is running, the new process shows an alert and exits immediately, preventing duplicate startup recovery from marking live sessions as orphaned. The lock releases automatically on exit.

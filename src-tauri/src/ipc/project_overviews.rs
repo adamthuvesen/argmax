@@ -12,6 +12,7 @@ use crate::persistence::{
     projects::{require_project, ProjectSummary},
     Database,
 };
+use crate::providers::one_shot::ProjectOverviewAnswer;
 use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -243,7 +244,7 @@ async fn generate(
         return Err(ArgmaxError::service("PROJECT_OVERVIEW_UNAVAILABLE", "No supported project documents were found. Add an overview manually or add a README, then refresh."));
     }
     for provider in discovery.available_providers().await {
-        if let Some(document) = crate::providers::one_shot::generate_project_overview(
+        match crate::providers::one_shot::generate_project_overview(
             provider,
             crate::providers::one_shot::helper_model(provider),
             &context,
@@ -251,7 +252,11 @@ async fn generate(
         )
         .await
         {
-            return Ok(document);
+            Some(ProjectOverviewAnswer::Written(document)) => return Ok(document),
+            Some(ProjectOverviewAnswer::PurposeNotEstablished) => {
+                return Err(ArgmaxError::service("PROJECT_OVERVIEW_UNAVAILABLE", "Argmax could not establish this project's purpose from its folders. Write an overview by hand or add a README, then refresh."));
+            }
+            None => {}
         }
     }
     Err(ArgmaxError::service("PROJECT_OVERVIEW_UNAVAILABLE", "Could not generate the project overview. Check that an agent provider is available, then refresh."))

@@ -219,12 +219,10 @@ const BROWSER_INIT_SCRIPT: &str = r#"
   window.addEventListener(
     "keydown",
     function (event) {
-      if (window.__argmaxBrowserPopup) return;
+      if (window.__argmaxBrowserPopup || !event.isTrusted) return;
       var key = event.key.toLowerCase();
       var command = null;
-      if (key === "escape" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.isComposing && !event.repeat) {
-        command = "close-panel";
-      } else if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
+      if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
         command = event.shiftKey ? "previous-tab" : "next-tab";
       } else if (event.metaKey && !event.ctrlKey && !event.altKey) {
         command = event.shiftKey ? (key === "t" ? "reopen-tab" : null) :
@@ -240,6 +238,16 @@ const BROWSER_INIT_SCRIPT: &str = r#"
     },
     true
   );
+  // Bubble phase, and never preventDefault: the page gets Escape first to
+  // close its own modal, clear a field or cancel an edit.
+  window.addEventListener("keydown", function (event) {
+    if (window.__argmaxBrowserPopup || !event.isTrusted || event.defaultPrevented) return;
+    if (event.key !== "Escape" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing || event.repeat) return;
+    var target = event.target;
+    if (target && target.closest && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    if (document.querySelector('dialog[open], [aria-modal="true"]')) return;
+    window.location.href = "argmax-newtab://command?c=close-panel";
+  });
   // Mouse thumb buttons: 3 = back, 4 = forward. Navigate the page directly:
   // a tab can receive these events without a mounted pane to relay a command.
   var historyCommand = function (button) {

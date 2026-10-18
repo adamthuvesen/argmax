@@ -192,12 +192,20 @@ fn parse_repository_summary(raw: &str) -> Option<String> {
         .then_some(summary)
 }
 
+/// A provider's usable answer to the overview prompt. `None` from the
+/// generator means the call or its JSON failed, so another provider may try.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectOverviewAnswer {
+    Written(crate::persistence::project_overviews::OverviewDocument),
+    PurposeNotEstablished,
+}
+
 pub async fn generate_project_overview(
     provider: ProviderId,
     model_id: &str,
     context: &str,
     allowed_sources: &[crate::persistence::project_overviews::OverviewSource],
-) -> Option<crate::persistence::project_overviews::OverviewDocument> {
+) -> Option<ProjectOverviewAnswer> {
     let instruction = format!(
         "PROJECT OVERVIEW GENERATION. Write a concise project orientation, at most 1500 characters. \
          Explain its purpose, the role of each folder, and relationships only when the supplied files establish them. \
@@ -214,7 +222,7 @@ pub async fn generate_project_overview(
 fn parse_project_overview(
     raw: &str,
     allowed_sources: &[crate::persistence::project_overviews::OverviewSource],
-) -> Option<crate::persistence::project_overviews::OverviewDocument> {
+) -> Option<ProjectOverviewAnswer> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Generated {
@@ -223,8 +231,10 @@ fn parse_project_overview(
     }
     let generated: Generated = serde_json::from_value(first_json_object(raw)?).ok()?;
     let text = generated.text.trim();
-    if text.is_empty()
-        || text.chars().count() > 1500
+    if text.is_empty() {
+        return Some(ProjectOverviewAnswer::PurposeNotEstablished);
+    }
+    if text.chars().count() > 1500
         || generated.sources.is_empty()
         || generated.sources.len() > allowed_sources.len()
         || generated
@@ -239,11 +249,13 @@ fn parse_project_overview(
     {
         return None;
     }
-    Some(crate::persistence::project_overviews::OverviewDocument {
-        text: text.to_owned(),
-        sources: generated.sources,
-        generated_at: Some(crate::persistence::time::now_iso()),
-    })
+    Some(ProjectOverviewAnswer::Written(
+        crate::persistence::project_overviews::OverviewDocument {
+            text: text.to_owned(),
+            sources: generated.sources,
+            generated_at: Some(crate::persistence::time::now_iso()),
+        },
+    ))
 }
 
 /// Judges whether a Goal's condition now holds, from the transcript alone.
@@ -976,9 +988,13 @@ mod tests {
         }];
         let valid =
             r#"{"text":"API service.","sources":[{"folderId":"primary:p","path":"README.md"}]}"#;
+        assert!(matches!(
+            parse_project_overview(valid, &allowed),
+            Some(ProjectOverviewAnswer::Written(document)) if document.text == "API service."
+        ));
         assert_eq!(
-            parse_project_overview(valid, &allowed).unwrap().text,
-            "API service."
+            parse_project_overview(r#"{"text":"  ","sources":[]}"#, &allowed),
+            Some(ProjectOverviewAnswer::PurposeNotEstablished)
         );
         assert!(parse_project_overview(&valid.replace("README.md", ".env"), &allowed).is_none());
         let duplicates = r#"{"text":"API service.","sources":[{"folderId":"primary:p","path":"README.md"},{"folderId":"primary:p","path":"README.md"}]}"#;

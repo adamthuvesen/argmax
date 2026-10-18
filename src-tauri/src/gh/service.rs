@@ -76,10 +76,10 @@ impl GhService {
     pub fn list_for_session(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
         let conn = self.database.read_connection();
         let session = find_session_by_id(&conn, session_id)?;
-        crate::persistence::project_folders::assert_workspace_pr_repository(
-            &conn,
-            &session.workspace_id,
-        )?;
+        if !crate::persistence::project_folders::workspace_tracks_prs(&conn, &session.workspace_id)?
+        {
+            return Ok(Vec::new());
+        }
         list_gh_pr_for_session(&conn, session_id)
     }
 
@@ -2206,8 +2206,23 @@ mod tests {
         }
         let stub = StubRunner::new(Vec::new());
         let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        assert!(service.list_for_session(&session_id).unwrap().is_empty());
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET kind = 'scratch', project_folder_id = NULL WHERE id = ?",
+                [&workspace_id],
+            )
+            .unwrap();
+        assert!(service.list_for_session(&session_id).unwrap().is_empty());
+        database
+            .connection()
+            .execute(
+                "UPDATE workspaces SET kind = 'git', project_folder_id = 'secondary' WHERE id = ?",
+                [&workspace_id],
+            )
+            .unwrap();
         let errors = [
-            service.list_for_session(&session_id).unwrap_err(),
             service.refresh(&session_id).await.unwrap_err(),
             service
                 .refresh_pr_number(&session_id, 42)

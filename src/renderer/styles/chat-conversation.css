@@ -1553,7 +1553,7 @@
   margin-top: var(--space-2);
 }
 
-/* Full-size mermaid: window-level, same stack as the commit dialog (below
+/* Full-size mermaid: window-level, same stack as the Create project dialog (below
    search, above pane chrome). The inline view scales. This is native size. */
 .mermaid-diagram-overlay {
   position: fixed;

@@ -439,9 +439,8 @@ pub(crate) async fn projects_get_folder_context_impl(
 ) -> ArgmaxResult<ProjectFolderContext> {
     let database = live_database(state)?;
     read_off_main(move || {
-        let connection = database.connection();
         let (mut project, folder_id) = crate::persistence::project_folders::project_for_launch(
-            &connection,
+            &database.read_connection(),
             input.project_id.as_str(),
             input.project_folder_id.as_deref(),
         )?;
@@ -458,7 +457,7 @@ pub(crate) async fn projects_get_folder_context_impl(
                 branch.trim().into()
             };
             crate::persistence::project_folders::update_folder_branch(
-                &connection,
+                &database.connection(),
                 &project.id,
                 &folder_id,
                 &project.current_branch,
@@ -757,6 +756,12 @@ pub(crate) async fn register_repo_path(
 
     let project = {
         let connection = database.connection();
+        if let Some(existing) = crate::persistence::projects::find_project_by_repo_path(
+            &connection,
+            &project.repo_path,
+        )? {
+            return Ok(existing);
+        }
         persist_project(&connection, &project)?
     };
     let remote = match metadata.remote {
@@ -1007,6 +1012,30 @@ mod tests {
                 .expect("listed branch passes switch validation");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn concurrent_registers_of_one_repo_create_one_project() {
+        use super::*;
+        let repo = tempfile::tempdir().unwrap();
+        run_git_text(
+            repo.path(),
+            ["init", "-q", "-b", "main"],
+            GIT_DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap();
+        let database = Database::open_in_memory().unwrap();
+        let (first, second) = tokio::join!(
+            register_repo_path(&database, repo.path().into()),
+            register_repo_path(&database, repo.path().into()),
+        );
+        assert_eq!(first.unwrap().id, second.unwrap().id);
+        let count: i64 = database
+            .read_connection()
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[tokio::test]

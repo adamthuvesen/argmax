@@ -216,9 +216,13 @@ async fn list_files_at_path(repo_path: &str) -> ArgmaxResult<Vec<WorkspaceFileEn
                         )
                 })
             {
-                let entry = entry.map_err(|error| {
-                    ArgmaxError::service("FILES_LIST_FAILED", error.to_string())
-                })?;
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => {
+                        tracing::debug!(%error, "files: skipped unreadable folder entry");
+                        continue;
+                    }
+                };
                 if entry.file_type().is_file() {
                     if files.len() >= 20_000 {
                         return Err(ArgmaxError::service(
@@ -475,9 +479,14 @@ async fn grep_content_at_path(
         let mut scanned_bytes = 0;
         let mut scan_truncated = false;
         for file in list_files_at_path(repo_path).await? {
-            if let WorkspaceFilePreview::Text { content, .. } =
-                read_file_at_path(repo_path, &file.path).await?
-            {
+            let preview = match read_file_at_path(repo_path, &file.path).await {
+                Ok(preview) => preview,
+                Err(error) => {
+                    tracing::debug!(path = %file.path, %error, "files: search skipped unreadable file");
+                    continue;
+                }
+            };
+            if let WorkspaceFilePreview::Text { content, .. } = preview {
                 scanned_bytes += content.len();
                 if scanned_bytes > 16 * 1_048_576 {
                     scan_truncated = true;
@@ -627,6 +636,27 @@ mod tests {
         assert_eq!(matches.files[0].path, "notes.md");
         assert_eq!(matches.files[0].matches[0].line, 2);
         assert!(!folder.path().join(".git").exists());
+    }
+
+    #[tokio::test]
+    async fn plain_folder_listing_and_search_skip_unreadable_entries() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = TempDir::new().unwrap();
+        std::fs::write(folder.path().join("latin1.txt"), b"find \xe9t\xe9\n").unwrap();
+        std::fs::write(folder.path().join("notes.md"), "find this\n").unwrap();
+        let locked = folder.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(locked.join("hidden.md"), "find hidden\n").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let root = folder.path().to_str().unwrap();
+        let listed = list_files_at_path(root).await;
+        let matches = grep_content_at_path(root, "find").await;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let listed = listed.unwrap();
+        assert!(listed.iter().any(|entry| entry.path == "notes.md"));
+        let matches = matches.unwrap();
+        assert!(matches.files.iter().any(|file| file.path == "notes.md"));
+        assert!(!matches.files.iter().any(|file| file.path == "latin1.txt"));
     }
 
     async fn run_git(repo: &Path, args: &[&str]) {

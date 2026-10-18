@@ -171,6 +171,11 @@ pub fn add_linked_repo(
     }
     let id = Uuid::new_v4().to_string();
     let now = now_iso();
+    let worktree_location = crate::util::data_dir::worktree_root()?
+        .join(project_id)
+        .join(&id)
+        .to_string_lossy()
+        .into_owned();
     connection
         .prepare_cached(
             "INSERT INTO project_folders \
@@ -178,7 +183,7 @@ pub fn add_linked_repo(
              VALUES (?, ?, ?, ?, 1, ?, ?, ?) ON CONFLICT(project_id, root_path) DO UPDATE SET removed = 0, enabled = 1, name = excluded.name, updated_at = excluded.updated_at",
         )
         .map_err(sqlite_error)?
-        .execute((&id, project_id, &name, &root_text, &now, &now, format!("{repo_path}/.argmax/worktrees/{id}")))
+        .execute((&id, project_id, &name, &root_text, &now, &now, &worktree_location))
         .map_err(|error| map_insert_error(error, &name, &root_text))?;
     find_linked_repo_by_name(connection, project_id, &name)
 }

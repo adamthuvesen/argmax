@@ -236,17 +236,13 @@ pub fn folder_for_checkout(
 }
 
 fn git_common_directory(path: &Path) -> Option<PathBuf> {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "--git-common-dir"])
-        .current_dir(path)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    path.join(String::from_utf8_lossy(&output.stdout).trim())
-        .canonicalize()
-        .ok()
+    let output = crate::git::exec::run_git_text_blocking(
+        path,
+        ["rev-parse", "--git-common-dir"],
+        crate::git::exec::GIT_DEFAULT_TIMEOUT,
+    )
+    .ok()?;
+    path.join(output.trim()).canonicalize().ok()
 }
 
 pub fn configure_project_folders(
@@ -309,12 +305,16 @@ pub fn sync_primary_from_project(connection: &Connection, project_id: &str) -> A
     Ok(())
 }
 
+pub fn workspace_tracks_prs(connection: &Connection, workspace_id: &str) -> ArgmaxResult<bool> {
+    let supported: Option<bool> = connection.query_row("SELECT w.kind = 'git' AND w.project_folder_id IS p.pr_repository_folder_id FROM workspaces w JOIN projects p ON p.id = w.project_id WHERE w.id = ?", [workspace_id], |row| row.get(0)).optional().map_err(sqlite_error)?;
+    Ok(supported.unwrap_or(false))
+}
+
 pub fn assert_workspace_pr_repository(
     connection: &Connection,
     workspace_id: &str,
 ) -> ArgmaxResult<()> {
-    let supported: bool = connection.query_row("SELECT w.kind = 'git' AND w.project_folder_id IS p.pr_repository_folder_id FROM workspaces w JOIN projects p ON p.id = w.project_id WHERE w.id = ?", [workspace_id], |row| row.get(0)).map_err(sqlite_error)?;
-    if !supported {
+    if !workspace_tracks_prs(connection, workspace_id)? {
         return Err(ArgmaxError::service("MULTI_REPO_PR_UNSUPPORTED", "This preview tracks pull requests only for the project's original primary repository. Use a separate project to track pull requests for this folder."));
     }
     Ok(())
@@ -425,10 +425,12 @@ mod tests {
             },
         )
         .unwrap();
-        let error = assert_workspace_pr_repository(&connection, "w2").unwrap_err();
-        assert!(
-            matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "MULTI_REPO_PR_UNSUPPORTED")
-        );
+        for workspace_id in ["w2", "missing"] {
+            let error = assert_workspace_pr_repository(&connection, workspace_id).unwrap_err();
+            assert!(
+                matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "MULTI_REPO_PR_UNSUPPORTED")
+            );
+        }
 
         configure_project_folders(
             &connection,

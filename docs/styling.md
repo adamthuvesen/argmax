@@ -489,7 +489,7 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   the review tree uses, the file's name, then its folder muted beside it; the full path is the row's
   accessible name, so two `mod.rs` rows differ. Mockups and the decision: `docs/design/pickers`.
 - **Command Palette:** The search modal (`.command-palette-overlay`) is centered on the window, like
-  the commit dialog — search is app-wide, so it is not offset past the sidebar onto the work area.
+  the Create project dialog — search is app-wide, so it is not offset past the sidebar onto the work area.
   ⌘K opens All, ⌘P on Files, ⌘F on Messages, ⌘⇧F on Contents. The Settings group lists the panel's
   sections. Actions includes direct changes from
   [settingCommands.ts](../src/renderer/lib/settingCommands.ts) for theme, accent, font family, chat

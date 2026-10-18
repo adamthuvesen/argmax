@@ -1,0 +1,72 @@
+.project-folder-changes {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 50%;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+
+.project-folder-changes-label {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.project-folder-changes summary {
+  padding: 6px 10px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.project-folder-changes summary > span {
+  float: right;
+  color: var(--muted);
+}
+
+.project-folder-changes p {
+  margin: 4px 10px 8px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.project-folder-changes-scope {
+  font-size: var(--text-xs);
+}
+
+.project-folder-change-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.project-folder-change-file > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-folder-change-file:hover,
+.project-folder-change-file[aria-pressed="true"] {
+  background: var(--panel-soft);
+}
+
+.project-folder-diff-heading {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-folder-diff-scope {
+  margin: 8px 12px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}

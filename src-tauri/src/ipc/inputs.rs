@@ -193,6 +193,29 @@ pub struct ProjectsRegisterInput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsCreateInput {
+    pub name: NonEmptyString,
+    pub folders: Vec<String>,
+    pub primary_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsConfigureInput {
+    pub project_id: ProjectId,
+    pub name: NonEmptyString,
+    pub folders: Vec<String>,
+    pub primary_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsGetFoldersInput {
+    pub project_id: ProjectId,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsRemoveInput {
     pub project_id: ProjectId,
 }

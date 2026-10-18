@@ -1,10 +1,10 @@
-# Branch names, linked repositories, and snooze shelf
+# Projects, branch names, and snooze shelf
 
 Settings → Projects validates and saves a branch-name template and manages
-linked repositories, a saved template names real worktree branches, and a chat
+project folders, a saved template names real worktree branches, and a chat
 can be snoozed to a collapsed shelf and unsnoozed.
 
-Source: scripts/verify.mjs, scripts/verification/workflows.mjs, src/renderer/components/settings/BranchTemplatePanel.tsx, src/renderer/components/settings/LinkedReposPanel.tsx, src/renderer/components/SidebarSessionRow.tsx
+Source: scripts/verify.mjs, scripts/verification/workflows.mjs, src/renderer/components/settings/BranchTemplatePanel.tsx, src/renderer/components/settings/ProjectFoldersSettings.tsx, src/renderer/components/SidebarSessionRow.tsx
 Inventory-id: scenario:workspace-settings
 
 ## Sub-features
@@ -14,7 +14,7 @@ Inventory-id: scenario:workspace-settings
 ## How to get to it (user POV)
 
 Right-click a chat row to snooze it. Open Customize, then Projects, for Branch
-names and Linked repositories.
+names and Project folders.
 
 ## Driving it with verify.mjs
 
@@ -26,7 +26,7 @@ Preconditions: `launch` completed and `doctor` exits 0. No source edits during t
   collapsed, a cleared time after Unsnooze; `{nope}` rejected with the placeholder
   message; the project template saved; relative and project-own paths rejected and
   the valid sibling stored as its canonical root, disabled by its toggle, and
-  removed (SQLite `project_linked_repos`); and the branches `adam/feat-hello-world`
+  removed (SQLite `project_folders`); and the branches `adam/feat-hello-world`
   then `adam/feat-hello-world-2` from two worktree chats. PNGs: `snooze-shelf-*`,
   `settings-branch-names`, `settings-linked-repository`.
 
@@ -34,8 +34,15 @@ Preconditions: `launch` completed and `doctor` exits 0. No source edits during t
 
 PR conflict notices have no UI and are not driven here (see the `gh::poller` tests).
 The Projects nav entry and menu items are found by their visible text, so a renamed
-label fails the drive at that click. The linked-repository row check reads
-`SELECT * FROM project_linked_repos` and expects an `enabled` column.
+label fails the drive at that click. Folder assertions use `projects:get-folders`.
+
+## Named projects
+
+The drive creates a named project with two folders through New chat → New project.
+It checks that two projects can share a folder. It changes the primary in Settings
+and verifies that existing chats retain their checkout while new chats use the new
+primary. It also reads a secondary repository diff using that folder's ID.
+Screenshots include `create-named-project` and `primary-changed`.
 
 ## New chat picker with an occupied branch
 

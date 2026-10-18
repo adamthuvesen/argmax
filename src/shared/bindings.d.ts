@@ -24,6 +24,38 @@ async projectsPickFolder(input: ProjectsPickFolderInput) : Promise<Result<Projec
     else return { status: "error", error: e  as any };
 }
 },
+async projectsPickDirectory(input: ProjectsPickFolderInput) : Promise<Result<ProjectDirectoryPickResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_pick_directory", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsCreate(input: ProjectsCreateInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_create", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsConfigure(input: ProjectsConfigureInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_configure", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsGetFolders(input: ProjectsGetFoldersInput) : Promise<Result<ProjectFolderSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_get_folders", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Project check: whether the prompt reads like work for another project.
  * Never fails for want of an answer — no key, a Jev error or a short prompt
@@ -2637,7 +2669,9 @@ export type ProjectCheckout = { branch: string; path: string;
  */
 isMain: boolean }
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
+export type ProjectDirectoryPickResult = { cancelled: boolean; path: string | null }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
+export type ProjectFolderSummary = { id: string; projectId: string; name: string; rootPath: string; isPrimary: boolean; enabled: boolean; summary: string | null }
 export type ProjectId = string
 export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[];
 /**
@@ -2673,6 +2707,9 @@ projectId: ProjectId; prompt: Prompt;
  * suggest another one but never switches away on its own.
  */
 pickedByHand: boolean }
+export type ProjectsConfigureInput = { projectId: ProjectId; name: NonEmptyString; folders: string[]; primaryPath: string }
+export type ProjectsCreateInput = { name: NonEmptyString; folders: string[]; primaryPath: string }
+export type ProjectsGetFoldersInput = { projectId: ProjectId }
 export type ProjectsListBranchesInput = { projectId: ProjectId }
 export type ProjectsListCheckoutsInput = { projectId: ProjectId }
 export type ProjectsListInput = Record<string, never>
@@ -3452,7 +3489,7 @@ export type WorkspaceReadFileInput = { kind: WorkspaceTargetKind; id: WorkspaceT
 export type WorkspaceStatFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
-export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean;
+export type WorkspaceSummary = { id: string; projectFolderId?: string | null; checkCommands?: string[] | null; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean;
 /**
  * 'git' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
  * repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
@@ -3544,7 +3581,7 @@ icon: string | null;
  */
 iconColor: string | null }
 export type WorkspaceTargetId = string
-export type WorkspaceTargetKind = "workspace" | "project"
+export type WorkspaceTargetKind = "workspace" | "project" | "projectFolder"
 export type WorkspaceViewedObservationInput = { workspaceId: WorkspaceId; observedActivityAt: string }
 export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }

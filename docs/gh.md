@@ -121,7 +121,7 @@ A watch on an archived chat keeps polling, but an archived chat cannot take a tu
 
 ## Merge Cleanup
 
-Settings → Projects carries a per-project choice, `projects.merge_cleanup` (saved through `projects:update-settings`), for what a merged PR does to an isolated workspace:
+Settings → Projects saves the primary folder's merge cleanup policy through `projects:update-settings`. `projects.merge_cleanup` mirrors that folder's setting. Each workspace reads the policy from its pinned folder, so changing the primary preserves existing chats' cleanup behavior:
 
 - `off` (the default): nothing. A merged PR only repaints the marker.
 - `archive`: archive the workspace. Its checkout and branch are retained in the archive location and the sidebar row moves to Archived. This preserves local files for 48 to 72 hours, and the branch for good.

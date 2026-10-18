@@ -299,6 +299,74 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn project_folder_diff_reads_its_own_checkout_for_identical_paths() {
+        use crate::persistence::project_folders::{
+            configure_project_folders, list_project_folders, PersistProjectFolderInput,
+        };
+
+        let primary = tempdir().expect("primary repo");
+        let secondary = tempdir().expect("secondary repo");
+        init_repo(primary.path()).await;
+        init_repo(secondary.path()).await;
+        std::fs::write(primary.path().join("README.md"), "hello\nprimary change\n").unwrap();
+        std::fs::write(
+            secondary.path().join("README.md"),
+            "hello\nsecondary change\n",
+        )
+        .unwrap();
+        let state = state_with_project(primary.path());
+        let database = live_database(&state).expect("database");
+        let folder_id = {
+            let connection = database.connection();
+            let project = crate::persistence::projects::require_project(&connection, "p1").unwrap();
+            let folders =
+                [primary.path(), secondary.path()].map(|path| PersistProjectFolderInput {
+                    root_path: path.to_string_lossy().into_owned(),
+                    current_branch: "main".to_owned(),
+                    default_branch: Some("main".to_owned()),
+                    remote: None,
+                    settings: project.settings.clone(),
+                });
+            configure_project_folders(
+                &connection,
+                "p1",
+                "Two repos",
+                &folders,
+                &folders[0].root_path,
+            )
+            .unwrap();
+            list_project_folders(&connection, "p1")
+                .unwrap()
+                .into_iter()
+                .find(|folder| !folder.is_primary)
+                .unwrap()
+                .id
+        };
+        let files = git_review::list_changed_files(
+            &database,
+            WorkspaceTargetKind::ProjectFolder,
+            &folder_id,
+            ReviewComparison::WorkingTree,
+        )
+        .await
+        .unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "README.md");
+        let diff = git_review::load_diff(
+            &database,
+            WorkspaceTargetKind::ProjectFolder,
+            &folder_id,
+            Some("README.md"),
+            ReviewComparison::WorkingTree,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(diff.content.contains("+secondary change"));
+        assert!(!diff.content.contains("+primary change"));
+    }
+
+    #[tokio::test]
     async fn branch_comparison_includes_committed_uncommitted_and_untracked() {
         // main has README.md + app.txt committed. A feature branch commits a
         // README change, leaves app.txt edited but uncommitted, and adds an

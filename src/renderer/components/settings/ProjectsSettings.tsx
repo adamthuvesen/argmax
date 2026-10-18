@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, type JSX } from "react";
 import type { MergeCleanup, ProjectSummary } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
 import { BranchTemplatePanel } from "./BranchTemplatePanel.js";
-import { LinkedReposPanel } from "./LinkedReposPanel.js";
+import { ProjectFoldersSettings } from "./ProjectFoldersSettings.js";
 import { ProjectSourcesPanel } from "./ProjectSourcesPanel.js";
 import { SegmentedControl, SettingGroup, SettingRow, SettingsListPicker } from "./settingsPrimitives.js";
 
@@ -28,7 +28,7 @@ export function ProjectsSettings({
     <SettingGroup id="settings-project-config" label="Project settings" card={false}>
       {selected === null ? (
         <div className="settings-card">
-          <p className="settings-note">No projects registered yet. Add a project from the sidebar first.</p>
+          <p className="settings-note">No projects yet. Create a project from the sidebar first.</p>
         </div>
       ) : (
         <>
@@ -49,13 +49,13 @@ export function ProjectsSettings({
               />
             </div>
           ) : null}
-          <ProjectSettingsForm key={selected.id} project={selected} onProjectUpdated={onProjectUpdated} />
+          <ProjectFoldersSettings key={`folders-${selected.id}`} project={selected} onProjectUpdated={onProjectUpdated} />
+          <ProjectSettingsForm key={`${selected.id}:${selected.repoPath}`} project={selected} onProjectUpdated={onProjectUpdated} />
           <BranchTemplatePanel
-            key={`branch-names-${selected.id}`}
+            key={`branch-names-${selected.id}:${selected.repoPath}`}
             project={selected}
             onProjectUpdated={onProjectUpdated}
           />
-          <LinkedReposPanel key={`linked-${selected.id}`} projectId={selected.id} />
           <ProjectSourcesPanel key={`sources-${selected.id}`} projectId={selected.id} />
         </>
       )}
@@ -143,7 +143,7 @@ function ProjectSettingsForm({
   return (
     <div className="settings-card">
       <div className="settings-field">
-        <span className="settings-field-label">Repository</span>
+        <span className="settings-field-label">Primary folder</span>
         <p className="settings-note">{project.repoPath}</p>
       </div>
 

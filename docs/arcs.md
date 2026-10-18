@@ -4,6 +4,11 @@ An Arc is a long-lived body of work: a feature, a migration, an app. It outlives
 
 ## Using one
 
+A project's folders provide reusable context for its coordinator and members.
+The primary folder determines where a new coordinator starts. Existing coordinators keep their recorded checkout when that default changes.
+An arc still describes a body of work, with its own brief, notes, state, and member chats.
+It can coordinate changes in several folders or projects without changing their membership.
+
 **New arc** in the sidebar's Arcs section asks for a name, a brief, a home project, and the coordinator's model, with an optional existing folder. Creating it writes the arc folder and launches the coordinator in the home project's shared checkout. **Start an arc from this chat…** in a chat's actions menu does the same from work already under way: the chat becomes the coordinator, a one-shot helper drafts the name and brief from its conversation (never overwriting a field you have typed into), and the chats it launched join the arc. It is unavailable while the chat's turn is running.
 
 The Arc page opens with the name, a meta line led by the state, and the brief's first paragraph with an Edit action. A Chats ledger follows: the coordinator as its first row, then the members still working, with the working and pull request counts in its header. The timeline follows, then the folder and triggers.

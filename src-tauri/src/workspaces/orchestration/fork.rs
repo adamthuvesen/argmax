@@ -364,27 +364,30 @@ impl WorkspaceService {
                     .to_string();
                 let patch = current_files_patch(&source_path).await?;
                 let created = self
-                    .create_isolated(WorkspacesCreateIsolatedInput {
-                        project_id: source_workspace.project_id.clone().try_into().map_err(
-                            |_| {
-                                fork_error(
-                                    "The project id is not valid.",
-                                    "Reopen the project and retry.",
-                                )
-                            },
-                        )?,
-                        task_label: fork_task_label(&source_workspace.task_label)
-                            .try_into()
-                            .map_err(|_| {
-                                fork_error(
-                                    "The chat title is not valid for a fork.",
-                                    "Rename it and retry.",
-                                )
-                            })?,
-                        base_ref: Some(head.try_into().map_err(|_| {
-                            fork_error("HEAD is not a usable base.", "Commit once and retry.")
-                        })?),
-                    })
+                    .create_isolated_in_folder(
+                        WorkspacesCreateIsolatedInput {
+                            project_id: source_workspace.project_id.clone().try_into().map_err(
+                                |_| {
+                                    fork_error(
+                                        "The project id is not valid.",
+                                        "Reopen the project and retry.",
+                                    )
+                                },
+                            )?,
+                            task_label: fork_task_label(&source_workspace.task_label)
+                                .try_into()
+                                .map_err(|_| {
+                                    fork_error(
+                                        "The chat title is not valid for a fork.",
+                                        "Rename it and retry.",
+                                    )
+                                })?,
+                            base_ref: Some(head.try_into().map_err(|_| {
+                                fork_error("HEAD is not a usable base.", "Commit once and retry.")
+                            })?),
+                        },
+                        source_workspace.project_folder_id.clone(),
+                    )
                     .await?;
                 (Some(created), patch)
             }
@@ -477,7 +480,7 @@ impl WorkspaceService {
             .map_err(crate::persistence::sqlite_error)?;
         let workspace = match isolated {
             Some(created) => created,
-            None => persist_workspace(
+            None => crate::persistence::workspaces::persist_workspace_in_folder(
                 &transaction,
                 &PersistWorkspaceInput {
                     id: Uuid::new_v4().to_string(),
@@ -492,6 +495,7 @@ impl WorkspaceService {
                     dirty: source_workspace.dirty,
                     changed_files: source_workspace.changed_files,
                 },
+                source_workspace.project_folder_id.as_deref(),
             )?,
         };
         let mut session = persist_session(

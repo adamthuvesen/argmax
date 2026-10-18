@@ -143,13 +143,6 @@ const DOZE_AFTER_MS = 90_000;
 const PET_STREAK_GAP_MS = 3_000;
 const PETS_FOR_SHADES = 10;
 
-/** The folder a repository sits in ("~/dev/menti"): the project row's trailing
- *  column, so two checkouts of the same repository read apart. */
-function parentFolderLabel(repoPath: string): string {
-  const parent = collapseHome(repoPath).replace(/\/+$/, "").replace(/\/[^/]*$/, "");
-  return parent || "/";
-}
-
 /** The chat a launch started, so a switch Project check made can be undone. */
 export interface LaunchedChat {
   sessionId: string;
@@ -1573,7 +1566,7 @@ export function LaunchSurface({
                       </PickerLead>
                       <span className="picker-label">{p.name}</span>
                       <span className="picker-meta" aria-hidden="true">
-                        {parentFolderLabel(p.repoPath)}
+                        {collapseHome(p.repoPath)}
                       </span>
                     </button>
                   </li>
@@ -1597,7 +1590,7 @@ export function LaunchSurface({
                     <PickerLead>
                       <Plus size={13} />
                     </PickerLead>
-                    Browse folder…
+                    New project
                   </button>
                 </li>
               </ul>

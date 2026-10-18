@@ -7,8 +7,14 @@ A local desktop app that runs coding agents in parallel against your own reposit
 ### Repositories and working locations
 
 **Project**:
-A git repository the user has registered with Argmax, plus its defaults (provider, model, worktree location, setup command, check commands). Identified by its `repo_path`, which is unique.
+A named collection of local folders that agents use together. One folder is primary. A folder can belong to several projects. Each project has a stable id independent of its name and paths.
 _Avoid_: Repo, folder, directory
+
+**Project folder**:
+A canonical local directory included in a project. It carries its name, optional summary, and repository settings. A workspace retains its folder identity when the project's primary changes.
+
+**Primary folder**:
+The project's default Git repository for new chats and coordinators. Changing it affects future launches. Existing chats keep their checkout and repository settings.
 
 **Workspace**:
 One unit of assigned work, owned by one project — the thing a sidebar row represents. It is *not* a place on disk: many workspaces routinely point at the same checkout, and nothing constrains them to be distinct. Carries the task label, branch, base ref, dirty state, and lifecycle state.
@@ -49,7 +55,7 @@ The pattern that names the branch of a new isolated workspace, such as `adam/{ty
 _Avoid_: Branch naming rule, branch format
 
 **Linked repository**:
-A named, canonical directory outside the project's checkout that a project's agents may consult, listed in Settings → Projects. Not a project source: a source is a project-relative file or a URL. Read-only is advice to the agent, not a permission, and Argmax never watches the directory.
+The compatibility API name for an additional project folder. Agents may consult and edit it, subject to their provider's permissions. Argmax reads it on demand. A project source remains a project-relative file or URL.
 _Avoid_: Linked project, extra root, additional directory
 
 **Snooze shelf**:

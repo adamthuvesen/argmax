@@ -103,7 +103,7 @@ async fn run_one_watch(
             "archiving" | "archive-failed" | "archived"
         );
         let project_remote =
-            crate::persistence::projects::get_project_remote(&connection, &watch.project_id)?;
+            crate::persistence::project_folders::workspace_remote(&connection, &workspace.id)?;
         (pr, cwd, recipient_archived, project_remote)
     };
 

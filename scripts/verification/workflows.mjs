@@ -964,16 +964,15 @@ export async function verifyWorkspaceSettings({
   check(assertions, "project-template-saves", true);
   screenshots.push(await screenshot(browser, evidenceDir, "settings-branch-names"));
 
-  const linkedCard = "#settings-linked-repos";
+  const linkedCard = "#settings-project-folders";
   const linkedDir = path.join(path.dirname(repoPath), "linked-docs");
   await mkdir(linkedDir, { recursive: true });
   await writeFile(path.join(linkedDir, "README.md"), "# Shared API\n\nShared API contracts and types for the application.\n");
   const canonicalLinked = await realpath(linkedDir);
-  const linkedRows = () => sqliteRows(databasePath, "SELECT * FROM project_linked_repos");
-  check(assertions, "linked-repository-has-no-path-input", !(await (await browser.$(`${linkedCard} input[type=\"text\"]`)).isExisting()));
+  const linkedRows = async () => (await bridge.call("projects:get-folders", { projectId: project.id })).filter((folder) => !folder.isPrimary);
   for (const [bad, expected] of [
     ["relative/dir", "must be absolute"],
-    [repoPath, "cannot be, contain, or sit inside"],
+    [repoPath, "LINKED_REPO_OVERLAPS_PROJECT"],
   ]) {
     const error = await browser.execute(async (projectId, candidate) => {
       try {
@@ -987,29 +986,35 @@ export async function verifyWorkspaceSettings({
   }
   // This driver controls the webview, not the OS folder sheet. Script only that
   // selection result and keep persistence, helper generation, and row actions real.
-  await browser.execute(() => { window.argmax.linkedRepos.pickFolder = async () => null; });
-  await clickByText(browser, "Connect repository…", 5_000);
+  await browser.execute(() => { window.argmax.projects.pickDirectory = async () => ({ cancelled: true, path: null }); });
+  await clickByText(browser, "Add folder", 5_000);
   check(assertions, "linked-repository-picker-cancellation-keeps-list-empty", (await linkedRows()).length === 0);
   await browser.execute((candidate) => {
-    window.argmax.linkedRepos.pickFolder = ({ projectId: owner }) =>
-      window.argmax.linkedRepos.add({ projectId: owner, repo: { name: null, path: candidate } });
+    window.argmax.projects.pickDirectory = async () => ({ cancelled: false, path: candidate });
   }, linkedDir);
-  await clickByText(browser, "Connect repository…", 5_000);
+  await clickByText(browser, "Add folder", 5_000);
   await waitForText(browser, `${linkedCard} strong`, "linked-docs", 10_000);
+  check(assertions, "project-folder-draft-does-not-persist", (await linkedRows()).length === 0);
+  await clickByText(browser, "Save project", 5_000);
+  await browser.waitUntil(async () => (await linkedRows()).length === 1, { timeout: 10_000 });
+  const generateSummary = await browser.$('[aria-label="Generate summary for linked-docs"]');
+  await generateSummary.waitForClickable({ timeout: 10_000 });
+  await generateSummary.click();
   const expectedSummary = "Shared API contracts and types for the application.";
   await waitForText(browser, linkedCard, expectedSummary, 20_000);
   const added = (await linkedRows()).find((row) => Object.values(row).includes(canonicalLinked));
-  check(assertions, "linked-repository-stores-canonical-root", Boolean(added) && added.enabled === 1, added);
+  check(assertions, "linked-repository-stores-canonical-root", Boolean(added) && added.enabled === true, added);
   check(assertions, "linked-repository-summary-generated-and-persisted", added.summary === expectedSummary, added);
   screenshots.push(await screenshot(browser, evidenceDir, "settings-linked-repository"));
-  await (await browser.$('[aria-label="Enable linked repository linked-docs"]')).click();
-  await browser.waitUntil(async () => (await linkedRows())[0]?.enabled === 0, {
+  await (await browser.$('[aria-label="Include linked-docs in agent context"]')).click();
+  await browser.waitUntil(async () => (await linkedRows())[0]?.enabled === false, {
     timeout: 10_000,
     interval: 150,
     timeoutMsg: "Toggling the linked repository did not disable it",
   });
   check(assertions, "linked-repository-toggle-disables-it", true);
-  await (await browser.$('[aria-label="Remove linked repository linked-docs"]')).click();
+  await (await browser.$('[aria-label="Remove folder linked-docs"]')).click();
+  await clickByText(browser, "Save project", 5_000);
   await browser.waitUntil(async () => (await linkedRows()).length === 0, {
     timeout: 10_000,
     interval: 150,
@@ -1171,6 +1176,8 @@ export async function verifyWorkspaceSettings({
   check(assertions, "unoccupied-branch-chat-runs-in-the-main-checkout", (await providerCwdFor(invocationLog, scenarios.occupiedCheckout.prompt)) === (await realpath(repoPath)) && checkoutChat.id !== oldChat.id);
   await stillAsItWas("unoccupied-branch");
 
+  await verifyNamedProject({ bridge, browser, repoPath, evidenceDir, screenshots, assertions });
+
   const events = await readAllEvents(bridge, source.id);
   const result = {
     session: await waitForCompleted(bridge, source.id, 5_000, "settings seed chat"),
@@ -1183,6 +1190,88 @@ export async function verifyWorkspaceSettings({
   return result;
 }
 
+
+async function verifyNamedProject({ bridge, browser, repoPath, evidenceDir, screenshots, assertions }) {
+  const secondary = path.join(path.dirname(repoPath), "project-secondary");
+  await mkdir(secondary, { recursive: true });
+  await git(secondary, "init", "-q", "-b", "main");
+  await git(secondary, "config", "user.email", "fixture@argmax.test");
+  await git(secondary, "config", "user.name", "Argmax fixture");
+  await writeFile(path.join(secondary, "README.md"), "secondary baseline\n");
+  await git(secondary, "add", "README.md");
+  await git(secondary, "commit", "-q", "-m", "initial");
+  const secondaryRoot = await realpath(secondary);
+  const primaryRoot = await realpath(repoPath);
+
+  await (await browser.$('[aria-label="New chat"]')).click();
+  await (await browser.$('[aria-label="Switch project"]')).click();
+  const newProject = await browser.$('//button[normalize-space(.)="New project"]');
+  await newProject.waitForClickable({ timeout: 5_000 });
+  await newProject.click();
+  const dialog = await browser.$('[role="dialog"][aria-labelledby="new-project-heading"]');
+  await dialog.waitForDisplayed({ timeout: 10_000 });
+  await setInputValue(browser, await dialog.$("input"), "Connected project");
+  await browser.execute((folders) => {
+    window.argmax.projects.pickDirectory = async () => ({ cancelled: false, path: folders.shift() });
+  }, [primaryRoot, secondaryRoot]);
+  await clickByText(browser, "Add folder", 5_000);
+  await clickByText(browser, "Add folder", 5_000);
+  screenshots.push(await screenshot(browser, evidenceDir, "create-named-project"));
+  await clickByText(browser, "Create project", 5_000);
+  await browser.waitUntil(async () => (await bridge.call("projects:list", {})).some((row) => row.name === "Connected project"), { timeout: 10_000 });
+  const named = (await bridge.call("projects:list", {})).find((row) => row.name === "Connected project");
+  const folders = await bridge.call("projects:get-folders", { projectId: named.id });
+  check(assertions, "named-project-has-two-folders-and-one-primary", folders.length === 2 && folders.filter((folder) => folder.isPrimary).length === 1, folders);
+  check(assertions, "same-repository-can-belong-to-two-projects", (await bridge.call("projects:list", {})).filter((row) => row.repoPath === primaryRoot).length === 2);
+  const original = await bridge.call("workspaces:create-current", { projectId: named.id, taskLabel: "Pinned original" });
+
+  await (await browser.$('[aria-label="Customize"]')).click();
+  await clickByText(browser, "Projects", 5_000);
+  await (await browser.$('[aria-label="Project"]')).click();
+  const projectOption = await browser.$('//button[normalize-space(.)="Connected project"]');
+  await projectOption.waitForClickable({ timeout: 5_000 });
+  await projectOption.click();
+  const makePrimary = await browser.$('[aria-label="Make project-secondary primary"]');
+  await makePrimary.waitForDisplayed({ timeout: 10_000 });
+  await makePrimary.click();
+  await clickByText(browser, "Save project", 5_000);
+  await browser.waitUntil(async () => (await bridge.call("projects:list", {})).find((row) => row.id === named.id)?.repoPath === secondaryRoot, { timeout: 10_000 });
+  const next = await bridge.call("workspaces:create-current", { projectId: named.id, taskLabel: "New primary" });
+  const snapshot = await bridge.call("dashboard:list", {});
+  check(assertions, "changing-primary-pins-existing-chat", snapshot.workspaces.find((row) => row.id === original.id)?.path === primaryRoot);
+  check(assertions, "changing-primary-affects-new-chat", next.path === secondaryRoot && next.projectFolderId !== original.projectFolderId);
+  screenshots.push(await screenshot(browser, evidenceDir, "project-primary-changed"));
+
+  await writeFile(path.join(secondaryRoot, "README.md"), "secondary folder diff marker\n");
+  const secondaryFolder = folders.find((folder) => folder.rootPath === secondaryRoot);
+  const changes = await bridge.call("review:list-changed-files", { kind: "projectFolder", id: secondaryFolder.id, comparison: "workingTree" });
+  check(assertions, "secondary-repository-changes-have-own-root", changes.some((file) => file.path === "README.md"), changes);
+  const diff = await bridge.call("review:load-diff", { kind: "projectFolder", id: secondaryFolder.id, filePath: "README.md", comparison: "workingTree", contextLines: null });
+  check(assertions, "secondary-repository-diff-reads-correct-file", JSON.stringify(diff).includes("secondary folder diff marker"));
+
+  const chat = await bridge.call("providers:launch", {
+    workspaceId: original.id,
+    provider: VERIFICATION_PROVIDER.provider,
+    prompt: VERIFICATION_SCENARIOS.workspaceSettings.prompt,
+    modelLabel: VERIFICATION_PROVIDER.modelLabel,
+    modelId: VERIFICATION_PROVIDER.modelId,
+    reasoningEffort: null, fastMode: false, agentMode: null, permissionMode: null,
+    cols: 120, rows: 32, attachments: null,
+  });
+  await waitForCompleted(bridge, chat.id, 30_000, "named project chat");
+  await clickByText(browser, "Back", 5_000);
+  const chatRow = await browser.$(`[data-workspace-id="${original.id}"] button[data-status][title]`);
+  await chatRow.waitForClickable({ timeout: 10_000 });
+  await chatRow.click();
+  const folderChanges = await browser.$('[aria-label="Changes in project-secondary"]');
+  await folderChanges.waitForDisplayed({ timeout: 10_000 });
+  check(assertions, "workspace-card-shows-secondary-repository", await folderChanges.isDisplayed());
+  screenshots.push(await screenshot(browser, evidenceDir, "project-workspace-card"));
+  await folderChanges.click();
+  await waitForText(browser, ".review-diff-scroll", "secondary folder diff marker", 10_000);
+  check(assertions, "workspace-card-opens-secondary-diff", true);
+  screenshots.push(await screenshot(browser, evidenceDir, "project-secondary-diff"));
+}
 
 async function git(cwd, ...args) {
   const { stdout } = await runChecked("git", args, { cwd, timeoutMs: 20_000 });

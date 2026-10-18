@@ -3465,7 +3465,7 @@ async fn pr_watch_refuses_what_it_cannot_watch() {
             .expect("scratch project");
         connection
             .execute(
-                "UPDATE workspaces SET project_id = 'scratch-side-chats' WHERE id = 'workspace-session-chat'",
+                "UPDATE workspaces SET project_id = 'scratch-side-chats', project_folder_id = NULL WHERE id = 'workspace-session-chat'",
                 [],
             )
             .expect("move chat to scratch");
@@ -3514,7 +3514,7 @@ async fn pr_cleanup_refuses_what_it_cannot_clean_up() {
             .expect("scratch project");
         connection
             .execute(
-                "UPDATE workspaces SET project_id = 'scratch-side-chats' WHERE id = 'workspace-session-chat'",
+                "UPDATE workspaces SET project_id = 'scratch-side-chats', project_folder_id = NULL WHERE id = 'workspace-session-chat'",
                 [],
             )
             .expect("move chat to scratch");

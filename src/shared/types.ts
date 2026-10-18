@@ -142,6 +142,9 @@ export type ProjectSettings = Bindings.ProjectSettings;
 export type MergeCleanup = Bindings.MergeCleanup;
 
 export type RegisterProjectInput = Bindings.ProjectsRegisterInput;
+export type CreateProjectInput = Bindings.ProjectsCreateInput;
+export type ConfigureProjectInput = Bindings.ProjectsConfigureInput;
+export type ProjectFolder = Bindings.ProjectFolderSummary;
 export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
 export type UpdateProjectSettingsInput = Bindings.ProjectsUpdateSettingsInput;
 export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
@@ -531,6 +534,10 @@ export interface ArgmaxApi {
   };
   projects: {
     list: () => Promise<ProjectSummary[]>;
+    create: (input: CreateProjectInput) => Promise<ProjectSummary>;
+    configure: (input: ConfigureProjectInput) => Promise<ProjectSummary>;
+    getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>;
+    pickDirectory: () => Promise<{ cancelled: boolean; path: string | null }>;
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
     remove: (input: RemoveProjectInput) => Promise<void>;

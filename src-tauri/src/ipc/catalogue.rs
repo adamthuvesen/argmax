@@ -74,6 +74,27 @@ command_catalogue! {
     "projects:pick-folder" => projects::projects_pick_folder, desktop,
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 
+    "projects:pick-directory" => projects::projects_pick_directory, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "projects:create" => projects::projects_create, control,
+    |state, input, default_agent, channel| {
+        let input: ProjectsCreateInput = parse(channel, input)?;
+        encode(projects::projects_create_impl(state, input).await?)
+    };
+
+    "projects:configure" => projects::projects_configure, control,
+    |state, input, default_agent, channel| {
+        let input: ProjectsConfigureInput = parse(channel, input)?;
+        encode(projects::projects_configure_impl(state, input).await?)
+    };
+
+    "projects:get-folders" => projects::projects_get_folders, read,
+    |state, input, default_agent, channel| {
+        let input: ProjectsGetFoldersInput = parse(channel, input)?;
+        encode(projects::projects_get_folders_impl(state, input).await?)
+    };
+
     "projects:check-prompt" => projects::projects_check_prompt, control,
     |state, input, default_agent, channel| {
             let input: ProjectsCheckPromptInput = parse(channel, input)?;

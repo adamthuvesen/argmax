@@ -248,6 +248,10 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     projects: {
       list: () => invokeCommand("projects:list"),
+      create: (input) => invokeCommand("projects:create", input),
+      configure: (input) => invokeCommand("projects:configure", input),
+      getFolders: (input) => invokeCommand("projects:get-folders", input),
+      pickDirectory: () => invokeCommand("projects:pick-directory"),
       pickFolder: () => invokeCommand("projects:pick-folder").then(decode.pickedFolder),
       register: (input: RegisterProjectInput) => invokeCommand("projects:register", input),
       remove: (input: RemoveProjectInput) => invokeCommand("projects:remove", input).then(() => undefined),

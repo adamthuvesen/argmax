@@ -392,7 +392,11 @@ impl WorkspaceService {
                     }
                     let registration = {
                         let connection = self.database.connection();
-                        require_project(&connection, &workspace.project_id).and_then(|project| {
+                        crate::persistence::project_folders::require_workspace_project(
+                            &connection,
+                            &workspace.id,
+                        )
+                        .and_then(|project| {
                             worktree_is_registered_blocking(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
@@ -468,7 +472,10 @@ impl WorkspaceService {
                 {
                     let project = {
                         let connection = self.database.connection();
-                        require_project(&connection, &workspace.project_id)?
+                        crate::persistence::project_folders::require_workspace_project(
+                            &connection,
+                            &workspace.id,
+                        )?
                     };
                     match repair_archived_worktree(
                         Path::new(&project.repo_path),
@@ -484,7 +491,11 @@ impl WorkspaceService {
                 } else {
                     let registration = {
                         let connection = self.database.connection();
-                        require_project(&connection, &workspace.project_id).and_then(|project| {
+                        crate::persistence::project_folders::require_workspace_project(
+                            &connection,
+                            &workspace.id,
+                        )
+                        .and_then(|project| {
                             worktree_is_registered_blocking(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
@@ -623,8 +634,9 @@ impl WorkspaceService {
         let connection = self.database.read_connection();
         connection
             .query_row(
-                "SELECT workspaces.state, workspaces.updated_at, projects.repo_path \
+                "SELECT workspaces.state, workspaces.updated_at, COALESCE(project_folders.root_path, projects.repo_path) \
                  FROM workspaces LEFT JOIN projects ON projects.id = workspaces.project_id \
+                 LEFT JOIN project_folders ON project_folders.id = workspaces.project_folder_id \
                  WHERE workspaces.id = ?",
                 [workspace_id],
                 |row| {
@@ -656,15 +668,66 @@ impl WorkspaceService {
         &self.database
     }
 
+    pub async fn resolve_project_checkout(
+        &self,
+        project_id: &str,
+        requested: &str,
+    ) -> ArgmaxResult<(crate::persistence::projects::ProjectSummary, String, String)> {
+        let folders = {
+            let connection = self.database.read_connection();
+            crate::persistence::project_folders::list_project_folders(&connection, project_id)?
+        };
+        for folder in folders.into_iter().filter(|folder| folder.enabled) {
+            if let Ok((path, branch)) =
+                resolve_registered_checkout(&folder.root_path, requested).await
+            {
+                let connection = self.database.read_connection();
+                let project = crate::persistence::project_folders::project_for_folder(
+                    &connection,
+                    &folder.id,
+                )?;
+                return Ok((project, path, branch));
+            }
+        }
+        Err(ArgmaxError::service(
+            "PROJECT_CHECKOUT_NOT_FOUND",
+            "Choose a Git checkout from an enabled project folder.",
+        ))
+    }
+
     pub async fn create_isolated(
         self: &Arc<Self>,
         input: WorkspacesCreateIsolatedInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
-        let (project, global_branch_template) = {
+        self.create_isolated_in_folder(input, None).await
+    }
+
+    pub(super) async fn create_isolated_in_folder(
+        self: &Arc<Self>,
+        input: WorkspacesCreateIsolatedInput,
+        folder_id: Option<String>,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let (project, global_branch_template, project_folder_id) = {
             let connection = self.database.connection();
+            let project = match folder_id.as_deref() {
+                Some(folder_id) => {
+                    crate::persistence::project_folders::project_for_folder(&connection, folder_id)?
+                }
+                None => require_project(&connection, input.project_id.as_str())?,
+            };
+            if project.id != input.project_id.as_str() {
+                return Err(ArgmaxError::service(
+                    "PROJECT_FOLDER_MISMATCH",
+                    "That folder belongs to another project.",
+                ));
+            }
             (
-                require_project(&connection, input.project_id.as_str())?,
+                project,
                 crate::persistence::app_settings::branch_template(&connection),
+                folder_id.or(crate::persistence::project_folders::primary_folder_id(
+                    &connection,
+                    input.project_id.as_str(),
+                )?),
             )
         };
         let base_ref = input
@@ -840,7 +903,7 @@ impl WorkspaceService {
         // non-Send connection guard end before the discard await below.
         let persisted = (|| {
             let connection = self.database.connection();
-            let workspace = persist_workspace(
+            let workspace = crate::persistence::workspaces::persist_workspace_in_folder(
                 &connection,
                 &PersistWorkspaceInput {
                     id: Uuid::new_v4().to_string(),
@@ -855,6 +918,7 @@ impl WorkspaceService {
                     dirty: false,
                     changed_files: 0,
                 },
+                project_folder_id.as_deref(),
             )?;
             record_workspace_created_branch(
                 &connection,
@@ -1354,7 +1418,10 @@ impl WorkspaceService {
                 ));
             }
             let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
-            let source_project = require_project(&connection, &source_workspace.project_id)?;
+            let source_project = crate::persistence::project_folders::require_workspace_project(
+                &connection,
+                &source_workspace.id,
+            )?;
             // A checkout move stays inside the project it started in; only a
             // project move has a second project to look up, and only it has to
             // be somewhere else.
@@ -1996,7 +2063,10 @@ impl WorkspaceService {
         if recovery_path.exists() && !Path::new(&prior.path).exists() {
             let project = {
                 let connection = self.database.connection();
-                require_project(&connection, &prior.project_id)?
+                crate::persistence::project_folders::require_workspace_project(
+                    &connection,
+                    &prior.id,
+                )?
             };
             let repair_path = recovery_path.clone();
             let branch = prior.branch.clone();
@@ -2067,7 +2137,10 @@ impl WorkspaceService {
 
         let project = {
             let connection = self.database.connection();
-            match require_project(&connection, &workspace.project_id) {
+            match crate::persistence::project_folders::require_workspace_project(
+                &connection,
+                &workspace.id,
+            ) {
                 Ok(project) => project,
                 Err(error) => {
                     self.abandon_archive(&prior, lease)?;
@@ -2851,7 +2924,10 @@ impl WorkspaceService {
             if !path.exists() {
                 let project = {
                     let connection = self.database.connection();
-                    require_project(&connection, &workspace.project_id)
+                    crate::persistence::project_folders::require_workspace_project(
+                        &connection,
+                        &workspace.id,
+                    )
                 };
                 let registration = match project {
                     Ok(project) => {
@@ -2934,7 +3010,10 @@ impl WorkspaceService {
             {
                 let project = {
                     let connection = self.database.connection();
-                    require_project(&connection, &workspace.project_id)
+                    crate::persistence::project_folders::require_workspace_project(
+                        &connection,
+                        &workspace.id,
+                    )
                 };
                 let registration = match project {
                     Ok(project) => {

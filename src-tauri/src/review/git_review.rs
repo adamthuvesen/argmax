@@ -21,6 +21,7 @@ use crate::{
         tree_snapshot::{fingerprint_worktree, index_tree},
     },
     persistence::database::Database,
+    persistence::project_folders::{require_project_folder, require_workspace_project},
     persistence::projects::require_project,
     persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
     util::workspace_paths::{resolve_inside, PathError},
@@ -192,6 +193,15 @@ async fn resolve_review_target(
     comparison: ReviewComparison,
 ) -> ArgmaxResult<(String, Option<String>)> {
     match kind {
+        WorkspaceTargetKind::ProjectFolder => {
+            let folder = {
+                let connection = database.read_connection();
+                require_project_folder(&connection, id)?
+            };
+            // Other folders show their own checkout changes. The chat's branch
+            // and last-turn filters describe only its working checkout.
+            Ok((folder.root_path, None))
+        }
         WorkspaceTargetKind::Project => {
             let project = {
                 // A read-only lookup; nothing upstream just wrote this row,
@@ -248,7 +258,7 @@ fn load_workspace_with_default_branch(
     // for a plain SELECT.
     let connection = database.read_connection();
     let workspace = find_workspace_by_id(&connection, workspace_id)?;
-    let default_branch = require_project(&connection, &workspace.project_id)
+    let default_branch = require_workspace_project(&connection, workspace_id)
         .ok()
         .and_then(|project| project.default_branch);
     Ok((workspace, default_branch))
@@ -634,6 +644,7 @@ fn review_target_path(
     let path = match kind {
         WorkspaceTargetKind::Workspace => find_workspace_by_id(&connection, id)?.path,
         WorkspaceTargetKind::Project => require_project(&connection, id)?.repo_path,
+        WorkspaceTargetKind::ProjectFolder => require_project_folder(&connection, id)?.root_path,
     };
     validate_repo_path(Path::new(&path))
 }

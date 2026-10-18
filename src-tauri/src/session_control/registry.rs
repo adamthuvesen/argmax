@@ -226,10 +226,7 @@ fn linked_roots_for_session(database: &Database, session_id: &str) -> Vec<Linked
             &connection,
             &session.workspace_id,
         )?;
-        crate::persistence::linked_repos::list_enabled_linked_repos(
-            &connection,
-            &workspace.project_id,
-        )
+        crate::persistence::linked_repos::list_workspace_linked_repos(&connection, &workspace.id)
     })();
     match repos {
         Ok(repos) => repos

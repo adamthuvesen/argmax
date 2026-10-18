@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
+import type { ProjectFolderChanges } from "../hooks/useProjectFolderChanges.js";
 import { baseSession, workspace } from "../../test/sessionConversationTestHarness.js";
 import { emblemForCodename, emblemForKey } from "../lib/agentEmblems.js";
 import type { WorkspaceSessionPr } from "../lib/sessionPrs.js";
@@ -49,6 +50,8 @@ function renderCard(
   overrides: {
     changeSummary?: { fileCount: number; additions: number; deletions: number } | null;
     changesState?: AsyncState;
+    projectFolderChanges?: ProjectFolderChanges[];
+    onOpenFolderChanges?: (folderId: string, filePath: string) => void;
     setStatus?: (status: { kind: "error" | "info"; message: string } | null) => void;
     subagents?: SubagentCluster | null;
     workspace?: WorkspaceSummary;
@@ -62,6 +65,8 @@ function renderCard(
           : { fileCount: 3, additions: 229, deletions: 44 }
       }
       changesState={overrides.changesState ?? "ready"}
+      projectFolderChanges={overrides.projectFolderChanges}
+      onOpenFolderChanges={overrides.onOpenFolderChanges}
       isTerminalOpen={false}
       onBrowseFiles={vi.fn()}
       onHide={vi.fn()}
@@ -77,6 +82,32 @@ function renderCard(
 }
 
 describe("WorkspaceCard", () => {
+  it("shows changed additional repositories separately when the chat checkout is clean", () => {
+    const onOpenFolderChanges = vi.fn();
+    const group = (id: string, enabled = true, changed = true): ProjectFolderChanges => ({
+      folder: { id, projectId: "project", name: id, rootPath: `/repos/${id}`, isPrimary: false, enabled, summary: null },
+      files: changed ? [{ path: "README.md", status: "M", additions: id === "app" ? 3 : 7, deletions: 1, staged: false }] : [],
+      error: null
+    });
+    renderCard({
+      changeSummary: null,
+      projectFolderChanges: [group("app"), group("dbt"), group("disabled", false), group("clean", true, false)],
+      onOpenFolderChanges
+    });
+    expect(screen.getByRole("button", { name: "Changes" })).toBeDisabled();
+    expect(screen.getByText("Chat checkout")).toBeVisible();
+    expect(screen.getAllByText("Shared checkout")).toHaveLength(2);
+    const app = screen.getByRole("button", { name: "Changes in app" });
+    expect(app).toHaveTextContent("+3");
+    const dbt = screen.getByRole("button", { name: "Changes in dbt" });
+    expect(dbt).toHaveTextContent("+7");
+    fireEvent.click(app);
+    fireEvent.click(dbt);
+    expect(onOpenFolderChanges.mock.calls).toEqual([["app", "README.md"], ["dbt", "README.md"]]);
+    expect(screen.queryByRole("button", { name: "Changes in disabled" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Changes in clean" })).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
     cleanup();
     delete (window as { argmax?: unknown }).argmax;

@@ -1586,7 +1586,16 @@ export function SessionConversation({
             isTerminalOpen={isTerminalOpen ?? false}
             onBrowseFiles={review.openPanelInFilesMode}
             onHide={() => onHideWorkspaceCard?.()}
-            onOpenChanges={review.toggleChangesPanel}
+            onOpenChanges={() => {
+              review.projectFolderChanges?.clearSelection();
+              if (review.projectFolderChanges?.selection) review.openChangesPanel();
+              else review.toggleChangesPanel();
+            }}
+            projectFolderChanges={review.projectFolderChanges?.groups}
+            onOpenFolderChanges={(folderId, filePath) => {
+              review.projectFolderChanges?.selectFile(folderId, filePath);
+              review.openChangesPanel();
+            }}
             onOpenAgents={handleOpenAgents}
             onOpenCommitDialog={onOpenCommitDialog}
             onToggleTerminal={() => onToggleTerminal?.()}
@@ -1704,7 +1713,7 @@ export function SessionConversation({
         {session ? <ForkBar sessionId={session.id} onOpenSession={onOpenSession} /> : null}
         <ChangedFilesCard
           workspaceId={workspace?.id}
-          checkCommands={project?.settings.checkCommands ?? []}
+          checkCommands={workspace?.checkCommands ?? project?.settings.checkCommands ?? []}
           checks={checks ?? []}
           onRunCheck={onRunCheck}
         />

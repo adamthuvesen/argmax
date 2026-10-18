@@ -34,6 +34,8 @@ import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 import { GithubIcon } from "./GithubIcon.js";
 import { showErrorToast, showInfoToast } from "../state/toast.js";
+import type { ProjectFolderChanges } from "../hooks/useProjectFolderChanges.js";
+import { summarizeChangedFiles } from "../lib/changedFiles.js";
 
 /** Avatars shown before the stack folds into a +N chip. Matches the reference
  *  density: four or five colored marks read as a team, more read as noise. */
@@ -58,12 +60,14 @@ export function WorkspaceCard({
   onBrowseFiles,
   onHide,
   onOpenChanges,
+  onOpenFolderChanges,
   onOpenAgents,
   onOpenCommitDialog,
   onToggleTerminal,
   session,
   setStatus,
   subagents,
+  projectFolderChanges = [],
   workspace
 }: {
   /** Null until the changed-file list has loaded for this workspace. */
@@ -74,6 +78,7 @@ export function WorkspaceCard({
   onBrowseFiles: () => void;
   onHide: () => void;
   onOpenChanges: () => void;
+  onOpenFolderChanges?: (folderId: string, filePath: string) => void;
   onOpenAgents?: () => void;
   onOpenCommitDialog?: () => void;
   onToggleTerminal: () => void;
@@ -81,12 +86,14 @@ export function WorkspaceCard({
   setStatus: (status: ComposerStatus | null) => void;
   /** Subagents the session has launched; null hides the section. */
   subagents?: SubagentCluster | null;
+  projectFolderChanges?: ProjectFolderChanges[];
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const [isPrPending, setIsPrPending] = useState(false);
   const [isPrHistoryOpen, setIsPrHistoryOpen] = useState(false);
   const [branchCopyFlash, copyBranch] = useCopyToClipboard();
   const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
+  const changedFolders = projectFolderChanges.filter((group) => group.folder.enabled && !group.error && group.files.length > 0);
   const changesLabel = changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
   const prs = workspaceSessionPrs(workspace);
   const primaryPr = primaryWorkspacePr(workspace);
@@ -210,6 +217,7 @@ export function WorkspaceCard({
       </div>
 
       <div className="workspace-card-rows">
+        {changedFolders.length > 0 ? <div className="workspace-card-checkout-label">Chat checkout</div> : null}
         <WorkspaceCardRow
           icon={<FileDiff size={13} aria-hidden="true" />}
           label="Changes"
@@ -235,6 +243,23 @@ export function WorkspaceCard({
           }
           onClick={onOpenChanges}
         />
+        {changedFolders.map(({ folder, files }) => {
+          const totals = summarizeChangedFiles(files);
+          return (
+            <div key={folder.id} className="workspace-card-folder-changes">
+              <div className="workspace-card-checkout-label">Shared checkout</div>
+              <WorkspaceCardRow
+                icon={<FileDiff size={13} aria-hidden="true" />}
+                label={folder.name}
+                ariaLabel={`Changes in ${folder.name}`}
+                title={`Review ${files.length} changed ${files.length === 1 ? "file" : "files"} in ${folder.rootPath}. Shared checkout changes can include other chats.`}
+                meta={<ChangeCount additions={totals.additions} deletions={totals.deletions} />}
+                disabled={!onOpenFolderChanges}
+                onClick={() => { if (files[0]) onOpenFolderChanges?.(folder.id, files[0].path); }}
+              />
+            </div>
+          );
+        })}
         <WorkspaceCardRow
           icon={<Files size={13} aria-hidden="true" />}
           label="Files"

@@ -1,6 +1,10 @@
 health:ping
 projects:list
 projects:pick-folder
+projects:pick-directory
+projects:create
+projects:configure
+projects:get-folders
 projects:check-prompt
 projects:resolve-check
 dashboard:list

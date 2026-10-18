@@ -13,6 +13,7 @@
   "goal:list",
   "health:ping",
   "learnings:list",
+  "projects:get-folders",
   "projects:list",
   "projects:list-branches",
   "projects:list-checkouts",

@@ -31,7 +31,7 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
 
 function installUpdateStub(updateSettings: ReturnType<typeof vi.fn>): void {
   (window as unknown as { argmax: ArgmaxApi }).argmax = {
-    projects: { updateSettings }
+    projects: { updateSettings, getFolders: vi.fn().mockResolvedValue([]) }
   } as unknown as ArgmaxApi;
 }
 
@@ -44,6 +44,42 @@ describe("ProjectsSettings", () => {
     expect(screen.getByLabelText("Setup command")).toHaveValue("npm install");
     expect(screen.getByLabelText("Check commands")).toHaveValue("npm run lint");
     expect(screen.getByRole("button", { name: "Save project settings" })).toBeDisabled();
+  });
+
+  it("saves the project name, folder membership, and primary folder together", async () => {
+    const folders = [
+      { id: "primary", projectId: "project-1", name: "argmax", rootPath: "/Users/dev/argmax", isPrimary: true, enabled: true, summary: null },
+      { id: "docs", projectId: "project-1", name: "docs", rootPath: "/Users/dev/docs", isPrimary: false, enabled: true, summary: "API notes." }
+    ];
+    const configure = vi.fn().mockResolvedValue(project({ name: "Agent tools", repoPath: "/Users/dev/docs" }));
+    const getFolders = vi.fn().mockResolvedValue(folders);
+    window.argmax = { projects: {
+      configure, getFolders,
+      pickDirectory: vi.fn().mockResolvedValue({ cancelled: false, path: "/Users/dev/research" })
+    } } as unknown as ArgmaxApi;
+    const onProjectUpdated = vi.fn();
+    render(<ProjectsSettings projects={[project()]} onProjectUpdated={onProjectUpdated} />);
+    fireEvent.change(await screen.findByLabelText("Project name"), { target: { value: "Agent tools" } });
+    fireEvent.click(screen.getByRole("button", { name: "Make docs primary" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
+    await screen.findByText("research");
+    fireEvent.click(screen.getByRole("button", { name: "Remove folder argmax" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save project" }));
+    await waitFor(() => expect(configure).toHaveBeenCalledWith({
+      projectId: "project-1", name: "Agent tools", folders: ["/Users/dev/docs", "/Users/dev/research"], primaryPath: "/Users/dev/docs"
+    }));
+    await waitFor(() => expect(onProjectUpdated).toHaveBeenCalledWith(expect.objectContaining({ name: "Agent tools", repoPath: "/Users/dev/docs" })));
+  });
+
+  it("loads the new primary repository defaults after the primary folder changes", () => {
+    const { rerender } = render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
+    expect(screen.getByLabelText("Setup command")).toHaveValue("npm install");
+    rerender(<ProjectsSettings projects={[project({ repoPath: "/Users/dev/dbt", settings: {
+      mergeCleanup: "off", worktreeLocation: "/Users/dev/dbt/.argmax/worktrees", setupCommand: "uv sync", checkCommands: ["uv run pytest"]
+    } })]} onProjectUpdated={vi.fn()} />);
+    expect(screen.getByLabelText("Setup command")).toHaveValue("uv sync");
+    expect(screen.getByLabelText("Check commands")).toHaveValue("uv run pytest");
+    expect(screen.getByLabelText("Worktree location")).toHaveValue("/Users/dev/dbt/.argmax/worktrees");
   });
 
   it("saves edited settings", async () => {

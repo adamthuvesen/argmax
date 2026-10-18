@@ -17,7 +17,6 @@ use uuid::Uuid;
 use super::{sqlite_error, time::now_iso};
 use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
-pub const MAX_LINKED_REPOS_PER_PROJECT: i64 = 10;
 pub const MAX_LINKED_REPO_NAME_CHARS: usize = 40;
 pub const MAX_LINKED_REPO_SUMMARY_CHARS: usize = 600;
 
@@ -52,7 +51,7 @@ pub fn list_linked_repos(
 ) -> ArgmaxResult<Vec<LinkedRepo>> {
     let mut statement = connection
         .prepare_cached(&format!(
-            "SELECT {COLUMNS} FROM project_linked_repos WHERE project_id = ? \
+            "SELECT {COLUMNS} FROM project_folders WHERE project_id = ? AND is_primary = 0 AND removed = 0 \
              ORDER BY name ASC, id ASC"
         ))
         .map_err(sqlite_error)?;
@@ -75,6 +74,41 @@ pub fn list_enabled_linked_repos(
         .collect())
 }
 
+pub fn list_workspace_linked_repos(
+    connection: &Connection,
+    workspace_id: &str,
+) -> ArgmaxResult<Vec<LinkedRepo>> {
+    let mut statement = connection.prepare_cached(&format!("SELECT {COLUMNS} FROM project_folders WHERE project_id = (SELECT project_id FROM workspaces WHERE id = ?1) AND removed = 0 AND enabled = 1 AND id IS NOT (SELECT project_folder_id FROM workspaces WHERE id = ?1) ORDER BY name, id")).map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([workspace_id], row_to_linked_repo)
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    Ok(rows)
+}
+
+pub fn find_workspace_linked_repo_by_name(
+    connection: &Connection,
+    workspace_id: &str,
+    name: &str,
+) -> ArgmaxResult<LinkedRepo> {
+    let (project_id, folder_id): (String, Option<String>) = connection
+        .query_row(
+            "SELECT project_id, project_folder_id FROM workspaces WHERE id = ?",
+            [workspace_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(sqlite_error)?;
+    let repo = find_linked_repo_by_name(connection, &project_id, name)?;
+    if Some(repo.id.as_str()) == folder_id.as_deref() {
+        return Err(ArgmaxError::service(
+            "LINKED_REPO_WORKING_FOLDER",
+            "Use workspace file tools for this chat's working checkout.",
+        ));
+    }
+    Ok(repo)
+}
+
 pub fn find_linked_repo_by_name(
     connection: &Connection,
     project_id: &str,
@@ -82,7 +116,7 @@ pub fn find_linked_repo_by_name(
 ) -> ArgmaxResult<LinkedRepo> {
     let mut statement = connection
         .prepare_cached(&format!(
-            "SELECT {COLUMNS} FROM project_linked_repos WHERE project_id = ? AND name = ?"
+            "SELECT {COLUMNS} FROM project_folders WHERE project_id = ? AND name = ? AND removed = 0"
         ))
         .map_err(sqlite_error)?;
     match statement.query_row((project_id, name), row_to_linked_repo) {
@@ -125,32 +159,28 @@ pub fn add_linked_repo(
         }
         None => name_from_root(connection, project_id, &root)?,
     };
-    let count: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM project_linked_repos WHERE project_id = ?",
-            [project_id],
-            |row| row.get(0),
-        )
-        .map_err(sqlite_error)?;
-    if count >= MAX_LINKED_REPOS_PER_PROJECT {
+    let root_text = root.to_string_lossy().into_owned();
+    if super::project_folders::list_project_folders(connection, project_id)?
+        .iter()
+        .any(|folder| folder.name == name || folder.root_path == root_text)
+    {
         return Err(ArgmaxError::service(
-            "LINKED_REPO_LIMIT",
-            format!("A project can link at most {MAX_LINKED_REPOS_PER_PROJECT} repositories."),
+            "LINKED_REPO_CONFLICT",
+            "This project already includes that folder or folder name.",
         ));
     }
-    let root_text = root.to_string_lossy().into_owned();
     let id = Uuid::new_v4().to_string();
     let now = now_iso();
     connection
         .prepare_cached(
-            "INSERT INTO project_linked_repos \
-             (id, project_id, name, root_path, enabled, created_at, updated_at) \
-             VALUES (?, ?, ?, ?, 1, ?, ?)",
+            "INSERT INTO project_folders \
+             (id, project_id, name, root_path, enabled, created_at, updated_at, worktree_location) \
+             VALUES (?, ?, ?, ?, 1, ?, ?, ?) ON CONFLICT(project_id, root_path) DO UPDATE SET removed = 0, enabled = 1, name = excluded.name, updated_at = excluded.updated_at",
         )
         .map_err(sqlite_error)?
-        .execute((&id, project_id, &name, &root_text, &now, &now))
+        .execute((&id, project_id, &name, &root_text, &now, &now, format!("{repo_path}/.argmax/worktrees/{id}")))
         .map_err(|error| map_insert_error(error, &name, &root_text))?;
-    find_linked_repo_by_id(connection, project_id, &id)
+    find_linked_repo_by_name(connection, project_id, &name)
 }
 
 pub fn set_linked_repo_enabled(
@@ -161,8 +191,8 @@ pub fn set_linked_repo_enabled(
 ) -> ArgmaxResult<LinkedRepo> {
     let changes = connection
         .prepare_cached(
-            "UPDATE project_linked_repos SET enabled = ?, updated_at = ? \
-             WHERE project_id = ? AND id = ?",
+            "UPDATE project_folders SET enabled = ?, updated_at = ? \
+             WHERE project_id = ? AND id = ? AND is_primary = 0 AND removed = 0",
         )
         .map_err(sqlite_error)?
         .execute((enabled, now_iso(), project_id, id))
@@ -195,7 +225,7 @@ pub fn set_linked_repo_summary(
     }
     let changes = connection
         .prepare_cached(
-            "UPDATE project_linked_repos SET summary = ?, updated_at = ? \
+            "UPDATE project_folders SET summary = ?, updated_at = ? \
              WHERE project_id = ? AND id = ?",
         )
         .map_err(sqlite_error)?
@@ -209,7 +239,7 @@ pub fn set_linked_repo_summary(
 
 pub fn delete_linked_repo(connection: &Connection, project_id: &str, id: &str) -> ArgmaxResult<()> {
     let changes = connection
-        .prepare_cached("DELETE FROM project_linked_repos WHERE project_id = ? AND id = ?")
+        .prepare_cached("UPDATE project_folders SET removed = 1, enabled = 0 WHERE project_id = ? AND id = ? AND is_primary = 0")
         .map_err(sqlite_error)?
         .execute((project_id, id))
         .map_err(sqlite_error)?;
@@ -226,7 +256,7 @@ pub fn find_linked_repo_by_id(
 ) -> ArgmaxResult<LinkedRepo> {
     connection
         .prepare_cached(&format!(
-            "SELECT {COLUMNS} FROM project_linked_repos WHERE project_id = ? AND id = ?"
+            "SELECT {COLUMNS} FROM project_folders WHERE project_id = ? AND id = ?"
         ))
         .map_err(sqlite_error)?
         .query_row((project_id, id), row_to_linked_repo)
@@ -243,6 +273,19 @@ pub fn find_linked_repo_by_id(
 /// works there, and a root that contains or sits inside it would let a "linked"
 /// read reach files the project's own paths already govern.
 fn canonical_root(project_repo_path: &str, candidate: &str) -> ArgmaxResult<PathBuf> {
+    let root = canonical_folder_root(candidate)?;
+    if let Ok(project_root) = Path::new(project_repo_path).canonicalize() {
+        if root.starts_with(&project_root) || project_root.starts_with(&root) {
+            return Err(invalid_root(
+                "LINKED_REPO_OVERLAPS_PROJECT",
+                "A linked repository cannot overlap the project's own checkout.",
+            ));
+        }
+    }
+    Ok(root)
+}
+
+pub(crate) fn canonical_folder_root(candidate: &str) -> ArgmaxResult<PathBuf> {
     let candidate = candidate.trim();
     if candidate.is_empty() || candidate.contains('\0') {
         return Err(invalid_root(
@@ -277,14 +320,6 @@ fn canonical_root(project_repo_path: &str, candidate: &str) -> ArgmaxResult<Path
             "Link a repository directory, not the filesystem root or your home folder.",
         ));
     }
-    if let Ok(project_root) = Path::new(project_repo_path).canonicalize() {
-        if root.starts_with(&project_root) || project_root.starts_with(&root) {
-            return Err(invalid_root(
-                "LINKED_REPO_OVERLAPS_PROJECT",
-                "A linked repository cannot be, contain, or sit inside the project's own checkout.",
-            ));
-        }
-    }
     Ok(root)
 }
 
@@ -317,7 +352,11 @@ pub fn validate_name(name: &str) -> ArgmaxResult<()> {
     )))
 }
 
-fn name_from_root(connection: &Connection, project_id: &str, root: &Path) -> ArgmaxResult<String> {
+pub(crate) fn name_from_root(
+    connection: &Connection,
+    project_id: &str,
+    root: &Path,
+) -> ArgmaxResult<String> {
     let base = root
         .file_name()
         .map(|name| name.to_string_lossy().to_ascii_lowercase())
@@ -342,10 +381,17 @@ fn name_from_root(connection: &Connection, project_id: &str, root: &Path) -> Arg
     } else {
         cleaned
     };
-    let existing = list_linked_repos(connection, project_id)?;
+    let mut statement = connection
+        .prepare_cached("SELECT name FROM project_folders WHERE project_id = ?")
+        .map_err(sqlite_error)?;
+    let existing = statement
+        .query_map([project_id], |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
     let mut name = base.clone();
     let mut next_suffix = 2;
-    while existing.iter().any(|repo| repo.name == name) {
+    while existing.iter().any(|existing| existing == &name) {
         let suffix = format!("-{next_suffix}");
         // The sanitized base is ASCII, so byte and character limits agree.
         let prefix = &base[..base.len().min(MAX_LINKED_REPO_NAME_CHARS - suffix.len())];

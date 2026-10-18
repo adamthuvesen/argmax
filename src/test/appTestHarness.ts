@@ -92,6 +92,10 @@ export let openSessionWindow: AppTestMockFn<ArgmaxApi["windows"]["openSession"]>
 let approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
 let approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
 export let questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
+export let createProject: AppTestMockFn<ArgmaxApi["projects"]["create"]>;
+export let configureProject: AppTestMockFn<ArgmaxApi["projects"]["configure"]>;
+export let getProjectFolders: AppTestMockFn<ArgmaxApi["projects"]["getFolders"]>;
+export let pickProjectDirectory: AppTestMockFn<ArgmaxApi["projects"]["pickDirectory"]>;
 export let pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
 export let listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
 export let listCheckouts: AppTestMockFn<ArgmaxApi["projects"]["listCheckouts"]>;
@@ -261,6 +265,18 @@ export function setupAppTestMocks(): void {
   questionsResolve = vi.fn<ArgmaxApi["questions"]["resolve"]>().mockImplementation(({ sessionId, requestId, dismissed }) =>
     Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" })
   );
+  createProject = vi.fn<ArgmaxApi["projects"]["create"]>().mockImplementation(({ name, primaryPath }) =>
+    Promise.resolve({ ...primaryProject(), name, repoPath: primaryPath })
+  );
+  configureProject = vi.fn<ArgmaxApi["projects"]["configure"]>().mockImplementation(({ projectId, name, primaryPath }) =>
+    Promise.resolve({ ...(snapshot.projects.find((project) => project.id === projectId) ?? primaryProject()), name, repoPath: primaryPath })
+  );
+  getProjectFolders = vi.fn<ArgmaxApi["projects"]["getFolders"]>().mockImplementation(({ projectId }) => {
+    const project = snapshot.projects.find((candidate) => candidate.id === projectId) ?? primaryProject();
+    return Promise.resolve([{ id: `${projectId}:primary`, projectId, name: project.name, rootPath: project.repoPath,
+      isPrimary: true, enabled: true, summary: null }]);
+  });
+  pickProjectDirectory = vi.fn<ArgmaxApi["projects"]["pickDirectory"]>().mockResolvedValue({ cancelled: false, path: primaryProject().repoPath });
   pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
     cancelled: false,
     project: primaryProject()
@@ -480,6 +496,10 @@ export function setupAppTestMocks(): void {
     },
     projects: {
       list: () => Promise.resolve(snapshot.projects),
+      create: createProject,
+      configure: configureProject,
+      getFolders: getProjectFolders,
+      pickDirectory: pickProjectDirectory,
       pickFolder: pickProjectFolder,
       register: () => Promise.resolve(primaryProject()),
       remove: () => Promise.resolve(),

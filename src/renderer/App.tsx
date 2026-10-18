@@ -53,6 +53,7 @@ import { useAppGridSelection } from "./hooks/useAppGridSelection.js";
 import { useAppDestinations } from "./hooks/useAppDestinations.js";
 import { useAppMenuCommands } from "./hooks/useAppMenuCommands.js";
 import { useWorkspaceActions } from "./hooks/useWorkspaceActions.js";
+import { NewProjectDialog } from "./components/NewProjectDialog.js";
 import { useProjectActions } from "./hooks/useProjectActions.js";
 import { useDashboardSession } from "./hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "./hooks/useSessionTimeline.js";
@@ -823,7 +824,7 @@ export function App(): JSX.Element {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isFullLauncherOpen]);
 
-  const { addProject, removeProject } = useProjectActions({
+  const { addProject, removeProject, newProjectOpen, closeNewProject, createProject } = useProjectActions({
     projects: snapshot.projects,
     selectedProjectId: selectedProject?.id ?? null,
     setSelectedProjectId,
@@ -2145,6 +2146,7 @@ export function App(): JSX.Element {
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
+      {newProjectOpen ? <NewProjectDialog onClose={closeNewProject} onCreate={createProject} /> : null}
       <NewArcDialog
         open={promoteSource !== null}
         onClose={hidePromoteArcDialog}

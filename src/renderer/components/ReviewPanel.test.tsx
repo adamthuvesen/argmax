@@ -20,6 +20,7 @@ import { addTerminalTab, resetTerminalTabsForTests } from "../lib/terminalTabs.j
 import { ReviewPanel } from "./ReviewPanel.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
 import { resetToastForTests, toastSnapshot } from "../state/toast.js";
+import { useProjectFolderChanges } from "../hooks/useProjectFolderChanges.js";
 
 function reviewStub(): ReviewState {
   return baseReviewStub({
@@ -55,6 +56,41 @@ function setReviewMode(review: ReviewState, mode: ReviewState["mode"]): void {
 }
 
 describe("ReviewPanel changes layout", () => {
+  it("shows supplementary diffs without offering the chat checkout's write actions", async () => {
+    const original = window.argmax;
+    const review = reviewStub();
+    review.changesScope = "uncommitted";
+    review.projectChanges = { projectId: "project", workingFolderId: "working", workingRootPath: "/chat", refreshKey: null };
+    const loadDiff = vi.fn().mockResolvedValue({
+      workspaceId: "other", filePath: "src/a.ts", content: "@@ -1 +1 @@\n-old\n+other repository\n", revision: "other-revision"
+    });
+    window.argmax = {
+      projects: { getFolders: vi.fn().mockResolvedValue([
+        { id: "working", projectId: "project", name: "working", rootPath: "/repo", isPrimary: true, enabled: true, summary: null },
+        { id: "other", projectId: "project", name: "other", rootPath: "/other", isPrimary: false, enabled: true, summary: null }
+      ]) },
+      review: { listChangedFiles: vi.fn().mockResolvedValue(review.files), loadDiff }
+    } as unknown as ArgmaxApi;
+    function PanelWithFolderChanges() {
+      const projectFolderChanges = useProjectFolderChanges(review.projectChanges, true);
+      return <ReviewPanel review={{ ...review, projectFolderChanges }} />;
+    }
+    try {
+      render(<PanelWithFolderChanges />);
+      fireEvent.click(await screen.findByRole("button", { name: "View src/a.ts in other" }));
+      await screen.findByText("other repository");
+      expect(loadDiff).toHaveBeenCalledWith({ kind: "projectFolder", id: "other" }, "src/a.ts", "workingTree", undefined);
+      expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Revert/ })).not.toBeInTheDocument();
+      expect(screen.getByText(/These can include other chats/)).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "Back to chat changes" }));
+      expect(screen.getByRole("button", { name: "Stage src/a.ts" })).toBeVisible();
+    } finally {
+      cleanup();
+      window.argmax = original;
+    }
+  });
+
   it("shows changed-file loading failures instead of an empty panel", () => {
     const review = reviewStub();
     review.files = [];

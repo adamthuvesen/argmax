@@ -49,9 +49,22 @@ conclusions. Neither should override current code or primary evidence.
 
 ## Linked repositories
 
-Settings → Projects → Linked repositories has a **Connect repository…** button. It opens the native folder picker and connects the selected directory without registering another project. Agents may read and edit that checkout. Each entry has a **name** (lowercase letters, digits, `-`, `_`, `.`, at most 40 characters, unique in the project) and a **canonical root**. The picker derives the name from the directory. The existing add API also accepts a custom name. Adding one resolves the path with `canonicalize` and rejects, with a specific message, a relative or missing path, a file, the filesystem root, the home folder or any folder that contains it (`/Users`), a root that is, contains, or sits inside the project's own checkout, a duplicate name or root, and more than 10 per project. Each can be switched off or removed. This is the allowlist: nothing outside a stored root is ever readable through it, and the table is separate from project sources, which stay project-relative files and URLs.
+Settings → Projects manages all project folders together. **Add folder** opens the native folder picker.
+The form saves the folder list with the project name and primary selection.
+Additional folders can be excluded from agent context, summarized, or removed.
+Agents may read and edit enabled folders, subject to provider permissions.
+Each folder has a stable id, a project-local name, and a canonical root.
+The linked-repository APIs remain compatibility adapters for additional project folders.
+Path validation rejects missing directories, unsafe roots, duplicates, and overlapping folders.
+Project sources remain project-relative files and URLs.
 
-After connecting, Argmax automatically generates a concise **summary** with the first available provider's existing helper model. The helper receives a bounded sample of root documentation, manifests, and directory names. It has no tools and cannot explore or edit the checkout. The sample selects documentation and manifests rather than scanning the whole checkout. It uses the same confined path resolution as linked reads. The summary has at most 600 characters and is saved in SQLite. It describes the repository, rather than giving instructions or claiming a relationship to another project. Names, roots, and available summaries reach every launch and `sources_list`. Summary generation does not block connecting. A failed generation leaves the link and any previous summary intact, shows an error, and offers Retry. Existing links can generate a summary. **Regenerate summary** refreshes it explicitly. There is no file configuration or background refresh.
+**Generate summary** uses the first available provider's existing helper model.
+The helper receives a bounded sample of documentation, manifests, and directory names.
+It has no tools and cannot explore or edit the checkout.
+The summary has at most 600 characters and describes the folder without giving instructions.
+Names, roots, and available summaries reach every launch and `sources_list`.
+A failed generation preserves the folder and any previous summary, shows an error, and offers Retry.
+**Regenerate summary** refreshes it explicitly. There is no background refresh.
 
 What an agent gets, per launch (the roots are read from the database each time, so a follow-up sees today's settings):
 

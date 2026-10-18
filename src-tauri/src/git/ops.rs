@@ -337,6 +337,10 @@ impl GitOpsService {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, &input.session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
+            crate::persistence::project_folders::assert_workspace_pr_repository(
+                &conn,
+                &workspace.id,
+            )?;
             (session, workspace)
         };
         require_checkout_path(&workspace)?;

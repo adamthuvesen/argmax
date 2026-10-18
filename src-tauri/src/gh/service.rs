@@ -20,7 +20,7 @@ use crate::persistence::gh::{
     retract_stale_inferred_branch_prs, store_gh_pr_observation, store_pr_metadata, GhPrRecord,
     PrAttribution, SESSION_PR_EVIDENCE_PARSER_VERSION,
 };
-use crate::persistence::projects::{get_project_remote, ProjectRemote};
+use crate::persistence::projects::ProjectRemote;
 use crate::persistence::sessions::find_session_by_id;
 use crate::persistence::time::now_iso;
 use crate::persistence::workspaces::find_workspace_by_id;
@@ -75,6 +75,11 @@ impl GhService {
     /// read-only DB hit.
     pub fn list_for_session(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
         let conn = self.database.read_connection();
+        let session = find_session_by_id(&conn, session_id)?;
+        crate::persistence::project_folders::assert_workspace_pr_repository(
+            &conn,
+            &session.workspace_id,
+        )?;
         list_gh_pr_for_session(&conn, session_id)
     }
 
@@ -92,6 +97,10 @@ impl GhService {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
+            crate::persistence::project_folders::assert_workspace_pr_repository(
+                &conn,
+                &workspace.id,
+            )?;
             retract_stale_inferred_branch_prs(&conn, session_id)?;
             // CLOSED is refreshable because GitHub permits reopening it.
             // Ordering by the last attempt keeps this bounded pass fair even
@@ -440,10 +449,14 @@ pub(crate) fn gh_working_directory(
     connection: &rusqlite::Connection,
     workspace: &crate::persistence::workspaces::WorkspaceSummary,
 ) -> ArgmaxResult<String> {
+    crate::persistence::project_folders::assert_workspace_pr_repository(connection, &workspace.id)?;
     if workspace.path.is_empty() || std::path::Path::new(&workspace.path).is_dir() {
         return Ok(workspace.path.clone());
     }
-    Ok(crate::persistence::projects::require_project(connection, &workspace.project_id)?.repo_path)
+    Ok(
+        crate::persistence::project_folders::require_workspace_project(connection, &workspace.id)?
+            .repo_path,
+    )
 }
 
 fn canonical_successfully_refreshed_after(
@@ -561,9 +574,18 @@ pub fn repair_session_pr_evidence(
 fn scan_session_pr_evidence(
     connection: &rusqlite::Connection,
     session_id: &str,
-    project_id: &str,
+    _project_id: &str,
 ) -> ArgmaxResult<Vec<i64>> {
-    let project_remote = get_project_remote(connection, project_id)?;
+    let workspace_id: String = connection
+        .query_row(
+            "SELECT workspace_id FROM sessions WHERE id = ?",
+            [session_id],
+            |row| row.get(0),
+        )
+        .map_err(crate::persistence::sqlite_error)?;
+    crate::persistence::project_folders::assert_workspace_pr_repository(connection, &workspace_id)?;
+    let project_remote =
+        crate::persistence::project_folders::workspace_remote(connection, &workspace_id)?;
     let Some(project_remote) = project_remote else {
         // A successful `gh pr view` will populate the remote, then refresh
         // calls this scanner again before advancing the cursor.
@@ -2166,6 +2188,40 @@ mod tests {
         assert_eq!(rows[0].pr_number, 42);
         assert_eq!(rows[0].last_seen_check_state, "success");
         // Read-only — runner must not have been invoked.
+        assert_eq!(stub.call_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn secondary_folder_pr_calls_do_not_reach_github() {
+        let (_dir, database) = open_db();
+        let (session_id, workspace_id) = fixture(&database, "/tmp/argmax-gh-original");
+        {
+            let conn = database.connection();
+            conn.execute("INSERT INTO project_folders (id, project_id, name, root_path, worktree_location, created_at, updated_at) VALUES ('secondary', 'p1', 'secondary', '/tmp/argmax-gh-secondary', '/tmp/argmax-gh-worktrees', '', '')", []).unwrap();
+            conn.execute(
+                "UPDATE workspaces SET project_folder_id = 'secondary' WHERE id = ?",
+                [&workspace_id],
+            )
+            .unwrap();
+        }
+        let stub = StubRunner::new(Vec::new());
+        let service = GhService::with_runner(Arc::clone(&database), Arc::clone(&stub).runner());
+        let errors = [
+            service.list_for_session(&session_id).unwrap_err(),
+            service.refresh(&session_id).await.unwrap_err(),
+            service
+                .refresh_pr_number(&session_id, 42)
+                .await
+                .unwrap_err(),
+            crate::git::pr_cleanup::cleanup_merged_pr(&database, &service, &session_id, 42)
+                .await
+                .unwrap_err(),
+        ];
+        for error in errors {
+            assert!(
+                matches!(error, ArgmaxError::ServiceError { sub_code, .. } if sub_code == "MULTI_REPO_PR_UNSUPPORTED")
+            );
+        }
         assert_eq!(stub.call_count(), 0);
     }
 

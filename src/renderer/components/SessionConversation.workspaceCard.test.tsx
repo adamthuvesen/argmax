@@ -42,6 +42,31 @@ function renderPane(
 }
 
 describe("SessionConversation workspace card", () => {
+  it("opens the additional repository's diff from its workspace card row", () => {
+    const selectFile = vi.fn();
+    const openChangesPanel = vi.fn();
+    const clearSelection = vi.fn();
+    const review = reviewStub({
+      openChangesPanel,
+      files: [{ path: "README.md", status: "M", additions: 1, deletions: 0, staged: false }],
+      projectFolderChanges: {
+        groups: [{
+          folder: { id: "dbt", projectId: "project", name: "dbt", rootPath: "/repos/dbt", isPrimary: false, enabled: true, summary: null },
+          files: [{ path: "README.md", status: "M", additions: 4, deletions: 0, staged: false }],
+          error: null
+        }],
+        error: null, selection: null, selectedFolder: null, diff: null, diffError: null, loadingDiff: false,
+        selectFile, clearSelection, refresh: vi.fn(), expandContext: vi.fn()
+      }
+    });
+    renderPane({ review });
+    fireEvent.click(screen.getByRole("button", { name: "Changes in dbt" }));
+    expect(selectFile).toHaveBeenCalledExactlyOnceWith("dbt", "README.md");
+    expect(openChangesPanel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    expect(clearSelection).toHaveBeenCalledTimes(1);
+  });
+
   afterEach(() => {
     cleanup();
   });

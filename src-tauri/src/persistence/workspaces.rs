@@ -43,6 +43,10 @@ pub struct WorkspaceStatusInput {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSummary {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check_commands: Option<Vec<String>>,
     pub project_id: String,
     pub task_label: String,
     pub branch: String,
@@ -132,6 +136,7 @@ pub fn list_workspaces(
                 .query_map((json, limit as i64), workspace_row_to_summary)
                 .map_err(sqlite_error)?;
             let mut workspaces = rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
+            attach_folder_check_commands(connection, &mut workspaces)?;
             attach_latest_prs(connection, &mut workspaces)?;
             Ok(workspaces)
         }
@@ -145,6 +150,7 @@ pub fn list_workspaces(
                 .query_map([limit as i64], workspace_row_to_summary)
                 .map_err(sqlite_error)?;
             let mut workspaces = rows.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
+            attach_folder_check_commands(connection, &mut workspaces)?;
             attach_latest_prs(connection, &mut workspaces)?;
             Ok(workspaces)
         }
@@ -172,6 +178,7 @@ pub fn find_workspace_by_id(
         .map_err(sqlite_error)?;
     match statement.query_row([workspace_id], workspace_row_to_summary) {
         Ok(mut workspace) => {
+            attach_folder_check_commands(connection, std::slice::from_mut(&mut workspace))?;
             attach_latest_pr(connection, &mut workspace)?;
             Ok(workspace)
         }
@@ -180,6 +187,34 @@ pub fn find_workspace_by_id(
         }
         Err(error) => Err(sqlite_error(error)),
     }
+}
+
+fn attach_folder_check_commands(
+    connection: &Connection,
+    workspaces: &mut [WorkspaceSummary],
+) -> ArgmaxResult<()> {
+    let ids: Vec<&str> = workspaces
+        .iter()
+        .map(|workspace| workspace.id.as_str())
+        .collect();
+    let mut statement = connection.prepare_cached("SELECT w.id, COALESCE(f.check_commands_json, p.check_commands_json) FROM workspaces w JOIN projects p ON p.id = w.project_id LEFT JOIN project_folders f ON f.id = w.project_folder_id WHERE w.id IN (SELECT value FROM json_each(?))").map_err(sqlite_error)?;
+    let rows = statement
+        .query_map([serde_json::to_string(&ids).map_err(json_error)?], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(sqlite_error)?;
+    let mut commands = HashMap::new();
+    for row in rows {
+        let (id, json) = row.map_err(sqlite_error)?;
+        commands.insert(
+            id,
+            serde_json::from_str::<Vec<String>>(&json).map_err(json_error)?,
+        );
+    }
+    for workspace in workspaces {
+        workspace.check_commands = commands.remove(&workspace.id);
+    }
+    Ok(())
 }
 
 fn attach_latest_pr(connection: &Connection, workspace: &mut WorkspaceSummary) -> ArgmaxResult<()> {
@@ -501,15 +536,28 @@ pub fn persist_workspace(
     connection: &Connection,
     input: &PersistWorkspaceInput,
 ) -> ArgmaxResult<WorkspaceSummary> {
+    let folder_id = if input.kind == "git" {
+        super::project_folders::folder_for_checkout(connection, &input.project_id, &input.path)?
+    } else {
+        None
+    };
+    persist_workspace_in_folder(connection, input, folder_id.as_deref())
+}
+
+pub fn persist_workspace_in_folder(
+    connection: &Connection,
+    input: &PersistWorkspaceInput,
+    folder_id: Option<&str>,
+) -> ArgmaxResult<WorkspaceSummary> {
     let timestamp = now_iso();
     let mut statement = connection
         .prepare_cached(
             r#"
         INSERT INTO workspaces (
           id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
-          kind, dirty, changed_files, last_activity_at, last_viewed_at, created_at, updated_at
+          kind, dirty, changed_files, last_activity_at, last_viewed_at, created_at, updated_at, project_folder_id
         ) VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         "#,
         )
@@ -531,6 +579,7 @@ pub fn persist_workspace(
             timestamp.as_str(),
             timestamp.as_str(),
             timestamp.as_str(),
+            folder_id,
         ))
         .map_err(sqlite_error)?;
     find_workspace_by_id(connection, &input.id)
@@ -946,6 +995,8 @@ pub fn set_workspace_label_auto(
 
 pub fn workspace_row_to_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceSummary> {
     Ok(WorkspaceSummary {
+        check_commands: None,
+        project_folder_id: row.get("project_folder_id")?,
         id: row.get("id")?,
         project_id: row.get("project_id")?,
         task_label: row.get("task_label")?,

@@ -4291,3 +4291,73 @@ async fn a_queued_merge_claim_survives_the_fork_moving() {
     let drained = fork_merge::preview(&database, &moved.session.id).expect("preview");
     assert!(drained.unconfirmed_merge_id.is_none());
 }
+
+#[tokio::test]
+async fn forks_keep_the_original_repository_after_primary_change_and_folder_removal() {
+    use argmax_lib::ipc::inputs::ForkWorkspaceMode;
+    use argmax_lib::persistence::project_folders::{
+        configure_project_folders, PersistProjectFolderInput,
+    };
+    use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+
+    let source = seed_git_repo(&[("source.txt", "source repository\n")]);
+    let next_primary = seed_git_repo(&[("other.txt", "other repository\n")]);
+    ensure_main_branch(source.path());
+    ensure_main_branch(next_primary.path());
+    let worktrees = tempfile::tempdir().unwrap();
+    let database = Arc::new(Database::open_in_memory().unwrap());
+    build_named_project(
+        &database,
+        "source-project",
+        "Source",
+        source.path().to_str().unwrap(),
+        worktrees.path().to_str().unwrap(),
+    );
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let original = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: "source-project".to_owned().try_into().unwrap(),
+            task_label: "Original".to_owned().try_into().unwrap(),
+        })
+        .unwrap();
+    seed_completed_session(&database, &original.id, "source-session");
+    {
+        let connection = database.connection();
+        configure_project_folders(
+            &connection,
+            "source-project",
+            "Renamed",
+            &[PersistProjectFolderInput {
+                root_path: next_primary.path().to_str().unwrap().to_owned(),
+                current_branch: "main".to_owned(),
+                default_branch: Some("main".to_owned()),
+                remote: None,
+                settings: ProjectSettings {
+                    worktree_location: worktrees.path().join("other").to_str().unwrap().to_owned(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                    merge_cleanup: Default::default(),
+                },
+            }],
+            next_primary.path().to_str().unwrap(),
+        )
+        .unwrap();
+    }
+    for mode in [ForkWorkspaceMode::Shared, ForkWorkspaceMode::Isolated] {
+        let forked = service
+            .fork_session_at(ForkRequest {
+                session_id: "source-session".to_owned(),
+                boundary_event_id: None,
+                workspace: mode,
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            forked.workspace.project_folder_id,
+            original.project_folder_id
+        );
+        let path = std::path::Path::new(&forked.workspace.path);
+        assert!(path.join("source.txt").is_file());
+        assert!(!path.join("other.txt").exists());
+    }
+}

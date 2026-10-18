@@ -53,6 +53,7 @@ import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { isSecondaryWindow } from "../lib/windowRole.js";
 import { useAgentTabs, type AgentTabsState } from "./useAgentTabs.js";
 import { useReviewDiff } from "./useReviewDiff.js";
+import { useProjectFolderChanges, type ProjectFolderChangesState } from "./useProjectFolderChanges.js";
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
@@ -169,6 +170,13 @@ export interface WorkspaceFilesState {
 }
 
 export interface ReviewState {
+  projectFolderChanges?: ProjectFolderChangesState;
+  projectChanges?: {
+    projectId: string;
+    workingFolderId: string | null;
+    workingRootPath: string;
+    refreshKey: string | null;
+  };
   files: ChangedFileSummary[];
   filesState: AsyncState;
   filesError: string | null;
@@ -559,6 +567,14 @@ export function useReviewState(
     setIsPanelOpen(true);
   }, [setMode]);
 
+  const projectChanges = source ? {
+    projectId: source.kind === "workspace" ? source.workspace.projectId : source.project.id,
+    workingFolderId: source.kind === "workspace" ? source.workspace.projectFolderId ?? null : null,
+    workingRootPath: source.kind === "workspace" ? source.workspace.path : source.project.repoPath,
+    refreshKey: changedFilesKey
+  } : undefined;
+  const projectFolderChanges = useProjectFolderChanges(projectChanges, isPanelOpen || (options?.preloadChanges ?? true));
+
   const reviewDiff = useReviewDiff({
     sourceId,
     sourceKind,
@@ -788,6 +804,8 @@ export function useReviewState(
   };
 
   return {
+    projectChanges,
+    projectFolderChanges,
     files: diffState.files,
     filesState: diffState.filesState,
     filesError: diffState.filesError,

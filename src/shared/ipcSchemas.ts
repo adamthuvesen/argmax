@@ -7,6 +7,10 @@ export const IPC_CHANNELS = [
   "health:ping",
   "projects:list",
   "projects:pick-folder",
+  "projects:pick-directory",
+  "projects:create",
+  "projects:configure",
+  "projects:get-folders",
   "projects:check-prompt",
   "projects:resolve-check",
   "dashboard:list",
@@ -218,6 +222,10 @@ export interface IpcCommands {
   "health:ping": Commands["healthPing"];
   "projects:list": Commands["projectsList"];
   "projects:pick-folder": Commands["projectsPickFolder"];
+  "projects:pick-directory": Commands["projectsPickDirectory"];
+  "projects:create": Commands["projectsCreate"];
+  "projects:configure": Commands["projectsConfigure"];
+  "projects:get-folders": Commands["projectsGetFolders"];
   "projects:check-prompt": Commands["projectsCheckPrompt"];
   "projects:resolve-check": Commands["projectsResolveCheck"];
   "dashboard:list": Commands["dashboardList"];

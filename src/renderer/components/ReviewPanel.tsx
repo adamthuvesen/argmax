@@ -81,6 +81,7 @@ import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
 import { showErrorToast } from "../state/toast.js";
+import { ProjectFolderChangesDiff, ProjectFolderChangesList } from "./ProjectFolderChanges.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 
 // The Terminal view pulls in @xterm/xterm + addons + xterm CSS — heavy, and
@@ -517,6 +518,7 @@ function ReviewPanelPane({
   const isAgents = mode === "agents";
   const isBrowser = mode === "browser";
   const isTerminal = mode === "terminal";
+  const projectFolderChanges = review.projectFolderChanges;
   // Terminals outlive the view: once a workspace has tabs the panel keeps them
   // mounted (hidden) while the reader is on another mode, so coming back is
   // instant and nothing is torn down. An empty workspace mounts only on
@@ -704,7 +706,7 @@ function ReviewPanelPane({
     dragCleanupRef.current = cleanup;
   };
 
-  const summaryStrip = isChanges && review.files.length > 0
+  const summaryStrip = isChanges && !projectFolderChanges?.selection && review.files.length > 0
     ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
     : null;
   const expandedFilePath = selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
@@ -720,6 +722,7 @@ function ReviewPanelPane({
         : null;
 
   const toggleChangedFile = (filePath: string): void => {
+    projectFolderChanges?.clearSelection();
     setCollapsedDiffPath(null);
     review.openFile(filePath);
   };
@@ -784,7 +787,7 @@ function ReviewPanelPane({
           />
         </div>
         <div className="review-toolbar-actions">
-          {isChanges ? <ReviewScopePicker review={review} /> : null}
+          {isChanges && !projectFolderChanges?.selection ? <ReviewScopePicker review={review} /> : null}
           <button
             className="small-icon"
             type="button"
@@ -877,22 +880,26 @@ function ReviewPanelPane({
           <>
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
               {isChanges ? (
+                <>
+                {projectFolderChanges && projectFolderChanges.groups.length > 0 ? (
+                  <div className="project-folder-changes-label" title={review.workspaceFiles.rootPath ?? undefined}>Chat checkout</div>
+                ) : null}
                 <ChangesTree
                   files={review.files}
-                  selectedPath={review.selectedFilePath}
+                  selectedPath={projectFolderChanges?.selection ? null : review.selectedFilePath}
                   actionsPending={reviewActionPending}
                   onSelectFile={toggleChangedFile}
-                  onRefresh={review.refreshChanges}
+                  onRefresh={() => { review.refreshChanges(); projectFolderChanges?.refresh(); }}
                   onOpenInFiles={review.openInFilesView}
                   onToggleStaged={
-                    review.changesScope === "uncommitted" && review.diff?.revision
+                    !projectFolderChanges?.selection && review.changesScope === "uncommitted" && review.diff?.revision
                       ? (file) => runReviewAction(() =>
                           review.updateFileIndex(file.path, review.diff!.revision, !file.staged)
                         )
                       : undefined
                   }
                   onRevert={
-                    review.changesScope === "uncommitted" &&
+                    !projectFolderChanges?.selection && review.changesScope === "uncommitted" &&
                     review.diff?.revision &&
                     review.terminalWorkspaceId
                       ? (file) => runReviewAction(() =>
@@ -901,6 +908,8 @@ function ReviewPanelPane({
                       : undefined
                   }
                 />
+                {projectFolderChanges ? <ProjectFolderChangesList state={projectFolderChanges} /> : null}
+                </>
               ) : (
                 <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
               )}
@@ -917,12 +926,12 @@ function ReviewPanelPane({
         {isAgents || isBrowser || isTerminal ? null : (
         <div className={isChanges ? "review-diff review-diff-changes" : "review-diff review-diff-files"}>
           {isChanges ? (
-            <>
+            projectFolderChanges?.selection ? <ProjectFolderChangesDiff state={projectFolderChanges} /> : <>
               {review.filesState === "error" && <p className="review-empty review-error" role="alert">{review.filesError ?? "Couldn't load changed files."}</p>}
               {review.filesState === "ready" && review.files.length === 0 ? (
                 <p className="review-empty">
                   <span className="review-empty-mark" aria-hidden="true">∅</span>
-                  <span>No changes.</span>
+                  <span>{projectFolderChanges && projectFolderChanges.groups.length > 0 ? "No changes in chat checkout." : "No changes."}</span>
                 </p>
               ) : null}
               {selectedFile ? (

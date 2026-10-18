@@ -166,6 +166,17 @@ next route ID, and the session index.
 
 ## Repositories
 
+Migration v73 adds `project_folders` and `workspaces.project_folder_id`.
+It preserves project ids and converts each original repository into its project's primary folder.
+Linked folders retain their ids, summaries, and enabled state.
+Folder roots are unique within each project, so separate projects can include the same directory.
+Removed folders retain their rows for existing workspaces.
+Primary changes update the project's compatibility projection without moving existing chats.
+Repository settings and lifecycle operations resolve through each workspace's recorded folder.
+
+`projects.pr_repository_folder_id` retains the original repository used by the existing PR cache.
+This preview rejects PR tracking and cleanup for workspaces in other project folders.
+
 `data_migrations` (v46) records one-time upgrades that depend on local paths.
 The external worktree location upgrade updates only legacy-default project
 settings and records completion in the same transaction. Existing workspace

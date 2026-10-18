@@ -2,6 +2,26 @@
 
 Rust manages workspace lifecycle, file operations, and git integration under `src-tauri/src/`.
 
+## Projects and folders
+
+Create a project with a name and local folders. The first folder is primary unless another is selected.
+The primary must be a Git repository. Additional folders can contain code or documentation without Git.
+Settings → Projects edits the name, folder list, and primary folder.
+The same directory can belong to several projects.
+
+New chats start in the primary folder or a worktree of that repository.
+Each workspace records its project folder and actual checkout.
+Changing the primary affects future chats and leaves existing checkouts attached to their original repository.
+Repository settings, checks, and cleanup follow that recorded folder.
+
+Agents receive the enabled folder list and can read or edit those folders as the task requires.
+Folder membership does not promise identical filesystem permissions across providers.
+An isolated chat uses its worktree for its working repository and the existing checkouts for additional folders.
+Argmax does not create a worktree in every project folder.
+
+Arcs coordinate work within or across projects. Creating a project does not create an arc.
+See [arcs.md](arcs.md) for coordinator and member behavior.
+
 ## Workspaces
 
 [src-tauri/src/workspaces](../src-tauri/src/workspaces) handles workspace creation, status polling, pinning, archiving, and IDE launching.
@@ -157,6 +177,15 @@ A chat that produced a response while it was not the open row shows an unread ma
 An attributed pull request replaces the default status marker with a GitHub PR glyph: green while open, violet once merged. Isolated workspaces resolve PRs by branch. Shared checkouts require session evidence and retain their recorded branch context after completion, so later checkout changes cannot assign another session's PR to an old chat. See [gh.md](gh.md) for attribution and legacy-cache behavior.
 
 ## Review
+
+Changes groups the chat's checkout and the project's other enabled folders.
+Additional repositories show uncommitted changes across their shared checkout, including edits from other chats.
+Their diffs support inspection. Staging, reverting, and committing remain attached to the chat's working checkout.
+Refresh reads every group. Workspace and session state changes refresh the groups without a recurring poll.
+
+This preview tracks pull requests only for each project's original primary repository.
+Chats in other repositories receive an explicit error from PR tracking and cleanup actions.
+Use a separate project when those repositories need their own PR tracking.
 
 The review panel can show two views stacked vertically. Right-click a view tab and choose **Split below**, or drag a tab onto the upper or lower half of the panel. Drag the divider to resize the views, or focus it and use the arrow keys. Each view appears once. Selecting a tab already shown in the other half swaps the views. Actions from the chat use the half where the requested view is already visible. Closing either half expands the remaining view.
 

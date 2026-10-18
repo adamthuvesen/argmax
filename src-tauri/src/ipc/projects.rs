@@ -105,6 +105,242 @@ pub async fn projects_pick_folder(
     })
 }
 
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDirectoryPickResult {
+    pub cancelled: bool,
+    pub path: Option<String>,
+}
+
+#[tauri::command(rename = "projects:pick-directory")]
+#[specta::specta]
+pub async fn projects_pick_directory(
+    app: AppHandle,
+    _input: ProjectsPickFolderInput,
+) -> ArgmaxResult<ProjectDirectoryPickResult> {
+    let path = pick_project_folder(app, "Add project folder").await?;
+    Ok(ProjectDirectoryPickResult {
+        cancelled: path.is_none(),
+        path: path.map(|path| path.to_string_lossy().into_owned()),
+    })
+}
+
+#[tauri::command(rename = "projects:create")]
+#[specta::specta]
+pub async fn projects_create(
+    state: State<'_, AppState>,
+    input: ProjectsCreateInput,
+) -> ArgmaxResult<ProjectSummary> {
+    projects_create_impl(&state, input).await
+}
+
+#[tauri::command(rename = "projects:configure")]
+#[specta::specta]
+pub async fn projects_configure(
+    state: State<'_, AppState>,
+    input: ProjectsConfigureInput,
+) -> ArgmaxResult<ProjectSummary> {
+    projects_configure_impl(&state, input).await
+}
+
+#[tauri::command(rename = "projects:get-folders")]
+#[specta::specta]
+pub async fn projects_get_folders(
+    state: State<'_, AppState>,
+    input: ProjectsGetFoldersInput,
+) -> ArgmaxResult<Vec<crate::persistence::project_folders::ProjectFolderSummary>> {
+    projects_get_folders_impl(&state, input).await
+}
+
+pub(crate) async fn projects_get_folders_impl(
+    state: &AppState,
+    input: ProjectsGetFoldersInput,
+) -> ArgmaxResult<Vec<crate::persistence::project_folders::ProjectFolderSummary>> {
+    let database = live_database(state)?;
+    read_off_main(move || {
+        crate::persistence::project_folders::list_project_folders(
+            &database.read_connection(),
+            input.project_id.as_str(),
+        )
+    })
+    .await
+}
+
+pub(crate) async fn projects_create_impl(
+    state: &AppState,
+    input: ProjectsCreateInput,
+) -> ArgmaxResult<ProjectSummary> {
+    let database = live_database(state)?;
+    let project_id = Uuid::new_v4().to_string();
+    let (folders, primary) =
+        validate_project_folders(&database, &project_id, &input.folders, &input.primary_path)
+            .await?;
+    let primary_folder = folders
+        .iter()
+        .find(|folder| folder.root_path == primary)
+        .expect("validated primary");
+    let project = PersistProjectInput {
+        id: project_id.clone(),
+        name: input.name.as_str().trim().to_owned(),
+        repo_path: primary.clone(),
+        current_branch: primary_folder.current_branch.clone(),
+        default_branch: primary_folder.default_branch.clone(),
+        settings: primary_folder.settings.clone(),
+    };
+    let connection = database.connection();
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(crate::persistence::sqlite_error)?;
+    persist_project(&transaction, &project)?;
+    let result = crate::persistence::project_folders::configure_project_folders_in_transaction(
+        &transaction,
+        &project_id,
+        input.name.as_str(),
+        &folders,
+        &primary,
+    )?;
+    transaction
+        .commit()
+        .map_err(crate::persistence::sqlite_error)?;
+    Ok(result)
+}
+
+pub(crate) async fn projects_configure_impl(
+    state: &AppState,
+    input: ProjectsConfigureInput,
+) -> ArgmaxResult<ProjectSummary> {
+    let database = live_database(state)?;
+    let (folders, primary) = validate_project_folders(
+        &database,
+        input.project_id.as_str(),
+        &input.folders,
+        &input.primary_path,
+    )
+    .await?;
+    let connection = database.connection();
+    crate::persistence::project_folders::configure_project_folders(
+        &connection,
+        input.project_id.as_str(),
+        input.name.as_str(),
+        &folders,
+        &primary,
+    )
+}
+
+async fn validate_project_folders(
+    database: &Database,
+    project_id: &str,
+    paths: &[String],
+    primary_path: &str,
+) -> ArgmaxResult<(
+    Vec<crate::persistence::project_folders::PersistProjectFolderInput>,
+    String,
+)> {
+    use crate::persistence::project_folders::{
+        list_project_folders, project_for_folder, PersistProjectFolderInput,
+    };
+    let existing = {
+        let connection = database.read_connection();
+        if crate::persistence::projects::find_project_by_id(&connection, project_id)?.is_some() {
+            list_project_folders(&connection, project_id)?
+        } else {
+            Vec::new()
+        }
+    };
+    if paths.is_empty() {
+        return Err(ArgmaxError::service(
+            "PROJECT_FOLDERS_REQUIRED",
+            "Add at least one project folder.",
+        ));
+    }
+    let mut folders: Vec<PersistProjectFolderInput> = Vec::new();
+    let mut primary = None;
+    for path in paths {
+        let previous = existing.iter().find(|folder| folder.root_path == *path);
+        let root = if previous.is_some() && path != primary_path {
+            PathBuf::from(path)
+        } else {
+            crate::persistence::linked_repos::canonical_folder_root(path)?
+        };
+        let root_text = root.to_string_lossy().into_owned();
+        if folders.iter().any(|folder| folder.root_path == root_text) {
+            return Err(ArgmaxError::service(
+                "PROJECT_FOLDER_DUPLICATE",
+                "A project cannot include the same folder twice.",
+            ));
+        }
+        if folders.iter().any(|folder| {
+            Path::new(&folder.root_path).starts_with(&root) || root.starts_with(&folder.root_path)
+        }) {
+            return Err(ArgmaxError::service(
+                "PROJECT_FOLDER_OVERLAP",
+                "Project folders cannot contain one another.",
+            ));
+        }
+        let mut settings = previous
+            .map(|folder| {
+                project_for_folder(&database.read_connection(), &folder.id)
+                    .map(|project| project.settings)
+            })
+            .transpose()?
+            .unwrap_or(default_settings(&Uuid::new_v4().to_string())?);
+        if previous.is_none() {
+            settings.worktree_location = crate::util::data_dir::worktree_root()?
+                .join(project_id)
+                .join(Uuid::new_v4().to_string())
+                .to_string_lossy()
+                .into_owned();
+        }
+        let is_primary = path == primary_path;
+        let metadata = if is_primary || root.join(".git").exists() {
+            Some(read_git_metadata(&canonicalize_repo_path(&root).await?).await?)
+        } else {
+            None
+        };
+        if is_primary {
+            primary = Some(root_text.clone());
+        }
+        let prior_project = previous
+            .map(|folder| project_for_folder(&database.read_connection(), &folder.id))
+            .transpose()?;
+        let prior_remote = previous.map(|folder| {
+            let connection = database.read_connection();
+            connection.query_row("SELECT repo_remote_owner, repo_remote_name FROM project_folders WHERE id = ?", [&folder.id], |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?))).map_err(crate::persistence::sqlite_error)
+        }).transpose()?.and_then(|(owner, name)| owner.zip(name).map(|(owner, name)| ProjectRemote { owner, name }));
+        folders.push(PersistProjectFolderInput {
+            root_path: root_text,
+            current_branch: metadata
+                .as_ref()
+                .map(|metadata| metadata.current_branch.clone())
+                .or_else(|| {
+                    prior_project
+                        .as_ref()
+                        .map(|project| project.current_branch.clone())
+                })
+                .unwrap_or_else(|| "HEAD".to_owned()),
+            default_branch: metadata
+                .as_ref()
+                .and_then(|metadata| metadata.default_branch.clone())
+                .or_else(|| {
+                    prior_project
+                        .as_ref()
+                        .and_then(|project| project.default_branch.clone())
+                }),
+            remote: metadata
+                .and_then(|metadata| metadata.remote)
+                .or(prior_remote),
+            settings,
+        });
+    }
+    let primary = primary.ok_or_else(|| {
+        ArgmaxError::service(
+            "PROJECT_PRIMARY_REQUIRED",
+            "Select a primary folder from the project folders.",
+        )
+    })?;
+    Ok((folders, primary))
+}
+
 #[tauri::command(rename = "projects:register")]
 #[specta::specta]
 pub async fn projects_register(
@@ -381,6 +617,15 @@ pub(crate) async fn register_repo_path(
     candidate_path: PathBuf,
 ) -> ArgmaxResult<ProjectSummary> {
     let canonical_path = canonicalize_repo_path(&candidate_path).await?;
+    {
+        let connection = database.connection();
+        if let Some(project) = crate::persistence::projects::find_project_by_repo_path(
+            &connection,
+            &canonical_path.to_string_lossy(),
+        )? {
+            return Ok(project);
+        }
+    }
     let metadata = read_git_metadata(&canonical_path).await?;
     if let Some(default_branch) = metadata.default_branch.as_deref() {
         assert_valid_ref_name(&metadata.repo_path, default_branch).await?;

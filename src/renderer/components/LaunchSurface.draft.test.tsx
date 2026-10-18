@@ -175,7 +175,7 @@ describe("launcher prompt across context changes", () => {
     const names = within(picker)
       .getAllByRole("option")
       .map((option) => optionName(option))
-      .filter((name) => name && name !== "Browse folder…");
+      .filter((name) => name && name !== "New project");
     expect(names[0]).toBe("Dotfiles");
     fireEvent.mouseDown(document.querySelector(".picker-dismiss-layer") as Element);
 

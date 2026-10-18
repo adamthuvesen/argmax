@@ -1254,12 +1254,14 @@ pub fn list_session_ids_needing_pr_evidence_repair(
             JOIN sessions ON sessions.id = links.session_id
             JOIN workspaces ON workspaces.id = sessions.workspace_id
             JOIN projects ON projects.id = workspaces.project_id
+            JOIN project_folders pr_folder ON pr_folder.id = projects.pr_repository_folder_id
             LEFT JOIN session_pr_evidence_scans scans ON scans.session_id = links.session_id
             WHERE links.relationship = 'unverified'
               AND links.dismissed_at IS NULL
               AND (scans.session_id IS NULL OR scans.parser_version < ?2)
-              AND projects.repo_remote_owner IS NOT NULL
-              AND projects.repo_remote_name IS NOT NULL
+              AND workspaces.project_folder_id = pr_folder.id
+              AND pr_folder.repo_remote_owner IS NOT NULL
+              AND pr_folder.repo_remote_name IS NOT NULL
               AND workspaces.state NOT IN ('archiving', 'archived')
             ORDER BY sessions.last_activity_at DESC, links.session_id DESC
             LIMIT ?1

@@ -201,6 +201,48 @@ impl WorkspaceFilesService {
 }
 
 async fn list_files_at_path(repo_path: &str) -> ArgmaxResult<Vec<WorkspaceFileEntry>> {
+    if !Path::new(repo_path).join(".git").exists() {
+        let root = repo_path.to_owned();
+        return tokio::task::spawn_blocking(move || {
+            let mut files = Vec::new();
+            for entry in walkdir::WalkDir::new(&root)
+                .follow_links(false)
+                .into_iter()
+                .filter_entry(|entry| {
+                    entry.depth() == 0
+                        || !matches!(
+                            entry.file_name().to_str(),
+                            Some(".git" | "node_modules" | "target" | "dist")
+                        )
+                })
+            {
+                let entry = entry.map_err(|error| {
+                    ArgmaxError::service("FILES_LIST_FAILED", error.to_string())
+                })?;
+                if entry.file_type().is_file() {
+                    if files.len() >= 20_000 {
+                        return Err(ArgmaxError::service(
+                            "FILES_LIST_TOO_LARGE",
+                            "This folder contains more than 20,000 files. Choose a smaller folder.",
+                        ));
+                    }
+                    let path = entry
+                        .path()
+                        .strip_prefix(&root)
+                        .map_err(|error| {
+                            ArgmaxError::service("FILES_LIST_FAILED", error.to_string())
+                        })?
+                        .to_string_lossy()
+                        .into_owned();
+                    files.push(WorkspaceFileEntry { path });
+                }
+            }
+            files.sort_by(|left, right| left.path.cmp(&right.path));
+            Ok(files)
+        })
+        .await
+        .map_err(|error| ArgmaxError::service("FILES_LIST_FAILED", error.to_string()))?;
+    }
     // `ls-files -z --cached --others --exclude-standard` mirrors the IDE
     // view: tracked + untracked-but-not-ignored. De-dupe — a file tracked
     // AND modified in the index can appear twice.
@@ -426,6 +468,54 @@ async fn grep_content_at_path(
             truncated: false,
         });
     }
+    if !Path::new(repo_path).join(".git").exists() {
+        let mut raw = String::new();
+        let query = trimmed.to_lowercase();
+        let mut matched_files = 0;
+        let mut scanned_bytes = 0;
+        let mut scan_truncated = false;
+        for file in list_files_at_path(repo_path).await? {
+            if let WorkspaceFilePreview::Text { content, .. } =
+                read_file_at_path(repo_path, &file.path).await?
+            {
+                scanned_bytes += content.len();
+                if scanned_bytes > 16 * 1_048_576 {
+                    scan_truncated = true;
+                    break;
+                }
+                let matches: Vec<_> = content
+                    .lines()
+                    .enumerate()
+                    .filter(|(_, line)| line.to_lowercase().contains(&query))
+                    .take(11)
+                    .collect();
+                if matches.is_empty() {
+                    continue;
+                }
+                matched_files += 1;
+                for (index, line) in matches {
+                    raw.push_str(&format!(
+                        "{}\0{}\0{}\n",
+                        file.path,
+                        index + 1,
+                        line.chars().take(320).collect::<String>()
+                    ));
+                }
+                if matched_files > 50 {
+                    break;
+                }
+            }
+        }
+        let mut result = parse_git_grep_output(
+            &raw,
+            &GrepParseOptions {
+                max_files: 50,
+                max_matches_per_file: 10,
+            },
+        );
+        result.truncated |= scan_truncated;
+        return Ok(result);
+    }
     // git grep flags: -n line numbers, --null NUL-separate fields,
     // --no-color strip ANSI, -I skip binaries, -F fixed-string, -i ignore case,
     // --untracked include untracked, -e separator so a query starting
@@ -521,6 +611,23 @@ mod tests {
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::path::Path;
     use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn plain_folder_files_and_search_do_not_need_git() {
+        let folder = TempDir::new().unwrap();
+        std::fs::write(folder.path().join("notes.md"), "folder notes\nfind this\n").unwrap();
+        let root = folder.path().to_str().unwrap();
+        assert_eq!(
+            list_files_at_path(root).await.unwrap(),
+            vec![WorkspaceFileEntry {
+                path: "notes.md".into()
+            }]
+        );
+        let matches = grep_content_at_path(root, "FIND").await.unwrap();
+        assert_eq!(matches.files[0].path, "notes.md");
+        assert_eq!(matches.files[0].matches[0].line, 2);
+        assert!(!folder.path().join(".git").exists());
+    }
 
     async fn run_git(repo: &Path, args: &[&str]) {
         run_git_text(repo, args, GIT_TIMEOUT)

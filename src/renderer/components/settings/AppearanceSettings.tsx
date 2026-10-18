@@ -98,6 +98,8 @@ export function AppearanceSettings({
   onAccentChange,
   userBubbleTint,
   onUserBubbleTintChange,
+  sidebarClaudeArtifactsVisible = false,
+  onSidebarClaudeArtifactsVisibleChange,
   sidebarArcsVisible,
   onSidebarArcsVisibleChange,
   sidebarArchivedVisible,
@@ -157,6 +159,8 @@ export function AppearanceSettings({
   onAccentChange: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
   onUserBubbleTintChange: (tint: UserBubbleTint) => void;
+  sidebarClaudeArtifactsVisible?: boolean;
+  onSidebarClaudeArtifactsVisibleChange?: (v: boolean) => void;
   sidebarArcsVisible: boolean;
   onSidebarArcsVisibleChange: (v: boolean) => void;
   sidebarArchivedVisible: boolean;
@@ -516,6 +520,11 @@ export function AppearanceSettings({
             />
           }
         />
+        {onSidebarClaudeArtifactsVisibleChange ? <SettingRow
+          label="Claude artifacts"
+          description="Show an Artifacts shortcut in the sidebar. Opens Claude artifacts in Argmax's browser."
+          control={<Toggle ariaLabel="Claude artifacts" checked={sidebarClaudeArtifactsVisible} onChange={onSidebarClaudeArtifactsVisibleChange} />}
+        /> : null}
         <SettingRow
           label="Translucent window"
           description="Let the desktop show through the app's background, blurred the way Finder's sidebar is. Cards, panels and the composer stay solid."

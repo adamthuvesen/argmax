@@ -954,13 +954,13 @@ describe("App sidebar", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
-    await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" }));
+    await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" }));
     await within(palette).findByRole("option", { name: /App\.tsx/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith(
-      { kind: "project", id: "project-1" },
+      { kind: "projectFolder", id: "project-1:primary" },
       "src/renderer/App.tsx"
     ));
   });
@@ -1001,7 +1001,7 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Terminal" })).toBeInTheDocument();
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
+    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
 
     fireEvent.click(screen.getByRole("treeitem", { name: "index.ts" }));
     const editor = await screen.findByLabelText("Editor for index.ts");
@@ -1009,7 +1009,7 @@ describe("App sidebar", () => {
     fireEvent.keyDown(editor, { key: "s", metaKey: true });
     await waitFor(() =>
       expect(writeProjectFile).toHaveBeenCalledWith(
-        { kind: "project", id: "project-1" },
+        { kind: "projectFolder", id: "project-1:primary" },
         "index.ts",
         "export const ok = false;\n",
         123
@@ -1108,7 +1108,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
+    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
   });
 
   it("opens the launcher review panel in project files mode with Cmd+G", async () => {
@@ -1125,7 +1125,7 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
-    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "project", id: "project-1" });
+    expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
     await waitFor(() =>

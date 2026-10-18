@@ -503,6 +503,10 @@ export function setupAppTestMocks(): void {
       applyOverviewDraft: () => Promise.resolve(primaryProject()),
       discardOverviewDraft: () => Promise.resolve(primaryProject()),
       getFolders: getProjectFolders,
+      getFolderContext: vi.fn().mockImplementation(({ projectId, projectFolderId }: { projectId: string; projectFolderId?: string }) => Promise.resolve({
+        project: snapshot.projects.find((project) => project.id === projectId) ?? primaryProject(),
+        isGit: true, folderId: projectFolderId ?? `${projectId}:primary`
+      })),
       pickDirectory: pickProjectDirectory,
       pickFolder: pickProjectFolder,
       register: () => Promise.resolve(primaryProject()),
@@ -644,9 +648,9 @@ export function setupAppTestMocks(): void {
       revertHunk: () => Promise.resolve(),
     },
     workspace: {
-      listFiles: (target) => target.kind === "project" ? listProjectFiles(target) : listWorkspaceFiles(target),
-      readFile: (target, path) => target.kind === "project" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
-      writeFile: (target, path, content, mtime) => target.kind === "project"
+      listFiles: (target) => target.kind !== "workspace" ? listProjectFiles(target) : listWorkspaceFiles(target),
+      readFile: (target, path) => target.kind !== "workspace" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
+      writeFile: (target, path, content, mtime) => target.kind !== "workspace"
         ? writeProjectFile(target, path, content, mtime)
         : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),

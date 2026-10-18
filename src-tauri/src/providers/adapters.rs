@@ -207,6 +207,7 @@ fn codex_common_args(
     mcp: Option<&SessionLaunchProcessConfig>,
 ) -> Vec<String> {
     let mut args = codex_permission_args(input);
+    args.push("--skip-git-repo-check".to_string());
     args.extend([
         "--model".to_string(),
         successor_model_id(ProviderId::Codex, &input.model_id).to_string(),
@@ -1111,6 +1112,7 @@ mod tests {
                 "exec",
                 "--json",
                 "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
                 "--model",
                 "gpt-5.6-sol",
                 "-c",
@@ -1249,6 +1251,7 @@ mod tests {
                 "resume",
                 "--json",
                 "--dangerously-bypass-approvals-and-sandbox",
+                "--skip-git-repo-check",
                 "--model",
                 "gpt-5.6-sol",
                 "-c",

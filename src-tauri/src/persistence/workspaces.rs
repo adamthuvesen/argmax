@@ -24,8 +24,8 @@ pub struct PersistWorkspaceInput {
     pub path: String,
     pub state: String,
     pub shared_workspace: bool,
-    /// 'git' for real project checkouts, 'scratch' for repo-less side chats,
-    /// 'popup' for the ephemeral "More details" mini-sessions.
+    /// 'git' for project checkouts, 'folder' for ordinary project directories,
+    /// 'scratch' for repo-less side chats, 'popup' for the ephemeral "More details" mini-sessions.
     pub kind: String,
     pub dirty: bool,
     pub changed_files: i64,
@@ -54,7 +54,7 @@ pub struct WorkspaceSummary {
     pub path: String,
     pub state: String,
     pub shared_workspace: bool,
-    /// 'git' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
+    /// 'git' | 'folder' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
     /// repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
     /// on this rather than on which UI created the workspace.
     pub kind: String,
@@ -538,6 +538,8 @@ pub fn persist_workspace(
 ) -> ArgmaxResult<WorkspaceSummary> {
     let folder_id = if input.kind == "git" {
         super::project_folders::folder_for_checkout(connection, &input.project_id, &input.path)?
+    } else if input.kind == "folder" {
+        connection.query_row("SELECT id FROM project_folders WHERE project_id = ? AND root_path = ? ORDER BY removed LIMIT 1", (&input.project_id, &input.path), |row| row.get(0)).optional().map_err(sqlite_error)?
     } else {
         None
     };

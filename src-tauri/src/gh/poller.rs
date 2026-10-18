@@ -590,10 +590,13 @@ fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions>
         .into_iter()
         .filter(|id| !active.contains(id))
         .collect();
-    let all = active
-        .into_iter()
-        .chain(open_pr_only.iter().cloned())
-        .collect();
+    let mut all = Vec::new();
+    for session_id in active.into_iter().chain(open_pr_only.iter().cloned()) {
+        let git_workspace = conn.query_row("SELECT EXISTS (SELECT 1 FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE s.id = ? AND w.kind = 'git')", [&session_id], |row| row.get::<_, bool>(0)).map_err(crate::persistence::sqlite_error)?;
+        if git_workspace {
+            all.push(session_id);
+        }
+    }
     Ok(PollableSessions {
         all,
         open_pr_only,

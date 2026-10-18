@@ -21,6 +21,7 @@ export const IPC_CHANNELS = [
   "projects:register",
   "projects:remove",
   "projects:update-settings",
+  "projects:get-folder-context",
   "projects:list-branches",
   "projects:refresh-branch",
   "projects:switch-branch",
@@ -235,6 +236,7 @@ export interface IpcCommands {
   "projects:register": Commands["projectsRegister"];
   "projects:remove": Commands["projectsRemove"];
   "projects:update-settings": Commands["projectsUpdateSettings"];
+  "projects:get-folder-context": Commands["projectsGetFolderContext"];
   "projects:list-branches": Commands["projectsListBranches"];
   "projects:refresh-branch": Commands["projectsRefreshBranch"];
   "projects:switch-branch": Commands["projectsSwitchBranch"];

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useState } from "react";
 
+export const SIDEBAR_CLAUDE_ARTIFACTS_KEY = "argmax.sidebar.claudeArtifacts.visible";
 export const SIDEBAR_ARCS_KEY = "argmax.sidebar.arcs.visible";
 export const SIDEBAR_PRIORITY_KEY = "argmax.sidebar.priority.visible";
 export const SIDEBAR_ARCHIVED_KEY = "argmax.sidebar.archived.visible";

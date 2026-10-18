@@ -105,6 +105,63 @@ pub fn project_for_folder(
     Ok(project)
 }
 
+pub fn project_for_launch(
+    connection: &Connection,
+    project_id: &str,
+    folder_id: Option<&str>,
+) -> ArgmaxResult<(ProjectSummary, String)> {
+    let folder_id = folder_id
+        .map(str::to_owned)
+        .or(primary_folder_id(connection, project_id)?)
+        .ok_or_else(|| ArgmaxError::record_not_found("project folder", project_id))?;
+    let folder = list_project_folders(connection, project_id)?
+        .into_iter()
+        .find(|folder| folder.id == folder_id)
+        .ok_or_else(|| {
+            ArgmaxError::service(
+                "PROJECT_FOLDER_UNAVAILABLE",
+                "That folder is no longer in this project. Choose another folder.",
+            )
+        })?;
+    let path = Path::new(&folder.root_path);
+    if !path.is_dir()
+        || path
+            .symlink_metadata()
+            .is_ok_and(|metadata| metadata.file_type().is_symlink())
+    {
+        return Err(ArgmaxError::service(
+            "PROJECT_FOLDER_UNAVAILABLE",
+            "That project folder is unavailable or its location changed.",
+        ));
+    }
+    Ok((project_for_folder(connection, &folder.id)?, folder.id))
+}
+
+pub fn folder_is_git(root: &str) -> ArgmaxResult<bool> {
+    if !Path::new(root).join(".git").exists() {
+        return Ok(false);
+    }
+    crate::git::exec::run_git_text_blocking(
+        Path::new(root),
+        ["rev-parse", "--is-inside-work-tree"],
+        crate::git::exec::GIT_DEFAULT_TIMEOUT,
+    )?;
+    Ok(true)
+}
+
+pub fn update_folder_branch(
+    connection: &Connection,
+    project_id: &str,
+    folder_id: &str,
+    branch: &str,
+) -> ArgmaxResult<ProjectSummary> {
+    connection.execute("UPDATE project_folders SET current_branch = ?1, updated_at = ?2 WHERE id = ?3 AND project_id = ?4 AND removed = 0", (branch, now_iso(), folder_id, project_id)).map_err(sqlite_error)?;
+    if primary_folder_id(connection, project_id)?.as_deref() == Some(folder_id) {
+        return super::projects::update_project_branch(connection, project_id, branch);
+    }
+    super::projects::require_project(connection, project_id)
+}
+
 pub fn require_workspace_project(
     connection: &Connection,
     workspace_id: &str,
@@ -256,7 +313,7 @@ pub fn assert_workspace_pr_repository(
     connection: &Connection,
     workspace_id: &str,
 ) -> ArgmaxResult<()> {
-    let supported: bool = connection.query_row("SELECT w.project_folder_id IS p.pr_repository_folder_id FROM workspaces w JOIN projects p ON p.id = w.project_id WHERE w.id = ?", [workspace_id], |row| row.get(0)).map_err(sqlite_error)?;
+    let supported: bool = connection.query_row("SELECT w.kind = 'git' AND w.project_folder_id IS p.pr_repository_folder_id FROM workspaces w JOIN projects p ON p.id = w.project_id WHERE w.id = ?", [workspace_id], |row| row.get(0)).map_err(sqlite_error)?;
     if !supported {
         return Err(ArgmaxError::service("MULTI_REPO_PR_UNSUPPORTED", "This preview tracks pull requests only for the project's original primary repository. Use a separate project to track pull requests for this folder."));
     }

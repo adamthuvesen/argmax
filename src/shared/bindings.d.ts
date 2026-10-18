@@ -144,6 +144,14 @@ async projectsUpdateSettings(input: ProjectsUpdateSettingsInput) : Promise<Resul
     else return { status: "error", error: e  as any };
 }
 },
+async projectsGetFolderContext(input: ProjectsGetFolderContextInput) : Promise<Result<ProjectFolderContext, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_get_folder_context", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async projectsListBranches(input: ProjectsListBranchesInput) : Promise<Result<string[], ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("projects_list_branches", { input }) };
@@ -2219,8 +2227,8 @@ export type ClearOpencodeGatewayKeyInput = { gateway: OpencodeGateway }
 export type CloudEnvironment = { id: string; name: string }
 export type CloudHandoffPreview = { provider: CloudProvider; repository: string; branch: string; commit: string; brief: string; environments: CloudEnvironment[]; environmentDescription: string; environmentId: string }
 export type CloudHandoffResult = { url: string; warning?: string | null }
-export type CloudLaunchInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; repository: string; branch: string; commit: string; brief: string; environmentId: string }
-export type CloudPrepareInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null;
+export type CloudLaunchInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; projectFolderId?: string | null; repository: string; branch: string; commit: string; brief: string; environmentId: string }
+export type CloudPrepareInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; projectFolderId?: string | null;
 /**
  * What the user typed after `/cloud`. Only a chat source takes one: it
  * becomes the brief's closing instruction after the chat's transcript.
@@ -2645,6 +2653,7 @@ export type ProjectCheckout = { branch: string; path: string;
 isMain: boolean }
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
 export type ProjectDirectoryPickResult = { cancelled: boolean; path: string | null }
+export type ProjectFolderContext = { project: ProjectSummary; isGit: boolean; folderId: string }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
 export type ProjectFolderSummary = { id: string; projectId: string; name: string; rootPath: string; isPrimary: boolean; enabled: boolean; summary: string | null }
 export type ProjectId = string
@@ -2686,13 +2695,14 @@ pickedByHand: boolean }
 export type ProjectsConfigureInput = { projectId: ProjectId; name: NonEmptyString; folders: string[]; primaryPath: string }
 export type ProjectsCreateInput = { name: NonEmptyString; folders: string[]; primaryPath: string }
 export type ProjectsGenerateOverviewInput = { projectId: ProjectId }
+export type ProjectsGetFolderContextInput = { projectId: ProjectId; projectFolderId?: string | null }
 export type ProjectsGetFoldersInput = { projectId: ProjectId }
-export type ProjectsListBranchesInput = { projectId: ProjectId }
-export type ProjectsListCheckoutsInput = { projectId: ProjectId }
+export type ProjectsListBranchesInput = { projectId: ProjectId; projectFolderId?: string | null }
+export type ProjectsListCheckoutsInput = { projectId: ProjectId; projectFolderId?: string | null }
 export type ProjectsListInput = Record<string, never>
 export type ProjectsOverviewDraftInput = { projectId: ProjectId; expectedRevision: number }
 export type ProjectsPickFolderInput = Record<string, never>
-export type ProjectsRefreshBranchInput = { projectId: ProjectId }
+export type ProjectsRefreshBranchInput = { projectId: ProjectId; projectFolderId?: string | null }
 export type ProjectsRegisterInput = { repoPath: RepoPath }
 export type ProjectsRemoveInput = { projectId: ProjectId }
 export type ProjectsResolveCheckInput = { checkId: NonEmptyString; outcome: ProjectCheckOutcome;
@@ -2705,7 +2715,7 @@ export type ProjectsSetBranchTemplateInput = { projectId: ProjectId;
  * `null` removes the project's override.
  */
 template: string | null }
-export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
+export type ProjectsSwitchBranchInput = { projectId: ProjectId; projectFolderId?: string | null; branch: BranchName }
 export type ProjectsUpdateOverviewInput = { projectId: ProjectId; text: string; expectedRevision: number }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
@@ -3469,7 +3479,7 @@ export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
 export type WorkspaceSummary = { id: string; projectFolderId?: string | null; checkCommands?: string[] | null; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean;
 /**
- * 'git' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
+ * 'git' | 'folder' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
  * repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
  * on this rather than on which UI created the workspace.
  */
@@ -3564,18 +3574,18 @@ export type WorkspaceViewedObservationInput = { workspaceId: WorkspaceId; observ
 export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
 export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
-export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: TaskLabel }
+export type WorkspacesCreateCurrentInput = { projectId: ProjectId; projectFolderId?: string | null; taskLabel: TaskLabel }
 /**
  * A workspace in a checkout that already exists, named by the launcher after
  * the person picked a branch that a worktree has checked out.
  */
-export type WorkspacesCreateInCheckoutInput = { projectId: ProjectId; taskLabel: TaskLabel; path: NonEmptyString;
+export type WorkspacesCreateInCheckoutInput = { projectId: ProjectId; projectFolderId?: string | null; taskLabel: TaskLabel; path: NonEmptyString;
 /**
  * The branch the person saw checked out at `path`. The launch is refused
  * when the checkout has moved to another branch since.
  */
 branch: BranchName }
-export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: TaskLabel; baseRef: BaseRef | null }
+export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; projectFolderId?: string | null; taskLabel: TaskLabel; baseRef: BaseRef | null }
 export type WorkspacesCreateScratchInput = { taskLabel: TaskLabel; kind: ScratchWorkspaceKind | null }
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
 export type WorkspacesMarkViewedInput = { workspaces: WorkspaceViewedObservationInput[] }

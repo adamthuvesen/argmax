@@ -62,7 +62,7 @@ describe("launcher prompt across context changes", () => {
     await waitFor(() => expect(toastSnapshot()?.message).toBe(
       "Your local changes would be overwritten by checkout."
     ));
-    expect(switchBranch).toHaveBeenCalledWith("project-1", "feature");
+    expect(switchBranch).toHaveBeenCalledWith("project-1", "feature", "project-1:primary");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(prompt).toHaveValue("Refactor the auth guard");
     expect(prompt).toBeEnabled();

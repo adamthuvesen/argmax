@@ -14,8 +14,7 @@ use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use crate::persistence::database::Database;
 use crate::persistence::projects::{
     delete_project, list_projects, parse_github_remote, persist_project, require_project,
-    update_project_branch, update_project_settings, PersistProjectInput, ProjectRemote,
-    ProjectSettings, ProjectSummary,
+    update_project_settings, PersistProjectInput, ProjectRemote, ProjectSettings, ProjectSummary,
 };
 use crate::routing::project_check::ProjectCheck;
 use crate::state::AppState;
@@ -417,6 +416,66 @@ pub(crate) fn projects_update_settings_impl(
     update_project_settings(&connection, input.project_id.as_str(), &settings)
 }
 
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFolderContext {
+    pub project: ProjectSummary,
+    pub is_git: bool,
+    pub folder_id: String,
+}
+
+#[tauri::command(rename = "projects:get-folder-context")]
+#[specta::specta]
+pub async fn projects_get_folder_context(
+    state: State<'_, AppState>,
+    input: ProjectsGetFolderContextInput,
+) -> ArgmaxResult<ProjectFolderContext> {
+    projects_get_folder_context_impl(&state, input).await
+}
+
+pub(crate) async fn projects_get_folder_context_impl(
+    state: &AppState,
+    input: ProjectsGetFolderContextInput,
+) -> ArgmaxResult<ProjectFolderContext> {
+    let database = live_database(state)?;
+    read_off_main(move || {
+        let connection = database.connection();
+        let (mut project, folder_id) = crate::persistence::project_folders::project_for_launch(
+            &connection,
+            input.project_id.as_str(),
+            input.project_folder_id.as_deref(),
+        )?;
+        let is_git = crate::persistence::project_folders::folder_is_git(&project.repo_path)?;
+        if is_git {
+            let branch = crate::git::exec::run_git_text_blocking(
+                Path::new(&project.repo_path),
+                ["branch", "--show-current"],
+                GIT_DEFAULT_TIMEOUT,
+            )?;
+            project.current_branch = if branch.trim().is_empty() {
+                "HEAD".into()
+            } else {
+                branch.trim().into()
+            };
+            crate::persistence::project_folders::update_folder_branch(
+                &connection,
+                &project.id,
+                &folder_id,
+                &project.current_branch,
+            )?;
+        } else {
+            project.current_branch.clear();
+            project.default_branch = None;
+        }
+        Ok(ProjectFolderContext {
+            project,
+            is_git,
+            folder_id,
+        })
+    })
+    .await
+}
+
 #[tauri::command(rename = "projects:list-branches")]
 #[specta::specta]
 pub async fn projects_list_branches(
@@ -433,9 +492,19 @@ pub(crate) async fn projects_list_branches_impl(
     let (repo_path, default_branch) = {
         let database = live_database(state)?;
         let connection = database.connection();
-        let project = require_project(&connection, input.project_id.as_str())?;
+        let (project, _) = crate::persistence::project_folders::project_for_launch(
+            &connection,
+            input.project_id.as_str(),
+            input.project_folder_id.as_deref(),
+        )?;
         (project.repo_path, project.default_branch)
     };
+    if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+        return Err(ArgmaxError::service(
+            "PROJECT_GIT_REQUIRED",
+            "Choose a Git repository to select a branch.",
+        ));
+    }
     // Display output adds `+` for linked worktrees and can contain colors or
     // columns from user config. Request only ref names for the picker.
     let raw = run_git_text(
@@ -487,11 +556,22 @@ pub(crate) async fn projects_refresh_branch_impl(
     state: &AppState,
     input: ProjectsRefreshBranchInput,
 ) -> ArgmaxResult<ProjectSummary> {
-    let repo_path = {
+    let (project, folder_id) = {
         let database = live_database(state)?;
         let connection = database.connection();
-        require_project(&connection, input.project_id.as_str())?.repo_path
+        crate::persistence::project_folders::project_for_launch(
+            &connection,
+            input.project_id.as_str(),
+            input.project_folder_id.as_deref(),
+        )?
     };
+    let repo_path = project.repo_path;
+    if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+        return Err(ArgmaxError::service(
+            "PROJECT_GIT_REQUIRED",
+            "Choose a Git repository to select a branch.",
+        ));
+    }
     // Re-read the repo's live HEAD so the launcher defaults to whatever branch
     // the user has checked out (in a terminal or elsewhere), not the branch we
     // recorded at add time. Detached HEAD persists as "HEAD".
@@ -510,7 +590,12 @@ pub(crate) async fn projects_refresh_branch_impl(
     };
     let database = live_database(state)?;
     let connection = database.connection();
-    update_project_branch(&connection, input.project_id.as_str(), &current_branch)
+    crate::persistence::project_folders::update_folder_branch(
+        &connection,
+        input.project_id.as_str(),
+        &folder_id,
+        &current_branch,
+    )
 }
 
 #[tauri::command(rename = "projects:list-checkouts")]
@@ -527,7 +612,10 @@ pub(crate) async fn projects_list_checkouts_impl(
     input: ProjectsListCheckoutsInput,
 ) -> ArgmaxResult<Vec<crate::workspaces::ProjectCheckout>> {
     super::workspaces::live_workspaces(state)?
-        .list_checkouts(input.project_id.as_str())
+        .list_checkouts_in_folder(
+            input.project_id.as_str(),
+            input.project_folder_id.as_deref(),
+        )
         .await
 }
 
@@ -544,11 +632,22 @@ pub(crate) async fn projects_switch_branch_impl(
     state: &AppState,
     input: ProjectsSwitchBranchInput,
 ) -> ArgmaxResult<ProjectSummary> {
-    let repo_path = {
+    let (project, folder_id) = {
         let database = live_database(state)?;
         let connection = database.connection();
-        require_project(&connection, input.project_id.as_str())?.repo_path
+        crate::persistence::project_folders::project_for_launch(
+            &connection,
+            input.project_id.as_str(),
+            input.project_folder_id.as_deref(),
+        )?
     };
+    let repo_path = project.repo_path;
+    if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+        return Err(ArgmaxError::service(
+            "PROJECT_GIT_REQUIRED",
+            "Choose a Git repository to select a branch.",
+        ));
+    }
     // `--` separator is defense-in-depth on top of the BranchName newtype's
     // leading-dash rejection.
     run_git_text(
@@ -559,9 +658,10 @@ pub(crate) async fn projects_switch_branch_impl(
     .await?;
     let database = live_database(state)?;
     let connection = database.connection();
-    update_project_branch(
+    crate::persistence::project_folders::update_folder_branch(
         &connection,
         input.project_id.as_str(),
+        &folder_id,
         input.branch.as_str(),
     )
 }
@@ -907,6 +1007,132 @@ mod tests {
                 .expect("listed branch passes switch validation");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn folder_context_and_branch_switch_preserve_project_primary() {
+        use super::*;
+        use crate::persistence::project_folders::{
+            configure_project_folders, list_project_folders, PersistProjectFolderInput,
+        };
+        use std::sync::Arc;
+        let primary = tempfile::tempdir().unwrap();
+        let secondary = tempfile::tempdir().unwrap();
+        let plain = tempfile::tempdir().unwrap();
+        for repo in [primary.path(), secondary.path()] {
+            for args in [
+                vec!["init", "-q", "-b", "main"],
+                vec![
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "initial",
+                ],
+            ] {
+                run_git_text(repo, args, GIT_DEFAULT_TIMEOUT).await.unwrap();
+            }
+        }
+        run_git_text(
+            secondary.path(),
+            ["branch", "secondary-only"],
+            GIT_DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap();
+        let database = Arc::new(Database::open_in_memory().unwrap());
+        let project = register_repo_path(&database, primary.path().into())
+            .await
+            .unwrap();
+        let folders = [primary.path(), secondary.path(), plain.path()]
+            .into_iter()
+            .map(|root| PersistProjectFolderInput {
+                root_path: root.canonicalize().unwrap().display().to_string(),
+                current_branch: "main".into(),
+                default_branch: Some("main".into()),
+                remote: None,
+                settings: project.settings.clone(),
+            })
+            .collect::<Vec<_>>();
+        configure_project_folders(
+            &database.connection(),
+            &project.id,
+            "Project",
+            &folders,
+            &project.repo_path,
+        )
+        .unwrap();
+        let configured = list_project_folders(&database.read_connection(), &project.id).unwrap();
+        let secondary_id = configured
+            .iter()
+            .find(|folder| {
+                folder.root_path
+                    == secondary
+                        .path()
+                        .canonicalize()
+                        .unwrap()
+                        .display()
+                        .to_string()
+            })
+            .unwrap()
+            .id
+            .clone();
+        let plain_id = configured
+            .iter()
+            .find(|folder| {
+                folder.root_path == plain.path().canonicalize().unwrap().display().to_string()
+            })
+            .unwrap()
+            .id
+            .clone();
+        let state = AppState::new();
+        assert!(state.db.set(database.clone()).is_ok());
+        let input = |folder_id: &str| {
+            serde_json::from_value(
+                serde_json::json!({"projectId": project.id, "projectFolderId": folder_id}),
+            )
+            .unwrap()
+        };
+        assert!(
+            !projects_get_folder_context_impl(&state, input(&plain_id))
+                .await
+                .unwrap()
+                .is_git
+        );
+        assert!(
+            projects_get_folder_context_impl(&state, input(&secondary_id))
+                .await
+                .unwrap()
+                .is_git
+        );
+        projects_switch_branch_impl(&state, serde_json::from_value(serde_json::json!({"projectId": project.id, "projectFolderId": secondary_id, "branch":"secondary-only"})).unwrap()).await.unwrap();
+        let context = projects_get_folder_context_impl(&state, input(&secondary_id))
+            .await
+            .unwrap();
+        assert_eq!(context.project.current_branch, "secondary-only");
+        assert_eq!(
+            require_project(&database.read_connection(), &project.id)
+                .unwrap()
+                .current_branch,
+            "main"
+        );
+        database
+            .connection()
+            .execute(
+                "UPDATE project_folders SET removed = 1 WHERE id = ?",
+                [&secondary_id],
+            )
+            .unwrap();
+        assert!(
+            projects_get_folder_context_impl(&state, input(&secondary_id))
+                .await
+                .is_err()
+        );
     }
 
     fn owned(values: &[&str]) -> Vec<String> {

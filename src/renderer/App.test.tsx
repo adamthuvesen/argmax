@@ -664,6 +664,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createCurrentWorkspace).toHaveBeenCalledWith({
         projectId: "project-1",
+        projectFolderId: "project-1:primary",
         taskLabel: "Implement PTY launch"
       })
     );
@@ -884,6 +885,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createIsolatedWorkspace).toHaveBeenCalledWith({
         projectId: "project-1",
+        projectFolderId: "project-1:primary",
         taskLabel: "Implement PTY launch",
         baseRef: "main"
       })
@@ -909,6 +911,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createIsolatedWorkspace).toHaveBeenCalledWith({
         projectId: "project-1",
+        projectFolderId: "project-1:primary",
         taskLabel: "Resume the migration",
         baseRef: "main"
       })
@@ -1192,6 +1195,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createCurrentWorkspace).toHaveBeenCalledWith({
         projectId: "project-2",
+        projectFolderId: "project-2:primary",
         taskLabel: "Update shell aliases"
       })
     );

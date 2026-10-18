@@ -158,6 +158,12 @@ command_catalogue! {
             encode(projects::projects_update_settings_impl(state, input)?)
         };
 
+    "projects:get-folder-context" => projects::projects_get_folder_context, read,
+    |state, input, default_agent, channel| {
+        let input: ProjectsGetFolderContextInput = parse(channel, input)?;
+        encode(projects::projects_get_folder_context_impl(state, input).await?)
+    };
+
     "projects:list-branches" => projects::projects_list_branches, read,
     |state, input, default_agent, channel| {
             let input: ProjectsListBranchesInput = parse(channel, input)?;

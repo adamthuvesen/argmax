@@ -9,7 +9,9 @@ The primary must be a Git repository. Additional folders can contain code or doc
 Settings → Projects edits the name, folder list, and primary folder.
 The same directory can belong to several projects.
 
-New chats start in the primary folder or a worktree of that repository.
+New chats default to the primary folder. The launcher lets you select another project folder for each chat.
+The folder choice does not change the project's primary folder. Branches, files, and terminal follow the selected folder.
+Git folders support existing checkouts and isolated worktrees. Plain folders start directly, with no branch or worktree controls.
 Each workspace records its project folder and actual checkout.
 Changing the primary affects future chats and leaves existing checkouts attached to their original repository.
 Repository settings, checks, and cleanup follow that recorded folder.

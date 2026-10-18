@@ -151,6 +151,7 @@ describe("Project check in the launcher", () => {
     );
     const pick = {
       projectId: current.id,
+      projectFolderId: `${current.id}:primary`,
       branch: "feature",
       path: "/tmp/worktrees/feature",
       isMain: false

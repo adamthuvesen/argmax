@@ -12,6 +12,7 @@ import {
   Plus,
   Settings,
   Settings2,
+  Shapes,
   Trash2,
   Workflow,
   X
@@ -213,6 +214,7 @@ export function Sidebar({
   onOpenProject,
   onOpenWorkspaceChat,
   onOpenBrowser,
+  onOpenClaudeArtifacts,
   onOpenArc,
   onRemoveProject,
   onRenameWorkspace,
@@ -252,6 +254,7 @@ export function Sidebar({
   onOpenProject: (projectId: string) => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onOpenBrowser?: () => void;
+  onOpenClaudeArtifacts?: () => void;
   onOpenArc?: (arcId: string) => void;
   onRemoveProject?: (projectId: string) => void;
   onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
@@ -1510,6 +1513,12 @@ export function Sidebar({
               <Globe size={14} />
             </span>
             <span className="rail-nav-label">Browser</span>
+          </button>
+        ) : null}
+        {onOpenClaudeArtifacts && typeof window !== "undefined" && window.argmax?.browser ? (
+          <button className="rail-nav-item" type="button" title="Claude artifacts" aria-label="Artifacts" onClick={onOpenClaudeArtifacts}>
+            <span className="rail-nav-glyph" aria-hidden="true"><Shapes size={14} /></span>
+            <span className="rail-nav-label">Artifacts</span>
           </button>
         ) : null}
         <button

@@ -405,24 +405,32 @@ pub struct BrowserEvaluateInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsListBranchesInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsListCheckoutsInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsRefreshBranchInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsSwitchBranchInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
     pub branch: BranchName,
 }
 
@@ -1177,4 +1185,12 @@ pub struct UsageSummaryInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UsageRouterCostInput {
     pub window: crate::usage::UsageWindow,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsGetFolderContextInput {
+    pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }

@@ -22,6 +22,7 @@ export function CloudTaskDialog({
   provider,
   sessionId,
   projectId,
+  projectFolderId,
   initialBrief,
   onLaunched,
   onClose
@@ -31,8 +32,8 @@ export function CloudTaskDialog({
   onLaunched?: () => void;
   onClose: () => void;
 } & (
-  | { sessionId: string; projectId?: never; initialBrief?: string }
-  | { sessionId?: never; projectId: string; initialBrief: string }
+  | { sessionId: string; projectId?: never; projectFolderId?: never; initialBrief?: string }
+  | { sessionId?: never; projectId: string; projectFolderId?: string; initialBrief: string }
 )): JSX.Element | null {
   const [preview, setPreview] = useState<CloudHandoffPreview | null>(null);
   const [brief, setBrief] = useState("");
@@ -102,7 +103,7 @@ export function CloudTaskDialog({
     void window.argmax.cloud
       .prepare(sessionId
         ? { sessionId, provider, ...(instruction ? { instruction } : {}) }
-        : { projectId, provider })
+        : { projectId, provider, ...(projectFolderId ? { projectFolderId } : {}) })
       .then((nextPreview) => {
         if (requestGeneration.current !== request) return;
         setPreview(nextPreview);
@@ -118,7 +119,7 @@ export function CloudTaskDialog({
       .finally(() => {
         if (requestGeneration.current === request) setPreparing(false);
       });
-  }, [open, prepareAttempt, sessionId, projectId, instruction, provider]);
+  }, [open, prepareAttempt, sessionId, projectId, projectFolderId, instruction, provider]);
 
   useEffect(() => {
     if (!open || launching) return;
@@ -149,7 +150,7 @@ export function CloudTaskDialog({
     setError(null);
     try {
       const nextResult = await window.argmax.cloud.launch({
-        ...(sessionId ? { sessionId } : { projectId }),
+        ...(sessionId ? { sessionId } : { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
         provider,
         repository: preview.repository,
         branch: preview.branch,

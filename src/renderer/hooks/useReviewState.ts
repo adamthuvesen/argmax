@@ -111,7 +111,7 @@ const SCOPE_COMPARISONS: Record<ReviewChangesScope, ReviewComparison> = {
  */
 export type ReviewSource =
   | { kind: "workspace"; workspace: WorkspaceSummary }
-  | { kind: "project"; project: ProjectSummary };
+  | { kind: "project"; project: ProjectSummary; projectFolderId?: string };
 
 export interface WorkspaceFileTab {
   path: string;
@@ -283,11 +283,11 @@ export function useReviewState(
     terminalWorkspaceId?: string | null;
   }
 ): ReviewState {
-  const sourceKind = source?.kind ?? null;
+  const sourceKind = source?.kind === "project" && source.projectFolderId ? "projectFolder" : source?.kind ?? null;
   const sourceId: string | null = source
     ? source.kind === "workspace"
       ? source.workspace.id
-      : source.project.id
+      : source.projectFolderId ?? source.project.id
     : null;
   const changedFilesKey: string | null =
     source?.kind === "workspace" ? `${source.workspace.changedFiles}:${source.workspace.state}` : null;
@@ -568,7 +568,7 @@ export function useReviewState(
 
   const projectChanges = source ? {
     projectId: source.kind === "workspace" ? source.workspace.projectId : source.project.id,
-    workingFolderId: source.kind === "workspace" ? source.workspace.projectFolderId ?? null : null,
+    workingFolderId: source.kind === "workspace" ? source.workspace.projectFolderId ?? null : source.projectFolderId ?? null,
     workingRootPath: source.kind === "workspace" ? source.workspace.path : source.project.repoPath,
     refreshKey: changedFilesKey
   } : undefined;

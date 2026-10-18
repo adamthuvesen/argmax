@@ -366,6 +366,7 @@ impl WorkspaceService {
                 let created = self
                     .create_isolated_in_folder(
                         WorkspacesCreateIsolatedInput {
+                            project_folder_id: None,
                             project_id: source_workspace.project_id.clone().try_into().map_err(
                                 |_| {
                                     fork_error(

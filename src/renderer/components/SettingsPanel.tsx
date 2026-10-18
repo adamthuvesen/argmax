@@ -54,6 +54,8 @@ export function SettingsPanel({
   onRoutingChange,
   chatVerbosity,
   onChatVerbosityChange,
+  sidebarClaudeArtifactsVisible = false,
+  onSidebarClaudeArtifactsVisibleChange,
   sidebarArcsVisible,
   onSidebarArcsVisibleChange,
   sidebarArchivedVisible,
@@ -144,6 +146,8 @@ export function SettingsPanel({
   onRoutingChange: (routing: RoutingSettings) => void;
   chatVerbosity: ChatVerbosity;
   onChatVerbosityChange: (verbosity: ChatVerbosity) => void;
+  sidebarClaudeArtifactsVisible?: boolean;
+  onSidebarClaudeArtifactsVisibleChange?: (v: boolean) => void;
   sidebarArcsVisible: boolean;
   onSidebarArcsVisibleChange: (v: boolean) => void;
   sidebarArchivedVisible: boolean;
@@ -406,6 +410,8 @@ export function SettingsPanel({
             onAccentChange={onAccentChange}
             userBubbleTint={userBubbleTint}
             onUserBubbleTintChange={onUserBubbleTintChange}
+            sidebarClaudeArtifactsVisible={sidebarClaudeArtifactsVisible}
+            onSidebarClaudeArtifactsVisibleChange={onSidebarClaudeArtifactsVisibleChange}
             sidebarArcsVisible={sidebarArcsVisible}
             onSidebarArcsVisibleChange={onSidebarArcsVisibleChange}
             sidebarArchivedVisible={sidebarArchivedVisible}

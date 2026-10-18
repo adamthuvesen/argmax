@@ -1,10 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import { BROWSER_PAGE_OPEN_KEY } from "./lib/uiPreferences.js";
-import { setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
+import { BROWSER_PAGE_OPEN_KEY, SIDEBAR_CLAUDE_ARTIFACTS_KEY } from "./lib/uiPreferences.js";
+import { closeSettings, openSettings, setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
 import type { BrowserAgentOpenEvent } from "../shared/types.js";
-import { resetBrowserTabsForTests } from "./lib/browserPanel.js";
+import { BROWSER_PAGE_OWNER_ID, getBrowserTabs, resetBrowserTabsForTests } from "./lib/browserPanel.js";
 
 async function renderApp(): Promise<void> {
   render(<App />);
@@ -19,6 +19,37 @@ describe("App browser page", () => {
   beforeEach(() => {
     resetBrowserTabsForTests();
     setupAppTestMocks();
+  });
+
+  it("keeps Claude artifacts optional and persists the sidebar shortcut setting", async () => {
+    await renderApp();
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
+    await openSettings("Appearance");
+    const toggle = await screen.findByRole("checkbox", { name: "Claude artifacts" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(window.localStorage.getItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY)).toBe("true");
+    await closeSettings();
+    expect(screen.getByRole("button", { name: "Artifacts" })).toBeInTheDocument();
+    cleanup();
+    await renderApp();
+    expect(screen.getByRole("button", { name: "Artifacts" })).toBeInTheDocument();
+    await openSettings("Appearance");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Claude artifacts" }));
+    await closeSettings();
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY)).toBe("false");
+  });
+
+  it("opens Claude artifacts in the built-in browser and reuses the catalog tab", async () => {
+    window.localStorage.setItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY, "true");
+    const open = vi.spyOn(window.argmax!.browser, "open");
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    expect(await screen.findByRole("region", { name: "Browser" })).toBeInTheDocument();
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.objectContaining({ url: "https://claude.ai/artifacts" })));
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).filter((tab) => tab.url === "https://claude.ai/artifacts")).toHaveLength(1);
   });
 
   it("opens from the rail and keeps the session sidebar", async () => {

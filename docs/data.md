@@ -4,6 +4,10 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 
 ## Migrations
 
+Migration v75 adds the `folder` workspace kind for chats in plain project folders.
+It rebuilds `workspaces` with explicit column copies and preserves child foreign keys and indexes.
+These workspaces share user-owned directories. They skip Git setup, watchers, status, and directory deletion on archive.
+
 [migrations.rs](../src-tauri/src/persistence/migrations.rs) runs append-only schema migrations with SHA-256 checksum verification on startup. Applied migrations must never be edited.
 
 - FTS5 sidecar tables index timeline events and learnings.

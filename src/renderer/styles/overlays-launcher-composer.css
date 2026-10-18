@@ -354,3 +354,53 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+.launch-project-folder-picker {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: var(--composer-chip-height);
+  border-radius: 999px;
+  background: var(--composer-chip);
+}
+
+.launch-project-folder-picker .composer-context-chip {
+  background: transparent;
+}
+
+.launch-project-folder-picker .launch-project-chip {
+  padding-right: 5px;
+  color: var(--muted);
+}
+
+.launch-project-folder-picker .launch-folder-chip {
+  padding-left: 5px;
+  color: var(--text);
+}
+
+.launch-project-folder-divider {
+  flex: none;
+  color: var(--muted);
+  opacity: 0.5;
+  font-size: var(--text-xs);
+}
+
+.launch-folder-menu-heading {
+  padding: 5px 10px 7px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.launch-folder-menu-label {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.launch-folder-menu-label .picker-meta {
+  max-width: 45ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

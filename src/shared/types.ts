@@ -330,7 +330,7 @@ export type ProjectFolderPickResult = WireSubtype<
  * from the sidebar. Repo-coupled UI (review, gh, branch chips, grouping)
  * gates on this field.
  */
-export type WorkspaceKind = "git" | "scratch" | "popup";
+export type WorkspaceKind = "git" | "scratch" | "popup" | "folder";
 
 /** Stable id of the hidden singleton project owning every scratch workspace.
  *  Mirrors `SCRATCH_PROJECT_ID` in src-tauri/src/workspaces/orchestration.rs.
@@ -534,16 +534,17 @@ export interface ArgmaxApi {
     applyOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
     discardOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
     getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>;
+    getFolderContext: (input: { projectId: string; projectFolderId?: string }) => Promise<{ project: ProjectSummary; isGit: boolean; folderId: string }>;
     pickDirectory: () => Promise<{ cancelled: boolean; path: string | null }>;
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
     remove: (input: RemoveProjectInput) => Promise<void>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
-    listBranches: (projectId: string) => Promise<string[]>;
+    listBranches: (projectId: string, projectFolderId?: string) => Promise<string[]>;
     /** The project's usable checkouts and the branch checked out in each. */
-    listCheckouts: (projectId: string) => Promise<ProjectCheckout[]>;
-    refreshBranch: (projectId: string) => Promise<ProjectSummary>;
-    switchBranch: (projectId: string, branch: string) => Promise<ProjectSummary>;
+    listCheckouts: (projectId: string, projectFolderId?: string) => Promise<ProjectCheckout[]>;
+    refreshBranch: (projectId: string, projectFolderId?: string) => Promise<ProjectSummary>;
+    switchBranch: (projectId: string, branch: string, projectFolderId?: string) => Promise<ProjectSummary>;
     /** Project check: whether the prompt reads like work for another project. */
     checkPrompt: (input: ProjectsCheckPromptInput) => Promise<ProjectCheck>;
     /** Sets or clears (`null`) this project's branch template. */
@@ -690,7 +691,7 @@ export interface ArgmaxApi {
     readExternalFile: (path: string) => Promise<WorkspaceFilePreview>;
     statExternalFile: (path: string) => Promise<WorkspaceFileStat>;
     grepContent: (input: {
-      kind: "workspace" | "project";
+      kind: "workspace" | "project" | "projectFolder";
       id: string;
       query: string;
     }) => Promise<WorkspaceContentSearchResult>;

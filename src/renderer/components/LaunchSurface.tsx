@@ -101,6 +101,8 @@ import {
   writeWorkspaceMode,
   type WorkspaceMode
 } from "../lib/workspaceMode.js";
+import { LaunchFolderPicker } from "./LaunchFolderPicker.js";
+import { useLaunchFolder } from "../hooks/useLaunchFolder.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { ProjectCheckDialog } from "./ProjectCheckDialog.js";
 import { ConnectionDialog } from "./ConnectionDialog.js";
@@ -160,6 +162,7 @@ interface PendingLaunch {
    *  launch gets to run: Project check's dialog, a background send and an Undo
    *  all launch later than they were asked for. */
   checkout: LaunchCheckout | undefined;
+  projectFolderId: string | undefined;
 }
 
 function isOptionButtonTarget(target: EventTarget | null): boolean {
@@ -222,7 +225,8 @@ export function LaunchSurface({
     /** Start the chat without moving to it. */
     background?: boolean,
     /** The branch picked in the launcher. Nothing is checked out until this launch runs. */
-    checkout?: LaunchCheckout
+    checkout?: LaunchCheckout,
+    projectFolderId?: string
   ) => Promise<LaunchedChat | void>;
   onLaunchSideChat?: (
     prompt: string,
@@ -265,15 +269,23 @@ export function LaunchSurface({
   }, [chatMode, model.autoTier, model.provider]);
   const [cloudDraft, setCloudDraft] = useState<{
     projectId: string;
+    projectFolderId?: string;
     provider: HostedCloudProvider;
     brief: string;
   } | null>(null);
-  const activeProject = chatMode ? null : project;
+  const launchFolder = useLaunchFolder(chatMode ? null : project);
+  const activeProject = chatMode ? null : launchFolder.project;
+  const selectedFolderId = launchFolder.projectFolderId;
+  const selectedFolderIsPrimary = launchFolder.folder?.isPrimary;
+  const updateLaunchProject = launchFolder.updateProject;
+  const canUseGit = launchFolder.isGit;
+  const showFolderPicker = launchFolder.folders.length > 1 || (!launchFolder.folder && launchFolder.folders.length > 0);
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   // The branch picked for the next launch. Picking checks nothing out: this is
   // held here and sent with the launch. It belongs to the project it was picked
   // in, so another project shows its own current branch again.
   const [pickedCheckout, setPickedCheckout] = useState<LaunchCheckout | null>(null);
-  const checkout = pickedCheckout?.projectId === activeProject?.id ? pickedCheckout : null;
+  const checkout = pickedCheckout?.projectId === activeProject?.id && pickedCheckout?.projectFolderId === selectedFolderId ? pickedCheckout : null;
 
   // The unsent prompt and its screenshots belong to the project they will be
   // launched in, not to the mounted launcher: a grid cell that retargets its
@@ -332,6 +344,7 @@ export function LaunchSurface({
   );
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
+  const effectiveWorkspaceMode = canUseGit ? workspaceMode : "current";
   // Picking a project for this draft is a stronger signal than the launcher's
   // remembered default: Project check may still ask, but never switches away.
   const [projectPickedByHand, setProjectPickedByHand] = useState(false);
@@ -392,8 +405,8 @@ export function LaunchSurface({
   // toggles it (same shortcut as inside a session); no menu icon today, just
   // the keyboard shortcut.
   const reviewSource = useMemo<ReviewSource | null>(
-    () => (activeProject ? { kind: "project", project: activeProject } : null),
-    [activeProject]
+    () => (activeProject ? { kind: "project", project: activeProject, projectFolderId: selectedFolderId } : null),
+    [activeProject, selectedFolderId]
   );
   const onWorkspaceCreated = useCallback(
     (workspace: WorkspaceSummary): void => {
@@ -404,7 +417,8 @@ export function LaunchSurface({
   const { terminalWorkspaceId, ensureCheckoutWorkspace } = useProjectCheckoutTerminal(
     activeProject,
     workspaces,
-    onWorkspaceCreated
+    onWorkspaceCreated,
+    selectedFolderId
   );
   const reviewState = useReviewState(reviewSource, null, {
     claimsBrowserRequests,
@@ -463,12 +477,12 @@ export function LaunchSurface({
       return () => registerPaletteFileContext(null);
     }
     registerPaletteFileContext({
-      source: { kind: "project", id: activeProject.id },
+      source: selectedFolderId ? { kind: "projectFolder", id: selectedFolderId } : { kind: "project", id: activeProject.id },
       onPick: reviewOpenInFilesView,
       readLive: readPaletteLive
     });
     return () => registerPaletteFileContext(null);
-  }, [activeProject, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
+  }, [activeProject, selectedFolderId, registerPaletteFileContext, reviewOpenInFilesView, readPaletteLive]);
   const toggleReviewPanel = useCallback((): void => {
     if (reviewIsPanelOpen) {
       reviewClosePanel();
@@ -626,9 +640,10 @@ export function LaunchSurface({
   useDismissOnOutsideOrEscape(projectAnchorRef, projectPickerOpen, () => setProjectPickerOpen(false));
   useDismissOnOutsideOrEscape(branchAnchorRef, branchPickerOpen, () => setBranchPickerOpen(false));
   useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () => setCompactContextOpen(false));
-  const anyContextPickerOpen = projectPickerOpen || branchPickerOpen || modelPickerOpen;
+  const anyContextPickerOpen = projectPickerOpen || folderPickerOpen || branchPickerOpen || modelPickerOpen;
 
   const closeContextPickers = useCallback((): void => {
+    setFolderPickerOpen(false);
     setProjectPickerOpen(false);
     setBranchPickerOpen(false);
     setModelPickerOpen(false);
@@ -673,13 +688,16 @@ export function LaunchSurface({
   // project root the Files, Changes and Terminal panels show.
   const runsInLinkedCheckout = workspaceMode !== "worktree" && checkout?.path != null && !checkout.isMain;
   useEffect(() => {
-    if (!window.argmax || !projectId) return undefined;
+    if (!window.argmax || !projectId || !canUseGit) return undefined;
     let cancelled = false;
     void window.argmax.projects
-      .refreshBranch(projectId)
-      .then((updated) => {
+      .refreshBranch(projectId, selectedFolderId)
+      .then(async (updated) => {
         if (cancelled || updated.currentBranch === knownBranch) return;
-        onBranchSwitch(updated);
+        if (selectedFolderIsPrimary === false) {
+          const context = await window.argmax!.projects.getFolderContext({ projectId, projectFolderId: selectedFolderId });
+          if (!cancelled) updateLaunchProject(context.project);
+        } else onBranchSwitch(updated);
       })
       .catch(() => {
         // Best-effort refresh; a transient git failure leaves the persisted
@@ -688,24 +706,32 @@ export function LaunchSurface({
     return () => {
       cancelled = true;
     };
-  }, [projectId, knownBranch, onBranchSwitch]);
+  }, [projectId, knownBranch, onBranchSwitch, selectedFolderId, canUseGit, updateLaunchProject, selectedFolderIsPrimary]);
 
+  const branchRequestKey = `${projectId ?? ""}:${selectedFolderId ?? ""}`;
+  const branchRequestKeyRef = useRef(branchRequestKey);
+  branchRequestKeyRef.current = branchRequestKey;
   const openBranchPicker = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !activeProject) return;
+    if (!window.argmax || !activeProject || !canUseGit) return;
+    const requestKey = branchRequestKey;
+    setFolderPickerOpen(false);
+    setProjectPickerOpen(false);
     setStatus(null);
     try {
       const [list, checkoutList] = await Promise.all([
-        window.argmax.projects.listBranches(activeProject.id),
-        window.argmax.projects.listCheckouts(activeProject.id)
+        (selectedFolderId ? window.argmax.projects.listBranches(activeProject.id, selectedFolderId) : window.argmax.projects.listBranches(activeProject.id)),
+        (selectedFolderId ? window.argmax.projects.listCheckouts(activeProject.id, selectedFolderId) : window.argmax.projects.listCheckouts(activeProject.id))
       ]);
+      if (branchRequestKeyRef.current !== requestKey) return;
       setBranches(list);
       setCheckouts(checkoutList);
       setBranchPickerOpen(true);
     } catch (error) {
+      if (branchRequestKeyRef.current !== requestKey) return;
       setBranchPickerOpen(false);
       showErrorToast(errorMessage(error) || "Could not load branches.");
     }
-  }, [activeProject]);
+  }, [activeProject, canUseGit, selectedFolderId, branchRequestKey]);
 
   // Picking a branch changes nothing on disk. It is held in the launcher and
   // sent with the launch, which decides what to do with it: run in the checkout
@@ -721,12 +747,13 @@ export function LaunchSurface({
       const holder = checkouts.find((candidate) => candidate.branch === branch);
       setPickedCheckout({
         projectId: activeProject.id,
+        projectFolderId: selectedFolderId,
         branch,
         path: holder?.path ?? null,
         isMain: !!holder?.isMain
       });
     },
-    [activeProject, checkouts]
+    [activeProject, checkouts, selectedFolderId]
   );
   // Typing into an open picker filters it through useTypeToFilter. The lists take
   // focus while open, so characters land here instead of in the prompt behind.
@@ -915,7 +942,7 @@ export function LaunchSurface({
             setProjectPickerOpen(true);
           }
         },
-        {
+        ...(canUseGit ? [{
           name: "branch",
           label: "Branch",
           hint: `Start from a branch other than ${shownBranch ?? "the current one"}`,
@@ -934,13 +961,14 @@ export function LaunchSurface({
               : "Run in an isolated git worktree on a new branch",
           icon: FolderGit2,
           run: toggleWorkspace
-        }
+        }] : [])
       );
     }
     return commands;
   }, [
     chatAvailable,
     chatMode,
+    canUseGit,
     closeContextPickers,
     goalEnabled,
     launcherMode,
@@ -967,7 +995,7 @@ export function LaunchSurface({
     input: cloudMode ? "" : prompt,
     setInput: setPrompt,
     inputRef: promptInputRef,
-    source: activeProject && !cloudMode ? { kind: "project", id: activeProject.id } : null,
+    source: activeProject && !cloudMode ? (selectedFolderId ? { kind: "projectFolder", id: selectedFolderId } : { kind: "project", id: activeProject.id }) : null,
     chats: cloudMode ? undefined : chatDirectory
   });
   const chatChips = useMemo(
@@ -1047,7 +1075,7 @@ export function LaunchSurface({
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedPrompt = livePrompt().trim();
-    if ((trimmedPrompt.length === 0 && pendingAttachments.length === 0) || isSubmitting) {
+    if ((!chatMode && !launchFolder.ready) || (trimmedPrompt.length === 0 && pendingAttachments.length === 0) || isSubmitting) {
       return;
     }
     if (!cloudMode && isMcpCommand(trimmedPrompt)) {
@@ -1068,7 +1096,7 @@ export function LaunchSurface({
         return;
       }
       setStatus(null);
-      setCloudDraft({ projectId: project.id, provider: cloudProvider, brief: trimmedPrompt });
+      setCloudDraft({ projectId: project.id, projectFolderId: selectedFolderId, provider: cloudProvider, brief: trimmedPrompt });
       return;
     }
 
@@ -1105,10 +1133,11 @@ export function LaunchSurface({
     const launch: PendingLaunch = {
       prompt: finalPrompt,
       model,
-      workspaceMode,
+      workspaceMode: effectiveWorkspaceMode,
       attachments,
       goalCondition,
-      checkout: checkout ?? undefined
+      checkout: checkout ?? undefined,
+      projectFolderId: selectedFolderId
     };
     setIsSubmitting(true);
     setStatus(null);
@@ -1145,7 +1174,8 @@ export function LaunchSurface({
         launch.goalCondition,
         projectId,
         undefined,
-        launch.checkout
+        launch.checkout,
+        projectId && projectId !== project?.id ? undefined : launch.projectFolderId
       );
       setPrompt("");
       clearAttachments();
@@ -1169,7 +1199,7 @@ export function LaunchSurface({
   const startInBackground = async (): Promise<void> => {
     const sentPrompt = livePrompt();
     const trimmedPrompt = sentPrompt.trim();
-    if (isSubmitting || (trimmedPrompt.length === 0 && pendingAttachments.length === 0)) return;
+    if ((!chatMode && !launchFolder.ready) || isSubmitting || (trimmedPrompt.length === 0 && pendingAttachments.length === 0)) return;
     if (cloudMode) {
       setStatus("Cloud tasks open a review first. Press Enter to review it.");
       return;
@@ -1202,13 +1232,14 @@ export function LaunchSurface({
               finalPrompt,
               model,
               "auto",
-              workspaceMode,
+              effectiveWorkspaceMode,
               attachments,
               goalCondition,
               undefined,
               true,
               // Read now, at send: the person may pick again before this resolves.
-              checkout ?? undefined
+              checkout ?? undefined,
+              selectedFolderId
             );
       showToast({
         kind: "info",
@@ -1281,7 +1312,8 @@ export function LaunchSurface({
               launch.goalCondition,
               fromProject.id,
               undefined,
-              launch.checkout
+              launch.checkout,
+              launch.projectFolderId
             )
           );
         }
@@ -1306,7 +1338,9 @@ export function LaunchSurface({
   const isReviewOpen =
     reviewState.isPanelOpen && (activeProject !== null || reviewState.layout.modes.includes("browser"));
   const contextSummary = project
-    ? `Project and branch: ${project.name}, ${shownBranch}`
+    ? showFolderPicker
+      ? `Project and folder: ${[project.name, launchFolder.folder?.name, canUseGit ? shownBranch : null].filter(Boolean).join(", ")}`
+      : `Project and branch: ${project.name}, ${shownBranch}`
     : "";
   const contextChipLabel = project?.name ?? "";
 
@@ -1434,7 +1468,7 @@ export function LaunchSurface({
           <button
             className="send-button"
             type="submit"
-            disabled={isSubmitting || !hasSendableContent}
+            disabled={isSubmitting || !hasSendableContent || (!chatMode && !launchFolder.ready)}
             title={cloudMode ? "Review cloud task" : "Start agent"}
             aria-label={cloudMode ? "Review cloud task" : "Start agent"}
             aria-description={
@@ -1512,15 +1546,16 @@ export function LaunchSurface({
               role={compactContextOpen ? "dialog" : undefined}
               aria-label={compactContextOpen ? "Project and branch" : undefined}
             >
+            <div className={showFolderPicker ? "launch-project-folder-picker" : undefined}>
             <div className="project-picker-anchor" ref={setProjectAnchor}>
             <button
-              className="composer-context-chip"
+              className={`composer-context-chip${showFolderPicker ? " launch-project-chip" : ""}`}
               type="button"
               aria-label="Switch project"
               aria-haspopup="listbox"
               aria-expanded={projectPickerOpen}
               title={contextChipLabel}
-              onClick={() => setProjectPickerOpen((o) => !o)}
+              onClick={() => { setFolderPickerOpen(false); setBranchPickerOpen(false); setProjectPickerOpen((o) => !o); }}
             >
               <Folder size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{contextChipLabel}</span>
@@ -1596,7 +1631,19 @@ export function LaunchSurface({
               </ul>
             )}
             </div>
-            {project ? (
+            {showFolderPicker ? <>
+              <span className="launch-project-folder-divider" aria-hidden="true">/</span>
+              <LaunchFolderPicker folders={launchFolder.folders} selected={launchFolder.folder} open={folderPickerOpen}
+                onOpenChange={(open) => { setProjectPickerOpen(false); setBranchPickerOpen(false); setFolderPickerOpen(open); }}
+                onPick={(folder) => {
+                  launchFolder.pickFolder(folder);
+                  if (folder.id === selectedFolderId) return;
+                  setPickedCheckout(null);
+                  setProjectPickedByHand(true);
+                }} />
+            </> : null}
+            </div>
+            {activeProject && canUseGit ? (
             <div className="project-picker-anchor" ref={setBranchAnchor}>
             <button
               className="composer-context-chip branch-chip"
@@ -1722,7 +1769,7 @@ export function LaunchSurface({
                 {LAUNCHER_MODE_LABELS[launcherMode]}
               </button>
             )}
-            {chatMode || cloudMode ? null : (
+            {chatMode || cloudMode || !canUseGit ? null : (
               <button
                 type="button"
                 className="composer-context-chip workspace-mode-toggle"
@@ -1740,6 +1787,10 @@ export function LaunchSurface({
             )}
           </div>
         </div>
+        {launchFolder.error && !chatMode ? <div className="launcher-error" role="alert">
+          <span>{launchFolder.error}</span>
+          <button type="button" onClick={launchFolder.retry}>Retry</button>
+        </div> : null}
         {status ? (
           <div className="launcher-error" role="alert">
             <span>{status}</span>
@@ -1783,6 +1834,7 @@ export function LaunchSurface({
         <CloudTaskDialog
           open
           projectId={cloudDraft.projectId}
+          projectFolderId={cloudDraft.projectFolderId}
           provider={cloudDraft.provider}
           initialBrief={cloudDraft.brief}
           onClose={() => setCloudDraft(null)}

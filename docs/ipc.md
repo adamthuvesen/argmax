@@ -35,7 +35,7 @@ The renderer facade validates persisted string enums before exposing narrower cl
 These decoders are shared by command results and dashboard pushes.
 Raw malformed timeline payloads remain available in an explicit diagnostic envelope.
 
-File and review operations use a `{ kind: "workspace" | "project", id }` target resolved in Rust.
+File and review operations use a `{ kind: "workspace" | "project" | "projectFolder", id }` target resolved in Rust.
 
 `session:agent-events` fetches subagent activity for `{ sessionId, parentToolUseId }`. It imports trace events for the parent tool call and returns rows scoped to the subagent lifecycle. Main chat views use `session:events-since` to avoid trace disk scans.
 

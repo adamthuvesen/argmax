@@ -1435,7 +1435,50 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &PROJECT_OVERVIEW_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 75,
+        name: "folder_workspaces",
+        up: FOLDER_WORKSPACES,
+        affected_tables: &["workspaces"],
+        expected_columns: &FOLDER_WORKSPACE_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
 ];
+
+static FOLDER_WORKSPACE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &["project_folder_id", "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at", "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at", "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto", "updated_at"] as &'static [&'static str],
+};
+
+const FOLDER_WORKSPACES: &str = r#"
+CREATE TABLE workspaces_folder (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_label TEXT NOT NULL, branch TEXT NOT NULL, base_ref TEXT NOT NULL,
+  path TEXT NOT NULL, state TEXT NOT NULL,
+  shared_workspace INTEGER NOT NULL DEFAULT 0 CHECK (shared_workspace IN (0, 1)),
+  dirty INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)), changed_files INTEGER NOT NULL DEFAULT 0,
+  last_activity_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+  kind TEXT NOT NULL DEFAULT 'git' CHECK (kind IN ('git', 'scratch', 'popup', 'folder')),
+  task_label_auto INTEGER NOT NULL DEFAULT 1, priority_dismissed_at TEXT, priority_added_at TEXT,
+  icon TEXT, icon_color TEXT, last_viewed_at TEXT, snoozed_until TEXT, checkout_removed_at TEXT,
+  created_branch TEXT, created_branch_oid TEXT,
+  project_folder_id TEXT REFERENCES project_folders(id)
+);
+INSERT INTO workspaces_folder (id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+ dirty, changed_files, last_activity_at, created_at, updated_at, pinned, kind, task_label_auto,
+ priority_dismissed_at, priority_added_at, icon, icon_color, last_viewed_at, snoozed_until,
+ checkout_removed_at, created_branch, created_branch_oid, project_folder_id)
+SELECT id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+ dirty, changed_files, last_activity_at, created_at, updated_at, pinned, kind, task_label_auto,
+ priority_dismissed_at, priority_added_at, icon, icon_color, last_viewed_at, snoozed_until,
+ checkout_removed_at, created_branch, created_branch_oid, project_folder_id FROM workspaces;
+DROP TABLE workspaces;
+ALTER TABLE workspaces_folder RENAME TO workspaces;
+CREATE INDEX idx_workspaces_project_id ON workspaces(project_id);
+CREATE INDEX idx_workspaces_last_activity_id ON workspaces(last_activity_at DESC, id DESC);
+CREATE INDEX idx_workspaces_project_folder ON workspaces(project_folder_id);
+"#;
 
 const PROJECT_OVERVIEWS: &str = "ALTER TABLE projects ADD COLUMN overview_json TEXT; ALTER TABLE projects ADD COLUMN overview_generation_json TEXT;";
 
@@ -3185,6 +3228,61 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
 
     #[test]
+    fn folder_workspace_upgrade_preserves_checkout_rows_and_children() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..74]).unwrap();
+        connection.execute_batch("INSERT INTO projects (id,name,repo_path,current_branch,worktree_location,created_at,updated_at) VALUES ('p','Project','/repo','main','/trees','now','now');
+          INSERT INTO workspaces (id,project_id,task_label,branch,base_ref,path,state,last_activity_at,created_at,updated_at,created_branch,created_branch_oid,kind,snoozed_until) VALUES ('w','p','Chat','topic','main','/tree','complete','now','now','now','topic','abc','git','tomorrow');
+          INSERT INTO sessions (id,workspace_id,provider,model_label,prompt,state,attention,started_at,last_activity_at) VALUES ('s','w','claude','Model','Task','complete','none','now','now');
+          INSERT INTO events (id,session_id,type,message,payload_json,created_at) VALUES ('e','s','user.message','Task','{}','now');").unwrap();
+        run_migrations(&mut connection).unwrap();
+        let preserved: (String, String, String, String) = connection.query_row("SELECT created_branch,created_branch_oid,kind,snoozed_until FROM workspaces WHERE id='w'", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
+        assert_eq!(
+            preserved,
+            (
+                "topic".into(),
+                "abc".into(),
+                "git".into(),
+                "tomorrow".into()
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM events WHERE session_id='s'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+        connection
+            .execute("UPDATE workspaces SET kind='folder' WHERE id='w'", [])
+            .unwrap();
+        assert!(connection
+            .execute("UPDATE workspaces SET kind='unknown' WHERE id='w'", [])
+            .is_err());
+        connection
+            .execute("DELETE FROM workspaces WHERE id='w'", [])
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM sessions", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn pr_watch_health_upgrade_preserves_legacy_cursors_and_outbox() {
         let mut connection = Connection::open_in_memory().expect("database");
         run_migrations_with(&mut connection, &MIGRATIONS[..69]).expect("migrate through v69");
@@ -3666,6 +3764,7 @@ mod tests {
                 (72, compute_migration_checksum(ARC_ARCHIVED_AT)),
                 (73, compute_migration_checksum(PROJECT_FOLDERS)),
                 (74, compute_migration_checksum(PROJECT_OVERVIEWS)),
+                (75, compute_migration_checksum(FOLDER_WORKSPACES)),
             ]
         );
 

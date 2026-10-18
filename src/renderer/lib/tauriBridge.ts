@@ -250,6 +250,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       updateOverview: (input) => invokeCommand("projects:update-overview", input),
       applyOverviewDraft: (input) => invokeCommand("projects:apply-overview-draft", input),
       discardOverviewDraft: (input) => invokeCommand("projects:discard-overview-draft", input),
+      getFolderContext: (input) => invokeCommand("projects:get-folder-context", input),
       getFolders: (input) => invokeCommand("projects:get-folders", input),
       pickDirectory: () => invokeCommand("projects:pick-directory"),
       pickFolder: () => invokeCommand("projects:pick-folder").then(decode.pickedFolder),
@@ -257,14 +258,14 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       remove: (input: RemoveProjectInput) => invokeCommand("projects:remove", input).then(() => undefined),
       updateSettings: (input: UpdateProjectSettingsInput) =>
         invokeCommand("projects:update-settings", input),
-      listBranches: (projectId: string) =>
-        invokeCommand("projects:list-branches", { projectId }),
-      listCheckouts: (projectId: string) =>
-        invokeCommand("projects:list-checkouts", { projectId }),
-      refreshBranch: (projectId: string) =>
-        invokeCommand("projects:refresh-branch", { projectId }),
-      switchBranch: (projectId: string, branch: string) =>
-        invokeCommand("projects:switch-branch", { projectId, branch }),
+      listBranches: (projectId: string, projectFolderId?: string) =>
+        invokeCommand("projects:list-branches", { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
+      listCheckouts: (projectId: string, projectFolderId?: string) =>
+        invokeCommand("projects:list-checkouts", { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
+      refreshBranch: (projectId: string, projectFolderId?: string) =>
+        invokeCommand("projects:refresh-branch", { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
+      switchBranch: (projectId: string, branch: string, projectFolderId?: string) =>
+        invokeCommand("projects:switch-branch", { projectId, branch, ...(projectFolderId ? { projectFolderId } : {}) }),
       setBranchTemplate: (input) => invokeCommand("projects:set-branch-template", input),
       checkPrompt: (input) => invokeCommand("projects:check-prompt", input),
       resolveCheck: (input) => invokeCommand("projects:resolve-check", input).then(() => undefined)

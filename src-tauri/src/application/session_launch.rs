@@ -175,6 +175,7 @@ pub(crate) async fn launch_with_receipt(
         };
         workspaces
             .create_isolated(WorkspacesCreateIsolatedInput {
+                project_folder_id: None,
                 project_id,
                 task_label,
                 base_ref,
@@ -209,6 +210,7 @@ pub(crate) async fn launch_with_receipt(
         })
     } else {
         workspaces.create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id,
             task_label,
         })

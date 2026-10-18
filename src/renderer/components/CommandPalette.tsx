@@ -157,7 +157,7 @@ const GROUP_ICON: Record<PaletteGroup, LucideIcon> = {
 };
 
 interface PaletteFileSource {
-  kind: "workspace" | "project";
+  kind: "workspace" | "project" | "projectFolder";
   id: string;
 }
 

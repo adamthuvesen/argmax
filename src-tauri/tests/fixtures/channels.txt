@@ -15,6 +15,7 @@ dashboard:list
 projects:register
 projects:remove
 projects:update-settings
+projects:get-folder-context
 projects:list-branches
 projects:refresh-branch
 projects:switch-branch

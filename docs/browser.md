@@ -6,6 +6,8 @@ Web links in rendered file previews use the same browser preference as chat link
 
 **Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
 
+**Claude artifacts shortcut.** Settings → Appearance → Layout → Claude artifacts adds an Artifacts item beside Browser. It is off by default. The shortcut opens `https://claude.ai/artifacts` in the Browser page and reuses an existing tab at that URL. Sign in through the page as needed. The shortcut uses the website without syncing artifacts.
+
 **Review panel.** In a chat, Browser is one of the review-panel modes, beside Changes, Files, Agents, and [Terminal](terminal.md). The session actions menu has an "Open browser" item. This is the sidebar next to a transcript, for watching a session browse.
 
 Each chat remembers the panel's visibility and view arrangement across navigation and restarts. Browser can occupy either half of a split review panel. Returning to a chat with Browser visible restores it and claims the native surface again. Focusing the other half leaves Browser visible and keeps its ownership.

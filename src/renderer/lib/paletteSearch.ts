@@ -54,7 +54,7 @@ export interface PaletteItem {
  * files to list, where a picked file opens, and its live state.
  */
 export interface PaletteSurfaceContext {
-  source: { kind: "workspace" | "project"; id: string };
+  source: { kind: "workspace" | "project" | "projectFolder"; id: string };
   onPick: (path: string) => void;
   /**
    * Read when the palette opens. A getter rather than values, so panel state

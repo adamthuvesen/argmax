@@ -1231,8 +1231,11 @@ async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, ev
 
   const projectActions = await browser.$('[aria-label="Actions for Connected project"]');
   await projectActions.waitForExist({ timeout: 10_000 });
-  await browser.execute(() => document.querySelector('[aria-label="Actions for Connected project"]').focus());
-  await projectActions.waitForClickable({ timeout: 5_000 });
+  await projectActions.moveTo();
+  await browser.waitUntil(async () => {
+    await browser.execute(() => document.querySelector('[aria-label="Actions for Connected project"]')?.focus());
+    return projectActions.isClickable();
+  }, { timeout: 10_000, timeoutMsg: "Project actions did not become clickable after hover and focus" });
   await projectActions.click();
   const projectMenu = await browser.$('[role="menu"][aria-label="Connected project actions"]');
   await projectMenu.waitForDisplayed({ timeout: 5_000 });
@@ -1289,6 +1292,56 @@ async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, ev
   const cardText = await browser.execute(() => document.querySelector('.workspace-card')?.textContent ?? "");
   check(assertions, "workspace-card-has-no-manual-git-actions", !/Chat checkout|Shared checkout|Create pull request/.test(cardText));
   await verifyNestedChats({ bridge, browser, sessionId: chat.id, evidenceDir, screenshots, assertions });
+  await verifyLaunchFolder({ bridge, browser, named, primaryRoot, secondaryRoot, invocationLog, evidenceDir, screenshots, assertions });
+}
+
+async function verifyLaunchFolder({ bridge, browser, named, primaryRoot, secondaryRoot, invocationLog, evidenceDir, screenshots, assertions }) {
+  const notes = path.join(path.dirname(primaryRoot), "project-notes");
+  await mkdir(notes, { recursive: true });
+  await writeFile(path.join(notes, "notes.md"), "Plain folder launch evidence\n");
+  const notesRoot = await realpath(notes);
+  await bridge.call("projects:configure", { projectId: named.id, name: named.name,
+    folders: [primaryRoot, secondaryRoot, notesRoot], primaryPath: secondaryRoot });
+  await browser.refresh();
+  for (const [root, plain] of [[primaryRoot, false], [notesRoot, true]]) {
+    const before = (await bridge.call("dashboard:list", {})).sessions.map((session) => session.id);
+    const field = await openLauncher(browser, 10_000);
+    await (await browser.$('[aria-label="Switch project"]')).click();
+    await (await browser.$(`//*[@aria-label="Select project"]//button[.//*[normalize-space(.)="${named.name}"]]`)).click();
+    const choose = await browser.$('[aria-label="Choose working folder"]');
+    await choose.waitForClickable({ timeout: 10_000 });
+    await choose.click();
+    const folders = await bridge.call("projects:get-folders", { projectId: named.id });
+    const folder = folders.find((entry) => entry.rootPath === root);
+    const option = await browser.$(`//*[@aria-label="Work in"]//button[@title="${root}"]`);
+    await option.waitForClickable({ timeout: 10_000 });
+    screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder-menu" : "launcher-folder-menu"));
+    await option.click();
+    await browser.waitUntil(async () => (await choose.getText()).includes(folder.name), { timeout: 10_000 });
+    if (plain) {
+      await browser.waitUntil(async () => !(await (await browser.$('[aria-label="Switch branch"]')).isExisting()), { timeout: 10_000 });
+      check(assertions, "plain-folder-hides-worktree-control", !(await (await browser.$('[aria-label="Worktree"]')).isExisting()));
+    } else {
+      const toggle = await browser.$('[aria-label="Worktree"]');
+      if (await toggle.getAttribute("aria-pressed") === "true") await toggle.click();
+    }
+    const prompt = `${VERIFICATION_SCENARIOS.workspaceSettings.prompt} folder-${plain ? "plain" : "git"}`;
+    await typeIntoComposer(browser, field, prompt);
+    const start = await browser.$('[aria-label="Start agent"]');
+    await start.waitForClickable({ timeout: 10_000 });
+    screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder" : "launcher-selected-folder"));
+    await start.click();
+    const session = await waitForNewCompletedChat(bridge, before, 30_000, "selected folder chat");
+    const workspace = (await bridge.call("dashboard:list", {})).workspaces.find((entry) => entry.id === session.workspaceId);
+    check(assertions, `launcher-${plain ? "plain" : "git"}-folder-root`, workspace.path === root && workspace.projectFolderId === folder.id, workspace);
+    check(assertions, `launcher-${plain ? "plain" : "git"}-provider-cwd`, (await providerCwdFor(invocationLog, prompt)) === root);
+    check(assertions, "launcher-folder-selection-preserves-primary", (await bridge.call("projects:list", {})).find((project) => project.id === named.id).repoPath === secondaryRoot);
+    if (plain) {
+      check(assertions, "plain-folder-workspace-kind", workspace.kind === "folder");
+      const files = await bridge.call("workspace:list-files", { kind: "workspace", id: workspace.id });
+      check(assertions, "plain-folder-files-available", files.some((file) => file.path === "notes.md"));
+    }
+  }
 }
 
 async function verifyProjectOverview({ bridge, browser, projectId, evidenceDir, screenshots, assertions }) {

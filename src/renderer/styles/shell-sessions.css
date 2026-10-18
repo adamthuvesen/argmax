@@ -278,13 +278,66 @@
   padding-right: calc(2 * var(--sidebar-action-size) + 2px + var(--sidebar-action-inset) + var(--space-1));
 }
 
+/* Sub-chats hang off the parent's marker on a tree rail: a branch (├) into
+   every child and an elbow (└) into the last. The rail runs at the marker
+   column's center, so --tree-rail-x is the row's left padding plus half the
+   14px column, and --tree-row-mid is a one-line row's marker center. The
+   parent draws its own stretch from under its marker to its bottom edge,
+   because only it knows where its marker sits. */
 .sidebar-chat-children {
-  margin-left: var(--space-4);
+  --tree-rail-x: calc(var(--space-2_5) + 7px);
+  --tree-row-mid: 17px;
+  padding-left: var(--space-5);
+}
+
+.session-row:has(+ .sidebar-chat-children) .session-link::after,
+.sidebar-chat-child::before,
+.sidebar-chat-child:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border: 0 solid var(--line-strong);
+}
+
+.session-row:has(+ .sidebar-chat-children) .session-link::after {
+  left: calc(var(--space-2_5) + 7px);
+  top: 26px;
+  bottom: 0;
+  border-left-width: 1px;
+}
+
+.session-row:has(+ .sidebar-chat-children) .session-link:not(.session-link-stacked)::after {
+  top: 25px;
 }
 
 .sidebar-chat-child {
   position: relative;
   min-width: 0;
+}
+
+.sidebar-chat-child::before {
+  left: calc(var(--tree-rail-x) - var(--space-5));
+  top: 0;
+  width: 11px;
+  height: var(--tree-row-mid);
+  border-left-width: 1px;
+  border-bottom-width: 1px;
+  border-bottom-left-radius: 6px;
+}
+
+.sidebar-chat-child:not(:last-child)::before {
+  height: auto;
+  bottom: 0;
+  border-bottom-width: 0;
+  border-radius: 0;
+}
+
+.sidebar-chat-child:not(:last-child)::after {
+  left: calc(var(--tree-rail-x) - var(--space-5));
+  top: var(--tree-row-mid);
+  width: 11px;
+  border-top-width: 1px;
 }
 
 

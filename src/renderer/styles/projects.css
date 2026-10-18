@@ -12,7 +12,7 @@
   width: min(560px, 100%);
   max-height: calc(100vh - 48px);
   overflow-y: auto;
-  padding: 24px;
+  padding: var(--space-6) var(--space-7) var(--space-6);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
@@ -25,56 +25,146 @@
 .project-folders-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2_5);
 }
 
-.project-dialog-header { justify-content: space-between; margin-bottom: 24px; }
-.project-dialog-header h2 { margin: 0; font-size: var(--text-xl); font-weight: var(--weight-medium); }
-.project-folders-form { display: grid; gap: 20px; min-width: 0; }
-.project-folders-form .settings-field { padding: 0; border: 0; }
-.project-folders-form .project-name-input { font-family: var(--font-ui); }
-.project-folders-form .settings-field-label { font-size: var(--text-xs); color: var(--muted-strong); }
-.project-folders-intro { display: grid; gap: 4px; }
+.project-dialog-header { justify-content: space-between; margin: 0 calc(-1 * var(--space-1_5)) var(--space-5) 0; }
+.project-dialog-header h2 { margin: 0; font-size: var(--text-xl); font-weight: var(--weight-medium); letter-spacing: -0.01em; }
+
+/* One label voice for the whole form: "Project name" and "Folders" are the
+   same kind of thing, so they share the settings field label. */
+.project-folders-form { display: grid; gap: var(--space-6); min-width: 0; }
+.project-folders-form .settings-field { gap: var(--space-2); padding: 0; border: 0; }
+.project-folders-form .project-name-input {
+  padding: 9px 12px;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+}
+.project-folders-form .project-name-input:focus {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.project-folders-form .settings-button {
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+}
+
+.project-folders-intro { display: grid; gap: var(--space-1); }
 .project-folders-heading { justify-content: space-between; }
-.project-folders-heading h3 { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-medium); }
-.project-folders-heading .settings-button { display: inline-flex; align-items: center; gap: 6px; }
-.project-folders-help { margin: 0; padding: 0; font-size: var(--text-xs); }
+.project-folders-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.002em;
+}
+.project-folders-help { margin: 0; padding: 0; font-size: var(--text-xs-plus); line-height: 1.5; }
+
 .project-folders-empty {
   display: grid;
   justify-items: center;
-  gap: 10px;
-  padding: 28px 20px;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-5);
   border: 1px dashed var(--line-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   color: var(--muted);
   text-align: center;
 }
-.project-folders-empty p { margin: 0; max-width: 320px; font-size: var(--text-sm); }
-.project-folders-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
-.project-folders-list > li { padding: 12px 0; border-bottom: 1px solid var(--line); }
-.project-folder-row { align-items: flex-start; }
-.project-folder-row > svg { flex-shrink: 0; color: var(--muted); margin-top: 5px; }
-.project-folder-path { display: grid; gap: 0; flex: 1; min-width: 0; }
-.project-folder-path strong { font-size: var(--text-sm-plus); line-height: 26px; font-weight: var(--weight-medium); overflow-wrap: anywhere; }
-.project-folder-path span { font-size: var(--text-xs); line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
-.project-folder-primary-choice { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; flex-shrink: 0; color: var(--muted-strong); font-size: var(--text-xs); cursor: pointer; }
+.project-folders-empty p { margin: 0; max-width: 320px; font-size: var(--text-sm); line-height: 1.55; }
+
+/* Folders sit in one bordered list, each row led by the same 32px glyph tile
+   the panel launcher uses. The primary repository's tile takes the accent, so
+   the row chats start in is findable without reading the radio. */
+.project-folders-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+.project-folders-list > li { padding: var(--space-3) var(--space-3) var(--space-3) var(--space-3); }
+.project-folders-list > li + li { border-top: 1px solid var(--line); }
+
+.project-folder-row { gap: var(--space-3); }
+.project-folder-glyph {
+  display: grid;
+  flex: 0 0 32px;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-lg);
+  background: var(--overlay-med);
+  color: var(--muted-strong);
+}
+.project-folders-list > li[data-primary="true"] .project-folder-glyph {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.project-folder-path { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.project-folder-path strong {
+  overflow: hidden;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-folder-path span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs-plus);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-folder-primary-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1_5);
+  flex-shrink: 0;
+  min-height: 26px;
+  padding: 0 var(--space-2_5) 0 var(--space-2);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  font-size: var(--text-xs-plus);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+.project-folder-primary-choice:hover { background: var(--overlay-med); color: var(--text); }
 .project-folder-primary-choice input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.project-folder-primary-choice:has(input:checked) { color: var(--text); }
+.project-folder-primary-choice:has(input:checked) { background: var(--accent-soft); color: var(--accent-deep); }
 .project-folder-primary-choice:has(input:disabled) { opacity: 0.5; cursor: default; }
-.project-folders-actions { justify-content: flex-end; padding-top: 8px; }
+.project-folder-row > .small-icon { width: 28px; height: 28px; border-radius: var(--radius-md); color: var(--muted); }
+.project-folder-row > .small-icon:hover:not(:disabled) { color: var(--text); background: var(--overlay-med); }
+
+.project-folders-actions { justify-content: flex-end; gap: var(--space-2); }
 .project-folders-actions > [role="status"] { margin-right: auto; }
 .project-folders-actions .project-folders-submit { background: var(--ink); color: var(--bubble-on-ink); border-color: var(--ink); }
-.project-folder-context { padding: 8px 34px 0 26px; display: grid; gap: 6px; }
-.project-folder-context .settings-note { margin: 0; padding: 0; }
-.project-folder-context-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
-.project-folder-context-toggle { display: inline-flex; align-items: center; gap: 8px; }
-.project-folder-context-actions .settings-note,
-.project-folder-context-actions .settings-button { font-size: var(--text-2xs-plus); }
+.project-folders-actions .project-folders-submit:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--ink) 86%, var(--panel));
+  color: var(--bubble-on-ink);
+  border-color: transparent;
+}
+.project-folders-actions .project-folders-submit:disabled { opacity: 0.35; }
+
+/* Context controls hang under the folder's name, past the glyph tile. */
+.project-folder-context { display: grid; gap: var(--space-1_5); padding: var(--space-2_5) 0 0 calc(32px + var(--space-3)); }
+.project-folder-context .settings-note { margin: 0; padding: 0; line-height: 1.5; }
+.project-folder-context-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.project-folder-context-toggle { display: inline-flex; align-items: center; gap: var(--space-2); }
+.project-folder-context-actions .settings-note { font-size: var(--text-xs-plus); color: var(--text-soft); }
+.project-folder-context-actions .settings-button { min-height: 26px; font-size: var(--text-xs-plus); }
 
 @media (max-width: 480px) {
   .project-dialog { padding: 18px; }
   .project-folder-row { flex-wrap: wrap; }
-  .project-folder-path { flex-basis: calc(100% - 30px); }
-  .project-folder-primary-choice { margin-left: 26px; }
-  .project-folder-context { padding-right: 0; }
+  .project-folder-path { flex-basis: calc(100% - 44px); }
+  .project-folder-primary-choice { margin-left: 44px; }
+  .project-folder-context { padding-left: 0; }
 }
+
+.settings-card > .project-folders-form { padding: var(--space-4) var(--space-4) var(--space-3); }

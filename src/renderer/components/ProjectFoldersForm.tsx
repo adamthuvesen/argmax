@@ -106,9 +106,9 @@ export function ProjectFoldersForm({
             const folderName = path.replace(/\/+$/, "").split("/").pop() || path;
             const primary = path === primaryPath;
             return (
-              <li key={path}>
+              <li key={path} data-primary={primary ? "true" : undefined}>
                 <div className="project-folder-row">
-                  <Folder size={16} aria-hidden="true" />
+                  <span className="project-folder-glyph" aria-hidden="true"><Folder size={16} /></span>
                   <div className="project-folder-path">
                     <strong>{folderName}</strong>
                     <span title={path}>{path}</span>

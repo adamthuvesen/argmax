@@ -585,7 +585,6 @@ export function MobileApp(): JSX.Element {
   // The review screen's Files drill-down (tree → file) is a screen of its own
   // for a back gesture, so its open state lives here rather than inside it.
   const [reviewFilePreviewOpen, setReviewFilePreviewOpen] = useState(false);
-  const [reviewScopeSheetOpen, setReviewScopeSheetOpen] = useState(false);
   // Dismisser from SessionPane while the delegated-work overlay is up. Stored
   // as a function value (`() => dismiss`), never as the updater itself.
   const [dismissAgentsOverlay, setDismissAgentsOverlay] = useState<(() => void) | null>(null);
@@ -593,7 +592,6 @@ export function MobileApp(): JSX.Element {
   const closeReview = useCallback(() => {
     setReviewOpen(false);
     setReviewFilePreviewOpen(false);
-    setReviewScopeSheetOpen(false);
   }, []);
 
   // The web header's Changes button. In the shell the review surface is
@@ -828,7 +826,7 @@ export function MobileApp(): JSX.Element {
   // back on the list screen leaves the app with the sheet still up, and back
   // on the New session screen tears the screen down under an open picker.
   const sheetOpen =
-    actionsRow !== null || listMenuOpen || newSessionSheet !== null || reviewScopeSheetOpen;
+    actionsRow !== null || listMenuOpen || newSessionSheet !== null;
 
   const filePreviewShown = reviewShown && reviewFilePreviewOpen;
 
@@ -868,10 +866,6 @@ export function MobileApp(): JSX.Element {
       setNewSessionSheet(null);
       return;
     }
-    if (reviewScopeSheetOpen) {
-      setReviewScopeSheetOpen(false);
-      return;
-    }
     if (appearanceOpen) {
       setAppearanceOpen(false);
       return;
@@ -904,7 +898,6 @@ export function MobileApp(): JSX.Element {
     listMenuOpen,
     newSessionOpen,
     newSessionSheet,
-    reviewScopeSheetOpen,
     reviewShown
   ]);
   // Native owns the navigation stack in embed mode, so the page must not
@@ -1424,8 +1417,6 @@ export function MobileApp(): JSX.Element {
                 initialFilePath={reviewFilePath}
                 filePreviewOpen={reviewFilePreviewOpen}
                 onFilePreviewOpenChange={setReviewFilePreviewOpen}
-                scopeSheetOpen={reviewScopeSheetOpen}
-                onScopeSheetOpenChange={setReviewScopeSheetOpen}
                 onClose={closeReview}
               />
             </Suspense>

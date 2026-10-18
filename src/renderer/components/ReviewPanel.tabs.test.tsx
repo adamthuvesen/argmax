@@ -55,6 +55,23 @@ function SideChatTabsHarness({ context }: { context: ReviewSideChatContext }) {
 afterEach(() => { cleanup(); resetBrowserTabsForTests(); });
 
 describe("shared review tabs", () => {
+  it("preserves the browser surface when expanding and restoring", () => {
+    const browser = createBrowserTab("chat", "https://example.com");
+    const tabs = controller([{ id: "browser", kind: "browser", browserTabId: browser.id }], ["browser"]);
+    const review = reviewStub({ tabs, browserScopeId: "chat", mode: "browser", layout: { modes: ["browser"], activeIndex: 0, ratio: .5 } });
+    function Harness() {
+      const [expanded, setExpanded] = useState(false);
+      return <ReviewPanel review={review} isExpanded={expanded} onToggleExpanded={() => setExpanded(!expanded)} />;
+    }
+    render(<Harness />);
+    const surface = screen.getByRole("region", { name: `Browser surface ${browser.id}` });
+    fireEvent.click(screen.getByRole("button", { name: "Expand panel" }));
+    expect(screen.getByRole("button", { name: "Restore panel size" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: `Browser surface ${browser.id}` })).toBe(surface);
+    fireEvent.click(screen.getByRole("button", { name: "Restore panel size" }));
+    expect(screen.getByRole("region", { name: `Browser surface ${browser.id}` })).toBe(surface);
+  });
+
   it("renders two browser resources from the same scope with one shared strip", () => {
     const first = createBrowserTab("chat", "https://example.com/one");
     const second = createBrowserTab("chat", "https://example.com/two");

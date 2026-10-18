@@ -571,65 +571,6 @@
   color: var(--rose);
 }
 
-/* Changes-scope chip (Changes view only): the current scope plus a caret,
- * opening a small list of the scopes this source can offer. Mirrors the
- * composer's project chip rather than the Auto / Plan toggle, because the
- * choice is now four-way and has no "off" state to sit quiet in. */
-.review-scope-anchor {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.review-comparison-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  border: 0;
-  background: transparent;
-  font: inherit;
-  font-size: var(--text-xs);
-  line-height: 1.2;
-  letter-spacing: 0;
-  padding: 4px 9px;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease),
-    background var(--duration-fast) var(--ease);
-}
-
-.review-comparison-toggle:hover {
-  color: var(--muted-strong);
-}
-
-.review-comparison-toggle:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--line-strong);
-}
-
-.review-comparison-toggle[aria-expanded="true"] {
-  color: var(--text);
-  background: var(--panel-soft);
-}
-
-/* Opens downward and right-aligned: the base .project-picker-popover is a
-   composer menu that opens UPWARD off `bottom`, and the chip here sits at the
-   top trailing edge of the panel. `bottom` must be reset explicitly. Leaving
-   the inherited `bottom: calc(100% + 6px)` alongside `top` sets both edges of
-   an auto-height absolute box, which resolves to a collapsed empty strip. */
-.review-scope-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  bottom: auto;
-  right: 0;
-  left: auto;
-  z-index: 30;
-  min-width: 180px;
-}
-
 /* Browser view: another of the panel's modes. Chrome for the native browser child
    webview, which is a sibling native view glued onto `.browser-panel-surface`
    — that surface is a spacer reserving layout room and reporting its rect
@@ -1262,4 +1203,18 @@
 
 .app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-tabs-header {
   padding-top: 46px;
+}
+
+.review-body-changes .review-list-col {
+  border-right-color: transparent;
+}
+
+.review-changes-placeholder {
+  margin: auto;
+  padding: var(--space-6);
+  max-width: 280px;
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
 }

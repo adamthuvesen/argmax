@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type JSX } from "react";
-import { ChevronsUpDown } from "lucide-react";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import { ChangeCount } from "../components/ChangeCount.js";
 import { DiffBlocks } from "../components/DiffBlocks.js";
@@ -7,13 +6,11 @@ import { FilePreview } from "../components/FilePreview.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { WorkspaceTree } from "../components/WorkspaceTree.js";
 import {
-  REVIEW_SCOPE_LABELS,
   useReviewState,
   type ReviewSource
 } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { normalizeFileChipPath } from "../lib/fileChipPath.js";
-import { BottomSheet, SheetOption } from "./BottomSheet.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
 
@@ -32,8 +29,6 @@ export function MobileReviewScreen({
   initialFilePath = null,
   filePreviewOpen,
   onFilePreviewOpenChange,
-  scopeSheetOpen,
-  onScopeSheetOpenChange,
   onClose
 }: {
   workspace: WorkspaceSummary;
@@ -44,10 +39,6 @@ export function MobileReviewScreen({
    *  gesture pops the preview instead of the whole review screen. */
   filePreviewOpen: boolean;
   onFilePreviewOpenChange: (open: boolean) => void;
-  /** Changes-scope picker. Owned by MobileApp so a back gesture dismisses
-   *  the sheet instead of the review screen. */
-  scopeSheetOpen: boolean;
-  onScopeSheetOpenChange: (open: boolean) => void;
   onClose: () => void;
 }): JSX.Element {
   const source = useMemo<ReviewSource>(() => ({ kind: "workspace", workspace }), [workspace]);
@@ -56,7 +47,7 @@ export function MobileReviewScreen({
   // external-change polling stays off the WS bridge.
   // The data hooks only load while the panel is "open"; on this screen the
   // panel is the screen, so it starts open and stays open.
-  const review = useReviewState(source, null, { editable: false, initiallyOpen: true });
+  const review = useReviewState(source, { editable: false, initiallyOpen: true });
 
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
 
@@ -129,20 +120,6 @@ export function MobileReviewScreen({
 
       {isChanges ? (
         <div className="mobile-review-meta">
-          {/* A sheet, like every other picker on the phone. A native select
-              anchors its menu to this row, which is what BottomSheet exists to
-              avoid — and it was the one control here that did not. */}
-          <button
-            type="button"
-            className="mobile-review-scope"
-            aria-label="Changes shown"
-            aria-haspopup="dialog"
-            aria-expanded={scopeSheetOpen}
-            onClick={() => onScopeSheetOpenChange(true)}
-          >
-            {REVIEW_SCOPE_LABELS[review.changesScope]}
-            <ChevronsUpDown size={13} aria-hidden="true" />
-          </button>
           {review.files.length > 0 ? (
             <span className="mobile-review-totals">
               {review.files.length} file{review.files.length === 1 ? "" : "s"} · +{totals.additions}{" "}
@@ -150,24 +127,6 @@ export function MobileReviewScreen({
             </span>
           ) : null}
         </div>
-      ) : null}
-
-      {scopeSheetOpen ? (
-        <BottomSheet label="Changes shown" onClose={() => onScopeSheetOpenChange(false)}>
-          <div className="mobile-sheet-group">
-            {review.availableScopes.map((scope) => (
-              <SheetOption
-                key={scope}
-                label={REVIEW_SCOPE_LABELS[scope]}
-                selected={scope === review.changesScope}
-                onSelect={() => {
-                  review.setChangesScope(scope);
-                  onScopeSheetOpenChange(false);
-                }}
-              />
-            ))}
-          </div>
-        </BottomSheet>
       ) : null}
 
       <div className="mobile-review-body">

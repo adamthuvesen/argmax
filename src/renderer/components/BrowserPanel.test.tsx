@@ -137,6 +137,7 @@ function activeTabId(scopeId = BROWSER_PAGE_OWNER_ID): string {
 }
 
 beforeEach(() => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 600));
   stateListener = null;
   newTabListener = null;
   pageCommandListener = null;
@@ -157,12 +158,39 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   delete (window as { argmax?: ArgmaxApi }).argmax;
   window.localStorage.removeItem(BROWSER_HISTORY_KEY);
   window.localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
 });
 
 describe("BrowserPanel", () => {
+  it("hides a native surface when its tiled pane has no layout bounds", async () => {
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);
+    await act(async () => { await Promise.resolve(); });
+    bounds.mockReturnValue(new DOMRect(0, 0, 0, 0));
+    fireEvent.resize(window);
+    await waitFor(() => expect(browserStub.setBounds).toHaveBeenLastCalledWith({
+      tabId: activeTabId(), bounds: { x: 0, y: 0, width: 1, height: 1 }, visible: false
+    }));
+    bounds.mockReturnValue(new DOMRect(0, 0, 800, 600));
+    fireEvent.resize(window);
+    await waitFor(() => expect(browserStub.setBounds).toHaveBeenLastCalledWith({
+      tabId: activeTabId(), bounds: { x: 0, y: 0, width: 800, height: 600 }, visible: true
+    }));
+  });
+
+  it("closes only the owning panel for Escape from a native page", () => {
+    const onClose = vi.fn();
+    render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={onClose} />);
+    const listeners = browserStub.onPageCommand.mock.calls.map(([listener]) => listener);
+    act(() => { for (const listener of listeners) listener({ tabId: "other-tab", command: "close-panel" }); });
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => { for (const listener of listeners) listener({ tabId: activeTabId(), command: "close-panel" }); });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("toggles blocking for the current site and reloads that tab", async () => {
     browserStub.setSiteBlocking.mockResolvedValueOnce({ supported: true, disabledHosts: ["github.com"] });
     render(<BrowserPanel scopeId={BROWSER_PAGE_OWNER_ID} url="https://github.com" onClose={() => undefined} />);

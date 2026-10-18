@@ -1,12 +1,15 @@
 import {
   Bot,
   ChevronDown,
+  ChevronRight,
   Copy,
   Folder,
   FolderOpen,
   Globe,
   Shapes,
   PanelRightClose,
+  Maximize2,
+  Minimize2,
   X
 } from "lucide-react";
 import {
@@ -33,12 +36,9 @@ import { createPortal } from "react-dom";
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
-import { PickerLead } from "./PickerLead.js";
 import { ChangesIcon, TerminalIcon } from "./ReviewModeIcons.js";
 import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
 import {
-  REVIEW_SCOPE_LABELS,
-  type ReviewChangesScope,
   type ReviewPanelMode,
   type ReviewState,
   type WorkspaceFilesState
@@ -89,7 +89,6 @@ import { importChunk } from "../lib/importChunk.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { closeTerminalTab, getWorkspaceTerminalState, subscribeTerminalTabs } from "../lib/terminalTabs.js";
-import { showErrorToast } from "../state/toast.js";
 import { ProjectFolderChangesDiff, ProjectFolderChangesList } from "./ProjectFolderChanges.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 
@@ -358,84 +357,6 @@ function FileTabStrip({ state, hideTabs = false }: { state: WorkspaceFilesState;
   );
 }
 
-function scopeDescription(scope: ReviewChangesScope, baseLabel: string | null): string {
-  const base = baseLabel ?? "the base branch";
-  switch (scope) {
-    case "branch":
-      return `Everything different from ${base}: committed, uncommitted, and untracked`;
-    case "committed":
-      return `Only what has been committed on this branch since ${base}`;
-    case "uncommitted":
-      return "Only the working tree: uncommitted, vs HEAD";
-    case "lastTurn":
-      return "Only the files the agent wrote in its most recent turn";
-  }
-}
-
-/**
- * What the diff on screen is taken against, in the few words a diff note
- * carries to the agent. A note's line number belongs to this comparison, not
- * necessarily to the file on disk.
- */
-function diffBaseLabel(scope: ReviewChangesScope, baseLabel: string | null): string {
-  const base = baseLabel ?? "the base branch";
-  switch (scope) {
-    case "branch":
-    case "lastTurn":
-      return `the whole branch vs ${base}`;
-    case "committed":
-      return `commits on this branch vs ${base}`;
-    case "uncommitted":
-      return "working tree vs HEAD";
-  }
-}
-
-/** Which slice of the branch's work the Changes list covers. */
-function ReviewScopePicker({ review }: { review: ReviewState }): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const close = useCallback(() => setOpen(false), []);
-  useDismissOnOutsideOrEscape(anchorRef, open, close);
-
-  return (
-    <div className="review-scope-anchor" ref={anchorRef}>
-      <button
-        type="button"
-        className="review-comparison-toggle"
-        aria-label={`Changes shown: ${REVIEW_SCOPE_LABELS[review.changesScope]}`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={scopeDescription(review.changesScope, review.comparisonBaseLabel)}
-        onClick={() => setOpen((current) => !current)}
-      >
-        {REVIEW_SCOPE_LABELS[review.changesScope]}
-        <ChevronDown size={11} aria-hidden="true" />
-      </button>
-      {open ? (
-        <ul className="project-picker-popover review-scope-popover" role="listbox" aria-label="Changes shown">
-          {review.availableScopes.map((scope) => (
-            <li key={scope} role="option" aria-selected={scope === review.changesScope}>
-              <button
-                type="button"
-                className="project-picker-item"
-                aria-pressed={scope === review.changesScope}
-                title={scopeDescription(scope, review.comparisonBaseLabel)}
-                onClick={() => {
-                  review.setChangesScope(scope);
-                  close();
-                }}
-              >
-                <PickerLead selected={scope === review.changesScope} />
-                {REVIEW_SCOPE_LABELS[scope]}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
 const LEFT_COL_WIDTH_KEY = "argmax.reviewPanel.leftColumnWidth";
 const LEFT_COL_MIN = 200;
 const LEFT_COL_MAX = 600;
@@ -455,7 +376,7 @@ const PANEL_WIDE_BREAKPOINT = 640;
 function maxLeftColumnWidth(panelWidth: number): number {
   return Math.max(
     LEFT_COL_MIN,
-    Math.min(LEFT_COL_MAX, panelWidth - PREVIEW_COL_MIN - REVIEW_RESIZE_HANDLE_WIDTH)
+    Math.min(LEFT_COL_MAX, panelWidth * 0.5, panelWidth - PREVIEW_COL_MIN - REVIEW_RESIZE_HANDLE_WIDTH)
   );
 }
 
@@ -531,6 +452,8 @@ function ReviewPanelPane({
   paneSize?: string;
   tab?: ReviewTab;
   tabLabel?: string;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
   review: ReviewState;
 }): JSX.Element {
   // The Browser tab needs the desktop bridge; the Agents tab only exists with
@@ -580,31 +503,19 @@ function ReviewPanelPane({
   }, [agentEvents, agentMultitasks, agentParentState]);
   // The diff view knows the line; only the panel knows which comparison it was
   // taken against. Memoized because `DiffBlocks` is memoized on its props.
-  const changesScope = review.changesScope;
   const comparisonBaseLabel = review.comparisonBaseLabel;
   const addDiffNote = useCallback(
     (anchor: DiffNoteAnchor): void => {
-      onAddDiffNote?.({ ...anchor, base: diffBaseLabel(changesScope, comparisonBaseLabel) });
+      onAddDiffNote?.({ ...anchor, base: `the whole branch vs ${comparisonBaseLabel ?? "the base branch"}` });
     },
-    [onAddDiffNote, changesScope, comparisonBaseLabel]
+    [onAddDiffNote, comparisonBaseLabel]
   );
   const [leftColumnWidth, setLeftColumnWidth] = useState<number | null>(() => readStoredLeftColumnWidth());
   const [panelWidth, setPanelWidth] = useState(0);
   const [cursor, setCursor] = useState<EditorCursor | null>(null);
   const [collapsedDiffPath, setCollapsedDiffPath] = useState<string | null>(null);
-  const [reviewActionPending, setReviewActionPending] = useState(false);
   const [copyPathState, copyPath] = useCopyToClipboard();
-  const reviewActionBusy = useRef(false);
   const panelRef = useRef<HTMLElement>(null);
-  const runReviewAction = (action: () => Promise<void>): void => {
-    if (reviewActionBusy.current) return;
-    reviewActionBusy.current = true;
-    setReviewActionPending(true);
-    void action().catch((error: unknown) => showErrorToast(error instanceof Error ? error.message : "Could not run that review action.")).finally(() => {
-      reviewActionBusy.current = false;
-      setReviewActionPending(false);
-    });
-  };
 
   // One measurement feeds three things: the auto tree width, the wide-toolbar
   // switch, and the clamp that keeps a stored width off the preview column.
@@ -807,7 +718,7 @@ function ReviewPanelPane({
       onFocusCapture={() => review.focusPane(paneIndex)}
       onPointerDownCapture={() => review.focusPane(paneIndex)}
     >
-      {(!review.tabs || isChanges || isSplit) ? <div className="review-toolbar" data-resource-tabs={Boolean(review.tabs)}>
+      {(!review.tabs || isSplit) ? <div className="review-toolbar" data-resource-tabs={Boolean(review.tabs)}>
         <div className="review-toolbar-titles">
           {review.tabs ? (isChanges ? null : <span className="review-pane-label">{tabLabel ?? sourceLabel}</span>) : <ReviewModeTabs
             activeMode={mode}
@@ -827,7 +738,6 @@ function ReviewPanelPane({
           />}
         </div>
         <div className="review-toolbar-actions">
-          {isChanges && !projectFolderChanges?.selection ? <ReviewScopePicker review={review} /> : null}
           {(!review.tabs || isSplit) ? <button
             className="small-icon"
             type="button"
@@ -964,32 +874,28 @@ function ReviewPanelPane({
               {isChanges ? (
                 <>
                 {projectFolderChanges && projectFolderChanges.groups.length > 0 ? (
-                  <div className="project-folder-changes-label" title={review.workspaceFiles.rootPath ?? undefined}>{sourceLabel}</div>
-                ) : null}
-                <ChangesTree
+                  <details className="project-folder-change-group project-folder-change-working" open>
+                    <summary title={review.workspaceFiles.rootPath ?? undefined}>
+                      <ChevronRight className="project-folder-change-chevron" size={12} aria-hidden="true" />
+                      <Folder size={14} aria-hidden="true" />
+                      <span className="project-folder-change-name">{sourceLabel}</span>
+                      <span className="project-folder-change-total">{review.filesState === "loading" ? "Loading…" : review.filesState === "error" ? "Unavailable" : review.files.length === 0 ? "No changes" : `${review.files.length} ${review.files.length === 1 ? "file" : "files"}`}</span>
+                    </summary>
+                    {review.files.length > 0 ? <ChangesTree
+                      files={review.files}
+                      selectedPath={projectFolderChanges.selection ? null : review.selectedFilePath}
+                      onSelectFile={toggleChangedFile}
+                      onRefresh={() => { review.refreshChanges(); projectFolderChanges.refresh(); }}
+                      onOpenInFiles={review.openInFilesView}
+                    /> : null}
+                  </details>
+                ) : <ChangesTree
                   files={review.files}
                   selectedPath={projectFolderChanges?.selection ? null : review.selectedFilePath}
-                  actionsPending={reviewActionPending}
                   onSelectFile={toggleChangedFile}
                   onRefresh={() => { review.refreshChanges(); projectFolderChanges?.refresh(); }}
                   onOpenInFiles={review.openInFilesView}
-                  onToggleStaged={
-                    !projectFolderChanges?.selection && review.changesScope === "uncommitted" && review.diff?.revision
-                      ? (file) => runReviewAction(() =>
-                          review.updateFileIndex(file.path, review.diff!.revision, !file.staged)
-                        )
-                      : undefined
-                  }
-                  onRevert={
-                    !projectFolderChanges?.selection && review.changesScope === "uncommitted" &&
-                    review.diff?.revision &&
-                    review.terminalWorkspaceId
-                      ? (file) => runReviewAction(() =>
-                          review.revertFile(file.path, review.diff!.revision)
-                        )
-                      : undefined
-                  }
-                />
+                />}
                 {projectFolderChanges ? <ProjectFolderChangesList state={projectFolderChanges} /> : null}
                 </>
               ) : (
@@ -1011,9 +917,8 @@ function ReviewPanelPane({
             projectFolderChanges?.selection ? <ProjectFolderChangesDiff state={projectFolderChanges} /> : <>
               {review.filesState === "error" && <p className="review-empty review-error" role="alert">{review.filesError ?? "Couldn't load changed files."}</p>}
               {review.filesState === "ready" && review.files.length === 0 ? (
-                <p className="review-empty">
-                  <span className="review-empty-mark" aria-hidden="true">∅</span>
-                  <span>{projectFolderChanges && projectFolderChanges.groups.length > 0 ? "No changes in chat checkout." : "No changes."}</span>
+                <p className="review-changes-placeholder">
+                  {projectFolderChanges?.groups.some((group) => group.files.length > 0) ? "Select a file to view changes." : "No changes on this branch."}
                 </p>
               ) : null}
               {selectedFile ? (
@@ -1084,9 +989,6 @@ function ReviewPanelPane({
                           <span>No textual diff.</span>
                         </p>
                       ) : null}
-                      {review.changesScope === "uncommitted" && selectedFile.staged && selectedFile.status.length > 1 ? (
-                        <p className="review-empty">This file has staged and unstaged changes. Use file actions to change its staging.</p>
-                      ) : null}
                       {review.diffState === "ready" && diffBlocks.length > 0 ? (
                         <DiffBlocks
                           blocks={diffBlocks}
@@ -1094,13 +996,7 @@ function ReviewPanelPane({
                           presentation="review"
                           onAddComment={onAddDiffNote ? addDiffNote : undefined}
                           onExpandContext={review.expandDiffContext}
-                          onIndexHunk={review.changesScope === "uncommitted" && review.diff?.revision && selectedFile.status !== "??" && !selectedFile.oldPath && !(selectedFile.staged && selectedFile.status.length > 1)
-                            ? (hunkIndex) => runReviewAction(() => review.updateHunkIndex(selectedFile.path, review.diff!.revision, hunkIndex, !selectedFile.staged))
-                            : undefined}
-                          onRevertHunk={review.changesScope === "uncommitted" && review.diff?.revision && review.terminalWorkspaceId && selectedFile.status !== "??" && !selectedFile.oldPath
-                            ? (hunkIndex) => runReviewAction(() => review.revertHunk(selectedFile.path, review.diff!.revision, hunkIndex))
-                            : undefined}
-                          indexHunkLabel={selectedFile.staged ? "Unstage" : "Stage"}
+
                         />
                       ) : null}
                     </div>
@@ -1158,6 +1054,8 @@ export function ReviewPanel({
   isFocused = true,
   onAddDiffNote,
   onResizePanelMouseDown,
+  isExpanded = false,
+  onToggleExpanded,
   review
 }: {
   agents?: AgentsPanelContext;
@@ -1165,6 +1063,8 @@ export function ReviewPanel({
   isFocused?: boolean;
   onAddDiffNote?: (input: DiffNoteInput) => void;
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
   review: ReviewState;
 }): JSX.Element {
   const artifactsEnabled = useContext(ClaudeArtifactsContext);
@@ -1370,6 +1270,16 @@ export function ReviewPanel({
             hasTerminal={Boolean(review.terminalWorkspaceId)}
             artifactsEnabled={artifactsEnabled}
           />
+          {onToggleExpanded ? <button
+            type="button"
+            className="small-icon review-tabs-hide"
+            aria-label={isExpanded ? "Restore panel size" : "Expand panel"}
+            aria-pressed={isExpanded}
+            title={isExpanded ? "Restore panel size" : "Expand panel"}
+            onClick={onToggleExpanded}
+          >
+            {isExpanded ? <Minimize2 size={16} strokeWidth={1.75} /> : <Maximize2 size={16} strokeWidth={1.75} />}
+          </button> : null}
           <button type="button" className="small-icon review-tabs-hide" aria-label="Close review" title="Hide panel (⌘B)" onClick={review.closePanel}>
             <PanelRightClose size={16} strokeWidth={1.75} />
           </button>

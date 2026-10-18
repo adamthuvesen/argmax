@@ -1215,23 +1215,6 @@ html:has(.mobile-shell[data-embed]) body,
   padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
-.mobile-review-scope {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1_5);
-  appearance: none;
-  border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-  font-size: var(--text-sm);
-  padding: var(--space-1) var(--space-2_5) var(--space-1) var(--space-3);
-}
-
-.mobile-review-scope > svg {
-  color: var(--muted);
-}
-
 .mobile-review-totals {
   margin-left: auto;
   color: var(--muted);

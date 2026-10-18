@@ -40,7 +40,6 @@ import type { FontSize } from "../lib/fonts.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
-import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { showErrorToast } from "../state/toast.js";
@@ -344,15 +343,16 @@ export function SessionPane({
     const interval = window.setInterval(() => void poll(), 1500);
     return () => window.clearInterval(interval);
   }, [cursorBackgroundAgentKey, onLoadAgentEvents, sessionId]);
-  // Which files the agent wrote in its newest turn, for the review panel's
-  // "Last turn" scope. Null without a session: there is no turn to scope to.
-  const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
-  const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null, {
+  const reviewState = useReviewState(reviewSource, {
     claimsBrowserRequests: isFocused,
     preloadChanges: onOpenChanges ? undefined : isFocused,
     sessionId
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
+  const [isReviewExpanded, setIsReviewExpanded] = useState(false);
+  useEffect(() => {
+    if (!reviewState.isPanelOpen) setIsReviewExpanded(false);
+  }, [reviewState.isPanelOpen, sessionId]);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
   const escapeTerminationPendingRef = useRef<object | null>(null);
   // Null while the dock is on its automatic share of the pane; a pixel width
@@ -372,6 +372,7 @@ export function SessionPane({
   const gridClass = [
     "session-grid",
     reviewState.isPanelOpen && "review-open",
+    reviewState.isPanelOpen && isReviewExpanded && "review-expanded",
     isLogOpen && "log-open"
   ]
     .filter(Boolean)
@@ -710,10 +711,10 @@ export function SessionPane({
           event.ctrlKey ||
           event.altKey ||
           event.shiftKey ||
-          isEditorEscapeTarget(event.target) ||
+          (!isReviewExpanded && isEditorEscapeTarget(event.target)) ||
           hasActiveDialog()
         ) return;
-        if (isLogOpen) {
+        if (isLogOpen && !isReviewExpanded) {
           event.preventDefault();
           setIsLogOpen(false);
           return;
@@ -764,6 +765,7 @@ export function SessionPane({
   }, [
     isFocused,
     isLogOpen,
+    isReviewExpanded,
     onTerminateSession,
     reviewClosePanel,
     reviewIsPanelOpen,
@@ -1054,7 +1056,9 @@ export function SessionPane({
             review={reviewState}
             isFocused={isFocused}
             onAddDiffNote={session ? handleAddDiffNote : undefined}
-            onResizePanelMouseDown={onReviewPanelResizeMouseDown}
+            isExpanded={isReviewExpanded}
+            onToggleExpanded={() => setIsReviewExpanded((expanded) => !expanded)}
+            onResizePanelMouseDown={isReviewExpanded ? undefined : onReviewPanelResizeMouseDown}
           />
         </Suspense>
       ) : null}

@@ -809,13 +809,11 @@ describe("MobileApp", () => {
     expect(request.boundaryEventId).toEqual(expect.stringMatching(/\S/));
   });
 
-  it("chooses the changes scope from a sheet, like every other phone picker", async () => {
-    // It was the one control on the phone still using a native select, whose
-    // menu iOS anchors to the row it was opened from.
+  it("shows all branch changes without a comparison picker", async () => {
+    window.localStorage.setItem("argmax.reviewPanel.changesScope", "uncommitted");
     listChangedFiles.mockResolvedValue([
-      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0 , staged: false },
-]);
-
+      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0, staged: false }
+    ]);
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
     fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
@@ -823,17 +821,10 @@ describe("MobileApp", () => {
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
     await screen.findByRole("tablist", { name: "Review mode" });
 
-    const scope = screen.getByRole("button", { name: "Changes shown" });
-    expect(scope).toHaveAttribute("aria-haspopup", "dialog");
-    fireEvent.click(scope);
-
-    await screen.findByRole("dialog", { name: "Changes shown" });
-
-    act(() => {
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-    expect(screen.queryByRole("dialog", { name: "Changes shown" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tablist", { name: "Review mode" })).toBeInTheDocument();
+    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledWith(
+      { kind: "workspace", id: "workspace-1" }, "branch"
+    ));
+    expect(screen.queryByRole("button", { name: "Changes shown" })).not.toBeInTheDocument();
   });
 
   it("browses changed diffs and the file tree from the session screen", async () => {

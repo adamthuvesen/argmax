@@ -1886,6 +1886,16 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeo
         tab(secondUrl).click();
         await wait(() => bounds[second.tabId]?.visible, 'second page restored');
         const retained = await evaluate(first.tabId, 'window.__reviewTabMarker');
+        phase = 'expand panel';
+        const panel = document.querySelector('[aria-label="Review panel"]');
+        const originalWidth = panel.getBoundingClientRect().width;
+        document.querySelector('[aria-label="Expand panel"]').click();
+        await wait(() => panel.getBoundingClientRect().width > originalWidth, 'expanded panel width');
+        const expandedWidth = panel.getBoundingClientRect().width;
+        const expandedRetained = await evaluate(first.tabId, 'window.__reviewTabMarker');
+        document.querySelector('[aria-label="Restore panel size"]').click();
+        await wait(() => Math.abs(panel.getBoundingClientRect().width - originalWidth) < 2, 'restored panel width');
+
         phase = 'close page';
         document.querySelector(`[aria-label="Close ${secondUrl}"]`).click();
         await wait(() => !tab(secondUrl), 'closed browser tab removed');
@@ -1899,7 +1909,13 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeo
           return registry.tabs.some((item) => item.url === secondUrl && item.tabId !== second.tabId) ? registry : null;
         }, 'reopened native browser page', 400);
         opened.push(...afterReopen.tabs.map((item) => item.tabId));
-        window.__verifyMixedTabs = { first: first.tabId, second: second.tabId, splitBounds, persisted, retained, afterClose, afterReopen, openCalls };
+        phase = 'Escape from expanded native browser';
+        document.querySelector('[aria-label="Expand panel"]').click();
+        await wait(() => document.querySelector('[aria-label="Restore panel size"]'), 'expanded again');
+        const reopened = afterReopen.tabs.find((item) => item.url === secondUrl && item.tabId !== second.tabId);
+        await evaluate(reopened.tabId, 'window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true').catch(() => undefined);
+        await wait(() => !document.querySelector('[aria-label="Review panel"]'), 'Escape closes panel');
+        window.__verifyMixedTabs = { first: first.tabId, second: second.tabId, splitBounds, persisted, retained, afterClose, afterReopen, openCalls, originalWidth, expandedWidth, expandedRetained, escapeClosed: true };
       } catch (error) {
         window.__verifyMixedTabs = { failureMessage: String(error?.message ?? error), phase, openCalls, bounds, html: document.querySelector('[aria-label="Review panel"]')?.outerHTML?.slice(0, 12000) };
       } finally {
@@ -1920,6 +1936,9 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeo
   check(assertions, 'two-browser-tabs-have-independent-visible-bounds', first.visible && second.visible && first.bounds.y + first.bounds.height <= second.bounds.y + 1, { first, second });
   check(assertions, 'mixed-tab-layout-persists-both-browser-panes', result.persisted.version === 2 && result.persisted.paneTabIds.length === 2, result.persisted);
   check(assertions, 'switching-tabs-preserves-page-state', result.retained === 42, result.retained);
+  check(assertions, 'expansion-preserves-page-and-restores-width', result.expandedWidth > result.originalWidth && result.expandedRetained === 42, result);
+  check(assertions, 'native-page-Escape-closes-expanded-panel', result.escapeClosed === true);
+
   check(assertions, 'closing-one-browser-keeps-the-other', result.afterClose.tabs.some((tab) => tab.tabId === result.first) && !result.afterClose.tabs.some((tab) => tab.tabId === result.second), result.afterClose);
   check(assertions, 'reopening-creates-a-fresh-page', result.afterReopen.tabs.some((tab) => tab.url.endsWith('/second') && tab.tabId !== result.second), result.afterReopen);
 }

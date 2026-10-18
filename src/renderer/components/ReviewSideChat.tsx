@@ -94,7 +94,7 @@ export function ReviewSideChat({
       return { title: context.workspacesById.get(chat.workspaceId)?.taskLabel || chat.prompt };
     },
     open: (id: string) => context.onOpenFullChat?.(id)
-  }), [context.sessionsById, context.workspacesById, context.onOpenFullChat]);
+  }), [context]);
   const {
     pendingAttachments,
     pendingAttachmentPreviews,

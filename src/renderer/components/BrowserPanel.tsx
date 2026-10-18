@@ -318,12 +318,13 @@ export function BrowserPanel({
     const bounds = measureBounds();
     if (!bounds) return;
     overlayOpenRef.current = overlaysSurface(bounds);
-    const visible = !overlayOpenRef.current;
+    const hasBounds = bounds.width > 0 && bounds.height > 0;
+    const visible = hasBounds && !overlayOpenRef.current;
     const previous = lastBoundsRef.current;
     if (previous?.tabId === tabId && previous.visible === visible &&
       (!visible || (previous.bounds.x === bounds.x && previous.bounds.y === bounds.y &&
         previous.bounds.width === bounds.width && previous.bounds.height === bounds.height))) return;
-    const next = { tabId, bounds, visible };
+    const next = { tabId, bounds: hasBounds ? bounds : { x: 0, y: 0, width: 1, height: 1 }, visible };
     lastBoundsRef.current = next;
     void browser
       .setBounds(next)
@@ -334,7 +335,7 @@ export function BrowserPanel({
     // Hidden, the page would leave an empty hole under the palette or dialog.
     // WebKit still rasterises a hidden webview, so paint its last frame there.
     const request = ++frozenFrameRequestRef.current;
-    if (visible) {
+    if (visible || !hasBounds) {
       setFrozenFrame(null);
       return;
     }
@@ -762,6 +763,10 @@ export function BrowserPanel({
         panelRef.current?.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
         return;
       }
+      if (event.command === "close-panel") {
+        onClose();
+        return;
+      }
       if (event.command === "reload") {
         void browser.reload(event.tabId).catch(reportError);
         return;
@@ -802,7 +807,7 @@ export function BrowserPanel({
       }
     });
     return () => subscription();
-  }, [addTab, browser, closeTab, controlledTabId, cycleTab, goBack, goForward, onCycleTab, openFind, reopenTab, reportError, scopeId, surfaceOwnerId]);
+  }, [addTab, browser, closeTab, controlledTabId, cycleTab, goBack, goForward, onClose, onCycleTab, openFind, reopenTab, reportError, scopeId, surfaceOwnerId]);
 
   // Mouse thumb buttons over the pane chrome (toolbar, tab strip). Clicks
   // landing on the page itself go to the native webview, whose initialization

@@ -18,9 +18,6 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     closePane: () => {},
     setSplitRatio: () => {},
     setMode: () => {},
-    changesScope: "branch",
-    setChangesScope: () => {},
-    availableScopes: ["branch", "committed", "uncommitted", "lastTurn"],
     comparisonBaseLabel: "main",
     agentTabs: {
       tabIds: [],

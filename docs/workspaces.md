@@ -218,7 +218,7 @@ The dock's width is a third of the pane (floored at its 360px minimum, capped at
 
 Resizing temporarily hides native browser pages so they cannot swallow the drag's mouse events. Releasing the mouse or moving focus out of the window ends the drag and restores the cursor.
 
-The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves its tabs. The sidebar toggle reopens a single New tab view. Explicit Changes, Files, Terminal, and browser actions open their requested content. Full-screen review surfaces keep their explicit initial visibility and a single view.
+The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves its tabs. The tab-row expand button fills the chat workspace, including tiled chat layouts. It preserves mounted resources and restores the previous layout when toggled again. Escape closes the sidebar. The sidebar toggle reopens a single New tab view. Explicit Changes, Files, Terminal, and browser actions open their requested content. Full-screen review surfaces keep their explicit initial visibility and a single view.
 
 Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads a clean active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. New chat starts with the panel closed, even when a chat in the shared checkout shows its terminal. The launcher panel toggle also opens New tab and retains existing tabs. Existing single-mode session preferences remain the fallback until a layout is saved.
 
@@ -226,22 +226,26 @@ Unsaved Files edits stay in memory when switching chats or projects, scoped to t
 
 [src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs) provides diff calculations and file lists.
 
-### Comparison Scopes
+### Branch changes
 
-| Scope | `ReviewComparison` | Git Range |
-|---|---|---|
-| All on branch (default) | `branch` | `merge-base(base_ref, HEAD)` → working tree + untracked |
-| Committed | `committed` | `merge-base(base_ref, HEAD)..HEAD` |
-| Uncommitted | `workingTree` | `HEAD` → working tree + untracked |
-| Last turn | `branch` (client-filtered) | File-writing tool calls in the most recent turn |
+Changes always shows every difference from the base branch, including committed,
+uncommitted, and untracked files. The sidebar has no comparison setting.
+Older saved comparison preferences no longer affect its file list or diffs.
 
-Last turn keeps the selected diff within its filtered file list. When the selected file drops out, Changes selects the first remaining file or clears the detail view if the list is empty.
+The review API retains these comparisons for callers that need an explicit Git range:
+
+| `ReviewComparison` | Git range |
+|---|---|
+| `branch` | `merge-base(base_ref, HEAD)` → working tree + untracked |
+| `committed` | `merge-base(base_ref, HEAD)..HEAD` |
+| `workingTree` | `HEAD` → working tree + untracked |
 
 Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then local `<default>`.
 
 ### Review actions
 
-The Uncommitted comparison offers file and hunk staging, unstaging, and reverting.
+The `workingTree` API comparison supports file and hunk staging, unstaging, and reverting.
+The Changes sidebar uses `branch` and does not expose these actions.
 Every mutation carries the displayed revision. Rust reconstructs the patch and
 checks HEAD, index, and working-tree state under the canonical checkout lock.
 An obsolete revision fails with a refresh instruction. Another session working in

@@ -20,7 +20,6 @@ import { addTerminalTab, resetTerminalTabsForTests } from "../lib/terminalTabs.j
 import { ClaudeArtifactsContext } from "../lib/uiPreferences.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
-import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 import { useProjectFolderChanges } from "../hooks/useProjectFolderChanges.js";
 
 function reviewStub(): ReviewState {
@@ -34,7 +33,6 @@ function reviewStub(): ReviewState {
     openBrowser: vi.fn(),
     openTerminal: vi.fn(),
     setMode: vi.fn(),
-    setChangesScope: vi.fn(),
     openFile: vi.fn(),
     expandDiffContext: vi.fn(),
     openChangesPanel: vi.fn(),
@@ -60,7 +58,6 @@ describe("ReviewPanel changes layout", () => {
   it("shows supplementary diffs without offering the chat checkout's write actions", async () => {
     const original = window.argmax;
     const review = reviewStub();
-    review.changesScope = "uncommitted";
     review.projectChanges = { projectId: "project", workingFolderId: "working", workingRootPath: "/chat", refreshKey: null };
     const loadDiff = vi.fn().mockResolvedValue({
       workspaceId: "other", filePath: "src/a.ts", content: "@@ -1 +1 @@\n-old\n+other repository\n", revision: "other-revision"
@@ -85,7 +82,7 @@ describe("ReviewPanel changes layout", () => {
       expect(screen.queryByRole("button", { name: /Revert/ })).not.toBeInTheDocument();
       expect(screen.getByText(/These can include other chats/)).toBeVisible();
       fireEvent.click(screen.getByRole("button", { name: "Back to chat changes" }));
-      expect(screen.getByRole("button", { name: "Stage src/a.ts" })).toBeVisible();
+      expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
     } finally {
       cleanup();
       window.argmax = original;
@@ -107,19 +104,6 @@ describe("ReviewPanel changes layout", () => {
 
   afterEach(() => {
     cleanup();
-    resetToastForTests();
-  });
-
-  it("reports a failed review action in the shared toast", async () => {
-    const review = reviewStub();
-    review.changesScope = "uncommitted";
-    review.updateFileIndex = vi.fn().mockRejectedValue(new Error("index locked"));
-    render(<ReviewPanel review={review} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Stage src/a.ts" }));
-
-    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "index locked" }));
-    expect(screen.queryByText("index locked")).not.toBeInTheDocument();
   });
 
   it("renders changed files as a tree beside the selected file diff", () => {
@@ -192,38 +176,10 @@ describe("ReviewPanel changes layout", () => {
     expect(screen.queryByRole("button", { name: /Comment on line/ })).toBeNull();
   });
 
-  it("picks the changes scope from a chip that defaults to the whole branch", () => {
-    const review = reviewStub();
-    const setChangesScope = vi.fn();
-    review.setChangesScope = setChangesScope;
-
-    render(<ReviewPanel review={review} />);
-
-    const chip = screen.getByRole("button", { name: "Changes shown: All on branch" });
-    fireEvent.click(chip);
-
-    const options = screen.getByRole("listbox", { name: "Changes shown" });
-    expect(within(options).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "All on branch",
-      "Committed",
-      "Uncommitted",
-      "Last turn"
-    ]);
-
-    fireEvent.click(within(options).getByRole("button", { name: "Committed" }));
-    expect(setChangesScope).toHaveBeenCalledWith("committed");
-    expect(screen.queryByRole("listbox", { name: "Changes shown" })).toBeNull();
-  });
-
-  it("hides Last turn when the source has no transcript", () => {
-    const review = reviewStub();
-    review.availableScopes = ["branch", "committed", "uncommitted"];
-
-    render(<ReviewPanel review={review} />);
-    fireEvent.click(screen.getByRole("button", { name: "Changes shown: All on branch" }));
-
-    const options = screen.getByRole("listbox", { name: "Changes shown" });
-    expect(within(options).queryByRole("button", { name: "Last turn" })).toBeNull();
+  it("does not offer change-scope settings", () => {
+    render(<ReviewPanel review={reviewStub()} />);
+    expect(screen.queryByRole("button", { name: /Changes shown/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("All on branch")).not.toBeInTheDocument();
   });
 
   it("collapses the expanded changed file row without changing Files mode state", () => {
@@ -275,7 +231,7 @@ describe("ReviewPanel changes layout", () => {
     setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
 
-    expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("335px");
+    expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("250px");
     clientWidth.mockRestore();
   });
 
@@ -290,7 +246,7 @@ describe("ReviewPanel changes layout", () => {
     fireEvent.mouseMove(document, { clientX: 1000 });
     fireEvent.mouseUp(document);
 
-    expect(window.localStorage.getItem("argmax.reviewPanel.leftColumnWidth")).toBe("335");
+    expect(window.localStorage.getItem("argmax.reviewPanel.leftColumnWidth")).toBe("250");
     clientWidth.mockRestore();
   });
 });

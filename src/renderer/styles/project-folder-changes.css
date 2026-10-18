@@ -16,13 +16,13 @@
   flex: 0 0 auto;
   min-width: 0;
   padding: 6px;
-  border-top: 1px solid var(--line);
   font-size: var(--text-xs);
 }
 
-.project-folder-changes-label {
-  padding: 8px 10px;
-  color: var(--muted);
+.project-folder-change-working {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 6px 6px 0;
   font-size: var(--text-xs);
 }
 

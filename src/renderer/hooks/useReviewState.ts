@@ -2,7 +2,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 import type {
   ChangedFileSummary,
   ProjectSummary,
-  ReviewComparison,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
@@ -57,7 +56,6 @@ import {
 import { uuidV4 } from "../lib/uuid.js";
 import { showErrorToast } from "../state/toast.js";
 import { errorMessage } from "../../shared/error.js";
-import { usePersistedSetting } from "./usePersistedSetting.js";
 import { useFilePreview } from "./useFilePreview.js";
 import { multitaskTabId } from "../lib/agentTabs.js";
 import { hostsBrowserSurface } from "../lib/tauriBridge.js";
@@ -70,50 +68,7 @@ import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 export type AsyncState = "idle" | "loading" | "ready" | "error";
 export type { ReviewLayout, ReviewPanelMode, ReviewSplitPosition } from "../lib/reviewLayout.js";
 
-/**
- * Which slice of the work the Changes view shows.
- *
- * - `branch`: everything different from the base branch: committed,
- *   uncommitted, and untracked. The default, because it answers "what did this
- *   task change" without the reader having to know what was committed when.
- * - `committed`: only what has landed as commits on the branch.
- * - `uncommitted`: only the working tree, vs `HEAD`.
- * - `lastTurn`: `branch`, filtered to the files the agent wrote in the newest
- *   turn (see lastTurnFiles.ts). Only offered where a session transcript
- *   exists, so it is absent on the launcher.
- */
-export type ReviewChangesScope = "branch" | "committed" | "uncommitted" | "lastTurn";
-
-export const REVIEW_SCOPE_LABELS: Record<ReviewChangesScope, string> = {
-  branch: "All on branch",
-  committed: "Committed",
-  uncommitted: "Uncommitted",
-  lastTurn: "Last turn"
-};
-
 export type WorkspaceFileSaveState = "idle" | "saving" | "error";
-
-const SCOPE_KEY = "argmax.reviewPanel.changesScope";
-
-function isReviewChangesScope(value: unknown): value is ReviewChangesScope {
-  return value === "branch" || value === "committed" || value === "uncommitted" || value === "lastTurn";
-}
-
-function readStoredScope(): ReviewChangesScope {
-  if (typeof window === "undefined") return "branch";
-  const stored = window.localStorage.getItem(SCOPE_KEY);
-  return isReviewChangesScope(stored) ? stored : "branch";
-}
-
-const ALL_SCOPES: ReviewChangesScope[] = ["branch", "committed", "uncommitted", "lastTurn"];
-
-const SCOPE_COMPARISONS: Record<ReviewChangesScope, ReviewComparison> = {
-  branch: "branch",
-  committed: "committed",
-  uncommitted: "workingTree",
-  // Last turn narrows the branch list client-side; the git query is the same.
-  lastTurn: "branch"
-};
 
 /**
  * Either a workspace (worktree-backed) or the project's main checkout
@@ -205,13 +160,7 @@ export interface ReviewState {
   splitMode: (mode: ReviewPanelMode, position: ReviewSplitPosition) => void;
   closePane: (index: 0 | 1) => void;
   setSplitRatio: (ratio: number) => void;
-  /** Which slice of the work the Changes view shows. */
-  changesScope: ReviewChangesScope;
-  setChangesScope: (scope: ReviewChangesScope) => void;
-  /** Scopes this source can offer. "lastTurn" needs a session transcript. */
-  availableScopes: ReviewChangesScope[];
-  /** Base branch label for the scope picker (e.g. "main"); null when no source
-   *  is active. */
+  /** Base branch label for diff notes. Null when no source is active. */
   comparisonBaseLabel: string | null;
   workspaceFiles: WorkspaceFilesState;
   /** Subagents and multitasks open in the Agents view, discovered when the
@@ -274,9 +223,6 @@ function addReviewTerminal(workspaceId: string): string {
 
 export function useReviewState(
   source: ReviewSource | null,
-  /** Repo-relative paths the newest turn wrote. `null` where no transcript
-   *  exists (the launcher), which also hides the "Last turn" scope. */
-  lastTurnPaths: readonly string[] | null = null,
   options?: {
     /** Read-only surfaces (mobile) keep the file preview but drop editing —
      *  and with it the external-change polling that only matters for a live
@@ -483,8 +429,6 @@ export function useReviewState(
   const setSplitRatio = useCallback((value: number): void => {
     setTabState((current) => setReviewTabsRatio(current, value));
   }, []);
-  const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
-  usePersistedSetting(SCOPE_KEY, storedScope);
   const previousSourceId = useRef<string | null>(sourceId);
   const sourceChanged = previousSourceId.current !== sourceId;
 
@@ -620,16 +564,6 @@ export function useReviewState(
     }
   }, [agentBrowserOpen, openBrowserAt, paneSessionId]);
 
-  const hasTranscript = lastTurnPaths !== null;
-  const availableScopes: ReviewChangesScope[] = useMemo(
-    () => (hasTranscript ? ALL_SCOPES : ALL_SCOPES.filter((scope) => scope !== "lastTurn")),
-    [hasTranscript]
-  );
-  // A stored "lastTurn" would strand the launcher on a scope it cannot offer.
-  const changesScope: ReviewChangesScope = availableScopes.includes(storedScope)
-    ? storedScope
-    : "branch";
-  const comparison: ReviewComparison = SCOPE_COMPARISONS[changesScope];
   const comparisonBaseLabel: string | null = source
     ? source.kind === "workspace"
       ? source.workspace.baseRef
@@ -653,12 +587,11 @@ export function useReviewState(
     sourceId,
     sourceKind,
     changedFilesKey,
-    comparison,
+    comparison: "branch",
     dispatch,
     enabled: isPanelOpen || (options?.preloadChanges ?? true),
     preloadFirstFile: options?.preloadChanges === true,
     autoSelectFirstFile: isPanelOpen && layout.modes.includes("changes"),
-    lastTurnPaths: changesScope === "lastTurn" ? lastTurnPaths : null,
     onOpenChanges: openChangesMode
   });
 
@@ -1091,9 +1024,6 @@ export function useReviewState(
     splitMode,
     closePane,
     setSplitRatio,
-    changesScope,
-    setChangesScope,
-    availableScopes,
     comparisonBaseLabel,
     workspaceFiles,
     agentTabs,

@@ -222,7 +222,9 @@ const BROWSER_INIT_SCRIPT: &str = r#"
       if (window.__argmaxBrowserPopup) return;
       var key = event.key.toLowerCase();
       var command = null;
-      if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
+      if (key === "escape" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.isComposing && !event.repeat) {
+        command = "close-panel";
+      } else if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
         command = event.shiftKey ? "previous-tab" : "next-tab";
       } else if (event.metaKey && !event.ctrlKey && !event.altKey) {
         command = event.shiftKey ? (key === "t" ? "reopen-tab" : null) :
@@ -484,6 +486,7 @@ fn page_command(url: &Url) -> Option<&'static str> {
     let (_, command) = url.query_pairs().find(|(key, _)| key == "c")?;
     match command.as_ref() {
         "close-tab" => Some("close-tab"),
+        "close-panel" => Some("close-panel"),
         "new-tab" => Some("new-tab"),
         "reopen-tab" => Some("reopen-tab"),
         "next-tab" => Some("next-tab"),
@@ -801,7 +804,7 @@ fn open_tab_with_url(
                         "browser dialog captured on an agent tab"
                     );
                 } else if let Some(command) = page_command(url) {
-                    if command == "focus-address" || command == "find" {
+                    if matches!(command, "focus-address" | "find" | "close-panel") {
                         // DOM focus in the renderer does not move the native
                         // first responder out of the child WKWebView.
                         if let Some(main) = nav_app.get_webview("main") {
@@ -1709,7 +1712,7 @@ mod tests {
         assert_eq!(page_command(&find), Some("find"));
         let focus = Url::parse("argmax-newtab://command?c=focus").unwrap();
         assert_eq!(page_command(&focus), Some("focus"));
-        for command in ["reopen-tab", "next-tab", "previous-tab"] {
+        for command in ["reopen-tab", "next-tab", "previous-tab", "close-panel"] {
             let url = Url::parse(&format!("argmax-newtab://command?c={command}")).unwrap();
             assert_eq!(page_command(&url), Some(command));
         }

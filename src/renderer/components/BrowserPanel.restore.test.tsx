@@ -15,7 +15,7 @@ import {
 import { BrowserPanel } from "./BrowserPanel.js";
 
 function ChatBrowser({ visible }: { visible: boolean }) {
-  const review = useReviewState(null, null, { sessionId: "session-a", claimsBrowserRequests: true });
+  const review = useReviewState(null, { sessionId: "session-a", claimsBrowserRequests: true });
   return visible && review.browserRequest ? (
     <StrictMode>
       <BrowserPanel

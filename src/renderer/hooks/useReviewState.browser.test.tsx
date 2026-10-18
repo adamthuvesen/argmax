@@ -38,7 +38,7 @@ function stubBridge(): void {
 function renderPanel(claimsBrowserRequests: boolean, sessionId?: string) {
   return renderHook(
     ({ claims }: { claims: boolean }) =>
-      useReviewState(null, null, { claimsBrowserRequests: claims, sessionId }),
+      useReviewState(null, { claimsBrowserRequests: claims, sessionId }),
     { initialProps: { claims: claimsBrowserRequests } }
   );
 }
@@ -369,7 +369,7 @@ describe("useReviewState — browser mode", () => {
   it("opens browser on the first render after an open request", () => {
     const snapshots: Array<{ isPanelOpen: boolean; mode: string }> = [];
     renderHook(() => {
-      const state = useReviewState(null, null, { claimsBrowserRequests: true });
+      const state = useReviewState(null, { claimsBrowserRequests: true });
       snapshots.push({ isPanelOpen: state.isPanelOpen, mode: state.mode });
       return state;
     });

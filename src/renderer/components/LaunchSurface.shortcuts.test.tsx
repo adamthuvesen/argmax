@@ -80,4 +80,50 @@ describe("LaunchSurface picker shortcuts", () => {
     fireEvent.keyDown(document, { key: "M", metaKey: true, shiftKey: true });
     expect(screen.queryByRole("listbox", { name: "Switch model" })).toBeNull();
   });
+
+  it("resets panel expansion after Escape closes the launcher review", async () => {
+    render(launcher());
+    await act(async () => {});
+
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    fireEvent.click(await screen.findByRole("button", { name: "Expand panel" }));
+    expect(screen.getByRole("button", { name: "Restore panel size" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Restore panel size" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(await screen.findByRole("button", { name: "Expand panel" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("closes the browser panel with Escape when the launcher has no project", async () => {
+    render(launcher({
+      project: null,
+      projects: [],
+      sideChatMode: true,
+      onLaunchSideChat: () => Promise.resolve()
+    }));
+    await act(async () => {});
+
+    fireEvent.keyDown(document, { key: "I", metaKey: true, shiftKey: true });
+    expect(await screen.findByRole("button", { name: "Expand panel" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Expand panel" })).not.toBeInTheDocument();
+  });
+
+  it("leaves an unfocused launcher's panel open on Escape", async () => {
+    const { rerender } = render(launcher());
+    await act(async () => {});
+
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    expect(await screen.findByRole("button", { name: "Expand panel" })).toBeInTheDocument();
+    rerender(launcher({ isFocused: false }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "Expand panel" })).toBeInTheDocument();
+
+    rerender(launcher({ isFocused: true }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Expand panel" })).not.toBeInTheDocument();
+  });
 });

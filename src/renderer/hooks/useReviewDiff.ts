@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangedFileSummary, ReviewComparison, WorkspaceDiff } from "../../shared/types.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
 import { nextDiffContext } from "../lib/diff.js";
-import { filterToLastTurn } from "../lib/lastTurnFiles.js";
 import type { AsyncState } from "./useReviewState.js";
 
 interface UseReviewDiffResult {
@@ -35,7 +34,6 @@ export function useReviewDiff(args: {
   enabled?: boolean;
   preloadFirstFile?: boolean;
   autoSelectFirstFile: boolean;
-  lastTurnPaths?: readonly string[] | null;
   onOpenChanges: () => void;
 }): UseReviewDiffResult {
   const {
@@ -47,7 +45,6 @@ export function useReviewDiff(args: {
     enabled = true,
     preloadFirstFile = false,
     autoSelectFirstFile,
-    lastTurnPaths = null,
     onOpenChanges
   } = args;
 
@@ -163,21 +160,16 @@ export function useReviewDiff(args: {
     // is reused above, so a successful preload never causes a second Git read.
   }, [enabled, autoSelectFirstFile, sourceId, sourceKind, changedFilesKey, comparison, dispatch, actionRevision]);
 
-  const visibleFiles = useMemo(
-    () => lastTurnPaths === null ? files : filterToLastTurn(files, lastTurnPaths),
-    [files, lastTurnPaths]
-  );
-
   useEffect(() => {
     setSelectedFilePath((currentPath) => {
-      if (currentPath && visibleFiles.some((file) => file.path === currentPath)) {
+      if (currentPath && files.some((file) => file.path === currentPath)) {
         return currentPath;
       }
-      return autoSelectFirstFile ? visibleFiles[0]?.path ?? null : null;
+      return autoSelectFirstFile ? files[0]?.path ?? null : null;
     });
-  }, [autoSelectFirstFile, visibleFiles]);
+  }, [autoSelectFirstFile, files]);
 
-  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? visibleFiles[0]?.path ?? null : null);
+  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? files[0]?.path ?? null : null);
   useEffect(() => {
     const token = ++diffLoadToken.current;
     if (!sourceId || !sourceKind || !requestedFilePath || !dispatch || !window.argmax) {
@@ -312,7 +304,7 @@ export function useReviewDiff(args: {
   }, [dispatch, contextLines]);
 
   return {
-    files: visibleFiles,
+    files,
     filesState,
     filesError,
     selectedFilePath,

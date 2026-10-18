@@ -73,20 +73,20 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("remembers each session's panel visibility after leaving and returning", () => {
     const source = workspaceSource(makeWorkspace());
-    const first = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+    const first = renderHook(() => useReviewState(source, { sessionId: "session-1" }));
     act(() => first.result.current.openChangesPanel());
     first.unmount();
 
-    const other = renderHook(() => useReviewState(source, null, { sessionId: "session-2" }));
+    const other = renderHook(() => useReviewState(source, { sessionId: "session-2" }));
     expect(other.result.current.isPanelOpen).toBe(false);
     other.unmount();
 
-    const restored = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+    const restored = renderHook(() => useReviewState(source, { sessionId: "session-1" }));
     expect(restored.result.current.isPanelOpen).toBe(true);
     act(() => restored.result.current.closePanel());
     restored.unmount();
 
-    const closed = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+    const closed = renderHook(() => useReviewState(source, { sessionId: "session-1" }));
     expect(closed.result.current.isPanelOpen).toBe(false);
   });
 
@@ -97,26 +97,26 @@ describe("useReviewState — IPC fan-out resistance", () => {
         (window.argmax as ArgmaxApi).browser = {} as ArgmaxApi["browser"];
       }
       const source = workspaceSource(makeWorkspace());
-      const first = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+      const first = renderHook(() => useReviewState(source, { sessionId: "session-1" }));
       act(() => {
         first.result.current.openChangesPanel();
         first.result.current.setMode(mode);
       });
       first.unmount();
 
-      const other = renderHook(() => useReviewState(source, null, { sessionId: "session-2" }));
+      const other = renderHook(() => useReviewState(source, { sessionId: "session-2" }));
       act(() => other.result.current.openChangesPanel());
       expect(other.result.current.mode).toBe("changes");
       other.unmount();
 
-      const restored = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+      const restored = renderHook(() => useReviewState(source, { sessionId: "session-1" }));
       expect(restored.result.current.isPanelOpen).toBe(true);
       expect(restored.result.current.mode).toBe(mode);
       if (mode === "browser") expect(restored.result.current.browserOwner).toBe(true);
       act(() => restored.result.current.closePanel());
       restored.unmount();
 
-      const closed = renderHook(() => useReviewState(source, null, { sessionId: "session-1" }));
+      const closed = renderHook(() => useReviewState(source, { sessionId: "session-1" }));
       expect(closed.result.current.isPanelOpen).toBe(false);
       expect(closed.result.current.mode).toBe(mode);
     }
@@ -124,7 +124,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it.each(["new", "changes"] as const)("reopens only New tab after closing the final %s tab", (mode) => {
     const source = workspaceSource(makeWorkspace());
-    const first = renderHook(() => useReviewState(source, null, { sessionId: "last-tab" }));
+    const first = renderHook(() => useReviewState(source, { sessionId: "last-tab" }));
     act(() => first.result.current.tabs!.openTool(mode));
     for (const tab of first.result.current.tabs!.items.filter((item) => item.id !== `tool:${mode}`)) {
       act(() => first.result.current.tabs!.close(tab.id));
@@ -133,7 +133,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(first.result.current.isPanelOpen).toBe(false);
     first.unmount();
 
-    const restored = renderHook(() => useReviewState(source, null, { sessionId: "last-tab" }));
+    const restored = renderHook(() => useReviewState(source, { sessionId: "last-tab" }));
     act(() => restored.result.current.togglePanel());
     expect(restored.result.current.isPanelOpen).toBe(true);
     expect(restored.result.current.tabs!.items.map((tab) => tab.id)).toEqual(["tool:new"]);
@@ -142,7 +142,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("preserves tabs but shows New tab when reopening a saved split layout", () => {
     const source = workspaceSource(makeWorkspace());
-    const first = renderHook(() => useReviewState(source, null, { sessionId: "session-split" }));
+    const first = renderHook(() => useReviewState(source, { sessionId: "session-split" }));
     act(() => {
       first.result.current.openChangesPanel();
       first.result.current.splitMode("files", "bottom");
@@ -151,7 +151,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     });
     first.unmount();
 
-    const restored = renderHook(() => useReviewState(source, null, { sessionId: "session-split" }));
+    const restored = renderHook(() => useReviewState(source, { sessionId: "session-split" }));
     expect(restored.result.current.isPanelOpen).toBe(false);
     expect(restored.result.current.layout).toEqual({
       modes: ["changes", "files"],
@@ -173,7 +173,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     window.localStorage.setItem("argmax.reviewPanel.mode.session-legacy", "terminal");
 
     const { result } = renderHook(() =>
-      useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "session-legacy" })
+      useReviewState(workspaceSource(makeWorkspace()), { sessionId: "session-legacy" })
     );
 
     expect(result.current.layout).toEqual({ modes: ["terminal"], activeIndex: 0, ratio: 0.5 });
@@ -181,7 +181,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("focuses visible modes, swaps duplicate pane selections, and promotes a survivor", () => {
     const source = workspaceSource(makeWorkspace());
-    const { result } = renderHook(() => useReviewState(source, null, { sessionId: "session-layout" }));
+    const { result } = renderHook(() => useReviewState(source, { sessionId: "session-layout" }));
     act(() => {
       result.current.openChangesPanel();
       result.current.splitMode("files", "bottom");
@@ -203,7 +203,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("removes a visible terminal pane when toggled and leaves its neighbour open", () => {
     const source = workspaceSource(makeWorkspace());
-    const { result } = renderHook(() => useReviewState(source, null, { sessionId: "session-terminal" }));
+    const { result } = renderHook(() => useReviewState(source, { sessionId: "session-terminal" }));
     act(() => {
       result.current.openChangesPanel();
       result.current.splitMode("terminal", "bottom");
@@ -236,7 +236,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       JSON.stringify({ modes: ["changes"], activeIndex: 0, ratio: 0.5 })
     );
 
-    const { result, unmount } = renderHook(() => useReviewState(projectSource(makeProject()), null, {
+    const { result, unmount } = renderHook(() => useReviewState(projectSource(makeProject()), {
       terminalWorkspaceId: "workspace-1"
     }));
 
@@ -255,7 +255,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     );
 
     const { result } = renderHook(() =>
-      useReviewState(workspaceSource(makeWorkspace()), null, {
+      useReviewState(workspaceSource(makeWorkspace()), {
         editable: false,
         initiallyOpen: true,
         sessionId: "session-mobile"
@@ -364,7 +364,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       terminal: { terminate: terminateTerminal },
       session: { multitask: launchSession }
     });
-    const { result, rerender } = renderHook(({ workspace }: { workspace: WorkspaceSummary }) => useReviewState(workspaceSource(workspace), null, { sessionId: "parent-chat" }), { initialProps: { workspace: makeWorkspace() } });
+    const { result, rerender } = renderHook(({ workspace }: { workspace: WorkspaceSummary }) => useReviewState(workspaceSource(workspace), { sessionId: "parent-chat" }), { initialProps: { workspace: makeWorkspace() } });
     act(() => result.current.tabs!.openTool("side-chat"));
     expect(result.current.mode).toBe("side-chat");
     act(() => result.current.tabs!.openSideChat("child-session", "shared-checkout"));
@@ -383,7 +383,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("adopts an asynchronous side-chat launch into its original form without stealing the selected tab", () => {
-    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "parent-chat" }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), { sessionId: "parent-chat" }));
     act(() => result.current.tabs!.openTool("side-chat"));
     const sourceTabId = result.current.tabs!.paneTabIds[0];
     act(() => result.current.tabs!.openTool("files"));
@@ -396,7 +396,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("retains an asynchronous side-chat result in the background if its launch form was closed", () => {
-    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "parent-chat" }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), { sessionId: "parent-chat" }));
     act(() => result.current.tabs!.openTool("side-chat"));
     const sourceTabId = result.current.tabs!.paneTabIds[0];
     act(() => result.current.tabs!.close(sourceTabId));
@@ -409,7 +409,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("keeps a reopened side-chat form when an older launch finishes", () => {
-    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "parent-chat" }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), { sessionId: "parent-chat" }));
     act(() => result.current.tabs!.openTool("side-chat"));
     const oldFormId = result.current.tabs!.paneTabIds[0];
     act(() => result.current.tabs!.close(oldFormId));
@@ -433,7 +433,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     let finishNativeClose: () => void = () => undefined;
     const nativeClose = new Promise<void>((resolve) => { finishNativeClose = resolve; });
     Object.assign(window.argmax!, { browser: { close: vi.fn().mockReturnValue(nativeClose) } });
-    const { result, rerender } = renderHook(({ workspace }: { workspace: WorkspaceSummary }) => useReviewState(workspaceSource(workspace), null, { sessionId: "source-close-race" }), { initialProps: { workspace: makeWorkspace() } });
+    const { result, rerender } = renderHook(({ workspace }: { workspace: WorkspaceSummary }) => useReviewState(workspaceSource(workspace), { sessionId: "source-close-race" }), { initialProps: { workspace: makeWorkspace() } });
     act(() => result.current.tabs!.openBrowser("https://example.com/closing"));
     const closing = getBrowserTabs("source-close-race")[0];
     markBrowserTabMaterialized(closing.id);
@@ -450,7 +450,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
   });
 
   it("keeps dirty file tabs until the user confirms closure, then activates the surviving file", async () => {
-    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "dirty-tabs" }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), { sessionId: "dirty-tabs" }));
     act(() => result.current.openInFilesView("one.ts"));
     await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
     act(() => result.current.workspaceFiles.editFile("unsaved"));
@@ -483,7 +483,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       ],
       paneTabIds: ["terminal:workspace-1:old-a", "terminal:workspace-1:old-b"], activeIndex: 1, ratio: 0.5
     }));
-    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "shells" }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), { sessionId: "shells" }));
     expect(new Set(result.current.tabs!.paneTabIds).size).toBe(2);
     expect(result.current.tabs!.items).toHaveLength(2);
     const closing = result.current.tabs!.items[0];
@@ -497,17 +497,17 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("restores mixed tab order per chat and keeps files isolated from another source", async () => {
     const source = workspaceSource(makeWorkspace());
-    const first = renderHook(() => useReviewState(source, null, { sessionId: "mixed-tabs" }));
+    const first = renderHook(() => useReviewState(source, { sessionId: "mixed-tabs" }));
     act(() => first.result.current.openInFilesView("one.ts"));
     await waitFor(() => expect(first.result.current.workspaceFiles.previewState).toBe("ready"));
     act(() => first.result.current.tabs!.move(first.result.current.tabs!.items.find((tab) => tab.kind === "file")!.id, 0));
     const savedIds = first.result.current.tabs!.items.map((tab) => tab.id);
     first.unmount();
-    const restored = renderHook(() => useReviewState(source, null, { sessionId: "mixed-tabs" }));
+    const restored = renderHook(() => useReviewState(source, { sessionId: "mixed-tabs" }));
     expect(restored.result.current.tabs!.items.map((tab) => tab.id)).toEqual(savedIds);
     expect(JSON.parse(localStorage.getItem("argmax.reviewPanel.layout.mixed-tabs")!) as unknown).toMatchObject({ version: 2 });
     restored.unmount();
-    const other = renderHook(() => useReviewState(workspaceSource(makeWorkspace({ id: "another-workspace" })), null, { sessionId: "mixed-tabs" }));
+    const other = renderHook(() => useReviewState(workspaceSource(makeWorkspace({ id: "another-workspace" })), { sessionId: "mixed-tabs" }));
     expect(other.result.current.tabs!.items.some((tab) => tab.kind === "file" && tab.sourceKey === "workspace:workspace-1")).toBe(false);
   });
 
@@ -605,118 +605,29 @@ describe("useReviewState — IPC fan-out resistance", () => {
     await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledTimes(1));
   });
 
-  it("defaults to the whole branch and refetches when the scope changes", async () => {
-    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
-
-    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
-    expect(result.current.changesScope).toBe("branch");
-    expect(listChangedFiles).toHaveBeenNthCalledWith(1, { kind: "workspace", id: "workspace-1" }, "branch");
-    expect(result.current.comparisonBaseLabel).toBe("main");
-
-    act(() => {
-      result.current.setChangesScope("committed");
-    });
-    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(2));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(2, { kind: "workspace", id: "workspace-1" }, "committed");
-
-    act(() => {
-      result.current.setChangesScope("uncommitted");
-    });
-    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(3));
-    expect(listChangedFiles).toHaveBeenNthCalledWith(3, { kind: "workspace", id: "workspace-1" }, "workingTree");
-  });
-
-  it("offers Last turn only with a transcript, and narrows the branch list to it", async () => {
-    listChangedFiles.mockResolvedValue([
-      { path: "src/a.ts", status: "M", additions: 1, deletions: 0 , staged: false },
-{ path: "src/b.ts", status: "M", additions: 2, deletions: 0 , staged: false },
-]);
-
-    const withoutTranscript = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
-    expect(withoutTranscript.result.current.availableScopes).not.toContain("lastTurn");
-    withoutTranscript.unmount();
-
-    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), ["/abs/repo/src/b.ts"]));
-    await waitFor(() => expect(result.current.files).toHaveLength(2));
-    expect(result.current.availableScopes).toContain("lastTurn");
-
-    act(() => {
-      result.current.setChangesScope("lastTurn");
-    });
-
-    // Same git query as "branch", narrowed client-side, so no refetch.
-    expect(result.current.files.map((file) => file.path)).toEqual(["src/b.ts"]);
-    expect(listChangedFiles).toHaveBeenLastCalledWith({ kind: "workspace", id: "workspace-1" }, "branch");
-  });
-
-  it("keeps the selected diff inside the Last turn file list as its paths change", async () => {
+  it.each(["committed", "uncommitted", "lastTurn"])("shows all branch changes despite an old %s preference", async (storedScope) => {
+    window.localStorage.setItem("argmax.reviewPanel.changesScope", storedScope);
     listChangedFiles.mockResolvedValue([
       { path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false },
-      { path: "src/b.ts", status: "M", additions: 2, deletions: 0, staged: false },
-      { path: "src/c.ts", status: "M", additions: 3, deletions: 0, staged: false }
+      { path: "src/b.ts", status: "M", additions: 2, deletions: 0, staged: false }
     ]);
-    const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
-    loadDiff
-      .mockResolvedValueOnce({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff a" })
-      .mockResolvedValueOnce({ workspaceId: "workspace-1", filePath: "src/b.ts", content: "diff b" })
-      .mockResolvedValueOnce({ workspaceId: "workspace-1", filePath: "src/c.ts", content: "diff c" });
-
-    const { result, rerender } = renderHook(
-      ({ lastTurnPaths }: { lastTurnPaths: string[] }) =>
-        useReviewState(workspaceSource(makeWorkspace()), lastTurnPaths),
-      { initialProps: { lastTurnPaths: ["/abs/repo/src/b.ts"] } }
-    );
-    await waitFor(() => expect(result.current.files).toHaveLength(3));
-
-    act(() => result.current.openChangesPanel());
-    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/a.ts"));
-
-    act(() => result.current.setChangesScope("lastTurn"));
-    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/b.ts"));
-    expect(result.current.files.map((file) => file.path)).toEqual(["src/b.ts"]);
-    await waitFor(() => expect(result.current.diff?.filePath).toBe("src/b.ts"));
-
-    rerender({ lastTurnPaths: ["/abs/repo/src/c.ts"] });
-    await waitFor(() => expect(result.current.selectedFilePath).toBe("src/c.ts"));
-    expect(result.current.files.map((file) => file.path)).toEqual(["src/c.ts"]);
-    await waitFor(() => expect(result.current.diff?.filePath).toBe("src/c.ts"));
-
-    rerender({ lastTurnPaths: [] });
-    await waitFor(() => expect(result.current.selectedFilePath).toBeNull());
-    expect(result.current.files).toEqual([]);
-    await waitFor(() => expect(result.current.diff).toBeNull());
-    expect(listChangedFiles).toHaveBeenCalledTimes(1);
-  });
-
-  it("reloads the diff under the new baseline when the scope changes (cache busted)", async () => {
-    listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }]);
-    const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
-    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
-
+    const loadDiff = vi.mocked(window.argmax!.review.loadDiff);
+    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff", revision: "r1" });
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
-    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
 
-    act(() => {
-      result.current.openFile("src/a.ts");
-    });
+    await waitFor(() => expect(result.current.files).toHaveLength(2));
+    expect(listChangedFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }, "branch");
+    expect(result.current.comparisonBaseLabel).toBe("main");
+    act(() => result.current.openFile("src/a.ts"));
     await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
       { kind: "workspace", id: "workspace-1" }, "src/a.ts", "branch", undefined
-    ));
-
-    act(() => {
-      result.current.setChangesScope("uncommitted");
-    });
-
-    // The cached branch diff must not be served for the working-tree baseline.
-    await waitFor(() => expect(loadDiff).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/a.ts", "workingTree", undefined
     ));
   });
 
   it("climbs the context ladder and never serves the narrower cached diff", async () => {
     listChangedFiles.mockResolvedValue([{ path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }]);
     const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
-    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
+    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff", revision: "r1" });
 
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
@@ -756,7 +667,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
 { path: "src/b.ts", status: "M", additions: 1, deletions: 0 , staged: false },
 ]);
     const loadDiff = window.argmax!.review.loadDiff as ReturnType<typeof vi.fn>;
-    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff" });
+    loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff", revision: "r1" });
 
     const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
     await waitFor(() => expect(listChangedFiles).toHaveBeenCalledTimes(1));
@@ -784,7 +695,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     const loadDiff = vi.mocked(window.argmax!.review.loadDiff);
     loadDiff.mockResolvedValue({ workspaceId: "workspace-1", filePath: "src/a.ts", content: "diff", revision: "r1" });
     const { result, rerender } = renderHook(
-      ({ focused, changedFiles }) => useReviewState(workspaceSource(makeWorkspace({ changedFiles })), null,
+      ({ focused, changedFiles }) => useReviewState(workspaceSource(makeWorkspace({ changedFiles })),
         { preloadChanges: focused }),
       { initialProps: { focused: false, changedFiles: 3 } }
     );
@@ -814,7 +725,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
         { path: "src/a.ts", status: "M", additions: 1, deletions: 0, staged: false }
       ]);
     const { result } = renderHook(() =>
-      useReviewState(workspaceSource(makeWorkspace()), null, { preloadChanges: true })
+      useReviewState(workspaceSource(makeWorkspace()), { preloadChanges: true })
     );
 
     await waitFor(() => expect(result.current.filesState).toBe("error"));
@@ -842,7 +753,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
         revision: "r1"
       });
     const { result } = renderHook(() =>
-      useReviewState(workspaceSource(makeWorkspace()), null, { preloadChanges: true })
+      useReviewState(workspaceSource(makeWorkspace()), { preloadChanges: true })
     );
 
     await waitFor(() => expect(result.current.diffState).toBe("error"));
@@ -890,7 +801,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
       content: "x".repeat(filePath === "c" ? 5 * 1_024 * 1_024 : 3 * 1_024 * 1_024), revision: "r1"
     }));
     const { result, rerender } = renderHook(({ focused }) =>
-      useReviewState(workspaceSource(makeWorkspace()), null, { preloadChanges: focused }),
+      useReviewState(workspaceSource(makeWorkspace()), { preloadChanges: focused }),
       { initialProps: { focused: true } });
     await waitFor(() => expect(result.current.diff?.filePath).toBe("a"));
     act(() => result.current.openFile("b"));
@@ -1360,7 +1271,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
   it("exposes terminal mode for a project-backed panel when a checkout workspace is provided", () => {
     const { result } = renderHook(() =>
-      useReviewState(projectSource(makeProject()), null, { terminalWorkspaceId: "workspace-shared" })
+      useReviewState(projectSource(makeProject()), { terminalWorkspaceId: "workspace-shared" })
     );
 
     expect(result.current.terminalWorkspaceId).toBe("workspace-shared");

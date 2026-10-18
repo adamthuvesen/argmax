@@ -420,7 +420,7 @@ export function LaunchSurface({
     onWorkspaceCreated,
     selectedFolderId
   );
-  const reviewState = useReviewState(reviewSource, null, {
+  const reviewState = useReviewState(reviewSource, {
     claimsBrowserRequests,
     terminalWorkspaceId
   });
@@ -428,6 +428,10 @@ export function LaunchSurface({
   const reviewOpenInFilesView = reviewState.openInFilesView;
   const reviewClosePanel = reviewState.closePanel;
   const reviewIsPanelOpen = reviewState.isPanelOpen;
+  const [isReviewExpanded, setIsReviewExpanded] = useState(false);
+  useEffect(() => {
+    if (!reviewIsPanelOpen) setIsReviewExpanded(false);
+  }, [reviewIsPanelOpen]);
   const reviewModes = reviewState.layout.modes;
   const reviewClosePane = reviewState.closePane;
   const reviewOpenBrowser = reviewState.openBrowser;
@@ -582,7 +586,7 @@ export function LaunchSurface({
   }, [activeProject, rightPanelToggleSignal, toggleReviewPanel]);
 
   useEffect(() => {
-    if (!activeProject || !reviewIsPanelOpen) return undefined;
+    if (!isFocused || !reviewIsPanelOpen) return undefined;
     const handler = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       if (
@@ -599,7 +603,7 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [activeProject, reviewClosePanel, reviewIsPanelOpen]);
+  }, [isFocused, reviewClosePanel, reviewIsPanelOpen]);
 
   // The launcher composer sits mid-viewport. A menu that only knows "open
   // downward, at most 440px" runs off the bottom of .work-scroll; the clipped
@@ -1346,7 +1350,7 @@ export function LaunchSurface({
 
   return (
     <div
-      className="launcher-shell"
+      className={isReviewOpen && isReviewExpanded ? "launcher-shell review-expanded" : "launcher-shell"}
       data-review-open={isReviewOpen ? "true" : undefined}
     >
       <div className="launcher-surface" ref={surfaceRef}>
@@ -1876,7 +1880,11 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
       ) : null}
       {isReviewOpen ? (
         <Suspense fallback={null}>
-          <ReviewPanel review={reviewState} />
+          <ReviewPanel
+            review={reviewState}
+            isExpanded={isReviewExpanded}
+            onToggleExpanded={() => setIsReviewExpanded((expanded) => !expanded)}
+          />
         </Suspense>
       ) : null}
     </div>

@@ -1961,3 +1961,22 @@
   color: var(--muted-strong);
   font-variant-numeric: tabular-nums;
 }
+
+.session-grid.review-open.review-expanded,
+.app-shell[data-review-panel-side="left"] .session-grid.review-open.review-expanded {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.session-grid.review-expanded > .session-main-column,
+.session-grid.review-expanded > .debug-panel {
+  display: none;
+}
+
+.session-multigrid:has(.review-expanded) > .session-multigrid-row:not(:has(.review-expanded)),
+.session-multigrid-row:has(.review-expanded) > :not(:has(.review-expanded)) {
+  display: none;
+}
+
+.session-multigrid-row:has(.review-expanded) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}

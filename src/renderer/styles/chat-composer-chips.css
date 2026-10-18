@@ -1201,7 +1201,7 @@
 .slash-menu-option[aria-selected="true"],
 .file-popover-item.is-selected,
 .file-popover-item[aria-selected="true"] {
-  background: var(--row-selected);
+  background: var(--popover-row-active);
 }
 
 .slash-menu {
@@ -1225,6 +1225,10 @@
 .slash-menu-option[aria-selected="true"] {
   background: color-mix(in oklab, var(--composer-surface) 90%, var(--text));
   color: var(--text);
+}
+
+:root:not([data-theme="dark"]) .slash-menu-option[aria-selected="true"] {
+  background: var(--popover-row-active);
 }
 
 .slash-menu-option .picker-lead {

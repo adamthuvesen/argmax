@@ -135,7 +135,10 @@ bubbles. Saved appearance choices take priority over these defaults.
   `--row-selected`: that token is tuned for rows on `--panel`, and the composer surface is already a
   step above `--panel`, so in dark the two land one value apart (`#212121` on `#202020`) and the
   selection disappears. `--question-dock-row` takes the same step measured from `--composer-surface`
-  instead.
+  instead. Rows in white popovers (pickers, menus, the file and slash lists, the agent roster) take
+  `--popover-row-active` for hover and the keyboard cursor. It is one step lighter than
+  `--row-selected` on paper, because the sidebar gray reads as a heavy block on white. Dark uses
+  `--row-selected` unchanged.
 - **Typography:**
   - Chrome: `--font-ui` (System Sans default).
   - The System Sans (SF Pro) option uses the native OS sans font for UI and prose, with system mono for the terminal. It needs no font download. Removed picker choices fall back to System Sans when read from saved preferences.

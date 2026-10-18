@@ -399,7 +399,7 @@
 .agent-roster-popover li[data-active="true"] .agent-roster-item,
 .agent-roster-item:hover,
 .agent-roster-popover li[aria-selected="true"] .agent-roster-item {
-  background: var(--row-selected);
+  background: var(--popover-row-active);
   color: var(--text);
 }
 

@@ -724,7 +724,7 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     // Empty changed-files state → Browse files entry is available behind the picker
     fireEvent.click(await screen.findByRole("button", { name: "Chat actions" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse Files" }));
 
     // The panel opens directly in Files mode
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
@@ -807,7 +807,7 @@ describe("App sidebar", () => {
 
     fireEvent.keyDown(input, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Show below" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Show Below" }));
     expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Top review pane" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Bottom review pane" })).toBeInTheDocument();
@@ -882,7 +882,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Chat actions" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse Files" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^model\.bin$/ }));
 
@@ -898,7 +898,7 @@ describe("App sidebar", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Chat actions" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse files" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Browse Files" }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^assets$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^logo\.png$/ }));
 
@@ -1139,7 +1139,7 @@ describe("App sidebar", () => {
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Show below" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Show Below" }));
     expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Top review pane" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Bottom review pane" })).toBeInTheDocument();
@@ -1391,7 +1391,7 @@ describe("App sidebar", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Waiting chat/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Done" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark Done" }));
 
     await waitFor(() =>
       expect(setPriorityDismissed).toHaveBeenCalledWith({

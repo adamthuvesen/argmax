@@ -84,7 +84,7 @@ describe("ReviewTabsBar", () => {
     expect(menu).toHaveAttribute("data-browser-overlay", "true");
     expect(within(menu).queryByRole("menuitem", { name: "Agents" })).not.toBeInTheDocument();
     expect(within(menu).queryByRole("menuitem", { name: "Terminal" })).not.toBeInTheDocument();
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude artifacts" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Claude Artifacts" }));
     expect(callbacks.onOpen).toHaveBeenCalledWith("artifacts");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
@@ -94,14 +94,14 @@ describe("ReviewTabsBar", () => {
     render(<ReviewTabsBar {...callbacks} />);
     fireEvent.contextMenu(screen.getByRole("tab", { name: "http://localhost:3000" }), { clientX: 80, clientY: 60 });
     const menu = screen.getByRole("menu", { name: "App preview tab actions" });
-    expect(within(menu).getByRole("menuitem", { name: "Move left" })).toBeEnabled();
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Show below" }));
+    expect(within(menu).getByRole("menuitem", { name: "Move Left" })).toBeEnabled();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Show Below" }));
     expect(callbacks.onSplit).toHaveBeenCalledWith("browser-1", "bottom");
 
     fireEvent.contextMenu(screen.getByRole("tab", { name: "Changes" }));
-    expect(screen.getByRole("menuitem", { name: "Move left" })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: "Reopen closed tab" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Move right" }));
+    expect(screen.getByRole("menuitem", { name: "Move Left" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Reopen Closed Tab" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move Right" }));
     expect(callbacks.onMove).toHaveBeenCalledWith("changes", 1);
   });
 
@@ -111,10 +111,10 @@ describe("ReviewTabsBar", () => {
     const browser = screen.getByRole("tab", { name: "http://localhost:3000" });
     browser.focus();
     fireEvent.keyDown(browser, { key: "F10", shiftKey: true });
-    const first = screen.getByRole("menuitem", { name: "Show above" });
+    const first = screen.getByRole("menuitem", { name: "Show Above" });
     expect(first).toHaveFocus();
     fireEvent.keyDown(first, { key: "End" });
-    expect(screen.getByRole("menuitem", { name: "Reopen closed tab" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "Reopen Closed Tab" })).toHaveFocus();
     fireEvent.keyDown(document.activeElement ?? first, { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(browser).toHaveFocus();

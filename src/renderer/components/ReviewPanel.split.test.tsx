@@ -115,7 +115,7 @@ describe("ReviewPanel split view", () => {
     fireEvent.contextMenu(screen.getByRole("tab", { name: "Changes" }), { clientX: 40, clientY: 20 });
     const menu = screen.getByRole("menu", { name: "Changes tab actions" });
     expect(menu).toHaveAttribute("data-browser-overlay", "true");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Split below" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Split Below" }));
 
     expect(selectedMode(screen.getByLabelText("Top review pane"), "Changes")).toBeInTheDocument();
     expect(selectedMode(screen.getByLabelText("Bottom review pane"), "Files")).toBeInTheDocument();
@@ -127,7 +127,7 @@ describe("ReviewPanel split view", () => {
     fireEvent.keyDown(screen.getByRole("tab", { name: "Files" }), { key: "F10", shiftKey: true });
 
     expect(screen.getByRole("menu", { name: "Files tab actions" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Split below" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "Split Below" })).toHaveFocus();
   });
 
   it("keeps keyboard focus on the selected tab when its keyed pane changes mode", () => {

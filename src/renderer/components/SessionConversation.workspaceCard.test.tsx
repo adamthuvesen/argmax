@@ -101,7 +101,7 @@ describe("SessionConversation workspace card", () => {
     renderPane({ review: reviewStub({ isPanelOpen: true }), onToggleWorkspaceCard });
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    const item = screen.getByRole("menuitemcheckbox", { name: "Workspace card" });
+    const item = screen.getByRole("menuitemcheckbox", { name: "Workspace Card" });
     // The card is off-screen behind the review panel, but the preference is on.
     expect(item).toHaveAttribute("aria-checked", "true");
 
@@ -114,7 +114,7 @@ describe("SessionConversation workspace card", () => {
     renderPane({ workspace: sideChat, workspaceCardEnabled: false });
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Workspace card" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Workspace Card" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Workspace card is on. It shows up on chats that have a git worktree."

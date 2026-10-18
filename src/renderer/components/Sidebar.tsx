@@ -174,7 +174,7 @@ const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; 
 ];
 
 const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
-  { value: "recent", label: "Recent activity", description: "Most recently active project first" },
+  { value: "recent", label: "Recent Activity", description: "Most recently active project first" },
   { value: "alphabetical", label: "Alphabetical (A→Z)", description: "Sort by project name" },
   { value: "manual", label: "Manual", description: "Drag to reorder" }
 ];
@@ -276,9 +276,9 @@ export function Sidebar({
   onForkWorkspace?: (workspaceId: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
-  /** Right-click "Done" on a Priority row — drops it back to its normal group. */
+  /** Right-click "Mark Done" on a Priority row — drops it back to its normal group. */
   onRemoveFromPriority?: (workspaceId: string) => void;
-  /** Right-click "Add to priority" on any other row — floats it manually. */
+  /** Right-click "Add to Priority" on any other row — floats it manually. */
   onAddToPriority?: (workspaceId: string) => void;
   /** Right-click "Snooze …" — moves the row to the Snoozed shelf until `until`. */
   onSnoozeWorkspace?: (workspaceId: string, until: string) => void;
@@ -292,7 +292,7 @@ export function Sidebar({
     icon: string | null,
     iconColor: string | null
   ) => void;
-  /** Right-click "Sync now" on an imported row — runs one session-sync sweep. */
+  /** Right-click "Sync Now" on an imported row — runs one session-sync sweep. */
   onSyncNowWorkspace?: () => void;
   showArcs?: boolean;
   showArchived?: boolean;
@@ -734,7 +734,7 @@ export function Sidebar({
         .map((entry) => entry.workspace.id),
     [rawPriorityEntries, priorityWorkspaceIds, chatTree, unreadWorkspaces]
   );
-  // "Add to priority" only makes sense while the section exists.
+  // "Add to Priority" only makes sense while the section exists.
   const addToPriority = showPriority ? onAddToPriority : undefined;
 
   // Pinned workspaces float into a dedicated section at the very top of the
@@ -1978,9 +1978,10 @@ export function Sidebar({
                         }}
                       >
                         <Settings2 size={14} aria-hidden="true" />
-                        Edit project
+                        Edit Project
                       </button>
                     </li>
+                    <li className="project-picker-divider" role="separator" />
                     <li role="none">
                       <button
                         type="button"
@@ -1992,7 +1993,7 @@ export function Sidebar({
                         }}
                       >
                         <Trash2 size={14} aria-hidden="true" />
-                        Remove project
+                        Remove Project
                       </button>
                     </li>
                   </>
@@ -2084,6 +2085,19 @@ export function Sidebar({
                   type="button"
                   role="menuitem"
                   className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(showKeyboardCheatSheet)}
+                >
+                  <Keyboard size={14} aria-hidden="true" />
+                  <span>Keyboard Shortcuts</span>
+                  <kbd>⌘/</kbd>
+                </button>
+              </li>
+              <li className="project-picker-divider" role="separator" />
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
                   onClick={() => runIdentityAction(openSettings)}
                 >
                   <Settings size={14} aria-hidden="true" />
@@ -2113,18 +2127,7 @@ export function Sidebar({
                   <span>Diagnostics & Logs</span>
                 </button>
               </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(showKeyboardCheatSheet)}
-                >
-                  <Keyboard size={14} aria-hidden="true" />
-                  <span>Keyboard Shortcuts</span>
-                  <kbd>⌘/</kbd>
-                </button>
-              </li>
+              <li className="project-picker-divider" role="separator" />
               <li role="none">
                 <button
                   type="button"

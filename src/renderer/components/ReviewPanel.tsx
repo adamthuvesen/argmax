@@ -264,7 +264,7 @@ function ReviewModeTabs({
                     closeMenu();
                   }}
                 >
-                  Split below
+                  Split Below
                 </button>
               </li>
             </ul>,

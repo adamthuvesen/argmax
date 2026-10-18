@@ -171,8 +171,8 @@ export function ReviewTabsBar({
     { kind: "changes", label: "Changes", icon: <ChangesIcon /> },
     { kind: "files", label: "Files", icon: <Folder size={14} aria-hidden="true" /> },
     ...(hasAgents ? [{ kind: "agents" as const, label: "Agents", icon: <Bot size={14} aria-hidden="true" /> }] : []),
-    ...(hasBrowser ? [{ kind: "browser" as const, label: "Browser tab", icon: <Globe size={14} aria-hidden="true" /> }] : []),
-    ...(hasBrowser && artifactsEnabled ? [{ kind: "artifacts" as const, label: "Claude artifacts", icon: <Shapes size={14} aria-hidden="true" /> }] : []),
+    ...(hasBrowser ? [{ kind: "browser" as const, label: "Browser Tab", icon: <Globe size={14} aria-hidden="true" /> }] : []),
+    ...(hasBrowser && artifactsEnabled ? [{ kind: "artifacts" as const, label: "Claude Artifacts", icon: <Shapes size={14} aria-hidden="true" /> }] : []),
     ...(hasTerminal ? [{ kind: "terminal" as const, label: "Terminal", icon: <TerminalIcon /> }] : [])
   ];
 
@@ -286,15 +286,15 @@ export function ReviewTabsBar({
             <li className="project-picker-group-label" role="presentation">Open in workspace</li>
             {openItems.map((item) => <li key={item.kind} role="none"><button type="button" role="menuitem" className="project-picker-item" onClick={() => menuAction(() => onOpen(item.kind))}>{item.icon}{item.label}</button></li>)}
           </> : selectedItem ? <>
-            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={items.length < 2} onClick={() => menuAction(() => onSplit(selectedItem.id, "top"))}><ArrowUpToLine size={14} aria-hidden="true" />Show above</button></li>
-            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={items.length < 2} onClick={() => menuAction(() => onSplit(selectedItem.id, "bottom"))}><ArrowDownToLine size={14} aria-hidden="true" />Show below</button></li>
-            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={selectedIndex === 0} onClick={() => menuAction(() => onMove(selectedItem.id, selectedIndex - 1))}><ArrowLeft size={14} aria-hidden="true" />Move left</button></li>
-            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={selectedIndex === items.length - 1} onClick={() => menuAction(() => onMove(selectedItem.id, selectedIndex + 1))}><ArrowRight size={14} aria-hidden="true" />Move right</button></li>
+            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={items.length < 2} onClick={() => menuAction(() => onSplit(selectedItem.id, "top"))}><ArrowUpToLine size={14} aria-hidden="true" />Show Above</button></li>
+            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={items.length < 2} onClick={() => menuAction(() => onSplit(selectedItem.id, "bottom"))}><ArrowDownToLine size={14} aria-hidden="true" />Show Below</button></li>
+            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={selectedIndex === 0} onClick={() => menuAction(() => onMove(selectedItem.id, selectedIndex - 1))}><ArrowLeft size={14} aria-hidden="true" />Move Left</button></li>
+            <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={selectedIndex === items.length - 1} onClick={() => menuAction(() => onMove(selectedItem.id, selectedIndex + 1))}><ArrowRight size={14} aria-hidden="true" />Move Right</button></li>
             <li className="project-picker-divider" role="separator" />
-            <li role="none"><button type="button" role="menuitem" className="project-picker-item" onClick={() => menuAction(() => onClose(selectedItem.id))}><X size={14} aria-hidden="true" />Close tab</button></li>
+            <li role="none"><button type="button" role="menuitem" className="project-picker-item" onClick={() => menuAction(() => onClose(selectedItem.id))}><X size={14} aria-hidden="true" />Close Tab</button></li>
           </> : null}
           <li className="project-picker-divider" role="separator" />
-          <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={!canReopen} onClick={() => menuAction(onReopen)}><RotateCcw size={14} aria-hidden="true" />Reopen closed tab</button></li>
+          <li role="none"><button type="button" role="menuitem" className="project-picker-item" disabled={!canReopen} onClick={() => menuAction(onReopen)}><RotateCcw size={14} aria-hidden="true" />Reopen Closed Tab</button></li>
         </ul>, document.body
       ) : null}
     </div>

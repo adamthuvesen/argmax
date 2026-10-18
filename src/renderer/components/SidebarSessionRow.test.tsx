@@ -859,7 +859,7 @@ describe("styles.css startup contract", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Sync now" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sync Now" }));
 
     expect(onSyncNow).toHaveBeenCalledTimes(1);
   });
@@ -875,7 +875,7 @@ describe("styles.css startup contract", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    expect(screen.queryByRole("menuitem", { name: "Sync now" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Sync Now" })).toBeNull();
   });
 });
 
@@ -894,7 +894,7 @@ describe("SidebarSessionRow copy ids", () => {
       />
     );
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy ids" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy IDs" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("session   session-1\nworkspace workspace-1"));
     expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
   });

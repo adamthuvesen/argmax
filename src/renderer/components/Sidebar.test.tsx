@@ -265,7 +265,7 @@ describe("Sidebar — project sort menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
 
     const menu = screen.getByRole("menu", { name: "Sidebar view options" });
-    const recentItem = within(menu).getByRole("menuitemradio", { name: /Recent activity/ });
+    const recentItem = within(menu).getByRole("menuitemradio", { name: /Recent Activity/ });
     expect(recentItem.getAttribute("aria-checked")).toBe("true");
 
     setItemSpy.mockClear();
@@ -349,7 +349,7 @@ describe("Sidebar — project removal menu", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Edit project" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Project" }));
 
     expect(overlaysSnapshot().settingsNavigation).toMatchObject({
       group: "projects",
@@ -372,7 +372,7 @@ describe("Sidebar — project removal menu", () => {
 
     // First click on the per-project "Actions" trigger — opens the menu.
     fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
-    const removeItem = screen.getByRole("menuitem", { name: /Remove project/ });
+    const removeItem = screen.getByRole("menuitem", { name: /Remove Project/ });
     expect(removeItem).toBeInTheDocument();
 
     // Click "Remove project" — must NOT trigger removal yet; it swaps to confirm.
@@ -387,7 +387,7 @@ describe("Sidebar — project removal menu", () => {
 
     // Re-open and confirm — now the callback fires with the project id.
     fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /Remove project/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Remove Project/ }));
     fireEvent.click(screen.getByRole("button", { name: /^Remove$/ }));
 
     expect(onRemoveProject).toHaveBeenCalledTimes(1);
@@ -1373,8 +1373,8 @@ describe("Sidebar — Priority section", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Pinned task/ }));
-    expect(screen.queryByRole("menuitem", { name: "Add to priority" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Done" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Add to Priority" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Mark Done" })).toBeNull();
   });
 
   it("collapses and expands the Priority section from its header chevron", () => {
@@ -1445,7 +1445,7 @@ describe("Sidebar — Priority section", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Blocked task/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Done" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark Done" }));
 
     expect(onRemoveFromPriority).toHaveBeenCalledWith("w-blocked");
   });
@@ -1464,8 +1464,8 @@ describe("Sidebar — Priority section", () => {
     // The calm row sits in its project group; its menu offers Add, not Done.
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
-    expect(screen.queryByRole("menuitem", { name: "Done" })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add to priority" }));
+    expect(screen.queryByRole("menuitem", { name: "Mark Done" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Priority" }));
 
     expect(onAddToPriority).toHaveBeenCalledWith("w-calm");
   });
@@ -2535,7 +2535,7 @@ describe("Sidebar — snooze shelf", () => {
     fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
     expect(screen.queryByRole("menuitem", { name: "Snooze for 1 hour" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Snooze for a week" })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Snooze until tomorrow" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Snooze Until Tomorrow" }));
     expect(onSnoozeWorkspace).toHaveBeenCalledTimes(1);
     const [workspaceId, until] = onSnoozeWorkspace.mock.calls[0] as [string, string];
     expect(workspaceId).toBe("w-calm");
@@ -2546,7 +2546,7 @@ describe("Sidebar — snooze shelf", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show Snoozed chats" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /Snoozed task/ }));
-    expect(screen.queryByRole("menuitem", { name: "Snooze until tomorrow" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Snooze Until Tomorrow" })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Unsnooze" }));
     expect(onUnsnoozeWorkspace).toHaveBeenCalledWith("w-snoozed");
   });
@@ -2748,13 +2748,13 @@ describe("Sidebar — launched chat nesting", () => {
   it("keeps a detached chat at the top level after a dashboard update", () => {
     const { rerender } = render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Launched chat" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Detach to top level" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Detach to Top Level" }));
     expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
     rerender(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
     expect(screen.getByRole("button", { name: /Launched chat/ })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
     fireEvent.contextMenu(screen.getByRole("button", { name: /Launched chat/ }));
-    expect(screen.queryByRole("menuitem", { name: "Detach to top level" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Detach to Top Level" })).not.toBeInTheDocument();
   });
 
   it("names the project on a child launched into another project", () => {
@@ -2778,10 +2778,10 @@ describe("Sidebar — launched chat nesting", () => {
     expect(screen.getByText("Priority")).toBeInTheDocument();
     const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
     fireEvent.contextMenu(within(children).getByRole("button", { name: "Launched chat" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Done" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Mark Done" }));
     expect(onRemoveFromPriority).toHaveBeenCalledExactlyOnceWith("child");
     fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
-    expect(screen.queryByRole("menuitem", { name: "Done" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Mark Done" })).not.toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.click(screen.getByRole("button", { name: "Clear read chats from Priority" }));
     expect(onClearPriority).toHaveBeenCalledWith(["child"]);

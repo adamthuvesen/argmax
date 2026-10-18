@@ -52,6 +52,7 @@ import {
   beginWorkspacePointerDrag,
   consumeWorkspaceDragClick
 } from "../state/workspaceDrag.js";
+import { MenuSections } from "./MenuSections.js";
 import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
 
@@ -124,9 +125,9 @@ export type SidebarSessionRowProps = {
    *  it (lib/priority.ts). */
   isWorking?: boolean;
   hasUnreadResponse?: boolean;
-  /** Priority rows only — right-click "Done" drops the row back to its group. */
+  /** Priority rows only — right-click "Mark Done" drops the row back to its group. */
   onRemoveFromPriority?: (workspaceId: string) => void;
-  /** Non-priority rows — right-click "Add to priority" floats the row manually. */
+  /** Non-priority rows — right-click "Add to Priority" floats the row manually. */
   onAddToPriority?: (workspaceId: string) => void;
   /** Right-click "Snooze …" — moves the row to the snooze shelf until `until`. */
   onSnooze?: (workspaceId: string, until: string) => void;
@@ -134,11 +135,11 @@ export type SidebarSessionRowProps = {
   onUnsnooze?: (workspaceId: string) => void;
   /** Right-click "Edit Icon" — both values null clears the custom glyph. */
   onSetIcon?: (workspaceId: string, icon: string | null, iconColor: string | null) => void;
-  /** Right-click "Copy ids" puts this block on the clipboard: the session,
+  /** Right-click "Copy IDs" puts this block on the clipboard: the session,
    *  provider-conversation, and workspace ids a user hands to another agent
    *  ("message session …") or pastes into a bug report. */
   copyableIds?: string;
-  /** Right-click "Sync now" on an imported row — runs one session-sync sweep
+  /** Right-click "Sync Now" on an imported row — runs one session-sync sweep
    *  so continuations made in the provider CLI appear immediately. */
   onSyncNow?: () => void;
 };
@@ -388,7 +389,7 @@ function SidebarSessionRowInner({
   const unread = Boolean(hasUnreadResponse) && !working;
   const title = `${displayLabel} — ${workspace.state}${priorityTitle}${prTitle}${isOpenInGrid ? " — in view" : ""}${unread ? " — unread response" : ""}`;
 
-  // "Sync now" only makes sense on a row imported from a provider store —
+  // "Sync Now" only makes sense on a row imported from a provider store —
   // Argmax-owned sessions have nothing to re-read.
   const canSyncNow = Boolean(onSyncNow && importedProvider);
   const handleContextMenu = (event: ReactMouseEvent): void => {
@@ -680,230 +681,244 @@ function SidebarSessionRowInner({
               aria-label="Chat actions"
               style={contextMenu.floatingStyles}
             >
-              {onToggleChildren ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    aria-label={`${childrenExpanded ? "Collapse" : "Expand"} chats launched from ${workspace.taskLabel || workspace.branch}`}
-                    title={`${childCount ?? 0} launched chats${childActivity ? ` · ${childActivity}` : ""}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onToggleChildren(workspace.id);
-                    }}
-                  >
-                    <MessageCircle size={13} aria-hidden="true" />
-                    {childrenExpanded ? "Hide launched chats" : "Show launched chats"}
-                  </button>
-                </li>
-              ) : null}
-              {onDetach ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onDetach(workspace.id);
-                    }}
-                  >
-                    <CornerUpLeft size={13} aria-hidden="true" />
-                    Detach to top level
-                  </button>
-                </li>
-              ) : null}
-              {onRename ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      startRename();
-                    }}
-                  >
-                    <Pencil size={13} aria-hidden="true" />
-                    Rename
-                  </button>
-                </li>
-              ) : null}
-              {onFork ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onFork(workspace.id);
-                    }}
-                  >
-                    <GitFork size={13} aria-hidden="true" />
-                    Fork
-                  </button>
-                </li>
-              ) : null}
-              {onSetIcon ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      startEditIcon();
-                    }}
-                  >
-                    <Palette size={13} aria-hidden="true" />
-                    Edit Icon
-                  </button>
-                </li>
-              ) : null}
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item"
-                  disabled={ideDisabled}
-                  title={disabledReason ?? undefined}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    startOpenInIde();
-                  }}
-                >
-                  <ExternalLink size={13} aria-hidden="true" />
-                  {defaultIdeLabel ? `Open in ${defaultIdeLabel}` : "Open in IDE"}
-                </button>
-              </li>
-              {onOpenInWindow ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onOpenInWindow(workspace.id);
-                    }}
-                  >
-                    <AppWindow size={13} aria-hidden="true" />
-                    Open in new window
-                  </button>
-                </li>
-              ) : null}
-              {copyableIds ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      void copyIds(copyableIds);
-                    }}
-                  >
-                    <Copy size={13} aria-hidden="true" />
-                    Copy ids
-                  </button>
-                </li>
-              ) : null}
-              {canSyncNow && onSyncNow ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onSyncNow();
-                    }}
-                  >
-                    <RefreshCw size={13} aria-hidden="true" />
-                    Sync now
-                  </button>
-                </li>
-              ) : null}
-              {/* After Rename, which keeps its long-standing first slot — a
-                  mis-click here moves the row immediately. */}
-              {onRemoveFromPriority ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onRemoveFromPriority(workspace.id);
-                    }}
-                  >
-                    <Check size={13} aria-hidden="true" />
-                    Done
-                  </button>
-                </li>
-              ) : null}
-              {onAddToPriority ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onAddToPriority(workspace.id);
-                    }}
-                  >
-                    <ListPlus size={13} aria-hidden="true" />
-                    Add to priority
-                  </button>
-                </li>
-              ) : null}
-              {onUnsnooze ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      closeContextMenu();
-                      onUnsnooze(workspace.id);
-                    }}
-                  >
-                    <AlarmClockOff size={13} aria-hidden="true" />
-                    Unsnooze
-                  </button>
-                </li>
-              ) : null}
-              {onSnooze
-                ? snoozeChoices(new Date()).map((choice) => (
-                    <li role="none" key={choice.key}>
+              {/* Priority and snooze sit last, away from Rename: a mis-click
+                  there moves the row immediately. */}
+              <MenuSections
+                sections={[
+                  [
+                    onToggleChildren ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          aria-label={`${childrenExpanded ? "Collapse" : "Expand"} chats launched from ${workspace.taskLabel || workspace.branch}`}
+                          title={`${childCount ?? 0} launched chats${childActivity ? ` · ${childActivity}` : ""}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onToggleChildren(workspace.id);
+                          }}
+                        >
+                          <MessageCircle size={13} aria-hidden="true" />
+                          {childrenExpanded ? "Hide Launched Chats" : "Show Launched Chats"}
+                        </button>
+                      </li>
+                    ) : null,
+                    onDetach ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onDetach(workspace.id);
+                          }}
+                        >
+                          <CornerUpLeft size={13} aria-hidden="true" />
+                          Detach to Top Level
+                        </button>
+                      </li>
+                    ) : null
+                  ],
+                  [
+                    onRename ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startRename();
+                          }}
+                        >
+                          <Pencil size={13} aria-hidden="true" />
+                          Rename
+                        </button>
+                      </li>
+                    ) : null,
+                    onSetIcon ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            startEditIcon();
+                          }}
+                        >
+                          <Palette size={13} aria-hidden="true" />
+                          Edit Icon
+                        </button>
+                      </li>
+                    ) : null
+                  ],
+                  [
+                    onFork ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onFork(workspace.id);
+                          }}
+                        >
+                          <GitFork size={13} aria-hidden="true" />
+                          Fork
+                        </button>
+                      </li>
+                    ) : null,
+                    <li role="none">
                       <button
                         type="button"
                         role="menuitem"
                         className="project-picker-item"
+                        disabled={ideDisabled}
+                        title={disabledReason ?? undefined}
                         onClick={(event) => {
                           event.stopPropagation();
-                          closeContextMenu();
-                          onSnooze(workspace.id, choice.until);
+                          startOpenInIde();
                         }}
                       >
-                        <AlarmClock size={13} aria-hidden="true" />
-                        {choice.label}
+                        <ExternalLink size={13} aria-hidden="true" />
+                        {defaultIdeLabel ? `Open in ${defaultIdeLabel}` : "Open in IDE"}
                       </button>
-                    </li>
-                  ))
-                : null}
+                    </li>,
+                    onOpenInWindow ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onOpenInWindow(workspace.id);
+                          }}
+                        >
+                          <AppWindow size={13} aria-hidden="true" />
+                          Open in New Window
+                        </button>
+                      </li>
+                    ) : null
+                  ],
+                  [
+                    copyableIds ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            void copyIds(copyableIds);
+                          }}
+                        >
+                          <Copy size={13} aria-hidden="true" />
+                          Copy IDs
+                        </button>
+                      </li>
+                    ) : null,
+                    canSyncNow && onSyncNow ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onSyncNow();
+                          }}
+                        >
+                          <RefreshCw size={13} aria-hidden="true" />
+                          Sync Now
+                        </button>
+                      </li>
+                    ) : null
+                  ],
+                  [
+                    onRemoveFromPriority ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onRemoveFromPriority(workspace.id);
+                          }}
+                        >
+                          <Check size={13} aria-hidden="true" />
+                          Mark Done
+                        </button>
+                      </li>
+                    ) : null,
+                    onAddToPriority ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onAddToPriority(workspace.id);
+                          }}
+                        >
+                          <ListPlus size={13} aria-hidden="true" />
+                          Add to Priority
+                        </button>
+                      </li>
+                    ) : null,
+                    onUnsnooze ? (
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeContextMenu();
+                            onUnsnooze(workspace.id);
+                          }}
+                        >
+                          <AlarmClockOff size={13} aria-hidden="true" />
+                          Unsnooze
+                        </button>
+                      </li>
+                    ) : null,
+                    onSnooze
+                      ? snoozeChoices(new Date()).map((choice) => (
+                          <li role="none" key={choice.key}>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="project-picker-item"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                closeContextMenu();
+                                onSnooze(workspace.id, choice.until);
+                              }}
+                            >
+                              <AlarmClock size={13} aria-hidden="true" />
+                              {choice.label}
+                            </button>
+                          </li>
+                        ))
+                      : null
+                  ]
+                ]}
+              />
             </ul>,
             document.body
           )

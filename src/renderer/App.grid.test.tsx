@@ -371,7 +371,7 @@ describe("App grid", () => {
     await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "New chat here" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New Chat Here" }));
 
     expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();

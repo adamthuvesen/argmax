@@ -127,14 +127,14 @@ describe("SessionActionsMenu", () => {
       />
     );
 
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
     await openMenu();
 
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Browse Files" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Git actions" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Browse files" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Browse Files" }));
     expect(onBrowseFiles).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
 
     await waitFor(() => {
       expect(listForSession).toHaveBeenCalledWith({ sessionId: "session-1" });
@@ -159,7 +159,7 @@ describe("SessionActionsMenu", () => {
     );
 
     await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open browser" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open Browser" }));
 
     // No target URL: the claiming pane restores its own tab strip rather than
     // navigating to a hardcoded page.
@@ -192,7 +192,7 @@ describe("SessionActionsMenu", () => {
     );
 
     await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Send task to Codex Cloud…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Send Task to Codex Cloud…" }));
 
     expect(await screen.findByRole("dialog", { name: "Send task to Codex Cloud" })).toBeInTheDocument();
     expect(prepareCloud).toHaveBeenCalledWith({ sessionId: "session-1", provider: "codex" });
@@ -311,7 +311,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
       />
     );
     await openMenu();
-    expect(screen.queryByRole("menuitem", { name: /^Open in (?!new window)/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Open in (?!New Window)/ })).toBeNull();
     unmount();
 
     render(
@@ -329,7 +329,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
     await openMenu();
     // A greyed-out row nobody can ever click explains nothing; with no IDE
     // installed there is simply no row.
-    expect(screen.queryByRole("menuitem", { name: /^Open in (?!new window)/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Open in (?!New Window)/ })).toBeNull();
   });
 });
 
@@ -358,7 +358,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    expect(screen.queryByRole("menuitem", { name: "Open launching chat" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open Launching Chat" })).toBeNull();
     unmount();
 
     render(
@@ -371,7 +371,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    expect(screen.queryByRole("menuitem", { name: "Open launching chat" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open Launching Chat" })).toBeNull();
   });
 
   it("starts an arc from the chat, and says why it cannot while a turn runs", async () => {
@@ -387,7 +387,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Start an arc from this chat…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start an Arc from This Chat…" }));
     expect(run).toHaveBeenCalledTimes(1);
     unmount();
 
@@ -402,7 +402,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    const item = screen.getByRole("menuitem", { name: "Start an arc from this chat…" });
+    const item = screen.getByRole("menuitem", { name: "Start an Arc from This Chat…" });
     expect(item).toBeDisabled();
     expect(item).toHaveAttribute("title", "Wait for this turn to finish");
   });

@@ -85,7 +85,7 @@ function morning(from: Date, daysAhead: number): Date {
 
 export function snoozeChoices(from: Date): SnoozeChoice[] {
   return [
-    { key: "tomorrow", label: "Snooze until tomorrow", until: morning(from, 1).toISOString() }
+    { key: "tomorrow", label: "Snooze Until Tomorrow", until: morning(from, 1).toISOString() }
   ];
 }
 

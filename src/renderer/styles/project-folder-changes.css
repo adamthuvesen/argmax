@@ -81,80 +81,11 @@
   color: var(--rose);
 }
 
-.project-folder-change-file {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 28px;
-  padding: 4px 6px 4px 24px;
-  border: 0;
-  border-radius: var(--radius-md);
-  color: var(--muted-strong);
-  background: transparent;
-  font: inherit;
-  text-align: left;
-}
-
-.project-folder-change-icon {
-  display: flex;
-  flex: 0 0 14px;
-}
-
-.project-folder-change-path {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
-.project-folder-change-basename,
-.project-folder-change-directory {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-folder-change-basename {
-  flex: 0 1 auto;
-  color: var(--text);
-}
-
-.project-folder-change-directory {
-  flex: 1 2 0;
-  color: var(--muted);
-  font-size: var(--text-2xs);
-}
-
-.project-folder-change-file .change-count {
-  flex-shrink: 0;
-  font-size: var(--text-2xs);
-}
-
-.project-folder-change-group summary:hover,
-.project-folder-change-file:hover {
+.project-folder-change-group summary:hover {
   background: var(--row-hover);
 }
 
-.project-folder-change-file[aria-pressed="true"] {
-  background: var(--row-selected);
-}
-
-.project-folder-change-file[aria-pressed="true"]::before {
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 0;
-  width: 2px;
-  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
-  background: var(--accent);
-  content: "";
-}
-
-.project-folder-change-group summary:focus-visible,
-.project-folder-change-file:focus-visible {
+.project-folder-change-group summary:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }

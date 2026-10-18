@@ -75,7 +75,7 @@ describe("ReviewPanel changes layout", () => {
     }
     try {
       render(<PanelWithFolderChanges />);
-      fireEvent.click(await screen.findByRole("button", { name: "View src/a.ts in other" }));
+      fireEvent.click(await within(await screen.findByRole("region", { name: "Other project folders" })).findByTitle("src/a.ts"));
       await screen.findByText("other repository");
       expect(loadDiff).toHaveBeenCalledWith({ kind: "projectFolder", id: "other" }, "src/a.ts", "workingTree", undefined);
       expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();

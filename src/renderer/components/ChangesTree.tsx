@@ -20,7 +20,7 @@ export interface ChangesTreeProps {
   /** Row click: the caller decides whether that selects or opens the diff. */
   onSelectFile: (path: string) => void;
   onRefresh: () => void;
-  onOpenInFiles: (path: string) => void;
+  onOpenInFiles?: (path: string) => void;
   /** Omit to hide staging entirely — e.g. when diffing against the base branch,
    *  where there is no index to move. */
   onToggleStaged?: (file: ChangedFileSummary) => void;
@@ -292,7 +292,7 @@ function FileRow({
   selected: boolean;
   actionsPending: boolean;
   onSelectFile: (path: string) => void;
-  onOpenInFiles: (path: string) => void;
+  onOpenInFiles?: (path: string) => void;
   onToggleStaged?: (file: ChangedFileSummary) => void;
   onRevert?: (file: ChangedFileSummary) => void;
 }): JSX.Element | null {
@@ -359,15 +359,15 @@ function FileRow({
               <Undo2 size={13} aria-hidden="true" />
             </button>
           ) : null}
-          <button
+          {onOpenInFiles ? <button
             type="button"
             className="small-icon"
             title={`Open ${file.path} in Files view`}
             aria-label={`Open ${file.path} in Files view`}
-            onClick={act(() => onOpenInFiles(file.path))}
+            onClick={act(() => onOpenInFiles?.(file.path))}
           >
             <FolderOpen size={13} aria-hidden="true" />
-          </button>
+          </button> : null}
         </span>
         <span className="changes-tree-status" data-status={status} role="img" aria-label={title} title={title}>
           {STATUS_GLYPH[status]}

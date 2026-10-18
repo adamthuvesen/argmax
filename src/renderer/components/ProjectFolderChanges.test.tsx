@@ -38,10 +38,13 @@ describe("ProjectFolderChangesList", () => {
     expect(screen.getByText("context")).toBeVisible();
     expect(screen.getByText("2 files")).toBeVisible();
     expect(screen.getAllByText("index.ts")).toHaveLength(2);
-    expect(screen.getByText("src/search")).toBeVisible();
-    expect(screen.getByRole("button", { name: "View src/search/index.ts in context" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "View src/api/index.ts in context" }));
+    expect(screen.getByText("search")).toBeVisible();
+    expect(screen.getByTitle("src/search/index.ts")).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByTitle("src/api/index.ts"));
     expect(state.selectFile).toHaveBeenCalledWith("context", "src/api/index.ts");
+    fireEvent.click(screen.getByRole("treeitem", { name: "search" }));
+    expect(screen.queryByTitle("src/search/index.ts")).not.toBeInTheDocument();
+    expect(screen.getByTitle("src/api/index.ts")).toBeVisible();
   });
 
   it("starts unchanged folders collapsed and names the empty state", () => {

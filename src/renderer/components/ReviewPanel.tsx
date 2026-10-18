@@ -475,16 +475,16 @@ function ReviewPanelPane({
   const isSideChat = mode === "side-chat";
   const isFileSurface = mode === "files" || isChanges;
   const projectFolderChanges = review.projectFolderChanges;
-  // Terminals outlive the view: once a workspace has tabs the panel keeps them
-  // mounted (hidden) while the reader is on another mode, so coming back is
-  // instant and nothing is torn down. An empty workspace mounts only on
-  // entering Terminal mode — otherwise merely opening the panel would spawn a
-  // shell nobody asked for.
+  // Terminals outlive the view: while the workspace has tabs (in tabs mode,
+  // while the strip holds one) one pane keeps them mounted (hidden), so coming
+  // back is instant and the mount keeps the workspace safe from LRU eviction.
+  // An empty workspace mounts only on entering Terminal mode — otherwise
+  // merely opening the panel would spawn a shell nobody asked for.
   const terminalTabs = useSyncExternalStore(subscribeTerminalTabs, () =>
     getWorkspaceTerminalState(terminalWorkspaceId)
   );
   const terminalMounted = review.tabs
-    ? isTerminal && tab?.kind === "terminal"
+    ? (isTerminal && tab?.kind === "terminal") || (ownsTerminalMount && review.tabs.items.some((item) => item.kind === "terminal" && item.workspaceId === terminalWorkspaceId))
     : ownsTerminalMount && terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);

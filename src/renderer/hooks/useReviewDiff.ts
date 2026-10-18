@@ -19,10 +19,6 @@ interface UseReviewDiffResult {
   resetForSourceChange: () => void;
   /** Ask git for more unchanged context around the open file's hunks. */
   expandDiffContext: () => void;
-  updateFileIndex: (filePath: string, revision: string, stage: boolean) => Promise<void>;
-  revertFile: (filePath: string, revision: string) => Promise<void>;
-  revertHunk: (filePath: string, revision: string, hunkIndex: number) => Promise<void>;
-  updateHunkIndex: (filePath: string, revision: string, hunkIndex: number, stage: boolean) => Promise<void>;
 }
 
 export function useReviewDiff(args: {
@@ -268,41 +264,6 @@ export function useReviewDiff(args: {
     });
   }, [selectedFilePath]);
 
-  const updateFileIndex = useCallback(async (filePath: string, revision: string, stage: boolean): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await (stage ? dispatch.stageFile(filePath, revision) : dispatch.unstageFile(filePath, revision)); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch]);
-
-  const updateHunkIndex = useCallback(async (
-    filePath: string,
-    revision: string,
-    hunkIndex: number,
-    stage: boolean
-  ): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await (stage
-      ? dispatch.stageHunk(filePath, revision, hunkIndex, contextLines)
-      : dispatch.unstageHunk(filePath, revision, hunkIndex, contextLines)); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch, contextLines]);
-
-  const revertFile = useCallback(async (filePath: string, revision: string): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await dispatch.revertFile(filePath, revision); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch]);
-
-  const revertHunk = useCallback(async (
-    filePath: string,
-    revision: string,
-    hunkIndex: number
-  ): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await dispatch.revertHunk(filePath, revision, hunkIndex, contextLines); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch, contextLines]);
-
   return {
     files,
     filesState,
@@ -314,10 +275,6 @@ export function useReviewDiff(args: {
     openFile,
     refreshChanges,
     resetForSourceChange,
-    expandDiffContext,
-    updateFileIndex,
-    revertFile,
-    revertHunk,
-    updateHunkIndex
+    expandDiffContext
   };
 }

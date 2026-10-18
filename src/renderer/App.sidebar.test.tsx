@@ -764,17 +764,17 @@ describe("App sidebar", () => {
       "export const tauriBridge = true;"
     );
 
-    const tablist = screen.getByRole("tablist", { name: "Open files" });
-    expect(within(tablist).getByRole("tab", { name: "index.ts" })).toHaveAttribute(
+    const tablist = screen.getByRole("tablist", { name: "Workspace tabs" });
+    expect(within(tablist).getByRole("tab", { name: "src-tauri/src/index.ts" })).toHaveAttribute(
       "aria-selected",
       "false"
     );
-    expect(within(tablist).getByRole("tab", { name: "tauriBridge.ts" })).toHaveAttribute(
+    expect(within(tablist).getByRole("tab", { name: "src/renderer/lib/tauriBridge.ts" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
 
-    fireEvent.click(within(tablist).getByRole("tab", { name: "index.ts" }));
+    fireEvent.click(within(tablist).getByRole("tab", { name: "src-tauri/src/index.ts" }));
     expect(await screen.findByLabelText("Preview of src-tauri/src/index.ts")).toHaveTextContent(
       "export const hello = 'world';"
     );
@@ -807,15 +807,17 @@ describe("App sidebar", () => {
 
     fireEvent.keyDown(input, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Split below" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Show below" }));
     expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Top review pane" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Bottom review pane" })).toBeInTheDocument();
 
     // Changes has focus, but Cmd+G still closes the visible Files half.
     fireEvent.keyDown(input, { key: "g", metaKey: true });
     expect(screen.getByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
-    expect(screen.getAllByRole("tablist", { name: "Review panel mode" })).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: "Bottom review pane" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Review panel content" })).toBeInTheDocument();
   });
 
   it("toggles the browser in the focused pane's review panel with Cmd+Shift+I", async () => {
@@ -826,7 +828,7 @@ describe("App sidebar", () => {
     fireEvent.keyDown(input, { key: "I", metaKey: true, shiftKey: true });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    expect(await screen.findByRole("tab", { name: "Browser", selected: true })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "https://www.google.com", selected: true })).toBeInTheDocument();
 
     fireEvent.keyDown(input, { key: "I", metaKey: true, shiftKey: true });
     await waitFor(() =>
@@ -999,7 +1001,11 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Terminal" })).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "New workspace tab" }));
+    expect(await screen.findByRole("menuitem", { name: "Terminal" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Open workspace tab" })).not.toBeInTheDocument());
+    expect(screen.getByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(screen.queryByText("2 files")).not.toBeInTheDocument();
     expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
 
@@ -1086,10 +1092,9 @@ describe("App sidebar", () => {
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Review panel content" }))
-        .getByRole("tablist", { name: "Review panel mode" })
-    ).toBeInTheDocument();
+    const panel = screen.getByRole("complementary", { name: "Review panel" });
+    expect(within(panel).getByRole("tablist", { name: "Workspace tabs" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "New workspace tab" })).toBeInTheDocument();
   });
 
   it("opens the launcher review panel when Tauri sends the Cmd+B menu command", async () => {
@@ -1134,14 +1139,16 @@ describe("App sidebar", () => {
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Split below" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Show below" }));
     expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Files", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Top review pane" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Bottom review pane" })).toBeInTheDocument();
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
     expect(screen.getByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Changes", selected: true })).toBeInTheDocument();
-    expect(screen.getAllByRole("tablist", { name: "Review panel mode" })).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: "Bottom review pane" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Review panel content" })).toBeInTheDocument();
   });
 
   it("surfaces project files in the command palette after Cmd+B opens review", async () => {

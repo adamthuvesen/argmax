@@ -122,7 +122,7 @@ export function openReviewTab(state: ReviewTabsState, tab: ReviewTab, index = st
   const replacedId = state.paneTabIds[index];
   const replaced = state.tabs.find((item) => item.id === replacedId);
   const next = selectReviewTab(addReviewTab(state, tab), tab.id, index);
-  return replaced?.kind === "tool" && (replaced.mode === "new" || replaced.mode === "side-chat") && replaced.id !== tab.id
+  return replaced?.kind === "tool" && replaced.mode === "new" && replaced.id !== tab.id
     ? removeReviewTab(next, replaced.id)
     : next;
 }

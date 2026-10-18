@@ -367,7 +367,8 @@ describe("useReviewState — IPC fan-out resistance", () => {
     const { result, rerender } = renderHook(({ workspace }: { workspace: WorkspaceSummary }) => useReviewState(workspaceSource(workspace), { sessionId: "parent-chat" }), { initialProps: { workspace: makeWorkspace() } });
     act(() => result.current.tabs!.openTool("side-chat"));
     expect(result.current.mode).toBe("side-chat");
-    act(() => result.current.tabs!.openSideChat("child-session", "shared-checkout"));
+    const formId = result.current.tabs!.paneTabIds[0];
+    act(() => result.current.tabs!.openSideChat("child-session", "shared-checkout", formId));
     const sideChat = result.current.tabs!.items.find((tab) => tab.kind === "side-chat")!;
     expect(sideChat).toEqual({ id: "side-chat:child-session", kind: "side-chat", sessionId: "child-session", workspaceId: "shared-checkout" });
     expect(result.current.tabs!.items.some((tab) => tab.kind === "tool" && tab.mode === "side-chat")).toBe(false);
@@ -471,6 +472,30 @@ describe("useReviewState — IPC fan-out resistance", () => {
     act(() => result.current.tabs!.reopenClosed());
     await waitFor(() => expect(result.current.workspaceFiles.activeTabPath).toBe("one.ts"));
     expect(result.current.workspaceFiles.buffer).toBe("");
+  });
+
+  it("closes a background file tab without changing the visible panes", async () => {
+    resetTerminalTabsForTests();
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    act(() => result.current.openInFilesView("hidden.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    const hidden = result.current.tabs!.items.find((tab) => tab.kind === "file")!;
+    act(() => result.current.tabs!.openTool("changes"));
+    act(() => result.current.tabs!.close(hidden.id));
+    expect(result.current.tabs!.paneTabIds).toEqual(["tool:changes"]);
+    expect(result.current.tabs!.items.some((tab) => tab.id === hidden.id)).toBe(false);
+
+    act(() => result.current.openInFilesView("hidden.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    const reopened = result.current.tabs!.items.find((tab) => tab.kind === "file")!;
+    act(() => result.current.tabs!.openTerminal());
+    act(() => result.current.tabs!.split("tool:changes", "top"));
+    const split = result.current.tabs!.paneTabIds;
+    expect(split).toHaveLength(2);
+    act(() => result.current.tabs!.close(reopened.id));
+    expect(result.current.tabs!.paneTabIds).toEqual(split);
+    expect(result.current.tabs!.items.some((tab) => tab.id === reopened.id)).toBe(false);
+    resetTerminalTabsForTests();
   });
 
   it("restores distinct terminal references and reopens a closed terminal as a fresh shell", () => {

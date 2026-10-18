@@ -1,5 +1,5 @@
 import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
-import { ChevronRight, ChevronsDownUp, FolderOpen, Minus, Plus, RotateCw, Undo2 } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, FolderOpen, RotateCw } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -21,14 +21,6 @@ export interface ChangesTreeProps {
   onSelectFile: (path: string) => void;
   onRefresh: () => void;
   onOpenInFiles?: (path: string) => void;
-  /** Omit to hide staging entirely — e.g. when diffing against the base branch,
-   *  where there is no index to move. */
-  onToggleStaged?: (file: ChangedFileSummary) => void;
-  /** Omit to hide revert. Untracked files hide it on their own: there is no
-   *  tracked content to restore. */
-  onRevert?: (file: ChangedFileSummary) => void;
-  /** A review write is in flight; staging and revert stay visible but inert. */
-  actionsPending?: boolean;
 }
 
 /** Row geometry copied from `WorkspaceTree` so both trees line up under the
@@ -133,10 +125,7 @@ export function ChangesTree({
   selectedPath,
   onSelectFile,
   onRefresh,
-  onOpenInFiles,
-  onToggleStaged,
-  onRevert,
-  actionsPending = false
+  onOpenInFiles
 }: ChangesTreeProps): JSX.Element {
   // Folded rather than expanded folders: a changed set is small and the point
   // of the panel is seeing the files, so everything starts open and stays open
@@ -222,11 +211,8 @@ export function ChangesTree({
               depth={row.depth}
               file={summaries.get(row.node.path)}
               selected={selectedPath === row.node.path}
-              actionsPending={actionsPending}
               onSelectFile={onSelectFile}
               onOpenInFiles={onOpenInFiles}
-              onToggleStaged={onToggleStaged}
-              onRevert={onRevert}
             />
           )
         )}
@@ -280,26 +266,19 @@ function FileRow({
   depth,
   file,
   selected,
-  actionsPending,
   onSelectFile,
-  onOpenInFiles,
-  onToggleStaged,
-  onRevert
+  onOpenInFiles
 }: {
   node: CompactNode;
   depth: number;
   file: ChangedFileSummary | undefined;
   selected: boolean;
-  actionsPending: boolean;
   onSelectFile: (path: string) => void;
   onOpenInFiles?: (path: string) => void;
-  onToggleStaged?: (file: ChangedFileSummary) => void;
-  onRevert?: (file: ChangedFileSummary) => void;
 }): JSX.Element | null {
   if (!file) return null;
   const status = changeStatus(file);
   const title = statusTitle(file, status);
-  const isUntracked = file.status === "??";
   // Actions sit beside the row button, not inside it: a button cannot nest, and
   // this keeps the status glyph on screen when they appear on hover.
   const act = (run: () => void) => (event: MouseEvent): void => {
@@ -335,30 +314,6 @@ function FileRow({
       </button>
       <span className="changes-tree-row-end">
         <span className="changes-tree-actions">
-          {onToggleStaged ? (
-            <button
-              type="button"
-              className="small-icon"
-              title={`${file.staged ? "Unstage" : "Stage"} ${file.path}`}
-              aria-label={`${file.staged ? "Unstage" : "Stage"} ${file.path}`}
-              disabled={actionsPending}
-              onClick={act(() => onToggleStaged(file))}
-            >
-              {file.staged ? <Minus size={13} aria-hidden="true" /> : <Plus size={13} aria-hidden="true" />}
-            </button>
-          ) : null}
-          {onRevert && !isUntracked ? (
-            <button
-              type="button"
-              className="small-icon"
-              title="Save a recovery checkpoint, then discard unstaged changes"
-              aria-label={`Revert unstaged changes in ${file.path}`}
-              disabled={actionsPending}
-              onClick={act(() => onRevert(file))}
-            >
-              <Undo2 size={13} aria-hidden="true" />
-            </button>
-          ) : null}
           {onOpenInFiles ? <button
             type="button"
             className="small-icon"

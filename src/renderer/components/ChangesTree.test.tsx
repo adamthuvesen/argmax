@@ -95,50 +95,14 @@ describe("ChangesTree", () => {
     expect(screen.getByRole("treeitem", { name: "deep.ts" })).toBeVisible();
   });
 
-  it("routes row actions to their own callbacks without selecting the row", () => {
+  it("opens a file in Files view without selecting the row", () => {
     const onSelectFile = vi.fn();
-    const onToggleStaged = vi.fn();
-    const onRevert = vi.fn();
     const onOpenInFiles = vi.fn();
-    const file = makeFile({ path: "src/a.ts", staged: true });
-    renderTree({ files: [file], onSelectFile, onToggleStaged, onRevert, onOpenInFiles });
+    renderTree({ files: [makeFile({ path: "src/a.ts" })], onSelectFile, onOpenInFiles });
 
-    fireEvent.click(screen.getByRole("button", { name: "Unstage src/a.ts" }));
-    fireEvent.click(screen.getByRole("button", { name: "Revert unstaged changes in src/a.ts" }));
     fireEvent.click(screen.getByRole("button", { name: "Open src/a.ts in Files view" }));
 
-    expect(onToggleStaged).toHaveBeenCalledWith(file);
-    expect(onRevert).toHaveBeenCalledWith(file);
     expect(onOpenInFiles).toHaveBeenCalledWith("src/a.ts");
     expect(onSelectFile).not.toHaveBeenCalled();
-  });
-
-  it("hides staging and revert when the caller withholds them, and keeps revert off untracked files", () => {
-    const { rerender, props } = renderTree({
-      files: [makeFile({ path: "new.ts", status: "??", additions: 5, deletions: 0 })],
-      onToggleStaged: () => undefined,
-      onRevert: () => undefined
-    });
-
-    expect(screen.getByRole("button", { name: "Stage new.ts" })).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Revert unstaged changes in new.ts" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Open new.ts in Files view" })).toBeVisible();
-
-    rerender(<ChangesTree {...props} onToggleStaged={undefined} onRevert={undefined} />);
-    expect(screen.queryByRole("button", { name: "Stage new.ts" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Open new.ts in Files view" })).toBeVisible();
-  });
-
-  it("disables write actions while a review action is pending but leaves open-in-files alive", () => {
-    renderTree({
-      files: [makeFile({ path: "a.ts" })],
-      onToggleStaged: () => undefined,
-      onRevert: () => undefined,
-      actionsPending: true
-    });
-
-    expect(screen.getByRole("button", { name: "Stage a.ts" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Revert unstaged changes in a.ts" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Open a.ts in Files view" })).toBeEnabled();
   });
 });

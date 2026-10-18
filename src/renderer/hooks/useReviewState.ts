@@ -199,10 +199,6 @@ export interface ReviewState {
   refreshChanges: () => void;
   /** Reload the open file's diff with more unchanged context around its hunks. */
   expandDiffContext: () => void;
-  updateFileIndex: (filePath: string, revision: string, stage: boolean) => Promise<void>;
-  revertFile: (filePath: string, revision: string) => Promise<void>;
-  revertHunk: (filePath: string, revision: string, hunkIndex: number) => Promise<void>;
-  updateHunkIndex: (filePath: string, revision: string, hunkIndex: number, stage: boolean) => Promise<void>;
   openPanelInFilesMode: () => void;
   openInFilesView: (filePath: string) => void;
   /** Open the panel on the Changes view. Unlike `toggleChangesPanel`, an
@@ -805,11 +801,14 @@ export function useReviewState(
   }, [browserTabs, browserRegistryReady]);
   useEffect(() => {
     setTabState((current) => {
+      // The render snapshot can predate a terminal another effect in this
+      // commit just added (⌘J on a fresh mount), so read the live store.
+      const live = getWorkspaceTerminalState(terminalWorkspaceId).tabs;
       let next = current;
       for (const tab of current.tabs) {
-        if (tab.kind === "terminal" && tab.workspaceId === terminalWorkspaceId && !terminalTabs.tabs.some((item) => item.id === tab.terminalTabId)) next = removeReviewTab(next, tab.id);
+        if (tab.kind === "terminal" && tab.workspaceId === terminalWorkspaceId && !live.some((item) => item.id === tab.terminalTabId)) next = removeReviewTab(next, tab.id);
       }
-      if (terminalWorkspaceId) for (const tab of terminalTabs.tabs) next = addReviewTab(next, { id: `terminal:${terminalWorkspaceId}:${tab.id}`, kind: "terminal", terminalTabId: tab.id, workspaceId: terminalWorkspaceId });
+      if (terminalWorkspaceId) for (const tab of live) next = addReviewTab(next, { id: `terminal:${terminalWorkspaceId}:${tab.id}`, kind: "terminal", terminalTabId: tab.id, workspaceId: terminalWorkspaceId });
       return next;
     });
   }, [terminalTabs.tabs, terminalWorkspaceId]);
@@ -858,7 +857,7 @@ export function useReviewState(
     const tab = current.tabs.find((item) => item.id === id);
     if (!tab) return;
     if (tab.kind === "file") {
-      setTabState((state) => selectReviewTab(state, tab.id));
+      if (previewState.tabs.some((item) => item.path === tab.path && item.isDirty)) setTabState((state) => selectReviewTab(state, tab.id));
       pendingFileClose.current = tab;
       previewState.closeTab(tab.path);
       return;
@@ -1041,10 +1040,6 @@ export function useReviewState(
     openFile: diffState.openFile,
     refreshChanges: diffState.refreshChanges,
     expandDiffContext: diffState.expandDiffContext,
-    updateFileIndex: diffState.updateFileIndex,
-    revertFile: diffState.revertFile,
-    revertHunk: diffState.revertHunk,
-    updateHunkIndex: diffState.updateHunkIndex,
     openPanelInFilesMode,
     openInFilesView,
     openChangesPanel,

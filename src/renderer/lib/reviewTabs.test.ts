@@ -22,15 +22,20 @@ describe("review tabs", () => {
     expect(replaced.tabs.some((tab) => tab.id === "tool:new")).toBe(false);
   });
 
-  it("adopts a launched side chat without persisting provider state", () => {
-    const form = openReviewTab(createReviewTabs(), reviewToolTab("side-chat"));
+  it("opens a side chat without persisting provider state", () => {
     const session: ReviewTab = { id: "side-chat:child-session", kind: "side-chat", sessionId: "child-session", workspaceId: "shared-checkout" };
-    const opened = openReviewTab(form, session);
+    const opened = openReviewTab(createReviewTabs(), session);
     expect(opened.paneTabIds).toEqual([session.id]);
-    expect(opened.tabs.some((tab) => tab.id === "tool:side-chat")).toBe(false);
     expect(parseReviewTabs(JSON.stringify(opened))).toEqual(opened);
     expect(projectReviewLayout(opened).modes).toEqual(["side-chat"]);
     expect(openReviewTab(opened, session).tabs.filter((tab) => tab.kind === "side-chat")).toHaveLength(1);
+  });
+
+  it("keeps a Side chat form in the strip when another tab opens over it", () => {
+    const form = openReviewTab(createReviewTabs(), reviewToolTab("side-chat"));
+    const opened = openReviewTab(form, reviewToolTab("files"));
+    expect(opened.paneTabIds).toEqual(["tool:files"]);
+    expect(opened.tabs.map((tab) => tab.id)).toEqual(["tool:changes", "tool:side-chat", "tool:files"]);
   });
 
   it("round-trips order and two independent browser panes", () => {

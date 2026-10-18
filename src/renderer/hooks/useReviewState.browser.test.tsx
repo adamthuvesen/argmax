@@ -7,6 +7,7 @@ import {
   createBrowserTab,
   markBrowserTabMaterialized,
   getBrowserTabFocusRequest,
+  consumeBrowserTabFocusRequest,
   updateBrowserTabState,
   LAUNCHER_BROWSER_SCOPE_ID,
   openInBrowserPanel,
@@ -125,6 +126,10 @@ describe("useReviewState — browser mode", () => {
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/first"));
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/second"));
     const pages = getBrowserTabs("close-page-focus");
+    for (const page of pages) {
+      const request = getBrowserTabFocusRequest(page.id);
+      if (request !== null) consumeBrowserTabFocusRequest(page.id, request);
+    }
     const closing = pages[closeActive ? 1 : 0];
     const survivor = pages[closeActive ? 0 : 1];
     markBrowserTabMaterialized(closing.id);

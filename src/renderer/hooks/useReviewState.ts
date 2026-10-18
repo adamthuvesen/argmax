@@ -444,7 +444,7 @@ export function useReviewState(
   }, []);
 
   const openBrowserAt = useCallback(
-    (url: string, tabId?: string, newTab?: boolean): void => {
+    (url: string, tabId?: string, newTab?: boolean): string => {
       // Claim here, not only in the effect below: a demoted panel is already
       // in Browser mode with the panel open, so neither of the effect's deps
       // changes and "Show here" would be a no-op.
@@ -456,6 +456,7 @@ export function useReviewState(
       setBrowserRequest((current) => ({ url, tabId: browserTabId, newTab, seq: (current?.seq ?? 0) + 1 }));
       setTabState((current) => openReviewTab(current, tab));
       setIsPanelOpen(true);
+      return browserTabId;
     },
     [browserScopeId, panelId]
   );
@@ -464,7 +465,7 @@ export function useReviewState(
     (url?: string): void => {
       if (url) {
         const existing = getBrowserTabs(browserScopeId).find((tab) => tab.url === url);
-        openBrowserAt(url, existing?.id, !existing);
+        requestBrowserTabFocus(openBrowserAt(url, existing?.id, !existing));
         return;
       }
       openBrowserAt(
@@ -944,7 +945,8 @@ export function useReviewState(
     openTool: (nextMode) => { setMode(nextMode); setIsPanelOpen(true); },
     openBrowser: (url) => {
       const existing = url ? getBrowserTabs(browserScopeId).find((tab) => tab.url === url) : undefined;
-      openBrowserAt(url ?? DEFAULT_BROWSER_URL, existing?.id, !existing);
+      const tabId = openBrowserAt(url ?? "", existing?.id, !existing);
+      if (url) requestBrowserTabFocus(tabId);
     },
     openTerminal: openNewTerminal,
     openSideChat: (sessionId, workspaceId, sourceTabId) => {

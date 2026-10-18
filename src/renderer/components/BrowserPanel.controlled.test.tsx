@@ -12,6 +12,7 @@ import {
   resetBrowserTabsForTests
 } from "../lib/browserPanel.js";
 import { BrowserPanel } from "./BrowserPanel.js";
+import { useReviewState } from "../hooks/useReviewState.js";
 
 const newTabListeners = new Set<(event: { tabId: string; url: string }) => void>();
 const pageCommandListeners = new Set<(event: { tabId: string; command: string }) => void>();
@@ -20,6 +21,7 @@ const browser = {
   open: vi.fn(() => Promise.resolve({ ok: true as const })),
   setBounds: vi.fn(() => Promise.resolve({ ok: true as const })),
   focus: vi.fn(() => Promise.resolve({ ok: true as const })),
+  screenshot: vi.fn(() => Promise.resolve({ pngBase64: "" })),
   close: vi.fn(() => Promise.resolve({ ok: true as const })),
   navigate: vi.fn(() => Promise.resolve({ ok: true as const })),
   reload: vi.fn(() => Promise.resolve({ ok: true as const })),
@@ -211,6 +213,46 @@ describe("controlled browser pages", () => {
     </>);
     expect(screen.getByRole("textbox", { name: "Chat composer" })).toHaveFocus();
     expect(browser.focus).not.toHaveBeenCalled();
+  });
+
+  it.each(["shortcut", "new-tab tool"])("opens Claude artifacts from the %s with page focus and no address suggestions", async (entryPoint) => {
+    const url = "https://claude.ai/artifacts";
+    setBrowserHistoryStorageForTests({
+      load: () => Promise.resolve([{ url, title: "Claude", visitedAt: Date.now() }]),
+      save: () => Promise.resolve()
+    });
+    function Artifacts() {
+      const review = useReviewState(null, { sessionId: "chat" });
+      const tab = review.tabs!.items.find((item) => item.kind === "browser");
+      return <>
+        <button type="button" onClick={() => {
+          if (entryPoint === "shortcut") review.openBrowser(url);
+          else review.tabs!.openBrowser(url);
+        }}>Claude artifacts</button>
+        {tab?.kind === "browser" && <BrowserPanel
+          scopeId="chat"
+          url={review.browserRequest?.url ?? ""}
+          controlledTabId={tab.browserTabId}
+          requestTabId={review.browserRequest?.tabId}
+          requestSeq={review.browserRequest?.seq}
+          requestNewTab={review.browserRequest?.newTab}
+          onRequestHandled={review.handleBrowserRequest}
+          hideTabStrip
+          onClose={review.closePanel}
+        />}
+      </>;
+    }
+    render(<Artifacts />);
+    fireEvent.click(screen.getByRole("button", { name: "Claude artifacts" }));
+    const tab = getBrowserTabs("chat")[0];
+    await waitFor(() => expect(browser.focus).toHaveBeenCalledWith(tab.id));
+    expect(screen.getByRole("textbox", { name: "Address" })).not.toHaveFocus();
+    expect(screen.queryByRole("dialog", { name: "History suggestions" })).not.toBeInTheDocument();
+    browser.focus.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Claude artifacts" }));
+    await waitFor(() => expect(browser.focus).toHaveBeenCalledWith(tab.id));
+    expect(getBrowserTabs("chat")).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "Address" })).not.toHaveFocus();
   });
 
   it("routes native new-tab commands to the workspace chooser when provided", async () => {

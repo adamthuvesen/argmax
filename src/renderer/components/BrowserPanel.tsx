@@ -378,7 +378,7 @@ export function BrowserPanel({
     (tabId: string): void => {
       // Best-effort: a tab closed or replaced in the gap has nothing to focus.
       if (controlledTabId && (getBrowserTabOwnerId(tabId) !== surfaceOwnerId || openingBrowserTabs.has(tabId) ||
-        pendingAddressFocusRef.current === tabId || (requestNewTab && requestTabId === tabId))) return;
+        pendingAddressFocusRef.current === tabId || (requestNewTab && !url && requestTabId === tabId))) return;
       const pending = controlledTabId ? getBrowserTabFocusRequest(tabId) : null;
       if (controlledTabId && pending === null) return;
       void browser?.focus(tabId)
@@ -387,7 +387,7 @@ export function BrowserPanel({
         })
         .catch(() => undefined);
     },
-    [browser, controlledTabId, requestNewTab, requestTabId, surfaceOwnerId]
+    [browser, controlledTabId, requestNewTab, requestTabId, surfaceOwnerId, url]
   );
 
   /** Create the tab's webview, or navigate + show it when it already exists. */
@@ -624,7 +624,7 @@ export function BrowserPanel({
   useEffect(() => {
     if (controlledTabId) {
       if (!ownsSurface || !hasControlledTab) return;
-      if (requestNewTab && requestTabId === controlledTabId &&
+      if (requestNewTab && !url && requestTabId === controlledTabId &&
         (focusedRequestRef.current?.tabId !== controlledTabId || focusedRequestRef.current.seq !== requestSeq)) return;
     }
     if (browser && requestSeq !== undefined && (url || requestTabId || requestNewTab)) {
@@ -986,7 +986,7 @@ export function BrowserPanel({
   useLayoutEffect(() => {
     if (!controlledTabId || !activeTab || addressValue !== activeTab.url ||
       getBrowserTabOwnerId(controlledTabId) !== surfaceOwnerId) return;
-    const isNewRequest = requestNewTab && requestTabId === controlledTabId &&
+    const isNewRequest = requestNewTab && !url && requestTabId === controlledTabId &&
       (focusedRequestRef.current?.tabId !== controlledTabId || focusedRequestRef.current.seq !== requestSeq);
     if (!isNewRequest && pendingAddressFocusRef.current !== controlledTabId) return;
     pendingAddressFocusRef.current = null;
@@ -995,7 +995,7 @@ export function BrowserPanel({
     if (isNewRequest) focusedRequestRef.current = { tabId: controlledTabId, seq: requestSeq };
     addressInputRef.current?.focus();
     addressInputRef.current?.select();
-  }, [activeTab, addressValue, controlledTabId, requestNewTab, requestSeq, requestTabId, surfaceOwnerId, ownsSurface]);
+  }, [activeTab, addressValue, controlledTabId, requestNewTab, requestSeq, requestTabId, surfaceOwnerId, ownsSurface, url]);
 
   useEffect(
     () => () => {

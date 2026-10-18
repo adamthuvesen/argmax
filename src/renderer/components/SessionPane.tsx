@@ -11,6 +11,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import { FileDiff, FolderTree, Globe } from "lucide-react";
+import type { ReviewSideChatContext } from "./ReviewSideChat.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
@@ -156,6 +157,7 @@ export function SessionPane({
   onOpenChanges,
   onOpenFile,
   onOpenSideChat,
+  sideChat,
   onOpenSession,
   onOpenDetails,
   defaultIde = null,
@@ -218,6 +220,7 @@ export function SessionPane({
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  sideChat?: ReviewSideChatContext;
   onOpenSession?: (sessionId: string) => void;
   onOpenDetails?: (
     seedPrompt: string,
@@ -1028,6 +1031,7 @@ export function SessionPane({
       {reviewState.isPanelOpen ? (
         <Suspense fallback={null}>
           <ReviewPanel
+            sideChat={sideChat}
             agents={{
               events: visibleEvents,
               defaultToolCallsDisplay,

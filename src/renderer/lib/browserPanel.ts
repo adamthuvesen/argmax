@@ -116,11 +116,72 @@ export function releaseBrowserSurface(id: string, scopeId: string): void {
   for (const listener of ownerListeners) listener();
 }
 
+const tabOwners = new Map<string, { ownerId: string; syncBounds: () => void }>();
+const tabOwnerListeners = new Set<() => void>();
+
+export function subscribeBrowserTabOwner(listener: () => void): () => void {
+  tabOwnerListeners.add(listener);
+  return () => { tabOwnerListeners.delete(listener); };
+}
+
+export function getBrowserTabOwnerId(tabId: string): string | null {
+  return tabOwners.get(tabId)?.ownerId ?? null;
+}
+
+export function claimBrowserTabSurface(ownerId: string, tabId: string, syncBounds: () => void): void {
+  if (tabOwners.get(tabId)?.ownerId === ownerId) return;
+  tabOwners.set(tabId, { ownerId, syncBounds });
+  for (const listener of tabOwnerListeners) listener();
+}
+
+export function releaseBrowserTabSurface(ownerId: string, tabId: string): void {
+  if (tabOwners.get(tabId)?.ownerId !== ownerId) return;
+  tabOwners.delete(tabId);
+  for (const listener of tabOwnerListeners) listener();
+}
+
+/** A delayed native open must use the current owner's bounds after a pane move. */
+export function syncBrowserTabSurface(tabId: string): boolean {
+  const owner = tabOwners.get(tabId);
+  if (!owner) return false;
+  owner.syncBounds();
+  return true;
+}
+
+const tabFocusRequests = new Map<string, number>();
+const tabFocusListeners = new Set<() => void>();
+let nextTabFocusRequest = 1;
+
+export function requestBrowserTabFocus(tabId: string): void {
+  tabFocusRequests.set(tabId, nextTabFocusRequest++);
+  for (const listener of tabFocusListeners) listener();
+}
+
+export function getBrowserTabFocusRequest(tabId: string): number | null {
+  return tabFocusRequests.get(tabId) ?? null;
+}
+
+export function subscribeBrowserTabFocus(listener: () => void): () => void {
+  tabFocusListeners.add(listener);
+  return () => { tabFocusListeners.delete(listener); };
+}
+
+export function consumeBrowserTabFocusRequest(tabId: string, seq: number): void {
+  if (tabFocusRequests.get(tabId) !== seq) return;
+  tabFocusRequests.delete(tabId);
+  for (const listener of tabFocusListeners) listener();
+}
+
 /** Test-only: forgets the pending request, the owner, and the last URL. */
 export function resetBrowserSurfaceForTests(): void {
   openRequest = null;
   nextOpenRequestSeq = 1;
   ownerIds.clear();
+  tabOwners.clear();
+  tabFocusRequests.clear();
+  nextTabFocusRequest = 1;
+  for (const listener of tabFocusListeners) listener();
+  for (const listener of tabOwnerListeners) listener();
   for (const listener of requestListeners) listener();
   for (const listener of ownerListeners) listener();
 }
@@ -485,6 +546,8 @@ export function resetBrowserTabsForTests(): void {
   registrySeen.clear();
   agentOpenRequest = null;
   tabSyncStarted = false;
+  tabRegistryReady = false;
+  nativeNewTabSyncStarted = false;
   if (typeof window !== "undefined") window.localStorage.removeItem(TABS_KEY);
   for (const listener of tabListeners) listener();
   for (const listener of agentOpenListeners) listener();
@@ -594,7 +657,10 @@ export function applyBrowserTabs(incoming: readonly BrowserTabInfo[]): void {
     persistenceChanged = true;
   }
 
-  for (const tab of incoming) registrySeen.add(tab.tabId);
+  for (const tab of incoming) {
+    registrySeen.add(tab.tabId);
+    materializedTabs.add(tab.tabId);
+  }
   if (changed) notifyTabListeners(persistenceChanged);
 }
 
@@ -632,7 +698,25 @@ export function requestAgentBrowserOpen(sessionId: string, tabId: string, url: s
   for (const listener of agentOpenListeners) listener();
 }
 
+interface BrowserTabOpened {
+  sourceTabId: string;
+  tabId: string;
+  scopeId: string;
+}
+const browserTabOpenedListeners = new Set<(event: BrowserTabOpened) => void>();
+
+export function subscribeBrowserTabOpened(listener: (event: BrowserTabOpened) => void): () => void {
+  browserTabOpenedListeners.add(listener);
+  return () => { browserTabOpenedListeners.delete(listener); };
+}
+
 let tabSyncStarted = false;
+let tabRegistryReady = false;
+
+export function isBrowserTabRegistryReady(): boolean {
+  return tabRegistryReady;
+}
+let nativeNewTabSyncStarted = false;
 
 /**
  * Subscribes the tab store to the app's registry. Idempotent, and called from
@@ -640,17 +724,33 @@ let tabSyncStarted = false;
  * chrome is on screen, since that is exactly when a session opens a tab.
  */
 export function ensureBrowserTabSync(): void {
-  if (tabSyncStarted) return;
   const browser = typeof window === "undefined" ? null : (window.argmax?.browser ?? null);
-  if (!browser?.onTabs) return;
+  if (!nativeNewTabSyncStarted && browser?.onNewTab) {
+    nativeNewTabSyncStarted = true;
+    browser.onNewTab((event) => {
+      const source = findBrowserTab(event.tabId);
+      if (!source) return;
+      const created = createBrowserTab(source.scopeId, event.url, false);
+      const opened = { sourceTabId: source.id, tabId: created.id, scopeId: source.scopeId };
+      for (const listener of browserTabOpenedListeners) listener(opened);
+    });
+  }
+  if (tabSyncStarted || !browser?.onTabs) return;
   tabSyncStarted = true;
-  browser.onTabs((event) => applyBrowserTabs(event.tabs));
+  const applySnapshot = (tabs: readonly BrowserTabInfo[]): void => {
+    applyBrowserTabs(tabs);
+    if (!tabRegistryReady) {
+      tabRegistryReady = true;
+      notifyTabListeners(false);
+    }
+  };
+  browser.onTabs((event) => applySnapshot(event.tabs));
   browser.onAgentOpen((event) => {
     requestAgentBrowserOpen(event.sessionId, event.tabId, event.url);
   });
   void browser
     .listTabs({})
-    .then((result) => applyBrowserTabs(result.tabs))
+    .then((result) => applySnapshot(result.tabs))
     .catch(() => undefined);
 }
 

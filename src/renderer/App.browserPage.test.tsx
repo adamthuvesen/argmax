@@ -133,9 +133,11 @@ describe("App browser page", () => {
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     const review = await screen.findByRole("complementary", { name: "Review panel" });
-    fireEvent.click(within(review).getByRole("tab", { name: "Browser" }));
+    fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
+    fireEvent.change(within(review).getByRole("textbox", { name: "Search or enter a URL" }), { target: { value: "https://example.com" } });
+    fireEvent.click(within(review).getByRole("button", { name: "Open address" }));
 
-    expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
+    expect(within(review).getByRole("tab", { name: /example\.com/ })).toHaveAttribute("aria-selected", "true");
     expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
   });
@@ -157,7 +159,8 @@ describe("App browser page", () => {
     expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
     expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
 
-    fireEvent.click(within(review).getByRole("tab", { name: "Files" }));
+    fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
+    fireEvent.click(within(review).getByRole("button", { name: "Files" }));
     act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-2", url: "https://example.com/next" }));
     expect(within(review).getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
 

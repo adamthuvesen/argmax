@@ -10,7 +10,8 @@ import {
   launchProvider,
   mockDashboardSnapshot,
   setupAppTestMocks,
-  snapshot
+  snapshot,
+  terminateProvider
 } from "../test/appTestHarness.js";
 
 describe("App side chat launcher", () => {
@@ -49,6 +50,48 @@ describe("App side chat launcher", () => {
       prompt: "Explain vector clocks",
       agentMode: "auto"
     });
+  });
+
+  it("stops a fresh docked side chat without replacing or archiving the parent view", async () => {
+    const scratch: WorkspaceSummary = {
+      ...snapshot.workspaces[0],
+      id: "workspace-docked-chat",
+      projectId: "scratch-side-chats",
+      taskLabel: "Explore this idea",
+      kind: "scratch",
+      sharedWorkspace: true,
+      path: "/tmp/side-chats/workspace-docked-chat"
+    };
+    const child: SessionSummary = {
+      ...snapshot.sessions[0],
+      id: "session-docked-chat",
+      workspaceId: scratch.id,
+      prompt: "Explore this idea",
+      state: "running",
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      launchKind: "user"
+    };
+    createScratchWorkspace.mockResolvedValue(scratch);
+    launchProvider.mockResolvedValue(child);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
+    expect(await screen.findByText("Dashboard ready.")).toBeVisible();
+    fireEvent.keyDown(document, { key: "b", metaKey: true });
+    const review = await screen.findByRole("complementary", { name: "Review panel" });
+    fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
+    fireEvent.click(within(review).getByRole("button", { name: "Side chat" }));
+    fireEvent.change(within(review).getByRole("textbox", { name: "Side chat message" }), {
+      target: { value: child.prompt }
+    });
+    fireEvent.click(within(review).getByRole("button", { name: "Start side chat" }));
+    const stop = await within(review).findByRole("button", { name: "Stop chat" });
+    expect(screen.getByText("Dashboard ready.")).toBeVisible();
+    fireEvent.click(stop);
+    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith(child.id));
+    await waitFor(() => expect(screen.getByText("Dashboard ready.")).toBeVisible());
+    expect(screen.queryByLabelText("Task prompt")).not.toBeInTheDocument();
+    expect(archiveWorkspace).not.toHaveBeenCalled();
   });
 
   it("returns to a project session when cycling Chat back to Auto", async () => {

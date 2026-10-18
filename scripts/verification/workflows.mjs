@@ -1820,6 +1820,110 @@ export async function verifyComposerEditor({
 // focuses one of its own fields, while the page's `document.hasFocus()` still
 // reads false. What the person feels is the app document losing focus: their
 // keystrokes stop landing in the composer until they click it again.
+async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeoutMs, assertions, evidenceDir) {
+  await openWorkspaceRow(browser, workspace.id, timeoutMs);
+  await waitForIdleControls(browser, timeoutMs);
+  await browser.execute(function driveMixedTabs(sessionId, base) {
+    const api = window.argmax.browser;
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const wait = async (read, label, attempts = 100) => {
+      for (let n = 0; n < attempts; n += 1) {
+        const value = await read();
+        if (value) return value;
+        await pause(100);
+      }
+      throw new Error(`Timed out: ${label}`);
+    };
+    const tab = (url) => [...document.querySelectorAll('[aria-label="Workspace tabs"] [role="tab"]')].find((item) => item.getAttribute('aria-label') === url);
+    const menuItem = (text) => [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent.trim() === text);
+    const evaluate = async (tabId, script) => JSON.parse((await api.evaluate({ tabId, script, timeoutMs: 5000 })).resultJson);
+    const bounds = {};
+    const originalBounds = api.setBounds;
+    const originalOpen = api.open;
+    const openCalls = [];
+    let phase = "opening pages";
+    api.open = async (input) => {
+      const call = { input, status: "pending" };
+      openCalls.push(call);
+      try {
+        const result = await originalOpen(input);
+        call.status = "resolved";
+        return result;
+      } catch (cause) {
+        call.status = "rejected";
+        call.message = String(cause?.message ?? cause);
+        throw cause;
+      }
+    };
+    api.setBounds = async (input) => {
+      const result = await originalBounds(input);
+      bounds[input.tabId] = input;
+      return result;
+    };
+    window.__verifyMixedTabs = null;
+    void (async () => {
+      const opened = [];
+      try {
+        const firstUrl = `${base}first`;
+        const secondUrl = `${base}second`;
+        const first = await api.openForSession({ sessionId, url: firstUrl });
+        opened.push(first.tabId);
+        await wait(() => tab(firstUrl), 'first browser workspace tab');
+        const second = await api.openForSession({ sessionId, url: secondUrl });
+        opened.push(second.tabId);
+        await wait(() => tab(secondUrl), 'second browser workspace tab');
+        phase = 'split pages';
+        tab(firstUrl).click();
+        await wait(() => bounds[first.tabId]?.visible, 'first visible');
+        tab(secondUrl).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 100 }));
+        (await wait(() => menuItem('Show below'), 'split menu')).click();
+        await wait(() => bounds[first.tabId]?.visible && bounds[second.tabId]?.visible, 'both browser pages visible');
+        const splitBounds = JSON.parse(JSON.stringify(bounds));
+        const persisted = JSON.parse(localStorage.getItem(`argmax.reviewPanel.layout.${sessionId}`));
+        await evaluate(first.tabId, 'window.__reviewTabMarker = 42; 42');
+        document.querySelector('[aria-label="Workspace tabs"] [aria-label="Changes"]').click();
+        await wait(() => !bounds[second.tabId]?.visible, 'second page hidden on switch');
+        tab(secondUrl).click();
+        await wait(() => bounds[second.tabId]?.visible, 'second page restored');
+        const retained = await evaluate(first.tabId, 'window.__reviewTabMarker');
+        phase = 'close page';
+        document.querySelector(`[aria-label="Close ${secondUrl}"]`).click();
+        await wait(() => !tab(secondUrl), 'closed browser tab removed');
+        const afterClose = await api.listTabs({ sessionId });
+        phase = 'reopen page';
+        document.querySelector('[aria-label="New workspace tab"]').dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        (await wait(() => menuItem('Reopen closed tab'), 'reopen action')).click();
+        await wait(() => tab(secondUrl), 'reopened browser tab');
+        const afterReopen = await wait(async () => {
+          const registry = await api.listTabs({});
+          return registry.tabs.some((item) => item.url === secondUrl && item.tabId !== second.tabId) ? registry : null;
+        }, 'reopened native browser page', 400);
+        opened.push(...afterReopen.tabs.map((item) => item.tabId));
+        window.__verifyMixedTabs = { first: first.tabId, second: second.tabId, splitBounds, persisted, retained, afterClose, afterReopen, openCalls };
+      } catch (error) {
+        window.__verifyMixedTabs = { failureMessage: String(error?.message ?? error), phase, openCalls, bounds, html: document.querySelector('[aria-label="Review panel"]')?.outerHTML?.slice(0, 12000) };
+      } finally {
+        api.setBounds = originalBounds;
+        api.open = originalOpen;
+        for (const id of new Set(opened)) await api.close(id).catch(() => undefined);
+      }
+    })();
+  }, source.id, baseUrl);
+  const result = await browser.waitUntil(
+    () => browser.execute(() => window.__verifyMixedTabs).catch(() => null),
+    { timeout: timeoutMs, interval: 250, timeoutMsg: 'Mixed browser tabs probe did not finish' },
+  );
+  await writeJson(path.join(evidenceDir, 'mixed-browser-tabs.json'), result);
+  if (result.failureMessage) throw new Error(`${result.phase}: ${result.failureMessage}`);
+  const first = result.splitBounds[result.first];
+  const second = result.splitBounds[result.second];
+  check(assertions, 'two-browser-tabs-have-independent-visible-bounds', first.visible && second.visible && first.bounds.y + first.bounds.height <= second.bounds.y + 1, { first, second });
+  check(assertions, 'mixed-tab-layout-persists-both-browser-panes', result.persisted.version === 2 && result.persisted.paneTabIds.length === 2, result.persisted);
+  check(assertions, 'switching-tabs-preserves-page-state', result.retained === 42, result.retained);
+  check(assertions, 'closing-one-browser-keeps-the-other', result.afterClose.tabs.some((tab) => tab.tabId === result.first) && !result.afterClose.tabs.some((tab) => tab.tabId === result.second), result.afterClose);
+  check(assertions, 'reopening-creates-a-fresh-page', result.afterReopen.tabs.some((tab) => tab.url.endsWith('/second') && tab.tabId !== result.second), result.afterReopen);
+}
+
 export async function verifyBrowserFocus({ bridge, browser, source, workspace, outputDir, timeoutMs, verifyUi }) {
   const evidenceDir = path.join(outputDir, "native");
   await mkdir(evidenceDir, { recursive: true });
@@ -1905,6 +2009,7 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
       result.after.documentHasFocus && result.after.composerActive && result.after.blurs === 0, result.after);
     check(assertions, "composer-text-is-untouched", (await readComposerText(browser, field)) === "keep typing");
     screenshots.push(await screenshot(browser, evidenceDir, "focus-launcher-after-probe"));
+    await verifyMixedBrowserTabs(browser, source, workspace, `http://127.0.0.1:${page.address().port}/`, timeoutMs, assertions, evidenceDir);
   } finally {
     page.close();
   }

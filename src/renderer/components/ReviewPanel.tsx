@@ -62,6 +62,11 @@ import { assignAgentCodenames } from "../lib/agentNames.js";
 import { buildAgentRoster } from "../lib/agentRoster.js";
 import { AgentsView } from "./AgentsView.js";
 import { BrowserPanel } from "./BrowserPanel.js";
+import { ReviewTabsBar, type ReviewTabItem } from "./ReviewTabsBar.js";
+import { ReviewNewTab } from "./ReviewNewTab.js";
+import { ReviewSideChat, type ReviewSideChatContext, type ReviewSideChatFormState } from "./ReviewSideChat.js";
+import type { ReviewTab } from "../lib/reviewTabs.js";
+import { getBrowserTabs, subscribeBrowserTabs } from "../lib/browserPanel.js";
 import { summarizeChangedFiles } from "../lib/changedFiles.js";
 import { readBoundedNumberPreference } from "../lib/uiPreferences.js";
 import { parseUnifiedDiff } from "../lib/diff.js";
@@ -276,13 +281,13 @@ function fileBasename(path: string): string {
   return slash === -1 ? path : path.slice(slash + 1);
 }
 
-function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | null {
-  if (state.tabs.length === 0) return null;
+function FileTabStrip({ state, hideTabs = false }: { state: WorkspaceFilesState; hideTabs?: boolean }): JSX.Element | null {
+  if (state.tabs.length === 0 || (hideTabs && !state.dirtyClosePrompt)) return null;
   const promptPath = state.dirtyClosePrompt?.path ?? null;
   const promptName = promptPath ? fileBasename(promptPath) : null;
   return (
     <div className="file-tabs-shell">
-      <div className="file-tabs" role="tablist" aria-label="Open files">
+      {!hideTabs ? <div className="file-tabs" role="tablist" aria-label="Open files">
         {state.tabs.map((tab) => {
           const isActive = tab.path === state.activeTabPath;
           return (
@@ -325,12 +330,13 @@ function FileTabStrip({ state }: { state: WorkspaceFilesState }): JSX.Element | 
             </div>
           );
         })}
-      </div>
+      </div> : null}
       {promptPath ? (
         <div className="file-tab-close-prompt" role="alert" aria-label={`Unsaved changes in ${promptPath}`}>
           <span>
             Save changes to <strong>{promptName}</strong>?
           </span>
+          {state.dirtyClosePrompt?.saveError ? <span className="review-error">{state.dirtyClosePrompt.saveError}</span> : null}
           <div className="file-tab-close-prompt-actions">
             <button
               type="button"
@@ -490,6 +496,9 @@ function countLines(text: string): number {
 
 function ReviewPanelPane({
   agents,
+  sideChat,
+  sideChatFormState,
+  onSideChatFormStateChange,
   isFocused = true,
   isSplit,
   onAddDiffNote,
@@ -498,11 +507,16 @@ function ReviewPanelPane({
   ownsTerminalMount,
   paneIndex,
   paneSize,
+  tab,
+  tabLabel,
   review
 }: {
   /** Present only on a pane with a session behind it. Without it the panel has
    *  no Agents tab — the launcher has no transcript to spawn subagents from. */
   agents?: AgentsPanelContext;
+  sideChat?: ReviewSideChatContext;
+  sideChatFormState?: ReviewSideChatFormState;
+  onSideChatFormStateChange?: (patch: Partial<ReviewSideChatFormState>) => void;
   /** False for a panel in an unfocused pane: its document-level ⌘W must not
    *  close a tab in a panel the user isn't looking at. */
   isFocused?: boolean;
@@ -515,6 +529,8 @@ function ReviewPanelPane({
   ownsTerminalMount: boolean;
   paneIndex: 0 | 1;
   paneSize?: string;
+  tab?: ReviewTab;
+  tabLabel?: string;
   review: ReviewState;
 }): JSX.Element {
   // The Browser tab needs the desktop bridge; the Agents tab only exists with
@@ -532,6 +548,9 @@ function ReviewPanelPane({
   const isAgents = mode === "agents";
   const isBrowser = mode === "browser";
   const isTerminal = mode === "terminal";
+  const isNew = mode === "new";
+  const isSideChat = mode === "side-chat";
+  const isFileSurface = mode === "files" || isChanges;
   const projectFolderChanges = review.projectFolderChanges;
   // Terminals outlive the view: once a workspace has tabs the panel keeps them
   // mounted (hidden) while the reader is on another mode, so coming back is
@@ -541,7 +560,9 @@ function ReviewPanelPane({
   const terminalTabs = useSyncExternalStore(subscribeTerminalTabs, () =>
     getWorkspaceTerminalState(terminalWorkspaceId)
   );
-  const terminalMounted = ownsTerminalMount && terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
+  const terminalMounted = review.tabs
+    ? isTerminal && tab?.kind === "terminal"
+    : ownsTerminalMount && terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
@@ -616,7 +637,7 @@ function ReviewPanelPane({
   }, [activeTerminalTabId, terminalWorkspaceId]);
 
   useEffect(() => {
-    if (!isFocused) return undefined;
+    if (!isFocused || review.tabs) return undefined;
     if (isTerminal) {
       if (!activeTerminalTabId) {
         registerReviewFileTabCloseHandler(null);
@@ -652,11 +673,12 @@ function ReviewPanelPane({
     isTerminal,
     review.mode,
     review.agentTabs.activeTabId,
+    review.tabs,
     review.workspaceFiles
   ]);
 
   useEffect(() => {
-    if (!isFocused) return undefined;
+    if (!isFocused || review.tabs) return undefined;
     if (review.mode !== "files") return undefined;
     const activePath = review.workspaceFiles.activeTabPath;
     if (!activePath) return undefined;
@@ -673,7 +695,7 @@ function ReviewPanelPane({
     };
     document.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [isFocused, review.mode, review.workspaceFiles]);
+  }, [isFocused, review.mode, review.tabs, review.workspaceFiles]);
 
   // Captures the listener-removal + body-style-reset for any drag currently
   // in flight; the unmount cleanup below replays it so a mid-drag unmount
@@ -751,7 +773,7 @@ function ReviewPanelPane({
     [files.buffer]
   );
   const handleFilesModeKeyShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (isChanges || isBrowser || isTerminal) return;
+    if (mode !== "files") return;
     if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
     if (event.defaultPrevented || event.nativeEvent.isComposing) return;
     const key = event.key.toLowerCase();
@@ -785,9 +807,9 @@ function ReviewPanelPane({
       onFocusCapture={() => review.focusPane(paneIndex)}
       onPointerDownCapture={() => review.focusPane(paneIndex)}
     >
-      <div className="review-toolbar">
+      {(!review.tabs || isChanges || isSplit) ? <div className="review-toolbar" data-resource-tabs={Boolean(review.tabs)}>
         <div className="review-toolbar-titles">
-          <ReviewModeTabs
+          {review.tabs ? <span className="review-pane-label">{tabLabel ?? sourceLabel}</span> : <ReviewModeTabs
             activeMode={mode}
             agentCount={agentRoster?.running ?? 0}
             hasAgents={Boolean(agents)}
@@ -802,11 +824,11 @@ function ReviewPanelPane({
             onSelectMode={review.setMode}
             onSplitBelow={(splitMode) => review.splitMode(splitMode, "bottom")}
             terminalCount={terminalTabs.tabs.length}
-          />
+          />}
         </div>
         <div className="review-toolbar-actions">
           {isChanges && !projectFolderChanges?.selection ? <ReviewScopePicker review={review} /> : null}
-          <button
+          {(!review.tabs || isSplit) ? <button
             className="small-icon"
             type="button"
             title={isSplit ? `Close ${panePosition} pane` : "Close review"}
@@ -814,9 +836,9 @@ function ReviewPanelPane({
             onClick={review.closePanel}
           >
             {isSplit ? <X size={15} /> : <PanelRightClose size={16} strokeWidth={1.75} />}
-          </button>
+          </button> : null}
         </div>
-      </div>
+      </div> : null}
       <div
         className={
           isChanges
@@ -831,10 +853,50 @@ function ReviewPanelPane({
         }
         onKeyDown={handleFilesModeKeyShortcut}
       >
+        {isNew ? (
+          <ReviewNewTab
+            hasAgents={Boolean(agents)}
+            hasTerminal={Boolean(terminalWorkspaceId)}
+            hasSideChat={Boolean(sideChat)}
+            hasBrowser={hasBrowser}
+            artifactsEnabled={artifactsEnabled}
+            onBrowse={(url) => review.tabs?.openBrowser(url)}
+            onOpen={(tool) => {
+              if (tool === "terminal") review.tabs?.openTerminal();
+              else if (tool === "artifacts") review.tabs?.openBrowser("https://claude.ai/artifacts");
+              else review.tabs?.openTool(tool);
+            }}
+          />
+        ) : null}
+        {isSideChat && sideChat ? (
+          <ReviewSideChat
+            key={tab?.id}
+            context={sideChat}
+            formState={sideChatFormState}
+            onFormStateChange={onSideChatFormStateChange}
+            sessionId={tab?.kind === "side-chat" ? tab.sessionId : undefined}
+            workspaceId={tab?.kind === "side-chat" ? tab.workspaceId : undefined}
+            isFocused={isFocused}
+            onLaunched={(launched) => review.tabs?.openSideChat(launched.sessionId, launched.workspaceId, tab?.id)}
+          />
+        ) : null}
+        {isSideChat && !sideChat ? <p className="review-empty" role="status">Side chat is unavailable here.</p> : null}
         {isBrowser ? (
-          review.browserOwner ? (
+          (tab?.kind === "browser" || review.browserOwner) ? (
             <BrowserPanel
               scopeId={review.browserScopeId}
+              controlledTabId={tab?.kind === "browser" ? tab.browserTabId : undefined}
+              hideTabStrip={Boolean(review.tabs)}
+              onOpenTab={review.tabs?.selectBrowserTab}
+              onNewTab={review.tabs ? () => review.tabs?.openTool("new") : undefined}
+              onReopenTab={review.tabs?.reopenClosed}
+              onCycleTab={review.tabs ? (direction) => {
+                const items = review.tabs!.items;
+                const index = items.findIndex((item) => item.id === tab?.id);
+                const next = items[(index + direction + items.length) % items.length];
+                if (next) review.tabs!.select(next.id);
+              } : undefined}
+              onCloseTab={tab ? () => review.tabs?.close(tab.id) : undefined}
               isFocused={isFocused}
               url={review.browserRequest?.url ?? ""}
               requestSeq={review.browserRequest?.seq}
@@ -861,6 +923,7 @@ function ReviewPanelPane({
               <TerminalTabsPanel
                 key={terminalWorkspaceId}
                 workspaceId={terminalWorkspaceId}
+                controlledTabId={tab?.kind === "terminal" ? tab.terminalTabId : undefined}
                 visible={isTerminal}
                 cwdLabel={review.workspaceFiles.rootPath}
               />
@@ -894,13 +957,13 @@ function ReviewPanelPane({
             onTerminateSession={agents.onTerminateSession}
           />
         ) : null}
-        {isAgents || isBrowser || isTerminal ? null : (
+        {!isFileSurface ? null : (
           <>
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
               {isChanges ? (
                 <>
                 {projectFolderChanges && projectFolderChanges.groups.length > 0 ? (
-                  <div className="project-folder-changes-label" title={review.workspaceFiles.rootPath ?? undefined}>Chat checkout</div>
+                  <div className="project-folder-changes-label" title={review.workspaceFiles.rootPath ?? undefined}>{sourceLabel}</div>
                 ) : null}
                 <ChangesTree
                   files={review.files}
@@ -941,7 +1004,7 @@ function ReviewPanelPane({
             />
           </>
         )}
-        {isAgents || isBrowser || isTerminal ? null : (
+        {!isFileSurface ? null : (
         <div className={isChanges ? "review-diff review-diff-changes" : "review-diff review-diff-files"}>
           {isChanges ? (
             projectFolderChanges?.selection ? <ProjectFolderChangesDiff state={projectFolderChanges} /> : <>
@@ -1046,7 +1109,7 @@ function ReviewPanelPane({
             </>
           ) : (
             <>
-              <FileTabStrip state={review.workspaceFiles} />
+              {!review.tabs ? <FileTabStrip state={review.workspaceFiles} /> : null}
               <FilePreview state={files} onCursorChange={setCursor} />
             </>
           )}
@@ -1059,7 +1122,7 @@ function ReviewPanelPane({
           <span className="review-footer-text">{summaryStrip}</span>
         </footer>
       ) : null}
-      {isChanges || isAgents || isBrowser || isTerminal ? null : (
+      {mode !== "files" ? null : (
         <footer className="review-status-bar" aria-label="File status">
           <span className="review-status-path" title={files.selectedPath ?? sourceLabel}>
             {files.selectedPath ?? entryCountLabel}
@@ -1090,17 +1153,78 @@ function ReviewPanelPane({
 
 export function ReviewPanel({
   agents,
+  sideChat,
   isFocused = true,
   onAddDiffNote,
   onResizePanelMouseDown,
   review
 }: {
   agents?: AgentsPanelContext;
+  sideChat?: ReviewSideChatContext;
   isFocused?: boolean;
   onAddDiffNote?: (input: DiffNoteInput) => void;
   onResizePanelMouseDown?: (event: ReactMouseEvent) => void;
   review: ReviewState;
 }): JSX.Element {
+  const artifactsEnabled = useContext(ClaudeArtifactsContext);
+  const browserTabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(review.browserScopeId));
+  const terminalState = useSyncExternalStore(subscribeTerminalTabs, () => getWorkspaceTerminalState(review.terminalWorkspaceId));
+  const tabs = review.tabs;
+  const [sideChatForms, setSideChatForms] = useState<Record<string, ReviewSideChatFormState>>({});
+  useEffect(() => {
+    const formIds = new Set((tabs?.items ?? []).filter((tab) => tab.kind === "tool" && tab.mode === "side-chat").map((tab) => tab.id));
+    setSideChatForms((current) => Object.keys(current).some((id) => !formIds.has(id))
+      ? Object.fromEntries(Object.entries(current).filter(([id]) => formIds.has(id)))
+      : current);
+  }, [tabs?.items]);
+  const tabItems: ReviewTabItem[] = (tabs?.items ?? []).map((tab) => {
+    switch (tab.kind) {
+      case "tool":
+        return { id: tab.id, kind: tab.mode, label: tab.mode === "new" ? "New tab" : tab.mode === "side-chat" ? "Side chat" : `${tab.mode[0].toUpperCase()}${tab.mode.slice(1)}` };
+      case "browser": {
+        const browser = browserTabs.find((item) => item.id === tab.browserTabId);
+        let host = "Browser";
+        try { host = new URL(browser?.url ?? "").hostname || host; } catch { /* The registry may still be hydrating. */ }
+        return { id: tab.id, kind: "browser", label: browser?.title || host, title: browser?.url, loading: browser?.loading };
+      }
+      case "side-chat":
+        return { id: tab.id, kind: "side-chat", label: sideChat?.workspacesById.get(tab.workspaceId)?.taskLabel || "Side chat" };
+      case "file":
+        return { id: tab.id, kind: "file", label: fileBasename(tab.path), title: tab.path,
+          dirty: review.workspaceFiles.tabs.find((item) => item.path === tab.path)?.isDirty };
+      case "terminal":
+        return { id: tab.id, kind: "terminal", label: terminalState.tabs.find((item) => item.id === tab.terminalTabId)?.label ?? "Terminal" };
+    }
+  });
+  const activeTabId = tabs?.paneTabIds[tabs.activeIndex] ?? null;
+  const panelElementRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!tabs || !isFocused) return;
+    registerReviewFileTabCloseHandler(() => { if (activeTabId) tabs.close(activeTabId); });
+    return () => registerReviewFileTabCloseHandler(null);
+  }, [activeTabId, isFocused, tabs]);
+  const handlePanelKeys = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (!tabs || event.defaultPrevented || event.nativeEvent.isComposing || event.repeat) return;
+    if (event.metaKey || event.ctrlKey) {
+      const key = event.key.toLowerCase();
+      if (key === "w" && !event.shiftKey && !event.altKey && activeTabId) {
+        event.preventDefault();
+        event.stopPropagation();
+        tabs.close(activeTabId);
+      } else if (key === "t" && !event.altKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.shiftKey) tabs.reopenClosed();
+        else tabs.openTool("new");
+      } else if (event.ctrlKey && key === "tab" && tabs.items.length > 1) {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = tabs.items.findIndex((tab) => tab.id === activeTabId);
+        const next = tabs.items[(index + (event.shiftKey ? -1 : 1) + tabs.items.length) % tabs.items.length];
+        if (next) tabs.select(next.id);
+      }
+    }
+  };
   const panelDragId = useId();
   const stackRef = useRef<HTMLDivElement>(null);
   const splitCleanupRef = useRef<(() => void) | null>(null);
@@ -1220,7 +1344,37 @@ export function ReviewPanel({
   };
 
   return (
-    <aside className="review-panel" data-type-scale="chrome" aria-label="Review panel">
+    <aside className="review-panel" data-type-scale="chrome" aria-label="Review panel" ref={panelElementRef} onKeyDown={handlePanelKeys}>
+      {tabs ? <>
+        <div className="review-tabs-header">
+          <ReviewTabsBar
+            items={tabItems}
+            activeId={activeTabId}
+            visibleIds={tabs.paneTabIds}
+            onSelect={(id) => tabs.select(id)}
+            onClose={tabs.close}
+            onMove={tabs.move}
+            onSplit={tabs.split}
+            onOpen={(kind) => {
+              if (kind === "browser") tabs.openBrowser();
+              else if (kind === "artifacts") tabs.openBrowser("https://claude.ai/artifacts");
+              else if (kind === "terminal") tabs.openTerminal();
+              else tabs.openTool(kind);
+            }}
+            onNewTab={() => tabs.openTool("new")}
+            onReopen={tabs.reopenClosed}
+            canReopen={tabs.canReopen}
+            hasAgents={Boolean(agents)}
+            hasBrowser={hostsBrowserSurface()}
+            hasTerminal={Boolean(review.terminalWorkspaceId)}
+            artifactsEnabled={artifactsEnabled}
+          />
+          <button type="button" className="small-icon review-tabs-hide" aria-label="Close review" title="Hide panel (⌘B)" onClick={review.closePanel}>
+            <PanelRightClose size={16} strokeWidth={1.75} />
+          </button>
+        </div>
+        <FileTabStrip state={review.workspaceFiles} hideTabs />
+      </> : null}
       {onResizePanelMouseDown ? (
         <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
       ) : null}
@@ -1240,6 +1394,7 @@ export function ReviewPanel({
       >
         {review.layout.modes.map((mode, rawIndex) => {
           const paneIndex = rawIndex as 0 | 1;
+          const tab = tabs?.items.find((item) => item.id === tabs.paneTabIds[paneIndex]);
           const paneReview: ReviewState = {
             ...review,
             mode,
@@ -1253,9 +1408,17 @@ export function ReviewPanel({
           return (
             <ReviewPanelPane
               agents={agents}
+              sideChat={sideChat}
+              sideChatFormState={tab ? sideChatForms[tab.id] ?? { prompt: "", launching: false, error: null } : undefined}
+              onSideChatFormStateChange={tab ? (patch) => setSideChatForms((current) => {
+                if (!current[tab.id] && patch.prompt === undefined) return current;
+                return { ...current, [tab.id]: { ...(current[tab.id] ?? { prompt: "", launching: false, error: null }), ...patch } };
+              }) : undefined}
               isFocused={isFocused && review.layout.activeIndex === paneIndex}
               isSplit={isSplit}
-              key={mode}
+              key={tabs ? `pane-${paneIndex}` : mode}
+              tab={tab}
+              tabLabel={tabItems.find((item) => item.id === tab?.id)?.label}
               onAddDiffNote={onAddDiffNote}
               onTabDragEnd={clearTabDrag}
               onTabDragStart={handleTabDragStart}

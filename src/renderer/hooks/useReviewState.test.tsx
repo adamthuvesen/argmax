@@ -2,6 +2,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArgmaxApi, ProjectSummary, WorkspaceSummary } from "../../shared/types.js";
 import { useReviewState, type ReviewSource } from "./useReviewState.js";
+import { getBrowserTabs, markBrowserTabMaterialized, resetBrowserTabsForTests } from "../lib/browserPanel.js";
 import { resetTerminalTabsForTests, setTerminalShowing } from "../lib/terminalTabs.js";
 
 function workspaceSource(workspace: WorkspaceSummary): ReviewSource {
@@ -304,6 +305,187 @@ describe("useReviewState — IPC fan-out resistance", () => {
   afterEach(() => {
     cleanup();
     delete (window as unknown as { argmax?: unknown }).argmax;
+  });
+
+  it("opens the new-tab chooser without browser support and replaces it for each chosen tool", async () => {
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    act(() => result.current.tabs!.openTool("new"));
+    expect(result.current.mode).toBe("new");
+    expect(result.current.isPanelOpen).toBe(true);
+    act(() => result.current.openInFilesView("chosen.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    expect(result.current.tabs!.items.some((tab) => tab.id === "tool:new")).toBe(false);
+    act(() => result.current.tabs!.openTool("new"));
+    act(() => result.current.tabs!.openTerminal());
+    expect(result.current.mode).toBe("terminal");
+    expect(result.current.tabs!.items.some((tab) => tab.id === "tool:new")).toBe(false);
+    act(() => result.current.tabs!.openTool("new"));
+    act(() => result.current.tabs!.openTool("changes"));
+    expect(result.current.mode).toBe("changes");
+    expect(result.current.tabs!.items.some((tab) => tab.id === "tool:new")).toBe(false);
+  });
+
+  it("can display the new-tab chooser before a project is selected", () => {
+    const { result } = renderHook(() => useReviewState(null));
+    act(() => result.current.tabs!.openTool("new"));
+    expect(result.current.mode).toBe("new");
+    expect(result.current.isPanelOpen).toBe(true);
+  });
+
+  it("adopts, closes, and reopens a side chat without changing its session lifecycle", () => {
+    const closeBrowser = vi.fn();
+    const terminateTerminal = vi.fn();
+    const launchSession = vi.fn();
+    Object.assign(window.argmax!, {
+      browser: { close: closeBrowser },
+      terminal: { terminate: terminateTerminal },
+      session: { multitask: launchSession }
+    });
+    const { result, rerender } = renderHook(({ workspace }: { workspace: WorkspaceSummary }) => useReviewState(workspaceSource(workspace), null, { sessionId: "parent-chat" }), { initialProps: { workspace: makeWorkspace() } });
+    act(() => result.current.tabs!.openTool("side-chat"));
+    expect(result.current.mode).toBe("side-chat");
+    act(() => result.current.tabs!.openSideChat("child-session", "shared-checkout"));
+    const sideChat = result.current.tabs!.items.find((tab) => tab.kind === "side-chat")!;
+    expect(sideChat).toEqual({ id: "side-chat:child-session", kind: "side-chat", sessionId: "child-session", workspaceId: "shared-checkout" });
+    expect(result.current.tabs!.items.some((tab) => tab.kind === "tool" && tab.mode === "side-chat")).toBe(false);
+    rerender({ workspace: makeWorkspace({ id: "another-checkout" }) });
+    expect(result.current.tabs!.items.some((tab) => tab.id === sideChat.id)).toBe(true);
+    act(() => result.current.tabs!.close(sideChat.id));
+    expect(result.current.tabs!.items.some((tab) => tab.id === sideChat.id)).toBe(false);
+    act(() => result.current.tabs!.reopenClosed());
+    expect(result.current.tabs!.items.find((tab) => tab.id === sideChat.id)).toEqual(sideChat);
+    expect(closeBrowser).not.toHaveBeenCalled();
+    expect(terminateTerminal).not.toHaveBeenCalled();
+    expect(launchSession).not.toHaveBeenCalled();
+  });
+
+  it("adopts an asynchronous side-chat launch into its original form without stealing the selected tab", () => {
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "parent-chat" }));
+    act(() => result.current.tabs!.openTool("side-chat"));
+    const sourceTabId = result.current.tabs!.paneTabIds[0];
+    act(() => result.current.tabs!.openTool("files"));
+    const selected = result.current.tabs!.paneTabIds[0];
+    act(() => result.current.tabs!.openSideChat("async-child", "shared-checkout", sourceTabId));
+    expect(result.current.tabs!.paneTabIds[0]).toBe(selected);
+    expect(result.current.tabs!.items.some((tab) => tab.id === sourceTabId)).toBe(false);
+    expect(result.current.tabs!.items.some((tab) => tab.id === "side-chat:async-child")).toBe(true);
+    expect(result.current.mode).toBe("files");
+  });
+
+  it("retains an asynchronous side-chat result in the background if its launch form was closed", () => {
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "parent-chat" }));
+    act(() => result.current.tabs!.openTool("side-chat"));
+    const sourceTabId = result.current.tabs!.paneTabIds[0];
+    act(() => result.current.tabs!.close(sourceTabId));
+    act(() => result.current.closePanel());
+    const selected = result.current.tabs!.paneTabIds[0];
+    act(() => result.current.tabs!.openSideChat("async-child", "shared-checkout", sourceTabId));
+    expect(result.current.tabs!.paneTabIds[0]).toBe(selected);
+    expect(result.current.tabs!.items.some((tab) => tab.id === "side-chat:async-child")).toBe(true);
+    expect(result.current.isPanelOpen).toBe(false);
+  });
+
+  it("keeps a reopened side-chat form when an older launch finishes", () => {
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "parent-chat" }));
+    act(() => result.current.tabs!.openTool("side-chat"));
+    const oldFormId = result.current.tabs!.paneTabIds[0];
+    act(() => result.current.tabs!.close(oldFormId));
+    act(() => result.current.tabs!.openTool("side-chat"));
+    const newFormId = result.current.tabs!.paneTabIds[0];
+    expect(newFormId).not.toBe(oldFormId);
+    act(() => result.current.tabs!.openSideChat("older-launch", "shared-checkout", oldFormId));
+    expect(result.current.tabs!.paneTabIds[0]).toBe(newFormId);
+    expect(result.current.tabs!.items.find((tab) => tab.id === newFormId)).toMatchObject({ kind: "tool", mode: "side-chat" });
+    expect(result.current.tabs!.items.some((tab) => tab.id === "side-chat:older-launch")).toBe(true);
+  });
+
+  it("does not offer the side-chat form outside a parent chat", () => {
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace())));
+    act(() => result.current.tabs!.openTool("side-chat"));
+    expect(result.current.mode).toBe("changes");
+    expect(result.current.tabs!.items.some((tab) => tab.kind === "tool" && tab.mode === "side-chat")).toBe(false);
+  });
+
+  it("does not apply a delayed browser close to a newly selected source", async () => {
+    let finishNativeClose: () => void = () => undefined;
+    const nativeClose = new Promise<void>((resolve) => { finishNativeClose = resolve; });
+    Object.assign(window.argmax!, { browser: { close: vi.fn().mockReturnValue(nativeClose) } });
+    const { result, rerender } = renderHook(({ workspace }: { workspace: WorkspaceSummary }) => useReviewState(workspaceSource(workspace), null, { sessionId: "source-close-race" }), { initialProps: { workspace: makeWorkspace() } });
+    act(() => result.current.tabs!.openBrowser("https://example.com/closing"));
+    const closing = getBrowserTabs("source-close-race")[0];
+    markBrowserTabMaterialized(closing.id);
+    act(() => result.current.tabs!.close(`browser:${closing.id}`));
+    rerender({ workspace: makeWorkspace({ id: "new-source" }) });
+    act(() => result.current.tabs!.openTool("new"));
+    const selected = result.current.tabs!.paneTabIds;
+    await act(async () => { finishNativeClose(); await nativeClose; });
+    expect(result.current.isPanelOpen).toBe(true);
+    expect(result.current.tabs!.paneTabIds).toEqual(selected);
+    expect(result.current.tabs!.canReopen).toBe(false);
+    expect(getBrowserTabs("source-close-race")).toHaveLength(0);
+    resetBrowserTabsForTests();
+  });
+
+  it("keeps dirty file tabs until the user confirms closure, then activates the surviving file", async () => {
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "dirty-tabs" }));
+    act(() => result.current.openInFilesView("one.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    act(() => result.current.workspaceFiles.editFile("unsaved"));
+    act(() => result.current.openInFilesView("two.ts"));
+    await waitFor(() => expect(result.current.workspaceFiles.previewState).toBe("ready"));
+    const first = result.current.tabs!.items.find((tab) => tab.kind === "file" && tab.path === "one.ts")!;
+    act(() => result.current.tabs!.close(first.id));
+    expect(result.current.workspaceFiles.dirtyClosePrompt?.path).toBe("one.ts");
+    expect(result.current.tabs!.items.some((tab) => tab.id === first.id)).toBe(true);
+    act(() => result.current.workspaceFiles.cancelDirtyTabClose());
+    expect(result.current.tabs!.canReopen).toBe(false);
+    expect(result.current.tabs!.items.some((tab) => tab.id === first.id)).toBe(true);
+    act(() => result.current.tabs!.close(first.id));
+    act(() => result.current.workspaceFiles.discardDirtyTabAndClose());
+    expect(result.current.tabs!.items.some((tab) => tab.id === first.id)).toBe(false);
+    expect(result.current.tabs!.canReopen).toBe(true);
+    expect(result.current.workspaceFiles.activeTabPath).toBe("two.ts");
+    act(() => result.current.tabs!.reopenClosed());
+    await waitFor(() => expect(result.current.workspaceFiles.activeTabPath).toBe("one.ts"));
+    expect(result.current.workspaceFiles.buffer).toBe("");
+  });
+
+  it("restores distinct terminal references and reopens a closed terminal as a fresh shell", () => {
+    resetTerminalTabsForTests();
+    localStorage.setItem("argmax.reviewPanel.layout.shells", JSON.stringify({
+      version: 2,
+      tabs: [
+        { id: "terminal:workspace-1:old-a", kind: "terminal", terminalTabId: "old-a", workspaceId: "workspace-1" },
+        { id: "terminal:workspace-1:old-b", kind: "terminal", terminalTabId: "old-b", workspaceId: "workspace-1" }
+      ],
+      paneTabIds: ["terminal:workspace-1:old-a", "terminal:workspace-1:old-b"], activeIndex: 1, ratio: 0.5
+    }));
+    const { result } = renderHook(() => useReviewState(workspaceSource(makeWorkspace()), null, { sessionId: "shells" }));
+    expect(new Set(result.current.tabs!.paneTabIds).size).toBe(2);
+    expect(result.current.tabs!.items).toHaveLength(2);
+    const closing = result.current.tabs!.items[0];
+    act(() => result.current.tabs!.close(closing.id));
+    expect(result.current.tabs!.items.some((tab) => tab.id === closing.id)).toBe(false);
+    act(() => result.current.tabs!.reopenClosed());
+    expect(result.current.tabs!.items.filter((tab) => tab.kind === "terminal")).toHaveLength(2);
+    expect(result.current.tabs!.items.some((tab) => tab.id === closing.id)).toBe(false);
+    resetTerminalTabsForTests();
+  });
+
+  it("restores mixed tab order per chat and keeps files isolated from another source", async () => {
+    const source = workspaceSource(makeWorkspace());
+    const first = renderHook(() => useReviewState(source, null, { sessionId: "mixed-tabs" }));
+    act(() => first.result.current.openInFilesView("one.ts"));
+    await waitFor(() => expect(first.result.current.workspaceFiles.previewState).toBe("ready"));
+    act(() => first.result.current.tabs!.move(first.result.current.tabs!.items.find((tab) => tab.kind === "file")!.id, 0));
+    const savedIds = first.result.current.tabs!.items.map((tab) => tab.id);
+    first.unmount();
+    const restored = renderHook(() => useReviewState(source, null, { sessionId: "mixed-tabs" }));
+    expect(restored.result.current.tabs!.items.map((tab) => tab.id)).toEqual(savedIds);
+    expect(JSON.parse(localStorage.getItem("argmax.reviewPanel.layout.mixed-tabs")!) as unknown).toMatchObject({ version: 2 });
+    restored.unmount();
+    const other = renderHook(() => useReviewState(workspaceSource(makeWorkspace({ id: "another-workspace" })), null, { sessionId: "mixed-tabs" }));
+    expect(other.result.current.tabs!.items.some((tab) => tab.kind === "file" && tab.sourceKey === "workspace:workspace-1")).toBe(false);
   });
 
   it("does not refetch listChangedFiles when only `lastActivityAt` ticks (50 chat tokens)", async () => {

@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, copyFile, mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -125,6 +125,13 @@ async function prepareNativeAppBinary(binaryDirectory, sourceBinary) {
   const macosDirectory = path.join(contentsDirectory, "MacOS");
   const nativeBinary = path.join(macosDirectory, "argmax");
   await mkdir(macosDirectory, { recursive: true });
+  const resourcesDirectory = path.join(contentsDirectory, "Resources");
+  await mkdir(resourcesDirectory, { recursive: true });
+  const configDirectory = path.join(repoRoot, "src-tauri");
+  const config = JSON.parse(await readFile(path.join(configDirectory, "tauri.conf.json"), "utf8"));
+  for (const [source, destination] of Object.entries(config.bundle.resources)) {
+    await cp(path.resolve(configDirectory, source), path.join(resourcesDirectory, destination), { recursive: true });
+  }
   await copyFile(sourceBinary, nativeBinary);
   await chmod(nativeBinary, (await stat(sourceBinary)).mode);
   await writeFile(path.join(contentsDirectory, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>

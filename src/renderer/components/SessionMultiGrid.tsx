@@ -38,6 +38,7 @@ import { CHAT_PANE_MIN_WIDTH_PX, SESSION_CELL_MIN_WIDTH_PX } from "../lib/layout
 import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { SessionPane } from "./SessionPane.js";
+import type { ReviewSideChatContext } from "./ReviewSideChat.js";
 import {
   subscribeWorkspacePointerDrag,
   type WorkspaceDragPoint
@@ -108,6 +109,7 @@ interface SessionMultiGridProps {
   onNewSession: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat seeded with the given first message. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  sideChat?: ReviewSideChatContext;
   onOpenSession?: (sessionId: string) => void;
   onOpenDetails?: (
     seedPrompt: string,
@@ -186,6 +188,7 @@ export function SessionMultiGrid({
   onLoadSessionEvents,
   onNewSession,
   onOpenSideChat,
+  sideChat,
   onOpenSession,
   onOpenDetails,
   defaultIde = null,
@@ -439,6 +442,7 @@ export function SessionMultiGrid({
                         onLoadSessionEvents={onLoadSessionEvents}
                         onNewSession={onNewSession}
                         onOpenSideChat={onOpenSideChat}
+                        sideChat={sideChat}
                         onOpenSession={onOpenSession}
                         onOpenDetails={onOpenDetails}
                         defaultIde={defaultIde}

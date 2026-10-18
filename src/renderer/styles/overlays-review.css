@@ -127,7 +127,7 @@
   border-bottom: 1px solid var(--line);
 }
 
-.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel .review-panel-pane:first-child > .review-toolbar {
+.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel .review-panel-pane:first-child > .review-toolbar:not([data-resource-tabs="true"]) {
   padding-top: 52px;
   padding-bottom: 22px;
 }
@@ -1226,4 +1226,40 @@
   top: 0;
   left: 0;
   pointer-events: none;
+}
+
+.review-tabs-header {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: var(--space-1);
+  padding: 5px var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.review-tabs-header > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.review-tabs-hide {
+  flex: 0 0 auto;
+}
+
+.review-toolbar[data-resource-tabs="true"] {
+  min-height: 34px;
+  padding-block: var(--space-1);
+}
+
+.review-pane-label {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell[data-sidebar-collapsed="true"] .launcher-shell[data-review-open="true"] > .review-panel > .review-tabs-header {
+  padding-top: 46px;
 }

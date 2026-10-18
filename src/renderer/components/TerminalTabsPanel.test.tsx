@@ -9,6 +9,7 @@ import type {
 import { TerminalTabsPanel } from "./TerminalTabsPanel.js";
 import {
   addAgentTerminalTab,
+  getWorkspaceTerminalState,
   closeTerminalTab,
   ensureAgentTerminalSync,
   resetTerminalTabsForTests
@@ -155,6 +156,24 @@ describe("TerminalTabsPanel", () => {
     document.documentElement.style.removeProperty("--text-terminal");
     delete (window as { argmax?: unknown }).argmax;
     vi.restoreAllMocks();
+  });
+
+  it("shows distinct terminals in two panes and retains their runtimes when hidden", async () => {
+    addAgentTerminalTab("ws-1", "pty-one", "Server");
+    addAgentTerminalTab("ws-1", "pty-two", "Tests");
+    const [first, second] = getWorkspaceTerminalState("ws-1").tabs;
+    const view = render(<>
+      <TerminalTabsPanel workspaceId="ws-1" controlledTabId={first.id} visible />
+      <TerminalTabsPanel workspaceId="ws-1" controlledTabId={second.id} visible />
+    </>);
+    await waitFor(() => expect(terminalMockState.instances).toHaveLength(2));
+    expect(screen.getByRole("tabpanel", { name: "Server" })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel", { name: "Tests" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(stub.spawn).not.toHaveBeenCalled();
+    view.rerender(<TerminalTabsPanel workspaceId="ws-1" controlledTabId={second.id} visible />);
+    expect(terminalMockState.instances).toHaveLength(2);
+    expect(stub.terminate).not.toHaveBeenCalled();
   });
 
   it("seeds with one tab labelled `zsh` and spawns one PTY", async () => {

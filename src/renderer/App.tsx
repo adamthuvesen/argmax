@@ -2487,6 +2487,26 @@ export function App(): JSX.Element {
               onLoadSessionEvents={loadSessionEvents}
               onLoadAgentEvents={loadAgentEvents}
               onNewSession={openNewSessionPaneInGrid}
+              sideChat={{
+                launch: (prompt) => launchSideChat(prompt, { background: true }),
+                sessionsById,
+                workspacesById,
+                pendingMessages: snapshot.pendingMessages,
+                chatFontSize,
+                defaultToolCallsDisplay: toolCallsDisplay,
+                defaultToolCallGroupsExpanded: toolCallGroupsExpanded,
+                thinkingDisplay,
+                onLoadSessionEvents: loadSessionEvents,
+                onCancelQueuedMessage: cancelQueuedMessage,
+                onClearSession: clearSession,
+                onOpenFullChat: openSessionById,
+                onSendQueuedMessageNow: sendQueuedMessageNow,
+                onSendSessionInput: sendSessionInput,
+                onTerminateSession: (sessionId, options) => terminateSession(sessionId, {
+                  ...options,
+                  restoreLauncherOnEarlyStop: false
+                })
+              }}
               onOpenSideChat={async (seedPrompt) => {
                 await launchSideChat(seedPrompt);
               }}

@@ -59,7 +59,8 @@ pub struct BrowserNewTabEvent {
 
 /// A browser shortcut pressed while the page (not the panel chrome) had
 /// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
-/// `reload`, `back`, `forward`, `find`, or a native-page `focus` notification.
+/// `reopen-tab`, `next-tab`, `previous-tab`, `reload`, `back`, `forward`,
+/// `find`, or a native-page `focus` notification.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserPageCommandEvent {
@@ -219,14 +220,18 @@ const BROWSER_INIT_SCRIPT: &str = r#"
     "keydown",
     function (event) {
       if (window.__argmaxBrowserPopup) return;
-      if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       var key = event.key.toLowerCase();
-      var command =
-        key === "w" ? "close-tab" :
-        key === "t" ? "new-tab" :
-        key === "r" ? "reload" :
-        key === "l" ? "focus-address" :
-        key === "f" ? "find" : null;
+      var command = null;
+      if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
+        command = event.shiftKey ? "previous-tab" : "next-tab";
+      } else if (event.metaKey && !event.ctrlKey && !event.altKey) {
+        command = event.shiftKey ? (key === "t" ? "reopen-tab" : null) :
+          key === "w" ? "close-tab" :
+          key === "t" ? "new-tab" :
+          key === "r" ? "reload" :
+          key === "l" ? "focus-address" :
+          key === "f" ? "find" : null;
+      }
       if (!command) return;
       event.preventDefault();
       window.location.href = "argmax-newtab://command?c=" + command;
@@ -480,6 +485,9 @@ fn page_command(url: &Url) -> Option<&'static str> {
     match command.as_ref() {
         "close-tab" => Some("close-tab"),
         "new-tab" => Some("new-tab"),
+        "reopen-tab" => Some("reopen-tab"),
+        "next-tab" => Some("next-tab"),
+        "previous-tab" => Some("previous-tab"),
         "focus-address" => Some("focus-address"),
         "reload" => Some("reload"),
         "back" => Some("back"),
@@ -1701,6 +1709,10 @@ mod tests {
         assert_eq!(page_command(&find), Some("find"));
         let focus = Url::parse("argmax-newtab://command?c=focus").unwrap();
         assert_eq!(page_command(&focus), Some("focus"));
+        for command in ["reopen-tab", "next-tab", "previous-tab"] {
+            let url = Url::parse(&format!("argmax-newtab://command?c={command}")).unwrap();
+            assert_eq!(page_command(&url), Some(command));
+        }
         let unknown = Url::parse("argmax-newtab://command?c=quit-app").unwrap();
         assert_eq!(page_command(&unknown), None);
         // `open` navigations carry URLs, never commands — and vice versa.

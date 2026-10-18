@@ -21,6 +21,37 @@ function props(overrides: Partial<ReviewTabsBarProps> = {}): ReviewTabsBarProps 
 afterEach(cleanup);
 
 describe("ReviewTabsBar", () => {
+  it("preserves manual tab scrolling across unrelated parent renders", () => {
+    const callbacks = props();
+    const { rerender } = render(<ReviewTabsBar {...callbacks} />);
+    const active = screen.getByRole("tab", { name: "Changes" }).parentElement!;
+    const scrollIntoView = vi.fn();
+    active.scrollIntoView = scrollIntoView;
+    rerender(<ReviewTabsBar {...callbacks} items={callbacks.items.map((item) => ({ ...item }))} />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("keeps overflowing tabs reachable in both directions", () => {
+    render(<ReviewTabsBar {...props()} />);
+    const strip = screen.getByRole("tablist", { name: "Workspace tabs" });
+    Object.defineProperties(strip, {
+      clientWidth: { configurable: true, value: 300 },
+      scrollWidth: { configurable: true, value: 700 },
+      scrollLeft: { configurable: true, writable: true, value: 0 }
+    });
+    const scrollBy = vi.fn();
+    strip.scrollBy = scrollBy;
+    fireEvent.scroll(strip);
+    expect(screen.getByRole("button", { name: "Scroll tabs left" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Scroll tabs right" }));
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: 225, behavior: "auto" });
+    strip.scrollLeft = 400;
+    fireEvent.scroll(strip);
+    expect(screen.getByRole("button", { name: "Scroll tabs right" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Scroll tabs left" }));
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: -225, behavior: "auto" });
+  });
+
   it("navigates resource tabs with arrows, Home, and End, and closes the focused resource with Delete", () => {
     const callbacks = props();
     render(<ReviewTabsBar {...callbacks} />);

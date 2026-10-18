@@ -62,6 +62,9 @@ export function ReviewTabsBar({
   const [menu, setMenu] = useState<TabMenu | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const tabButtons = useRef(new Map<string, HTMLButtonElement>());
+  const tabList = useRef<HTMLDivElement | null>(null);
+  const tabOrder = JSON.stringify(items.map((item) => item.id));
+  const [overflow, setOverflow] = useState({ left: false, right: false });
   const addButton = useRef<HTMLButtonElement | null>(null);
   const draggedId = useRef<string | null>(null);
   const popover = useAnchoredPopover({ open: menu !== null, placement: "bottom-end", capHeight: true });
@@ -83,8 +86,26 @@ export function ReviewTabsBar({
   }, [menu, anchorToPoint, setAnchor, popoverRef]);
 
   useEffect(() => {
-    if (activeId) tabButtons.current.get(activeId)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [activeId]);
+    const list = tabList.current;
+    if (!list) return;
+    const measure = (): void => {
+      const left = list.scrollLeft > 1;
+      const right = list.scrollWidth - list.clientWidth - list.scrollLeft > 1;
+      setOverflow((previous) => previous.left === left && previous.right === right ? previous : { left, right });
+    };
+    const revealActive = (): void => {
+      if (activeId) tabButtons.current.get(activeId)?.parentElement?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      measure();
+    };
+    revealActive();
+    const observer = new ResizeObserver(revealActive);
+    observer.observe(list);
+    list.addEventListener("scroll", measure);
+    return () => {
+      observer.disconnect();
+      list.removeEventListener("scroll", measure);
+    };
+  }, [activeId, tabOrder]);
 
   useEffect(() => {
     if (menu?.kind === "tab" && !items.some((item) => item.id === menu.id)) closeMenu();
@@ -147,7 +168,7 @@ export function ReviewTabsBar({
 
   return (
     <div className="review-tabs-bar">
-      <div className="review-resource-tabs" role="tablist" aria-label="Workspace tabs">
+      <div ref={tabList} className="review-resource-tabs" role="tablist" aria-label="Workspace tabs">
         {items.map((item, index) => (
           <div
             key={item.id}
@@ -220,6 +241,16 @@ export function ReviewTabsBar({
           </div>
         ))}
       </div>
+      {overflow.left || overflow.right ? <div className="review-tab-scroll-controls">
+        <button type="button" className="review-tab-scroll" aria-label="Scroll tabs left" disabled={!overflow.left}
+          onClick={() => tabList.current?.scrollBy({ left: -Math.max(112, tabList.current.clientWidth * 0.75), behavior: "auto" })}>
+          <ArrowLeft size={13} aria-hidden="true" />
+        </button>
+        <button type="button" className="review-tab-scroll" aria-label="Scroll tabs right" disabled={!overflow.right}
+          onClick={() => tabList.current?.scrollBy({ left: Math.max(112, tabList.current.clientWidth * 0.75), behavior: "auto" })}>
+          <ArrowRight size={13} aria-hidden="true" />
+        </button>
+      </div> : null}
       <button
         ref={addButton}
         className="review-tab-add"

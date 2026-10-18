@@ -2884,6 +2884,15 @@ describe("Sidebar — status grouping", () => {
     expect(screen.getByRole("group", { name: "Completed chats" })).toBeInTheDocument();
   });
 
+  it.each(["running", "failed"] as const)("can manually prioritize a %s chat from its status group", (state) => {
+    const onAddToPriority = vi.fn();
+    render(<Sidebar {...baseProps} showPriority onAddToPriority={onAddToPriority}
+      snapshot={statusSnapshot([{ id: "Status task", state, attention: state === "failed" ? "failed" : "normal" }])} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Status task/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Priority" }));
+    expect(onAddToPriority).toHaveBeenCalledWith("Status task");
+  });
+
   it("keeps manual Priority separate and groups automatic status without duplicates", () => {
     const data = statusSnapshot([
       { id: "Pinned task", pinned: true, state: "running" },

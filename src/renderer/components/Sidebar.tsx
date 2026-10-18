@@ -1254,7 +1254,7 @@ export function Sidebar({
           onFork={onForkWorkspace}
           onSetIcon={onSetWorkspaceIcon}
           onSyncNow={onSyncNowWorkspace}
-          onAddToPriority={!workspace.pinned && !priority ? addToPriority : undefined}
+          onAddToPriority={!workspace.pinned && (viewMode === "status" ? !workspace.priorityAddedAt : !priority) ? addToPriority : undefined}
           onRemoveFromPriority={priority && (priority.attention !== null || workspace.priorityAddedAt) ? onRemoveFromPriority : undefined}
           priorityReason={priority?.reason ?? undefined}
           onSnooze={onSnoozeWorkspace}

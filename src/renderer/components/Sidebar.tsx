@@ -12,6 +12,8 @@ import {
   Info,
   Keyboard,
   MoreHorizontal,
+  Pin,
+  PinOff,
   Plus,
   Search,
   Settings,
@@ -45,6 +47,7 @@ import {
   loadCollapsedProjectIds,
   loadExpandedDateGroupIds,
   loadExpandedProjectIds,
+  loadPinnedProjectIds,
   loadProjectOrder,
   loadProjectSortMode,
   loadSidebarViewMode,
@@ -58,6 +61,8 @@ import {
   saveSidebarViewMode,
   saveWorkspaceOrders,
   SIDEBAR_SESSION_LIMIT,
+  pinnedProjectsFirst,
+  savePinnedProjectIds,
   sortProjectsBy,
   sortWorkspaceGroup,
   type ProjectSortMode,
@@ -363,6 +368,7 @@ export function Sidebar({
   }, [snapshot.projects.length, collapsedProjectIds]);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => loadExpandedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
+  const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>(() => loadPinnedProjectIds());
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
   const [viewMode, setViewMode] = useState<SidebarViewMode>(() => loadSidebarViewMode());
@@ -432,12 +438,26 @@ export function Sidebar({
     // The hidden scratch project never renders as a project group: its
     // chats get the Chat group at the bottom of the projects view instead.
     () =>
-      sortProjectsBy(
-        snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
-        sortMode,
-        projectOrder
+      pinnedProjectsFirst(
+        sortProjectsBy(
+          snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
+          sortMode,
+          projectOrder
+        ),
+        pinnedProjectIds
       ),
-    [snapshot.projects, sortMode, projectOrder]
+    [snapshot.projects, sortMode, projectOrder, pinnedProjectIds]
+  );
+  const pinnedProjectIdSet = useMemo(() => new Set(pinnedProjectIds), [pinnedProjectIds]);
+  const toggleProjectPinned = useCallback(
+    (projectId: string): void => {
+      const next = pinnedProjectIds.includes(projectId)
+        ? pinnedProjectIds.filter((id) => id !== projectId)
+        : [...pinnedProjectIds, projectId];
+      setPinnedProjectIds(next);
+      savePinnedProjectIds(next);
+    },
+    [pinnedProjectIds]
   );
 
   const handleSelectSortMode = useCallback(
@@ -1833,6 +1853,11 @@ export function Sidebar({
                     {isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
                   </span>
                   <span className="project-name-text">{project.name}</span>
+                  {pinnedProjectIdSet.has(project.id) ? (
+                    <span className="project-pin-mark" title="Pinned">
+                      <Pin size={11} aria-label="Pinned" />
+                    </span>
+                  ) : null}
                 </button>
                 {onRemoveProject ? (
                   <div className="project-picker-anchor project-actions-anchor">
@@ -1972,6 +1997,22 @@ export function Sidebar({
               >
                 {projectMenuState.mode === "menu" ? (
                   <>
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item"
+                        onClick={() => {
+                          closeProjectMenu();
+                          toggleProjectPinned(activeProject.id);
+                        }}
+                      >
+                        {pinnedProjectIdSet.has(activeProject.id)
+                          ? <PinOff size={14} aria-hidden="true" />
+                          : <Pin size={14} aria-hidden="true" />}
+                        {pinnedProjectIdSet.has(activeProject.id) ? "Unpin Project" : "Pin Project"}
+                      </button>
+                    </li>
                     <li role="none">
                       <button
                         type="button"

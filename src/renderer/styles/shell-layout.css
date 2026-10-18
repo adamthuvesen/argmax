@@ -687,6 +687,20 @@
   letter-spacing: 0;
 }
 
+/* A pinned project carries a small pin right after its name. The name stops
+   growing so the pin hugs its last letter instead of drifting to the edge. */
+.project-name:has(.project-pin-mark) .project-name-text {
+  flex: 0 1 auto;
+}
+
+.project-pin-mark {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
 /* The folder glyph sits in the same 14px column as the nav glyphs and the chat
    markers, so a project reads as a container of the rows under it. */
 .project-name-glyph {

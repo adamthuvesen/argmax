@@ -343,6 +343,27 @@ describe("Sidebar — project removal menu", () => {
     resetOverlaysForTests();
   });
 
+  it("pins a project above the sort order and keeps it pinned across mounts", () => {
+    window.localStorage.setItem(projectSortModeStorageKey, JSON.stringify("alphabetical"));
+    const { unmount } = render(
+      <Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={vi.fn()} />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Pin Project" }));
+
+    expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax", "Mango"]);
+    expect(screen.getByRole("button", { name: "Zebra Pinned" })).toBeInTheDocument();
+
+    unmount();
+    render(<Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={vi.fn()} />);
+    expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax", "Mango"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Unpin Project" }));
+    expect(getProjectButtonOrder()).toEqual(["Argmax", "Mango", "Zebra"]);
+  });
+
   it("opens the clicked project's folder settings and closes the menu", () => {
     render(
       <Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={vi.fn()} />

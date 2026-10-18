@@ -157,6 +157,8 @@ A fork chat shows a **Forked chat** card above the composer with **Open source**
 
 The sidebar's **Group by** menu offers Projects, Date, and Status. Projects remains the default. The selected grouping persists across restarts.
 
+In the Projects grouping, **Pin Project** in a project's ⋯ menu moves that project to the top of the list. A pinned project carries a small pin after its name. Pinned projects keep the order they were pinned in, whatever the sort mode. The sort mode orders the rest. Pins are a desktop sidebar preference like the sort mode and manual order: they persist in `localStorage.argmax.sidebar.pinnedProjects` and do not reach the iPhone app.
+
 Status keeps Pinned first. Manually prioritized chats retain their separate Priority section when that setting is enabled. Other chats appear once under these groups:
 
 - **Working**: a chat or its nested chats have an active turn.

@@ -31,10 +31,15 @@ const TOOLBAR_GAP_PX = 6;
 
 interface ActiveSelection extends ChatSelection {
   rect: { left: number; top: number; bottom: number; width: number };
+  /** Where the selection starts on screen: the menu's left edge lines up with
+   *  it, which a multi-line selection's bounding box cannot give. */
+  startLeft: number;
 }
 
 /**
- * Floating "Add to chat" toolbar over a text selection in the transcript.
+ * Floating action menu over a text selection in the transcript. It is the
+ * picker primitive (`.project-picker-popover`), so its rows match every other
+ * menu in the app.
  * Tracks `selectionchange` globally but only claims selections whose range
  * lives inside `containerRef`, so each pane in the multi-grid owns exactly
  * the selections made in its own transcript.
@@ -46,7 +51,7 @@ export function SelectionToolbar({
   onMoreDetails
 }: SelectionToolbarProps): JSX.Element | null {
   const [active, setActive] = useState<ActiveSelection | null>(null);
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const toolbarRef = useRef<HTMLUListElement | null>(null);
   // While the primary button is down the selection is still being dragged out;
   // showing (and re-measuring) the toolbar on every selectionchange during the
   // drag makes it chase the cursor. Defer to mouseup instead.
@@ -81,9 +86,12 @@ export function SelectionToolbar({
       return;
     }
     const rect = range.getBoundingClientRect();
+    // jsdom ships Range without getClientRects.
+    const firstLine = range.getClientRects?.()[0];
     setActive({
       text,
-      rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width }
+      rect: { left: rect.left, top: rect.top, bottom: rect.bottom, width: rect.width },
+      startLeft: firstLine ? firstLine.left : rect.left
     });
   }, [containerRef]);
 
@@ -148,8 +156,7 @@ export function SelectionToolbar({
     const el = toolbarRef.current;
     if (!el) return;
     const size = el.getBoundingClientRect();
-    let left = active.rect.left + active.rect.width / 2 - size.width / 2;
-    left = Math.min(Math.max(12, left), window.innerWidth - 12 - size.width);
+    const left = Math.min(Math.max(12, active.startLeft), window.innerWidth - 12 - size.width);
     const fitsAbove = active.rect.top - TOOLBAR_GAP_PX - size.height > 12;
     const top = fitsAbove
       ? active.rect.top - TOOLBAR_GAP_PX - size.height
@@ -165,50 +172,41 @@ export function SelectionToolbar({
     setActive(null);
   };
 
+  const item = (
+    label: string,
+    title: string,
+    Icon: typeof Info,
+    handler: (selection: ChatSelection) => void
+  ): JSX.Element => (
+    <li role="none">
+      <button
+        type="button"
+        role="menuitem"
+        className="project-picker-item"
+        title={title}
+        onClick={() => consumeSelection(handler)}
+      >
+        <Icon size={14} aria-hidden="true" />
+        {label}
+      </button>
+    </li>
+  );
+
   return (
-    <div
+    <ul
       ref={toolbarRef}
-      className="selection-toolbar"
-      role="toolbar"
+      className="project-picker-popover selection-menu"
+      role="menu"
       aria-label="Selection actions"
       style={position ? { left: `${position.left}px`, top: `${position.top}px` } : { visibility: "hidden" }}
       // Keep the browser from collapsing the selection before click fires.
       onMouseDown={(event) => event.preventDefault()}
     >
-      <button
-        type="button"
-        className="selection-toolbar-action"
-        aria-label="Add selection to chat"
-        title="Attach this excerpt to your next message"
-        onClick={() => consumeSelection(onAddToChat)}
-      >
-        <TextQuote size={13} aria-hidden="true" />
-        <span>Add to chat</span>
-      </button>
-      {onMoreDetails ? (
-        <button
-          type="button"
-          className="selection-toolbar-action"
-          aria-label="Explain selection in more detail"
-          title="Open an explainer popup about this excerpt"
-          onClick={() => consumeSelection(onMoreDetails)}
-        >
-          <Info size={13} aria-hidden="true" />
-          <span>More details</span>
-        </button>
-      ) : null}
-      {onAskSideChat ? (
-        <button
-          type="button"
-          className="selection-toolbar-action"
-          aria-label="Ask about selection in a new chat"
-          title="Open a chat without a repository, seeded with this excerpt"
-          onClick={() => consumeSelection(onAskSideChat)}
-        >
-          <MessagesSquare size={13} aria-hidden="true" />
-          <span>Ask in new chat</span>
-        </button>
-      ) : null}
-    </div>
+      {item("Add to Chat", "Attach this excerpt to your next message", TextQuote, onAddToChat)}
+      {onMoreDetails ? item("More Details", "Open an explainer popup about this excerpt", Info, onMoreDetails) : null}
+      {onAskSideChat
+        ? item("Ask in New Chat", "Open a chat without a repository, seeded with this excerpt", MessagesSquare, onAskSideChat)
+        : null}
+    </ul>
   );
 }

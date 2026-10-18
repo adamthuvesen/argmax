@@ -211,7 +211,7 @@ describe("App side chat launcher", () => {
     fireEvent(document, new Event("selectionchange"));
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "Explain selection in more detail" })
+      await screen.findByRole("menuitem", { name: "More Details" })
     );
     await waitFor(() => expect(createScratchWorkspace).toHaveBeenCalledTimes(1));
 

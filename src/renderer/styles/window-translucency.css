@@ -142,7 +142,7 @@
     [role="tooltip"],
     .slash-menu,
     .file-preview-popover,
-    .selection-toolbar,
+    .selection-menu,
     .workspace-card-pr-actions-menu
   ) {
   --bg: var(--bg-solid);
@@ -176,7 +176,7 @@
     .command-palette,
     .slash-menu,
     .file-preview-popover,
-    .selection-toolbar,
+    .selection-menu,
     .workspace-card-pr-actions-menu
   ) {
   --panel: color-mix(in oklab, var(--panel-solid), var(--text) 5%);

@@ -48,12 +48,12 @@ describe("SessionConversation selection annotations", () => {
     renderConversation(baseSession(), EVENTS);
     selectAssistantText();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Chat" }));
 
     expect(
       screen.getByLabelText("Annotation: Day two looks reassuringly boring.")
     ).toBeTruthy();
-    expect(screen.queryByRole("toolbar", { name: "Selection actions" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Selection actions" })).toBeNull();
     expect(window.getSelection()?.isCollapsed ?? true).toBe(true);
   });
 
@@ -61,7 +61,7 @@ describe("SessionConversation selection annotations", () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     renderConversation(baseSession(), EVENTS, { onSendSessionInput });
     selectAssistantText();
-    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Chat" }));
 
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "why is that good?" } });
@@ -82,7 +82,7 @@ describe("SessionConversation selection annotations", () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(STARTED_TURN);
     renderConversation(baseSession(), EVENTS, { onSendSessionInput });
     selectAssistantText();
-    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Chat" }));
 
     const prompt = screen.getByLabelText("Chat prompt");
     expect(prompt).toHaveValue("");
@@ -101,7 +101,7 @@ describe("SessionConversation selection annotations", () => {
   it("removes an annotation from its chip without sending", () => {
     renderConversation(baseSession(), EVENTS);
     selectAssistantText();
-    fireEvent.click(screen.getByRole("button", { name: "Add selection to chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add to Chat" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Remove annotation" }));
     expect(screen.queryByLabelText(/^Annotation:/)).toBeNull();
@@ -112,13 +112,13 @@ describe("SessionConversation selection annotations", () => {
     renderConversation(baseSession(), EVENTS, { onOpenSideChat });
     selectAssistantText();
 
-    fireEvent.click(screen.getByRole("button", { name: "Ask about selection in a new chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Ask in New Chat" }));
 
     await waitFor(() => expect(onOpenSideChat).toHaveBeenCalledTimes(1));
     const seed = onOpenSideChat.mock.calls[0]?.[0] as string;
     expect(seed).toContain("> Day two looks reassuringly boring.");
     expect(seed).toContain("User: compare the score distributions");
-    expect(screen.queryByRole("toolbar", { name: "Selection actions" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Selection actions" })).toBeNull();
     // The excerpt rides into the side chat, not onto this session's composer.
     expect(screen.queryByLabelText(/^Annotation:/)).toBeNull();
   });
@@ -127,8 +127,8 @@ describe("SessionConversation selection annotations", () => {
     renderConversation(baseSession(), EVENTS);
     selectAssistantText();
 
-    expect(screen.getByRole("toolbar", { name: "Selection actions" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Ask about selection in a new chat" })).toBeNull();
+    expect(screen.getByRole("menu", { name: "Selection actions" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Ask in New Chat" })).toBeNull();
   });
 
   it("opens the details popup seeded with the excerpt", async () => {
@@ -136,20 +136,20 @@ describe("SessionConversation selection annotations", () => {
     renderConversation(baseSession(), EVENTS, { onOpenDetails });
     selectAssistantText();
 
-    fireEvent.click(screen.getByRole("button", { name: "Explain selection in more detail" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "More Details" }));
 
     await waitFor(() => expect(onOpenDetails).toHaveBeenCalledTimes(1));
     const seed = onOpenDetails.mock.calls[0]?.[0] as string;
     expect(seed).toContain("> Day two looks reassuringly boring.");
     expect(seed).toContain("Explain this excerpt in more detail");
-    expect(screen.queryByRole("toolbar", { name: "Selection actions" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Selection actions" })).toBeNull();
   });
 
   it("hides the details action when no details handler is wired", () => {
     renderConversation(baseSession(), EVENTS);
     selectAssistantText();
 
-    expect(screen.queryByRole("button", { name: "Explain selection in more detail" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "More Details" })).toBeNull();
   });
 
   it("turns a registered diff note into a chip and serializes it on send", async () => {
@@ -221,6 +221,6 @@ describe("SessionConversation selection annotations", () => {
     selection?.addRange(range);
     fireEvent(document, new Event("selectionchange"));
 
-    expect(screen.queryByRole("toolbar", { name: "Selection actions" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Selection actions" })).toBeNull();
   });
 });

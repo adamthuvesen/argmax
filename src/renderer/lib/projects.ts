@@ -19,11 +19,10 @@ export type ProjectSortMode = "recent" | "alphabetical" | "manual";
 
 const projectSortModes: readonly ProjectSortMode[] = ["recent", "alphabetical", "manual"];
 
-// "projects" groups sessions under their project (the default). "sessions"
-// flattens every session into a single date-bucketed list, ignoring projects.
-export type SidebarViewMode = "projects" | "sessions";
+// Projects is the default. Date and Status group chats across projects.
+export type SidebarViewMode = "projects" | "sessions" | "status";
 
-const sidebarViewModes: readonly SidebarViewMode[] = ["projects", "sessions"];
+const sidebarViewModes: readonly SidebarViewMode[] = ["projects", "sessions", "status"];
 
 // The value is written as a bare JSON string ("recent"); tolerate plain strings
 // too in case the key was set manually for debugging.

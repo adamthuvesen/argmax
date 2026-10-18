@@ -134,6 +134,12 @@ const SIDE_CHATS_GROUP_KEY = "side-chats";
 const ARCHIVED_GROUP_KEY = "archived";
 const SNOOZED_GROUP_KEY = "snoozed";
 const OLDER_GROUP_KEY = "older";
+const STATUS_GROUPS = [
+  { key: "status-working", label: "Working" },
+  { key: "status-attention", label: "Needs attention" },
+  { key: "status-completed", label: "Completed" },
+  { key: "status-created", label: "Not started" }
+] as const;
 
 // Active and paused sort together, ahead of done; ties break by most recently
 // touched. Only a non-active state gets a text marker on the row — active is
@@ -157,12 +163,14 @@ const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
   "today",
   "yesterday",
   "last-7",
-  OLDER_GROUP_KEY
+  OLDER_GROUP_KEY,
+  ...STATUS_GROUPS.map((group) => group.key)
 ];
 
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
   { value: "projects", label: "Projects", description: "Group chats under their project" },
-  { value: "sessions", label: "Date", description: "Flat list of all chats by date" }
+  { value: "sessions", label: "Date", description: "Flat list of all chats by date" },
+  { value: "status", label: "Status", description: "Group chats by working and completed status" }
 ];
 
 const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
@@ -651,7 +659,7 @@ export function Sidebar({
   }, [unreadWorkspaces, retainedId]);
   const rawPriorityEntries = useMemo(
     () => {
-      const entries = showPriority
+      const entries = showPriority || viewMode === "status"
         ? computePriorityEntries(
             unsnoozedWorkspaces,
             snapshot.sessions,
@@ -666,7 +674,7 @@ export function Sidebar({
         (positions.get(b.workspace.id) ?? manualOrder.length)
       );
     },
-    [showPriority, unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds, workspaceOrders]
+    [showPriority, viewMode, unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds, workspaceOrders]
   );
   const rawPriorityByWorkspace = useMemo(
     () => new Map(rawPriorityEntries.map((entry) => [entry.workspace.id, entry])),
@@ -676,6 +684,7 @@ export function Sidebar({
     const byId = new Map(sidebarWorkspaces.map((workspace) => [workspace.id, workspace]));
     const seen = new Set<string>();
     const entries = rawPriorityEntries.flatMap((entry) => {
+      if (viewMode === "status" && (!showPriority || !entry.workspace.priorityAddedAt)) return [];
       const rootId = chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id;
       const workspace = byId.get(rootId);
       if (!workspace || workspace.pinned || seen.has(rootId)) return [];
@@ -689,7 +698,7 @@ export function Sidebar({
       (positions.get(a.workspace.id) ?? manualOrder.length) -
       (positions.get(b.workspace.id) ?? manualOrder.length)
     );
-  }, [sidebarWorkspaces, rawPriorityEntries, rawPriorityByWorkspace, chatTree, workspaceOrders]);
+  }, [sidebarWorkspaces, rawPriorityEntries, rawPriorityByWorkspace, chatTree, workspaceOrders, viewMode, showPriority]);
   const priorityOrderedIds = useMemo(
     () => priorityEntries.map((entry) => entry.workspace.id),
     [priorityEntries]
@@ -708,8 +717,8 @@ export function Sidebar({
   }, [snapshot.projects]);
   const subtitleFor = useCallback(
     (projectId: string): string | null =>
-      showPriority ? projectNameById.get(projectId) ?? null : null,
-    [showPriority, projectNameById]
+      showPriority || viewMode === "status" ? projectNameById.get(projectId) ?? null : null,
+    [showPriority, viewMode, projectNameById]
   );
 
   const priorityWorkspaceIds = useMemo(
@@ -770,6 +779,31 @@ export function Sidebar({
       ),
     [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
+
+  const statusGroups = useMemo(() => {
+    const chats = chatSessionByWorkspace(snapshot.sessions);
+    const statusByRoot = new Map<string, number>();
+    for (const workspace of unsnoozedWorkspaces) {
+      if (isInArchivedSection(workspace)) continue;
+      const rootId = chatTree.rootByWorkspace.get(workspace.id) ?? workspace.id;
+      const reasons = rawPriorityByWorkspace.get(workspace.id)?.reasons ?? [];
+      const chat = chats.get(workspace.id);
+      const stalled = chat && ["waiting", "blocked", "failed"].includes(chat.state) &&
+        (!workspace.priorityDismissedAt || workspace.priorityDismissedAt < (chat.attentionChangedAt ?? chat.lastActivityAt));
+      const status = workingWorkspaces.has(workspace.id) ? 0
+        : stalled || reasons.some((reason) => reason.kind !== "pr-open") ? 1
+        : chat?.state === "created" ? 3 : 2;
+      statusByRoot.set(rootId, Math.min(statusByRoot.get(rootId) ?? status, status));
+    }
+    return STATUS_GROUPS.map((group, index) => ({
+      ...group,
+      items: sortWorkspaceGroup(sidebarWorkspaces.filter((workspace) =>
+        !workspace.pinned && !isInArchivedSection(workspace) &&
+        !priorityWorkspaceIds.has(workspace.id) && statusByRoot.get(workspace.id) === index
+      ), [])
+    })).filter((group) => group.items.length > 0);
+  }, [snapshot.sessions, unsnoozedWorkspaces, chatTree, rawPriorityByWorkspace, workingWorkspaces, sidebarWorkspaces, priorityWorkspaceIds]);
+  const listGroups = viewMode === "status" ? statusGroups : dateGroups;
 
   // The projects view has no project to file a repo-less chat under, so they
   // gather in a Chat group below the project groups. Pinned still wins — a row
@@ -902,8 +936,8 @@ export function Sidebar({
           ? PRIORITY_GROUP_KEY
           : viewMode === "projects" && workspace.kind === "scratch"
             ? SIDE_CHATS_GROUP_KEY
-            : viewMode === "sessions"
-              ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
+            : viewMode !== "projects"
+              ? listGroups.find((group) => group.items.some((item) => item.id === workspace.id))
                   ?.key ?? null
               : null;
       // Older is a history dump, often dozens of rows. Auto-opening it to
@@ -922,7 +956,7 @@ export function Sidebar({
         expandProjectVisibility(workspace.projectId);
       }
     },
-    [chatTree, sidebarWorkspaces, dateGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
+    [chatTree, sidebarWorkspaces, listGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
   );
 
   useEffect(() => {
@@ -931,20 +965,19 @@ export function Sidebar({
     if (workspace) {
       revealWorkspaceGroup(workspace, true);
       setExpandedProjectIds((current) => new Set([...current, workspace.projectId]));
-      const dateGroup = dateGroups.find((group) => group.items.some((item) => item.id === workspace.id));
+      const dateGroup = listGroups.find((group) => group.items.some((item) => item.id === workspace.id));
       if (dateGroup) {
         setExpandedDateGroups((current) => new Set([...current, dateGroup.key]));
         setCollapsedDateGroups((current) => new Set([...current].filter((key) => key !== dateGroup.key)));
       }
     }
     setDetachedToReveal(null);
-  }, [detachedToReveal, chatTree, sidebarWorkspaces, revealWorkspaceGroup, dateGroups]);
+  }, [detachedToReveal, chatTree, sidebarWorkspaces, revealWorkspaceGroup, listGroups]);
 
   // A newly launched (or newly selected) session must not vanish into a
   // collapsed section: expand the group that hosts the selected row. Older is
-  // the exception (see revealWorkspaceGroup). Keyed on the id *changing* —
-  // once revealed, the user may still collapse the group over a selected row
-  // without this snapping it back open.
+  // the exception (see revealWorkspaceGroup). A selection entering a new
+  // grouping reveals its destination. Collapsing that same group stays closed.
   const lastExpandedForWorkspaceId = useRef<string | null>(null);
   // The shelf opens when the selection moves to a shelved chat, or the selected
   // chat enters the shelf. The effect depends on this flag, not on the shelf
@@ -954,13 +987,19 @@ export function Sidebar({
   useEffect(() => {
     if (selectedChatIsShelved) setSnoozedExpanded(true);
   }, [selectedWorkspaceId, selectedChatIsShelved]);
+  const selectedRootWorkspace = sidebarWorkspaces.find((workspace) => workspace.id === selectedRootId);
+  const selectedGroupKey = selectedRootWorkspace?.pinned ? PINNED_GROUP_KEY
+    : selectedRootId && priorityWorkspaceIds.has(selectedRootId) ? PRIORITY_GROUP_KEY
+    : viewMode === "projects" ? selectedRootWorkspace?.projectId
+    : listGroups.find((group) => group.items.some((workspace) => workspace.id === selectedRootId))?.key;
+  const selectedRevealKey = `${selectedWorkspaceId}:${selectedRootId}:${viewMode}:${selectedGroupKey}`;
   useEffect(() => {
-    if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === `${selectedWorkspaceId}:${selectedRootId}`) return;
+    if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedRevealKey) return;
     const workspace = unsnoozedWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
     if (!workspace || isInArchivedSection(workspace)) return;
-    lastExpandedForWorkspaceId.current = `${selectedWorkspaceId}:${selectedRootId}`;
+    lastExpandedForWorkspaceId.current = selectedRevealKey;
     revealWorkspaceGroup(workspace, true);
-  }, [revealWorkspaceGroup, selectedWorkspaceId, selectedRootId, unsnoozedWorkspaces]);
+  }, [revealWorkspaceGroup, selectedWorkspaceId, selectedRevealKey, unsnoozedWorkspaces]);
 
   // A workspace that APPEARS without being selected — a fork, or a session an
   // agent launched from inside another session — must also surface, so the
@@ -1256,7 +1295,7 @@ export function Sidebar({
   // newest recency bucket in sessions view, the "Projects" header in projects
   // view. It falls back to a quiet label-less strip only when sessions view
   // has no bucket to host it.
-  const leadDateGroupKey = viewMode === "sessions" ? dateGroups[0]?.key ?? null : null;
+  const leadListGroupKey = viewMode !== "projects" ? listGroups[0]?.key ?? null : null;
   const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
   const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
   const archivedCollapsed = !archivedExpanded;
@@ -1563,7 +1602,7 @@ export function Sidebar({
 
       <div className="project-list-scroll scroll-fade">
         <div className="project-list">
-        {viewMode === "sessions" && leadDateGroupKey === null ? (
+        {viewMode !== "projects" && leadListGroupKey === null ? (
           <div className="rail-heading">{sidebarActions}</div>
         ) : null}
         {/* Arcs sit above everything else: a body of work spanning several
@@ -1663,20 +1702,22 @@ export function Sidebar({
             </div>
           </div>
         ) : null}
-        {viewMode === "sessions"
-          ? dateGroups.map((group) => {
+        {viewMode !== "projects"
+          ? listGroups.map((group) => {
               const isCollapsed = collapsedDateGroups.has(group.key);
               const totalCount = group.items.length;
               const showAll = expandedDateGroups.has(group.key);
               const visibleItems = visibleSidebarItems(group.items, selectedRootId, showAll);
               const hiddenCount = totalCount - visibleItems.length;
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
-              const isLead = group.key === leadDateGroupKey;
+              const isLead = group.key === leadListGroupKey;
               return (
                 <div
                   className="project-group session-date-group"
                   data-collapsed={isCollapsed ? "true" : undefined}
                   key={group.key}
+                  role={viewMode === "status" ? "group" : undefined}
+                  aria-label={viewMode === "status" ? `${group.label} chats` : undefined}
                 >
                   <div
                     className={`project-row session-date-row${isLead ? " session-date-row-lead" : ""}`}

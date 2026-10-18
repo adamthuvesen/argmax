@@ -2819,3 +2819,162 @@ describe("Sidebar — launched chat nesting", () => {
     expect(screen.getByRole("button", { name: "Launched chat" })).toHaveAttribute("aria-current", "true");
   });
 });
+
+describe("Sidebar — status grouping", () => {
+  const at = "2026-10-18T12:00:00.000Z";
+  function statusSnapshot(rows: Array<{
+    id: string;
+    state?: SessionSummary["state"];
+    attention?: SessionSummary["attention"];
+    pinned?: boolean;
+    manual?: boolean;
+    parent?: string;
+    pr?: "success" | "failure";
+    archived?: boolean;
+    unread?: boolean;
+  }>): DashboardSnapshot {
+    return {
+      ...defaultDashboardSnapshot,
+      workspaces: rows.map((row) => ({
+        ...defaultDashboardSnapshot.workspaces[0],
+        id: row.id,
+        taskLabel: row.id,
+        state: row.archived ? "archived" : row.state ?? "complete",
+        pinned: row.pinned ?? false,
+        priorityAddedAt: row.manual ? at : null,
+        prState: row.pr ? "OPEN" : null,
+        prCheckState: row.pr ?? null,
+        prActivityAt: row.pr ? at : null,
+        lastActivityAt: at,
+        lastViewedAt: row.unread ? "2026-10-18T11:00:00.000Z" : at
+      })),
+      sessions: rows.map((row) => ({
+        ...defaultDashboardSnapshot.sessions[0],
+        id: `session-${row.id}`,
+        workspaceId: row.id,
+        state: row.state ?? "complete",
+        attention: row.attention ?? "normal",
+        attentionChangedAt: row.attention ? at : null,
+        launchedBySessionId: row.parent ? `session-${row.parent}` : undefined,
+        lastActivityAt: at
+      }))
+    };
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("status"));
+    resetSessionUnreadForTests();
+  });
+  afterEach(cleanup);
+
+  it("switches to Status from Group by and restores the saved choice", () => {
+    window.localStorage.removeItem(sidebarViewModeStorageKey);
+    const data = statusSnapshot([{ id: "Finished" }]);
+    const { unmount } = render(<Sidebar {...baseProps} snapshot={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Status" }));
+    expect(window.localStorage.getItem(sidebarViewModeStorageKey)).toBe(JSON.stringify("status"));
+    expect(screen.getByRole("group", { name: "Completed chats" })).toBeInTheDocument();
+    expect(screen.queryByText("Working")).not.toBeInTheDocument();
+    unmount();
+    render(<Sidebar {...baseProps} snapshot={data} />);
+    expect(screen.getByRole("group", { name: "Completed chats" })).toBeInTheDocument();
+  });
+
+  it("keeps manual Priority separate and groups automatic status without duplicates", () => {
+    const data = statusSnapshot([
+      { id: "Pinned task", pinned: true, state: "running" },
+      { id: "Manual task", manual: true },
+      { id: "Active task", state: "running" },
+      { id: "Failed task", state: "failed", attention: "failed" },
+      { id: "Finished task" },
+      { id: "Future task", state: "created" },
+      { id: "Old task", archived: true }
+    ]);
+    render(<Sidebar {...baseProps} showPriority snapshot={data} />);
+    const working = screen.getByRole("group", { name: "Working chats" });
+    expect(within(working).getByRole("button", { name: /Active task/ })).toBeInTheDocument();
+    expect(within(working).queryByRole("button", { name: /Pinned task/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", { name: /Failed task/ })).toBeInTheDocument();
+    const completed = screen.getByRole("group", { name: "Completed chats" });
+    expect(within(completed).getByRole("button", { name: /Finished task/ })).toBeInTheDocument();
+    expect(within(completed).queryByRole("button", { name: /Manual task/ })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Not started chats" })).getByRole("button", { name: /Future task/ })).toBeInTheDocument();
+    expect(screen.getByText("Priority")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Manual task/ })).toHaveLength(1);
+    expect(rendersAfter(screen.getByText("Pinned"), screen.getByText("Priority"))).toBe(true);
+    expect(rendersAfter(screen.getByText("Priority"), screen.getByText("Working"))).toBe(true);
+    expect(screen.getByRole("button", { name: "Show Archived chats" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Old task/ })).not.toBeInTheDocument();
+  });
+
+  it("classifies attention even with Priority hidden and ignores an open PR alone", () => {
+    const data = statusSnapshot([
+      { id: "Approval task", state: "waiting", attention: "approval-needed" },
+      { id: "Question task", state: "waiting", attention: "question-asked" },
+      { id: "Blocked task", state: "blocked", attention: "blocked" },
+      { id: "Legacy failure", state: "failed" },
+      { id: "Red checks", pr: "failure" },
+      { id: "Unread reply", attention: "review-ready", unread: true },
+      { id: "Read reply", attention: "review-ready" },
+      { id: "Open pull request", pr: "success" }
+    ]);
+    render(<Sidebar {...baseProps} snapshot={data} />);
+    const attention = screen.getByRole("group", { name: "Needs attention chats" });
+    fireEvent.click(within(attention).getByRole("button", { name: "Show 1 more Needs attention chats" }));
+    for (const name of ["Approval task", "Question task", "Blocked task", "Legacy failure", "Red checks", "Unread reply"]) {
+      expect(within(attention).getByRole("button", { name: new RegExp(name) })).toBeInTheDocument();
+    }
+    const completed = screen.getByRole("group", { name: "Completed chats" });
+    expect(within(completed).getByRole("button", { name: /Read reply/ })).toBeInTheDocument();
+    expect(within(completed).getByRole("button", { name: /Open pull request/ })).toBeInTheDocument();
+    expect(screen.queryByText("Priority")).not.toBeInTheDocument();
+  });
+
+  it("keeps a read reply in Needs attention until the selected chat is left", () => {
+    const data = statusSnapshot([{ id: "New reply", attention: "review-ready", unread: true }, { id: "Other chat" }]);
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={data} />);
+    rerender(<Sidebar {...baseProps} selectedWorkspaceId="New reply" snapshot={data} />);
+    expect(within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", { name: /New reply/ })).toBeInTheDocument();
+    const readData = { ...data, workspaces: data.workspaces.map((workspace) => ({ ...workspace, lastViewedAt: at })) };
+    rerender(<Sidebar {...baseProps} selectedWorkspaceId="Other chat" snapshot={readData} />);
+    expect(screen.queryByRole("group", { name: "Needs attention chats" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Completed chats" })).getByRole("button", { name: /New reply/ })).toBeInTheDocument();
+  });
+
+  it("reveals the selected chat when switching to Status and respects a later manual collapse", () => {
+    window.localStorage.setItem(sidebarViewModeStorageKey, JSON.stringify("projects"));
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["status-completed"]));
+    const data = statusSnapshot([{ id: "Selected task" }]);
+    const { rerender } = render(<Sidebar {...baseProps} selectedWorkspaceId="Selected task" snapshot={data} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sidebar view options" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Status" }));
+    const completed = screen.getByRole("group", { name: "Completed chats" });
+    expect(within(completed).getByRole("button", { name: /Selected task/ })).toBeInTheDocument();
+    fireEvent.click(within(completed).getByRole("button", { name: "Hide Completed chats" }));
+    rerender(<Sidebar {...baseProps} selectedWorkspaceId="Selected task" snapshot={{ ...data }} />);
+    expect(within(completed).queryByRole("button", { name: /Selected task/ })).not.toBeInTheDocument();
+  });
+
+  it("reveals the selected chat's new status when its turn needs attention", () => {
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["status-attention"]));
+    const { rerender } = render(<Sidebar {...baseProps} selectedWorkspaceId="Selected task" snapshot={statusSnapshot([{ id: "Selected task", state: "running" }])} />);
+    expect(within(screen.getByRole("group", { name: "Working chats" })).getByRole("button", { name: /Selected task/ })).toBeInTheDocument();
+    rerender(<Sidebar {...baseProps} selectedWorkspaceId="Selected task" snapshot={statusSnapshot([{ id: "Selected task", state: "waiting", attention: "approval-needed" }])} />);
+    expect(within(screen.getByRole("group", { name: "Needs attention chats" })).getByRole("button", { name: /Selected task/ })).toBeInTheDocument();
+  });
+
+  it("places a nested tree in Working for an active child and reveals its selected section", () => {
+    const data = statusSnapshot([{ id: "Parent task" }, { id: "Child task", state: "running", parent: "Parent task" }]);
+    window.localStorage.setItem(collapsedDateGroupsStorageKey, JSON.stringify(["status-working"]));
+    render(<Sidebar {...baseProps} selectedWorkspaceId="Child task" snapshot={data} />);
+    const working = screen.getByRole("group", { name: "Working chats" });
+    expect(within(working).getByRole("button", { name: /Parent task/ })).toBeInTheDocument();
+    const children = within(working).getByRole("group", { name: "Chats launched from Parent task" });
+    expect(within(children).getByRole("button", { name: /Child task/ })).toBeInTheDocument();
+    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+  });
+});

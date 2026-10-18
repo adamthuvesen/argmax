@@ -63,7 +63,7 @@ An unapplied draft never enters agent context. The overview describes the projec
 - **Worktree location:** New projects default to `~/.argmax/worktrees/<project-id>/`. A one-time upgrade on database open switches project settings still pointing to the old `<repo>/.argmax/worktrees` default to this location for future launches. Custom locations and existing workspace paths stay unchanged. Settings → Projects accepts an absolute directory inside or outside the repo, including a return to the old location after upgrading. Creation resolves that directory and refuses an existing destination, including a symlink. Scratch profiles using `ARGMAX_DATA_DIR` keep worktrees under `<ARGMAX_DATA_DIR>/local-state/worktrees/<project-id>/`.
 - **Worktree setup:** `create_isolated` returns as soon as the checkout exists. `git worktree add` runs with hooks disabled, then a background task replays the repository's `post-checkout` hook with `git hook run` (git 2.36+, only when the hook exists) and runs the project's configured setup command, each through `CheckService` as a check row in the new worktree. Check children get the login-shell `PATH`, like git's do. Failures are recorded on the check rows and never fail the workspace, and the agent's first turn may start while they run.
 - **Archiving:**
-  - Successful archives leave the active list and appear in a collapsed Archived section at the bottom of the sidebar in either grouping. The chats start hidden on each app launch. Expanding the section lets the user read archived transcripts, but the composer cannot send to an archived workspace. Recovery access for isolated checkout files lives in Settings, while notifications are reserved for failures or changes that need attention.
+  - Successful archives leave the active list and appear in a collapsed Archived section at the bottom of the sidebar in every grouping. The chats start hidden on each app launch. Expanding the section lets the user read archived transcripts, but the composer cannot send to an archived workspace. Recovery access for isolated checkout files lives in Settings, while notifications are reserved for failures or changes that need attention.
   - Settings → Appearance → Layout → Show archived chats hides or shows the entire Archived section. It is on by default, with the section collapsed.
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
   - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, and use `git worktree move` to retain the complete checkout under `local-state/workspace-archive/<workspace-id>`. The moved checkout stays registered with Git, so tracked, untracked, and ignored files remain available. Settings → Advanced → Diagnostics → Archived workspaces opens the recovery root.
@@ -152,6 +152,19 @@ A fork chat shows a **Forked chat** card above the composer with **Open source**
 - `git`: Standard repo checkouts (shared or isolated).
 - `scratch`: User-facing side chats under the hidden `scratch-side-chats` project ID.
 - `popup`: Ephemeral sessions used by the "More details" popup. Closing the popup terminates the session and deletes the temporary directory.
+
+## Sidebar Status Grouping
+
+The sidebar's **Group by** menu offers Projects, Date, and Status. Projects remains the default. The selected grouping persists across restarts.
+
+Status keeps Pinned first. Manually prioritized chats retain their separate Priority section when that setting is enabled. Other chats appear once under these groups:
+
+- **Working**: a chat or its nested chats have an active turn.
+- **Needs attention**: an unresolved approval, question, failure, block, failed PR checks, or an unread completed reply needs attention.
+- **Completed**: the turn has ended and has no remaining attention reason. This includes cancelled turns. An open PR alone does not require attention.
+- **Not started**: the chat has not started a turn.
+
+Empty groups stay hidden. Nested chats remain with their parent. Working descendants place the whole tree in Working, followed by attention from any descendant. Reading a completed reply keeps the selected tree in Needs attention until the user leaves that chat. Group collapse and overflow controls match Date grouping. Snoozed and Archived remain separate shelves.
 
 ## Sidebar Priority Section
 

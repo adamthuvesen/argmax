@@ -80,8 +80,9 @@ describe("ReviewPanel changes layout", () => {
       expect(loadDiff).toHaveBeenCalledWith({ kind: "projectFolder", id: "other" }, "src/a.ts", "workingTree", undefined);
       expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Revert/ })).not.toBeInTheDocument();
-      expect(screen.getByText(/These can include other chats/)).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "Back to chat changes" }));
+      expect(screen.queryByText(/These can include other chats/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Back to chat changes" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getAllByTitle("src/a.ts")[0]);
       expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
     } finally {
       cleanup();

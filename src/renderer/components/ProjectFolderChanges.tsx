@@ -39,12 +39,6 @@ export function ProjectFolderChangesList({ state }: { state: ProjectFolderChange
 export function ProjectFolderChangesDiff({ state }: { state: ProjectFolderChangesState }): JSX.Element {
   const blocks = useMemo(() => parseUnifiedDiff(state.diff?.content ?? ""), [state.diff?.content]);
   return (
-    <>
-      <div className="review-diff-heading project-folder-diff-heading">
-        <span title={state.selectedFolder?.rootPath}>{state.selectedFolder?.name} / {state.selection?.path}</span>
-        <button type="button" onClick={state.clearSelection}>Back to chat changes</button>
-      </div>
-      <p className="project-folder-diff-scope">Uncommitted changes in this folder’s checkout. These can include other chats’ work.</p>
       <div className="review-diff-scroll">
         {state.loadingDiff ? <LinesSkeleton rows={14} label="Loading folder diff" /> : null}
         {state.diffError ? <p className="review-empty review-error" role="alert">{state.diffError}</p> : null}
@@ -53,6 +47,5 @@ export function ProjectFolderChangesDiff({ state }: { state: ProjectFolderChange
           <DiffBlocks blocks={blocks} filePath={state.selection?.path} presentation="review" onExpandContext={state.expandContext} />
         ) : null}
       </div>
-    </>
   );
 }

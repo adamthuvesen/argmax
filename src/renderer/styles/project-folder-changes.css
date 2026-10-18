@@ -90,18 +90,6 @@
   outline-offset: -1px;
 }
 
-.project-folder-diff-heading {
-  justify-content: space-between;
-  flex-wrap: wrap;
-  overflow-wrap: anywhere;
-}
-
-.project-folder-diff-scope {
-  margin: 8px 12px;
-  color: var(--muted);
-  font-size: var(--text-sm);
-}
-
 .project-folder-change-group {
   position: relative;
 }

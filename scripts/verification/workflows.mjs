@@ -1317,7 +1317,7 @@ async function verifyLaunchFolder({ bridge, browser, named, primaryRoot, seconda
     await option.waitForClickable({ timeout: 10_000 });
     screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder-menu" : "launcher-folder-menu"));
     await option.click();
-    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes(`Work in ${folder.name}`), { timeout: 10_000 });
+    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes(`Work in ${path.basename(folder.rootPath)}`), { timeout: 10_000 });
     if (plain) {
       await browser.waitUntil(async () => !(await (await browser.$('[aria-label="Switch branch"]')).isExisting()), { timeout: 10_000 });
       check(assertions, "plain-folder-hides-worktree-control", !(await (await browser.$('[aria-label="Worktree"]')).isExisting()));

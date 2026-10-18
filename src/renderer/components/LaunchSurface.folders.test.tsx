@@ -7,7 +7,7 @@ import { useLaunchFolder } from "../hooks/useLaunchFolder.js";
 
 const project = primaryProject();
 const folders: ProjectFolder[] = [
-  { id: "primary", projectId: project.id, name: "app", rootPath: project.repoPath, isPrimary: true, enabled: true, summary: null },
+  { id: "primary", projectId: project.id, name: "primary", rootPath: project.repoPath, isPrimary: true, enabled: true, summary: null },
   { id: "secondary", projectId: project.id, name: "library", rootPath: "/repos/library", isPrimary: false, enabled: true, summary: null },
   { id: "notes", projectId: project.id, name: "notes", rootPath: "/docs/notes", isPrimary: false, enabled: true, summary: null }
 ];
@@ -41,12 +41,14 @@ describe("launcher working folder", () => {
 
   it("defaults to primary and captures the selected folder and branch for launch", async () => {
     const launch = launcher();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute("title", expect.stringContaining("Work in app")));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute("title", expect.stringContaining(`Work in ${project.repoPath.split("/").at(-1)}`)));
     expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent(project.name);
     expect(screen.queryByRole("img", { name: /Working in/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
     expect(screen.getByRole("listbox", { name: "Select project" })).toBeInTheDocument();
     expect(screen.queryByRole("listbox", { name: "Work in" })).not.toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Switch project" }));
+    expect(within(screen.getByRole("listbox", { name: "Work in" })).getByRole("button", { name: `${project.repoPath.split("/").at(-1)} Primary` })).toBeInTheDocument();
     await pickFolder("library");
     expect(screen.getByRole("img", { name: "Working in library" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent("library-main"));
@@ -95,14 +97,14 @@ describe("launcher working folder", () => {
     getProjectFolders.mockResolvedValue([
       folders[0],
       { ...folders[1], name: "library" },
-      { ...folders[2], name: "library" }
+      { ...folders[2], name: "library", rootPath: "/docs/library" }
     ]);
     launcher();
     await waitFor(() => expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute("title", expect.stringContaining("Right-click")));
   fireEvent.keyDown(screen.getByRole("button", { name: "Switch project" }), { key: "F10", shiftKey: true });
     const list = screen.getByRole("listbox", { name: "Work in" });
     expect(within(list).getByText("/repos/library")).toBeInTheDocument();
-    expect(within(list).getByText("/docs/notes")).toBeInTheDocument();
+    expect(within(list).getByText("/docs/library")).toBeInTheDocument();
     expect(within(list).queryByText(project.repoPath)).not.toBeInTheDocument();
     fireEvent.keyDown(list, { key: "l" });
     fireEvent.keyDown(list, { key: "Enter" });

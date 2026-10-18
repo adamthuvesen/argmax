@@ -63,7 +63,7 @@ import {
 } from "../lib/composerDrafts.js";
 import { restoreDraftAttachments, restoreDraftText } from "../lib/draftRestore.js";
 import { formatChord, matchesChord } from "../lib/shortcutChord.js";
-import { titleFromPrompt } from "../lib/projects.js";
+import { repoNameFromPath, titleFromPrompt } from "../lib/projects.js";
 import { parseGoalCommand } from "../lib/goalCommand.js";
 import type { PaletteSurfaceContext, PaletteSurfaceLive } from "../lib/paletteSearch.js";
 import { useProviderAvailability } from "../hooks/useProviderAvailability.js";
@@ -1562,7 +1562,7 @@ export function LaunchSurface({
               aria-haspopup="listbox"
               aria-expanded={projectPickerOpen || folderPickerOpen}
               title={launchFolder.folder
-                ? `${contextChipLabel} · Work in ${launchFolder.folder.name}
+                ? `${contextChipLabel} · Work in ${repoNameFromPath(launchFolder.folder.rootPath) ?? launchFolder.folder.name}
 ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a folder" : ""}`
                 : contextChipLabel}
               onContextMenu={(event) => {
@@ -1586,7 +1586,7 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
               <Folder size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{contextChipLabel}</span>
               {launchFolder.folder && !launchFolder.folder.isPrimary
-                ? <span className="launch-folder-indicator" role="img" aria-label={`Working in ${launchFolder.folder.name}`} /> : null}
+                ? <span className="launch-folder-indicator" role="img" aria-label={`Working in ${repoNameFromPath(launchFolder.folder.rootPath) ?? launchFolder.folder.name}`} /> : null}
             </button>
             {projectPickerOpen && (
               <ul

@@ -36,7 +36,7 @@ type ActivityMarkOption = {
 };
 
 export const ACTIVITY_MARK_STORAGE_KEY = "argmax.activityMark.style";
-const DEFAULT_ACTIVITY_MARK: ActivityMarkId = "nest";
+const DEFAULT_ACTIVITY_MARK: ActivityMarkId = "halo";
 
 export const ACTIVITY_MARK_OPTIONS: readonly ActivityMarkOption[] = [
   {

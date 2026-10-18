@@ -9,16 +9,15 @@ export type BackgroundIntensity = number;
 
 export const BACKGROUND_INTENSITY_MIN = 0;
 export const BACKGROUND_INTENSITY_MAX = 100;
-export const DEFAULT_BACKGROUND_INTENSITY = 70;
+export const DEFAULT_BACKGROUND_INTENSITY = 100;
 export const BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.level";
-/** The former 1–10 scale. Level n carried over as n × 10, so its default 7 stays the default. */
+/** The former 1–10 scale. Level n carried over as n × 10, so a saved 7 remains 70. */
 const LEGACY_BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.intensity";
 
 /** Named stops offered in the command palette. */
 export const BACKGROUND_INTENSITY_PRESETS: readonly BackgroundIntensity[] = [0, 25, 50, 70, 85, 100];
 
 export function backgroundIntensityHint(intensity: BackgroundIntensity): string {
-  if (intensity === DEFAULT_BACKGROUND_INTENSITY) return "Default.";
   if (intensity === BACKGROUND_INTENSITY_MIN) return "Lightest: light gray in dark mode, soft gray in light mode.";
   if (intensity === BACKGROUND_INTENSITY_MAX) return "Deepest near-black in dark mode, pure white in light mode.";
   return intensity < DEFAULT_BACKGROUND_INTENSITY ? "Softer than default." : "Stronger than default.";

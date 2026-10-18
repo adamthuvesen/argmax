@@ -1,4 +1,4 @@
-/* Side panels have an independent 0–100 dial. At the default 70 they sit
+/* Side panels have an independent 0–100 dial. At the original 70 they sit
    slightly below the page on paper and above it on charcoal. The review
    file tree keeps one extra step of separation within its panel. */
 :root:not([data-theme="dark"])[data-sidebar-intensity] {

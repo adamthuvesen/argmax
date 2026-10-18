@@ -13,9 +13,9 @@
   --fox-blush: #e08a78;
 
   color-scheme: light;
-  --font-ui: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-prose: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+  --font-prose: var(--font-ui);
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
   --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
   /* Programming ligatures off, for surfaces showing text the app did not
      author: a pytest banner's run of `=` fuses into one solid bar, and a
@@ -157,7 +157,7 @@
      under a true 500 so emphasis reads as a step, not a jump. Bold inside
      rendered prose needs a larger step to show in a paragraph; see
      `.markdown strong` in chat-conversation.css. */
-  --font-weight-offset: 0;
+  --font-weight-offset: -25;
   --weight-ui: calc(400 + var(--font-weight-offset));
   --weight-prose: calc(400 + var(--font-weight-offset));
   --weight-medium: calc(470 + var(--font-weight-offset));
@@ -965,6 +965,12 @@
   --font-ui: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
   --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
+}
+
+:root[data-font="system-mono"],
+:root[data-font="geist-mono"],
+:root[data-font="ibm-plex-mono"] {
+  --font-prose: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 :root[data-font="system-mono"] {

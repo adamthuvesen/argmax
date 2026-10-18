@@ -81,7 +81,7 @@ it("updates sidebar intensity from Appearance and restores it after reopening", 
   await screen.findByRole("button", { name: "Build dashboard" });
   await openSettings("Appearance");
   const slider = await screen.findByRole("slider", { name: "Sidebar intensity" });
-  expect(slider).toHaveValue("70");
+  expect(slider).toHaveValue("60");
   fireEvent.change(slider, { target: { value: "85" } });
   expect(window.localStorage.getItem(SIDEBAR_INTENSITY_STORAGE_KEY)).toBe("85");
   expect(document.documentElement).toHaveAttribute("data-sidebar-intensity", "85");

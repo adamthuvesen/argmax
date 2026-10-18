@@ -27,17 +27,17 @@ afterEach(() => {
 });
 
 describe("fonts", () => {
-  it("defaults to Geist Sans when nothing is stored", () => {
-    expect(readStoredFont()).toBe("geist-sans");
+  it("defaults to System Sans when nothing is stored", () => {
+    expect(readStoredFont()).toBe("system");
   });
 
-  it.each(["system", "dm-sans"])("reads a previously stored font id %s", (id) => {
+  it.each(["geist-sans", "dm-sans"])("reads a previously stored font id %s", (id) => {
     window.localStorage.setItem(FONT_STORAGE_KEY, id);
     expect(readStoredFont()).toBe(id);
   });
 
   it.each(["menlo", "monaco", "jetbrains-mono", "fira-code", "manrope"])(
-    "falls back to Geist Sans for removed font %s",
+    "falls back to System Sans for removed font %s",
     (id) => {
       window.localStorage.setItem(FONT_STORAGE_KEY, id);
       expect(readStoredFont()).toBe(DEFAULT_FONT_ID);

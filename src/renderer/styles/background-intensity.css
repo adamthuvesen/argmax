@@ -12,7 +12,7 @@
    sidebar-intensity.css. Lines and scrollbars stay grey at the
    white end so borders still separate surfaces there.
 
-   Dark: 70 is the palette Argmax ships, and the number there leaves every
+   Dark: 70 is the original palette, and the number there leaves every
    literal in tokens.css untouched. Below it surfaces lighten toward a mid
    charcoal (0 is the lightest), above it they darken toward black but stop two thirds of the way
    there at 100 (the fall is scaled by 67%), because full black was never

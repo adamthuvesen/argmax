@@ -19,10 +19,13 @@ Keep individual surface files under 1,000 lines. Aggregator files should only co
 `background-intensity.css` and `sidebar-intensity.css` follow `tokens.css` and derive neutral
 surface colors from independent 0–100 numbers (`--background-intensity` and `--sidebar-intensity`,
 set on `<html>` by the matching library modules) with `calc()` and nested `color-mix()`. Keep the
-original palette in `tokens.css` so dark 70, the default, and any page without the attribute,
-retains its exact colors.
+original palette in `tokens.css` so dark 70 and any page without the attribute
+retain their exact colors.
 
 ## Core Design Constraints
+
+New installs use System theme, monochrome activity icons, the Halo activity mark, and neutral user
+bubbles. Saved appearance choices take priority over these defaults.
 
 - **Connected timeline:** `chat-timeline.css` owns the activity connector and the shared mark
   column. It joins consecutive activity rows, breaks at prose, and contracts when a plan or agent is
@@ -38,9 +41,9 @@ retains its exact colors.
   content, unsaved changes, or uncertain delivery stay in the affected surface. The mobile renderer
   subscribes to the same store and lifts the toast above the keyboard and safe area.
 
-- **Themes:** Light, Dark, and System modes. Dark is the default. Tokens are declared in `:root` (light) and `:root[data-theme="dark"]` in [tokens.css](../src/renderer/styles/tokens.css). Theme choice persists in `localStorage.argmax.theme.mode` and `userData/theme.json`.
+- **Themes:** Light, Dark, and System modes. System is the default. Tokens are declared in `:root` (light) and `:root[data-theme="dark"]` in [tokens.css](../src/renderer/styles/tokens.css). Theme choice persists in `localStorage.argmax.theme.mode` and `userData/theme.json`.
   - In light mode both sidebars use neutral light gray slightly darker than the main view. The review file tree sits one step darker still. Sidebar intensity adjusts these three surfaces independently of background intensity.
-  - In dark mode the palette is neutral charcoal: `--bg` is `#141414`, both sidebars (`--sidebar` and `--review-panel`) are slightly lighter at `#171717`, and cards (`--panel`) sit above them at `#1a1a1a`. These are the default colors at background and sidebar intensity 70.
+  - In dark mode the palette is neutral charcoal: `--bg` is `#141414`, both sidebars (`--sidebar` and `--review-panel`) are slightly lighter at `#171717`, and cards (`--panel`) sit above them at `#1a1a1a`. These are the original colors at background and sidebar intensity 70. New installs use background 100 and sidebar 60.
   - `--composer-surface` backs both composers (`.composer` in the launcher, `.session-input` in a
     session). In dark it sits a step *above* `--panel` so the field the user types into reads as the
     live surface; on paper `--panel` is already the brightest thing on screen, so it aliases to it
@@ -121,8 +124,8 @@ retains its exact colors.
   selection disappears. `--question-dock-row` takes the same step measured from `--composer-surface`
   instead.
 - **Typography:**
-  - Chrome: `--font-ui` (Geist Sans default).
-  - The System Sans (SF Pro) option uses the native OS sans font for UI and prose, with system mono for the terminal. It needs no font download. Removed picker choices fall back to Geist Sans when read from saved preferences.
+  - Chrome: `--font-ui` (System Sans default).
+  - The System Sans (SF Pro) option uses the native OS sans font for UI and prose, with system mono for the terminal. It needs no font download. Removed picker choices fall back to System Sans when read from saved preferences.
   - Prose: `--font-prose`.
   - Code & Editor: `--font-code` (Geist Mono / system mono). The font picker rewrites `--font-ui`
     and `--font-mono` only, so `--font-code` names Geist Mono whatever is picked — `loadFontAssets`
@@ -147,7 +150,8 @@ retains its exact colors.
     size larger than it is.
   - Text weights use `--weight-ui` (`:root`) and `--weight-prose` (chat bubbles and `.markdown`). Variable font stacks run slightly lighter in dark mode (`380`/`390`) to compensate for dark-background bloom.
 - **Font heaviness:** Settings → Appearance and the command palette offer levels 1–10, saved per
-  browser in `argmax.font.heaviness`. Level 5 preserves the designed weights. Each step adds 25
+  browser in `argmax.font.heaviness`. New installs start at level 4. Level 5 preserves the original
+  designed weights. Each step adds 25
   through `--font-weight-offset`, from −100 to +125, to body, label, and heading weights, including
   the dark theme adjustment for variable fonts. Geist Sans and IBM Plex Sans start at their original
   rendered 400 face in both themes. Ink strength remains independent. Every sans pick loads a
@@ -166,13 +170,15 @@ retains its exact colors.
 - **Background intensity:** Settings → Appearance offers a 0–100 slider, stored per browser in
   `argmax.background.level` (the old 1–10 `argmax.background.intensity` carries over as level × 10)
   and applied through `<html data-background-intensity>` plus `--background-intensity`. Light mode
-  runs from soft gray at 0 through neutral light gray at 10 to pure white at 100. Dark mode keeps 70 as the
-  shipped palette, lifts toward a lighter charcoal down to 0, and darkens to a deep near-black at 100. It controls the page, cards, composers, code, terminal, overlays, lines, and scrollbars.
+  runs from soft gray at 0 through neutral light gray at 10 to pure white at 100. Dark mode defaults
+  to 100 and keeps the original palette at 70. Lower values lift toward lighter charcoal at 0. Higher
+  values darken toward near-black at 100. It controls the page, cards, composers, code, terminal,
+  overlays, lines, and scrollbars.
   Sidebar surfaces have their own preference. Both follow the resolved theme in System mode and work
   alongside ink strength.
 - **Sidebar intensity:** The adjacent 0–100 slider adjusts both side panels and the review file
   tree, stored in `argmax.sidebar.level` and applied through `<html data-sidebar-intensity>` plus
-  `--sidebar-intensity`. At the default 70, sidebars are slightly darker than the default page in
+  `--sidebar-intensity`. New installs start at 60. At 70, sidebars are slightly darker than the original page in
   light mode and slightly brighter in dark mode. The review tree keeps one extra step of separation.
   Higher levels move toward white in light mode and deeper charcoal in dark mode. Background
   intensity does not change these colors.

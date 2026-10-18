@@ -224,13 +224,13 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     }
   });
 
-  it("leaves shipped dark surfaces alone at the default background intensity", () => {
+  it("keeps the original dark palette anchored at background intensity 70", () => {
     const styles = readSource("src/renderer/styles.css");
     const tokens = readSource("src/renderer/styles/tokens.css");
     const ladder = readSource("src/renderer/styles/background-intensity.css");
 
-    expect(DEFAULT_BACKGROUND_INTENSITY).toBe(70);
-    // The dark formulas are anchored on 70, the default, where both pulls are zero.
+    expect(DEFAULT_BACKGROUND_INTENSITY).toBe(100);
+    // The dark formulas are anchored on 70, the original palette, where both pulls are zero.
     expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, 70 - var(--background-intensity)) / 70");
     expect(cssRuleBody(ladder, DARK_RULE)).toContain("max(0, var(--background-intensity) - 70) / 30 * 67%");
     expect(styles.indexOf('url("./styles/tokens.css")')).toBeLessThan(

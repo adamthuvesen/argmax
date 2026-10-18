@@ -6,7 +6,7 @@
 export type UserBubbleTint = "accent" | "neutral";
 
 export const USER_BUBBLE_TINT_STORAGE_KEY = "argmax.chat.bubbleTint";
-export const DEFAULT_USER_BUBBLE_TINT: UserBubbleTint = "accent";
+export const DEFAULT_USER_BUBBLE_TINT: UserBubbleTint = "neutral";
 
 export function isUserBubbleTint(value: unknown): value is UserBubbleTint {
   return value === "accent" || value === "neutral";

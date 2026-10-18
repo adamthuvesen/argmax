@@ -91,7 +91,7 @@ export const FONT_OPTIONS: readonly FontOption[] = [
   }
 ] as const;
 
-export const DEFAULT_FONT_ID: FontFamilyId = "geist-sans";
+export const DEFAULT_FONT_ID: FontFamilyId = "system";
 export const FONT_STORAGE_KEY = "argmax.font.family";
 export const DEFAULT_FONT_SIZE: FontSize = 6;
 export const DEFAULT_CHAT_FONT_SIZE: FontSize = 6;
@@ -217,8 +217,8 @@ async function loadIbmPlexMonoText(): Promise<void> {
 // Per-font CSS loaders. The system fonts (system, system-mono)
 // need no JS-loaded assets, and the system font renders any weight; the rest pull in @fontsource bundles only when
 // actually applied (ralph B6 — defers CSS-embedded font URLs from cold
-// launch). Geist Sans is the default, so its bundle loads on cold launch;
-// it pairs with Geist Mono, so both load together.
+// launch). The system font needs no bundle. Geist Sans loads with its
+// matching mono when selected.
 const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = {
   "dm-sans": () => import("@fontsource-variable/dm-sans/wght.css"),
   "geist-mono": () => import("@fontsource-variable/geist-mono/wght.css"),

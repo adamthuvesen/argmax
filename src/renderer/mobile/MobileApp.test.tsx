@@ -1484,6 +1484,7 @@ describe("MobileApp", () => {
   }
 
   it("toggles between dark and light themes and persists the choice", async () => {
+    window.localStorage.setItem("argmax.theme.mode", "dark");
     render(<MobileApp />);
 
     await screen.findByRole("region", { name: "Chat list" });
@@ -1518,6 +1519,7 @@ describe("MobileApp", () => {
   });
 
   it("picks an accent and takes user bubbles off it from the Remote menu", async () => {
+    window.localStorage.setItem("argmax.chat.bubbleTint", "accent");
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 

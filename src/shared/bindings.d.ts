@@ -2139,7 +2139,8 @@ export type BrowserOpenedTab = { tabId: string }
 /**
  * A browser shortcut pressed while the page (not the panel chrome) had
  * focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
- * `reload`, `back`, `forward`, `find`, or a native-page `focus` notification.
+ * `reopen-tab`, `next-tab`, `previous-tab`, `reload`, `back`, `forward`,
+ * `find`, or a native-page `focus` notification.
  */
 export type BrowserPageCommandEvent = { tabId: string; command: string }
 export type BrowserReloadInput = { tabId: string }

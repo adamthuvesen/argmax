@@ -528,26 +528,36 @@
    One primitive under every dropdown in the app: the launcher's model, project
    and branch menus, the settings list pickers, the review scope menu, and the
    action menus (chat actions, sidebar sort, project actions,
-   identity, right-click). Rows are 28px at the app's compact `--text-xs`; a 5px inset inside a
-   10px corner keeps the 6px row corner concentric with the panel's. Chosen
-   rows carry a check in the 16px lead cell (`.picker-lead`) instead of a fill,
-   so every label sits on the same column whether or not its row has a glyph.
-   Mockups and the decision: docs/design/pickers. */
+   identity, right-click). Rows are 28px at the app's compact `--text-xs`,
+   labels in full ink and glyphs one step down, so the menu reads as text to
+   act on rather than as a muted list. Chosen rows carry a check in the 16px
+   lead cell (`.picker-lead`) instead of a fill, so every label sits on the
+   same column whether or not its row has a glyph. Action menus split into
+   groups with `.project-picker-divider`. Mockups and the decision:
+   docs/design/pickers. */
 .project-picker-popover {
   position: absolute;
   bottom: calc(100% + 6px);
   left: 0;
   z-index: 30;
-  min-width: 220px;
+  /* A short contact shadow under a wide soft one: the menu floats without the
+     heavy halo of --shadow-3. Dark mode adds a hairline top light instead,
+     since a dark drop shadow barely reads against a dark panel. */
+  --picker-shadow: 0 1px 2px rgba(31, 28, 24, 0.06), 0 12px 32px -8px rgba(31, 28, 24, 0.2);
+  min-width: 232px;
   max-height: min(440px, 60dvh);
   margin: 0;
-  padding: 5px;
+  padding: 6px;
   list-style: none;
   overflow-y: auto;
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 0.5px solid color-mix(in oklab, var(--line-strong) 70%, transparent);
   border-radius: var(--radius-surface);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--picker-shadow);
+}
+
+:root[data-theme="dark"] .project-picker-popover {
+  --picker-shadow: inset 0 0.5px 0 rgba(255, 250, 235, 0.06), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
 }
 
 .project-picker-popover.settings-picker-popover {
@@ -623,10 +633,10 @@ body > .picker-popover-portaled.settings-picker-popover {
    scrolling rows pass under a full-width band, not a floating label. */
 .model-picker-popover .project-picker-group-label {
   position: sticky;
-  top: -5px;
+  top: -6px;
   z-index: 1;
-  margin: 0 -5px;
-  padding-inline: 12px 14px;
+  margin: 0 -6px;
+  padding-inline: 15px 18px;
   background: color-mix(in oklab, var(--panel) 94%, transparent);
   backdrop-filter: blur(6px);
 }
@@ -1147,11 +1157,11 @@ body > .picker-popover-portaled.settings-picker-popover {
 .project-picker-item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-2_5);
   width: 100%;
   min-height: 28px;
-  padding: 0 9px 0 7px;
-  color: var(--text-soft);
+  padding: 0 12px 0 9px;
+  color: var(--text);
   border: 0;
   border-radius: var(--radius-row);
   background: transparent;
@@ -1168,10 +1178,11 @@ body > .picker-popover-portaled.settings-picker-popover {
 .project-picker-item > svg:first-child {
   flex: 0 0 auto;
   box-sizing: content-box;
-  width: 14px;
-  height: 14px;
-  padding-inline: 1px;
-  color: var(--muted);
+  width: 15px;
+  height: 15px;
+  padding-inline: 0.5px;
+  color: var(--muted-strong);
+  stroke-width: 1.75;
 }
 
 /* Hover and the keyboard cursor wear the sidebar's selection fill. On paper
@@ -1182,7 +1193,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 }
 
 .project-picker-item:hover > svg:first-child {
-  color: var(--text-soft);
+  color: var(--text);
 }
 
 /* The chosen row is marked by weight and its check, not a fill: a fill is what
@@ -1202,7 +1213,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 .project-picker-item:disabled:hover,
 .project-picker-item[disabled]:hover {
   background: transparent;
-  color: var(--text-soft);
+  color: var(--text);
 }
 
 /* Lead cell: the row's glyph, or a check once the row is chosen. */
@@ -1212,11 +1223,11 @@ body > .picker-popover-portaled.settings-picker-popover {
   place-items: center;
   width: 16px;
   height: 16px;
-  color: var(--muted);
+  color: var(--muted-strong);
 }
 
 .project-picker-item:hover .picker-lead {
-  color: var(--text-soft);
+  color: var(--text);
 }
 
 .project-picker-item[aria-pressed="true"] .picker-lead,
@@ -1262,7 +1273,8 @@ body > .picker-popover-portaled.settings-picker-popover {
 .project-picker-divider {
   height: 1px;
   background: var(--line-soft);
-  margin: 4px 6px;
+  margin: 5px 10px;
+  list-style: none;
 }
 
 /* Type-to-filter (see useTypeToFilter). An open picker holds focus so plain
@@ -1271,7 +1283,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 .project-picker-popover:focus,
 .project-picker-popover:focus-visible {
   outline: none;
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--picker-shadow);
 }
 
 /* Echo of what has been typed. Only rendered once there is a query, so a
@@ -1279,15 +1291,15 @@ body > .picker-popover-portaled.settings-picker-popover {
    readable while the matches scroll. */
 .picker-filter {
   position: sticky;
-  top: -5px;
+  top: -6px;
   /* Above the model picker's sticky provider headers: the query is the more
      important of the two while both are pinned. */
   z-index: 2;
   display: flex;
   align-items: center;
   gap: var(--space-1_5);
-  margin: -5px -5px 4px;
-  padding: 8px 10px 6px;
+  margin: -6px -6px 4px;
+  padding: 8px 12px 6px;
   color: var(--muted);
   font-size: var(--text-2xs);
   background: var(--panel);
@@ -1319,7 +1331,7 @@ body > .picker-popover-portaled.settings-picker-popover {
 }
 
 .project-picker-empty {
-  padding: 6px 9px 6px 31px;
+  padding: 6px 12px 6px 35px;
   color: var(--muted);
   font-size: var(--text-sm);
   list-style: none;
@@ -1364,8 +1376,8 @@ body > .picker-popover-portaled.settings-picker-popover {
 .project-picker-group-label {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 9px 9px 3px 7px;
+  gap: var(--space-2_5);
+  padding: 9px 12px 3px 9px;
   color: var(--muted);
   font-size: var(--text-2xs);
   font-weight: var(--weight-medium);

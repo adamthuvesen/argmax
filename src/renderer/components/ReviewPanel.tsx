@@ -1278,7 +1278,7 @@ export function ReviewPanel({
             title={isExpanded ? "Restore panel size" : "Expand panel"}
             onClick={onToggleExpanded}
           >
-            {isExpanded ? <Minimize2 size={16} strokeWidth={1.75} /> : <Maximize2 size={16} strokeWidth={1.75} />}
+            {isExpanded ? <Minimize2 size={14} strokeWidth={1.75} /> : <Maximize2 size={14} strokeWidth={1.75} />}
           </button> : null}
           <button type="button" className="small-icon review-tabs-hide" aria-label="Close review" title="Hide panel (⌘B)" onClick={review.closePanel}>
             <PanelRightClose size={16} strokeWidth={1.75} />

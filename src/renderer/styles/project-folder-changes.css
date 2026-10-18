@@ -59,7 +59,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

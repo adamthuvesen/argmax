@@ -22,7 +22,7 @@ export function ProjectFolderChangesList({ state }: { state: ProjectFolderChange
             <span className="project-folder-change-name">{folderName}</span>
             <span className="project-folder-change-total">{error ? "Unavailable" : files.length === 0 ? "No changes" : `${files.length} ${files.length === 1 ? "file" : "files"}`}</span>
           </summary>
-          {error ? <p className="project-folder-changes-error" role="status">Could not load changes: {error}</p> : files.length === 0 ? <p>No uncommitted changes.</p> : <ChangesTree
+          {error ? <p className="project-folder-changes-error" role="status">Could not load changes: {error}</p> : files.length === 0 ? null : <ChangesTree
             files={files}
             selectedPath={state.selection?.folderId === folder.id ? state.selection.path : null}
             onSelectFile={(path) => state.selectFile(folder.id, path)}

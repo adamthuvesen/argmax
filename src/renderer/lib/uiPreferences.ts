@@ -51,6 +51,8 @@ export const GOAL_MAX_TURNS_MIN = 5;
 export const GOAL_MAX_TURNS_MAX = 50;
 export const GOAL_MAX_TURNS_DEFAULT = 20;
 
+export const ClaudeArtifactsContext = createContext(false);
+
 export const PrMilestoneCelebrationContext = createContext(false);
 
 /**

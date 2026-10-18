@@ -21,6 +21,7 @@ import {
   subscribeAgentBrowserOpen,
   subscribeBrowserOwner,
   subscribeBrowserRequest,
+  getBrowserTabs,
   type BrowserOpenRequest
 } from "../lib/browserPanel.js";
 import {
@@ -213,7 +214,7 @@ export interface ReviewState {
    *  yet. Same dock as the subagents: both are work running alongside. */
   openMultitask: (sessionId: string) => void;
   /** Open the panel on the Browser view, showing this scope's native surface. */
-  openBrowser: () => void;
+  openBrowser: (url?: string) => void;
   /** Workspace whose integrated terminal this panel hosts. Null on a
    *  project-backed panel (the launcher), which has no workspace to run in —
    *  and so has no Terminal tab. */
@@ -472,10 +473,17 @@ export function useReviewState(
   );
 
   const openBrowser = useCallback(
-    (): void => openBrowserAt(
-      browserRequest?.tabId ? browserRequest.url : lastBrowsedUrl(browserScopeId),
-      browserRequest?.tabId
-    ),
+    (url?: string): void => {
+      if (url) {
+        const existing = getBrowserTabs(browserScopeId).find((tab) => tab.url === url);
+        openBrowserAt(url, existing?.id, !existing);
+        return;
+      }
+      openBrowserAt(
+        browserRequest?.tabId ? browserRequest.url : lastBrowsedUrl(browserScopeId),
+        browserRequest?.tabId
+      );
+    },
     [browserRequest, browserScopeId, openBrowserAt]
   );
 

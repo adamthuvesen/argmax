@@ -176,6 +176,7 @@ import {
   SIDEBAR_PRIORITY_KEY,
   WORKSPACE_CARD_KEY,
   DEVELOPER_TOOLS_KEY,
+  ClaudeArtifactsContext,
   DeveloperToolsContext,
   PrMilestoneCelebrationContext,
   resolveChatVerbosity,
@@ -2107,6 +2108,7 @@ export function App(): JSX.Element {
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
     <DeveloperToolsContext.Provider value={developerToolsEnabled}>
+    <ClaudeArtifactsContext.Provider value={sidebarClaudeArtifactsVisible}>
     <SessionTimelineProvider store={timelines}>
     <main
       className="app-shell"
@@ -2527,6 +2529,7 @@ export function App(): JSX.Element {
       </section>
     </main>
     </SessionTimelineProvider>
+    </ClaudeArtifactsContext.Provider>
     </DeveloperToolsContext.Provider>
     </PrMilestoneCelebrationContext.Provider>
   );

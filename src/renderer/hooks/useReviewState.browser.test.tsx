@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getBrowserOwnerId,
+  createBrowserTab,
   LAUNCHER_BROWSER_SCOPE_ID,
   openInBrowserPanel,
   rememberBrowserUrl,
@@ -46,6 +47,17 @@ describe("useReviewState — browser mode", () => {
     resetBrowserTabsForTests();
     delete (window as unknown as { argmax?: unknown }).argmax;
     delete window.__TAURI_INTERNALS__;
+  });
+
+  it("opens a requested URL in a new tab and reuses a matching tab in this scope", () => {
+    const panel = renderPanel(true, "session-1");
+    const url = "https://claude.ai/artifacts";
+    act(() => panel.result.current.openBrowser(url));
+    expect(panel.result.current.browserRequest).toMatchObject({ url, newTab: true });
+    const existing = createBrowserTab("session-1", url);
+    act(() => panel.result.current.openBrowser(url));
+    expect(panel.result.current.browserRequest).toMatchObject({ url, tabId: existing.id, newTab: false });
+    expect(panel.result.current.mode).toBe("browser");
   });
 
   it("offers no Browser mode in a window torn off from the main one", () => {

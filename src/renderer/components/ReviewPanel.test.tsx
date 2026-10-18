@@ -17,6 +17,7 @@ import { reviewStub as baseReviewStub } from "../../test/reviewFixture.js";
 import { resetBrowserTabsForTests } from "../lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { addTerminalTab, resetTerminalTabsForTests } from "../lib/terminalTabs.js";
+import { ClaudeArtifactsContext } from "../lib/uiPreferences.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
 import { resetToastForTests, toastSnapshot } from "../state/toast.js";
@@ -589,6 +590,18 @@ describe("ReviewPanel browser mode", () => {
     delete (window as { argmax?: ArgmaxApi }).argmax;
     render(<ReviewPanel review={reviewStub()} />);
     expect(screen.queryByRole("tab", { name: "Browser" })).toBeNull();
+  });
+
+  it("shows Artifacts only when enabled and opens it in this panel", () => {
+    const review = reviewStub();
+    const { rerender } = render(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
+    rerender(<ClaudeArtifactsContext.Provider value><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    expect(review.setPaneMode).toHaveBeenCalledWith(0, "browser");
+    expect(review.openBrowser).toHaveBeenLastCalledWith("https://claude.ai/artifacts");
+    rerender(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
   });
 
   it("opens the browser in the pane whose tab was clicked", () => {

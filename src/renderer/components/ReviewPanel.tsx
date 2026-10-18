@@ -5,11 +5,14 @@ import {
   Folder,
   FolderOpen,
   Globe,
+  Shapes,
   PanelRightClose,
   X
 } from "lucide-react";
 import {
+  Fragment,
   Suspense,
+  useContext,
   lazy,
   useCallback,
   useEffect,
@@ -25,6 +28,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent
 } from "react";
+import { ClaudeArtifactsContext } from "../lib/uiPreferences.js";
 import { createPortal } from "react-dom";
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -133,6 +137,7 @@ interface ReviewModeTabsProps {
   hasAgents: boolean;
   hasBrowser: boolean;
   hasTerminal: boolean;
+  onOpenArtifacts?: () => void;
   onDragEnd: () => void;
   onDragStart: (mode: ReviewPanelMode, event: ReactDragEvent<HTMLButtonElement>) => void;
   onSelectMode: (mode: ReviewPanelMode) => void;
@@ -146,6 +151,7 @@ function ReviewModeTabs({
   hasAgents,
   hasBrowser,
   hasTerminal,
+  onOpenArtifacts,
   onDragEnd,
   onDragStart,
   onSelectMode,
@@ -202,29 +208,36 @@ function ReviewModeTabs({
       <div className="review-mode-tabs" role="tablist" aria-label="Review panel mode">
         <SlidingTabIndicator activeKey={activeMode} />
         {modes.map((item) => (
-          <button
-            role="tab"
-            type="button"
-            aria-label={item.label}
-            aria-selected={activeMode === item.mode}
-            title={item.mode === "terminal" ? "Terminal (⌘J)" : item.label}
-            draggable
-            key={item.mode}
-            onClick={() => onSelectMode(item.mode)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              openMenu(item.mode, event.clientX, event.clientY);
-            }}
-            onDragEnd={onDragEnd}
-            onDragStart={(event) => onDragStart(item.mode, event)}
-            onKeyDown={(event) => handleKeyDown(item.mode, event)}
-          >
-            {item.icon}
-            <span className="review-mode-tab-label">{item.label}</span>
-            {item.count && (item.showSingleCount || item.count > 1)
-              ? <span className="review-mode-tab-count">{item.count}</span>
-              : null}
-          </button>
+          <Fragment key={item.mode}>
+            <button
+              role="tab"
+              type="button"
+              aria-label={item.label}
+              aria-selected={activeMode === item.mode}
+              title={item.mode === "terminal" ? "Terminal (⌘J)" : item.label}
+              draggable
+              onClick={() => onSelectMode(item.mode)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                openMenu(item.mode, event.clientX, event.clientY);
+              }}
+              onDragEnd={onDragEnd}
+              onDragStart={(event) => onDragStart(item.mode, event)}
+              onKeyDown={(event) => handleKeyDown(item.mode, event)}
+            >
+              {item.icon}
+              <span className="review-mode-tab-label">{item.label}</span>
+              {item.count && (item.showSingleCount || item.count > 1)
+                ? <span className="review-mode-tab-count">{item.count}</span>
+                : null}
+            </button>
+            {item.mode === "browser" && onOpenArtifacts ? (
+              <button type="button" title="Claude artifacts" aria-label="Artifacts" onClick={onOpenArtifacts}>
+                <Shapes size={14} aria-hidden="true" />
+                <span className="review-mode-tab-label">Artifacts</span>
+              </button>
+            ) : null}
+          </Fragment>
         ))}
       </div>
       {menu && typeof document !== "undefined"
@@ -508,6 +521,7 @@ function ReviewPanelPane({
   // `agents`, so a mode that outlived a source switch (session pane ->
   // launcher) resolves back to Changes.
   const hasBrowser = hostsBrowserSurface();
+  const artifactsEnabled = useContext(ClaudeArtifactsContext);
   const terminalWorkspaceId = review.terminalWorkspaceId;
   const unavailable =
     (review.mode === "agents" && !agents) ||
@@ -778,6 +792,10 @@ function ReviewPanelPane({
             agentCount={agentRoster?.running ?? 0}
             hasAgents={Boolean(agents)}
             hasBrowser={hasBrowser}
+            onOpenArtifacts={artifactsEnabled && hasBrowser ? () => {
+              review.setMode("browser");
+              review.openBrowser("https://claude.ai/artifacts");
+            } : undefined}
             hasTerminal={Boolean(terminalWorkspaceId)}
             onDragEnd={onTabDragEnd}
             onDragStart={onTabDragStart}
@@ -831,7 +849,7 @@ function ReviewPanelPane({
             <div className="review-empty">
               <span className="review-empty-mark" aria-hidden="true">↗</span>
               <span>The browser moved to another pane.</span>
-              <button type="button" className="review-empty-action" onClick={review.openBrowser}>
+              <button type="button" className="review-empty-action" onClick={() => review.openBrowser()}>
                 Show here
               </button>
             </div>

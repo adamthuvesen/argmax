@@ -1,4 +1,10 @@
+/* Every tab is a visible shape, not just a label: a resting tab wears a faint
+   ink wash, hover a firmer one, and the active tab is the one raised surface.
+   Ink rather than a surface token, so the steps hold on any panel ground and
+   at any dial setting. */
 .review-tabs-bar {
+  --review-tab-rest: color-mix(in oklab, var(--text) 5%, transparent);
+  --review-tab-hover: color-mix(in oklab, var(--text) 8%, transparent);
   display: flex;
   flex: 1 1 auto;
   align-items: center;
@@ -30,17 +36,18 @@
   flex: 0 0 var(--review-tab-width, 180px);
   align-items: center;
   min-width: 132px;
-  max-width: 266px;
+  max-width: 216px;
   scroll-snap-align: start;
   height: 32px;
   border: 1px solid transparent;
   border-radius: var(--radius-xl);
+  background: var(--review-tab-rest);
   color: var(--muted);
   transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
 
 .review-resource-tab:hover {
-  background: var(--overlay-soft);
+  background: var(--review-tab-hover);
   color: var(--text);
 }
 
@@ -48,14 +55,20 @@
   color: var(--text);
 }
 
-/* The active tab is the one lit surface in the strip: the composer field's
-   tone with a hairline and a whisper of shadow, so it lifts off the panel in
-   both themes instead of matching it. */
+/* The active tab is the one lit surface in the strip. On paper that is the
+   white field with a hairline and a whisper of shadow. In dark the composer
+   tone sits darker than the panel at the default dials, below the resting
+   washes, so the active tab takes the strongest ink step instead. */
 .review-resource-tab[data-active="true"] {
   background: var(--composer-surface);
   border-color: var(--line);
   box-shadow: var(--shadow-1);
   color: var(--text);
+}
+
+:root[data-theme="dark"] .review-resource-tab[data-active="true"] {
+  background: color-mix(in oklab, var(--text) 13%, transparent);
+  border-color: var(--line-strong);
 }
 
 .review-resource-tab[data-active="true"] .review-resource-tab-icon {

@@ -4436,6 +4436,64 @@ fn add_launcher_folder(database: &Database, root: &std::path::Path) -> String {
 }
 
 #[tokio::test]
+async fn create_in_checkout_preserves_selected_folder_across_checkouts_of_the_same_repository() {
+    let primary = seed_git_repo(&[("README.md", "shared repository")]);
+    ensure_main_branch(primary.path());
+    let checkouts = tempfile::tempdir().unwrap();
+    let secondary = checkouts.path().join("secondary");
+    let third = checkouts.path().join("third");
+    for (path, branch) in [(&secondary, "secondary"), (&third, "third")] {
+        run_git(
+            primary.path(),
+            &["worktree", "add", "-b", branch, path.to_str().unwrap()],
+        );
+    }
+    let database = Arc::new(Database::open_in_memory().unwrap());
+    build_project(
+        &database,
+        primary.path().to_str().unwrap(),
+        checkouts.path().to_str().unwrap(),
+    );
+    let folder_id = add_launcher_folder(&database, &secondary);
+    database
+        .connection()
+        .execute(
+            "UPDATE project_folders SET check_commands_json = ?1 WHERE id = ?2",
+            (r#"["npm run secondary-check"]"#, &folder_id),
+        )
+        .unwrap();
+    let service = WorkspaceService::new(database.clone());
+
+    for (path, branch) in [(third.as_path(), "third"), (primary.path(), "main")] {
+        let mut input = in_checkout_input(path.to_str().unwrap(), branch);
+        input.project_folder_id = Some(folder_id.clone());
+        let workspace = service.create_in_checkout(input).await.unwrap();
+
+        assert_eq!(
+            workspace.project_folder_id.as_deref(),
+            Some(folder_id.as_str())
+        );
+        assert_eq!(workspace.branch, branch);
+        assert_eq!(
+            std::path::Path::new(&workspace.path)
+                .canonicalize()
+                .unwrap(),
+            path.canonicalize().unwrap()
+        );
+        let persisted = find_workspace_by_id(&database.read_connection(), &workspace.id).unwrap();
+        assert_eq!(persisted.project_folder_id, workspace.project_folder_id);
+        assert_eq!(
+            persisted.check_commands,
+            Some(vec!["npm run secondary-check".to_owned()])
+        );
+    }
+    let project = find_project_by_id(&database.read_connection(), PROJECT_ID)
+        .unwrap()
+        .unwrap();
+    assert_eq!(project.repo_path, primary.path().to_str().unwrap());
+}
+
+#[tokio::test]
 async fn launcher_folder_selection_pins_git_current_and_worktree_without_changing_primary() {
     let primary = seed_git_repo(&[("README.md", "primary")]);
     let secondary = seed_git_repo(&[("README.md", "secondary")]);

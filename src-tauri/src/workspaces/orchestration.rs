@@ -1131,6 +1131,14 @@ impl WorkspaceService {
         self: &Arc<Self>,
         input: WorkspacesCreateAlongsideInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
+        self.create_alongside_in_folder(input, None)
+    }
+
+    fn create_alongside_in_folder(
+        self: &Arc<Self>,
+        input: WorkspacesCreateAlongsideInput,
+        folder_id: Option<&str>,
+    ) -> ArgmaxResult<WorkspaceSummary> {
         let connection = self.database.connection();
         let project = require_project(&connection, input.project_id.as_str())?;
         let kind = if input.branch.is_empty() && input.base_ref.is_empty() {
@@ -1138,22 +1146,27 @@ impl WorkspaceService {
         } else {
             "git"
         };
-        let workspace = persist_workspace(
-            &connection,
-            &PersistWorkspaceInput {
-                id: Uuid::new_v4().to_string(),
-                project_id: project.id.clone(),
-                task_label: input.task_label.as_str().to_string(),
-                branch: input.branch,
-                base_ref: input.base_ref,
-                path: input.path,
-                state: "created".to_string(),
-                shared_workspace: true,
-                kind: kind.to_string(),
-                dirty: false,
-                changed_files: 0,
-            },
-        )?;
+        let persisted = PersistWorkspaceInput {
+            id: Uuid::new_v4().to_string(),
+            project_id: project.id.clone(),
+            task_label: input.task_label.as_str().to_string(),
+            branch: input.branch,
+            base_ref: input.base_ref,
+            path: input.path,
+            state: "created".to_string(),
+            shared_workspace: true,
+            kind: kind.to_string(),
+            dirty: false,
+            changed_files: 0,
+        };
+        let workspace = match folder_id {
+            Some(folder_id) => crate::persistence::workspaces::persist_workspace_in_folder(
+                &connection,
+                &persisted,
+                Some(folder_id),
+            )?,
+            None => persist_workspace(&connection, &persisted)?,
+        };
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace.clone()],
@@ -1288,14 +1301,17 @@ impl WorkspaceService {
                 input.project_folder_id.as_deref(),
             )?;
         }
-        self.create_alongside(WorkspacesCreateAlongsideInput {
-            project_id: input.project_id,
-            task_label: input.task_label,
-            path,
-            branch,
-            // Review compares against this, the same as `create_current`.
-            base_ref: project.default_branch.unwrap_or(project.current_branch),
-        })
+        self.create_alongside_in_folder(
+            WorkspacesCreateAlongsideInput {
+                project_id: input.project_id,
+                task_label: input.task_label,
+                path,
+                branch,
+                // Review compares against this, the same as `create_current`.
+                base_ref: project.default_branch.unwrap_or(project.current_branch),
+            },
+            input.project_folder_id.as_deref(),
+        )
     }
 
     /// The workspace that owns the tree at `path`: the live row that is not a

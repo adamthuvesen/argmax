@@ -63,10 +63,12 @@ export function ProjectFolderContext({ folder }: { folder: ProjectFolder }): JSX
       {busy && pendingSummaries.has(folder.id) ? <p className="settings-note" role="status">Generating summary…</p> : null}
       {summaryError ? <p className="settings-note" role="alert">Summary unavailable. {summaryError}</p> : null}
       {api ? <div className="project-folder-context-actions">
-        <Toggle ariaLabel={`Include ${folder.name} in agent context`} checked={enabled} disabled={busy}
-          onChange={(next) => void toggle(next)} />
-        <span className="settings-note">Include in agent context</span>
-        <button type="button" className="settings-button" disabled={busy || !enabled}
+        <div className="project-folder-context-toggle">
+          <Toggle ariaLabel={`Include ${folder.name} in agent context`} checked={enabled} disabled={busy}
+            onChange={(next) => void toggle(next)} />
+          <span className="settings-note">Include in agent context</span>
+        </div>
+        <button type="button" className="settings-button settings-button-quiet" disabled={busy || !enabled}
           aria-label={`${summaryError ? "Retry summary" : summary ? "Regenerate summary" : "Generate summary"} for ${folder.name}`}
           onClick={summarize}>
           {summaryError ? "Retry summary" : summary ? "Regenerate summary" : "Generate summary"}

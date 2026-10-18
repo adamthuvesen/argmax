@@ -75,7 +75,7 @@ export function ProjectFoldersForm({
         <label className="settings-field-label" htmlFor={nameId}>Project name</label>
         <input
           id={nameId}
-          className="settings-text-input"
+          className="settings-text-input project-name-input"
           value={name}
           autoFocus={autoFocus}
           autoComplete="off"
@@ -84,15 +84,17 @@ export function ProjectFoldersForm({
           onChange={(event) => { setName(event.target.value); setSaved(false); }}
         />
       </div>
-      <div className="project-folders-heading">
-        <h3>Folders</h3>
-        <button className="settings-button" type="button" disabled={busy} onClick={() => void addFolder()}>
-          <FolderPlus size={14} aria-hidden="true" /> Add folder
-        </button>
+      <div className="project-folders-intro">
+        <div className="project-folders-heading">
+          <h3>Folders</h3>
+          <button className="settings-button" type="button" disabled={busy} onClick={() => void addFolder()}>
+            <FolderPlus size={14} aria-hidden="true" /> Add folder
+          </button>
+        </div>
+        <p className="settings-note project-folders-help">
+          Chats start in the primary repository. Other folders provide context for agents.
+        </p>
       </div>
-      <p className="settings-note project-folders-help">
-        Chats start in the primary folder, which must be a Git repository. Agents can use the other folders for your task.
-      </p>
       {folders.length === 0 ? (
         <div className="project-folders-empty">
           <Folder size={24} strokeWidth={1.5} aria-hidden="true" />
@@ -112,7 +114,7 @@ export function ProjectFoldersForm({
                     <span title={path}>{path}</span>
                   </div>
                   {primary ? <span className="project-folder-primary">Primary</span> : (
-                    <button type="button" className="settings-button" disabled={busy}
+                    <button type="button" className="settings-button settings-button-quiet" disabled={busy}
                       aria-label={`Make ${folderName} primary`}
                       onClick={() => { setPrimaryPath(path); setSaved(false); }}>
                       Make primary

@@ -477,6 +477,7 @@ export function Sidebar({
         setViewMode(mode);
         saveSidebarViewMode(mode);
       }
+      setSortMenuOpen(false);
     },
     [viewMode]
   );

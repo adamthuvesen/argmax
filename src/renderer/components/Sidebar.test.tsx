@@ -966,10 +966,15 @@ describe("Sidebar — date (sessions) view mode", () => {
     expect(screen.getByText("Today")).toBeInTheDocument();
     expect(getProjectButtonOrder()).toEqual([]);
 
-    // The view-mode menu follows the relocated cluster onto the Today header,
-    // so the user can switch back.
+    // Choosing a grouping closes the menu like any other menu choice.
+    expect(screen.queryByRole("menu", { name: "Sidebar view options" })).toBeNull();
+
+    // The trigger follows the relocated cluster onto the Today header, so the
+    // user can switch back from there.
+    const trigger = screen.getByRole("button", { name: "Sidebar view options" });
+    expect(trigger.closest(".project-row")).toBe(screen.getByText("Today").closest(".project-row"));
+    fireEvent.click(trigger);
     const relocated = screen.getByRole("menu", { name: "Sidebar view options" });
-    expect(relocated.closest(".project-row")).toBe(screen.getByText("Today").closest(".project-row"));
     fireEvent.click(within(relocated).getByRole("menuitemradio", { name: "Projects" }));
     expect(window.localStorage.getItem(sidebarViewModeStorageKey)).toBe(JSON.stringify("projects"));
     expect(getProjectButtonOrder()).toEqual(["Zebra", "Argmax"]);

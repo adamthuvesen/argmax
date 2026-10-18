@@ -664,7 +664,7 @@
   margin-inline: var(--space-2_5);
   margin-bottom: -10px;
   padding-bottom: var(--space-2_5);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  border-radius: var(--radius-chat) var(--radius-chat) 0 0;
   /* A sheet tucked behind the composer. The goal strip wears this class too. */
   background: var(--composer-tray);
   overflow: hidden;
@@ -973,7 +973,7 @@
   padding: var(--space-2) var(--space-2);
   color: var(--text);
   border: 0;
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-chat);
   outline: 0;
   background: transparent;
   font-family: var(--font-prose);

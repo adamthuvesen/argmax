@@ -252,6 +252,7 @@
   --shadow-popover: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
 
   --radius-ui: 10px;
+  --radius-chat: 20px;
   --radius-xs: var(--radius-ui);
   --radius-sm: var(--radius-ui);
   --radius-md: var(--radius-ui);

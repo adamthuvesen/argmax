@@ -577,7 +577,7 @@
   border: 0;
   /* Matches the launcher composer's corner radius so the two input surfaces
      read as the same component. */
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-chat);
   background: var(--composer-surface);
   /* The composer fill and this quiet, single-layer lift seat the field on the
      surface; --composer-edge draws the hairline paper needs, as an inset ring

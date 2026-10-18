@@ -497,15 +497,25 @@
   background: var(--line-strong);
 }
 
+/* No hairline: the footer is set off by the space above it, like the
+   sections. The chip opens the Argmax menu; the two icons beside it are the
+   destinations people reach for most. */
 .sidebar-footer {
   display: flex;
   align-items: center;
+  position: relative;
+  gap: 2px;
   min-height: 40px;
   margin-top: auto;
   padding: var(--space-2) 0 0;
   color: var(--muted-strong);
-  border-top: 1px solid var(--line-soft);
   font-size: var(--text-sm);
+}
+
+/* The chip shares the row with two icons, so the menu measures against the
+   whole footer instead: at the chip's width the shortcut column would clip. */
+.sidebar-footer .identity-menu-anchor {
+  position: static;
 }
 
 .identity-menu-anchor {
@@ -519,7 +529,7 @@
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: var(--space-2_5);
+  gap: var(--space-1_5);
   padding: var(--space-1_5) var(--space-2_5);
   border: 0;
   border-radius: var(--radius-row);
@@ -537,36 +547,19 @@
   color: var(--text);
 }
 
-.identity-avatar {
-  position: relative;
-  display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  place-items: center;
-  color: var(--text);
-  transform: translateY(2px);
-}
-
-.identity-avatar-mascot {
-  width: 24px;
-  height: 24px;
-}
-
 .identity-meta {
   display: grid;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   line-height: 1.2;
   gap: 2px;
 }
 
 .identity-name {
-  font-family: var(--font-mono);
   color: var(--text);
   font-size: var(--text-sm);
-  font-weight: calc(400 + var(--font-weight-offset));
-  letter-spacing: -0.003em;
+  font-weight: calc(500 + var(--font-weight-offset));
+  letter-spacing: -0.005em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -576,17 +569,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1_5);
-  font-family: var(--font-mono);
   color: var(--muted);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.01em;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .identity-menu-chevron {
-  margin-left: auto;
   flex: 0 0 auto;
   color: var(--muted);
   transition: transform var(--duration-base) var(--ease), color var(--duration-fast) var(--ease);

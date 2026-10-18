@@ -13,6 +13,7 @@ import {
   Keyboard,
   MoreHorizontal,
   Plus,
+  Search,
   Settings,
   Settings2,
   Shapes,
@@ -93,9 +94,7 @@ import { formatSessionIds } from "../lib/sessionIds.js";
 import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
-import { useMascotVisible } from "../lib/mascotVisibility.js";
 import { IdentityPlans } from "./IdentityPlans.js";
-import { Mascot } from "./Mascot.js";
 import { SidebarSessionRow, type SidebarSessionRowProps, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
 // Markers stored in sessionStorage (cleared on app quit / window close in
@@ -392,7 +391,6 @@ export function Sidebar({
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
-  const mascotVisible = useMascotVisible();
   const identityMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   // Per-project actions menu. `mode === "confirm"` swaps the menu in-place
   // for a "Remove '{name}'?" prompt — no separate modal needed. The popover
@@ -1280,11 +1278,13 @@ export function Sidebar({
     );
   };
 
+  // The version lives in the menu header; the chip speaks up only while local
+  // data is not ready, so a failed load is never silent.
   const identitySubLabel = loadState === "loading"
     ? "Starting…"
     : loadState === "error"
       ? "Couldn't load local data"
-      : APP_VERSION;
+      : null;
   const runIdentityAction = useCallback((action: () => void): void => {
     setIdentityMenuOpen(false);
     action();
@@ -2045,13 +2045,6 @@ export function Sidebar({
             aria-expanded={identityMenuOpen}
             onClick={() => setIdentityMenuOpen((open) => !open)}
           >
-            {mascotVisible ? (
-              // The avatar box is a fixed 30px square, so it goes with the fox
-              // rather than leaving a gap beside the name.
-              <span className="identity-avatar" aria-hidden="true">
-                <Mascot size={24} className="identity-avatar-mascot" />
-              </span>
-            ) : null}
             <span className="identity-meta">
               <span className="identity-name">Argmax</span>
               {identitySubLabel ? (
@@ -2142,6 +2135,24 @@ export function Sidebar({
             </ul>
           ) : null}
         </div>
+        <button
+          type="button"
+          className="small-icon sidebar-footer-settings"
+          aria-label="Open settings"
+          title="Settings (⌘,)"
+          onClick={openSettings}
+        >
+          <Settings size={15} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="small-icon"
+          aria-label="Open command palette"
+          title="Command palette (⌘K)"
+          onClick={openCommandPalette}
+        >
+          <Search size={15} aria-hidden="true" />
+        </button>
       </div>
       <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
     </aside>

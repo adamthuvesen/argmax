@@ -218,7 +218,7 @@ export function AppearanceSettings({
   const activityMark = useActivityMark();
   const sessionUnderline = useSessionUnderline();
   const activityIconColorMode = useActivityIconColorMode();
-  // Same reason as the activity mark: the fox renders from four unrelated
+  // Same reason as the activity mark: the fox renders from three unrelated
   // places, so it reads its own store rather than a prop. See lib/mascotVisibility.ts.
   const mascotVisible = useMascotVisible();
   const chatNesting = useSidebarChatNesting();
@@ -564,7 +564,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Fox mascot"
-          description="Draw the fox on the launch screen, in the sidebar's Argmax chip, and on the mobile new-chat screen."
+          description="Draw the fox on the launch screen, the empty state, and the mobile new-chat screen."
           control={
             <Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />
           }

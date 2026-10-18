@@ -310,7 +310,7 @@
   transition: transform var(--duration-base) var(--ease);
 }
 
-.sidebar-footer .small-icon:hover svg {
+.sidebar-footer-settings:hover svg {
   transform: rotate(22deg);
 }
 

@@ -5,8 +5,8 @@ import { useSyncExternalStore } from "react";
  *
  * Like the activity mark (see `lib/activityMark.ts`) this rides its own store
  * rather than the `useLauncherAppearance` props the other appearance toggles
- * use: the fox renders from four unrelated places — the launch surface, the
- * sidebar's Argmax chip, the empty state, the mobile new-chat hero — and
+ * use: the fox renders from three unrelated places — the launch surface, the
+ * empty state, the mobile new-chat hero — and
  * threading a prop through all of them to reach a decorative mark is worse
  * than one subscription in `Mascot` itself.
  */

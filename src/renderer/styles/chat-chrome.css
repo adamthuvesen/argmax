@@ -1154,6 +1154,13 @@ body > .picker-popover-portaled.settings-picker-popover {
   color: var(--text);
 }
 
+/* Two rows always sit 2px apart, so the hover fill never fuses with the keyboard
+   cursor's fill on the next row. `:where` keeps it at zero specificity: a
+   divider, label or filter row keeps its own margin. */
+:where(.project-picker-popover li + li) {
+  margin-top: 2px;
+}
+
 .project-picker-item {
   display: flex;
   align-items: center;

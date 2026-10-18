@@ -288,10 +288,14 @@
    because only it knows where its marker sits. A child row starts just past
    the elbow's curve, so its hover and selected fill covers the straight run of
    the connector and never clips the turn; the row gives the extra indent back
-   from its own left padding, so the child marker stays put. */
+   from its own left padding, so the child marker stays put. Each child sits
+   --tree-row-gap below the row above it, the same air as top-level rows, so two
+   fills never touch; the gap is padding inside the child, so the rail runs
+   through it unbroken. */
 .sidebar-chat-children {
   --tree-rail-x: calc(var(--tree-link-pad, var(--space-2_5)) + 7px);
   --tree-row-mid: 15px;
+  --tree-row-gap: 2px;
   padding-left: var(--space-6);
 }
 
@@ -319,6 +323,7 @@
 .sidebar-chat-child {
   position: relative;
   min-width: 0;
+  padding-top: var(--tree-row-gap);
   --tree-link-pad: var(--space-1_5);
 }
 
@@ -330,7 +335,7 @@
   left: calc(var(--tree-rail-x) - var(--space-6));
   top: 0;
   width: 13px;
-  height: var(--tree-row-mid);
+  height: calc(var(--tree-row-gap) + var(--tree-row-mid));
   border-left-width: 1px;
   border-bottom-width: 1px;
   border-bottom-left-radius: 6px;
@@ -345,7 +350,7 @@
 
 .sidebar-chat-child:not(:last-child)::after {
   left: calc(var(--tree-rail-x) - var(--space-6));
-  top: var(--tree-row-mid);
+  top: calc(var(--tree-row-gap) + var(--tree-row-mid));
   width: 13px;
   border-top-width: 1px;
 }

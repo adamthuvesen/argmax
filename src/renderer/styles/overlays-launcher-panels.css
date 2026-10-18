@@ -532,7 +532,7 @@
 
   html:not(:has(.mobile-shell)) .session-input {
     padding: 8px 12px 7px;
-    border-radius: var(--radius-chat);
+    border-radius: var(--radius-composer);
   }
 
   html:not(:has(.mobile-shell)) .session-input textarea {

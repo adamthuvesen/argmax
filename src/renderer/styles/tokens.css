@@ -253,6 +253,7 @@
 
   --radius-ui: 10px;
   --radius-chat: 20px;
+  --radius-composer: 25px;
   --radius-xs: var(--radius-ui);
   --radius-sm: var(--radius-ui);
   --radius-md: var(--radius-ui);

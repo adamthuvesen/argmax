@@ -25,7 +25,8 @@ retain their exact colors.
 ## Corner radii
 
 Rounded UI uses `--radius-ui` (10px), including tabs, buttons, inputs, rows, cards, menus, and dialogs.
-Workspace cards, composers, and chat message bubbles use `--radius-chat` (20px). Their drop overlays and queued trays follow that shape.
+Workspace cards and chat message bubbles use `--radius-chat` (20px).
+Composers use `--radius-composer` (25px). Their drop overlays and queued trays follow that shape.
 Existing size and semantic aliases resolve to the 10px baseline.
 Do not introduce separate radii by component size until a new scale is explicitly agreed.
 

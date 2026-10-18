@@ -94,10 +94,6 @@
   cursor: pointer;
 }
 
-.review-resource-tab[data-active="true"] .review-resource-tab-select {
-  font-weight: var(--weight-medium);
-}
-
 .review-resource-tab-select:hover {
   background: transparent;
 }

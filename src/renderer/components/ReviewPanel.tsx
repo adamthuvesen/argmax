@@ -879,7 +879,7 @@ function ReviewPanelPane({
                       <ChevronRight className="project-folder-change-chevron" size={12} aria-hidden="true" />
                       <Folder size={14} aria-hidden="true" />
                       <span className="project-folder-change-name">{sourceLabel}</span>
-                      <span className="project-folder-change-total">{review.filesState === "loading" ? "Loading…" : review.filesState === "error" ? "Unavailable" : review.files.length === 0 ? "No changes" : `${review.files.length} ${review.files.length === 1 ? "file" : "files"}`}</span>
+                      {review.filesState === "loading" || review.filesState === "error" ? <span className="project-folder-change-total">{review.filesState === "loading" ? "Loading…" : "Unavailable"}</span> : null}
                     </summary>
                     {review.files.length > 0 ? <ChangesTree
                       files={review.files}

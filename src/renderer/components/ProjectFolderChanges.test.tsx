@@ -36,7 +36,7 @@ describe("ProjectFolderChangesList", () => {
     render(<ProjectFolderChangesList state={state} />);
 
     expect(screen.getByText("context")).toBeVisible();
-    expect(screen.getByText("2 files")).toBeVisible();
+    expect(screen.queryByText("2 files")).not.toBeInTheDocument();
     expect(screen.getAllByText("index.ts")).toHaveLength(2);
     expect(screen.getByText("search")).toBeVisible();
     expect(screen.getByTitle("src/search/index.ts")).toHaveAttribute("aria-pressed", "true");
@@ -52,7 +52,7 @@ describe("ProjectFolderChangesList", () => {
     state.groups[0].files = [];
     render(<ProjectFolderChangesList state={state} />);
 
-    expect(screen.getByText("No changes")).toBeVisible();
+    expect(screen.queryByText("No changes")).not.toBeInTheDocument();
     expect(screen.getByText("context").closest("details")).not.toHaveAttribute("open");
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });

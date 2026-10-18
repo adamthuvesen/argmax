@@ -20,7 +20,7 @@ export function ProjectFolderChangesList({ state }: { state: ProjectFolderChange
             <ChevronRight className="project-folder-change-chevron" size={12} aria-hidden="true" />
             <Folder size={14} aria-hidden="true" />
             <span className="project-folder-change-name">{folderName}</span>
-            <span className="project-folder-change-total">{error ? "Unavailable" : files.length === 0 ? "No changes" : `${files.length} ${files.length === 1 ? "file" : "files"}`}</span>
+            {error ? <span className="project-folder-change-total">Unavailable</span> : null}
           </summary>
           {error ? <p className="project-folder-changes-error" role="status">Could not load changes: {error}</p> : files.length === 0 ? null : <ChangesTree
             files={files}

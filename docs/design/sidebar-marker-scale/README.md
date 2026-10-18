@@ -47,3 +47,37 @@ Deliberately left at 6px: `.session-custom-icon-overlay`, the corner dot that
 puts live state back on a row whose icon took the column. It is a badge on a
 glyph, not a mark in the column, and it has to stay smaller than what it sits
 on.
+
+## Revision: resting dot and age column (2026-10-18)
+
+The sidebar was compared with Cursor's, which reads calmer. Four differences
+caused most of the gap: section gaps no larger than row gaps, every title at the
+same strong ink, a marker column that mixed rings, chat bubbles, and status
+glyphs, and a ragged right edge. Variant C of that comparison shipped:
+
+- The calm row's 7px hollow ring and the scratch chat's speech bubble become one
+  5px resting dot in `--muted` at reduced opacity. Chat rows already name
+  themselves in the subtitle, so the bubble was a second label for one fact.
+- The ladder is now 14 / 7 / 5: 14px for a mark with a shape, 7px for the
+  unread dot, 5px for the resting dot.
+- The ring was hollow so it could never be read as the unread dot (the 2026-09-20
+  decision above). The resting dot gives up the hollow shape, so the two now
+  differ in size (5px against 7px), hue (`--muted` against the accent), and
+  strength (faded against full). Check this first if a resting row is ever
+  read as unread, above all with the neutral accent.
+- A right-aligned age column (`.session-link-age`) shows the time since
+  `lastActivityAt`: "now", "12m", "3h", "2d", "5w", "1y". One shared
+  minute timer (`useMinuteClock`) updates every row. The age is hidden from
+  the accessible name and gives its place to the row actions on hover.
+- Rows drop to `--text-sm` with a 30px minimum height and `--text-xs`
+  subtitles. Section headers drop to `--text-xs` at the regular weight.
+  Sections open with 20px of air, twice the step between rows.
+- Nav glyphs move to `--muted`. In dark mode the selected row is lifted from
+  the sidebar ground instead of using the panel tone, which could sit below it.
+
+The sidebar ground was left to the Side panels intensity setting, because one
+dial drives both themes. A lower value gives the darker grey ground of the
+comparison in light mode.
+
+`sidebar-c-shipped.png` shows the result in the Status and Projects views, light
+and dark. The demo data has fixed timestamps, so every row there reads "23w".

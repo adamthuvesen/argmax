@@ -2004,13 +2004,13 @@ describe("Sidebar — repo-less chats", () => {
     const today = screen.getByText("Today");
     expect(rendersAfter(today, screen.getByRole("button", { name: /Repo task/ }))).toBe(true);
     expect(rendersAfter(today, screen.getByRole("button", { name: /Explain quantization/ }))).toBe(true);
-    // A calm chat row leads with the speech bubble; a calm repo row keeps the ring.
+    // Calm chat and repo rows lead with the same resting dot; the subtitle says which is which.
     expect(
-      screen.getByRole("button", { name: /Explain quantization/ }).querySelector('[data-chat="true"]')
+      screen.getByRole("button", { name: /Explain quantization/ }).querySelector(".session-link-lead-dot")
     ).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: /Repo task/ }).querySelector('[data-chat="true"]')
-    ).toBeNull();
+      screen.getByRole("button", { name: /Repo task/ }).querySelector(".session-link-lead-dot")
+    ).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Hide chats" })).toBeNull();
     expect(screen.queryByRole("button", { name: "New chat without a repository" })).toBeNull();
   });

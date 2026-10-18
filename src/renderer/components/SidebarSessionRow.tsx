@@ -39,6 +39,7 @@ import type { DetectedIde, IdeId, WorkspaceSummary } from "../../shared/types.js
 import { useAnchoredPopover, type AnchorPoint } from "../hooks/useAnchoredPopover.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useMinuteClock } from "../hooks/useMinuteClock.js";
 import type { PriorityReasonKind } from "../lib/priority.js";
 import {
   verifiedWorkspacePrs,
@@ -47,6 +48,7 @@ import {
 } from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { snoozeChoices } from "../lib/snooze.js";
+import { formatRowAge } from "../lib/rowAge.js";
 import { stableHash32 } from "../lib/stableHash.js";
 import {
   beginWorkspacePointerDrag,
@@ -392,6 +394,8 @@ function SidebarSessionRowInner({
   // "Sync Now" only makes sense on a row imported from a provider store —
   // Argmax-owned sessions have nothing to re-read.
   const canSyncNow = Boolean(onSyncNow && importedProvider);
+  const now = useMinuteClock();
+  const age = formatRowAge(workspace.lastActivityAt, now);
   const handleContextMenu = (event: ReactMouseEvent): void => {
     event.preventDefault();
     event.stopPropagation();
@@ -474,7 +478,7 @@ function SidebarSessionRowInner({
   // leading glyph except a turn in flight: the working nest stays so live
   // activity still reads, and the accent dot takes the cell the moment it
   // ends. Opening the chat clears unread and the icon or status marker
-  // returns. Without a custom icon, a calm row draws the muted lead ring and
+  // returns. Without a custom icon, a calm row draws the muted resting dot and
   // only a live signal (running, awaiting input, failed, open or merged PR)
   // earns a glyph. The marker column is the same width either way so every
   // title lines up.
@@ -534,7 +538,7 @@ function SidebarSessionRowInner({
           className={`session-link session-link-renaming${subtitle ? " session-link-stacked" : ""}${prCountBadge ? " session-link-has-pr-count" : ""}`}
           data-status={workspace.state}
         >
-          {leadingGlyph ?? <span className="session-link-lead-ring" aria-hidden="true" />}
+          {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
           <span className={subtitle ? "session-link-text" : undefined}>
             <input
               ref={renameInputRef}
@@ -598,16 +602,7 @@ function SidebarSessionRowInner({
               });
             }}
           >
-            {leadingGlyph ??
-              (workspace.kind === "scratch" ? (
-                // A repo-less chat has no checkout to report on; its calm
-                // glyph says what it is instead.
-                <span className="session-link-lead-ring" data-chat="true" aria-hidden="true">
-                  <MessageCircle size={11} strokeWidth={1} absoluteStrokeWidth />
-                </span>
-              ) : (
-                <span className="session-link-lead-ring" aria-hidden="true" />
-              ))}
+            {leadingGlyph ?? <span className="session-link-lead-dot" aria-hidden="true" />}
             {subtitle || importedProvider || launchedByLabel || arcLabel ? (
               <span className="session-link-text">
                 <span>{displayLabel}</span>
@@ -638,6 +633,11 @@ function SidebarSessionRowInner({
               <span>{displayLabel}</span>
             )}
             {prCountBadge}
+            {age ? (
+              <span className="session-link-age" aria-hidden="true">
+                {age}
+              </span>
+            ) : null}
           </button>
           <div className="session-row-actions">
             {onTogglePin ? (

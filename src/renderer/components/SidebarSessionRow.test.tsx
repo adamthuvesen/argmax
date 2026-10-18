@@ -532,7 +532,7 @@ describe("SidebarSessionRow", () => {
     expect(row.querySelector('[data-pr="closed"]')).toBeNull();
   });
 
-  it("gives an idle completed row the lead ring, with the state still in its title", () => {
+  it("gives an idle completed row the resting dot, with the state still in its title", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
@@ -542,11 +542,11 @@ describe("SidebarSessionRow", () => {
 
     const row = screen.getByTitle(/Build the dashboard — complete/);
     // No status glyph: a done session is not worth a column of checks. The
-    // marker column keeps its width and draws the muted ring instead.
+    // marker column keeps its width and draws the muted resting dot instead.
     // `.status-marker` rather than "svg": the working nest is HTML now, so an
     // svg check would pass whether or not a mark was rendered.
     expect(row.querySelector(".status-marker")).toBeNull();
-    expect(row.querySelector(".session-link-lead-ring")).not.toBeNull();
+    expect(row.querySelector(".session-link-lead-dot")).not.toBeNull();
   });
 
   it("keeps a leading marker on rows that carry a live signal", () => {

@@ -343,7 +343,7 @@ function restoreScope(
     typeof snapshot.activeTabId === "string" && state.tabs.some((tab) => tab.id === snapshot.activeTabId)
       ? snapshot.activeTabId
       : (state.tabs[0]?.id ?? null);
-  state.lastUrl = typeof snapshot.lastUrl === "string" ? snapshot.lastUrl : null;
+  state.lastUrl = state.tabs.length > 0 && typeof snapshot.lastUrl === "string" ? snapshot.lastUrl : null;
 }
 
 function highestRestoredSeq(): number {
@@ -526,6 +526,7 @@ export function removeBrowserTab(id: string): BrowserTab | null {
     if (state.recentlyClosed.length > MAX_RECENTLY_CLOSED) state.recentlyClosed.shift();
   }
   state.tabs = state.tabs.filter((tab) => tab.id !== id);
+  if (state.tabs.length === 0) state.lastUrl = null;
   materializedTabs.delete(id);
   let nextActive: BrowserTab | null = null;
   if (state.activeTabId === id) {

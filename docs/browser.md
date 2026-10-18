@@ -4,7 +4,7 @@ Argmax has a native browser with separate tab strips for chats and the Browser p
 
 Web links in rendered file previews use the same browser preference as chat links. A plain click opens the configured destination, and ⌘/Ctrl-click opens the other browser without navigating the app's main view. Links routed to Argmax open a new tab on every click, preserving existing tabs.
 
-**Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
+**Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Closing the last tab closes the Browser page. Reopening then starts at the default page, without restoring the closed tab. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
 
 **Claude artifacts shortcut.** Settings → Appearance → Layout → Claude artifacts adds an Artifacts shortcut in the sidebar and the review panel’s New tab page. It is off by default. The shortcut opens `https://claude.ai/artifacts` in its browser surface and reuses an existing tab at that URL. The review panel keeps the page beside the chat. Sign in through the page as needed. The shortcut uses the website without syncing artifacts.
 

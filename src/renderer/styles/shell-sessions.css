@@ -280,14 +280,17 @@
 
 /* Sub-chats hang off the parent's marker on a tree rail: a branch (├) into
    every child and an elbow (└) into the last. The rail runs at the marker
-   column's center, so --tree-rail-x is the row's left padding plus half the
-   14px column, and --tree-row-mid is a one-line row's marker center. The
+   column's center, so --tree-rail-x is the row's left padding (--tree-link-pad inside a
+   child) plus half the 14px column, and --tree-row-mid is a one-line row's marker center. The
    parent draws its own stretch from under its marker to its bottom edge,
-   because only it knows where its marker sits. */
+   because only it knows where its marker sits. A child row starts just past
+   the elbow's curve, so its hover and selected fill covers the straight run of
+   the connector and never clips the turn; the row gives the extra indent back
+   from its own left padding, so the child marker stays put. */
 .sidebar-chat-children {
-  --tree-rail-x: calc(var(--space-2_5) + 7px);
+  --tree-rail-x: calc(var(--tree-link-pad, var(--space-2_5)) + 7px);
   --tree-row-mid: 17px;
-  padding-left: var(--space-5);
+  padding-left: var(--space-6);
 }
 
 .session-row:has(+ .sidebar-chat-children) .session-link::after,
@@ -301,7 +304,7 @@
 }
 
 .session-row:has(+ .sidebar-chat-children) .session-link::after {
-  left: calc(var(--space-2_5) + 7px);
+  left: calc(var(--tree-link-pad, var(--space-2_5)) + 7px);
   top: 26px;
   bottom: 0;
   border-left-width: 1px;
@@ -314,12 +317,17 @@
 .sidebar-chat-child {
   position: relative;
   min-width: 0;
+  --tree-link-pad: var(--space-1_5);
+}
+
+.sidebar-chat-child > .session-row > .session-link {
+  padding-left: var(--tree-link-pad);
 }
 
 .sidebar-chat-child::before {
-  left: calc(var(--tree-rail-x) - var(--space-5));
+  left: calc(var(--tree-rail-x) - var(--space-6));
   top: 0;
-  width: 11px;
+  width: 13px;
   height: var(--tree-row-mid);
   border-left-width: 1px;
   border-bottom-width: 1px;
@@ -334,9 +342,9 @@
 }
 
 .sidebar-chat-child:not(:last-child)::after {
-  left: calc(var(--tree-rail-x) - var(--space-5));
+  left: calc(var(--tree-rail-x) - var(--space-6));
   top: var(--tree-row-mid);
-  width: 11px;
+  width: 13px;
   border-top-width: 1px;
 }
 

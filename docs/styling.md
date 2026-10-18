@@ -28,9 +28,9 @@ Choose a radius by the element's role, using the shared semantic tokens:
 
 | Role | Token | Radius |
 | --- | --- | --- |
-| Rectangular buttons, inputs, and icon controls | `--radius-control` | 6px |
+| Rectangular buttons, inputs, and icon controls | `--radius-control` | 10px |
 | Navigation, list, and menu rows | `--radius-row` | 10px |
-| Cards, menus, and floating panels | `--radius-surface` | 14px |
+| Cards, menus, and floating panels | `--radius-surface` | 10px |
 | Dialogs, composers, and large transcript surfaces | `--radius-dialog` | 20px |
 
 Parent and nested sidebar rows use the same row radius, including hover, selection, and keyboard focus.

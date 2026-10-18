@@ -257,9 +257,9 @@
   --radius-lg: 10px;
   --radius-xl: 14px;
   --radius-2xl: 20px;
-  --radius-control: var(--radius-md);
+  --radius-control: var(--radius-lg);
   --radius-row: var(--radius-lg);
-  --radius-surface: var(--radius-xl);
+  --radius-surface: var(--radius-lg);
   --radius-dialog: var(--radius-2xl);
 
   /* Sidebar row action icons — shared by the project row (… / chevron) and the

@@ -288,10 +288,12 @@
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
+/* An ink wash, like the chat-row actions: --panel-sunken is near black in
+   dark, so a hovered icon read as a hole punched in the row. */
 .small-icon:hover,
 .small-icon[aria-pressed="true"] {
   color: var(--text);
-  background: var(--panel-sunken);
+  background: var(--overlay-med);
 }
 
 .small-icon:disabled,
@@ -586,8 +588,10 @@
 .project-actions-confirm-buttons .project-picker-item {
   flex: 0 0 auto;
   width: auto;
-  padding: var(--space-1_5) var(--space-2_5);
+  min-height: 28px;
+  padding: 0 var(--space-3);
   justify-content: center;
+  border-radius: var(--radius-control);
   font-weight: var(--weight-medium);
 }
 
@@ -596,25 +600,22 @@
 }
 
 .project-actions-confirm-cancel:hover {
-  background: var(--panel-soft);
+  background: var(--popover-row-active);
   color: var(--text);
 }
 
-/* Filled destructive button — only inside the confirm step, scoped to
-   `.project-actions-confirm-buttons` so the menu's "Remove project" row
-   stays quiet. */
+/* The confirm button is a tint, not a slab: rose ink on a rose wash reads as
+   destructive in both themes, where a solid fill turned pastel and muddy in
+   dark. The menu row that opens this step carries the trash glyph, so the
+   button is the word alone. */
 .project-actions-confirm-buttons .project-actions-destructive {
-  background: var(--rose);
-  color: var(--bg);
+  background: var(--rose-soft);
+  color: var(--rose);
 }
 
 .project-actions-confirm-buttons .project-actions-destructive:hover {
-  background: color-mix(in oklab, var(--rose) 80%, black);
-  color: var(--bg);
-}
-
-.project-actions-confirm-buttons .project-actions-destructive svg {
-  color: var(--bg);
+  background: color-mix(in oklab, var(--rose) 24%, transparent);
+  color: var(--rose);
 }
 
 .project-name {

@@ -937,13 +937,6 @@
               box-shadow 220ms var(--ease-out, ease-out) !important;
 }
 
-/* Light gets shadows, dark gets *light*: in dark mode a primary action picks
-   up a soft warm glow instead of a crisp ring. */
-:root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
-  box-shadow: var(--shadow-1),
-              0 0 28px -8px color-mix(in oklab, var(--accent) 55%, transparent);
-}
-
 /* Dark's global selection stays stronger; user message bubbles have their own
    fg-tinted selection token because they sit on the accent slab. */
 :root[data-theme="dark"] ::selection {

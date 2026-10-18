@@ -2022,7 +2022,6 @@ export function Sidebar({
                           onRemoveProject(activeProject.id);
                         }}
                       >
-                        <Trash2 size={14} aria-hidden="true" />
                         Remove
                       </button>
                     </div>

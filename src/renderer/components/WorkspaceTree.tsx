@@ -37,7 +37,7 @@ interface WorkspaceTreeToolbar {
   onRefresh: () => void;
 }
 
-const ROW_HEIGHT = 24;
+const ROW_HEIGHT = 26;
 const OVERSCAN_ROWS = 8;
 /** Row text starts here; with the scroller's 6px padding and the row's 2px
  *  margin this puts the depth-0 chevron 18px from the column edge, level with

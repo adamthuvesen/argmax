@@ -15,8 +15,8 @@
 .project-folder-changes {
   flex: 0 0 auto;
   min-width: 0;
-  padding: 6px;
-  font-size: var(--text-xs);
+  padding: var(--space-1_5);
+  font-size: var(--text-sm);
 }
 
 .project-folder-change-working + .project-folder-changes {
@@ -27,15 +27,15 @@
   flex: 0 0 auto;
   min-width: 0;
   margin: 6px 6px 0;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
 }
 
 .project-folder-change-group summary {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 4px 6px;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 4px var(--space-2);
   border-radius: var(--radius-md);
   cursor: pointer;
   list-style: none;
@@ -59,7 +59,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-weight: var(--weight-ui);
+  font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -67,7 +67,7 @@
 .project-folder-change-total {
   flex-shrink: 0;
   color: var(--muted);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -96,8 +96,8 @@
 
 .project-folder-change-group > .changes-tree-col > .workspace-tree-toolbar {
   position: absolute;
-  top: 5px;
-  right: 6px;
+  top: 6px;
+  right: var(--space-2);
   min-height: 20px;
   padding: 0;
   background: var(--review-sidebar);

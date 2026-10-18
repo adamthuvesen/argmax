@@ -33,7 +33,7 @@ export interface ChangesTreeProps {
 
 /** Row geometry copied from `WorkspaceTree` so both trees line up under the
  *  review toolbar. */
-const ROW_HEIGHT = 24;
+const ROW_HEIGHT = 26;
 const INDENT_BASE = 10;
 const INDENT_STEP = 12;
 

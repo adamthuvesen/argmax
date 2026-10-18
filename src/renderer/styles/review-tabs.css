@@ -32,7 +32,7 @@
   min-width: 132px;
   max-width: 266px;
   scroll-snap-align: start;
-  height: 30px;
+  height: 32px;
   border: 1px solid transparent;
   border-radius: var(--radius-xl);
   color: var(--muted);
@@ -48,10 +48,18 @@
   color: var(--text);
 }
 
+/* The active tab is the one lit surface in the strip: the composer field's
+   tone with a hairline and a whisper of shadow, so it lifts off the panel in
+   both themes instead of matching it. */
 .review-resource-tab[data-active="true"] {
-  background: var(--panel);
+  background: var(--composer-surface);
   border-color: var(--line);
+  box-shadow: var(--shadow-1);
   color: var(--text);
+}
+
+.review-resource-tab[data-active="true"] .review-resource-tab-icon {
+  color: var(--text-soft);
 }
 
 .review-resource-tab[data-drop-target="true"]::before {
@@ -72,18 +80,22 @@
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   min-width: 0;
   height: 100%;
-  padding: 0 4px 0 8px;
+  padding: 0 var(--space-1) 0 var(--space-2_5);
   border: 0;
   border-radius: inherit;
   background: transparent;
   color: inherit;
   font-family: var(--font-ui);
-  font-size: var(--text-xs-plus);
+  font-size: var(--text-sm-plus);
   font-weight: var(--weight-ui);
   cursor: pointer;
+}
+
+.review-resource-tab[data-active="true"] .review-resource-tab-select {
+  font-weight: var(--weight-medium);
 }
 
 .review-resource-tab-select:hover {

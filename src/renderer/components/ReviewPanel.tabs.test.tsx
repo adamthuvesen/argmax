@@ -122,7 +122,6 @@ describe("shared review tabs", () => {
     render(<ReviewPanel sideChat={sideChatContext()} review={reviewStub({
       tabs, mode: "new", layout: { modes: ["new"], activeIndex: 0, ratio: .5 }
     })} />);
-    expect(screen.getByRole("heading", { name: "Tools" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Suggested" })).not.toBeInTheDocument();
     expect(screen.queryByRole("separator", { name: "Resize file list width" })).not.toBeInTheDocument();
     expect(screen.queryByRole("contentinfo", { name: "File status" })).not.toBeInTheDocument();

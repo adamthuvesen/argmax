@@ -46,7 +46,7 @@
   overflow: auto;
   padding: var(--space-1_5);
   font-family: var(--font-ui);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
 }
 
 /* Under the strip the scroller needs less of its own top gap; surfaces with no
@@ -71,7 +71,7 @@
   align-items: center;
   gap: var(--space-1_5);
   width: calc(100% - 4px);
-  min-height: 24px;
+  min-height: 26px;
   margin: 0 2px;
   padding-right: var(--space-2_5);
   border: 0;
@@ -195,7 +195,7 @@
 .changes-tree-row-shell {
   position: relative;
   width: calc(100% - 4px);
-  height: 24px;
+  height: 26px;
   margin: 0 2px;
 }
 

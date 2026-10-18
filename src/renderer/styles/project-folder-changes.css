@@ -101,3 +101,26 @@
   color: var(--muted);
   font-size: var(--text-sm);
 }
+
+.project-folder-change-group {
+  position: relative;
+}
+
+.project-folder-change-group > .changes-tree-col > .workspace-tree-toolbar {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  min-height: 20px;
+  padding: 0;
+  background: var(--review-sidebar);
+}
+
+.project-folder-change-group:hover > .changes-tree-col > .workspace-tree-toolbar,
+.project-folder-change-group:focus-within > .changes-tree-col > .workspace-tree-toolbar {
+  opacity: 1;
+}
+
+.project-folder-change-group[open]:has(> .changes-tree-col):hover > summary .project-folder-change-total,
+.project-folder-change-group[open]:has(> .changes-tree-col):focus-within > summary .project-folder-change-total {
+  visibility: hidden;
+}

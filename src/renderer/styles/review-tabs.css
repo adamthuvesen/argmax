@@ -30,7 +30,7 @@
   max-width: 200px;
   height: 30px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xl);
   color: var(--muted);
   transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
 }
@@ -117,7 +117,7 @@
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
   background: transparent;
   color: var(--muted);
   cursor: pointer;

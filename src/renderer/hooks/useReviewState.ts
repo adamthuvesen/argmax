@@ -367,7 +367,6 @@ export function useReviewState(
       // Quota or private-mode failures are non-fatal for appearance prefs.
     }
   }, [panelOpenKey, isPanelOpen]);
-  const restoredLayoutPreference = useRef(false);
   const tabStateRef = useRef<ReviewTabsState>(createReviewTabs());
   const resolveModeTab = useCallback((nextMode: ReviewPanelMode): ReviewTab | null => {
     if (!availablePanelModes.includes(nextMode)) return null;
@@ -394,7 +393,6 @@ export function useReviewState(
         const legacy = parseReviewLayout(raw);
         const stored = migrateReviewTabs(legacy ? JSON.stringify(normalizeReviewLayout(legacy, availablePanelModes)) : raw, resolveModeTab);
         if (stored) {
-          restoredLayoutPreference.current = true;
           let next = stored;
           const restoredTerminalIds = new Set(stored.tabs.filter((tab) => tab.kind === "terminal" && getWorkspaceTerminalState(tab.workspaceId).tabs.some((item) => item.id === tab.terminalTabId)).map((tab) => tab.kind === "terminal" ? tab.terminalTabId : ""));
           for (const tab of stored.tabs) {
@@ -419,7 +417,6 @@ export function useReviewState(
       if (isReviewPanelMode(stored)) {
         const tab = resolveModeTab(stored);
         if (tab) {
-          restoredLayoutPreference.current = true;
           return selectReviewTab(addReviewTab(createReviewTabs(), tab), tab.id);
         }
       }
@@ -455,13 +452,11 @@ export function useReviewState(
   const setMode = useCallback((nextMode: ReviewPanelMode): void => {
     const tab = resolveModeTab(nextMode);
     if (!tab) return;
-    restoredLayoutPreference.current = true;
     setTabState((current) => openReviewTab(current, tab));
   }, [resolveModeTab]);
   const setPaneMode = useCallback((index: 0 | 1, nextMode: ReviewPanelMode): void => {
     const tab = resolveModeTab(nextMode);
     if (!tab) return;
-    restoredLayoutPreference.current = true;
     setTabState((current) => {
       const next = addReviewTab(current, tab);
       const existing = next.paneTabIds.indexOf(tab.id);
@@ -470,7 +465,6 @@ export function useReviewState(
     });
   }, [resolveModeTab]);
   const focusPane = useCallback((index: 0 | 1): void => {
-    restoredLayoutPreference.current = true;
     setTabState((current) => index < current.paneTabIds.length && current.activeIndex !== index ? { ...current, activeIndex: index } : current);
   }, []);
   const splitMode = useCallback((nextMode: ReviewPanelMode, position: ReviewSplitPosition): void => {
@@ -479,17 +473,14 @@ export function useReviewState(
     const current = tabStateRef.current;
     if (current.paneTabIds.length === 1 && current.paneTabIds[0] === tab.id) tab = reviewToolTab(nextMode === "changes" ? "files" : "changes");
     const inserted = tab;
-    restoredLayoutPreference.current = true;
     setTabState((state) => splitReviewTab(addReviewTab(state, inserted), inserted.id, position));
     setIsPanelOpen(true);
   }, [resolveModeTab]);
   const closePane = useCallback((index: 0 | 1): void => {
-    restoredLayoutPreference.current = true;
     if (layoutRef.current.modes.length === 1) { setIsPanelOpen(false); return; }
     setTabState((current) => ({ ...current, paneTabIds: [current.paneTabIds[index === 0 ? 1 : 0]!], activeIndex: 0 }));
   }, []);
   const setSplitRatio = useCallback((value: number): void => {
-    restoredLayoutPreference.current = true;
     setTabState((current) => setReviewTabsRatio(current, value));
   }, []);
   const [storedScope, setChangesScope] = useState<ReviewChangesScope>(readStoredScope);
@@ -771,26 +762,25 @@ export function useReviewState(
     setIsPanelOpen(false);
   }, []);
 
-  const panelRef = useRef({ isPanelOpen, filesCount: 0, files: diffState.files, mode, layout });
+  const panelRef = useRef({ isPanelOpen, files: diffState.files, mode, layout });
   panelRef.current = {
     isPanelOpen,
-    filesCount: diffState.files.length,
     files: diffState.files,
     mode,
     layout
   };
 
   const togglePanel = useCallback((): void => {
-    if (
-      !panelRef.current.isPanelOpen &&
-      panelRef.current.filesCount === 0 &&
-      panelRef.current.layout.modes.length === 1 &&
-      !restoredLayoutPreference.current
-    ) {
-      setMode("files");
+    if (!panelRef.current.isPanelOpen) {
+      const tab = reviewToolTab("new");
+      setTabState((current) => ({
+        ...addReviewTab(current, tab),
+        paneTabIds: [tab.id],
+        activeIndex: 0
+      }));
     }
     setIsPanelOpen((open) => !open);
-  }, [setMode]);
+  }, []);
 
   const openChangesPanel = useCallback((): void => {
     setMode("changes");

@@ -122,7 +122,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     }
   );
 
-  it("persists a split layout per session and keeps it across whole-panel close and reopen", () => {
+  it("preserves tabs but shows New tab when reopening a saved split layout", () => {
     const source = workspaceSource(makeWorkspace());
     const first = renderHook(() => useReviewState(source, null, { sessionId: "session-split" }));
     act(() => {
@@ -143,7 +143,12 @@ describe("useReviewState — IPC fan-out resistance", () => {
 
     act(() => restored.result.current.togglePanel());
     expect(restored.result.current.isPanelOpen).toBe(true);
-    expect(restored.result.current.layout.modes).toEqual(["changes", "files"]);
+    expect(restored.result.current.layout.modes).toEqual(["new"]);
+    expect(restored.result.current.tabs?.items.map((tab) => tab.id)).toEqual(
+      expect.arrayContaining(["tool:changes", "tool:files", "tool:new"])
+    );
+    act(() => restored.result.current.openChangesPanel());
+    expect(restored.result.current.mode).toBe("changes");
   });
 
   it("restores the legacy per-session mode when no layout has been saved yet", () => {
@@ -220,7 +225,7 @@ describe("useReviewState — IPC fan-out resistance", () => {
     expect(result.current.isPanelOpen).toBe(false);
     act(() => result.current.togglePanel());
     expect(result.current.isPanelOpen).toBe(true);
-    expect(result.current.mode).toBe("changes");
+    expect(result.current.mode).toBe("new");
     unmount();
     resetTerminalTabsForTests();
   });

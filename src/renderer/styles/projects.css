@@ -57,8 +57,10 @@
 .project-folder-path { display: grid; gap: 0; flex: 1; min-width: 0; }
 .project-folder-path strong { font-size: var(--text-sm-plus); line-height: 26px; font-weight: var(--weight-medium); overflow-wrap: anywhere; }
 .project-folder-path span { font-size: var(--text-xs); line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
-.project-folder-primary { border-radius: var(--radius-sm); padding: 3px 6px; color: var(--muted-strong); background: var(--panel-sunken); font-size: var(--text-2xs-plus); line-height: 20px; }
-.project-folder-row .settings-button { flex-shrink: 0; font-size: var(--text-xs); }
+.project-folder-primary-choice { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; flex-shrink: 0; color: var(--muted-strong); font-size: var(--text-xs); cursor: pointer; }
+.project-folder-primary-choice input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.project-folder-primary-choice:has(input:checked) { color: var(--text); }
+.project-folder-primary-choice:has(input:disabled) { opacity: 0.5; cursor: default; }
 .project-folders-actions { justify-content: flex-end; padding-top: 8px; }
 .project-folders-actions > [role="status"] { margin-right: auto; }
 .project-folders-actions .project-folders-submit { background: var(--ink); color: var(--bubble-on-ink); border-color: var(--ink); }
@@ -73,6 +75,6 @@
   .project-dialog { padding: 18px; }
   .project-folder-row { flex-wrap: wrap; }
   .project-folder-path { flex-basis: calc(100% - 30px); }
-  .project-folder-row > .settings-button { margin-left: 26px; }
+  .project-folder-primary-choice { margin-left: 26px; }
   .project-folder-context { padding-right: 0; }
 }

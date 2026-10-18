@@ -60,12 +60,7 @@ export function ProjectOverviewSettings({ project, folders, onProjectUpdated }: 
   }
 
   return (
-    <SettingGroup id="settings-project-overview" label="Project overview" action={api ? (
-      <button type="button" className="settings-button" disabled={busy || generating || Boolean(overview?.draft)}
-        onClick={() => void changeOverview("generate")}>
-        {generating ? "Generating…" : overview?.status === "failed" ? "Retry overview" : overview?.saved ? "Refresh overview" : "Generate overview"}
-      </button>
-    ) : null}>
+    <SettingGroup id="settings-project-overview" label="Project overview">
       <div className="settings-field">
         <label className="settings-field-label" htmlFor={inputId}>Overview</label>
         <p className="settings-note">Purpose, folder roles, and how the code fits together. Agents use this to find relevant files.</p>
@@ -86,6 +81,10 @@ export function ProjectOverviewSettings({ project, folders, onProjectUpdated }: 
         </div>
       </div> : null}
       {api ? <div className="settings-form-footer">
+        <button type="button" className="settings-button" disabled={busy || generating || Boolean(overview?.draft)}
+          onClick={() => void changeOverview("generate")}>
+          {generating ? "Generating…" : overview?.status === "failed" ? "Retry overview" : overview?.saved ? "Refresh overview" : "Generate overview"}
+        </button>
         <button type="button" className="settings-button" disabled={busy || !dirty || conflict}
           onClick={() => void changeOverview("save")}>Save overview</button>
         {dirty && !conflict ? <button type="button" className="settings-button" disabled={busy}

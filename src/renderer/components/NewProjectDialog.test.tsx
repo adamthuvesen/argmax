@@ -28,13 +28,13 @@ describe("NewProjectDialog", () => {
     expect(submit).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     expect(await screen.findByText("app")).toBeInTheDocument();
-    expect(screen.getByText("Primary")).toBeInTheDocument();
+    expect(screen.getAllByRole("radio", { checked: true })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     expect(await screen.findByText("dbt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Add folder" })).toBeEnabled());
     expect(within(screen.getByRole("list", { name: "Project folders" })).getAllByRole("listitem")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Make dbt primary" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Make dbt primary" }));
     fireEvent.click(submit);
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith({
       name: "AI Analytics", folders: ["/repos/app", "/repos/dbt"], primaryPath: "/repos/dbt"
@@ -66,8 +66,8 @@ describe("NewProjectDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     await screen.findByText("dbt");
     fireEvent.click(screen.getByRole("button", { name: "Remove folder app" }));
-    expect(screen.queryByRole("button", { name: "Make dbt primary" })).toBeNull();
-    expect(screen.getByText("Primary")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Make dbt primary" })).toBeChecked();
+    expect(screen.getAllByRole("radio", { checked: true })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Remove folder dbt" }));
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
   });

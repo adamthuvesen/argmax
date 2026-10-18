@@ -74,7 +74,7 @@ describe("ProjectsSettings", () => {
     const onProjectUpdated = vi.fn();
     render(<ProjectsSettings projects={[project()]} onProjectUpdated={onProjectUpdated} />);
     fireEvent.change(await screen.findByLabelText("Project name"), { target: { value: "Agent tools" } });
-    fireEvent.click(screen.getByRole("button", { name: "Make docs primary" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Make docs primary" }));
     fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
     await screen.findByText("research");
     fireEvent.click(screen.getByRole("button", { name: "Remove folder argmax" }));

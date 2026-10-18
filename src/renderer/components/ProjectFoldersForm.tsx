@@ -113,13 +113,12 @@ export function ProjectFoldersForm({
                     <strong>{folderName}</strong>
                     <span title={path}>{path}</span>
                   </div>
-                  {primary ? <span className="project-folder-primary">Primary</span> : (
-                    <button type="button" className="settings-button settings-button-quiet" disabled={busy}
+                  <label className="project-folder-primary-choice">
+                    <input type="radio" name={`${nameId}-primary`} checked={primary} disabled={busy}
                       aria-label={`Make ${folderName} primary`}
-                      onClick={() => { setPrimaryPath(path); setSaved(false); }}>
-                      Make primary
-                    </button>
-                  )}
+                      onChange={() => { setPrimaryPath(path); setSaved(false); }} />
+                    <span>Primary</span>
+                  </label>
                   <button type="button" className="small-icon" disabled={busy}
                     aria-label={`Remove folder ${folderName}`}
                     onClick={() => {

@@ -1299,10 +1299,10 @@ describe("Sidebar — Priority section", () => {
     );
 
     const header = screen.getByText("Priority").parentElement!.parentElement!;
-    fireEvent.click(within(header).getByRole("button", { name: "Clear read chats from Priority" }));
+    fireEvent.click(within(header).getByRole("button", { name: "Clear Priority" }));
 
-    // Active and unread chats stay in Priority.
-    expect(onClearPriority).toHaveBeenCalledWith(["w-blocked", "w-calm"]);
+    // A running chat stays in Priority; an unread one clears with the rest.
+    expect(onClearPriority).toHaveBeenCalledWith(["w-blocked", "w-calm", "w-unread"]);
     // The click belongs to the button, not the header's collapse toggle.
     expect(screen.getByRole("button", { name: "Hide Priority chats" })).toBeInTheDocument();
   });
@@ -2783,7 +2783,7 @@ describe("Sidebar — launched chat nesting", () => {
     fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
     expect(screen.queryByRole("menuitem", { name: "Mark Done" })).not.toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
-    fireEvent.click(screen.getByRole("button", { name: "Clear read chats from Priority" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear Priority" }));
     expect(onClearPriority).toHaveBeenCalledWith(["child"]);
   });
 

@@ -727,10 +727,13 @@ export function Sidebar({
     () =>
       rawPriorityEntries
         .filter((entry) => priorityWorkspaceIds.has(chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id))
-        .filter((entry) => !entry.working && !unreadWorkspaces.has(entry.workspace.id))
+        // Unread chats clear too: leaving Priority does not mark them read, so
+        // the unread dot still shows where the chat lives. A rule that skipped
+        // them flipped the eraser on and off as chats were opened.
+        .filter((entry) => !entry.working)
         .filter((entry) => entry.attention !== null || entry.workspace.priorityAddedAt)
         .map((entry) => entry.workspace.id),
-    [rawPriorityEntries, priorityWorkspaceIds, chatTree, unreadWorkspaces]
+    [rawPriorityEntries, priorityWorkspaceIds, chatTree]
   );
   // "Add to Priority" only makes sense while the section exists.
   const addToPriority = showPriority ? onAddToPriority : undefined;
@@ -1660,8 +1663,10 @@ export function Sidebar({
                 <button
                   className="small-icon"
                   type="button"
-                  title="Clear read chats from Priority"
-                  aria-label="Clear read chats from Priority"
+                  title={dismissablePriorityIds.length === 0
+                    ? "Nothing to clear while every chat here is running"
+                    : "Clear Priority"}
+                  aria-label="Clear Priority"
                   disabled={dismissablePriorityIds.length === 0}
                   onClick={(event) => {
                     event.stopPropagation();

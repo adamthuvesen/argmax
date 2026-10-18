@@ -59,9 +59,9 @@ describe("ChangesTree", () => {
       ]
     });
 
-    expect(screen.getByRole("img", { name: "Added, 12 insertions, 0 deletions" }).textContent).toBe("+");
-    expect(screen.getByRole("img", { name: "Deleted, 0 insertions, 1 deletion" }).textContent).toBe("−");
-    expect(screen.getByRole("img", { name: "Modified, 4 insertions, 6 deletions" }).textContent).toBe("·");
+    expect(screen.getByRole("img", { name: "Added, 12 insertions, 0 deletions" })).toHaveAttribute("data-status", "added");
+    expect(screen.getByRole("img", { name: "Deleted, 0 insertions, 1 deletion" })).toHaveAttribute("data-status", "deleted");
+    expect(screen.getByRole("img", { name: "Modified, 4 insertions, 6 deletions" })).toHaveAttribute("data-status", "modified");
   });
 
   it("reports the selected row and passes clicks through as paths", () => {

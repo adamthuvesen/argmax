@@ -31,10 +31,26 @@ const INDENT_STEP = 12;
 
 type ChangeStatus = "added" | "modified" | "deleted";
 
-const STATUS_GLYPH: Record<ChangeStatus, string> = {
-  added: "+",
-  modified: "·",
-  deleted: "−"
+// Drawn, not typed: a +, − or · character centres its line box, not its ink,
+// and where the ink sits differs by font, so a text glyph drifted off the
+// badge's centre whenever the app font changed. A 7px grid in the badge's 11px
+// content box centres each mark on whole pixels.
+const STATUS_GLYPH: Record<ChangeStatus, JSX.Element> = {
+  added: (
+    <svg viewBox="0 0 7 7" aria-hidden="true">
+      <path d="M3.5 1v5M1 3.5h5" />
+    </svg>
+  ),
+  modified: (
+    <svg viewBox="0 0 7 7" aria-hidden="true">
+      <circle cx="3.5" cy="3.5" r="1.25" />
+    </svg>
+  ),
+  deleted: (
+    <svg viewBox="0 0 7 7" aria-hidden="true">
+      <path d="M1 3.5h5" />
+    </svg>
+  )
 };
 
 const STATUS_WORD: Record<ChangeStatus, string> = {

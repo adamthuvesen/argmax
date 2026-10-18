@@ -19,6 +19,10 @@
   font-size: var(--text-xs);
 }
 
+.project-folder-change-working + .project-folder-changes {
+  padding-top: 0;
+}
+
 .project-folder-change-working {
   flex: 0 0 auto;
   min-width: 0;

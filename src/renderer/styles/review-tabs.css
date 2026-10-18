@@ -15,6 +15,8 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 2px;
   padding: 2px;
 }
 
@@ -25,10 +27,11 @@
 .review-resource-tab {
   position: relative;
   display: flex;
-  flex: 1 1 180px;
+  flex: 0 0 var(--review-tab-width, 180px);
   align-items: center;
   min-width: 132px;
-  max-width: 240px;
+  max-width: 266px;
+  scroll-snap-align: start;
   height: 30px;
   border: 1px solid transparent;
   border-radius: var(--radius-xl);

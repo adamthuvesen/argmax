@@ -44,12 +44,12 @@ describe("ReviewTabsBar", () => {
     fireEvent.scroll(strip);
     expect(screen.getByRole("button", { name: "Scroll tabs left" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Scroll tabs right" }));
-    expect(scrollBy).toHaveBeenLastCalledWith({ left: 225, behavior: "auto" });
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: 298, behavior: "auto" });
     strip.scrollLeft = 400;
     fireEvent.scroll(strip);
     expect(screen.getByRole("button", { name: "Scroll tabs right" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Scroll tabs left" }));
-    expect(scrollBy).toHaveBeenLastCalledWith({ left: -225, behavior: "auto" });
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: -298, behavior: "auto" });
   });
 
   it("navigates resource tabs with arrows, Home, and End, and closes the focused resource with Delete", () => {

@@ -94,6 +94,16 @@ export function ReviewTabsBar({
       setOverflow((previous) => previous.left === left && previous.right === right ? previous : { left, right });
     };
     const revealActive = (): void => {
+      const firstTab = list.firstElementChild;
+      if (firstTab instanceof HTMLElement && list.clientWidth > 0) {
+        const style = getComputedStyle(list);
+        const tabStyle = getComputedStyle(firstTab);
+        const gap = parseFloat(style.columnGap);
+        const available = list.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const slots = Math.min(list.childElementCount, Math.max(1, Math.floor((available + gap) / (parseFloat(tabStyle.minWidth) + gap))));
+        const width = Math.min(parseFloat(tabStyle.maxWidth), (available - gap * (slots - 1)) / slots);
+        list.style.setProperty("--review-tab-width", `${width}px`);
+      }
       if (activeId) tabButtons.current.get(activeId)?.parentElement?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
       measure();
     };
@@ -243,11 +253,11 @@ export function ReviewTabsBar({
       </div>
       {overflow.left || overflow.right ? <div className="review-tab-scroll-controls">
         <button type="button" className="review-tab-scroll" aria-label="Scroll tabs left" disabled={!overflow.left}
-          onClick={() => tabList.current?.scrollBy({ left: -Math.max(112, tabList.current.clientWidth * 0.75), behavior: "auto" })}>
+          onClick={() => tabList.current?.scrollBy({ left: -tabList.current.clientWidth + 2, behavior: "auto" })}>
           <ArrowLeft size={13} aria-hidden="true" />
         </button>
         <button type="button" className="review-tab-scroll" aria-label="Scroll tabs right" disabled={!overflow.right}
-          onClick={() => tabList.current?.scrollBy({ left: Math.max(112, tabList.current.clientWidth * 0.75), behavior: "auto" })}>
+          onClick={() => tabList.current?.scrollBy({ left: tabList.current.clientWidth - 2, behavior: "auto" })}>
           <ArrowRight size={13} aria-hidden="true" />
         </button>
       </div> : null}

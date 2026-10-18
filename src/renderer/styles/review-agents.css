@@ -1,7 +1,22 @@
-/* Agents pane in the review panel. The run reads as a stack of surfaces on
-   the panel rather than bands split by full-width rules: a strip of agent
-   chips, a masthead card that names the run, the brief as a quiet inset, and
-   the answer as the one lifted card. */
+/* Agents pane in the review panel. The run reads as a stack on the panel
+   rather than bands split by full-width rules: a strip of agent chips, a
+   masthead card that names the run, the brief as a quiet inset, and the
+   answer as closing prose. */
+
+/* One inset for the whole pane: the agent strip, the masthead card, and the
+   run under it all start and end 12px from the panel's edges. The chat's
+   22px floor, plus the 10px scrollbar gutter the run's scroller reserved on
+   both edges, put the strip, the card, and the body on three different lines
+   in a dock this narrow. A wide (expanded) panel still centres the run on the
+   chat's reading width. */
+.review-agents {
+  --session-inline-padding-min: var(--space-3);
+  --session-inline-padding: clamp(var(--space-3), calc((100% - var(--chat-content-width, 780px)) / 2), 2000px);
+}
+
+.review-agents .agent-activity-scroll {
+  scrollbar-gutter: auto;
+}
 
 /* ---- Agent strip ---- */
 
@@ -202,12 +217,14 @@
   color: var(--text-soft);
 }
 
-/* The answer: the one lifted surface in the run. */
+/* The answer reads as the run's closing prose, the way a chat's answer does,
+   not as a card: often it is only a one-line note that the report went back
+   to the parent chat. */
 .review-agents .agent-activity-final {
-  padding: var(--space-4) var(--space-5);
-  border-color: var(--line);
-  background: var(--composer-surface);
-  box-shadow: var(--shadow-1);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .review-agents .agent-activity-history-content > .agent-activity + .agent-activity {

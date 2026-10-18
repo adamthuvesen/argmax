@@ -993,7 +993,7 @@
   padding: var(--space-1);
   border: 1px solid var(--line);
   border-radius: var(--radius-surface);
-  background: var(--panel);
+  background: var(--popover);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
@@ -1015,7 +1015,7 @@
 
 .browser-address-suggestion:hover,
 .browser-address-suggestion[data-active] {
-  background: var(--panel-sunken);
+  background: var(--popover-row-active);
   color: var(--text);
 }
 

@@ -560,7 +560,7 @@
   width: max-content;
   min-width: 164px;
   padding: var(--space-1);
-  background: var(--panel);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
@@ -581,7 +581,7 @@
 .workspace-card-pr-actions-menu button:hover,
 .workspace-card-pr-actions-menu button:focus-visible {
   color: var(--text);
-  background: var(--panel-soft);
+  background: var(--popover-row-active);
   outline: none;
 }
 

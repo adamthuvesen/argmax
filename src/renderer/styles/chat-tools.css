@@ -363,7 +363,7 @@
   width: max-content;
   min-width: 168px;
   padding: 10px 12px 11px;
-  background: var(--panel);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);
@@ -654,7 +654,7 @@
   min-width: 220px;
   max-width: 300px;
   padding: 10px 12px 11px;
-  background: var(--panel);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);

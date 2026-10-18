@@ -161,11 +161,12 @@
   --composer-tray: var(--composer-tray-solid);
 }
 
-/* In dark the solid fill is near black, and the glass behind a menu reads a
-   few steps lighter than the charcoal it replaced, so the island read as a
-   hole. Lift it a little toward the ink: still darker than the glass, no
-   longer black. Most menus portal out of the shell, so this is not scoped to
-   it; the island list above has lower specificity and loses to this. */
+/* Menus paint --popover, which tokens.css already lifts off the panels. What
+   still paints --panel inside one is near black in dark, and the glass behind
+   reads a few steps lighter than the charcoal it replaced, so that content
+   read as a hole. Lift it a little toward the ink. Most menus portal out of
+   the shell, so this is not scoped to it; the island list above has lower
+   specificity and loses to this. */
 :root[data-window-translucent="true"][data-theme="dark"] :is(
     [role="menu"],
     [role="listbox"],

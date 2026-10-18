@@ -41,7 +41,10 @@
   max-height: min(540px, 72vh);
   display: flex;
   flex-direction: column;
-  background: var(--overlay-panel);
+  /* The palette is a floating surface like every menu: it paints --popover,
+     and its selected row and tab pill take the menus' row fill. */
+  --overlay-panel-raised: var(--popover-row-active);
+  background: var(--popover);
   border-radius: var(--radius-dialog);
   border: 1px solid var(--line);
   box-shadow:

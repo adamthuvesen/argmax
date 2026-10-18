@@ -135,10 +135,18 @@ bubbles. Saved appearance choices take priority over these defaults.
   `--row-selected`: that token is tuned for rows on `--panel`, and the composer surface is already a
   step above `--panel`, so in dark the two land one value apart (`#212121` on `#202020`) and the
   selection disappears. `--question-dock-row` takes the same step measured from `--composer-surface`
-  instead. Rows in white popovers (pickers, menus, the file and slash lists, the agent roster) take
-  `--popover-row-active` for hover and the keyboard cursor. It is one step lighter than
-  `--row-selected` on paper, because the sidebar gray reads as a heavy block on white. Dark uses
-  `--row-selected` unchanged.
+  instead.
+- **Floating surfaces:** pickers, menus, the slash and file lists, the agent roster, the browser
+  address suggestions, the selection toolbar, the composer popovers and the command palette all
+  paint `--popover`. Their hover and keyboard-cursor row is `--popover-row-active`, one step off
+  `--popover`: 5% toward black on paper, 5% toward white in dark. On paper `--popover` is `--panel`,
+  already the lightest surface. In dark it cannot be: tied to `--panel` it followed the background
+  dial toward black and sat darker than the sidebar a menu opens from. Dark `--popover` therefore
+  takes the panel ramp at the lighter of the two dials (`min(--background-intensity,
+  --sidebar-intensity)`) and lifts it 4% toward white, so a menu stays a step above both grounds at
+  every setting (`#252525` over a `#1a1a1a` sidebar at the defaults). The palette rebinds
+  `--overlay-panel-raised` to the row fill locally, so its tabs and selected row follow too. A new
+  floating surface paints `--popover`, never `--panel`.
 - **Typography:**
   - Chrome: `--font-ui` (System Sans default).
   - The System Sans (SF Pro) option uses the native OS sans font for UI and prose, with system mono for the terminal. It needs no font download. Removed picker choices fall back to System Sans when read from saved preferences.

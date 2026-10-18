@@ -550,7 +550,7 @@
   padding: 6px;
   list-style: none;
   overflow-y: auto;
-  background: var(--panel);
+  background: var(--popover);
   border: 0.5px solid color-mix(in oklab, var(--line-strong) 70%, transparent);
   border-radius: var(--radius-surface);
   box-shadow: var(--picker-shadow);
@@ -637,7 +637,7 @@ body > .picker-popover-portaled.settings-picker-popover {
   z-index: 1;
   margin: 0 -6px;
   padding-inline: 15px 18px;
-  background: color-mix(in oklab, var(--panel) 94%, transparent);
+  background: color-mix(in oklab, var(--popover) 94%, transparent);
   backdrop-filter: blur(6px);
 }
 
@@ -876,7 +876,7 @@ body > .picker-popover-portaled.settings-picker-popover {
   z-index: 30;
   width: 292px;
   padding: 12px 18px 12px;
-  background: var(--panel);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-surface);
   box-shadow: var(--shadow-2);
@@ -1310,7 +1310,7 @@ body > .picker-popover-portaled.settings-picker-popover {
   padding: 8px 12px 6px;
   color: var(--muted);
   font-size: var(--text-2xs);
-  background: var(--panel);
+  background: var(--popover);
   border-bottom: 1px solid var(--line-soft);
   list-style: none;
 }

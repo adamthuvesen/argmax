@@ -56,12 +56,6 @@ interface PriorityReason {
    * measured against the session alone could not see a PR go red.
    */
   since: string;
-  /**
-   * Epoch ms when this reason lapses on its own, or null when only the thing
-   * it names can clear it. An unanswered question does not expire; an
-   * unread reply does.
-   */
-  idleAt: number | null;
 }
 
 /**
@@ -91,30 +85,6 @@ interface PriorityEntry {
   attention: PriorityAttention | null;
   /** True while a session on the workspace is mid-turn. */
   working: boolean;
-  /**
-   * Epoch ms when this row goes quiet long enough to leave the section on its
-   * own. Null while it is working, when nothing ages it out (a manual add), or
-   * when every reason it holds waits on an event rather than a clock.
-   */
-  idleAt: number | null;
-}
-
-/**
- * A reply nobody has read yet is history after this long — it stays in the
- * normal groups but no longer floats into Priority. The clock runs from the
- * last message, so reading a row does not demote it early. A workspace that is
- * still working never goes idle, however long the turn runs.
- *
- * Only the reasons a clock can resolve use it. An approval, an unanswered
- * question, a red check and an open pull request are all still true half an
- * hour later, so they wait for the event that ends them (or a "Done").
- */
-export const PRIORITY_IDLE_MS = 30 * 60 * 1000;
-
-/** When a quiet reason ages out; null when its last message is unreadable. */
-function idleDeadline(lastActivityAt: string): number | null {
-  const lastActivityMs = Date.parse(lastActivityAt);
-  return Number.isFinite(lastActivityMs) ? lastActivityMs + PRIORITY_IDLE_MS : null;
 }
 
 function rank(kind: PriorityReasonKind): number {
@@ -131,7 +101,7 @@ interface WorkspaceAttention {
   attention: PriorityAttention;
   /** When `attention` became current. */
   changedAt: string;
-  /** The attention session's last message, the clock behind `PRIORITY_IDLE_MS`. */
+  /** The attention session's last message. */
   lastActivityAt: string;
 }
 
@@ -182,7 +152,6 @@ function inPlay(workspace: WorkspaceSummary): boolean {
 interface WorkspaceReasonsInput {
   workspaces: WorkspaceSummary[];
   sessions: SessionSummary[];
-  nowMs: number;
   /**
    * Workspaces whose latest reply the user has not opened. Reading clears
    * `review-ready` and nothing else: opening a chat means you have seen what
@@ -204,9 +173,8 @@ interface WorkspaceReasonsInput {
 function computeWorkspaceReasons(
   input: WorkspaceReasonsInput
 ): Map<string, PriorityReason[]> {
-  const { workspaces, sessions, nowMs, unreadWorkspaceIds } = input;
+  const { workspaces, sessions, unreadWorkspaceIds } = input;
   const bySession = loudestSession(sessions);
-  const working = workingWorkspaceIds(sessions);
   const result = new Map<string, PriorityReason[]>();
 
   for (const workspace of workspaces) {
@@ -219,18 +187,11 @@ function computeWorkspaceReasons(
     // ever failed, so they stay out until their attention next moves.
     if (found && found.changedAt !== null) {
       // Once the reply has been read there is nothing left to review, so the
-      // weakest session reason drops on sight rather than waiting out a clock.
+      // weakest session reason drops on sight.
       const stillUnread = unreadWorkspaceIds?.has(workspace.id) ?? true;
       const wanted = found.kind !== "review-ready" || stillUnread;
-      // Only the reasons a clock resolves carry a deadline. The rest hold
-      // their place until the thing they name is dealt with.
-      const clocked = found.kind !== "approval-needed" && found.kind !== "question-asked";
-      const idleAt = clocked && !working.has(workspace.id)
-        ? idleDeadline(found.lastActivityAt)
-        : null;
-      const lapsed = clocked && !working.has(workspace.id) && (idleAt === null || nowMs > idleAt);
-      if (wanted && !lapsed) {
-        reasons.push({ kind: found.kind, since: found.changedAt, idleAt });
+      if (wanted) {
+        reasons.push({ kind: found.kind, since: found.changedAt });
       }
     }
 
@@ -240,9 +201,9 @@ function computeWorkspaceReasons(
     // proof this PR state is something it actually saw.
     if (workspacePrSummaryState(workspace) === "OPEN" && workspace.prActivityAt) {
       if (workspace.prCheckState === "failure") {
-        reasons.push({ kind: "ci-red", since: workspace.prActivityAt, idleAt: null });
+        reasons.push({ kind: "ci-red", since: workspace.prActivityAt });
       }
-      reasons.push({ kind: "pr-open", since: workspace.prActivityAt, idleAt: null });
+      reasons.push({ kind: "pr-open", since: workspace.prActivityAt });
     }
 
     const live = workspace.priorityAddedAt
@@ -263,11 +224,10 @@ function computeWorkspaceReasons(
 export function computeWorkspaceAttention(
   workspaces: WorkspaceSummary[],
   sessions: SessionSummary[],
-  nowMs: number,
   unreadWorkspaceIds?: ReadonlySet<string>
 ): Map<string, WorkspaceAttention> {
   const bySession = loudestSession(sessions);
-  const reasons = computeWorkspaceReasons({ workspaces, sessions, nowMs, unreadWorkspaceIds });
+  const reasons = computeWorkspaceReasons({ workspaces, sessions, unreadWorkspaceIds });
   const result = new Map<string, WorkspaceAttention>();
   for (const [workspaceId, workspaceReasons] of reasons) {
     const top = workspaceReasons.find((reason) => ATTENTION_REASONS.has(reason.kind));
@@ -287,11 +247,11 @@ export function computeWorkspaceAttention(
  * a manual add). `archived` and `kept` workspaces are excluded — keeping is an
  * explicit "I'm done here" — as is anything mid-archive.
  *
- * A row holds its place while it is working, and after that for as long as its
- * strongest reason lasts: an unread reply for `PRIORITY_IDLE_MS`, an approval
- * or a question until it is answered, a red check until it goes green, an open
- * pull request until it closes. Right-click → "Done" clears everything true at
- * that moment and nothing that happens afterwards.
+ * A row holds its place while it is working, and after that until every
+ * reason is resolved or dismissed. Reading clears an unread reply. An
+ * approval or question waits for an answer, a red check waits for green, and
+ * an open pull request waits until it closes. Right-click → "Done" clears
+ * everything true at that moment and nothing that happens afterwards.
  *
  * Sorting:
  * 1) Working rows are always at the top (sorted by last message descending).
@@ -308,13 +268,11 @@ export function computeWorkspaceAttention(
 export function computePriorityEntries(
   workspaces: WorkspaceSummary[],
   sessions: SessionSummary[],
-  nowMs: number,
   unreadWorkspaceIds?: ReadonlySet<string>
 ): PriorityEntry[] {
   const reasonsByWorkspace = computeWorkspaceReasons({
     workspaces,
     sessions,
-    nowMs,
     unreadWorkspaceIds
   });
   const workingWorkspaces = workingWorkspaceIds(sessions);
@@ -340,8 +298,7 @@ export function computePriorityEntries(
       // its own; otherwise it renders plain.
       reason: top?.kind ?? null,
       attention: top && ATTENTION_REASONS.has(top.kind) ? (top.kind as PriorityAttention) : null,
-      working,
-      idleAt: working ? null : earliestIdle(reasons)
+      working
     });
   }
 
@@ -360,32 +317,4 @@ export function computePriorityEntries(
     return a.workspace.id < b.workspace.id ? -1 : 1;
   });
   return entries;
-}
-
-/**
- * When a row next changes on its own. A row leaves only once *every* reason
- * holding it has lapsed, so one reason that waits on an event (an open pull
- * request) means the row has no deadline at all.
- */
-function earliestIdle(reasons: readonly PriorityReason[]): number | null {
-  let latest: number | null = null;
-  for (const reason of reasons) {
-    if (reason.idleAt === null) return null;
-    if (latest === null || reason.idleAt > latest) latest = reason.idleAt;
-  }
-  return latest;
-}
-
-/**
- * When the section next changes on its own: the earliest moment a listed row
- * crosses the idle line. Null when nothing on screen is aging, so the caller
- * can arm one timer instead of polling a clock.
- */
-export function nextPriorityIdleAt(entries: PriorityEntry[]): number | null {
-  let earliest: number | null = null;
-  for (const entry of entries) {
-    if (entry.idleAt === null) continue;
-    if (earliest === null || entry.idleAt < earliest) earliest = entry.idleAt;
-  }
-  return earliest;
 }

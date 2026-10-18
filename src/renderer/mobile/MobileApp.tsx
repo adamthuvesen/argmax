@@ -509,14 +509,12 @@ export function MobileApp(): JSX.Element {
   // Three sections, same shape and precedence as the desktop sidebar: Pinned
   // on top, then Priority (working rows first, then the rest by last message),
   // then everything else newest-activity first. A row lives in exactly one of
-  // them. Priority ages rows out 30 minutes after their last message, which
-  // the shared minute clock below is close enough to notice.
+  // them. Priority stays until its reason is resolved or dismissed.
   const { pinnedRows, priorityRows, activityRows } = useMemo(() => {
     const sessionsByWorkspace = chatSessionByWorkspace(snapshot.sessions);
     const attentionByWorkspace = computeWorkspaceAttention(
       snapshot.workspaces,
       snapshot.sessions,
-      nowMs,
       unreadIds
     );
     // A workspace with no session is a dead row: tapping it resolves no
@@ -547,7 +545,6 @@ export function MobileApp(): JSX.Element {
     const priorityRows = computePriorityEntries(
       visible.filter((workspace) => workspace.kind === "git"),
       snapshot.sessions,
-      nowMs,
       unreadIds
     ).flatMap((entry) => rowsById.get(entry.workspace.id) ?? []);
     const promoted = new Set(priorityRows.map((row) => row.workspace.id));
@@ -561,7 +558,7 @@ export function MobileApp(): JSX.Element {
       priorityRows,
       activityRows: rest.filter((row) => !row.workspace.pinned)
     };
-  }, [hiddenMultitasks, nowMs, snapshot.sessions, snapshot.workspaces, unreadIds, workingWorkspaces]);
+  }, [hiddenMultitasks, snapshot.sessions, snapshot.workspaces, unreadIds, workingWorkspaces]);
 
   const filteredRows = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();

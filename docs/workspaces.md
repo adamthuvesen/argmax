@@ -163,13 +163,13 @@ Workspaces holding at least one live **reason**, and workspaces with a live turn
 | --- | --- | --- |
 | `approval-needed` | a pending approval | the decision |
 | `question-asked` | an unanswered `AskUserQuestion` (see [chat-cards.md](chat-cards.md)) | answering it |
-| `blocked` | session `blocked` / `waiting` | 30 minutes of silence |
-| `failed` | session `failed` | 30 minutes of silence |
+| `blocked` | session `blocked` / `waiting` | resolution or explicit dismissal |
+| `failed` | session `failed` | resolution or explicit dismissal |
 | `ci-red` | the attributed PR's check rollup at `failure` ([gh.md](gh.md)) | checks going green, or the PR closing |
-| `review-ready` | a completed turn **whose reply is still unread** | opening the chat, or 30 minutes of silence |
+| `review-ready` | a completed turn **whose reply is still unread** | reading the reply and leaving the chat |
 | `pr-open` | the attributed PR at `OPEN` | the PR merging or closing |
 
-- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Only the reasons a clock can resolve carry `PRIORITY_IDLE_MS` (30 minutes from the last message); an approval, a question, a red check and an open PR are all still true half an hour later, so they wait for the event that ends them. A row leaves once *every* reason holding it has lapsed.
+- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Reasons never expire with time. A row leaves once every reason is resolved or dismissed. The selected chat stays in place after reading until you leave it.
 - Reading is asymmetric: opening a chat resolves `review-ready` and nothing else. Unread state is this device's own (`localStorage`, see [sessionUnread.ts](../src/renderer/lib/sessionUnread.ts)), so the phone and the desktop disagree about what has been read.
 - Default order: working rows first, then by reason strength (the table above), then by last message descending.
 - Drag Priority chats to set their order in either sidebar view. The order persists across restarts in `localStorage.argmax.sidebar.workspaceOrder`, under `priority`, like Pinned ordering. New entries follow the saved order and use the default order among themselves. The row's accessible title names its strongest reason.
@@ -205,14 +205,14 @@ An attributed pull request replaces the default status marker with a GitHub PR g
 
 Changes groups the chat's checkout and the project's other enabled folders.
 Additional repositories show uncommitted changes across their shared checkout, including edits from other chats.
-Their diffs support inspection. Staging and reverting remain attached to the chat's working checkout.
+Their diffs are for inspection only. The Changes sidebar has no staging or revert actions.
 Refresh reads every group. Workspace and session state changes refresh the groups without a recurring poll.
 
 This preview tracks pull requests only for each project's original primary repository.
 Chats in other repositories receive an explicit error from PR tracking and cleanup actions.
 Use a separate project when those repositories need their own PR tracking.
 
-The review panel can show two views stacked vertically. Right-click a view tab and choose **Split below**, or drag a tab onto the upper or lower half of the panel. Drag the divider to resize the views, or focus it and use the arrow keys. Each view appears once. Selecting a tab already shown in the other half swaps the views. Actions from the chat use the half where the requested view is already visible. Closing either half expands the remaining view.
+The review panel can show two tabs stacked vertically. Right-click a tab in the strip and choose **Show above** or **Show below**. The tab menu is the only way to split: dragging a tab only reorders the strip. Any two tabs can share the panel, including two browser pages, but only one file tab is visible at a time. Drag the divider to resize the views, or focus it and use the arrow keys. Selecting a tab already visible focuses its half. Actions from the chat use the half where the requested view is already visible. Closing either half expands the remaining view and keeps its tabs in the strip.
 
 The dock's width is a third of the pane (floored at its 360px minimum, capped at 560px) until the user drags its inner edge, which pins a pixel width in `argmax.session.rightPanel.pinnedWidth` and holds it from then on. Opening a subagent, Changes, Files, Browser or the Terminal all land on that one width — the dock is one column whichever view is in it.
 

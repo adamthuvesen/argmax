@@ -87,7 +87,7 @@ import {
   useDraggingWorkspaceId,
   workspaceDragSnapshot
 } from "../state/workspaceDrag.js";
-import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from "../lib/priority.js";
+import { computePriorityEntries, workingWorkspaceIds } from "../lib/priority.js";
 import { computeSnoozeShelf, snoozeTimerDelay } from "../lib/snooze.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
 import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
@@ -630,20 +630,32 @@ export function Sidebar({
     workingWorkspaces
   );
 
-  // An unread reply ages out 30 minutes after it lands, so the section has to
-  // move without a delta to prompt it. Rather than poll a clock, arm one timer
-  // for the exact moment the next listed row crosses that line. Rows held by
-  // an approval, a question, or a pull request have no such line and never
-  // arm it — they leave when the thing that raised them is dealt with.
-  const [priorityNow, setPriorityNow] = useState(() => Date.now());
+  const eligiblePriorityIds = [...new Set([...unreadWorkspaces, ...workingWorkspaces])].sort().join("\n");
+  const [prioritySelection, setPrioritySelection] = useState({
+    selectedId: selectedWorkspaceId,
+    eligibleIds: eligiblePriorityIds,
+    retainedId: null as string | null
+  });
+  let retainedId = prioritySelection.retainedId;
+  if (prioritySelection.selectedId !== selectedWorkspaceId || prioritySelection.eligibleIds !== eligiblePriorityIds) {
+    retainedId = selectedWorkspaceId && (
+      (prioritySelection.selectedId === selectedWorkspaceId && prioritySelection.retainedId === selectedWorkspaceId) ||
+      prioritySelection.eligibleIds.split("\n").includes(selectedWorkspaceId)
+    ) ? selectedWorkspaceId : null;
+    setPrioritySelection({ selectedId: selectedWorkspaceId, eligibleIds: eligiblePriorityIds, retainedId });
+  }
+  const priorityUnreadIds = useMemo(() => {
+    const ids = new Set(unreadWorkspaces);
+    if (retainedId) ids.add(retainedId);
+    return ids;
+  }, [unreadWorkspaces, retainedId]);
   const rawPriorityEntries = useMemo(
     () => {
       const entries = showPriority
         ? computePriorityEntries(
             unsnoozedWorkspaces,
             snapshot.sessions,
-            priorityNow,
-            unreadWorkspaces
+            priorityUnreadIds
           )
         : [];
       const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
@@ -654,7 +666,7 @@ export function Sidebar({
         (positions.get(b.workspace.id) ?? manualOrder.length)
       );
     },
-    [showPriority, unsnoozedWorkspaces, snapshot.sessions, priorityNow, unreadWorkspaces, workspaceOrders]
+    [showPriority, unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds, workspaceOrders]
   );
   const rawPriorityByWorkspace = useMemo(
     () => new Map(rawPriorityEntries.map((entry) => [entry.workspace.id, entry])),
@@ -682,16 +694,6 @@ export function Sidebar({
     () => priorityEntries.map((entry) => entry.workspace.id),
     [priorityEntries]
   );
-
-  const nextPriorityIdle = nextPriorityIdleAt(rawPriorityEntries);
-  useEffect(() => {
-    if (nextPriorityIdle === null) return;
-    const timerId = window.setTimeout(
-      () => setPriorityNow(Date.now()),
-      Math.max(0, nextPriorityIdle - Date.now()) + 1
-    );
-    return () => window.clearTimeout(timerId);
-  }, [nextPriorityIdle]);
 
   // Project-name subtitles (screenshot-style two-line rows) for rows whose
   // group doesn't already name the project: Priority, Pinned, and the flat

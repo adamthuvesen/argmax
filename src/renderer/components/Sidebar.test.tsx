@@ -1066,9 +1066,6 @@ describe("Sidebar — date (sessions) view mode", () => {
 });
 
 describe("Sidebar — Priority section", () => {
-  // The Priority selector runs against real Date.now() and drops a row 30
-  // minutes after its last message, so fixture stamps are anchored to "now"
-  // rather than fixed dates, and sit inside that window.
   const MINUTES_AGO_5 = new Date(Date.now() - 5 * 60 * 1000).toISOString();
   const MINUTES_AGO_10 = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   const MINUTES_AGO_15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -1158,6 +1155,24 @@ describe("Sidebar — Priority section", () => {
     const blockedRow = screen.getByRole("button", { name: /Blocked task/ });
     expect(blockedRow).toHaveAttribute("title", expect.stringContaining("waiting for input"));
     expect(screen.queryByRole("button", { name: /Calm task/ })).toBeNull();
+  });
+
+  it("keeps a read reply in Priority until leaving the selected chat", () => {
+    const data = {
+      ...prioritySnapshot,
+      workspaces: [{ ...workspace("w-review", "Review task"), lastViewedAt: MINUTES_AGO_15, lastActivityAt: MINUTES_AGO_5 }],
+      sessions: [session("w-review", "review-ready", MINUTES_AGO_5)]
+    };
+    const props = { ...baseProps, showPriority: true, snapshot: data };
+    const { rerender } = render(<Sidebar {...props} selectedWorkspaceId={null} />);
+    expect(screen.getByRole("button", { name: /Review task/ })).toBeInTheDocument();
+    rerender(<Sidebar {...props} selectedWorkspaceId="w-review" />);
+    expect(screen.getByRole("button", { name: /Review task/ })).toBeInTheDocument();
+    const readData = { ...data, workspaces: data.workspaces.map((row) => ({ ...row, lastViewedAt: MINUTES_AGO_5 })) };
+    rerender(<Sidebar {...props} snapshot={readData} selectedWorkspaceId={null} />);
+    expect(screen.queryByText("Priority")).not.toBeInTheDocument();
+    rerender(<Sidebar {...props} snapshot={readData} selectedWorkspaceId="w-review" />);
+    expect(screen.queryByText("Priority")).not.toBeInTheDocument();
   });
 
   it("renders nothing when the setting is off", () => {
@@ -1471,7 +1486,7 @@ describe("Sidebar — Priority section", () => {
     expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
   });
 
-  it("leaves out a row that has been quiet for more than 30 minutes", () => {
+  it("keeps an unresolved row after more than 30 minutes", () => {
     const quietSnapshot: DashboardSnapshot = {
       ...prioritySnapshot,
       sessions: [
@@ -1480,21 +1495,19 @@ describe("Sidebar — Priority section", () => {
       ]
     };
     render(<Sidebar {...baseProps} showPriority snapshot={quietSnapshot} />);
-    expect(screen.queryByText("Priority")).toBeNull();
+    expect(screen.getByText("Priority")).toBeInTheDocument();
   });
 
-  it("drops a row on its own once it goes quiet, without waiting for a delta", () => {
+  it("keeps an unresolved row when time passes without a delta", () => {
     vi.useFakeTimers();
     try {
       render(<Sidebar {...baseProps} showPriority snapshot={prioritySnapshot} />);
       expect(screen.getByRole("button", { name: /Blocked task/ })).toBeInTheDocument();
 
-      // The last message was 10 minutes ago, so the row has 20 to go. No
-      // snapshot arrives in between — the section's own timer moves it.
       act(() => {
         vi.advanceTimersByTime(21 * 60 * 1000);
       });
-      expect(screen.queryByText("Priority")).toBeNull();
+      expect(screen.getByText("Priority")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

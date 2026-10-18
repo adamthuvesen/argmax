@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import { computePriorityEntries, nextPriorityIdleAt, PRIORITY_IDLE_MS } from "./priority.js";
+import { computePriorityEntries, computeWorkspaceAttention } from "./priority.js";
 
 const workspace = (id: string, overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary => ({
   id,
@@ -50,7 +50,6 @@ const session = (
   attentionChangedAt: "2026-05-12T15:00:00.000Z",
   startedAt: "2026-05-12T14:00:00.000Z",
   completedAt: null,
-  // Inside the idle window, so a settled row is listed on its attention alone.
   lastActivityAt: "2026-05-12T17:45:00.000Z",
   costUsd: 0,
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -59,8 +58,6 @@ const session = (
   launchKind: "agent",
   ...overrides
 });
-
-const NOW = Date.parse("2026-05-12T18:00:00.000Z");
 
 describe("computePriorityEntries", () => {
   it("includes only attention-worthy workspaces and sorts by lastActivityAt descending", () => {
@@ -78,8 +75,7 @@ describe("computePriorityEntries", () => {
         session("w-approval", "approval-needed", { lastActivityAt: "2026-05-12T17:55:00.000Z" }),
         session("w-blocked-old", "blocked", { attentionChangedAt: "2026-05-12T10:00:00.000Z", lastActivityAt: "2026-05-12T17:40:00.000Z" }),
         session("w-blocked-new", "blocked", { attentionChangedAt: "2026-05-12T12:00:00.000Z", lastActivityAt: "2026-05-12T17:50:00.000Z" })
-      ],
-      NOW
+      ]
     );
 
     expect(entries.map((entry) => entry.workspace.id)).toEqual([
@@ -101,8 +97,7 @@ describe("computePriorityEntries", () => {
         session("w-pinned-attention", "blocked"),
         session("w-pinned-manual", "approval-needed"),
         session("w-blocked", "blocked")
-      ],
-      NOW
+      ]
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-blocked"]);
   });
@@ -110,8 +105,7 @@ describe("computePriorityEntries", () => {
   it("excludes archived and kept workspaces", () => {
     const entries = computePriorityEntries(
       [workspace("w-archived", { state: "archived" }), workspace("w-kept", { state: "kept" })],
-      [session("w-archived", "failed"), session("w-kept", "review-ready")],
-      NOW
+      [session("w-archived", "failed"), session("w-kept", "review-ready")]
     );
     expect(entries).toEqual([]);
   });
@@ -119,8 +113,7 @@ describe("computePriorityEntries", () => {
   it("uses the highest-severity session when a workspace has several", () => {
     const entries = computePriorityEntries(
       [workspace("w-1")],
-      [session("w-1", "review-ready"), session("w-1", "blocked")],
-      NOW
+      [session("w-1", "review-ready"), session("w-1", "blocked")]
     );
     expect(entries).toHaveLength(1);
     expect(entries[0]?.attention).toBe("blocked");
@@ -136,8 +129,7 @@ describe("computePriorityEntries", () => {
     expect(
       computePriorityEntries(
         [dismissed],
-        [session("w-1", "review-ready", { attentionChangedAt: "2026-05-12T15:00:00.000Z" })],
-        NOW
+        [session("w-1", "review-ready", { attentionChangedAt: "2026-05-12T15:00:00.000Z" })]
       )
     ).toEqual([]);
 
@@ -145,33 +137,27 @@ describe("computePriorityEntries", () => {
     expect(
       computePriorityEntries(
         [dismissed],
-        [session("w-1", "approval-needed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })],
-        NOW
+        [session("w-1", "approval-needed", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })]
       )
     ).toHaveLength(1);
   });
 
-  it("drops a quiet row 30 minutes after its last message", () => {
-    // Both stopped talking; only the one inside the window is still triage.
-    const entries = computePriorityEntries(
-      [workspace("w-recent"), workspace("w-quiet")],
-      [
-        session("w-recent", "failed", {
-          state: "failed",
-          lastActivityAt: "2026-05-12T17:45:00.000Z"
-        }),
-        session("w-quiet", "failed", {
-          state: "failed",
-          lastActivityAt: "2026-05-12T17:15:00.000Z"
-        })
-      ],
-      NOW
-    );
-    expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-recent"]);
-  });
+  it.each(["review-ready", "failed", "blocked"] as const)(
+    "keeps an old %s reason until it is resolved or dismissed",
+    (attention) => {
+      const entries = computePriorityEntries(
+        [workspace("w-old", { lastActivityAt: "2020-01-01T00:00:00.000Z" })],
+        [session("w-old", attention, {
+          attentionChangedAt: "2020-01-01T00:00:00.000Z",
+          lastActivityAt: "2020-01-01T00:00:00.000Z"
+        })],
+        new Set(["w-old"])
+      );
+      expect(entries.map((entry) => entry.reason)).toEqual([attention]);
+    }
+  );
 
   it("keeps a working row however long the turn has run", () => {
-    // Reading a row no longer demotes it, and a live turn never goes idle.
     const entries = computePriorityEntries(
       [workspace("w-1")],
       [
@@ -179,27 +165,9 @@ describe("computePriorityEntries", () => {
           state: "running",
           lastActivityAt: "2026-05-11T09:00:00.000Z"
         })
-      ],
-      NOW
+      ]
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-1"]);
-    // A working row has no deadline, so the section has nothing to wait for.
-    expect(entries[0]?.idleAt).toBeNull();
-    expect(nextPriorityIdleAt(entries)).toBeNull();
-  });
-
-  it("reports the earliest idle deadline so the sidebar can arm one timer", () => {
-    const entries = computePriorityEntries(
-      [workspace("w-soon"), workspace("w-later")],
-      [
-        session("w-soon", "failed", { state: "failed", lastActivityAt: "2026-05-12T17:40:00.000Z" }),
-        session("w-later", "failed", { state: "failed", lastActivityAt: "2026-05-12T17:50:00.000Z" })
-      ],
-      NOW
-    );
-    expect(nextPriorityIdleAt(entries)).toBe(
-      Date.parse("2026-05-12T17:40:00.000Z") + PRIORITY_IDLE_MS
-    );
   });
 
   it("floats manual adds without attention, sorted by lastActivityAt descending", () => {
@@ -209,14 +177,30 @@ describe("computePriorityEntries", () => {
         workspace("w-blocked", { lastActivityAt: "2026-05-12T17:50:00.000Z" })
       ],
       [
-        // Manual entries ignore the idle gate (no attention stamp at all).
+        // A manual add does not need session attention.
         session("w-manual", "normal", { attentionChangedAt: undefined, lastActivityAt: "2026-05-12T17:40:00.000Z" }),
         session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z", lastActivityAt: "2026-05-12T17:50:00.000Z" })
-      ],
-      NOW
+      ]
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.attention])).toEqual([
       ["w-blocked", "blocked"],
+      ["w-manual", null]
+    ]);
+  });
+
+  it("keeps an old manual add after its reply is read", () => {
+    const entries = computePriorityEntries(
+      [workspace("w-manual", {
+        priorityAddedAt: "2020-01-01T00:00:00.000Z",
+        lastActivityAt: "2020-01-01T00:00:00.000Z"
+      })],
+      [session("w-manual", "review-ready", {
+        attentionChangedAt: "2020-01-01T00:00:00.000Z",
+        lastActivityAt: "2020-01-01T00:00:00.000Z"
+      })],
+      new Set()
+    );
+    expect(entries.map((entry) => [entry.workspace.id, entry.reason])).toEqual([
       ["w-manual", null]
     ]);
   });
@@ -227,8 +211,7 @@ describe("computePriorityEntries", () => {
       [
         session("w-live", "normal", { state: "running" }),
         session("w-blocked", "blocked", { attentionChangedAt: "2026-05-12T17:00:00.000Z" })
-      ],
-      NOW
+      ]
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.attention, entry.working])).toEqual([
       ["w-live", null, true],
@@ -247,8 +230,7 @@ describe("computePriorityEntries", () => {
         session("w-manual", "normal", { attentionChangedAt: undefined, lastActivityAt: "2026-05-12T17:55:00.000Z" }),
         session("w-older", "normal", { state: "running", lastActivityAt: "2026-05-12T17:00:00.000Z" }),
         session("w-newer", "normal", { state: "running", lastActivityAt: "2026-05-12T17:50:00.000Z" })
-      ],
-      NOW
+      ]
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-newer", "w-older", "w-manual"]);
   });
@@ -256,8 +238,7 @@ describe("computePriorityEntries", () => {
   it("drops a working row the moment its turn ends", () => {
     const entries = computePriorityEntries(
       [workspace("w-live")],
-      [session("w-live", "normal", { state: "complete" })],
-      NOW
+      [session("w-live", "normal", { state: "complete" })]
     );
     expect(entries).toEqual([]);
   });
@@ -277,8 +258,7 @@ describe("computePriorityEntries", () => {
           launchKind: "multitask",
           launchedBySessionId: parent.id
         })
-      ],
-      NOW
+      ]
     );
     expect(entries.map((entry) => [entry.workspace.id, entry.working])).toEqual([
       ["w-parent", true]
@@ -297,8 +277,7 @@ describe("computePriorityEntries", () => {
           launchKind: "multitask",
           launchedBySessionId: parent.id
         })
-      ],
-      NOW
+      ]
     );
     expect(entries).toEqual([]);
   });
@@ -309,8 +288,7 @@ describe("computePriorityEntries", () => {
     // flooding Priority with historical sessions.
     const entries = computePriorityEntries(
       [workspace("w-1")],
-      [session("w-1", "review-ready", { attentionChangedAt: undefined })],
-      NOW
+      [session("w-1", "review-ready", { attentionChangedAt: undefined })]
     );
     expect(entries).toEqual([]);
   });
@@ -322,19 +300,15 @@ describe("priority reasons", () => {
     prNumber: 412,
     prActivityAt: "2026-05-12T09:00:00.000Z"
   };
-  // Long past the idle window, so nothing but the PR can be holding the row.
+  // Old activity does not resolve a reason.
   const QUIET = { lastActivityAt: "2026-05-10T09:00:00.000Z" };
 
   it("keeps a workspace with an open pull request even after its chat goes quiet", () => {
     const entries = computePriorityEntries(
       [workspace("w-pr", { ...QUIET, ...OPEN_PR })],
-      [session("w-pr", "review-ready", QUIET)],
-      NOW
+      [session("w-pr", "normal", QUIET)]
     );
     expect(entries.map((entry) => entry.reason)).toEqual(["pr-open"]);
-    // Nothing about it is on a clock: it leaves when the PR does.
-    expect(entries[0]?.idleAt).toBeNull();
-    expect(nextPriorityIdleAt(entries)).toBeNull();
   });
 
   it("uses the aggregate PR summary instead of a stale primary scalar", () => {
@@ -344,8 +318,7 @@ describe("priority reasons", () => {
     };
     const entries = computePriorityEntries(
       [projected],
-      [session("w-pr", "normal", QUIET)],
-      NOW
+      [session("w-pr", "normal", QUIET)]
     );
 
     expect(entries.map((entry) => entry.reason)).toEqual(["pr-open"]);
@@ -354,8 +327,7 @@ describe("priority reasons", () => {
   it("says the checks are failing when they are, and ranks that above the PR itself", () => {
     const entries = computePriorityEntries(
       [workspace("w-red", { ...QUIET, ...OPEN_PR, prCheckState: "failure" })],
-      [session("w-red", "review-ready", QUIET)],
-      NOW
+      [session("w-red", "normal", QUIET)]
     );
     expect(entries[0]?.reason).toBe("ci-red");
     expect(entries[0]?.reasons.map((reason) => reason.kind)).toEqual(["ci-red", "pr-open"]);
@@ -366,20 +338,17 @@ describe("priority reasons", () => {
   it("leaves a merged pull request alone", () => {
     const entries = computePriorityEntries(
       [workspace("w-merged", { ...QUIET, ...OPEN_PR, prState: "MERGED" })],
-      [session("w-merged", "review-ready", QUIET)],
-      NOW
+      [session("w-merged", "normal", QUIET)]
     );
     expect(entries).toEqual([]);
   });
 
-  it("holds an unanswered question past the idle window", () => {
+  it("holds an old unanswered question until it is resolved", () => {
     const entries = computePriorityEntries(
       [workspace("w-asked", QUIET)],
-      [session("w-asked", "question-asked", QUIET)],
-      NOW
+      [session("w-asked", "question-asked", QUIET)]
     );
     expect(entries.map((entry) => entry.reason)).toEqual(["question-asked"]);
-    expect(entries[0]?.idleAt).toBeNull();
   });
 
   it("drops a review-ready row the reader has already opened, and keeps every other reason", () => {
@@ -391,7 +360,6 @@ describe("priority reasons", () => {
         session("w-asked", "question-asked"),
         session("w-pr", "review-ready")
       ],
-      NOW,
       read
     );
     // Reading resolves "there is a reply you have not seen" and nothing else.
@@ -402,20 +370,30 @@ describe("priority reasons", () => {
     const entries = computePriorityEntries(
       [workspace("w-unread")],
       [session("w-unread", "review-ready")],
-      NOW,
       new Set(["w-unread"])
     );
     expect(entries.map((entry) => entry.reason)).toEqual(["review-ready"]);
-    // This one *is* on a clock — it is the only reason silence resolves.
-    expect(entries[0]?.idleAt).not.toBeNull();
+  });
+
+  it("clears read review attention while keeping old failure attention", () => {
+    const attention = computeWorkspaceAttention(
+      [workspace("w-read"), workspace("w-failed")],
+      [
+        session("w-read", "review-ready", QUIET),
+        session("w-failed", "failed", QUIET)
+      ],
+      new Set()
+    );
+    expect([...attention].map(([id, state]) => [id, state.attention])).toEqual([
+      ["w-failed", "failed"]
+    ]);
   });
 
   it("spends a dismissal on what was true when it was made, not on what happens next", () => {
     const dismissedAt = "2026-05-12T10:00:00.000Z";
     const stale = computePriorityEntries(
       [workspace("w-pr", { ...QUIET, ...OPEN_PR, priorityDismissedAt: dismissedAt })],
-      [session("w-pr", "review-ready", QUIET)],
-      NOW
+      [session("w-pr", "normal", QUIET)]
     );
     expect(stale).toEqual([]);
 
@@ -429,8 +407,7 @@ describe("priority reasons", () => {
           priorityDismissedAt: dismissedAt
         })
       ],
-      [session("w-pr", "review-ready", QUIET)],
-      NOW
+      [session("w-pr", "normal", QUIET)]
     );
     expect(revived.map((entry) => entry.reason)).toEqual(["pr-open"]);
   });
@@ -444,8 +421,7 @@ describe("priority reasons", () => {
       [
         session("w-pr", "normal", { lastActivityAt: "2026-05-12T17:59:00.000Z" }),
         session("w-approval", "approval-needed", { lastActivityAt: "2026-05-12T17:30:00.000Z" })
-      ],
-      NOW
+      ]
     );
     expect(entries.map((entry) => entry.workspace.id)).toEqual(["w-approval", "w-pr"]);
   });

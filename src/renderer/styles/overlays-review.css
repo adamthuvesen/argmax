@@ -357,11 +357,7 @@
 
 .review-mode-tabs {
   --sliding-tab-background: var(--row-selected);
-  /* Every tab in the side panel is a pill: this mode switcher, the Files,
-     Agents and Terminal strips, and the browser's. One shape at four
-     heights (24-28px) reads as one family; --radius-lg on some and a pill on
-     others read as four. */
-  --sliding-tab-radius: 999px;
+  --sliding-tab-radius: var(--radius-ui);
   display: inline-flex;
   gap: var(--space-1_5);
 }
@@ -376,7 +372,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   font: inherit;
   color: var(--muted);
   cursor: pointer;
@@ -735,7 +731,7 @@
   max-width: 180px;
   /* The Files and Terminal strips' tab height, so the panel's tabs match. */
   height: 26px;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   color: var(--muted);
   /* A tab is a handle to carry, so a press on one never anchors a selection. */
   user-select: none;

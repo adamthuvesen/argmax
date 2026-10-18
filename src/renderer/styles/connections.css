@@ -163,7 +163,7 @@
 
 .connection-kind {
   padding: 1px 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: var(--panel-sunken);
 }
 

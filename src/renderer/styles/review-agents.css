@@ -120,7 +120,7 @@
 .review-agents .agent-activity-fact {
   min-height: 20px;
   padding: 0 var(--space-2);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: var(--overlay-med);
   color: var(--muted-strong);
 }
@@ -139,7 +139,7 @@
   gap: var(--space-1_5);
   min-height: 22px;
   padding: 0 var(--space-2_5) 0 var(--space-2);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: var(--overlay-med);
   color: var(--muted-strong);
   font-size: var(--text-xs);

@@ -13,7 +13,7 @@
 }
 
 /* ---- One chip floor ----
-   Every control on a composer's bottom row wears the same quiet fill: pills
+   Every control on a composer's bottom row wears the same quiet fill: chips
    for labels, circles for glyphs, one gap between all of them. That is the
    phone's composer, where `composerChipSurface` and `composerGlyphSurface`
    share a fill so "the floor reads as one row of controls rather than as icons
@@ -35,7 +35,7 @@
 :is(.composer-context, .session-input-toolbar)
   :is(.composer-context-chip, .composer-footer-chip):not(.model-picker-cluster--chip *) {
   height: var(--composer-chip-height);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
 }
 
 :is(.composer-context, .session-input-toolbar)

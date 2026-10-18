@@ -73,7 +73,7 @@
 
 .command-palette-tabs {
   --sliding-tab-background: var(--overlay-panel-raised);
-  --sliding-tab-radius: 999px;
+  --sliding-tab-radius: var(--radius-ui);
   display: flex;
   align-items: center;
   gap: 2px;
@@ -92,7 +92,7 @@
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   cursor: pointer;
   transition: color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
 }

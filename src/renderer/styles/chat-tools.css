@@ -285,7 +285,7 @@
   height: 26px;
   padding: 0 var(--space-2);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: color-mix(in oklab, var(--pr-open) 14%, transparent);
   color: var(--pr-open);
   font-family: var(--font-prose);

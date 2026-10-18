@@ -24,18 +24,14 @@ retain their exact colors.
 
 ## Corner radii
 
-Choose a radius by the element's role, using the shared semantic tokens:
+All rounded UI uses `--radius-ui` (10px), including tabs, buttons, inputs, rows, cards,
+menus, dialogs, and composers. Existing size and semantic aliases resolve to this one baseline.
+Do not introduce separate radii by component size until a new scale is explicitly agreed.
 
-| Role | Token | Radius |
-| --- | --- | --- |
-| Rectangular buttons, inputs, and icon controls | `--radius-control` | 10px |
-| Navigation, list, and menu rows | `--radius-row` | 10px |
-| Cards, menus, and floating panels | `--radius-surface` | 10px |
-| Dialogs, composers, and large transcript surfaces | `--radius-dialog` | 20px |
-
-Parent and nested sidebar rows use the same row radius, including hover, selection, and keyboard focus.
-Keep circles and intentional pills circular. Joined edges, diff lines, and full-width headers stay square.
-Use the same token on a surface and its interactive background. Do not select a different radius for each state.
+Parent and nested sidebar rows use the same radius, including hover, selection, and keyboard focus.
+True circles such as status dots, round glyph buttons, and switch knobs remain circular.
+Joined edges, diff lines, chart geometry, and full-width headers retain their required shape.
+Text chips and tabs use the shared radius, rather than a pill override.
 
 ## Core Design Constraints
 

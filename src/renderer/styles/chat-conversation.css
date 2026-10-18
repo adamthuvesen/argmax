@@ -781,9 +781,6 @@
   color: var(--muted-strong);
 }
 
-/* Same corner as the composer and the user bubble: a full-width surface in
-   the pane, not the tight chip --radius-md is for. Padding is pulled out with
-   the radius so the prose clears the curve at the corners. */
 .agent-activity-final {
   display: flex;
   min-width: 0;

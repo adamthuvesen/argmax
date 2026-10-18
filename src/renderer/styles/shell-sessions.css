@@ -37,7 +37,7 @@
   padding: 0 var(--space-1);
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
   line-height: 1;

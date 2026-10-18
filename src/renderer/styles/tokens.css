@@ -251,16 +251,17 @@
      override — it reads on paper and on charcoal alike. */
   --shadow-popover: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
 
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-2xl: 20px;
-  --radius-control: var(--radius-lg);
-  --radius-row: var(--radius-lg);
-  --radius-surface: var(--radius-lg);
-  --radius-dialog: var(--radius-2xl);
+  --radius-ui: 10px;
+  --radius-xs: var(--radius-ui);
+  --radius-sm: var(--radius-ui);
+  --radius-md: var(--radius-ui);
+  --radius-lg: var(--radius-ui);
+  --radius-xl: var(--radius-ui);
+  --radius-2xl: var(--radius-ui);
+  --radius-control: var(--radius-ui);
+  --radius-row: var(--radius-ui);
+  --radius-surface: var(--radius-ui);
+  --radius-dialog: var(--radius-ui);
 
   /* Sidebar row action icons — shared by the project row (… / chevron) and the
      session row (ide / pin / archive) so both stay one size and right-align on

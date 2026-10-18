@@ -481,7 +481,7 @@
   height: 26px;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   color: var(--muted);
   background: transparent;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);

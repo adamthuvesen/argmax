@@ -1466,7 +1466,7 @@ button.tool-call-row-button {
   -webkit-appearance: none;
   text-align: left;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-ui);
   background: transparent;
   box-shadow: none;
   cursor: pointer;
@@ -1671,7 +1671,7 @@ button.tool-call-row-button {
   flex: none;
   padding: 2px 9px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: transparent;
   color: var(--muted);
   font-family: inherit;

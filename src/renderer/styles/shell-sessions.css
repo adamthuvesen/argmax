@@ -300,9 +300,7 @@
 }
 
 .sidebar-chat-children {
-  margin-left: 16px;
-  padding-left: 8px;
-  border-left: 1px solid var(--line);
+  margin-left: var(--space-8);
 }
 
 .sidebar-chat-child {
@@ -310,14 +308,6 @@
   min-width: 0;
 }
 
-.sidebar-chat-child::before {
-  content: "";
-  position: absolute;
-  top: 17px;
-  left: -8px;
-  width: 7px;
-  border-top: 1px solid var(--line);
-}
 
 .session-row .session-link.session-link-renaming {
   padding-right: var(--space-2_5);

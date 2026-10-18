@@ -48,7 +48,7 @@
 }
 .project-folders-empty p { margin: 0; max-width: 320px; font-size: var(--text-sm); }
 .project-folders-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
-.project-folders-list > li { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.project-folders-list > li { padding: 12px 0; border-bottom: 1px solid var(--line); }
 .project-folder-row > svg { flex-shrink: 0; color: var(--muted); }
 .project-folder-path { display: grid; gap: 3px; flex: 1; min-width: 0; }
 .project-folder-path strong { font-size: var(--text-sm); font-weight: var(--weight-medium); overflow-wrap: anywhere; }
@@ -58,8 +58,8 @@
 .project-folders-actions { justify-content: flex-end; padding-top: 8px; }
 .project-folders-actions > [role="status"] { margin-right: auto; }
 .project-folders-actions .project-folders-submit { background: var(--ink); color: var(--bubble-on-ink); border-color: var(--ink); }
-.project-folder-context { padding: 10px 0 0 26px; display: grid; gap: 8px; }
-.project-folder-context .settings-note { margin: 0; }
+.project-folder-context { padding: 6px 0 0 26px; display: grid; gap: 6px; }
+.project-folder-context .settings-note { margin: 0; padding: 0; }
 .project-folder-context-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 @media (max-width: 480px) {

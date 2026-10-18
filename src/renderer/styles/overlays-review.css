@@ -726,7 +726,7 @@
   min-height: 0;
   min-width: 0;
   height: 100%;
-  padding: 8px 12px 4px 18px;
+  padding: 4px 12px 4px 18px;
   background: var(--bg);
 }
 

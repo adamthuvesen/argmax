@@ -23,10 +23,11 @@
 
 import { access, copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { delay, runChecked } from "./common.mjs";
-import { ensureDesktopForeground, openContextMenu, pressChord, pressMouseDown, readComposerText, selectComposerText, setInputValue, typeIntoComposer, waitForCodeMirror } from "./desktop.mjs";
+import { ensureDesktopForeground, openContextMenu, pressChord, pressMouseDown, pressNativeEscape, readComposerText, selectComposerText, setInputValue, typeIntoComposer, waitForCodeMirror } from "./desktop.mjs";
 import { writeJson } from "./evidence.mjs";
 import {
   VERIFICATION_BARRIERS,
@@ -1820,10 +1821,10 @@ export async function verifyComposerEditor({
 // focuses one of its own fields, while the page's `document.hasFocus()` still
 // reads false. What the person feels is the app document losing focus: their
 // keystrokes stop landing in the composer until they click it again.
-async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeoutMs, assertions, evidenceDir) {
+async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, nativeEscapePath, timeoutMs, assertions, evidenceDir) {
   await openWorkspaceRow(browser, workspace.id, timeoutMs);
   await waitForIdleControls(browser, timeoutMs);
-  await browser.execute(function driveMixedTabs(sessionId, base) {
+  await browser.execute(function driveMixedTabs(sessionId, base, escapePath) {
     const api = window.argmax.browser;
     const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const wait = async (read, label, attempts = 100) => {
@@ -1913,9 +1914,31 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeo
         document.querySelector('[aria-label="Expand panel"]').click();
         await wait(() => document.querySelector('[aria-label="Restore panel size"]'), 'expanded again');
         const reopened = afterReopen.tabs.find((item) => item.url === secondUrl && item.tabId !== second.tabId);
-        await evaluate(reopened.tabId, 'window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true').catch(() => undefined);
+        await evaluate(reopened.tabId, `(() => {
+          window.__verifyNativeEscape = {};
+          window.addEventListener('keydown', function record(event) {
+            if (event.key !== 'Escape') return;
+            window.__verifyNativeEscape.event = { isTrusted: event.isTrusted, target: event.target.tagName };
+            window.removeEventListener('keydown', record, true);
+          }, true);
+          document.body.tabIndex = -1;
+          document.body.focus();
+          return true;
+        })()`);
+        await api.focus(reopened.tabId);
+        await evaluate(reopened.tabId, `fetch(${JSON.stringify(escapePath)}, { method: 'POST' })
+          .then(async (response) => {
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+            window.__verifyNativeEscape.sent = result;
+          }).catch((error) => { window.__verifyNativeEscape.error = String(error.message); }); true`);
+        const nativeEscape = await wait(async () => {
+          const state = await evaluate(reopened.tabId, 'window.__verifyNativeEscape');
+          if (state.error) throw new Error(state.error);
+          return state.sent && state.event ? state : null;
+        }, 'native Escape received by browser page', 200);
         await wait(() => !document.querySelector('[aria-label="Review panel"]'), 'Escape closes panel');
-        window.__verifyMixedTabs = { first: first.tabId, second: second.tabId, splitBounds, persisted, retained, afterClose, afterReopen, openCalls, originalWidth, expandedWidth, expandedRetained, escapeClosed: true };
+        window.__verifyMixedTabs = { first: first.tabId, second: second.tabId, splitBounds, persisted, retained, afterClose, afterReopen, openCalls, originalWidth, expandedWidth, expandedRetained, nativeEscape, escapeClosed: true };
       } catch (error) {
         window.__verifyMixedTabs = { failureMessage: String(error?.message ?? error), phase, openCalls, bounds, html: document.querySelector('[aria-label="Review panel"]')?.outerHTML?.slice(0, 12000) };
       } finally {
@@ -1924,7 +1947,7 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeo
         for (const id of new Set(opened)) await api.close(id).catch(() => undefined);
       }
     })();
-  }, source.id, baseUrl);
+  }, source.id, baseUrl, nativeEscapePath);
   const result = await browser.waitUntil(
     () => browser.execute(() => window.__verifyMixedTabs).catch(() => null),
     { timeout: timeoutMs, interval: 250, timeoutMsg: 'Mixed browser tabs probe did not finish' },
@@ -1937,7 +1960,7 @@ async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, timeo
   check(assertions, 'mixed-tab-layout-persists-both-browser-panes', result.persisted.version === 2 && result.persisted.paneTabIds.length === 2, result.persisted);
   check(assertions, 'switching-tabs-preserves-page-state', result.retained === 42, result.retained);
   check(assertions, 'expansion-preserves-page-and-restores-width', result.expandedWidth > result.originalWidth && result.expandedRetained === 42, result);
-  check(assertions, 'native-page-Escape-closes-expanded-panel', result.escapeClosed === true);
+  check(assertions, 'native-page-Escape-closes-expanded-panel', result.escapeClosed === true && result.nativeEscape.event.isTrusted === true, result.nativeEscape);
 
   check(assertions, 'closing-one-browser-keeps-the-other', result.afterClose.tabs.some((tab) => tab.tabId === result.first) && !result.afterClose.tabs.some((tab) => tab.tabId === result.second), result.afterClose);
   check(assertions, 'reopening-creates-a-fresh-page', result.afterReopen.tabs.some((tab) => tab.url.endsWith('/second') && tab.tabId !== result.second), result.afterReopen);
@@ -1957,7 +1980,20 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
     expectIdle: true,
   }));
 
-  const page = createServer((_request, response) => {
+  const nativeEscapePath = `/native-escape-${randomUUID()}`;
+  let escapeRequested = false;
+  const page = createServer((request, response) => {
+    if (request.url === nativeEscapePath && request.method === "POST" && !escapeRequested) {
+      escapeRequested = true;
+      void pressNativeEscape(browser).then((result) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(result));
+      }).catch((error) => {
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: error.message }));
+      });
+      return;
+    }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end('<!doctype html><title>Focus probe</title><input id="probe" aria-label="Probe field">');
   });
@@ -2028,7 +2064,7 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
       result.after.documentHasFocus && result.after.composerActive && result.after.blurs === 0, result.after);
     check(assertions, "composer-text-is-untouched", (await readComposerText(browser, field)) === "keep typing");
     screenshots.push(await screenshot(browser, evidenceDir, "focus-launcher-after-probe"));
-    await verifyMixedBrowserTabs(browser, source, workspace, `http://127.0.0.1:${page.address().port}/`, timeoutMs, assertions, evidenceDir);
+    await verifyMixedBrowserTabs(browser, source, workspace, `http://127.0.0.1:${page.address().port}/`, nativeEscapePath, timeoutMs, assertions, evidenceDir);
   } finally {
     page.close();
   }

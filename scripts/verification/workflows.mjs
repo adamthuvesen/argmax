@@ -1308,16 +1308,16 @@ async function verifyLaunchFolder({ bridge, browser, named, primaryRoot, seconda
     const field = await openLauncher(browser, 10_000);
     await (await browser.$('[aria-label="Switch project"]')).click();
     await (await browser.$(`//*[@aria-label="Select project"]//button[.//*[normalize-space(.)="${named.name}"]]`)).click();
-    const choose = await browser.$('[aria-label="Choose working folder"]');
+    const choose = await browser.$('[aria-label="Switch project"]');
     await choose.waitForClickable({ timeout: 10_000 });
-    await choose.click();
+    await choose.click({ button: "right" });
     const folders = await bridge.call("projects:get-folders", { projectId: named.id });
     const folder = folders.find((entry) => entry.rootPath === root);
     const option = await browser.$(`//*[@aria-label="Work in"]//button[@title="${root}"]`);
     await option.waitForClickable({ timeout: 10_000 });
     screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder-menu" : "launcher-folder-menu"));
     await option.click();
-    await browser.waitUntil(async () => (await choose.getText()).includes(folder.name), { timeout: 10_000 });
+    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes(`Work in ${folder.name}`), { timeout: 10_000 });
     if (plain) {
       await browser.waitUntil(async () => !(await (await browser.$('[aria-label="Switch branch"]')).isExisting()), { timeout: 10_000 });
       check(assertions, "plain-folder-hides-worktree-control", !(await (await browser.$('[aria-label="Worktree"]')).isExisting()));

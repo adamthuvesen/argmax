@@ -1,5 +1,5 @@
 import { Folder } from "lucide-react";
-import { useCallback, useRef, type JSX } from "react";
+import { useCallback, useRef, type JSX, type ReactNode } from "react";
 import type { ProjectFolder } from "../../shared/types.js";
 import { useAnchoredPopover, PICKER_MENU_EDGE_PADDING_PX, PICKER_MENU_MAX_HEIGHT_PX } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
@@ -8,7 +8,8 @@ import { collapseHome } from "../lib/pathDisplay.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
 
-export function LaunchFolderPicker({ folders, selected, open, onOpenChange, onPick }: {
+export function LaunchFolderPicker({ folders, selected, open, onOpenChange, onPick, children }: {
+  children: ReactNode;
   folders: ProjectFolder[];
   selected: ProjectFolder | undefined;
   open: boolean;
@@ -29,10 +30,7 @@ export function LaunchFolderPicker({ folders, selected, open, onOpenChange, onPi
   const filter = useTypeToFilter({ open, items: folders, toLabel: (folder) => folder.name,
     listRef, initialIndex: folders.findIndex((folder) => folder.id === selected?.id), onPick: pick });
   return <div className="project-picker-anchor" ref={setAnchor}>
-    <button type="button" className="composer-context-chip launch-folder-chip" aria-label="Choose working folder"
-      aria-haspopup="listbox" aria-expanded={open} title={selected?.rootPath} onClick={() => onOpenChange(!open)}>
-      <span className="composer-context-chip-label">{selected?.name ?? "Choose folder"}</span>
-    </button>
+    {children}
     {open ? <ul className="project-picker-popover launch-folder-menu" data-type-scale="chrome" role="listbox"
       aria-label="Work in" tabIndex={-1} ref={setList} style={floatingStyles} onKeyDown={filter.onKeyDown}>
       <li className="launch-folder-menu-heading" role="presentation">Work in</li>

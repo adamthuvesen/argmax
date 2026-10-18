@@ -1546,19 +1546,47 @@ export function LaunchSurface({
               role={compactContextOpen ? "dialog" : undefined}
               aria-label={compactContextOpen ? "Project and branch" : undefined}
             >
-            <div className={showFolderPicker ? "launch-project-folder-picker" : undefined}>
+            <LaunchFolderPicker folders={launchFolder.folders} selected={launchFolder.folder} open={folderPickerOpen}
+              onOpenChange={setFolderPickerOpen}
+              onPick={(folder) => {
+                launchFolder.pickFolder(folder);
+                if (folder.id === selectedFolderId) return;
+                setPickedCheckout(null);
+                setProjectPickedByHand(true);
+              }}>
             <div className="project-picker-anchor" ref={setProjectAnchor}>
             <button
-              className={`composer-context-chip${showFolderPicker ? " launch-project-chip" : ""}`}
+              className="composer-context-chip"
               type="button"
               aria-label="Switch project"
               aria-haspopup="listbox"
-              aria-expanded={projectPickerOpen}
-              title={contextChipLabel}
+              aria-expanded={projectPickerOpen || folderPickerOpen}
+              title={launchFolder.folder
+                ? `${contextChipLabel} · Work in ${launchFolder.folder.name}
+${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a folder" : ""}`
+                : contextChipLabel}
+              onContextMenu={(event) => {
+                if (!showFolderPicker) return;
+                event.preventDefault();
+                event.currentTarget.focus();
+                setProjectPickerOpen(false);
+                setBranchPickerOpen(false);
+                setFolderPickerOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (!showFolderPicker || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
+                event.preventDefault();
+                event.currentTarget.focus();
+                setProjectPickerOpen(false);
+                setBranchPickerOpen(false);
+                setFolderPickerOpen(true);
+              }}
               onClick={() => { setFolderPickerOpen(false); setBranchPickerOpen(false); setProjectPickerOpen((o) => !o); }}
             >
               <Folder size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{contextChipLabel}</span>
+              {launchFolder.folder && !launchFolder.folder.isPrimary
+                ? <span className="launch-folder-indicator" role="img" aria-label={`Working in ${launchFolder.folder.name}`} /> : null}
             </button>
             {projectPickerOpen && (
               <ul
@@ -1631,18 +1659,7 @@ export function LaunchSurface({
               </ul>
             )}
             </div>
-            {showFolderPicker ? <>
-              <span className="launch-project-folder-divider" aria-hidden="true">/</span>
-              <LaunchFolderPicker folders={launchFolder.folders} selected={launchFolder.folder} open={folderPickerOpen}
-                onOpenChange={(open) => { setProjectPickerOpen(false); setBranchPickerOpen(false); setFolderPickerOpen(open); }}
-                onPick={(folder) => {
-                  launchFolder.pickFolder(folder);
-                  if (folder.id === selectedFolderId) return;
-                  setPickedCheckout(null);
-                  setProjectPickedByHand(true);
-                }} />
-            </> : null}
-            </div>
+            </LaunchFolderPicker>
             {activeProject && canUseGit ? (
             <div className="project-picker-anchor" ref={setBranchAnchor}>
             <button

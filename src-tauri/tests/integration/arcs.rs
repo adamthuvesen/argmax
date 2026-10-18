@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use crate::support::git_repo::seed_git_repo;
+use crate::support::git_repo::{seed_git_repo, SeededGitRepo};
 use argmax_lib::sessions::state::SessionState;
 use argmax_lib::{
     arcs::{launch_coordinator, LaunchCoordinatorRequest},
@@ -994,13 +994,9 @@ async fn arc_status_answers_for_a_member_and_refuses_a_session_outside_any_arc()
     assert_eq!(refused["error"]["code"], "NOT_IN_ARC", "{refused}");
 }
 
-/// A second registered project. `repo_path` is unique per project (`persist_project`
-/// upserts on conflict there), so this points at a sibling path rather than
-/// reusing the fixture's seeded checkout; `move_session`'s project destination
-/// only reads the project row and never revalidates the working tree it
-/// points at.
-fn second_project(fixture: &Fixture) -> String {
-    let repo_path = format!("{}-secondary", fixture.repo_path);
+fn second_project(fixture: &Fixture) -> (String, SeededGitRepo) {
+    let repo = seed_git_repo(&[("README.md", "# Ragnar\n")]);
+    let repo_path = repo.path().display().to_string();
     let connection = fixture.database.connection();
     persist_project(
         &connection,
@@ -1019,14 +1015,14 @@ fn second_project(fixture: &Fixture) -> String {
         },
     )
     .expect("second project");
-    "project-2".to_string()
+    ("project-2".to_string(), repo)
 }
 
 #[tokio::test]
 async fn moving_the_coordinators_session_carries_arc_id_and_repoints_the_coordinator() {
     let fixture = fixture();
     let arc = new_arc(&fixture, "Ragnar rollout");
-    let destination_project = second_project(&fixture);
+    let (destination_project, _destination_repo) = second_project(&fixture);
     seed_arc_session(
         &fixture,
         &arc.id,
@@ -1072,7 +1068,7 @@ async fn moving_the_coordinators_session_carries_arc_id_and_repoints_the_coordin
 async fn moving_a_members_session_carries_arc_id_without_repointing_the_coordinator() {
     let fixture = fixture();
     let arc = new_arc(&fixture, "Ragnar rollout");
-    let destination_project = second_project(&fixture);
+    let (destination_project, _destination_repo) = second_project(&fixture);
     seed_arc_session(
         &fixture,
         &arc.id,

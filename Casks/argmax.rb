@@ -1,7 +1,7 @@
 # Source of truth for the cask published to adamthuvesen/homebrew-tap.
 # Copy it there as Casks/argmax.rb on each release; see docs/homebrew.md.
 cask "argmax" do
-  version "0.5.0"
+  version "0.6.0"
   # Replace on every release: shasum -a 256 Argmax_<version>_universal.dmg
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 

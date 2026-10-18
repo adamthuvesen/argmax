@@ -10,5 +10,5 @@ export const APP_VERSION: string = pkg.version;
 // a bare version like any other app. Use APP_VERSION everywhere else.
 const APP_STAGE = "Alpha";
 
-// About-only label, e.g. "Alpha 0.5.0".
+// About-only label, e.g. "Alpha 0.6.0".
 export const APP_VERSION_LABEL = `${APP_STAGE} ${APP_VERSION}`;

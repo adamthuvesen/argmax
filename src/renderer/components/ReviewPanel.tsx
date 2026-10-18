@@ -872,6 +872,7 @@ function ReviewPanelPane({
           <ReviewSideChat
             key={tab?.id}
             context={sideChat}
+            draftKey={tab?.id}
             formState={sideChatFormState}
             onFormStateChange={onSideChatFormStateChange}
             sessionId={tab?.kind === "side-chat" ? tab.sessionId : undefined}

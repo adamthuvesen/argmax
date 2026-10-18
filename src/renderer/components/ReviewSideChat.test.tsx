@@ -1,8 +1,9 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { baseSession } from "../../test/sessionConversationTestHarness.js";
 import { ReviewSideChat, type ReviewSideChatContext, type ReviewSideChatSession } from "./ReviewSideChat.js";
+import { readDraft, writeDraftAttachments } from "../lib/composerDrafts.js";
 import type { MultitaskPanel } from "./MultitaskPanel.js";
 
 const chat = vi.hoisted(() => vi.fn());
@@ -15,6 +16,7 @@ vi.mock("./MultitaskPanel.js", () => ({
 
 function contextStub(): ReviewSideChatContext {
   return {
+    selectedModel: { provider: "claude", label: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: "medium" },
     launch: vi.fn().mockResolvedValue({ sessionId: "child", workspaceId: "scratch" }),
     sessionsById: new Map(),
     workspacesById: new Map(),
@@ -26,7 +28,7 @@ function contextStub(): ReviewSideChatContext {
   };
 }
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); window.localStorage.clear(); });
 
 describe("ReviewSideChat", () => {
   it("launches only on submit and ignores repeated submissions during launch", async () => {
@@ -42,7 +44,7 @@ describe("ReviewSideChat", () => {
     const form = message.closest("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
-    expect(context.launch).toHaveBeenCalledExactlyOnceWith("Explain this approach");
+    expect(context.launch).toHaveBeenCalledExactlyOnceWith("Explain this approach", { model: context.selectedModel, attachments: undefined });
     expect(screen.getByText("Starting chat…")).toBeVisible();
     await act(async () => {
       finish({ sessionId: "child", workspaceId: "scratch" });
@@ -63,6 +65,51 @@ describe("ReviewSideChat", () => {
     expect(message).toHaveValue("Explain this approach");
     expect(screen.getByRole("button", { name: "Start side chat" })).toBeEnabled();
     expect(onLaunched).not.toHaveBeenCalled();
+  });
+
+  it("sends with the model and effort selected in the normal composer picker", async () => {
+    const context = contextStub();
+    delete context.selectedModel;
+    const onModelChange = vi.fn();
+    context.onModelChange = onModelChange;
+    render(<ReviewSideChat context={context} onLaunched={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Side chat model" }));
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Side chat model" })).getByText("Opus 5.5"));
+    const model = { provider: "claude", label: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: "high" };
+    expect(onModelChange).toHaveBeenCalledWith(model);
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Explain this approach" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start side chat" })); });
+    expect(context.launch).toHaveBeenCalledExactlyOnceWith("Explain this approach", { model, attachments: undefined });
+  });
+
+  it("keeps image attachments with the draft across a remount and delivers them on send", async () => {
+    const context = contextStub();
+    const attachment = { filePath: "/attachments/side-chat/shot.png", mimeType: "image/png", sizeBytes: 3 };
+    const key = "side-chat-tool-side-chat-images";
+    writeDraftAttachments(key, [attachment]);
+    const { unmount } = render(<ReviewSideChat context={context} draftKey="tool:side-chat:images" onLaunched={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "View attachment" })).toBeVisible();
+    unmount();
+    render(<ReviewSideChat context={context} draftKey="tool:side-chat:images" onLaunched={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "View attachment" })).toBeVisible();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start side chat" })); });
+    expect(context.launch).toHaveBeenCalledExactlyOnceWith("@/attachments/side-chat/shot.png", {
+      model: context.selectedModel,
+      attachments: [attachment]
+    });
+    expect(readDraft(key).attachments).toEqual([]);
+  });
+
+  it("uses Enter to send and leaves Shift+Enter and IME composition in the editor", async () => {
+    const context = contextStub();
+    render(<ReviewSideChat context={context} onLaunched={vi.fn()} />);
+    const message = screen.getByRole("textbox", { name: "Side chat message" });
+    fireEvent.change(message, { target: { value: "Explain this approach" } });
+    fireEvent.keyDown(message, { key: "Enter", shiftKey: true });
+    fireEvent.keyDown(message, { key: "Enter", isComposing: true });
+    expect(context.launch).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.keyDown(message, { key: "Enter" }); });
+    expect(context.launch).toHaveBeenCalledOnce();
   });
 
   it("restores the same real chat and forwards live session state and commands", () => {

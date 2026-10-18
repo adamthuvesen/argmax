@@ -2488,7 +2488,12 @@ export function App(): JSX.Element {
               onLoadAgentEvents={loadAgentEvents}
               onNewSession={openNewSessionPaneInGrid}
               sideChat={{
-                launch: (prompt) => launchSideChat(prompt, { background: true }),
+                launch: (prompt, options) => launchSideChat(prompt, { ...options, background: true }),
+                selectedModel: launchModel,
+                onModelChange: handleLaunchModelChange,
+                autoRouting: autoRoutingEnabled,
+                fastModeEnabled,
+                onFastModeEnabledChange: setFastModeEnabled,
                 sessionsById,
                 workspacesById,
                 pendingMessages: snapshot.pendingMessages,

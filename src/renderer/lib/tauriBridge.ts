@@ -17,10 +17,6 @@ import type {
   CloudLaunchInput,
   CloudPrepareInput,
   DashboardDelta,
-  GitCommitInput,
-  GitCreateBranchInput,
-  GitPushInput,
-  GitViewOrCreatePrInput,
   LaunchProviderSessionInput,
   OpenInIdeInput,
   ProviderSessionInput,
@@ -394,7 +390,6 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       revertHunk: (input) => invokeCommand("review:revert-hunk", input).then(() => undefined),
       stageHunk: (input) => invokeCommand("review:stage-hunk", input).then(() => undefined),
       unstageHunk: (input) => invokeCommand("review:unstage-hunk", input).then(() => undefined),
-      commitStaged: (input) => invokeCommand("review:commit-staged", input),
       listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) =>
         invokeCommand("review:list-changed-files", { ...target, comparison }),
       loadDiff: (
@@ -568,14 +563,6 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       setPrimary: (input) => invokeCommand("prs:set-primary", input),
       dismiss: (input) => invokeCommand("prs:dismiss", input),
       cleanup: (input) => invokeCommand("prs:cleanup", input)
-    },
-    git: {
-      commit: (input: GitCommitInput) => invokeCommand("git:commit", input),
-      push: (input: GitPushInput) => invokeCommand("git:push", input),
-      createBranch: (input: GitCreateBranchInput) =>
-        invokeCommand("git:create-branch", input),
-      viewOrCreatePr: (input: GitViewOrCreatePrInput) =>
-        invokeCommand("git:view-or-create-pr", input)
     },
     terminal: {
       spawn: (input: TerminalSpawnInput) => invokeCommand("terminal:spawn", input),

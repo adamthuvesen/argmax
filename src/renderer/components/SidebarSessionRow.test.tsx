@@ -83,6 +83,23 @@ function rowProps() {
 describe("SidebarSessionRow", () => {
   afterEach(() => cleanup());
 
+  it("forks the clicked chat from its context menu and closes the menu", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onFork = vi.fn();
+    render(<SidebarSessionRow workspace={workspaceBase} {...rowProps()} onFork={onFork} />);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Fork" }));
+
+    expect(onFork).toHaveBeenCalledWith("workspace-1");
+    expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+  });
+
+  it("updates the fork action when its callback changes", () => {
+    const props = { workspace: workspaceBase, ...rowProps(), onFork: vi.fn() };
+    expect(sidebarSessionRowEqual(props, { ...props, onFork: vi.fn() })).toBe(false);
+  });
+
   it("keeps the IDE chooser in the right-click menu, not on the hovered row", async () => {
     const { fireEvent } = await import("@testing-library/react");
     render(

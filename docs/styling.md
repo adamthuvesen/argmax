@@ -215,7 +215,7 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   under the label (the row is `flex-wrap: wrap` with `justify-content: space-between`), so a
   five-option segmented never crushes the description beside it.
 - **Settings owns the sidebar column.** Opening settings swaps `Sidebar` for `SettingsRail`; the
-  grid's first column becomes `--settings-rail-width` and the sidebar toggle is hidden. Schedule,
+  grid keeps the sidebar's saved width and the sidebar toggle is hidden. Schedule,
   Usage, Activity, and Arc pages open in the workspace with the app sidebar kept, so the current
   chat is always a click away. Usage and Activity are one Hacking entry with a switch in the title
   slot (`LedgerSwitch`).
@@ -461,7 +461,7 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
 - **Every dropdown is one picker primitive.** `.project-picker-popover` + `.project-picker-item` in
   [chat-chrome.css](../src/renderer/styles/chat-chrome.css) back the launcher's model, project and
   branch menus, the settings list pickers (`SettingsListPicker`), the review scope menu, and the
-  action menus (chat actions, git actions, sidebar sort, project actions, identity, right-click).
+  action menus (chat actions, sidebar sort, project actions, identity, right-click).
   Rows are 28px at `--text-sm` inside a 5px inset and a 10px corner, so the 6px row corner is
   concentric with the panel's. The chosen row is marked by weight and a check in its 16px lead cell
   ([PickerLead.tsx](../src/renderer/components/PickerLead.tsx)), never by a fill — a fill is what

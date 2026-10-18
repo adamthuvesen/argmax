@@ -52,6 +52,14 @@ describe("overlays", () => {
     expect(second?.requestId).toBe((first?.requestId ?? 0) + 1);
   });
 
+  it("navigates to a project and clears that selection for ordinary settings navigation", () => {
+    showSettings("projects", "settings-project-folders", "project-2");
+    expect(overlaysSnapshot().settingsNavigation?.projectId).toBe("project-2");
+
+    showSettings("projects");
+    expect(overlaysSnapshot().settingsNavigation?.projectId).toBeUndefined();
+  });
+
   it("reopens settings on the group last shown", () => {
     showSettings();
     expect(overlaysSnapshot().settingsGroup).toBe("general");

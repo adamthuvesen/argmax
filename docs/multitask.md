@@ -50,13 +50,24 @@ Because a multitask shares the dock's tab strip with the subagents, it is counte
 
 On native iOS, the multitask group uses the composer's 22pt corner radius. Its chat sheet uses the same `NativeTranscriptList` as the main chat. A new regular user message anchors at the viewport's top. Short replies keep that anchor, then longer replies follow the output. Scrolling into history preserves the reading position and shows **Jump to latest**. Steering messages remain part of the current turn and preserve the reading position.
 
-## Not in the sidebar
+## In the sidebar
 
-A multitask belongs to the chat that dispatched it, so it has no sidebar row: `hiddenMultitaskWorkspaceIds` ([multitask.ts](../src/renderer/lib/multitask.ts)) drops its workspace from every sidebar section and from the phone list. The one exception is an orphan — a multitask whose launching chat has left the snapshot. There is nowhere else to reach it from and its checkout may hold uncommitted work, so its row comes back.
+Desktop chats launched from another chat appear beneath their launching chat by default.
+This includes multitasks and agent-launched chats. A disclosure control collapses the group.
+Each row keeps its status. Chats from another project show that project's name.
 
-This is the only thing `sessions.launch_kind` reaches the renderer for: an agent-launched session is a chat in its own right and keeps its row, and only `multitask` loses one.
+**Settings → Appearance → Launched chats** switches between **Nested** and **Separate**.
+Right-click a nested chat and choose **Detach to top level** to move just that chat out.
+This choice persists locally. It preserves launch lineage, completion delivery, Arc membership, and checkout ownership.
+A detached chat keeps its own launched chats beneath it.
 
-Having no row, its turn shows on the row of the chat that dispatched it. A running multitask counts as work in progress on the parent's workspace ([priority.ts](../src/renderer/lib/priority.ts)), so that row keeps the working mark and its place at the top of Priority until the sibling settles — the alternative is a list that goes still while an agent is still writing to the checkout. The parent's own state is unchanged: this is about what the row shows, not what the chat is doing. The phone list uses the same two helpers, so a finished parent with a live multitask still carries the nest.
+Pinned chats appear in Pinned. Snoozed and archived chats stay in their respective sections.
+When a launching chat is unavailable, its launched chats appear at the top level.
+Priority includes the launching group when a nested chat needs attention or is working.
+Each chat's actions still apply to that chat alone.
+
+The phone list retains its existing behavior: multitasks appear inside their launching chat, except when orphaned.
+The launching row carries a running multitask's activity on both platforms.
 
 ## In the dock
 
@@ -73,7 +84,7 @@ A surface that hands the pane no dock — the phone — raises the same rows in 
 ## Testing
 
 - Rust: [src-tauri/tests/integration/multitask.rs](../src-tauri/tests/integration/multitask.rs) — same-checkout sibling with inherited settings and guardrail prompt, isolated worktree, finishing without starting a turn in the parent, results riding the next prompt but not the persisted message, lineage and launch caps.
-- Renderer: `multitask.test.ts` (notices, sidebar hiding, grouping), `agentTabs.test.ts`, `foldConversation.test.ts` (dispatch association and merging across turns), `MultitaskRow.test.tsx`, `MultitaskGroup.test.tsx`, `subagentSummary.test.ts` (multitasks in the card's count), `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end. They cover inline groups, independent collapse, live attention, dock tabs, and a stop that leaves the dispatching chat alone.
+- Renderer: `multitask.test.ts` (notices, phone list visibility, grouping), `sidebarChatTree.test.ts`, `Sidebar.test.tsx` (desktop nesting and detachment), `agentTabs.test.ts`, `foldConversation.test.ts` (dispatch association and merging across turns), `MultitaskRow.test.tsx`, `MultitaskGroup.test.tsx`, `subagentSummary.test.ts` (multitasks in the card's count), `SessionComposer.multitask.test.tsx`, and `App.multitask.test.tsx` end to end. They cover inline groups, independent collapse, live attention, dock tabs, and a stop that leaves the dispatching chat alone.
 
 ## Related
 

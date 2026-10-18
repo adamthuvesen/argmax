@@ -207,7 +207,6 @@ IPC channels:
 - `prs:set-primary` (a null PR number returns to automatic selection)
 - `prs:dismiss`
 - `prs:cleanup` ([PR cleanup](workspaces.md#pr-cleanup) for a merged PR; returns the report)
-- `git:view-or-create-pr` (checkout creation action, with optional expected branch)
 
 Workspace summaries expose the plural `prs`, aggregate `prSummaryState`, and
 legacy scalar primary fields. `prCreatedAt` and `prMergedAt` retain GitHub's

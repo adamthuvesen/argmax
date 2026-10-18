@@ -16,12 +16,14 @@ import { SegmentedControl, SettingGroup, SettingRow, SettingsListPicker } from "
  */
 export function ProjectsSettings({
   projects,
+  initialProjectId,
   onProjectUpdated
 }: {
   projects: ProjectSummary[];
+  initialProjectId?: string;
   onProjectUpdated: (updated: ProjectSummary) => void;
 }): JSX.Element {
-  const [selectedId, setSelectedId] = useState<string | null>(projects[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? projects[0]?.id ?? null);
   const selected = projects.find((project) => project.id === selectedId) ?? projects[0] ?? null;
 
   return (

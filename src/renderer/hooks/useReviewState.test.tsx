@@ -283,7 +283,6 @@ describe("useReviewState — IPC fan-out resistance", () => {
           stageHunk: vi.fn().mockResolvedValue(undefined),
           unstageHunk: vi.fn().mockResolvedValue(undefined),
           revertHunk: vi.fn().mockResolvedValue(undefined),
-          commitStaged: vi.fn().mockResolvedValue(undefined)
         },
         workspace: {
           listFiles: listWorkspaceFiles,

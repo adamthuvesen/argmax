@@ -499,22 +499,6 @@ struct WireSessionForkInput: Encodable, Sendable {
     }
 }
 
-struct WireGitViewOrCreatePrInput: Encodable, Sendable {
-    var sessionId: String
-    var expectedBranch: WireField<String> = .absent
-
-    enum CodingKeys: String, CodingKey {
-        case sessionId
-        case expectedBranch
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(sessionId, forKey: .sessionId)
-        try expectedBranch.encode(into: &container, forKey: .expectedBranch)
-    }
-}
-
 struct WireRemoteRegisterPushDeviceInput: Encodable, Sendable {
     var token: String
     var name: String

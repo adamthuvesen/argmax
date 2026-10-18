@@ -16,6 +16,7 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
   const workingRootPath = source?.workingRootPath;
   const refreshKey = source?.refreshKey;
   const [revision, setRevision] = useState(0);
+  const [workingFolder, setWorkingFolder] = useState<ProjectFolder | null>(null);
   const [groups, setGroups] = useState<ProjectFolderChanges[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<{ folderId: string; path: string } | null>(null);
@@ -27,6 +28,7 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
 
   useEffect(() => {
     setGroups([]);
+    setWorkingFolder(null);
     setSelection(null);
     setError(null);
   }, [sourceKey]);
@@ -49,6 +51,7 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
         }
       }));
       if (cancelled) return;
+      setWorkingFolder(folders.find((folder) => workingFolderId ? folder.id === workingFolderId : folder.rootPath === workingRootPath) ?? null);
       setGroups(result);
       setError(null);
       setSelection((current) => current && result.some((group) => group.folder.id === current.folderId &&
@@ -88,7 +91,7 @@ export function useProjectFolderChanges(source: ReviewState["projectChanges"], e
     () => groups.find((group) => group.folder.id === selection?.folderId)?.folder ?? null,
     [groups, selection]
   );
-  return { groups, error, selection, selectedFolder, diff, diffError, loadingDiff, selectFile, clearSelection, refresh, expandContext };
+  return { workingFolder, groups, error, selection, selectedFolder, diff, diffError, loadingDiff, selectFile, clearSelection, refresh, expandContext };
 }
 
 export type ProjectFolderChangesState = ReturnType<typeof useProjectFolderChanges>;

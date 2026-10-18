@@ -1,6 +1,7 @@
 .session-row-wrap {
   position: relative;
   display: flex;
+  flex-direction: column;
   align-items: stretch;
   padding-left: var(--space-1_5);
 }

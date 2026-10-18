@@ -39,6 +39,7 @@ import { ProjectsSettings } from "./settings/ProjectsSettings.js";
 export type SettingsNavigationTarget = {
   group: SettingsGroupId;
   sectionId?: string;
+  projectId?: string;
   requestId: number;
 };
 
@@ -469,7 +470,12 @@ export function SettingsPanel({
         ) : null}
 
         {activeGroup === "projects" ? (
-          <ProjectsSettings projects={projects} onProjectUpdated={onProjectUpdated} />
+          <ProjectsSettings
+            key={navigationTarget?.requestId}
+            projects={projects}
+            initialProjectId={navigationTarget?.projectId}
+            onProjectUpdated={onProjectUpdated}
+          />
         ) : null}
 
         {activeGroup === "integrations" ? <IntegrationsSettings /> : null}

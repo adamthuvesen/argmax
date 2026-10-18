@@ -10,7 +10,7 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
-import { FileDiff, FolderTree, GitCommitVertical, Globe } from "lucide-react";
+import { FileDiff, FolderTree, Globe } from "lucide-react";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
@@ -57,7 +57,6 @@ import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
 import { useAgentTabs } from "../hooks/useAgentTabs.js";
 import { importChunk } from "../lib/importChunk.js";
-import { CommitDialog } from "./CommitDialog.js";
 import { ApprovalSurface } from "./ApprovalSurface.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
@@ -345,10 +344,9 @@ export function SessionPane({
   // Which files the agent wrote in its newest turn, for the review panel's
   // "Last turn" scope. Null without a session: there is no turn to scope to.
   const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
-  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
   const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null, {
     claimsBrowserRequests: isFocused,
-    preloadChanges: onOpenChanges ? undefined : isFocused || isCommitDialogOpen,
+    preloadChanges: onOpenChanges ? undefined : isFocused,
     sessionId
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
@@ -526,8 +524,6 @@ export function SessionPane({
     [agentsInOverlay, hostsMultitasks, openMultitaskInPanel, openMultitaskOverlay]
   );
 
-  const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
-  const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
   // Review-panel line comments land on the conversation's composer as diff
   // notes. The conversation owns that state; it registers a sink here so its
   // sibling ReviewPanel can feed it without lifting the state up.
@@ -548,15 +544,6 @@ export function SessionPane({
     },
     [onOpenWorkspaceInIde, workspaceId]
   );
-  // After a commit the staged/changed set has shifted; refresh the workspace
-  // status so the Changes panel updates immediately (the refresh publishes a
-  // dashboard delta that bumps changedFilesKey) rather than showing stale rows
-  // until the panel is reopened.
-  const handleCommitted = useCallback((): void => {
-    if (!workspaceId || !window.argmax) return;
-    void window.argmax.workspaces.refreshStatus(workspaceId).catch(() => undefined);
-  }, [workspaceId]);
-
   // Warm the heavy xterm chunk on idle once a workspace is present, so the first
   // ⌘J paints the terminal immediately instead of showing blank panel space
   // while the bundle downloads. Deferred to idle so it never competes with the
@@ -630,7 +617,6 @@ export function SessionPane({
   // closure each render so the read is current without re-registering.
   const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
   paletteLiveRef.current = (): PaletteSurfaceLive => {
-    const changedCount = reviewState.files.length;
     const actions: PaletteItem[] = [
       {
         id: "pane:toggle-files",
@@ -665,17 +651,6 @@ export function SessionPane({
             run: toggleBrowserPane
           }]
         : []),
-      ...(changedCount > 0
-        ? [{
-            id: "pane:commit",
-            label: "Commit changes",
-            subtitle: `${changedCount} changed ${changedCount === 1 ? "file" : "files"}`,
-            group: "Actions" as const,
-            icon: GitCommitVertical,
-            keywords: ["git", "stage", "save"],
-            run: handleOpenCommitDialog
-          }]
-        : [])
     ];
     return {
       filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
@@ -958,7 +933,6 @@ export function SessionPane({
           defaultIde={defaultIde}
           detectedIdes={detectedIdes}
           onOpenInIde={handleOpenInIde}
-          onOpenCommitDialog={handleOpenCommitDialog}
           registerAnnotationSink={registerAnnotationSink}
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}
@@ -1079,16 +1053,6 @@ export function SessionPane({
             onResizePanelMouseDown={onReviewPanelResizeMouseDown}
           />
         </Suspense>
-      ) : null}
-      {workspace ? (
-        <CommitDialog
-          open={isCommitDialogOpen}
-          onClose={handleCloseCommitDialog}
-          onCommitted={handleCommitted}
-          workspaceId={workspace.id}
-          files={reviewState.files}
-          defaultMessage={workspace.taskLabel}
-        />
       ) : null}
       {isLogOpen ? (
         <DebugPanel

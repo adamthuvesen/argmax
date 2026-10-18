@@ -65,7 +65,7 @@ function publish(next: OverlaysSnapshot): void {
  * this module, so a restart starts back on the default group.
  * Re-entering while it is already open re-navigates rather than toggling.
  */
-export function showSettings(group: SettingsGroupId = state.settingsGroup, sectionId?: string): void {
+export function showSettings(group: SettingsGroupId = state.settingsGroup, sectionId?: string, projectId?: string): void {
   navigationRequests += 1;
   hideFullLauncher();
   publish({
@@ -76,6 +76,7 @@ export function showSettings(group: SettingsGroupId = state.settingsGroup, secti
     settingsNavigation: {
       group,
       ...(sectionId ? { sectionId } : {}),
+      ...(projectId ? { projectId } : {}),
       requestId: navigationRequests
     },
     paletteOpen: false

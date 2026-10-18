@@ -73,7 +73,6 @@ review:stage-file
 review:unstage-file
 review:stage-hunk
 review:unstage-hunk
-review:commit-staged
 review:revert-file
 review:revert-hunk
 goal:set
@@ -158,10 +157,6 @@ prs:refresh
 prs:set-primary
 prs:dismiss
 prs:cleanup
-git:commit
-git:push
-git:create-branch
-git:view-or-create-pr
 remote:get-status
 remote:set-config
 remote:test-notification

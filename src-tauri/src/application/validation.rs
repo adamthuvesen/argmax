@@ -119,7 +119,6 @@ string_newtype!(TaskLabel);
 string_newtype!(StreamChunk);
 string_newtype!(FileContent);
 string_newtype!(CommandText);
-string_newtype!(GitCommitMessage);
 string_newtype!(Base64ImageData);
 string_newtype!(NonEmptyString);
 
@@ -181,18 +180,6 @@ try_from_string!(CommandText, |value| validate_byte_cap(
     "command", value, 8192
 )
 .and_then(|value| non_empty("command", value)));
-try_from_string!(GitCommitMessage, |value| validate_byte_cap(
-    "message",
-    value,
-    64 * 1024
-)
-.and_then(|value| {
-    if value.trim().is_empty() {
-        Err(issue("message", "STRING_BLANK", "message cannot be blank"))
-    } else {
-        Ok(value)
-    }
-}));
 try_from_string!(NonEmptyString, |value| non_empty("value", value));
 
 /// Lines of unchanged context a review diff carries on each side of a hunk.
@@ -419,15 +406,6 @@ impl<'de> Deserialize<'de> for CommandText {
         D: serde::Deserializer<'de>,
     {
         CommandText::try_from(String::deserialize(deserializer)?).map_err(de_error)
-    }
-}
-
-impl<'de> Deserialize<'de> for GitCommitMessage {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        GitCommitMessage::try_from(String::deserialize(deserializer)?).map_err(de_error)
     }
 }
 

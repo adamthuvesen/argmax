@@ -16,7 +16,6 @@ function makeDispatch(readFile: (path: string) => Promise<WorkspaceFilePreview>)
     stageHunk: vi.fn().mockResolvedValue(undefined),
     unstageHunk: vi.fn().mockResolvedValue(undefined),
     revertHunk: vi.fn().mockResolvedValue(undefined),
-    commitStaged: vi.fn().mockRejectedValue(new Error("unused")),
     listFiles: vi.fn().mockResolvedValue([]),
     readFile,
     statFile: () => null,

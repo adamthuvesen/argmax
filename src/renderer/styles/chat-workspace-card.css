@@ -445,12 +445,6 @@
   transition: color var(--motion-fast) var(--ease-out);
 }
 
-.workspace-card-checkout-label {
-  padding-left: calc(var(--workspace-card-row-inset) + var(--workspace-card-icon-slot) + var(--workspace-card-row-gap));
-  color: var(--muted);
-  font-size: var(--text-2xs);
-}
-
 .workspace-card-folder-changes {
   min-width: 0;
 }

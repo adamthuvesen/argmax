@@ -1,12 +1,9 @@
 import {
   AppWindow,
   Bug,
-  ChevronLeft,
-  ChevronRight,
   Cloud,
   CornerUpLeft,
   Folder,
-  GitBranch,
   Globe,
   MoreHorizontal,
   PanelRightDashed,
@@ -24,7 +21,6 @@ import { DeveloperToolsContext } from "../lib/uiPreferences.js";
 import { refreshSessionPrs } from "../lib/sessionPrs.js";
 import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
-import { GitActionsMenu } from "./GitActionsMenu.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
 import { showErrorToast } from "../state/toast.js";
 
@@ -35,7 +31,6 @@ export function SessionActionsMenu({
   isWorkspaceCardEnabled = true,
   onBrowseFiles,
   onNewSession,
-  onOpenCommitDialog,
   onOpenLaunchingChat,
   onOpenInIde,
   onStartArc,
@@ -65,23 +60,20 @@ export function SessionActionsMenu({
   /** Starts an arc with this chat as its coordinator. Absent when the chat is
       already in an arc or cannot take a turn, which hides the action. */
   onStartArc?: { run: () => void; disabledReason: string | null };
-  onOpenCommitDialog?: () => void;
   onToggleLog: () => void;
   session: SessionSummary | null;
   workspace: WorkspaceSummary | null;
 }): JSX.Element {
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [actionsMode, setActionsMode] = useState<"main" | "git">("main");
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
   const cloudProvider = session && isHostedCloudProvider(session.provider) ? session.provider : null;
   const developerToolsEnabled = useContext(DeveloperToolsContext);
   const closeActions = useCallback(() => {
     setActionsOpen(false);
-    setActionsMode("main");
   }, []);
 
   // Right-aligned under the trigger, flipping above it near the bottom of the
-  // screen. The git submenu swaps in a longer list, so the height cap matters.
+  // screen, with a height cap for shorter windows.
   const menu = useAnchoredPopover({ open: actionsOpen, placement: "bottom-end", capHeight: true });
 
   useDismissOnOutsideOrEscape(menu.anchorRef, actionsOpen, closeActions, menu.popoverRef);
@@ -113,15 +105,6 @@ export function SessionActionsMenu({
   const canOpenInWindow =
     typeof window !== "undefined" && window.argmax?.windows !== undefined && !isSecondaryWindow();
 
-  const refreshPrs = useCallback((): void => {
-    if (!session?.id || !window.argmax?.prs) return;
-    const fetcher = window.argmax.prs.refresh ?? window.argmax.prs.listForSession;
-    void fetcher({ sessionId: session.id })
-      .catch((error) => {
-        showErrorToast(error instanceof Error ? error.message : "Could not refresh pull requests.");
-      });
-  }, [session?.id]);
-
   return (
     <>
       <div className="session-actions-anchor" ref={menu.setAnchor}>
@@ -144,222 +127,186 @@ export function SessionActionsMenu({
           aria-label="Chat actions"
           style={menu.floatingStyles}
         >
-          {actionsMode === "main" && (
-            <ul className="session-actions-list">
-              {onNewSession ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    title="Compose a task for any repository beside this chat (⌘N)"
-                    onClick={() => {
-                      closeActions();
-                      onNewSession();
-                    }}
-                  >
-                    <SquarePen size={14} aria-hidden="true" />
-                    New chat here
-                  </button>
-                </li>
-              ) : null}
-              {session?.launchedBySessionId && onOpenLaunchingChat ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    title="Open the chat whose agent started this one"
-                    onClick={() => {
-                      closeActions();
-                      onOpenLaunchingChat();
-                    }}
-                  >
-                    <CornerUpLeft size={14} aria-hidden="true" />
-                    Open launching chat
-                  </button>
-                </li>
-              ) : null}
-              {onStartArc ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    disabled={onStartArc.disabledReason !== null}
-                    title={onStartArc.disabledReason ?? "This chat becomes the coordinator of a new arc"}
-                    onClick={() => {
-                      closeActions();
-                      onStartArc.run();
-                    }}
-                  >
-                    <Workflow size={14} aria-hidden="true" />
-                    Start an arc from this chat…
-                  </button>
-                </li>
-              ) : null}
-              {session && cloudProvider && workspace?.kind === "git" ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    title={`Continue this chat as a ${cloudProviderName(cloudProvider)} task, from the pushed branch`}
-                    onClick={() => {
-                      closeActions();
-                      setCloudDialogOpen(true);
-                    }}
-                  >
-                    <Cloud size={14} aria-hidden="true" />
-                    Send task to {cloudProviderName(cloudProvider)}…
-                  </button>
-                </li>
-              ) : null}
+          <ul className="session-actions-list">
+            {onNewSession ? (
               <li role="none">
                 <button
                   type="button"
                   role="menuitem"
                   className="project-picker-item"
-                  disabled={!workspace}
+                  title="Compose a task for any repository beside this chat (⌘N)"
                   onClick={() => {
                     closeActions();
-                    onBrowseFiles();
+                    onNewSession();
                   }}
                 >
-                  <Folder size={14} aria-hidden="true" />
-                  Browse files
+                  <SquarePen size={14} aria-hidden="true" />
+                  New chat here
                 </button>
               </li>
-              {!isSecondaryWindow() ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    title="Open the browser in the review panel"
-                    onClick={() => {
-                      closeActions();
-                      openBrowserPanel();
-                    }}
-                  >
-                    <Globe size={14} aria-hidden="true" />
-                    Open browser
-                  </button>
-                </li>
-              ) : null}
-              {session && canOpenInWindow ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="project-picker-item"
-                    title="Show this chat in a desktop window of its own"
-                    onClick={() => {
-                      closeActions();
-                      void window.argmax?.windows.openSession({ sessionId: session.id }).catch((error: unknown) => {
-                        showErrorToast(error instanceof Error ? error.message : "Couldn't open a new window.");
-                      });
-                    }}
-                  >
-                    <AppWindow size={14} aria-hidden="true" />
-                    Open in new window
-                  </button>
-                </li>
-              ) : null}
-              {onOpenInIde
-                ? ideChoices.map((entry) => (
-                    <li role="none" key={entry.id}>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        disabled={!workspace}
-                        title={
-                          pinnedIde
-                            ? "Open this workspace in your default IDE (set in Settings → Handoff)"
-                            : "Open this workspace in this IDE (pin a default in Settings → Handoff)"
-                        }
-                        onClick={() => {
-                          closeActions();
-                          onOpenInIde(entry.id);
-                        }}
-                      >
-                        <SquareArrowOutUpRight size={14} aria-hidden="true" />
-                        {`Open in ${entry.label}`}
-                      </button>
-                    </li>
-                  ))
-                : null}
+            ) : null}
+            {session?.launchedBySessionId && onOpenLaunchingChat ? (
               <li role="none">
                 <button
                   type="button"
                   role="menuitem"
-                  className="project-picker-item session-actions-submenu-trigger"
-                  aria-haspopup="menu"
-                  disabled={!workspace}
-                  onClick={() => setActionsMode("git")}
+                  className="project-picker-item"
+                  title="Open the chat whose agent started this one"
+                  onClick={() => {
+                    closeActions();
+                    onOpenLaunchingChat();
+                  }}
                 >
-                  <GitBranch size={14} aria-hidden="true" />
-                  <span className="session-actions-submenu-label">Git actions</span>
-                  <ChevronRight size={14} aria-hidden="true" className="session-actions-submenu-chevron" />
+                  <CornerUpLeft size={14} aria-hidden="true" />
+                  Open launching chat
                 </button>
               </li>
+            ) : null}
+            {onStartArc ? (
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  disabled={onStartArc.disabledReason !== null}
+                  title={onStartArc.disabledReason ?? "This chat becomes the coordinator of a new arc"}
+                  onClick={() => {
+                    closeActions();
+                    onStartArc.run();
+                  }}
+                >
+                  <Workflow size={14} aria-hidden="true" />
+                  Start an arc from this chat…
+                </button>
+              </li>
+            ) : null}
+            {session && cloudProvider && workspace?.kind === "git" ? (
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  title={`Continue this chat as a ${cloudProviderName(cloudProvider)} task, from the pushed branch`}
+                  onClick={() => {
+                    closeActions();
+                    setCloudDialogOpen(true);
+                  }}
+                >
+                  <Cloud size={14} aria-hidden="true" />
+                  Send task to {cloudProviderName(cloudProvider)}…
+                </button>
+              </li>
+            ) : null}
+            <li role="none">
+              <button
+                type="button"
+                role="menuitem"
+                className="project-picker-item"
+                disabled={!workspace}
+                onClick={() => {
+                  closeActions();
+                  onBrowseFiles();
+                }}
+              >
+                <Folder size={14} aria-hidden="true" />
+                Browse files
+              </button>
+            </li>
+            {!isSecondaryWindow() ? (
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  title="Open the browser in the review panel"
+                  onClick={() => {
+                    closeActions();
+                    openBrowserPanel();
+                  }}
+                >
+                  <Globe size={14} aria-hidden="true" />
+                  Open browser
+                </button>
+              </li>
+            ) : null}
+            {session && canOpenInWindow ? (
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item"
+                  title="Show this chat in a desktop window of its own"
+                  onClick={() => {
+                    closeActions();
+                    void window.argmax?.windows.openSession({ sessionId: session.id }).catch((error: unknown) => {
+                      showErrorToast(error instanceof Error ? error.message : "Couldn't open a new window.");
+                    });
+                  }}
+                >
+                  <AppWindow size={14} aria-hidden="true" />
+                  Open in new window
+                </button>
+              </li>
+            ) : null}
+            {onOpenInIde
+              ? ideChoices.map((entry) => (
+                  <li role="none" key={entry.id}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="project-picker-item"
+                      disabled={!workspace}
+                      title={
+                        pinnedIde
+                          ? "Open this workspace in your default IDE (set in Settings → Handoff)"
+                          : "Open this workspace in this IDE (pin a default in Settings → Handoff)"
+                      }
+                      onClick={() => {
+                        closeActions();
+                        onOpenInIde(entry.id);
+                      }}
+                    >
+                      <SquareArrowOutUpRight size={14} aria-hidden="true" />
+                      {`Open in ${entry.label}`}
+                    </button>
+                  </li>
+                ))
+              : null}
+            <li role="none">
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                className="project-picker-item"
+                aria-checked={isWorkspaceCardEnabled}
+                disabled={!onToggleWorkspaceCard}
+                title="Float a worktree summary beside the chat. Appears once the pane is wide enough to hold it."
+                onClick={() => {
+                  closeActions();
+                  onToggleWorkspaceCard?.();
+                }}
+              >
+                <PanelRightDashed size={14} aria-hidden="true" />
+                Workspace card
+              </button>
+            </li>
+            {developerToolsEnabled ? (
               <li role="none">
                 <button
                   type="button"
                   role="menuitemcheckbox"
                   className="project-picker-item"
-                  aria-checked={isWorkspaceCardEnabled}
-                  disabled={!onToggleWorkspaceCard}
-                  title="Float a worktree summary beside the chat. Appears once the pane is wide enough to hold it."
+                  aria-checked={isLogOpen}
                   onClick={() => {
                     closeActions();
-                    onToggleWorkspaceCard?.();
+                    onToggleLog();
                   }}
                 >
-                  <PanelRightDashed size={14} aria-hidden="true" />
-                  Workspace card
+                  <Bug size={14} aria-hidden="true" />
+                  Debug log
                 </button>
               </li>
-              {developerToolsEnabled ? (
-                <li role="none">
-                  <button
-                    type="button"
-                    role="menuitemcheckbox"
-                    className="project-picker-item"
-                    aria-checked={isLogOpen}
-                    onClick={() => {
-                      closeActions();
-                      onToggleLog();
-                    }}
-                  >
-                    <Bug size={14} aria-hidden="true" />
-                    Debug log
-                  </button>
-                </li>
-              ) : null}
-            </ul>
-          )}
-          {actionsMode === "git" && (
-            <div className="session-actions-submenu">
-              <button
-                type="button"
-                className="session-actions-back"
-                aria-label="Back to chat actions"
-                onClick={() => setActionsMode("main")}
-              >
-                <ChevronLeft size={12} aria-hidden="true" />
-                Back
-              </button>
-              <GitActionsMenu
-                session={session}
-                workspace={workspace}
-                onPrsRefresh={refreshPrs}
-                onOpenCommitDialog={onOpenCommitDialog}
-                onClose={closeActions}
-              />
-            </div>
-          )}
+            ) : null}
+          </ul>
         </div>,
         document.body
       )}

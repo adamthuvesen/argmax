@@ -220,9 +220,7 @@ and publish affected workspace metadata. Remote mutations use the same handlers.
 [PR cleanup](workspaces.md#pr-cleanup) for a merged PR. It returns the
 structured report with its plain `text`, and it never archives the chat.
 
-Existing PR links open their stored URL. `git:view-or-create-pr` is the separate
-checkout creation action and accepts `expectedBranch` to reject a stale card
-before calling GitHub.
+Existing PR links open their stored URL. Agents create commits, push branches, and create pull requests through their Git tools.
 
 ## Contract checks
 

@@ -12,6 +12,22 @@ describe("App fork navigation", () => {
   beforeEach(() => setupAppTestMocks());
   afterEach(() => cleanup());
 
+  it("forks the sidebar chat through the existing fork flow", async () => {
+    const workspace = { ...snapshot.workspaces[0], id: "sidebar-fork", taskLabel: "Sidebar fork" };
+    const session = { ...snapshot.sessions[0], id: "sidebar-fork-session", workspaceId: workspace.id };
+    const fork = vi.fn().mockResolvedValue({ workspace, session, fork: { id: "fork-sidebar" } });
+    window.argmax!.session.fork = fork;
+    window.argmax!.session.forkLineage = vi.fn().mockResolvedValue(null);
+    render(<App />);
+
+    fireEvent.contextMenu(await screen.findByRole("button", { name: "Build dashboard" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Fork" }));
+
+    await waitFor(() => expect(fork).toHaveBeenCalledWith({ sessionId: "session-1" }));
+    expect(await screen.findByRole("region", { name: "Sidebar fork" })).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+  });
+
   it("opens the fork the moment it is created, before the dashboard has a row for it", async () => {
     // The fork button is provider-gated to Claude and shows on a finished turn.
     mockDashboardSnapshot({

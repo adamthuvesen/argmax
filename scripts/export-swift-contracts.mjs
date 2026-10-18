@@ -21,7 +21,7 @@ const requests = [
   "ProvidersTerminateInput", "ProvidersCancelQueuedMessageInput",
   "ProvidersSendQueuedMessageNowInput", "SessionMultitaskInput",
   "WorkspacesSetPinnedInput", "WorkspacesSetLabelInput", "WorkspacesArchiveInput",
-  "SessionForkInput", "GitViewOrCreatePrInput", "RemoteRegisterPushDeviceInput",
+  "SessionForkInput", "RemoteRegisterPushDeviceInput",
   "RemoteUnregisterPushDeviceInput"
 ];
 const enums = new Set();

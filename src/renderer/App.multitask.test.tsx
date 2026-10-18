@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { DashboardSnapshot } from "../shared/types.js";
 import { launcherDraftKey, readDraft } from "./lib/composerDrafts.js";
+import { resetSidebarChatNestingForTests } from "./lib/sidebarChatNesting.js";
 import { PROVIDER_TITLE_MODEL } from "../shared/providerModels.js";
 import {
   archiveWorkspace,
@@ -95,16 +96,18 @@ function mountWithMultitask(childOverrides: Partial<typeof childSession> = {}): 
 
 describe("multitask in the chat that dispatched it", () => {
   afterEach(cleanup);
-  beforeEach(setupAppTestMocks);
+  beforeEach(() => {
+    setupAppTestMocks();
+    resetSidebarChatNestingForTests();
+  });
 
-  it("keeps the multitask out of the sidebar", async () => {
+  it("lists the multitask beneath the chat that launched it", async () => {
     mountWithMultitask();
     render(<App />);
 
-    // The chat that dispatched it is a sidebar row; the multitask is not one of
-    // its own — it belongs to that chat, which hosts it in its dock.
     await screen.findByRole("button", { name: "Build dashboard" });
-    expect(screen.queryByRole("button", { name: "Fix the changelog date" })).toBeNull();
+    const children = screen.getByRole("group", { name: "Chats launched from Build dashboard" });
+    expect(within(children).getByRole("button", { name: "Fix the changelog date" })).toBeInTheDocument();
   });
 
   it("hosts the rows in a card above the composer, not in the turn, and folds them", async () => {

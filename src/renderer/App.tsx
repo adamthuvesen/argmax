@@ -920,6 +920,18 @@ export function App(): JSX.Element {
     },
     [snapshot.sessions]
   );
+  const onForkWorkspaceRow = useCallback(
+    (workspaceId: string): void => {
+      const session = chatSessionFor(snapshot.sessions, workspaceId);
+      if (!session) {
+        showErrorToast("This chat isn't loaded — try refreshing the dashboard.");
+        return;
+      }
+      void forkSession(session.id);
+    },
+    [forkSession, snapshot.sessions]
+  );
+
   // Session-pane "Open in <IDE>" menu action: same handler, no default pinning.
   const onOpenWorkspaceInIdePane = useCallback(
     (workspaceId: string, ide: IdeId): void => {
@@ -2085,13 +2097,9 @@ export function App(): JSX.Element {
       tabIndex={-1}
       style={{
         gridTemplateColumns:
-          // Settings owns the sidebar column: the rail is fixed-width and is
-          // shown even when the app sidebar is collapsed.
-          settingsRailOpen
-            ? "var(--settings-rail-width) minmax(0, 1fr)"
-            : effectiveSidebarCollapsed
-              ? "minmax(0, 1fr)"
-              : `${sidebarWidth}px minmax(0, 1fr)`,
+          effectiveSidebarCollapsed && !settingsRailOpen
+            ? "minmax(0, 1fr)"
+            : `${sidebarWidth}px minmax(0, 1fr)`,
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
       data-resizing={isResizing ? "true" : undefined}
@@ -2239,6 +2247,7 @@ export function App(): JSX.Element {
           loadState={loadState}
           onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
           onRenameWorkspace={onRenameWorkspaceRow}
+          onForkWorkspace={onForkWorkspaceRow}
           onRemoveFromPriority={onRemoveFromPriorityRow}
           onAddToPriority={onAddToPriorityRow}
           onSnoozeWorkspace={onSnoozeRow}

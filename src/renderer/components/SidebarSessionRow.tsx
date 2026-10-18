@@ -2,10 +2,14 @@ import {
   AppWindow,
   Archive,
   Check,
+  ChevronDown,
+  ChevronRight,
+  CornerUpLeft,
   CircleEllipsis,
   CircleX,
   Copy,
   ExternalLink,
+  GitFork,
   GitMerge,
   GitPullRequest,
   GitPullRequestClosed,
@@ -77,8 +81,13 @@ export interface WorkspaceClickModifiers {
   alt: boolean;
 }
 
-type SidebarSessionRowProps = {
+export type SidebarSessionRowProps = {
   workspace: WorkspaceSummary;
+  childrenExpanded?: boolean;
+  childCount?: number;
+  childActivity?: string;
+  onToggleChildren?: (workspaceId: string) => void;
+  onDetach?: (workspaceId: string) => void;
   isSelected: boolean;
   isOpenInGrid: boolean;
   canDragToGrid: boolean;
@@ -89,6 +98,7 @@ type SidebarSessionRowProps = {
   onOpenInWindow?: (workspaceId: string) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => void;
   onRename?: (workspaceId: string, taskLabel: string) => void;
+  onFork?: (workspaceId: string) => void;
   detectedIdes: DetectedIde[];
   defaultIde: IdeId | null;
   /**
@@ -242,6 +252,11 @@ function CustomIconMarker({
 
 function SidebarSessionRowInner({
   workspace,
+  childrenExpanded,
+  childCount,
+  childActivity,
+  onToggleChildren,
+  onDetach,
   isSelected,
   isOpenInGrid,
   canDragToGrid,
@@ -251,6 +266,7 @@ function SidebarSessionRowInner({
   onOpenInWindow,
   onTogglePin,
   onRename,
+  onFork,
   detectedIdes,
   defaultIde,
   subtitle,
@@ -511,6 +527,22 @@ function SidebarSessionRowInner({
       }}
       onContextMenu={isEditing ? undefined : handleContextMenu}
     >
+      {onToggleChildren ? (
+        <button
+          type="button"
+          className="session-children-toggle"
+          aria-label={`${childrenExpanded ? "Collapse" : "Expand"} chats launched from ${workspace.taskLabel || workspace.branch}`}
+          aria-expanded={childrenExpanded}
+          title={`${childCount ?? 0} launched chats${childActivity ? ` · ${childActivity}` : ""}`}
+          data-attention={childActivity ? "true" : undefined}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleChildren(workspace.id);
+          }}
+        >
+          {childrenExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+      ) : null}
       {isEditing ? (
         // The row keeps its glyph, layout, and subtitle; only the title text
         // swaps for an unboxed input, so renaming edits the label in place
@@ -666,6 +698,23 @@ function SidebarSessionRowInner({
               aria-label="Chat actions"
               style={contextMenu.floatingStyles}
             >
+              {onDetach ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onDetach(workspace.id);
+                    }}
+                  >
+                    <CornerUpLeft size={13} aria-hidden="true" />
+                    Detach to top level
+                  </button>
+                </li>
+              ) : null}
               {onRename ? (
                 <li role="none">
                   <button
@@ -679,6 +728,23 @@ function SidebarSessionRowInner({
                   >
                     <Pencil size={13} aria-hidden="true" />
                     Rename
+                  </button>
+                </li>
+              ) : null}
+              {onFork ? (
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeContextMenu();
+                      onFork(workspace.id);
+                    }}
+                  >
+                    <GitFork size={13} aria-hidden="true" />
+                    Fork
                   </button>
                 </li>
               ) : null}
@@ -871,6 +937,11 @@ export function sidebarSessionRowEqual(
   prev: SidebarSessionRowProps,
   next: SidebarSessionRowProps
 ): boolean {
+  if (prev.childrenExpanded !== next.childrenExpanded) return false;
+  if (prev.childCount !== next.childCount) return false;
+  if (prev.childActivity !== next.childActivity) return false;
+  if (prev.onToggleChildren !== next.onToggleChildren) return false;
+  if (prev.onDetach !== next.onDetach) return false;
   if (prev.isSelected !== next.isSelected) return false;
   if (prev.isOpenInGrid !== next.isOpenInGrid) return false;
   if (prev.canDragToGrid !== next.canDragToGrid) return false;
@@ -881,6 +952,7 @@ export function sidebarSessionRowEqual(
   if (prev.onOpenInIde !== next.onOpenInIde) return false;
   if (prev.onTogglePin !== next.onTogglePin) return false;
   if (prev.onRename !== next.onRename) return false;
+  if (prev.onFork !== next.onFork) return false;
   if (prev.subtitle !== next.subtitle) return false;
   if (prev.importedProvider !== next.importedProvider) return false;
   if (prev.launchedByLabel !== next.launchedByLabel) return false;

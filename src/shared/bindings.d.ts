@@ -633,14 +633,6 @@ async reviewUnstageHunk(input: ReviewIndexHunkInput) : Promise<Result<null, Argm
     else return { status: "error", error: e  as any };
 }
 },
-async reviewCommitStaged(input: ReviewCommitStagedInput) : Promise<Result<GitCommitResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("review_commit_staged", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async reviewRevertFile(input: ReviewIndexFileInput) : Promise<Result<null, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("review_revert_file", { input }) };
@@ -1328,38 +1320,6 @@ async prsDismiss(input: PrsDismissInput) : Promise<Result<SessionPrSummary[], Ar
 async prsCleanup(input: PrsCleanupInput) : Promise<Result<PrCleanupReport, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("prs_cleanup", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitCommit(input: GitCommitInput) : Promise<Result<GitCommitResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_commit", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitPush(input: GitPushInput) : Promise<Result<GitPushResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_push", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitCreateBranch(input: GitCreateBranchInput) : Promise<Result<GitCreateBranchResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_create_branch", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<Result<GitViewOrCreatePrResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_view_or_create_pr", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2378,26 +2338,6 @@ prMergedAt: string | null;
  * Legacy rows without a branch retain a fallback on isolated workspaces.
  */
 headRefName: string | null }
-export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
-export type GitCommitMessage = string
-export type GitCommitResult = { commitSha: string; branch: string;
-/**
- * The commit reached HEAD, but resetting the real index after a
- * selected-file commit failed. The user can repair the index without
- * losing the completed commit.
- */
-indexCleanupWarning?: string | null;
-/**
- * The commit succeeded, but Argmax could not read follow-up metadata such
- * as the full SHA or current branch.
- */
-postCommitWarning?: string | null }
-export type GitCreateBranchInput = { workspaceId: WorkspaceId; branch: BranchName }
-export type GitCreateBranchResult = { branch: string }
-export type GitPushInput = { workspaceId: WorkspaceId }
-export type GitPushResult = { branch: string; upstreamSet: boolean }
-export type GitViewOrCreatePrInput = { sessionId: SessionId; expectedBranch: BranchName | null }
-export type GitViewOrCreatePrResult = { action: "opened"; url: string; prNumber: number } | { action: "created"; url: string; prNumber: number | null }
 export type Goal = { id: string; workspaceId: string; sessionId: string;
 /**
  * The whole configuration: one free-text completion condition.
@@ -2903,7 +2843,6 @@ export type RemoteTestNotificationInput = Record<string, never>
 export type RemoteUnregisterPushDeviceInput = { token: string }
 export type RendererStallMetrics = { count: number; totalMs: number; longestMs: number }
 export type RepoPath = string
-export type ReviewCommitStagedInput = { workspaceId: string; message: string }
 /**
  * Which baseline the review diff is computed against.
  *

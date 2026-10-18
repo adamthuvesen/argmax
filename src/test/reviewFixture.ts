@@ -77,7 +77,6 @@ export function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
     updateFileIndex: () => Promise.resolve(),
     revertFile: () => Promise.resolve(),
     revertHunk: () => Promise.resolve(),
-    commitStaged: () => Promise.resolve(),
     updateHunkIndex: () => Promise.resolve(),
     openChangesPanel: () => {},
     openPanelInFilesMode: () => {},

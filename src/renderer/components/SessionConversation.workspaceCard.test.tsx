@@ -50,6 +50,7 @@ describe("SessionConversation workspace card", () => {
       openChangesPanel,
       files: [{ path: "README.md", status: "M", additions: 1, deletions: 0, staged: false }],
       projectFolderChanges: {
+        workingFolder: null,
         groups: [{
           folder: { id: "dbt", projectId: "project", name: "dbt", rootPath: "/repos/dbt", isPrimary: false, enabled: true, summary: null },
           files: [{ path: "README.md", status: "M", additions: 4, deletions: 0, staged: false }],

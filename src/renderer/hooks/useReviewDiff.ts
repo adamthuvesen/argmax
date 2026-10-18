@@ -23,7 +23,6 @@ interface UseReviewDiffResult {
   updateFileIndex: (filePath: string, revision: string, stage: boolean) => Promise<void>;
   revertFile: (filePath: string, revision: string) => Promise<void>;
   revertHunk: (filePath: string, revision: string, hunkIndex: number) => Promise<void>;
-  commitStaged: (message: string) => Promise<void>;
   updateHunkIndex: (filePath: string, revision: string, hunkIndex: number, stage: boolean) => Promise<void>;
 }
 
@@ -312,12 +311,6 @@ export function useReviewDiff(args: {
     finally { setActionRevision((value) => value + 1); }
   }, [dispatch, contextLines]);
 
-  const commitStaged = useCallback(async (message: string): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    await dispatch.commitStaged(message);
-    setActionRevision((value) => value + 1);
-  }, [dispatch]);
-
   return {
     files: visibleFiles,
     filesState,
@@ -333,7 +326,6 @@ export function useReviewDiff(args: {
     updateFileIndex,
     revertFile,
     revertHunk,
-    commitStaged,
     updateHunkIndex
   };
 }

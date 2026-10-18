@@ -838,7 +838,6 @@ export async function verifyForkMergeBack({
 }
 
 
-const SNOOZE_HOUR_MS = 60 * 60 * 1000;
 
 // Text match for controls whose role the renderer does not fix (menu items,
 // settings nav entries).
@@ -915,10 +914,15 @@ export async function verifyWorkspaceSettings({
   // 1. Snooze shelf: snooze from the row menu, find it on the collapsed shelf, unsnooze.
   const rowSelector = `[data-workspace-id="${workspace.id}"] button[data-open][title]`;
   diagnose("snooze-contextmenu", await openContextMenu(browser, rowSelector));
-  await clickByText(browser, "Snooze for 1 hour", 10_000);
+  const expectedSnooze = await browser.execute(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    return tomorrow.toISOString();
+  });
+  await clickByText(browser, "Snooze until tomorrow", 10_000);
   const snoozedUntil = await waitForSnooze(bridge, workspace.id, (value) => value !== null, 10_000, "snooze");
-  const remainingMs = Date.parse(snoozedUntil) - Date.now();
-  check(assertions, "snooze-lasts-about-an-hour", remainingMs > SNOOZE_HOUR_MS - 5 * 60_000 && remainingMs <= SNOOZE_HOUR_MS, snoozedUntil);
+  check(assertions, "snooze-until-tomorrow-morning", snoozedUntil === expectedSnooze, snoozedUntil);
   check(assertions, "snooze-leaves-execution-state-alone", (await waitForCompleted(bridge, source.id, 5_000, "snoozed chat")).state === seeded.state);
   // The snoozed chat is the open one, so the shelf opens by itself to keep it
   // in view (Sidebar.tsx). Hide it, then show it again: both are real toggles.
@@ -1225,12 +1229,20 @@ async function verifyNamedProject({ bridge, browser, repoPath, evidenceDir, scre
   check(assertions, "same-repository-can-belong-to-two-projects", (await bridge.call("projects:list", {})).filter((row) => row.repoPath === primaryRoot).length === 2);
   const original = await bridge.call("workspaces:create-current", { projectId: named.id, taskLabel: "Pinned original" });
 
-  await (await browser.$('[aria-label="Customize"]')).click();
-  await clickByText(browser, "Projects", 5_000);
-  await (await browser.$('[aria-label="Project"]')).click();
-  const projectOption = await browser.$('//button[normalize-space(.)="Connected project"]');
-  await projectOption.waitForClickable({ timeout: 5_000 });
-  await projectOption.click();
+  const projectActions = await browser.$('[aria-label="Actions for Connected project"]');
+  await projectActions.waitForExist({ timeout: 10_000 });
+  await browser.execute(() => document.querySelector('[aria-label="Actions for Connected project"]').focus());
+  await projectActions.waitForClickable({ timeout: 5_000 });
+  await projectActions.click();
+  const projectMenu = await browser.$('[role="menu"][aria-label="Connected project actions"]');
+  await projectMenu.waitForDisplayed({ timeout: 5_000 });
+  const menuFits = await browser.execute(() => {
+    const rect = document.querySelector('[role="menu"][aria-label="Connected project actions"]').getBoundingClientRect();
+    return rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
+  });
+  check(assertions, "project-menu-stays-in-window", menuFits);
+  screenshots.push(await screenshot(browser, evidenceDir, "project-actions"));
+  await (await browser.$('//button[@role="menuitem" and normalize-space(.)="Edit project"]')).click();
   const makePrimary = await browser.$('[aria-label="Make project-secondary primary"]');
   await makePrimary.waitForDisplayed({ timeout: 10_000 });
   await makePrimary.click();
@@ -1271,6 +1283,80 @@ async function verifyNamedProject({ bridge, browser, repoPath, evidenceDir, scre
   await waitForText(browser, ".review-diff-scroll", "secondary folder diff marker", 10_000);
   check(assertions, "workspace-card-opens-secondary-diff", true);
   screenshots.push(await screenshot(browser, evidenceDir, "project-secondary-diff"));
+  const cardText = await browser.execute(() => document.querySelector('.workspace-card')?.textContent ?? "");
+  check(assertions, "workspace-card-has-no-manual-git-actions", !/Chat checkout|Shared checkout|Create pull request/.test(cardText));
+  await verifyNestedChats({ bridge, browser, sessionId: chat.id, evidenceDir, screenshots, assertions });
+}
+
+async function verifyNestedChats({ bridge, browser, sessionId, evidenceDir, screenshots, assertions }) {
+  const child = await bridge.call("session:multitask", {
+    sessionId, prompt: VERIFICATION_SCENARIOS.workspaceSettings.prompt,
+    taskLabel: "Linked project check", worktree: false
+  });
+  await waitForCompleted(bridge, child.sessionId, 30_000, "nested multitask");
+  const childRowSelector = `[data-workspace-id="${child.workspaceId}"]`;
+  const childRow = await browser.$(childRowSelector);
+  await childRow.waitForDisplayed({ timeout: 10_000 });
+  const isNested = () => browser.execute((selector) => Boolean(document.querySelector(selector)?.closest('[role="group"][aria-label^="Chats launched from"]')), childRowSelector);
+  check(assertions, "launched-chat-nested-by-default", await isNested());
+  const nestingLayout = await browser.execute((selector) => {
+    const child = document.querySelector(selector);
+    const group = child.closest('[role="group"][aria-label^="Chats launched from"]');
+    const parent = group.previousElementSibling.getBoundingClientRect();
+    const row = child.getBoundingClientRect();
+    return { parentBottom: parent.bottom, childTop: row.top, childWidth: row.width };
+  }, childRowSelector);
+  check(assertions, "nested-chats-stack-below-parent", nestingLayout.childTop >= nestingLayout.parentBottom && nestingLayout.childWidth > 150, nestingLayout);
+  screenshots.push(await screenshot(browser, evidenceDir, "nested-chats"));
+  const collapse = await browser.$('[aria-label="Collapse chats launched from Pinned original"]');
+  await collapse.click();
+  check(assertions, "chat-disclosure-collapses-children", !await childRow.isExisting());
+  await (await browser.$('[aria-label="Expand chats launched from Pinned original"]')).click();
+  await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 5_000 });
+
+  const sidebarWidth = await browser.execute(() => document.querySelector('.sidebar').getBoundingClientRect().width);
+  await (await browser.$('[aria-label="Customize"]')).click();
+  const settingsWidth = await browser.execute(() => document.querySelector('.settings-rail').getBoundingClientRect().width);
+  check(assertions, "customize-keeps-sidebar-width", Math.abs(sidebarWidth - settingsWidth) < 1, { sidebarWidth, settingsWidth });
+  await clickByText(browser, "Appearance", 5_000);
+  const separate = await browser.$('//label[.//input[@name="sidebar-chat-nesting" and @value="separate"]]');
+  await separate.waitForExist({ timeout: 5_000 });
+  await separate.click();
+  await clickByText(browser, "Back", 5_000);
+  const priorityToggle = await browser.$('[aria-label="Show Priority chats"]');
+  if (await priorityToggle.isExisting()) {
+    await browser.execute(() => document.querySelector('[aria-label="Show Priority chats"]').focus());
+    await priorityToggle.click();
+  }
+  await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 5_000 });
+  check(assertions, "launched-chat-setting-flattens-sidebar", !await isNested());
+  await (await browser.$('[aria-label="Customize"]')).click();
+  await (await browser.$('//label[.//input[@name="sidebar-chat-nesting" and @value="nested"]]')).click();
+  await clickByText(browser, "Back", 5_000);
+  await browser.waitUntil(isNested, { timeout: 5_000 });
+  await openContextMenu(browser, `${childRowSelector} button[data-status]`);
+  const detach = await browser.$('//button[@role="menuitem" and normalize-space(.)="Detach to top level"]');
+  await detach.waitForClickable({ timeout: 5_000 });
+  screenshots.push(await screenshot(browser, evidenceDir, "nested-chat-actions"));
+  await detach.click();
+  await browser.waitUntil(async () => !await isNested(), { timeout: 5_000 });
+  const detachedSession = (await bridge.call("dashboard:list", {})).sessions.find((row) => row.id === child.sessionId);
+  check(assertions, "detaching-preserves-launch-relationship", detachedSession?.launchedBySessionId === sessionId);
+  await browser.refresh();
+  await browser.waitUntil(async () => await browser.execute((workspaceId) => {
+    const stored = JSON.parse(localStorage.getItem("argmax.sidebar.chatNesting") ?? "null");
+    return stored?.detachedIds.includes(workspaceId);
+  }, child.workspaceId), { timeout: 10_000 });
+  await (await browser.$('[aria-label="Actions for Connected project"]')).waitForExist({ timeout: 10_000 });
+  for (const label of ["Show Priority chats", "Show Connected project chats"]) {
+    const toggle = await browser.$(`[aria-label="${label}"]`);
+    if (await toggle.isExisting()) {
+      await browser.execute((label) => document.querySelector(`[aria-label="${label}"]`).focus(), label);
+      await toggle.click();
+    }
+  }
+  await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 10_000 });
+  check(assertions, "chat-detachment-persists-after-reload", !await isNested());
 }
 
 async function git(cwd, ...args) {

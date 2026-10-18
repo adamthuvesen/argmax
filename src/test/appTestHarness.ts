@@ -638,7 +638,6 @@ export function setupAppTestMocks(): void {
       stageHunk: () => Promise.resolve(),
       unstageHunk: () => Promise.resolve(),
       revertHunk: () => Promise.resolve(),
-      commitStaged: () => Promise.resolve({ commitSha: "test", branch: "main", indexCleanupWarning: null, postCommitWarning: null })
     },
     workspace: {
       listFiles: (target) => target.kind === "project" ? listProjectFiles(target) : listWorkspaceFiles(target),
@@ -782,12 +781,6 @@ export function setupAppTestMocks(): void {
       setPrimary: () => Promise.resolve([]),
       dismiss: () => Promise.resolve([]),
       cleanup: () => Promise.reject(new Error("prs.cleanup is not stubbed"))
-    },
-    git: {
-      commit: () => Promise.resolve({ commitSha: "deadbeef", branch: "main" }),
-      push: () => Promise.resolve({ branch: "main", upstreamSet: false }),
-      createBranch: () => Promise.resolve({ branch: "feature/x" }),
-      viewOrCreatePr: () => Promise.resolve({ action: "opened", url: "https://x", prNumber: 1 })
     },
     terminal: {
       spawn: () => Promise.resolve({ terminalId: "test-terminal" }),

@@ -230,9 +230,7 @@
   border-top: 1px solid var(--line-soft);
 }
 
-/* Same shape as .commit-dialog-actions button: a modal footer's plain
-   Cancel, with the submit action filled in ink to read as the one default
-   action in the dialog. */
+/* The submit action is filled to mark the default action. */
 .new-arc-dialog-actions button {
   height: 30px;
   padding: 0 14px;

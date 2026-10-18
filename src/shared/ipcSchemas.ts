@@ -79,7 +79,6 @@ export const IPC_CHANNELS = [
   "review:unstage-file",
   "review:stage-hunk",
   "review:unstage-hunk",
-  "review:commit-staged",
   "review:revert-file",
   "review:revert-hunk",
   "goal:set",
@@ -164,10 +163,6 @@ export const IPC_CHANNELS = [
   "prs:set-primary",
   "prs:dismiss",
   "prs:cleanup",
-  "git:commit",
-  "git:push",
-  "git:create-branch",
-  "git:view-or-create-pr",
   "remote:get-status",
   "remote:set-config",
   "remote:test-notification",
@@ -294,7 +289,6 @@ export interface IpcCommands {
   "review:unstage-file": Commands["reviewUnstageFile"];
   "review:stage-hunk": Commands["reviewStageHunk"];
   "review:unstage-hunk": Commands["reviewUnstageHunk"];
-  "review:commit-staged": Commands["reviewCommitStaged"];
   "review:revert-file": Commands["reviewRevertFile"];
   "review:revert-hunk": Commands["reviewRevertHunk"];
   "goal:set": Commands["goalSet"];
@@ -379,10 +373,6 @@ export interface IpcCommands {
   "prs:set-primary": Commands["prsSetPrimary"];
   "prs:dismiss": Commands["prsDismiss"];
   "prs:cleanup": Commands["prsCleanup"];
-  "git:commit": Commands["gitCommit"];
-  "git:push": Commands["gitPush"];
-  "git:create-branch": Commands["gitCreateBranch"];
-  "git:view-or-create-pr": Commands["gitViewOrCreatePr"];
   "remote:get-status": Commands["remoteGetStatus"];
   "remote:set-config": Commands["remoteSetConfig"];
   "remote:test-notification": Commands["remoteTestNotification"];

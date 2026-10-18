@@ -69,7 +69,7 @@ export function computeSnoozeShelf(
 }
 
 export interface SnoozeChoice {
-  key: "hour" | "tomorrow" | "week";
+  key: "tomorrow";
   label: string;
   /** RFC 3339 instant to send as `until`. */
   until: string;
@@ -83,12 +83,9 @@ function morning(from: Date, daysAhead: number): Date {
   return next;
 }
 
-/** The three offers on the row menu, all strictly in the future. */
 export function snoozeChoices(from: Date): SnoozeChoice[] {
   return [
-    { key: "hour", label: "Snooze for 1 hour", until: new Date(from.getTime() + 3_600_000).toISOString() },
-    { key: "tomorrow", label: "Snooze until tomorrow", until: morning(from, 1).toISOString() },
-    { key: "week", label: "Snooze for a week", until: morning(from, 7).toISOString() }
+    { key: "tomorrow", label: "Snooze until tomorrow", until: morning(from, 1).toISOString() }
   ];
 }
 

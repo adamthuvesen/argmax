@@ -268,6 +268,45 @@
   padding-right: var(--space-1_5);
 }
 
+.session-children-toggle {
+  flex: 0 0 20px;
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.session-children-toggle:hover,
+.session-children-toggle[data-attention="true"] {
+  color: var(--accent);
+}
+
+.sidebar-chat-children {
+  margin-left: 16px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+
+.sidebar-chat-child {
+  position: relative;
+  min-width: 0;
+}
+
+.sidebar-chat-child::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: -8px;
+  width: 7px;
+  border-top: 1px solid var(--line);
+}
+
 .session-row .session-link.session-link-renaming {
   padding-right: var(--space-2_5);
 }

@@ -80,7 +80,7 @@ A launch that loses step 1 or 2 deletes nothing but its own empty directory and 
 
 `$ARGMAX_BIN session move (--project <name-or-path> | --path <checkout>) --prompt <what-to-do-there>` schedules an explicit handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace and copies the timeline into a fresh session. The source workspace is never retargeted: a workspace's `path` is write-once, so landing somewhere new always means a new row.
 
-Exactly one destination is required. `--project` moves to another project — a registered name, or the absolute path of a repository Argmax has never opened, which is registered on first use ([agent-tools.md](agent-tools.md)). `--path` moves to another checkout of the *same* project — any directory `git worktree list` reports for its repository, including the main one. That is the supported answer to "this work belongs in a different worktree"; running `cd` inside a tool call only moves the agent's shell, leaving the workspace, its diff, and its commit and pull-request actions pointed at the checkout the session started in, and the next turn relaunches back there.
+Exactly one destination is required. `--project` moves to another project — a registered name, or the absolute path of a repository Argmax has never opened, which is registered on first use ([agent-tools.md](agent-tools.md)). `--path` moves to another checkout of the *same* project — any directory `git worktree list` reports for its repository, including the main one. That is the supported answer to "this work belongs in a different worktree"; running `cd` inside a tool call only moves the agent's shell, leaving the workspace, its diff, and its repository status pointed at the checkout the session started in, and the next turn relaunches back there.
 
 Every provider's launch instructions and the MCP server instructions require
 `session_move` with `path` and a continuation `prompt` when continuing in another
@@ -99,6 +99,9 @@ A cross-project move always leaves the provider conversation id empty. A `--path
 `session.moved` marks the handoff in both timelines; its payload carries `checkoutMode` (`shared`, `worktree`, or `attached`) and `conversationCarried`. The renderer follows the destination only when the source session is still selected.
 
 ## Forking at a finished turn
+
+Right-click a sidebar chat → **Fork** copies its full visible history into a new chat in the same checkout.
+The turn must finish before a whole-chat fork can start.
 
 The Fork action under a finished turn forks the chat at that turn, in the same checkout. A second action forks it into an isolated checkout. The new chat opens with the visible history up to the end of that turn and no provider conversation: its first message starts one, with the provider chosen in the composer then. The source chat is never modified. Provider mechanics, the exact-versus-fresh rule, and why files are not rewound are in [providers.md](providers.md#native-continuity-and-forks).
 
@@ -154,7 +157,7 @@ Workspaces holding at least one live **reason**, and workspaces with a live turn
 
 ## Snooze Shelf
 
-Right-click a chat → **Snooze for 1 hour**, **Snooze until tomorrow** (9:00 local), or **Snooze for a week**. The row leaves its section (Priority, date bucket, project group, Chat) and goes to a **Snoozed** shelf above Archived. The shelf is collapsed on every launch. Right-click a shelved row → **Unsnooze** returns it at once, and a snooze that reaches its time returns it by itself.
+Right-click a chat → **Snooze until tomorrow** (9:00 local). The row leaves its section (Priority, date bucket, project group, Chat) and goes to a **Snoozed** shelf above Archived. The shelf is collapsed on every launch. Right-click a shelved row → **Unsnooze** returns it at once, and a snooze that reaches its time returns it by itself.
 
 A snooze is display metadata. `workspaces.snoozed_until` (RFC 3339, millisecond UTC, stored by `workspaces:set-snoozed-until`) is the only thing written. It never changes the workspace state, the session, attention, checks, or what the gh poller does: a PR that merges still settles the workspace, and merge cleanup still runs. Rust accepts only a future instant at most 366 days out, and `null` clears it.
 
@@ -180,7 +183,7 @@ An attributed pull request replaces the default status marker with a GitHub PR g
 
 Changes groups the chat's checkout and the project's other enabled folders.
 Additional repositories show uncommitted changes across their shared checkout, including edits from other chats.
-Their diffs support inspection. Staging, reverting, and committing remain attached to the chat's working checkout.
+Their diffs support inspection. Staging and reverting remain attached to the chat's working checkout.
 Refresh reads every group. Workspace and session state changes refresh the groups without a recurring poll.
 
 This preview tracks pull requests only for each project's original primary repository.
@@ -235,8 +238,7 @@ which every mutation refuses. Opening a file in those scopes is roughly seven
 times cheaper for it.
 
 Reverting restores unstaged changes and saves a recovery checkpoint first.
-Untracked file deletion remains a Files action. **Commit staged** commits the
-existing index, including partial staging. It requires a commit message.
+Untracked file deletion remains a Files action. Agents create commits and pull requests through their Git tools.
 
 ### Revert to a turn
 
@@ -297,9 +299,9 @@ Images are the one file kind the text read can't carry: `workspace:read-file` re
 
 ## Git
 
-[src-tauri/src/git](../src-tauri/src/git) executes git commands via direct argv arguments for branching, commits, pushing, and pull request actions.
-
-Selected-file commits build and commit through a temporary index, leaving unrelated staged entries in the checkout index alone. If the follow-up reset of that real index is blocked, the commit still returns its new SHA with an `indexCleanupWarning`; the commit dialog keeps the successful result visible and asks the user to repair the index rather than reporting a false failure. Git writes from Argmax serialize per canonical checkout, including separate IPC-created service instances that target a shared workspace.
+[src-tauri/src/git](../src-tauri/src/git) executes Git commands for checkout lifecycle, review, checkpoints, and PR cleanup.
+Agents own commits, pushes, and pull request creation. The app displays repository changes and existing PR links.
+Git writes from Argmax serialize per canonical checkout, including separate sessions that share a checkout.
 
 ### PR Cleanup
 

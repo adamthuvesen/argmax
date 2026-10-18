@@ -14,9 +14,9 @@ pub use crate::workspaces::inputs::*;
 
 use super::validation::{
     AttachmentMimeType, Base64ImageData, BranchName, CommandText, DiffContextLines, FileContent,
-    GitCommitMessage, NonEmptyString, OpenPath, PermissionMode, ProjectId, Prompt, ProviderId,
-    QuestionRequestId, ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId,
-    StreamChunk, TerminalId, ThemeMode, WorkspaceId,
+    NonEmptyString, OpenPath, PermissionMode, ProjectId, Prompt, ProviderId, QuestionRequestId,
+    ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId, StreamChunk, TerminalId,
+    ThemeMode, WorkspaceId,
 };
 
 macro_rules! empty_input {
@@ -908,34 +908,6 @@ pub struct PrsCleanupInput {
     pub pr_number: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitCommitInput {
-    pub workspace_id: WorkspaceId,
-    pub message: GitCommitMessage,
-    pub selected_files: Option<Vec<RelativePath>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitPushInput {
-    pub workspace_id: WorkspaceId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitCreateBranchInput {
-    pub workspace_id: WorkspaceId,
-    pub branch: BranchName,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitViewOrCreatePrInput {
-    pub session_id: SessionId,
-    pub expected_branch: Option<BranchName>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1059,15 +1031,6 @@ mod tests {
             "expectedMtimeMs": null
         });
         assert!(serde_json::from_value::<WorkspaceWriteFileInput>(too_large).is_err());
-    }
-
-    #[test]
-    fn branch_inputs_reject_argument_injection() {
-        let bad = serde_json::json!({
-            "workspaceId": "w1",
-            "branch": "-bad"
-        });
-        assert!(serde_json::from_value::<GitCreateBranchInput>(bad).is_err());
     }
 
     #[test]

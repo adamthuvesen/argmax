@@ -9,10 +9,15 @@ import {
   projectSortModeStorageKey,
   sidebarViewModeStorageKey
 } from "../lib/projects.js";
+import { defaultDashboardSnapshot } from "../../test/fixtures/dashboardSnapshot.js";
+import { resetSidebarChatNestingForTests, setSidebarChatsNested } from "../lib/sidebarChatNesting.js";
 import { resetSessionUnreadForTests } from "../lib/sessionUnread.js";
 import { overlaysSnapshot, resetOverlaysForTests, showArcPage } from "../state/overlays.js";
 import { resetWorkspaceDragForTests } from "../state/workspaceDrag.js";
 import { Sidebar } from "./Sidebar.js";
+
+beforeEach(resetSidebarChatNestingForTests);
+afterEach(resetSidebarChatNestingForTests);
 
 const projectSettings = {
   mergeCleanup: "off" as const,
@@ -335,6 +340,23 @@ describe("Sidebar — project removal menu", () => {
   afterEach(() => {
     cleanup();
     window.localStorage.clear();
+    resetOverlaysForTests();
+  });
+
+  it("opens the clicked project's folder settings and closes the menu", () => {
+    render(
+      <Sidebar {...baseProps} snapshot={multiProjectSnapshot} onRemoveProject={vi.fn()} />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Zebra" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit project" }));
+
+    expect(overlaysSnapshot().settingsNavigation).toMatchObject({
+      group: "projects",
+      sectionId: "settings-project-folders",
+      projectId: "project-zebra"
+    });
+    expect(screen.queryByRole("menu", { name: "Zebra actions" })).not.toBeInTheDocument();
   });
 
   it("opens a confirm step in-place and calls onRemoveProject only after confirmation", () => {
@@ -458,9 +480,7 @@ describe("Sidebar — workspaces without sessions", () => {
   });
 
   it("keeps the working mark on a chat whose multitask is still running", () => {
-    // A multitask has no row of its own, so the row of the chat that
-    // dispatched it is the only place its turn can show. Both the chat and its
-    // workspace are settled here: the motion is the child's alone.
+    // The parent stays active while its launched chat is still working.
     const parentWorkspace = snapshot.workspaces[0];
     if (!parentWorkspace) throw new Error("snapshot fixture missing workspace");
     const settledSession: SessionSummary = {
@@ -507,10 +527,10 @@ describe("Sidebar — workspaces without sessions", () => {
     render(<Sidebar {...baseProps} snapshot={withMultitask} />);
     fireEvent.click(screen.getByRole("button", { name: "Show Argmax chats" }));
 
-    const parentRow = screen.getByRole("button", { name: /Build dashboard/ });
+    const parentRow = screen.getByRole("button", { name: "Build dashboard" });
     expect(parentRow.querySelector('.status-marker[data-working="true"]')).not.toBeNull();
-    // And the multitask still has no row of its own to carry it instead.
-    expect(screen.queryByRole("button", { name: /Fix the heading/ })).toBeNull();
+    const children = screen.getByRole("group", { name: "Chats launched from Build dashboard" });
+    expect(within(children).getByRole("button", { name: /Fix the heading/ })).toBeInTheDocument();
   });
 
   it("boots with every project collapsed so no workspaces are visible on startup", () => {
@@ -2492,15 +2512,20 @@ describe("Sidebar — snooze shelf", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Calm task/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Snooze for 1 hour" }));
+    expect(screen.queryByRole("menuitem", { name: "Snooze for 1 hour" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Snooze for a week" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Snooze until tomorrow" }));
     expect(onSnoozeWorkspace).toHaveBeenCalledTimes(1);
     const [workspaceId, until] = onSnoozeWorkspace.mock.calls[0] as [string, string];
     expect(workspaceId).toBe("w-calm");
-    expect(Date.parse(until)).toBe(NOW.getTime() + 3_600_000);
+    const tomorrow = new Date(NOW);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    expect(Date.parse(until)).toBe(tomorrow.getTime());
 
     fireEvent.click(screen.getByRole("button", { name: "Show Snoozed chats" }));
     fireEvent.contextMenu(screen.getByRole("button", { name: /Snoozed task/ }));
-    expect(screen.queryByRole("menuitem", { name: "Snooze for 1 hour" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Snooze until tomorrow" })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "Unsnooze" }));
     expect(onUnsnoozeWorkspace).toHaveBeenCalledWith("w-snoozed");
   });
@@ -2620,5 +2645,128 @@ describe("Sidebar — snooze shelf", () => {
     // The returning row is the same chat the user already knew, not an arrival.
     expect(screen.queryByRole("button", { name: /Snoozed task/ })).toBeNull();
     expect(group()).toBeNull();
+  });
+});
+
+describe("Sidebar — launched chat nesting", () => {
+  const workspace = (id: string, taskLabel: string, overrides: Partial<DashboardSnapshot["workspaces"][number]> = {}) => ({
+    ...snapshot.workspaces[0], id, taskLabel, state: "complete" as const, ...overrides
+  });
+  const session = (id: string, workspaceId: string, parentId?: string): SessionSummary => ({
+    ...defaultDashboardSnapshot.sessions[0], id, workspaceId, state: "complete", attention: "normal",
+    launchedBySessionId: parentId ?? null
+  });
+  const launchedSnapshot = (): DashboardSnapshot => ({
+    ...snapshot,
+    workspaces: [workspace("parent", "Parent chat"), workspace("child", "Launched chat")],
+    sessions: [session("parent-session", "parent"), session("child-session", "child", "parent-session")]
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(bootGroupCollapseSeedKey, "1");
+    window.sessionStorage.setItem("argmax.sidebar.bootCollapseSeeded", "1");
+    window.localStorage.setItem(collapsedProjectsStorageKey, JSON.stringify([]));
+    resetSidebarChatNestingForTests();
+  });
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("nests launched chats by default and lets the parent collapse and reopen them", () => {
+    const onOpenWorkspaceChat = vi.fn();
+    render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} onOpenWorkspaceChat={onOpenWorkspaceChat} />);
+    const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
+    fireEvent.click(within(children).getByRole("button", { name: "Launched chat" }));
+    expect(onOpenWorkspaceChat).toHaveBeenCalledWith("child", expect.any(Object));
+    fireEvent.click(screen.getByRole("button", { name: "Collapse chats launched from Parent chat" }));
+    expect(screen.queryByRole("button", { name: "Launched chat" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand chats launched from Parent chat" }));
+    expect(screen.getByRole("button", { name: "Launched chat" })).toBeInTheDocument();
+  });
+
+  it("applies the Separate preference immediately and restores nesting when it is enabled", () => {
+    render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
+    act(() => setSidebarChatsNested(false));
+    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Launched chat/ })).toBeInTheDocument();
+    act(() => setSidebarChatsNested(true));
+    expect(screen.getByRole("group", { name: "Chats launched from Parent chat" })).toBeInTheDocument();
+  });
+
+  it("keeps a detached chat at the top level after a dashboard update", () => {
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Launched chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Detach to top level" }));
+    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    rerender(<Sidebar {...baseProps} snapshot={launchedSnapshot()} />);
+    expect(screen.getByRole("button", { name: /Launched chat/ })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Chats launched from Parent chat" })).not.toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Launched chat/ }));
+    expect(screen.queryByRole("menuitem", { name: "Detach to top level" })).not.toBeInTheDocument();
+  });
+
+  it("names the project on a child launched into another project", () => {
+    const crossProject = launchedSnapshot();
+    crossProject.projects = [...crossProject.projects, multiProjectSnapshot.projects[0]];
+    crossProject.workspaces = crossProject.workspaces.map((row) => row.id === "child" ? { ...row, projectId: "project-zebra" } : row);
+    render(<Sidebar {...baseProps} snapshot={crossProject} />);
+    const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
+    expect(within(children).getByRole("button", { name: /Launched chat/ })).toHaveTextContent("Zebra");
+    expect(screen.getAllByRole("button", { name: /Launched chat/ })).toHaveLength(1);
+  });
+
+  it("keeps a priority child nested and makes Done act on that child", () => {
+    const needsAttention = launchedSnapshot();
+    needsAttention.sessions = needsAttention.sessions.map((row) => row.workspaceId === "child" ? {
+      ...row, state: "waiting", attention: "blocked", attentionChangedAt: new Date().toISOString(), lastActivityAt: new Date().toISOString()
+    } : row);
+    const onRemoveFromPriority = vi.fn();
+    const onClearPriority = vi.fn();
+    render(<Sidebar {...baseProps} showPriority snapshot={needsAttention} onRemoveFromPriority={onRemoveFromPriority} onClearPriority={onClearPriority} />);
+    expect(screen.getByText("Priority")).toBeInTheDocument();
+    const children = screen.getByRole("group", { name: "Chats launched from Parent chat" });
+    fireEvent.contextMenu(within(children).getByRole("button", { name: "Launched chat" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Done" }));
+    expect(onRemoveFromPriority).toHaveBeenCalledExactlyOnceWith("child");
+    fireEvent.contextMenu(screen.getByTitle("Parent chat — complete"));
+    expect(screen.queryByRole("menuitem", { name: "Done" })).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Clear priority" }));
+    expect(onClearPriority).toHaveBeenCalledWith(["child"]);
+  });
+
+  it("uses saved root order when children bring their parents into Priority", () => {
+    const ordered = launchedSnapshot();
+    const now = new Date().toISOString();
+    ordered.workspaces.push(workspace("second-parent", "Second parent"), workspace("second-child", "Second child"));
+    ordered.sessions.push(session("second-parent-session", "second-parent"), session("second-child-session", "second-child", "second-parent-session"));
+    ordered.sessions = ordered.sessions.map((row) => row.workspaceId === "child" || row.workspaceId === "second-child" ? {
+      ...row, state: "waiting", attention: "blocked", attentionChangedAt: now,
+      lastActivityAt: row.workspaceId === "child" ? now : new Date(Date.now() - 60_000).toISOString()
+    } : row);
+    window.localStorage.setItem("argmax.sidebar.workspaceOrder", JSON.stringify({ priority: ["second-parent", "parent"] }));
+    render(<Sidebar {...baseProps} showPriority snapshot={ordered} />);
+    const first = screen.getByRole("button", { name: "Second parent Argmax" });
+    const second = screen.getByRole("button", { name: "Parent chat Argmax" });
+    expect(rendersAfter(first, second)).toBe(true);
+    expect(within(screen.getByRole("group", { name: "Chats launched from Parent chat" })).getByRole("button", { name: "Launched chat" })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Chats launched from Second parent" })).getByRole("button", { name: "Second child" })).toBeInTheDocument();
+  });
+
+  it("reveals an older parent beyond the five-row limit when its child is selected", () => {
+    const manyChats = launchedSnapshot();
+    const newerRoots = Array.from({ length: 6 }, (_, index) => workspace(`new-${index}`, `New chat ${index}`, {
+      lastActivityAt: `2026-10-18T10:0${index}:00.000Z`
+    }));
+    manyChats.workspaces = [...newerRoots, ...manyChats.workspaces];
+    manyChats.sessions = [...newerRoots.map((row) => session(`session-${row.id}`, row.id)), ...manyChats.sessions];
+    const { rerender } = render(<Sidebar {...baseProps} snapshot={manyChats} />);
+    expect(screen.queryByRole("button", { name: "Parent chat" })).not.toBeInTheDocument();
+    rerender(<Sidebar {...baseProps} snapshot={manyChats} selectedWorkspaceId="child" />);
+    expect(screen.getByRole("button", { name: "Parent chat" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Launched chat" })).toHaveAttribute("aria-current", "true");
   });
 });

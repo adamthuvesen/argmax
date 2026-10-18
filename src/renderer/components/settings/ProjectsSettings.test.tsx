@@ -36,6 +36,20 @@ function installUpdateStub(updateSettings: ReturnType<typeof vi.fn>): void {
 }
 
 describe("ProjectsSettings", () => {
+  it("opens the requested project instead of the first project", () => {
+    const second = project({ id: "project-2", name: "Research", repoPath: "/Users/dev/research" });
+    render(
+      <ProjectsSettings
+        projects={[project(), second]}
+        initialProjectId="project-2"
+        onProjectUpdated={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("/Users/dev/research")).toBeInTheDocument();
+    expect(screen.queryByText("/Users/dev/argmax")).not.toBeInTheDocument();
+  });
+
   it("renders current settings and keeps Save disabled until something changes", () => {
     render(<ProjectsSettings projects={[project()]} onProjectUpdated={vi.fn()} />);
 

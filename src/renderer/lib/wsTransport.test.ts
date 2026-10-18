@@ -188,13 +188,13 @@ describe("wsTransport", () => {
     const { connect, sockets } = fakeTransportSeam();
     const transport = createWsTransport({ connect });
     sockets[0].authenticate();
-    const sent = transport.invoke("git:commit", { workspaceId: "work", message: "change" });
+    const sent = transport.invoke("workspaces:archive", { workspaceId: "work" });
     const original = sockets[0].requests()[0];
     sockets[0].deliver({ type: "response", id: 1, error: { sub_code: "REMOTE_OPERATION_PENDING", message: "running" } });
     await vi.advanceTimersByTimeAsync(500);
     expect(sockets[0].requests()[1]).toEqual(original);
-    sockets[0].deliver({ type: "response", id: 1, ok: { hash: "abc" }, operationSettled: true });
-    await expect(sent).resolves.toEqual({ hash: "abc" });
+    sockets[0].deliver({ type: "response", id: 1, ok: "archived", operationSettled: true });
+    await expect(sent).resolves.toBe("archived");
   });
 
   afterEach(() => {

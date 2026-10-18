@@ -10,7 +10,6 @@
    ============================================================ */
 
 :root {
-  --settings-rail-width: 232px;
   /* Topbar title and content column share one measure and one inset, so the
      page title sits exactly on the cards' left edge. */
   --settings-measure: 760px;

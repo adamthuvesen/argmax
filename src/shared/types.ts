@@ -258,7 +258,6 @@ export type ChangedFileSummary = Bindings.ChangedFileSummary;
 export type WorkspaceDiff = Bindings.WorkspaceDiff;
 export type ReviewIndexFileInput = Bindings.ReviewIndexFileInput;
 export type ReviewIndexHunkInput = Bindings.ReviewIndexHunkInput;
-export type ReviewCommitStagedInput = Bindings.ReviewCommitStagedInput;
 export type Checkpoint = Bindings.Checkpoint;
 export type CheckpointsListInput = Bindings.CheckpointsListInput;
 export type CheckpointsPreviewRewindInput = Bindings.CheckpointsPreviewRewindInput;
@@ -298,16 +297,8 @@ export type WorkspaceContentSearchResult = Bindings.WorkspaceContentSearchResult
 export type WorkspaceFileWriteResult = Bindings.WorkspaceFileWriteResult;
 
 export type RunCheckInput = Bindings.ChecksRunInput;
-export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;
-export type GitPushInput = Bindings.GitPushInput;
-export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
-export type GitViewOrCreatePrInput = OptionalNullable<Bindings.GitViewOrCreatePrInput, "expectedBranch">;
 
-export type GitCommitResult = Bindings.GitCommitResult;
 export type WorkspaceArchiveResult = Retype<Bindings.WorkspaceArchiveResult, { workspace: WorkspaceSummary }>;
-export type GitPushResult = Bindings.GitPushResult;
-export type GitCreateBranchResult = Bindings.GitCreateBranchResult;
-export type GitViewOrCreatePrResult = Bindings.GitViewOrCreatePrResult;
 export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
 export type ConnectionsListInput = OptionalNullable<Bindings.ConnectionsListInput, "workspaceId">;
 export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
@@ -669,7 +660,6 @@ export interface ArgmaxApi {
     revertHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     stageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     unstageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
-    commitStaged: (input: ReviewCommitStagedInput) => Promise<GitCommitResult>;
     listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
     /** `contextLines` is only honored for a single-file request; omit it for
      *  git's default context. See ReviewLoadDiffInput. */
@@ -854,12 +844,6 @@ export interface ArgmaxApi {
     setPrimary: (input: Bindings.PrsSetPrimaryInput) => Promise<SessionPrSummary[]>;
     dismiss: (input: Bindings.PrsDismissInput) => Promise<SessionPrSummary[]>;
     cleanup: (input: Bindings.PrsCleanupInput) => Promise<PrCleanupReport>;
-  };
-  git: {
-    commit: (input: GitCommitInput) => Promise<GitCommitResult>;
-    push: (input: GitPushInput) => Promise<GitPushResult>;
-    createBranch: (input: GitCreateBranchInput) => Promise<GitCreateBranchResult>;
-    viewOrCreatePr: (input: GitViewOrCreatePrInput) => Promise<GitViewOrCreatePrResult>;
   };
   terminal: {
     spawn: (input: TerminalSpawnInput) => Promise<{ terminalId: string }>;

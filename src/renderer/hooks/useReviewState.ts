@@ -241,7 +241,6 @@ export interface ReviewState {
   updateFileIndex: (filePath: string, revision: string, stage: boolean) => Promise<void>;
   revertFile: (filePath: string, revision: string) => Promise<void>;
   revertHunk: (filePath: string, revision: string, hunkIndex: number) => Promise<void>;
-  commitStaged: (message: string) => Promise<void>;
   updateHunkIndex: (filePath: string, revision: string, hunkIndex: number, stage: boolean) => Promise<void>;
   openPanelInFilesMode: () => void;
   openInFilesView: (filePath: string) => void;
@@ -845,7 +844,6 @@ export function useReviewState(
     updateFileIndex: diffState.updateFileIndex,
     revertFile: diffState.revertFile,
     revertHunk: diffState.revertHunk,
-    commitStaged: diffState.commitStaged,
     updateHunkIndex: diffState.updateHunkIndex,
     openPanelInFilesMode,
     openInFilesView,

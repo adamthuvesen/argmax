@@ -21,6 +21,7 @@ describe("useProjectFolderChanges", () => {
       projectId: "project", workingFolderId: "primary", workingRootPath: "/isolated/chat", refreshKey
     }, true), { initialProps: { refreshKey: "running" } });
     await waitFor(() => expect(result.current.groups).toHaveLength(2));
+    expect(result.current.workingFolder?.name).toBe("primary");
     expect(listChangedFiles.mock.calls).toEqual([
       [{ kind: "projectFolder", id: "one" }, "workingTree"],
       [{ kind: "projectFolder", id: "two" }, "workingTree"]

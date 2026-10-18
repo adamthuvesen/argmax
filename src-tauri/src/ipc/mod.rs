@@ -21,7 +21,6 @@ pub mod checks;
 pub mod cloud;
 pub mod connections;
 pub mod dashboard;
-pub mod git_ops;
 pub mod goals;
 pub mod health;
 pub mod learnings;

@@ -3,7 +3,6 @@ use super::live_database;
 use crate::{
     checkpoints::service::CheckpointService,
     error::ArgmaxResult,
-    git::ops::{GitCommitInput, GitCommitResult, GitOpsService},
     review::git_review::{self, ChangedFileSummary, WorkspaceDiff},
     state::AppState,
     workspaces::WorkspaceTargetKind,
@@ -33,13 +32,6 @@ pub struct ReviewIndexHunkInput {
     pub revision: String,
     pub hunk_index: u32,
     pub context_lines: Option<super::validation::DiffContextLines>,
-}
-
-#[derive(Debug, Clone, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReviewCommitStagedInput {
-    pub workspace_id: String,
-    pub message: String,
 }
 
 #[tauri::command(rename = "review:list-changed-files")]
@@ -160,29 +152,6 @@ pub(crate) async fn review_update_hunk_index_impl(
         stage,
     )
     .await
-}
-
-#[tauri::command(rename = "review:commit-staged")]
-#[specta::specta]
-pub async fn review_commit_staged(
-    state: State<'_, AppState>,
-    input: ReviewCommitStagedInput,
-) -> ArgmaxResult<GitCommitResult> {
-    review_commit_staged_impl(&state, input).await
-}
-
-pub(crate) async fn review_commit_staged_impl(
-    state: &AppState,
-    input: ReviewCommitStagedInput,
-) -> ArgmaxResult<GitCommitResult> {
-    let service = GitOpsService::new(live_database(state)?);
-    service
-        .commit_staged(GitCommitInput {
-            workspace_id: input.workspace_id,
-            message: input.message,
-            selected_files: Vec::new(),
-        })
-        .await
 }
 
 #[tauri::command(rename = "review:revert-file")]

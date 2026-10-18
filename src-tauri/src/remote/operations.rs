@@ -232,10 +232,10 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         let id = identity();
         assert!(matches!(
-            admit(&db, &id, "git:commit", &Value::Null, "old-process").unwrap(),
+            admit(&db, &id, "workspaces:archive", &Value::Null, "old-process").unwrap(),
             Admission::Execute
         ));
-        let error = admit(&db, &id, "git:commit", &Value::Null, "new-process")
+        let error = admit(&db, &id, "workspaces:archive", &Value::Null, "new-process")
             .err()
             .unwrap();
         assert!(
@@ -254,8 +254,8 @@ mod tests {
             Ok(json!(42))
         };
         let (first, second) = tokio::join!(
-            execute(&db, &id, "git:commit", &Value::Null, action),
-            execute(&db, &id, "git:commit", &Value::Null, action)
+            execute(&db, &id, "workspaces:archive", &Value::Null, action),
+            execute(&db, &id, "workspaces:archive", &Value::Null, action)
         );
         assert_eq!(first.unwrap(), second.unwrap());
         assert_eq!(calls.load(Ordering::SeqCst), 1);

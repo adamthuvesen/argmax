@@ -26,23 +26,6 @@
   font-size: var(--text-xs);
 }
 
-.project-folder-changes-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 6px 6px;
-}
-
-.project-folder-changes-header .project-folder-changes-label {
-  padding: 0;
-}
-
-.project-folder-changes-shared {
-  color: var(--muted);
-  font-size: var(--text-2xs);
-}
-
 .project-folder-change-group summary {
   display: flex;
   align-items: center;

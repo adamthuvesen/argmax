@@ -18,6 +18,7 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { agentStatusLabel } from "../lib/agentLaunch.js";
+import { repoNameFromPath } from "../lib/projects.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import {
@@ -230,12 +231,13 @@ export function WorkspaceCard({
         />
         {changedFolders.map(({ folder, files }) => {
           const totals = summarizeChangedFiles(files);
+          const folderName = repoNameFromPath(folder.rootPath) ?? folder.name;
           return (
             <div key={folder.id} className="workspace-card-folder-changes">
               <WorkspaceCardRow
                 icon={<FileDiff size={13} aria-hidden="true" />}
-                label={folder.name}
-                ariaLabel={`Changes in ${folder.name}`}
+                label={folderName}
+                ariaLabel={`Changes in ${folderName}`}
                 title={`Review ${files.length} changed ${files.length === 1 ? "file" : "files"} in ${folder.rootPath}. This shared checkout can include changes from other chats.`}
                 meta={<ChangeCount additions={totals.additions} deletions={totals.deletions} />}
                 disabled={!onOpenFolderChanges}

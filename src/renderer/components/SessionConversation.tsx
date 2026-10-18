@@ -1588,7 +1588,7 @@ export function SessionConversation({
               if (review.projectFolderChanges?.selection) review.openChangesPanel();
               else review.toggleChangesPanel();
             }}
-            workingFolderName={review.projectFolderChanges?.workingFolder?.name}
+            workingFolderName={repoNameFromPath(review.projectFolderChanges?.workingFolder?.rootPath) ?? review.projectFolderChanges?.workingFolder?.name}
             projectFolderChanges={review.projectFolderChanges?.groups}
             onOpenFolderChanges={(folderId, filePath) => {
               review.projectFolderChanges?.selectFile(folderId, filePath);

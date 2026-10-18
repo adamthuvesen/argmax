@@ -809,7 +809,7 @@ function ReviewPanelPane({
     >
       {(!review.tabs || isChanges || isSplit) ? <div className="review-toolbar" data-resource-tabs={Boolean(review.tabs)}>
         <div className="review-toolbar-titles">
-          {review.tabs ? <span className="review-pane-label">{tabLabel ?? sourceLabel}</span> : <ReviewModeTabs
+          {review.tabs ? (isChanges ? null : <span className="review-pane-label">{tabLabel ?? sourceLabel}</span>) : <ReviewModeTabs
             activeMode={mode}
             agentCount={agentRoster?.running ?? 0}
             hasAgents={Boolean(agents)}

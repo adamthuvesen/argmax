@@ -13,10 +13,6 @@ export function ProjectFolderChangesList({ state }: { state: ProjectFolderChange
   if (!state.error && state.groups.length === 0) return null;
   return (
     <section className="project-folder-changes" aria-label="Other project folders">
-      <div className="project-folder-changes-header">
-        <span className="project-folder-changes-label">Other project folders</span>
-        <span className="project-folder-changes-shared" title="Uncommitted changes in shared project folders. These can include other chats’ work.">Shared</span>
-      </div>
       {state.error ? <p className="project-folder-changes-error" role="alert">Could not load project folders: {state.error}</p> : null}
       {state.groups.map(({ folder, files, error }) => {
         const folderName = repoNameFromPath(folder.rootPath) ?? folder.name;

@@ -72,8 +72,9 @@ function AgentHeader({
     (fact): fact is string => typeof fact === "string" && fact.length > 0
   );
   const emblem = emblemForCodename(codename ?? fallbackCodename(phaseKey));
+  const statusLabel = AGENT_STATUS_LABEL[status];
   return (
-    <header className="agent-activity-header">
+    <header className="agent-activity-header agent-emblem-tint" data-hue={emblem.hue}>
       <span
         className="agent-activity-mark agent-emblem-tint"
         data-status={status}
@@ -104,9 +105,22 @@ function AgentHeader({
           </p>
         ) : null}
       </div>
+      {statusLabel ? (
+        <span className="agent-activity-status" data-status={status}>
+          <span className="agent-activity-status-dot" aria-hidden="true" />
+          {statusLabel}
+        </span>
+      ) : null}
     </header>
   );
 }
+
+const AGENT_STATUS_LABEL: Record<AgentActivityModel["status"], string | null> = {
+  running: "Working",
+  done: "Done",
+  error: "Failed",
+  missing: null
+};
 
 function renderAssistantGroup({
   group,

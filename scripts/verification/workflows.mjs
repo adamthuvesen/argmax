@@ -1311,7 +1311,11 @@ async function verifyLaunchFolder({ bridge, browser, named, primaryRoot, seconda
     await (await browser.$(`//*[@aria-label="Select project"]//button[.//*[normalize-space(.)="${named.name}"]]`)).click();
     const choose = await browser.$('[aria-label="Switch project"]');
     await choose.waitForClickable({ timeout: 10_000 });
-    await choose.click({ button: "right" });
+    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes("Right-click to choose a folder"), {
+      timeout: 10_000,
+      timeoutMsg: "The selected project's folders did not become available",
+    });
+    diagnose("launch-folder-contextmenu", await openContextMenu(browser, '[aria-label="Switch project"]'));
     const folders = await bridge.call("projects:get-folders", { projectId: named.id });
     const folder = folders.find((entry) => entry.rootPath === root);
     const option = await browser.$(`//*[@aria-label="Work in"]//button[@title="${root}"]`);

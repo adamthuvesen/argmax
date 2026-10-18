@@ -1,4 +1,4 @@
-import { ArrowRight, Bot, Folder, Globe, MessageSquarePlus, Search, Shapes } from "lucide-react";
+import { ArrowRight, Bot, Folder, MessageSquarePlus, Search, Shapes } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 import { resolveBrowserInput } from "../lib/browserPanel.js";
 import { ChangesIcon, TerminalIcon } from "./ReviewModeIcons.js";
@@ -41,13 +41,11 @@ export function ReviewNewTab({ onOpen, onBrowse, hasAgents, hasTerminal, hasSide
     </form> : null}
     {error ? <p className="review-error" role="alert">{error}</p> : null}
     <div className="review-new-tools">
-      <h2>Tools</h2>
       <div className="review-new-tool-grid">
         {tools.map((tool) => <button key={tool.id} type="button" onClick={() => onOpen(tool.id)}>
           <span aria-hidden="true">{tool.icon}</span><span>{tool.label}</span><ArrowRight size={14} aria-hidden="true" />
         </button>)}
       </div>
-      {hasBrowser ? <p className="review-new-hint"><Globe size={14} aria-hidden="true" />Open a page alongside your work.</p> : null}
     </div>
   </div>;
 }

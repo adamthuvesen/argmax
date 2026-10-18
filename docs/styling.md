@@ -22,6 +22,21 @@ set on `<html>` by the matching library modules) with `calc()` and nested `color
 original palette in `tokens.css` so dark 70 and any page without the attribute
 retain their exact colors.
 
+## Corner radii
+
+Choose a radius by the element's role, using the shared semantic tokens:
+
+| Role | Token | Radius |
+| --- | --- | --- |
+| Rectangular buttons, inputs, and icon controls | `--radius-control` | 6px |
+| Navigation, list, and menu rows | `--radius-row` | 10px |
+| Cards, menus, and floating panels | `--radius-surface` | 14px |
+| Dialogs, composers, and large transcript surfaces | `--radius-dialog` | 20px |
+
+Parent and nested sidebar rows use the same row radius, including hover, selection, and keyboard focus.
+Keep circles and intentional pills circular. Joined edges, diff lines, and full-width headers stay square.
+Use the same token on a surface and its interactive background. Do not select a different radius for each state.
+
 ## Core Design Constraints
 
 New installs use System theme, monochrome activity icons, the Halo activity mark, and neutral user

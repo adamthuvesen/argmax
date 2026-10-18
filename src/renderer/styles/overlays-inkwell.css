@@ -42,7 +42,7 @@
   display: flex;
   flex-direction: column;
   background: var(--overlay-panel);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-dialog);
   border: 1px solid var(--line);
   box-shadow:
     inset 0 1px 0 var(--paper-highlight-soft),
@@ -184,7 +184,7 @@
   gap: var(--space-2_5);
   margin: 0 var(--space-1_5);
   padding: var(--space-1_5) var(--space-3);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-row);
   font-size: var(--text-sm-plus);
   cursor: pointer;
   color: var(--text-soft);
@@ -293,7 +293,7 @@
   font-size: var(--text-2xs);
   line-height: 16px;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   color: var(--muted);
   letter-spacing: 0;
   white-space: nowrap;
@@ -388,7 +388,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--overlay-panel-raised);
   color: var(--text-soft);
   letter-spacing: 0;
@@ -411,7 +411,7 @@
 .cheat-sheet {
   width: min(520px, 92vw);
   background: var(--panel);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-dialog);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-popover);
   padding: 20px 24px 18px;
@@ -463,7 +463,7 @@
 .cheat-sheet kbd {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   background: var(--panel-sunken);
   border: 1px solid var(--line);
   font-family: inherit;
@@ -526,7 +526,7 @@
   width: auto;
   height: auto;
   object-fit: contain;
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-surface);
   box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.6);
 }
 

@@ -38,7 +38,7 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -68,7 +68,7 @@
   margin-top: var(--space-1);
   padding: var(--space-1_5) var(--space-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: var(--panel-sunken);
   font-size: var(--text-xs);
 }
@@ -89,7 +89,7 @@
   height: 22px;
   padding: 0 var(--space-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--panel);
   color: var(--text-soft);
   font: inherit;
@@ -778,7 +778,7 @@
   min-width: 0;
   max-width: 100%;
   padding: var(--tool-call-block-pad) 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--tool-block-surface);
 }
 
@@ -957,7 +957,7 @@
   min-width: 0;
   max-width: 100%;
   padding: 11px 13px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--tool-block-surface);
 }
 
@@ -1205,7 +1205,7 @@
   flex-direction: column;
   border: 0;
   background: transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-row);
   animation: msg-in 200ms var(--ease);
 }
 
@@ -1265,7 +1265,7 @@ button.tool-call-row-button {
   height: 22px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1614,7 +1614,7 @@ button.tool-call-row-button {
      more air above it than the gap between two paragraphs. */
   margin-top: var(--space-3);
   border: 1px solid var(--line);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-surface);
   /* Sunken, not lifted, and only just: --panel reads as a gray slab against
      the dark well, while the full sunken step reads as a hole in it. Half a
      step below the page fill is where the card stops competing with either. */
@@ -1704,7 +1704,7 @@ button.tool-call-row-button {
   align-items: center;
   padding: 5px 8px;
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-row);
   background: transparent;
   color: inherit;
   font: inherit;

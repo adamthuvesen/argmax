@@ -92,7 +92,7 @@
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-sm);
@@ -304,7 +304,7 @@
   padding: 0 var(--space-2_5);
   background: var(--panel);
   border: 0.5px solid var(--line-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   cursor: pointer;
   font: inherit;
   font-size: var(--text-xs);
@@ -371,7 +371,7 @@
   width: 100%;
   padding: 7px 10px;
   border: 0.5px solid var(--line-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   background: var(--panel-sunken);
   color: var(--text);
   font-family: var(--font-mono);
@@ -459,7 +459,7 @@
 .settings-remote-qr {
   flex: none;
   padding: var(--space-2_5);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: #fff;
   color: #000;
   border: 1px solid var(--line);

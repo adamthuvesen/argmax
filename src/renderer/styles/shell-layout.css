@@ -95,7 +95,7 @@
   height: 30px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -166,7 +166,7 @@
   color: var(--text-soft);
   text-align: left;
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-row);
   background: transparent;
   cursor: pointer;
   font-size: var(--text-base);
@@ -275,7 +275,7 @@
   place-items: center;
   color: var(--muted-strong);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
@@ -466,7 +466,7 @@
 
 .project-group.drag-over > .project-row {
   background: var(--panel-sunken);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-row);
   outline: 1.5px solid var(--line-strong);
   outline-offset: -1px;
 }
@@ -494,7 +494,7 @@
      hover background paints the padding box, so the highlight still spans the
      full width. */
   padding-right: var(--sidebar-action-inset);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-row);
   transition: background var(--duration-fast) var(--ease);
 }
 
@@ -621,7 +621,7 @@
   color: var(--muted);
   text-align: left;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-row);
   background: transparent;
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
@@ -708,7 +708,7 @@
   place-items: center;
   color: var(--muted);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   opacity: 0;

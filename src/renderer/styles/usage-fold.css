@@ -145,7 +145,7 @@
   color: var(--muted-strong);
   background: none;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
   text-decoration: underline;
   text-decoration-color: color-mix(in oklab, var(--muted-strong) 45%, transparent);
@@ -240,7 +240,7 @@
   text-align: left;
   background: var(--panel-soft);
   border: 0.5px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   appearance: none;
   transition:
     background var(--motion-fast) var(--ease-out),

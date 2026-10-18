@@ -75,7 +75,7 @@
   color: var(--text);
   padding: 5px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   background: var(--panel);
   transition: border-color var(--duration-fast) var(--ease),
     background var(--duration-fast) var(--ease);
@@ -131,7 +131,7 @@
   padding: 0;
   display: grid;
   gap: 0;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-surface);
   max-height: 320px;
   overflow: hidden auto;
   background: var(--panel-soft);

@@ -265,10 +265,10 @@ describe("LaunchModelSelector — all providers", () => {
     expect(screen.queryByRole("separator")).not.toBeInTheDocument();
     expect(screen.getAllByText("GPT-5.6 Sol")).toHaveLength(1);
     expect(within(screen.getByRole("listbox", { name: "Launch model" })).queryByText("GPT-5.6 Sol (Cursor)")).not.toBeInTheDocument();
-    // The chosen row is the one carrying the check, not a fill.
+    // The chosen row is marked by state, which draws its trailing check.
     const chosen = screen.getByRole("option", { selected: true });
     expect(chosen).toHaveTextContent("GPT-5.6 Sol");
-    expect(chosen.querySelector(".picker-lead svg")).not.toBeNull();
+    expect(within(chosen).getByRole("button")).toHaveAttribute("aria-pressed", "true");
   });
 
   // Both boxes are placed by `useAnchoredPopover` — the flyout against the

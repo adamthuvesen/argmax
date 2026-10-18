@@ -1359,7 +1359,7 @@ export function Sidebar({
                     title={option.description}
                     onClick={() => handleSelectViewMode(option.value)}
                   >
-                    <PickerLead selected={isActive} />
+                    <PickerLead />
                     {option.label}
                   </button>
                 </li>
@@ -1383,7 +1383,7 @@ export function Sidebar({
                         title={option.description}
                         onClick={() => handleSelectSortMode(option.value)}
                       >
-                        <PickerLead selected={isActive} />
+                        <PickerLead />
                         {option.label}
                       </button>
                     </li>

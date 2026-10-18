@@ -373,7 +373,7 @@ export function SettingsListPicker<T extends string>({
                 setPickerOpen(false);
               }}
             >
-              <PickerLead selected={isSelected}>{option.icon}</PickerLead>
+              <PickerLead>{option.icon}</PickerLead>
               {option.label}
             </button>
           </li>

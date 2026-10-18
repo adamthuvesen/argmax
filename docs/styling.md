@@ -493,10 +493,11 @@ Defined in [tokens.css](../src/renderer/styles/tokens.css):
   branch menus, the settings list pickers (`SettingsListPicker`), the review scope menu, and the
   action menus (chat actions, sidebar sort, project actions, identity, right-click).
   Rows are 28px at `--text-sm` inside a 5px inset and a 10px corner, so the 6px row corner is
-  concentric with the panel's. The chosen row is marked by weight and a check in its 16px lead cell
-  ([PickerLead.tsx](../src/renderer/components/PickerLead.tsx)), never by a fill — a fill is what
-  hover and the keyboard cursor use, and the two must not look alike. Every listbox row renders the
-  lead cell (glyph, check, or empty) and an action row's first `<svg>` is sized into the same cell,
+  concentric with the panel's. The chosen row is marked by weight and an accent check at its right edge, never by a fill — a fill is what
+  hover and the keyboard cursor use, and the two must not look alike. The check is drawn in CSS from
+  the row's `aria-pressed`, `aria-checked` or `aria-selected` state, and every row in such a menu
+  reserves its slot so trailing columns stay straight. Every listbox row renders the 16px lead cell
+  ([PickerLead.tsx](../src/renderer/components/PickerLead.tsx), glyph or empty) and an action row's first `<svg>` is sized into the same cell,
   so labels sit on one column across all of them. `.project-picker-group-label` is the one group
   header; its `::before` cell keeps the name on the label column and, given `data-provider`, draws
   the provider's Usage-page dot. In the model picker those headers are sticky, so a list that always

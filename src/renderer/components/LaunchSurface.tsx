@@ -1632,7 +1632,7 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
                       aria-pressed={p.id === project?.id}
                       onClick={() => pickProject(p)}
                     >
-                      <PickerLead>
+                      <PickerLead selected={p.id === project?.id}>
                         <Folder size={13} />
                       </PickerLead>
                       <span className="picker-label">{p.name}</span>
@@ -1730,7 +1730,7 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
                           aria-pressed={b === shownBranch}
                           onClick={() => pickBranch(b)}
                         >
-                          <PickerLead>
+                          <PickerLead selected={b === shownBranch}>
                             <GitBranch size={13} />
                           </PickerLead>
                           <span className="picker-label">{b}</span>

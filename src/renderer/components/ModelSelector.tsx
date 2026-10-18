@@ -920,7 +920,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                   title={option.disabled ? `${option.label} — provider CLI not installed` : option.description}
                   onClick={() => selectModel(option)}
                 >
-                  <PickerLead />
+                  <PickerLead selected={selected} />
                   <span className="model-picker-name">{option.label}</span>
                   {option.annotation ? (
                     <span className="picker-meta" data-tone="warn">
@@ -978,7 +978,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
               aria-pressed={!fastModeEnabled}
               onClick={() => setFastMode(false)}
             >
-              <PickerLead />
+              <PickerLead selected={!fastModeEnabled} />
               <span>Off</span>
             </button>
           </li>
@@ -990,7 +990,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
               title="Faster responses, increased usage"
               onClick={() => setFastMode(true)}
             >
-              <PickerLead />
+              <PickerLead selected={fastModeEnabled} />
               <span>On</span>
             </button>
           </li>

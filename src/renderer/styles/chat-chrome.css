@@ -530,9 +530,9 @@
    action menus (chat actions, sidebar sort, project actions,
    identity, right-click). Rows are 28px at the app's compact `--text-xs`,
    labels in full ink and glyphs one step down, so the menu reads as text to
-   act on rather than as a muted list. Chosen rows carry an accent check at the
-   right edge instead of a fill; the 16px lead cell (`.picker-lead`) holds the
-   glyph or stays empty, so every label sits on one column. Action menus split into
+   act on rather than as a muted list. Chosen rows carry a check in the 16px
+   lead cell (`.picker-lead`) instead of a fill, so every label sits on the
+   same column whether or not its row has a glyph. Action menus split into
    groups with `.project-picker-divider`. Mockups and the decision:
    docs/design/pickers. */
 .project-picker-popover {
@@ -1224,7 +1224,7 @@ body > .picker-popover-portaled.settings-picker-popover {
   color: var(--text);
 }
 
-/* Lead cell: the row's glyph, or empty, so labels share one column. */
+/* Lead cell: the row's glyph, or a check once the row is chosen. */
 .picker-lead {
   display: grid;
   flex: 0 0 auto;
@@ -1238,36 +1238,9 @@ body > .picker-popover-portaled.settings-picker-popover {
   color: var(--text);
 }
 
-/* The chosen row's check sits at the row's right edge, after any trailing
-   meta. It is drawn here from the row's own state (aria-pressed, aria-checked,
-   or aria-selected on the option), so every picker gets it without markup.
-   Every row in a menu that can hold a choice reserves the check's slot, so a
-   trailing column ("1M", "272K") stays straight on the chosen row too. */
-.project-picker-popover:has(
-  .project-picker-item[aria-pressed],
-  .project-picker-item[aria-checked],
-  [aria-selected] > .project-picker-item
-) .project-picker-item {
-  position: relative;
-  padding-right: 34px;
-}
-
-:is(
-  .project-picker-item[aria-pressed="true"],
-  .project-picker-item[aria-checked="true"],
-  [aria-selected="true"] > .project-picker-item
-)::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: 12px;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  margin: -7px 0 0;
-  background: var(--accent);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 14px no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / 14px no-repeat;
+.project-picker-item[aria-pressed="true"] .picker-lead,
+.project-picker-item[aria-checked="true"] .picker-lead {
+  color: var(--accent);
 }
 
 /* Label span for rows that must ellipsize (a bare text node in a flex row

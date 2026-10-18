@@ -40,7 +40,7 @@ export function LaunchFolderPicker({ folders, selected, open, onOpenChange, onPi
       {filter.matches.map((folder, index) => <li key={folder.id} role="option" aria-selected={folder.id === selected?.id}
         data-active={index === filter.activeIndex ? "true" : undefined}>
         <button type="button" className="project-picker-item" onClick={() => pick(folder)} title={folder.rootPath}>
-          <PickerLead><Folder size={13} /></PickerLead>
+          <PickerLead selected={folder.id === selected?.id}><Folder size={13} /></PickerLead>
           <span className="launch-folder-menu-label"><span className="picker-label">{folderLabel(folder)}</span>
             {folders.some((other) => other.id !== folder.id && folderLabel(other) === folderLabel(folder))
               ? <span className="picker-meta">{collapseHome(folder.rootPath)}</span> : null}

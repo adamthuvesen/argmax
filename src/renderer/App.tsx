@@ -42,7 +42,6 @@ import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/Sess
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { BROWSER_PAGE_OWNER_ID, activateBrowserTab, createBrowserTab, getBrowserTabs } from "./lib/browserPanel.js";
-import { BrowserPage } from "./components/BrowserPage.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { MAX_COLS, findSessionCell, focusedCell, terminalWorkspaceId } from "./lib/gridState.js";
 import { findSharedCheckoutWorkspace } from "./lib/projectCheckoutWorkspace.js";
@@ -65,6 +64,7 @@ import {
   SettingsPanel,
   ActivityPanel,
   ArcPage,
+  BrowserPage,
   UsagePanel,
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
@@ -2440,7 +2440,9 @@ export function App(): JSX.Element {
               </div>
             </>
           ) : isBrowserPageOpen ? (
-            <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
+            <Suspense fallback={<SkeletonPane label="Loading browser" />}>
+              <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
+            </Suspense>
           ) : isArcPageOpen && selectedArcId ? (
             <Suspense fallback={<SkeletonPane label="Loading arc" />}>
               <ArcPage

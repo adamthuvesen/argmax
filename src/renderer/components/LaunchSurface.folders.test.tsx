@@ -43,14 +43,13 @@ describe("launcher working folder", () => {
     const launch = launcher();
     await waitFor(() => expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute("title", expect.stringContaining(`Work in ${project.repoPath.split("/").at(-1)}`)));
     expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent(project.name);
-    expect(screen.queryByRole("img", { name: /Working in/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
     expect(screen.getByRole("listbox", { name: "Select project" })).toBeInTheDocument();
     expect(screen.queryByRole("listbox", { name: "Work in" })).not.toBeInTheDocument();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Switch project" }));
     expect(within(screen.getByRole("listbox", { name: "Work in" })).getByRole("button", { name: `${project.repoPath.split("/").at(-1)} Primary` })).toBeInTheDocument();
     await pickFolder("library");
-    expect(screen.getByRole("img", { name: "Working in library" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Switch project" })).toHaveAttribute("title", expect.stringContaining("Work in library"));
     await waitFor(() => expect(screen.getByRole("button", { name: "Switch branch" })).toHaveTextContent("library-main"));
     vi.mocked(window.argmax!.projects.listBranches).mockResolvedValue(["library-main", "feature"]);
     fireEvent.click(screen.getByRole("button", { name: "Switch branch" }));

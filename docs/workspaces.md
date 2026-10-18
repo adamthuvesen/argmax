@@ -10,7 +10,7 @@ Settings → Projects edits the name, folder list, and primary folder.
 The same directory can belong to several projects.
 
 New chats default to the primary folder. Right-click the launcher’s project name to choose another folder for each chat.
-Shift+F10 opens the same menu. A dot marks a non-primary selection, and the tooltip shows its folder and path.
+Shift+F10 opens the same menu. The tooltip shows the selected folder and path.
 The folder choice does not change the project's primary folder. Branches, files, and terminal follow the selected folder.
 Git folders support existing checkouts and isolated worktrees. Plain folders start directly, with no branch or worktree controls.
 Each workspace records its project folder and actual checkout.

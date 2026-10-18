@@ -1585,8 +1585,7 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
             >
               <Folder size={14} aria-hidden="true" />
               <span className="composer-context-chip-label">{contextChipLabel}</span>
-              {launchFolder.folder && !launchFolder.folder.isPrimary
-                ? <span className="launch-folder-indicator" role="img" aria-label={`Working in ${repoNameFromPath(launchFolder.folder.rootPath) ?? launchFolder.folder.name}`} /> : null}
+
             </button>
             {projectPickerOpen && (
               <ul

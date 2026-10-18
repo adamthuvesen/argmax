@@ -355,14 +355,6 @@
   text-underline-offset: 3px;
 }
 
-.launch-folder-indicator {
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
 .launch-folder-menu-heading {
   padding: 5px 10px 7px;
   color: var(--muted);

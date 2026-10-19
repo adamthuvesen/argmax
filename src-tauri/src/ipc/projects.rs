@@ -224,14 +224,18 @@ pub(crate) async fn projects_configure_impl(
         &input.primary_path,
     )
     .await?;
-    let connection = database.connection();
-    crate::persistence::project_folders::configure_project_folders(
-        &connection,
-        input.project_id.as_str(),
-        input.name.as_str(),
-        &folders,
-        &primary,
-    )
+    let project = {
+        let connection = database.connection();
+        crate::persistence::project_folders::configure_project_folders(
+            &connection,
+            input.project_id.as_str(),
+            input.name.as_str(),
+            &folders,
+            &primary,
+        )?
+    };
+    super::publish_dashboard_changed(state);
+    Ok(project)
 }
 
 async fn validate_project_folders(

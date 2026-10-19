@@ -99,8 +99,14 @@ pub fn find_workspace_linked_repo_by_name(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(sqlite_error)?;
+    let Some(folder_id) = folder_id else {
+        return Err(ArgmaxError::service(
+            "LINKED_REPO_NOT_FOUND",
+            "This chat has no linked repositories.",
+        ));
+    };
     let repo = find_linked_repo_by_name(connection, &project_id, name)?;
-    if Some(repo.id.as_str()) == folder_id.as_deref() {
+    if repo.id == folder_id {
         return Err(ArgmaxError::service(
             "LINKED_REPO_WORKING_FOLDER",
             "Use workspace file tools for this chat's working checkout.",
@@ -532,6 +538,8 @@ mod tests {
         assert!(list_workspace_linked_repos(&connection, "w1")
             .unwrap()
             .is_empty());
+        let error = find_workspace_linked_repo_by_name(&connection, "w1", "primary").unwrap_err();
+        assert_eq!(code(error), "LINKED_REPO_NOT_FOUND");
     }
 
     #[test]

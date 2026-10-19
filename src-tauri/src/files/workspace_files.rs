@@ -26,7 +26,7 @@ use crate::git::exec::{
     run_git_text, run_git_text_with_allowed_exit_codes_and_options, GitExecOptions,
 };
 use crate::persistence::database::Database;
-use crate::persistence::project_folders::require_project_folder;
+use crate::persistence::project_folders::require_active_project_folder;
 use crate::persistence::projects::require_project;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::sync::LockOrRecover;
@@ -194,7 +194,7 @@ impl WorkspaceFilesService {
             WorkspaceTargetKind::Workspace => Ok(find_workspace_by_id(&connection, id)?.path),
             WorkspaceTargetKind::Project => Ok(require_project(&connection, id)?.repo_path),
             WorkspaceTargetKind::ProjectFolder => {
-                Ok(require_project_folder(&connection, id)?.root_path)
+                Ok(require_active_project_folder(&connection, id)?.root_path)
             }
         }
     }

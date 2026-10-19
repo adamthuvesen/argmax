@@ -22,7 +22,7 @@ use crate::{
     },
     persistence::database::Database,
     persistence::project_folders::{
-        project_for_folder, require_project_folder, require_workspace_project,
+        project_for_folder, require_active_project_folder, require_workspace_project,
     },
     persistence::projects::require_project,
     persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
@@ -208,7 +208,10 @@ async fn resolve_review_target(
             let project = {
                 let connection = database.read_connection();
                 match kind {
-                    WorkspaceTargetKind::ProjectFolder => project_for_folder(&connection, id)?,
+                    WorkspaceTargetKind::ProjectFolder => {
+                        require_active_project_folder(&connection, id)?;
+                        project_for_folder(&connection, id)?
+                    }
                     _ => require_project(&connection, id)?,
                 }
             };
@@ -653,7 +656,9 @@ fn review_target_path(
     let path = match kind {
         WorkspaceTargetKind::Workspace => find_workspace_by_id(&connection, id)?.path,
         WorkspaceTargetKind::Project => require_project(&connection, id)?.repo_path,
-        WorkspaceTargetKind::ProjectFolder => require_project_folder(&connection, id)?.root_path,
+        WorkspaceTargetKind::ProjectFolder => {
+            require_active_project_folder(&connection, id)?.root_path
+        }
     };
     validate_repo_path(Path::new(&path))
 }

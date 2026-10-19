@@ -69,6 +69,30 @@ pub fn require_project_folder(
         .ok_or_else(|| ArgmaxError::record_not_found("project folder", id))
 }
 
+/// A folder named directly by a client, not through a chat. Removed folders
+/// stay readable through their chats' workspaces, but not by id.
+pub fn require_active_project_folder(
+    connection: &Connection,
+    id: &str,
+) -> ArgmaxResult<ProjectFolderSummary> {
+    let removed: bool = connection
+        .query_row(
+            "SELECT removed FROM project_folders WHERE id = ?",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?
+        .ok_or_else(|| ArgmaxError::record_not_found("project folder", id))?;
+    if removed {
+        return Err(ArgmaxError::service(
+            "PROJECT_FOLDER_UNAVAILABLE",
+            "That folder is no longer in this project. Choose another folder.",
+        ));
+    }
+    require_project_folder(connection, id)
+}
+
 pub fn primary_folder_id(
     connection: &Connection,
     project_id: &str,
@@ -361,6 +385,26 @@ mod tests {
             remote: None,
             settings: settings(label),
         }
+    }
+
+    #[test]
+    fn a_removed_folder_is_refused_by_id_but_kept_for_its_chats() {
+        let database = Database::open_in_memory().unwrap();
+        let connection = database.connection();
+        project(&connection, "p1", "/not-present/application");
+        connection
+            .execute(
+                "UPDATE project_folders SET removed = 1 WHERE id = 'primary:p1'",
+                [],
+            )
+            .unwrap();
+        match require_active_project_folder(&connection, "primary:p1").unwrap_err() {
+            ArgmaxError::ServiceError { sub_code, .. } => {
+                assert_eq!(sub_code, "PROJECT_FOLDER_UNAVAILABLE")
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
+        assert!(require_project_folder(&connection, "primary:p1").is_ok());
     }
 
     #[test]

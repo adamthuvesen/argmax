@@ -15,6 +15,8 @@ struct NewChatSheet: View {
     private let client: BridgeClient
     private let preselectedProjectID: String?
     private let branchFromWorkspaceID: String?
+    /// The folder of the chat "New chat here" came from, with its project.
+    private let sourceFolder: (projectID: String, folderID: String)?
     private let onLaunched: (WorkspaceSummary, SessionSummary) -> Void
     private let catalog = ProviderCatalog.bundled
 
@@ -80,6 +82,9 @@ struct NewChatSheet: View {
         // as the base, which is what the web pre-selects for the same tap.
         let source = branchFromWorkspaceID.flatMap { id in
             store.snapshot.workspaces.first { $0.id == id }
+        }
+        sourceFolder = source.flatMap { workspace in
+            workspace.projectFolderId.map { (projectID: workspace.projectId, folderID: $0) }
         }
         let branchable = source.map { $0.kind == .git && !$0.sharedWorkspace && !$0.branch.isEmpty } ?? false
         let contextualCode = source.map { $0.kind == .git }
@@ -482,7 +487,9 @@ struct NewChatSheet: View {
             model: model,
             titleModelId: catalog.provider(model.provider)?.titleModelId ?? model.modelId,
             prompt: prompt,
-            attachments: images.attachments
+            attachments: images.attachments,
+            // Only while the sheet still targets the source chat's project.
+            projectFolderId: sourceFolder.flatMap { $0.projectID == selectedProject?.id ? $0.folderID : nil }
         )
     }
 

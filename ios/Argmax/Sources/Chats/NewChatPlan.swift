@@ -59,7 +59,8 @@ struct NewChatPlan: Sendable {
         model: ModelSelection,
         titleModelId: String,
         prompt: String,
-        attachments: [ComposerAttachment] = []
+        attachments: [ComposerAttachment] = [],
+        projectFolderId: String? = nil
     ) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         // A picture with no task is not a chat: the label, the greeting and
@@ -73,7 +74,13 @@ struct NewChatPlan: Sendable {
             creation = .scratch(CreateScratchWorkspaceInput(taskLabel: taskLabel, kind: nil))
         case .current:
             guard let project else { return nil }
-            creation = .current(CreateCurrentWorkspaceInput(projectId: project.id, taskLabel: taskLabel))
+            creation = .current(
+                CreateCurrentWorkspaceInput(
+                    projectId: project.id,
+                    projectFolderId: projectFolderId.map(WireField.value) ?? .absent,
+                    taskLabel: taskLabel
+                )
+            )
         case .worktree, .branchFrom:
             guard let project else { return nil }
             // "Branch from…" is unusable until a branch is chosen; the
@@ -85,7 +92,8 @@ struct NewChatPlan: Sendable {
                 CreateIsolatedWorkspaceInput(
                     projectId: project.id,
                     taskLabel: taskLabel,
-                    baseRef: baseRef ?? project.currentBranch
+                    baseRef: baseRef ?? project.currentBranch,
+                    projectFolderId: projectFolderId
                 )
             )
         }

@@ -214,6 +214,10 @@ struct ProjectSummary: Codable, Hashable, Sendable, Identifiable {
 struct WorkspaceSummary: Codable, Hashable, Sendable, Identifiable {
     var id: String
     var projectId: String
+    /// The project folder this chat works in. Nil for side chats and for
+    /// hosts older than named projects. "New chat here" sends it back so the
+    /// new chat starts in the same folder.
+    var projectFolderId: String? = nil
     var taskLabel: String
     var branch: String
     var baseRef: String

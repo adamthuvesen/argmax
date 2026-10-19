@@ -200,6 +200,13 @@ export function NewSessionScreen({
     [projectId, projects]
   );
 
+  // "New chat here" from a chat in a secondary folder starts in that folder,
+  // until another project is picked.
+  const sourceFolderId =
+    initialWorkspace && initialWorkspace.projectId === project?.id
+      ? initialWorkspace.projectFolderId ?? undefined
+      : undefined;
+
   const projectWorktrees = useMemo(
     () =>
       (workspaces ?? []).filter(
@@ -306,9 +313,14 @@ export function NewSessionScreen({
           ? await window.argmax.workspaces.createIsolated({
               projectId: repoTarget.id,
               taskLabel,
-              baseRef
+              baseRef,
+              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {})
             })
-          : await window.argmax.workspaces.createCurrent({ projectId: repoTarget.id, taskLabel })
+          : await window.argmax.workspaces.createCurrent({
+              projectId: repoTarget.id,
+              taskLabel,
+              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {})
+            })
         : await window.argmax.workspaces.createScratch({ taskLabel, kind: null });
       let session: SessionSummary;
       try {
@@ -366,6 +378,7 @@ export function NewSessionScreen({
     prompt,
     setPrompt,
     sideChat,
+    sourceFolderId,
     workspaceMode
   ]);
 

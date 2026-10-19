@@ -1158,6 +1158,30 @@ describe("MobileApp", () => {
     });
   });
 
+  it("starts a new chat here in the source chat's project folder", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: snapshot.workspaces.map((workspace) =>
+        workspace.taskLabel === "Build dashboard" ? { ...workspace, projectFolderId: "folder-data" } : workspace
+      )
+    });
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+
+    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "New chat here" }));
+    fireEvent.change(await screen.findByLabelText("Task"), { target: { value: "Follow up work" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+    await waitFor(() => {
+      expect(createIsolatedWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: snapshot.projects[0].id, projectFolderId: "folder-data" })
+      );
+    });
+  });
+
   it("branches from an existing worktree when picked from the workspace sheet", async () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });

@@ -72,10 +72,15 @@ struct CreateIsolatedWorkspaceInput: Encodable, Sendable {
     var projectId: String
     var taskLabel: String
     var baseRef: String?
+    /// Nil is omitted, not sent as null, so a host older than named projects
+    /// still accepts the input.
+    var projectFolderId: String? = nil
 
     func encode(to encoder: Encoder) throws {
         try WireWorkspacesCreateIsolatedInput(
-            projectId: projectId, taskLabel: taskLabel,
+            projectId: projectId,
+            projectFolderId: projectFolderId.map(WireField.value) ?? .absent,
+            taskLabel: taskLabel,
             baseRef: baseRef.map(WireField.value) ?? .null
         ).encode(to: encoder)
     }

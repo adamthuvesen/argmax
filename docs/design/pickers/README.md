@@ -82,3 +82,42 @@ and were left alone.
 
 The shared row type was refined to `--text-xs` on 2026-09-15 so picker labels
 match the app's compact controls. The 28px row height remains unchanged.
+
+## Revision: Cursor-style ink and groups (2026-10-18)
+
+Compared with Cursor's chat menu, ours read as faded. The cause was not
+spacing: Cursor's rows are about 26px against our 28px. These differences
+were the cause:
+
+- Our labels were `--text-soft` at the light weight, and our glyphs were
+  `--muted`. Both sat close to the panel colour, so the menu looked washed out.
+- Cursor splits its actions into groups with dividers. Ours
+  was one flat list.
+- Our labels mixed title case ("Edit Icon") and sentence case ("Copy ids").
+- Cursor's menu box has a soft two-layer shadow and a faint border.
+
+The changes, all in the shared primitive in `chat-chrome.css`:
+
+| | Before | After |
+| --- | --- | --- |
+| Label ink | `--text-soft` | `--text` |
+| Glyph | 14px, `--muted`, stroke 2 | 15px, `--muted-strong`, stroke 1.75; `--text` on hover |
+| Row inset / gap | 0 9px 0 7px, 8px | 0 12px 0 9px, 10px |
+| Menu inset | 5px | 6px |
+| Menu edge | 1px `--line`, `--shadow-3` | 0.5px `--line-strong` at 70%, `--picker-shadow` (a contact shadow under a wide soft drop; dark mode adds a top light) |
+| Divider inset | 4px 6px | 5px 10px |
+
+Row height stays 28px. The radii come from the semantic tokens in
+`docs/styling.md` (`--radius-surface` for the menu, `--radius-row` for rows).
+
+Action menus now split into groups with `MenuSections.tsx`, which drops a group
+whose conditional rows all render null. Every action label is title case. Rows
+that move a chat out of its place (Mark Done, Add to Priority, Snooze) sit in
+the last group, away from Rename. A destructive row (Remove Project) sits alone
+after a divider. Submenus were not adopted: a submenu with one row is worse
+than the row.
+
+Captures: `action-menus-light.png` and `action-menus-dark.png` show, left to
+right, the sidebar right-click menu, the chat actions menu, the project
+actions menu, the identity menu, the sidebar view options, the review tab menu,
+and the model picker.

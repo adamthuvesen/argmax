@@ -935,6 +935,26 @@ describe("useDashboardSession — refresh / delta race", () => {
     expect(result.current.snapshot.sessions).toEqual([]);
   });
 
+  it("preserves newer overview revisions across full metadata reads without retaining removed projects", async () => {
+    let onDelta!: (delta: DashboardDelta) => void;
+    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    const original = baseSnapshot.projects[0];
+    const generated = {
+      ...original,
+      overview: { revision: 3, saved: { text: "Project orientation", sources: [], generatedAt: null }, draft: null, status: "idle" as const, error: null }
+    };
+    const initial = { ...baseSnapshot, projects: [generated, { ...original, id: "removed-project" }] };
+    const loadSnapshot = vi.fn<() => Promise<DashboardSnapshot>>()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValue({ ...baseSnapshot, projects: [{ ...original, name: "Updated project" }] });
+    const { result } = renderHook(() => useDashboardSession(loadSnapshot));
+    await waitFor(() => expect(result.current.loadState).toBe("ready"));
+    act(() => onDelta({ dashboardChanged: true }));
+    await waitFor(() => expect(result.current.snapshot.projects).toHaveLength(1));
+    expect(result.current.snapshot.projects[0]?.name).toBe("Updated project");
+    expect(result.current.snapshot.projects[0]?.overview).toEqual(generated.overview);
+  });
+
   it("re-pulls a session tail after its inactive history and cursor are evicted", async () => {
     const tail = [
       {

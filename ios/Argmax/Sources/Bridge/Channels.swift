@@ -404,26 +404,6 @@ struct SessionForkResult: Decodable, Sendable {
     var session: SessionSummary
 }
 
-/// `GitViewOrCreatePrInput`. The chat only calls this when its live workspace
-/// summary already carries a PR number, so the host takes the view path and
-/// never falls through to creation.
-struct ViewPullRequestInput: Encodable, Sendable {
-    var sessionId: String
-
-    func encode(to encoder: Encoder) throws {
-        try WireGitViewOrCreatePrInput(sessionId: sessionId).encode(to: encoder)
-    }
-}
-
-/// `GitViewOrCreatePrResult`. Both host outcomes carry a URL; the native chat
-/// deliberately reaches only the `opened` outcome, but decoding the complete
-/// wire shape keeps an unexpected response explicit rather than malformed.
-struct ViewPullRequestResult: Decodable, Sendable {
-    var action: String
-    var url: String
-    var prNumber: Int?
-}
-
 /// `SystemOk`, the host's answer to a call with nothing to return.
 struct HostOk: Decodable, Sendable {
     var ok: Bool
@@ -636,14 +616,6 @@ extension BridgeClient {
             "session:fork",
             input: ForkSessionInput(sessionId: sessionID),
             as: SessionForkResult.self
-        )
-    }
-
-    func viewPullRequest(sessionID: String) async throws -> ViewPullRequestResult {
-        try await request(
-            "git:view-or-create-pr",
-            input: ViewPullRequestInput(sessionId: sessionID),
-            as: ViewPullRequestResult.self
         )
     }
 

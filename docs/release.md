@@ -12,8 +12,8 @@ runs on a `v*` tag, builds a universal binary on a macOS runner, and opens a
 ```bash
 # package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json carry the
 # same version; move all three, then tag the commit that did it.
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 CI already gated the commit the tag points at, so the release workflow does not

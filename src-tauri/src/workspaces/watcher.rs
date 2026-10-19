@@ -152,6 +152,9 @@ fn watch_impl(service: &Arc<WorkspaceService>, workspace_id: &str) -> ArgmaxResu
         let connection = service.database().connection();
         find_workspace_by_id(&connection, workspace_id)?
     };
+    if workspace.kind == "folder" {
+        return Ok(());
+    }
     if !matches!(
         workspace.state.as_str(),
         "created"

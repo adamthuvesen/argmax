@@ -10,7 +10,7 @@ type ActivityIconColorModeOption = {
 };
 
 export const ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY = "argmax.activityIcons.colorMode";
-const DEFAULT_ACTIVITY_ICON_COLOR_MODE: ActivityIconColorMode = "color";
+const DEFAULT_ACTIVITY_ICON_COLOR_MODE: ActivityIconColorMode = "monochrome";
 
 export const ACTIVITY_ICON_COLOR_MODE_OPTIONS: readonly ActivityIconColorModeOption[] = [
   {

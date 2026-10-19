@@ -29,7 +29,7 @@ use super::{terminal_cols, terminal_rows};
 use crate::{
     persistence::{
         database::Database,
-        projects::{find_project_by_id, ProjectSummary},
+        projects::ProjectSummary,
         sessions::find_session_by_id,
         workspaces::{find_workspace_by_id, WorkspaceSummary},
     },
@@ -56,14 +56,9 @@ pub(super) fn resolve_session_workspace(
     let session = find_session_by_id(&connection, session_id).map_err(argmax_protocol_error)?;
     let workspace =
         find_workspace_by_id(&connection, &session.workspace_id).map_err(argmax_protocol_error)?;
-    let project = find_project_by_id(&connection, &workspace.project_id)
-        .map_err(argmax_protocol_error)?
-        .ok_or_else(|| {
-            protocol_error(
-                "PROJECT_NOT_FOUND",
-                "That session's project is no longer registered.",
-            )
-        })?;
+    let project =
+        crate::persistence::project_folders::require_workspace_project(&connection, &workspace.id)
+            .map_err(argmax_protocol_error)?;
     Ok(SessionWorkspace {
         session_id: session.id,
         workspace,

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 /**
  * Restore focus to the element that was active when `open` became true.
- * Used by modal overlays such as search, the cheat sheet, and commit dialog.
+ * Used by modal overlays such as search, the cheat sheet, and the Create project dialog.
  */
 export function useRestoreFocus(open: boolean): void {
   const previousFocusRef = useRef<HTMLElement | null>(null);

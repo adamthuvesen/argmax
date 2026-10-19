@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BROWSER_PAGE_OWNER_ID,
+  DEFAULT_BROWSER_URL,
   getBrowserOwnerId,
   getActiveBrowserTabId,
   getBrowserTabs,
@@ -73,6 +74,19 @@ describe("BrowserPage", () => {
     expect(getActiveBrowserTabId(BROWSER_PAGE_OWNER_ID)).toBe(selected);
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toHaveLength(count);
     expect(screen.getByRole("tab", { name: /first.example/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens a new tab after closing the last tab", () => {
+    openInBrowserPanel("https://claude.ai", { newTab: true });
+    const onClose = vi.fn();
+    const page = render(<BrowserPage onClose={onClose} />);
+    fireEvent.click(screen.getByRole("button", { name: "Close tab claude.ai" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toHaveLength(0);
+    page.unmount();
+
+    render(<BrowserPage onClose={onClose} />);
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.url)).toEqual([DEFAULT_BROWSER_URL]);
   });
 
   it("Esc closes the page when no overlay is open", () => {

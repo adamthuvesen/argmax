@@ -398,10 +398,10 @@ export function AgentsView({
   if (tabIds.length === 0) {
     return (
       <div className="review-agents">
-        <p className="review-empty">
-          <span className="review-empty-mark" aria-hidden="true">∅</span>
-          <span>Nothing open here. Open a subagent or a multitask from a row in the transcript.</span>
-        </p>
+        <div className="review-agents-empty">
+          <h3>No agents open</h3>
+          <p>Select a subagent or multitask in the chat to view its progress here.</p>
+        </div>
       </div>
     );
   }

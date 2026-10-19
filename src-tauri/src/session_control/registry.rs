@@ -139,6 +139,7 @@ pub struct SessionLaunchProcessConfig {
     /// a follow-up or resumed turn sees what Settings says now, not what the
     /// first turn saw.
     linked_roots: Vec<LinkedRoot>,
+    project_overview: Option<String>,
 }
 
 impl std::fmt::Debug for SessionLaunchProcessConfig {
@@ -174,6 +175,7 @@ impl SessionLaunchProcessConfig {
         Self {
             browser_tools: true,
             linked_roots: Vec::new(),
+            project_overview: None,
             socket_path: PathBuf::from(socket_path),
             token: token.to_string(),
             argmax_bin: PathBuf::from(argmax_bin),
@@ -183,6 +185,12 @@ impl SessionLaunchProcessConfig {
     #[cfg(test)]
     pub fn with_linked_roots(mut self, roots: Vec<LinkedRoot>) -> Self {
         self.linked_roots = roots;
+        self
+    }
+
+    #[cfg(test)]
+    pub fn with_project_overview(mut self, overview: &str) -> Self {
+        self.project_overview = Some(overview.to_string());
         self
     }
 
@@ -212,6 +220,34 @@ impl SessionLaunchProcessConfig {
     pub fn linked_roots(&self) -> &[LinkedRoot] {
         &self.linked_roots
     }
+
+    pub fn project_overview(&self) -> Option<&str> {
+        self.project_overview.as_deref()
+    }
+}
+
+fn project_overview_for_session(database: &Database, session_id: &str) -> Option<String> {
+    let connection = database.read_connection();
+    let result = (|| -> crate::error::ArgmaxResult<Option<String>> {
+        let session = crate::persistence::sessions::find_session_by_id(&connection, session_id)?;
+        let workspace = crate::persistence::workspaces::find_workspace_by_id(
+            &connection,
+            &session.workspace_id,
+        )?;
+        let project =
+            crate::persistence::projects::require_project(&connection, &workspace.project_id)?;
+        Ok(project
+            .overview
+            .and_then(|overview| overview.saved)
+            .map(|document| document.text))
+    })();
+    match result {
+        Ok(overview) => overview.filter(|text| !text.trim().is_empty()),
+        Err(error) => {
+            tracing::warn!(session_id, ?error, "could not load project overview");
+            None
+        }
+    }
 }
 
 /// The enabled linked repositories of the project that owns `session_id`.
@@ -226,10 +262,7 @@ fn linked_roots_for_session(database: &Database, session_id: &str) -> Vec<Linked
             &connection,
             &session.workspace_id,
         )?;
-        crate::persistence::linked_repos::list_enabled_linked_repos(
-            &connection,
-            &workspace.project_id,
-        )
+        crate::persistence::linked_repos::list_workspace_linked_repos(&connection, &workspace.id)
     })();
     match repos {
         Ok(repos) => repos
@@ -294,12 +327,15 @@ impl SessionLaunchRegistry {
         // started, carry the same tool surface.
         let browser_tools = browser_tools_enabled(&self.inner.database.read_connection());
         let linked_roots = linked_roots_for_session(&self.inner.database, &input.session_id);
+        let project_overview =
+            project_overview_for_session(&self.inner.database, &input.session_id);
         SessionLaunchProcessConfig {
             socket_path: self.inner.socket_path.clone(),
             token,
             argmax_bin: self.inner.argmax_bin.clone(),
             browser_tools,
             linked_roots,
+            project_overview,
         }
     }
 
@@ -686,6 +722,77 @@ mod tests {
         // A root that vanished is left out rather than handed to the provider.
         drop(second);
         assert!(names(&registry).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn each_launch_reads_saved_overview_and_never_an_unapplied_draft() {
+        use crate::persistence::project_overviews::{
+            begin_generation, complete_generation, edit_overview, OverviewDocument, OverviewEdit,
+        };
+        let database = database_with_sessions(&["session-1"]);
+        let (_server, registry) = SessionLaunchServer::bind(Arc::clone(&database)).unwrap();
+        assert!(registry
+            .issue(&launch_input("session-1"))
+            .project_overview()
+            .is_none());
+        edit_overview(
+            &database.connection(),
+            "project-1",
+            0,
+            OverviewEdit::Save("Saved purpose"),
+        )
+        .unwrap();
+        assert_eq!(
+            registry
+                .issue(&launch_input("session-1"))
+                .project_overview(),
+            Some("Saved purpose")
+        );
+        let generation = begin_generation(&database.connection(), "project-1", false)
+            .unwrap()
+            .unwrap();
+        complete_generation(
+            &database.connection(),
+            "project-1",
+            &generation,
+            Ok(OverviewDocument {
+                text: "Unapplied refresh".to_string(),
+                sources: vec![],
+                generated_at: None,
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            registry
+                .issue(&launch_input("session-1"))
+                .project_overview(),
+            Some("Saved purpose")
+        );
+        edit_overview(
+            &database.connection(),
+            "project-1",
+            3,
+            OverviewEdit::ApplyDraft,
+        )
+        .unwrap();
+        assert_eq!(
+            registry
+                .issue(&launch_input("session-1"))
+                .project_overview(),
+            Some("Unapplied refresh")
+        );
+        edit_overview(
+            &database.connection(),
+            "project-1",
+            4,
+            OverviewEdit::Save(""),
+        )
+        .unwrap();
+        assert!(registry
+            .issue(&launch_input("session-1"))
+            .project_overview()
+            .is_none());
     }
 
     #[cfg(unix)]

@@ -371,7 +371,7 @@ describe("App grid", () => {
     await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "New chat here" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New Chat Here" }));
 
     expect(await screen.findByRole("region", { name: "New chat for Argmax" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Build dashboard" })).toBeInTheDocument();
@@ -661,7 +661,9 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     if (entryPoint === "panel") {
       fireEvent.keyDown(document, { key: "b", metaKey: true });
-      fireEvent.click(await screen.findByRole("tab", { name: "Agents" }));
+      const panel = await screen.findByRole("complementary", { name: "Review panel" });
+      expect(within(panel).getByRole("tab", { name: "New tab", selected: true })).toBeInTheDocument();
+      fireEvent.click(within(panel).getByRole("button", { name: "Agents" }));
     } else {
       fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Map renderer") }));
     }
@@ -702,6 +704,9 @@ describe("App grid", () => {
       fireEvent.keyDown(document, { key: "b", metaKey: true });
       expect(screen.queryByRole("tablist", { name: "Subagents and multitasks" })).toBeNull();
       fireEvent.keyDown(document, { key: "b", metaKey: true });
+      const strip = await screen.findByRole("tablist", { name: "Workspace tabs" });
+      expect(within(strip).getByRole("tab", { name: "New tab", selected: true })).toBeInTheDocument();
+      fireEvent.click(within(strip).getByRole("tab", { name: "Agents" }));
       const reopenedTabs = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
       expect(within(reopenedTabs).getAllByRole("tab")).toHaveLength(2);
     }
@@ -1727,7 +1732,7 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Files" }));
     const panel = await screen.findByRole("complementary", { name: "Review panel" });
-    const handle = panel.firstElementChild;
+    const handle = within(panel).getByRole("group", { name: "Review panes" }).previousElementSibling;
     if (!(handle instanceof HTMLElement)) throw new Error("Expected the sidebar resize handle");
     vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 0, 500, 700));
     fireEvent.mouseDown(handle, { clientX: 600 });

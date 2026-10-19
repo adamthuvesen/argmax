@@ -1419,7 +1419,139 @@ pub static MIGRATIONS: &[Migration] = &[
         expected_columns: &ARC_ARCHIVED_AT_COLUMNS,
         requires_foreign_keys_off: false,
     },
+    Migration {
+        version: 73,
+        name: "named_project_folders",
+        up: PROJECT_FOLDERS,
+        affected_tables: &["projects", "workspaces", "project_linked_repos"],
+        expected_columns: &PROJECT_FOLDER_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
+    Migration {
+        version: 74,
+        name: "project_overviews",
+        up: PROJECT_OVERVIEWS,
+        affected_tables: &["projects"],
+        expected_columns: &PROJECT_OVERVIEW_COLUMNS,
+        requires_foreign_keys_off: false,
+    },
+    Migration {
+        version: 75,
+        name: "folder_workspaces",
+        up: FOLDER_WORKSPACES,
+        affected_tables: &["workspaces"],
+        expected_columns: &FOLDER_WORKSPACE_COLUMNS,
+        requires_foreign_keys_off: true,
+    },
 ];
+
+static FOLDER_WORKSPACE_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "workspaces" => &["project_folder_id", "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at", "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind", "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at", "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state", "task_label", "task_label_auto", "updated_at"] as &'static [&'static str],
+};
+
+const FOLDER_WORKSPACES: &str = r#"
+CREATE TABLE workspaces_folder (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_label TEXT NOT NULL, branch TEXT NOT NULL, base_ref TEXT NOT NULL,
+  path TEXT NOT NULL, state TEXT NOT NULL,
+  shared_workspace INTEGER NOT NULL DEFAULT 0 CHECK (shared_workspace IN (0, 1)),
+  dirty INTEGER NOT NULL DEFAULT 0 CHECK (dirty IN (0, 1)), changed_files INTEGER NOT NULL DEFAULT 0,
+  last_activity_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+  kind TEXT NOT NULL DEFAULT 'git' CHECK (kind IN ('git', 'scratch', 'popup', 'folder')),
+  task_label_auto INTEGER NOT NULL DEFAULT 1, priority_dismissed_at TEXT, priority_added_at TEXT,
+  icon TEXT, icon_color TEXT, last_viewed_at TEXT, snoozed_until TEXT, checkout_removed_at TEXT,
+  created_branch TEXT, created_branch_oid TEXT,
+  project_folder_id TEXT REFERENCES project_folders(id)
+);
+INSERT INTO workspaces_folder (id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+ dirty, changed_files, last_activity_at, created_at, updated_at, pinned, kind, task_label_auto,
+ priority_dismissed_at, priority_added_at, icon, icon_color, last_viewed_at, snoozed_until,
+ checkout_removed_at, created_branch, created_branch_oid, project_folder_id)
+SELECT id, project_id, task_label, branch, base_ref, path, state, shared_workspace,
+ dirty, changed_files, last_activity_at, created_at, updated_at, pinned, kind, task_label_auto,
+ priority_dismissed_at, priority_added_at, icon, icon_color, last_viewed_at, snoozed_until,
+ checkout_removed_at, created_branch, created_branch_oid, project_folder_id FROM workspaces;
+DROP TABLE workspaces;
+ALTER TABLE workspaces_folder RENAME TO workspaces;
+CREATE INDEX idx_workspaces_project_id ON workspaces(project_id);
+CREATE INDEX idx_workspaces_last_activity_id ON workspaces(last_activity_at DESC, id DESC);
+CREATE INDEX idx_workspaces_project_folder ON workspaces(project_folder_id);
+"#;
+
+const PROJECT_OVERVIEWS: &str = "ALTER TABLE projects ADD COLUMN overview_json TEXT; ALTER TABLE projects ADD COLUMN overview_generation_json TEXT;";
+
+static PROJECT_OVERVIEW_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &["id", "name", "repo_path", "current_branch", "default_branch", "worktree_location", "setup_command", "check_commands_json", "ui_preferences_json", "created_at", "updated_at", "repo_remote_owner", "repo_remote_name", "branch_template", "merge_cleanup", "pr_repository_folder_id", "overview_json", "overview_generation_json"] as &'static [&'static str],
+};
+
+static PROJECT_FOLDER_COLUMNS: phf::Map<&'static str, &'static [&'static str]> = phf_map! {
+    "projects" => &["id", "name", "repo_path", "current_branch", "default_branch", "worktree_location", "setup_command", "check_commands_json", "ui_preferences_json", "created_at", "updated_at", "repo_remote_owner", "repo_remote_name", "branch_template", "merge_cleanup", "pr_repository_folder_id"] as &'static [&'static str],
+    "project_linked_repos" => &[] as &'static [&'static str],
+    "workspaces" => &["project_folder_id",
+        "base_ref", "branch", "changed_files", "checkout_removed_at", "created_at",
+        "created_branch", "created_branch_oid", "dirty", "icon", "icon_color", "id", "kind",
+        "last_activity_at", "last_viewed_at", "path", "pinned", "priority_added_at",
+        "priority_dismissed_at", "project_id", "shared_workspace", "snoozed_until", "state",
+        "task_label", "task_label_auto", "updated_at",
+    ] as &'static [&'static str],
+};
+
+const PROJECT_FOLDERS: &str = r#"
+CREATE TABLE projects_multi_folder (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, repo_path TEXT NOT NULL,
+  current_branch TEXT NOT NULL, default_branch TEXT, worktree_location TEXT NOT NULL,
+  setup_command TEXT NOT NULL DEFAULT '', check_commands_json TEXT NOT NULL DEFAULT '[]',
+  ui_preferences_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  repo_remote_owner TEXT, repo_remote_name TEXT, branch_template TEXT,
+  merge_cleanup TEXT NOT NULL DEFAULT 'off' CHECK (merge_cleanup IN ('off', 'archive', 'remove-checkout'))
+);
+INSERT INTO projects_multi_folder SELECT id, name, repo_path, current_branch, default_branch,
+  worktree_location, setup_command, check_commands_json, ui_preferences_json, created_at,
+  updated_at, repo_remote_owner, repo_remote_name, branch_template, merge_cleanup FROM projects;
+DROP TABLE projects;
+ALTER TABLE projects_multi_folder RENAME TO projects;
+CREATE INDEX idx_projects_repo_path ON projects(repo_path);
+ALTER TABLE projects ADD COLUMN pr_repository_folder_id TEXT;
+UPDATE projects SET pr_repository_folder_id = 'primary:' || id;
+CREATE TABLE project_folders (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, root_path TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0, 1)),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  removed INTEGER NOT NULL DEFAULT 0 CHECK (removed IN (0, 1)), summary TEXT,
+  current_branch TEXT NOT NULL DEFAULT 'HEAD', default_branch TEXT,
+  repo_remote_owner TEXT, repo_remote_name TEXT, worktree_location TEXT NOT NULL,
+  setup_command TEXT NOT NULL DEFAULT '', check_commands_json TEXT NOT NULL DEFAULT '[]',
+  merge_cleanup TEXT NOT NULL DEFAULT 'off', branch_template TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, root_path)
+);
+CREATE UNIQUE INDEX idx_project_folders_primary ON project_folders(project_id) WHERE is_primary = 1;
+INSERT INTO project_folders (id, project_id, name, root_path, is_primary, current_branch,
+  default_branch, repo_remote_owner, repo_remote_name, worktree_location, setup_command,
+  check_commands_json, merge_cleanup, branch_template, created_at, updated_at)
+SELECT 'primary:' || p.id, p.id,
+  (WITH RECURSIVE candidates(n) AS (
+    SELECT 0 UNION ALL SELECT n + 1 FROM candidates
+    WHERE n <= (SELECT COUNT(*) FROM project_linked_repos WHERE project_id = p.id)
+  ) SELECT CASE WHEN n = 0 THEN 'primary' ELSE 'primary-' || n END FROM candidates
+    WHERE NOT EXISTS (SELECT 1 FROM project_linked_repos WHERE project_id = p.id
+      AND name = CASE WHEN n = 0 THEN 'primary' ELSE 'primary-' || n END)
+    ORDER BY n LIMIT 1),
+  repo_path, 1, current_branch, default_branch,
+  repo_remote_owner, repo_remote_name, worktree_location, setup_command, check_commands_json,
+  merge_cleanup, branch_template, created_at, updated_at FROM projects p;
+INSERT INTO project_folders (id, project_id, name, root_path, enabled, summary, worktree_location, created_at, updated_at)
+SELECT id, project_id, name, root_path, enabled, summary,
+  (SELECT worktree_location FROM projects WHERE projects.id = project_id) || '/' || id,
+  created_at, updated_at FROM project_linked_repos;
+CREATE UNIQUE INDEX idx_project_folders_names ON project_folders(project_id, name) WHERE removed = 0;
+DROP TABLE project_linked_repos;
+ALTER TABLE workspaces ADD COLUMN project_folder_id TEXT REFERENCES project_folders(id);
+UPDATE workspaces SET project_folder_id = 'primary:' || project_id WHERE kind = 'git';
+CREATE INDEX idx_workspaces_project_folder ON workspaces(project_folder_id);
+"#;
 
 // Linked repositories, configurable isolated-branch names, PR conflict notices
 // and the snooze shelf. One migration, four independent additions:
@@ -3096,6 +3228,61 @@ mod tests {
     use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
 
     #[test]
+    fn folder_workspace_upgrade_preserves_checkout_rows_and_children() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..74]).unwrap();
+        connection.execute_batch("INSERT INTO projects (id,name,repo_path,current_branch,worktree_location,created_at,updated_at) VALUES ('p','Project','/repo','main','/trees','now','now');
+          INSERT INTO workspaces (id,project_id,task_label,branch,base_ref,path,state,last_activity_at,created_at,updated_at,created_branch,created_branch_oid,kind,snoozed_until) VALUES ('w','p','Chat','topic','main','/tree','complete','now','now','now','topic','abc','git','tomorrow');
+          INSERT INTO sessions (id,workspace_id,provider,model_label,prompt,state,attention,started_at,last_activity_at) VALUES ('s','w','claude','Model','Task','complete','none','now','now');
+          INSERT INTO events (id,session_id,type,message,payload_json,created_at) VALUES ('e','s','user.message','Task','{}','now');").unwrap();
+        run_migrations(&mut connection).unwrap();
+        let preserved: (String, String, String, String) = connection.query_row("SELECT created_branch,created_branch_oid,kind,snoozed_until FROM workspaces WHERE id='w'", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).unwrap();
+        assert_eq!(
+            preserved,
+            (
+                "topic".into(),
+                "abc".into(),
+                "git".into(),
+                "tomorrow".into()
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM events WHERE session_id='s'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+        connection
+            .execute("UPDATE workspaces SET kind='folder' WHERE id='w'", [])
+            .unwrap();
+        assert!(connection
+            .execute("UPDATE workspaces SET kind='unknown' WHERE id='w'", [])
+            .is_err());
+        connection
+            .execute("DELETE FROM workspaces WHERE id='w'", [])
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM sessions", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
     fn pr_watch_health_upgrade_preserves_legacy_cursors_and_outbox() {
         let mut connection = Connection::open_in_memory().expect("database");
         run_migrations_with(&mut connection, &MIGRATIONS[..69]).expect("migrate through v69");
@@ -3128,6 +3315,65 @@ mod tests {
         assert!(watch.feedback_fingerprints.is_none());
         assert_eq!(watch.fetch_failure_count, 0);
         assert!(!watch.fetch_degraded);
+    }
+
+    #[test]
+    fn named_project_upgrade_preserves_folders_workspace_identity_and_children() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        run_migrations_with(&mut connection, &MIGRATIONS[..72]).unwrap();
+        seed_minimal_session(&connection);
+        connection.execute("INSERT INTO project_linked_repos (id, project_id, name, root_path, enabled, summary, created_at, updated_at) VALUES ('linked-1', 'p1', 'research', '/tmp/research', 0, 'Stored context', 'created', 'updated')", []).unwrap();
+        connection.execute("INSERT INTO project_linked_repos (id, project_id, name, root_path, enabled, created_at, updated_at) VALUES ('linked-primary', 'p1', 'primary', '/tmp/other-primary', 1, 'created', 'updated')", []).unwrap();
+        connection.execute("UPDATE projects SET setup_command = 'setup-original', branch_template = 'adam/{task}-{id}' WHERE id = 'p1'", []).unwrap();
+        run_migrations(&mut connection).unwrap();
+        let folder =
+            crate::persistence::project_folders::require_project_folder(&connection, "linked-1")
+                .unwrap();
+        assert_eq!(folder.name, "research");
+        assert_eq!(folder.summary.as_deref(), Some("Stored context"));
+        assert!(!folder.enabled);
+        assert_eq!(
+            crate::persistence::linked_repos::find_linked_repo_by_name(
+                &connection,
+                "p1",
+                "primary"
+            )
+            .unwrap()
+            .id,
+            "linked-primary"
+        );
+        assert_eq!(
+            crate::persistence::project_folders::require_project_folder(&connection, "primary:p1")
+                .unwrap()
+                .name,
+            "primary-1"
+        );
+        let original =
+            crate::persistence::project_folders::require_workspace_project(&connection, "w1")
+                .unwrap();
+        assert_eq!(original.settings.setup_command, "setup-original");
+        assert_eq!(
+            original.branch_template.as_deref(),
+            Some("adam/{task}-{id}")
+        );
+        let workspace_id: String = connection
+            .query_row(
+                "SELECT workspace_id FROM sessions WHERE id = 's1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(workspace_id, "w1");
+        let folder_id: String = connection
+            .query_row(
+                "SELECT project_folder_id FROM workspaces WHERE id = 'w1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(folder_id, "primary:p1");
+        assert!(foreign_key_violations(&connection).unwrap().is_empty());
+        run_migrations(&mut connection).unwrap();
     }
 
     #[test]
@@ -3343,7 +3589,7 @@ mod tests {
         // projects, sessions, and workspaces gained columns in later
         // migrations, so verify them against the head shapes rather than the
         // v1 EXPECTED_COLUMNS.
-        verify_table_columns(&connection, &MERGE_CLEANUP_COLUMNS, "projects").expect("projects");
+        verify_table_columns(&connection, &PROJECT_OVERVIEW_COLUMNS, "projects").expect("projects");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "sessions").expect("sessions");
         verify_table_columns(&connection, &ROUTER_ECONOMY_COLUMNS, "turn_routes")
             .expect("turn_routes");
@@ -3352,7 +3598,7 @@ mod tests {
         // `arcs` gained `archived_at` in v72.
         verify_table_columns(&connection, &ARC_ARCHIVED_AT_COLUMNS, "arcs").expect("arcs");
         verify_table_columns(&connection, &ARC_EVENTS_COLUMNS, "arc_events").expect("arc_events");
-        verify_table_columns(&connection, &WORKSPACE_CREATED_BRANCH_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &PROJECT_FOLDER_COLUMNS, "workspaces")
             .expect("workspaces");
         verify_table_columns(
             &connection,
@@ -3516,6 +3762,9 @@ mod tests {
                 ),
                 (71, compute_migration_checksum(WORKSPACE_CREATED_BRANCH)),
                 (72, compute_migration_checksum(ARC_ARCHIVED_AT)),
+                (73, compute_migration_checksum(PROJECT_FOLDERS)),
+                (74, compute_migration_checksum(PROJECT_OVERVIEWS)),
+                (75, compute_migration_checksum(FOLDER_WORKSPACES)),
             ]
         );
 
@@ -3613,7 +3862,7 @@ mod tests {
         run_migrations(&mut connection).expect("first migrate");
         run_migrations(&mut connection).expect("second migrate");
 
-        verify_table_columns(&connection, &WORKSPACE_CREATED_BRANCH_COLUMNS, "workspaces")
+        verify_table_columns(&connection, &PROJECT_FOLDER_COLUMNS, "workspaces")
             .expect("head workspace shape");
     }
 

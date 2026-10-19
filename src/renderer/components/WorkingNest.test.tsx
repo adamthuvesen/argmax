@@ -105,13 +105,13 @@ describe("<WorkingNest />", () => {
     expect(container.querySelector(".working-nest")).toHaveAttribute("data-mark", markId);
   });
 
-  it.each(["trace", "wave"])("falls back to the nest for the unsupported stored style %s", (markId) => {
+  it.each(["trace", "wave"])("falls back to Halo for the unsupported stored style %s", (markId) => {
     window.localStorage.setItem(ACTIVITY_MARK_STORAGE_KEY, markId);
     resetActivityMarkForTests();
 
     const { container } = render(<WorkingNest active />);
 
-    expect(container.querySelector(".working-nest")).toHaveAttribute("data-mark", "nest");
+    expect(container.querySelector(".working-nest")).toHaveAttribute("data-mark", "halo");
   });
 
   // The size arrives as a custom property rather than an inline width, so a

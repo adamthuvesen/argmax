@@ -65,6 +65,7 @@ export function foregroundActivationTimeoutDetails(options: {
 }): ForegroundActivationTimeoutDetails;
 
 export function ensureDesktopForeground(browser: unknown): Promise<{ changed: boolean; pid: number }>;
+export function pressNativeEscape(browser: unknown): Promise<{ pid: number; method: "CGEventPostToPid" }>;
 export function captureDesktopState(browser: unknown): Promise<Record<string, unknown>>;
 export function rendererErrorMessages(uiState: unknown): string[];
 export function readComposerText(browser: unknown, field: unknown): Promise<string>;

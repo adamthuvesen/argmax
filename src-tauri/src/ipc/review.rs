@@ -3,7 +3,6 @@ use super::live_database;
 use crate::{
     checkpoints::service::CheckpointService,
     error::ArgmaxResult,
-    git::ops::{GitCommitInput, GitCommitResult, GitOpsService},
     review::git_review::{self, ChangedFileSummary, WorkspaceDiff},
     state::AppState,
     workspaces::WorkspaceTargetKind,
@@ -33,13 +32,6 @@ pub struct ReviewIndexHunkInput {
     pub revision: String,
     pub hunk_index: u32,
     pub context_lines: Option<super::validation::DiffContextLines>,
-}
-
-#[derive(Debug, Clone, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ReviewCommitStagedInput {
-    pub workspace_id: String,
-    pub message: String,
 }
 
 #[tauri::command(rename = "review:list-changed-files")]
@@ -162,29 +154,6 @@ pub(crate) async fn review_update_hunk_index_impl(
     .await
 }
 
-#[tauri::command(rename = "review:commit-staged")]
-#[specta::specta]
-pub async fn review_commit_staged(
-    state: State<'_, AppState>,
-    input: ReviewCommitStagedInput,
-) -> ArgmaxResult<GitCommitResult> {
-    review_commit_staged_impl(&state, input).await
-}
-
-pub(crate) async fn review_commit_staged_impl(
-    state: &AppState,
-    input: ReviewCommitStagedInput,
-) -> ArgmaxResult<GitCommitResult> {
-    let service = GitOpsService::new(live_database(state)?);
-    service
-        .commit_staged(GitCommitInput {
-            workspace_id: input.workspace_id,
-            message: input.message,
-            selected_files: Vec::new(),
-        })
-        .await
-}
-
 #[tauri::command(rename = "review:revert-file")]
 #[specta::specta]
 pub async fn review_revert_file(
@@ -296,6 +265,74 @@ mod tests {
         assert_eq!(files[0].path, "README.md");
         assert_eq!(files[0].status, "M");
         assert_eq!(files[0].additions, 1);
+    }
+
+    #[tokio::test]
+    async fn project_folder_diff_reads_its_own_checkout_for_identical_paths() {
+        use crate::persistence::project_folders::{
+            configure_project_folders, list_project_folders, PersistProjectFolderInput,
+        };
+
+        let primary = tempdir().expect("primary repo");
+        let secondary = tempdir().expect("secondary repo");
+        init_repo(primary.path()).await;
+        init_repo(secondary.path()).await;
+        std::fs::write(primary.path().join("README.md"), "hello\nprimary change\n").unwrap();
+        std::fs::write(
+            secondary.path().join("README.md"),
+            "hello\nsecondary change\n",
+        )
+        .unwrap();
+        let state = state_with_project(primary.path());
+        let database = live_database(&state).expect("database");
+        let folder_id = {
+            let connection = database.connection();
+            let project = crate::persistence::projects::require_project(&connection, "p1").unwrap();
+            let folders =
+                [primary.path(), secondary.path()].map(|path| PersistProjectFolderInput {
+                    root_path: path.to_string_lossy().into_owned(),
+                    current_branch: "main".to_owned(),
+                    default_branch: Some("main".to_owned()),
+                    remote: None,
+                    settings: project.settings.clone(),
+                });
+            configure_project_folders(
+                &connection,
+                "p1",
+                "Two repos",
+                &folders,
+                &folders[0].root_path,
+            )
+            .unwrap();
+            list_project_folders(&connection, "p1")
+                .unwrap()
+                .into_iter()
+                .find(|folder| !folder.is_primary)
+                .unwrap()
+                .id
+        };
+        let files = git_review::list_changed_files(
+            &database,
+            WorkspaceTargetKind::ProjectFolder,
+            &folder_id,
+            ReviewComparison::WorkingTree,
+        )
+        .await
+        .unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "README.md");
+        let diff = git_review::load_diff(
+            &database,
+            WorkspaceTargetKind::ProjectFolder,
+            &folder_id,
+            Some("README.md"),
+            ReviewComparison::WorkingTree,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(diff.content.contains("+secondary change"));
+        assert!(!diff.content.contains("+primary change"));
     }
 
     #[tokio::test]

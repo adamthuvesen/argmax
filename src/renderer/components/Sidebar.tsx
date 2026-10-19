@@ -5,21 +5,26 @@ import {
   Clock,
   Command,
   Cpu,
+  Eraser,
+  Folder,
+  FolderOpen,
   Globe,
   Info,
   Keyboard,
   MoreHorizontal,
+  Pin,
+  PinOff,
   Plus,
+  Search,
   Settings,
   Settings2,
+  Shapes,
   Trash2,
-  Workflow,
-  X
+  Workflow
 } from "lucide-react";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -32,6 +37,7 @@ import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../.
 import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
 import { APP_VERSION } from "../../shared/appVersion.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
+import { useAnchoredPopover } from "../hooks/useAnchoredPopover.js";
 import { PickerLead } from "./PickerLead.js";
 import { WORKSPACE_DRAG_MIME } from "../lib/gridState.js";
 import { isInArchivedSection } from "../lib/archivedSection.js";
@@ -41,6 +47,7 @@ import {
   loadCollapsedProjectIds,
   loadExpandedDateGroupIds,
   loadExpandedProjectIds,
+  loadPinnedProjectIds,
   loadProjectOrder,
   loadProjectSortMode,
   loadSidebarViewMode,
@@ -54,12 +61,20 @@ import {
   saveSidebarViewMode,
   saveWorkspaceOrders,
   SIDEBAR_SESSION_LIMIT,
+  pinnedProjectsFirst,
+  savePinnedProjectIds,
   sortProjectsBy,
   sortWorkspaceGroup,
   type ProjectSortMode,
   type SidebarViewMode
 } from "../lib/projects.js";
-import { hiddenMultitaskWorkspaceIds } from "../lib/multitask.js";
+import { buildSidebarChatTree } from "../lib/sidebarChatTree.js";
+import {
+  detachSidebarChat,
+  loadCollapsedChatIds,
+  saveCollapsedChatIds,
+  useSidebarChatNesting
+} from "../lib/sidebarChatNesting.js";
 import { useLauncherSurface } from "../state/launcherSurface.js";
 import {
   showCommandPalette,
@@ -78,16 +93,14 @@ import {
   useDraggingWorkspaceId,
   workspaceDragSnapshot
 } from "../state/workspaceDrag.js";
-import { computePriorityEntries, nextPriorityIdleAt, workingWorkspaceIds } from "../lib/priority.js";
+import { computePriorityEntries, workingWorkspaceIds } from "../lib/priority.js";
 import { computeSnoozeShelf, snoozeTimerDelay } from "../lib/snooze.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
 import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
-import { useMascotVisible } from "../lib/mascotVisibility.js";
 import { IdentityPlans } from "./IdentityPlans.js";
-import { Mascot } from "./Mascot.js";
-import { SidebarSessionRow, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
+import { SidebarSessionRow, type SidebarSessionRowProps, type WorkspaceClickModifiers } from "./SidebarSessionRow.js";
 
 // Markers stored in sessionStorage (cleared on app quit / window close in
 // Tauri) so each boot seed fires exactly once per real app launch, not on every
@@ -125,6 +138,12 @@ const SIDE_CHATS_GROUP_KEY = "side-chats";
 const ARCHIVED_GROUP_KEY = "archived";
 const SNOOZED_GROUP_KEY = "snoozed";
 const OLDER_GROUP_KEY = "older";
+const STATUS_GROUPS = [
+  { key: "status-working", label: "Working" },
+  { key: "status-attention", label: "Needs attention" },
+  { key: "status-completed", label: "Completed" },
+  { key: "status-created", label: "Not started" }
+] as const;
 
 // Active and paused sort together, ahead of done; ties break by most recently
 // touched. Only a non-active state gets a text marker on the row — active is
@@ -148,16 +167,18 @@ const BOOT_COLLAPSED_GROUP_KEYS: readonly string[] = [
   "today",
   "yesterday",
   "last-7",
-  OLDER_GROUP_KEY
+  OLDER_GROUP_KEY,
+  ...STATUS_GROUPS.map((group) => group.key)
 ];
 
 const VIEW_MODE_OPTIONS: ReadonlyArray<{ value: SidebarViewMode; label: string; description: string }> = [
   { value: "projects", label: "Projects", description: "Group chats under their project" },
-  { value: "sessions", label: "Date", description: "Flat list of all chats by date" }
+  { value: "sessions", label: "Date", description: "Flat list of all chats by date" },
+  { value: "status", label: "Status", description: "Group chats by working and completed status" }
 ];
 
 const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; description: string }> = [
-  { value: "recent", label: "Recent activity", description: "Most recently active project first" },
+  { value: "recent", label: "Recent Activity", description: "Most recently active project first" },
   { value: "alphabetical", label: "Alphabetical (A→Z)", description: "Sort by project name" },
   { value: "manual", label: "Manual", description: "Drag to reorder" }
 ];
@@ -212,9 +233,11 @@ export function Sidebar({
   onOpenProject,
   onOpenWorkspaceChat,
   onOpenBrowser,
+  onOpenClaudeArtifacts,
   onOpenArc,
   onRemoveProject,
   onRenameWorkspace,
+  onForkWorkspace,
   onResizeMouseDown,
   onToggleWorkspacePinned,
   onRemoveFromPriority,
@@ -250,14 +273,16 @@ export function Sidebar({
   onOpenProject: (projectId: string) => void;
   onOpenWorkspaceChat: (workspaceId: string, modifiers: WorkspaceClickModifiers) => void;
   onOpenBrowser?: () => void;
+  onOpenClaudeArtifacts?: () => void;
   onOpenArc?: (arcId: string) => void;
   onRemoveProject?: (projectId: string) => void;
   onRenameWorkspace?: (workspaceId: string, taskLabel: string) => void;
+  onForkWorkspace?: (workspaceId: string) => void;
   onResizeMouseDown: (event: ReactMouseEvent) => void;
   onToggleWorkspacePinned?: (workspaceId: string, pinned: boolean) => void;
-  /** Right-click "Done" on a Priority row — drops it back to its normal group. */
+  /** Right-click "Mark Done" on a Priority row — drops it back to its normal group. */
   onRemoveFromPriority?: (workspaceId: string) => void;
-  /** Right-click "Add to priority" on any other row — floats it manually. */
+  /** Right-click "Add to Priority" on any other row — floats it manually. */
   onAddToPriority?: (workspaceId: string) => void;
   /** Right-click "Snooze …" — moves the row to the Snoozed shelf until `until`. */
   onSnoozeWorkspace?: (workspaceId: string, until: string) => void;
@@ -271,7 +296,7 @@ export function Sidebar({
     icon: string | null,
     iconColor: string | null
   ) => void;
-  /** Right-click "Sync now" on an imported row — runs one session-sync sweep. */
+  /** Right-click "Sync Now" on an imported row — runs one session-sync sweep. */
   onSyncNowWorkspace?: () => void;
   showArcs?: boolean;
   showArchived?: boolean;
@@ -343,6 +368,7 @@ export function Sidebar({
   }, [snapshot.projects.length, collapsedProjectIds]);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => loadExpandedProjectIds());
   const [projectOrder, setProjectOrder] = useState<string[]>(() => loadProjectOrder());
+  const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>(() => loadPinnedProjectIds());
   const [workspaceOrders, setWorkspaceOrders] = useState<Record<string, string[]>>(() => loadWorkspaceOrders());
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => loadProjectSortMode());
   const [viewMode, setViewMode] = useState<SidebarViewMode>(() => loadSidebarViewMode());
@@ -371,7 +397,6 @@ export function Sidebar({
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
-  const mascotVisible = useMascotVisible();
   const identityMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   // Per-project actions menu. `mode === "confirm"` swaps the menu in-place
   // for a "Remove '{name}'?" prompt — no separate modal needed. The popover
@@ -380,9 +405,7 @@ export function Sidebar({
   const [projectMenuState, setProjectMenuState] = useState<
     { projectId: string; mode: "menu" | "confirm" } | null
   >(null);
-  const [projectMenuPos, setProjectMenuPos] = useState<{ top: number; right: number } | null>(null);
-  const projectMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const projectMenuPopoverRef = useRef<HTMLUListElement | null>(null);
+  const projectMenu = useAnchoredPopover({ open: projectMenuState !== null, placement: "bottom-end" });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [draggingWorkspaceId, setDraggingWorkspaceId] = useState<string | null>(null);
@@ -401,41 +424,40 @@ export function Sidebar({
 
   const closeProjectMenu = useCallback((): void => {
     setProjectMenuState(null);
-    setProjectMenuPos(null);
   }, []);
   // Trigger lives in the row; popover is portaled. Both must count as "inside"
   // for the dismiss hook so a click in the popover doesn't immediately close it.
   useDismissOnOutsideOrEscape(
-    projectMenuTriggerRef,
+    projectMenu.anchorRef,
     projectMenuState !== null,
     closeProjectMenu,
-    projectMenuPopoverRef
+    projectMenu.popoverRef
   );
-
-  useLayoutEffect(() => {
-    if (projectMenuState === null) {
-      setProjectMenuPos(null);
-      return;
-    }
-    const trigger = projectMenuTriggerRef.current;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
-    setProjectMenuPos({
-      top: rect.bottom + 6,
-      right: Math.max(8, window.innerWidth - rect.right)
-    });
-  }, [projectMenuState]);
 
   const orderedProjects = useMemo(
     // The hidden scratch project never renders as a project group: its
     // chats get the Chat group at the bottom of the projects view instead.
     () =>
-      sortProjectsBy(
-        snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
-        sortMode,
-        projectOrder
+      pinnedProjectsFirst(
+        sortProjectsBy(
+          snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID),
+          sortMode,
+          projectOrder
+        ),
+        pinnedProjectIds
       ),
-    [snapshot.projects, sortMode, projectOrder]
+    [snapshot.projects, sortMode, projectOrder, pinnedProjectIds]
+  );
+  const pinnedProjectIdSet = useMemo(() => new Set(pinnedProjectIds), [pinnedProjectIds]);
+  const toggleProjectPinned = useCallback(
+    (projectId: string): void => {
+      const next = pinnedProjectIds.includes(projectId)
+        ? pinnedProjectIds.filter((id) => id !== projectId)
+        : [...pinnedProjectIds, projectId];
+      setPinnedProjectIds(next);
+      savePinnedProjectIds(next);
+    },
+    [pinnedProjectIds]
   );
 
   const handleSelectSortMode = useCallback(
@@ -455,6 +477,7 @@ export function Sidebar({
         setViewMode(mode);
         saveSidebarViewMode(mode);
       }
+      setSortMenuOpen(false);
     },
     [viewMode]
   );
@@ -548,23 +571,16 @@ export function Sidebar({
     return labels;
   }, [snapshot.sessions, snapshot.arcs]);
 
-  // Workspaces that need the user right now (approval, blocked, failed,
-  // review-ready) or are mid-turn float into the Priority section, directly
-  // under Pinned.
-  // A row lives in exactly one section. Pinned wins: a pin keeps the row
-  // in Pinned even when it would otherwise qualify for Priority. Unpinned
-  // Priority rows leave their date/project group and drop back when
-  // resolved, marked done, or gone quiet.
-  // Popup workspaces (the "More details" mini-sessions) never surface in the
-  // sidebar in any section, and neither does a multitask: it belongs to the
-  // chat that dispatched it, which shows it in its own dock.
-  const hiddenMultitasks = useMemo(
-    () => hiddenMultitaskWorkspaceIds(snapshot.sessions),
-    [snapshot.sessions]
-  );
-  // A multitask's turn belongs to the row of the chat that dispatched it: it
-  // has no row of its own, so without this a parent goes still the moment its
-  // own turn ends while a sibling agent is still working the checkout.
+  const { nested, detachedIds } = useSidebarChatNesting();
+  const [detachedToReveal, setDetachedToReveal] = useState<string | null>(null);
+  const detachChat = useCallback((workspaceId: string): void => {
+    detachSidebarChat(workspaceId);
+    setDetachedToReveal(workspaceId);
+  }, []);
+  const [collapsedChats, setCollapsedChats] = useState<Set<string>>(() => loadCollapsedChatIds());
+  useEffect(() => {
+    saveCollapsedChatIds(collapsedChats);
+  }, [collapsedChats]);
   const workingWorkspaces = useMemo(
     () => workingWorkspaceIds(snapshot.sessions),
     [snapshot.sessions]
@@ -572,10 +588,23 @@ export function Sidebar({
   const allSidebarWorkspaces = useMemo(
     () =>
       snapshot.workspaces.filter(
-        (workspace) => workspace.kind !== "popup" && !hiddenMultitasks.has(workspace.id)
+        (workspace) => workspace.kind !== "popup" && workspaceIdsWithSessions.has(workspace.id)
       ),
-    [hiddenMultitasks, snapshot.workspaces]
+    [workspaceIdsWithSessions, snapshot.workspaces]
   );
+  const allSidebarWorkspacesRef = useRef(allSidebarWorkspaces);
+  allSidebarWorkspacesRef.current = allSidebarWorkspaces;
+  // Pruned on a click, not on every refresh: a partial dashboard load would
+  // otherwise forget collapsed chats that are only briefly missing.
+  const toggleChatChildren = useCallback((workspaceId: string): void => {
+    setCollapsedChats((current) => {
+      const listedIds = new Set(allSidebarWorkspacesRef.current.map((workspace) => workspace.id));
+      const next = new Set([...current].filter((id) => listedIds.has(id)));
+      if (current.has(workspaceId)) next.delete(workspaceId);
+      else next.add(workspaceId);
+      return next;
+    });
+  }, []);
   // A snooze lifts a row out of every section into the collapsed Snoozed shelf
   // until its time passes. Membership is derived from the clock, so there is no
   // poll: one timer is armed for the earliest expiry and re-derives the shelf.
@@ -602,10 +631,24 @@ export function Sidebar({
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [nextSnoozeExpiryAt, snoozeNow]);
-  const sidebarWorkspaces = useMemo(
+  const unsnoozedWorkspaces = useMemo(
     () => allSidebarWorkspaces.filter((workspace) => !snoozeShelf.shelfIds.has(workspace.id)),
     [allSidebarWorkspaces, snoozeShelf]
   );
+  const chatTree = useMemo(
+    () => buildSidebarChatTree(
+      unsnoozedWorkspaces.filter((workspace) => !isInArchivedSection(workspace)),
+      snapshot.sessions, detachedIds, nested
+    ),
+    [unsnoozedWorkspaces, snapshot.sessions, detachedIds, nested]
+  );
+  const sidebarWorkspaces = useMemo(
+    () => unsnoozedWorkspaces.filter((workspace) => !chatTree.parentByWorkspace.has(workspace.id)),
+    [unsnoozedWorkspaces, chatTree]
+  );
+  const selectedRootId = selectedWorkspaceId
+    ? chatTree.rootByWorkspace.get(selectedWorkspaceId) ?? selectedWorkspaceId
+    : null;
   // Every listed chat, shelved or not: opening a snoozed chat must still mark
   // it viewed, and a shelved row must still show unread when it returns.
   const unreadWorkspaces = useUnreadWorkspaceIds(
@@ -614,20 +657,32 @@ export function Sidebar({
     workingWorkspaces
   );
 
-  // An unread reply ages out 30 minutes after it lands, so the section has to
-  // move without a delta to prompt it. Rather than poll a clock, arm one timer
-  // for the exact moment the next listed row crosses that line. Rows held by
-  // an approval, a question, or a pull request have no such line and never
-  // arm it — they leave when the thing that raised them is dealt with.
-  const [priorityNow, setPriorityNow] = useState(() => Date.now());
-  const priorityEntries = useMemo(
+  const eligiblePriorityIds = [...new Set([...unreadWorkspaces, ...workingWorkspaces])].sort().join("\n");
+  const [prioritySelection, setPrioritySelection] = useState({
+    selectedId: selectedWorkspaceId,
+    eligibleIds: eligiblePriorityIds,
+    retainedId: null as string | null
+  });
+  let retainedId = prioritySelection.retainedId;
+  if (prioritySelection.selectedId !== selectedWorkspaceId || prioritySelection.eligibleIds !== eligiblePriorityIds) {
+    retainedId = selectedWorkspaceId && (
+      (prioritySelection.selectedId === selectedWorkspaceId && prioritySelection.retainedId === selectedWorkspaceId) ||
+      prioritySelection.eligibleIds.split("\n").includes(selectedWorkspaceId)
+    ) ? selectedWorkspaceId : null;
+    setPrioritySelection({ selectedId: selectedWorkspaceId, eligibleIds: eligiblePriorityIds, retainedId });
+  }
+  const priorityUnreadIds = useMemo(() => {
+    const ids = new Set(unreadWorkspaces);
+    if (retainedId) ids.add(retainedId);
+    return ids;
+  }, [unreadWorkspaces, retainedId]);
+  const rawPriorityEntries = useMemo(
     () => {
-      const entries = showPriority
+      const entries = showPriority || viewMode === "status"
         ? computePriorityEntries(
-            sidebarWorkspaces,
+            unsnoozedWorkspaces,
             snapshot.sessions,
-            priorityNow,
-            unreadWorkspaces
+            priorityUnreadIds
           )
         : [];
       const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
@@ -638,22 +693,35 @@ export function Sidebar({
         (positions.get(b.workspace.id) ?? manualOrder.length)
       );
     },
-    [showPriority, sidebarWorkspaces, snapshot.sessions, priorityNow, unreadWorkspaces, workspaceOrders]
+    [showPriority, viewMode, unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds, workspaceOrders]
   );
+  const rawPriorityByWorkspace = useMemo(
+    () => new Map(rawPriorityEntries.map((entry) => [entry.workspace.id, entry])),
+    [rawPriorityEntries]
+  );
+  const priorityEntries = useMemo(() => {
+    const byId = new Map(sidebarWorkspaces.map((workspace) => [workspace.id, workspace]));
+    const seen = new Set<string>();
+    const entries = rawPriorityEntries.flatMap((entry) => {
+      if (viewMode === "status" && (!showPriority || !entry.workspace.priorityAddedAt)) return [];
+      const rootId = chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id;
+      const workspace = byId.get(rootId);
+      if (!workspace || workspace.pinned || seen.has(rootId)) return [];
+      seen.add(rootId);
+      const own = rawPriorityByWorkspace.get(rootId);
+      return [{ ...entry, workspace, reason: own?.reason ?? null, attention: own?.attention ?? null }];
+    });
+    const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
+    const positions = new Map(manualOrder.map((id, index) => [id, index]));
+    return entries.sort((a, b) =>
+      (positions.get(a.workspace.id) ?? manualOrder.length) -
+      (positions.get(b.workspace.id) ?? manualOrder.length)
+    );
+  }, [sidebarWorkspaces, rawPriorityEntries, rawPriorityByWorkspace, chatTree, workspaceOrders, viewMode, showPriority]);
   const priorityOrderedIds = useMemo(
     () => priorityEntries.map((entry) => entry.workspace.id),
     [priorityEntries]
   );
-
-  const nextPriorityIdle = nextPriorityIdleAt(priorityEntries);
-  useEffect(() => {
-    if (nextPriorityIdle === null) return;
-    const timerId = window.setTimeout(
-      () => setPriorityNow(Date.now()),
-      Math.max(0, nextPriorityIdle - Date.now()) + 1
-    );
-    return () => window.clearTimeout(timerId);
-  }, [nextPriorityIdle]);
 
   // Project-name subtitles (screenshot-style two-line rows) for rows whose
   // group doesn't already name the project: Priority, Pinned, and the flat
@@ -668,25 +736,27 @@ export function Sidebar({
   }, [snapshot.projects]);
   const subtitleFor = useCallback(
     (projectId: string): string | null =>
-      showPriority ? projectNameById.get(projectId) ?? null : null,
-    [showPriority, projectNameById]
+      showPriority || viewMode === "status" ? projectNameById.get(projectId) ?? null : null,
+    [showPriority, viewMode, projectNameById]
   );
 
   const priorityWorkspaceIds = useMemo(
     () => new Set(priorityEntries.map((entry) => entry.workspace.id)),
     [priorityEntries]
   );
-  // "Done" clears attention and manual adds. A row that is only there because
-  // a turn is running has nothing to dismiss — it leaves when the turn ends —
-  // so it gets no Done action and the header's Clear skips it.
   const dismissablePriorityIds = useMemo(
     () =>
-      priorityEntries
+      rawPriorityEntries
+        .filter((entry) => priorityWorkspaceIds.has(chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id))
+        // Unread chats clear too: leaving Priority does not mark them read, so
+        // the unread dot still shows where the chat lives. A rule that skipped
+        // them flipped the eraser on and off as chats were opened.
+        .filter((entry) => !entry.working)
         .filter((entry) => entry.attention !== null || entry.workspace.priorityAddedAt)
         .map((entry) => entry.workspace.id),
-    [priorityEntries]
+    [rawPriorityEntries, priorityWorkspaceIds, chatTree]
   );
-  // "Add to priority" only makes sense while the section exists.
+  // "Add to Priority" only makes sense while the section exists.
   const addToPriority = showPriority ? onAddToPriority : undefined;
 
   // Pinned workspaces float into a dedicated section at the very top of the
@@ -731,6 +801,31 @@ export function Sidebar({
       ),
     [sidebarWorkspaces, priorityWorkspaceIds, workspaceIdsWithSessions]
   );
+
+  const statusGroups = useMemo(() => {
+    const chats = chatSessionByWorkspace(snapshot.sessions);
+    const statusByRoot = new Map<string, number>();
+    for (const workspace of unsnoozedWorkspaces) {
+      if (isInArchivedSection(workspace)) continue;
+      const rootId = chatTree.rootByWorkspace.get(workspace.id) ?? workspace.id;
+      const reasons = rawPriorityByWorkspace.get(workspace.id)?.reasons ?? [];
+      const chat = chats.get(workspace.id);
+      const stalled = chat && ["waiting", "blocked", "failed"].includes(chat.state) &&
+        (!workspace.priorityDismissedAt || workspace.priorityDismissedAt < (chat.attentionChangedAt ?? chat.lastActivityAt));
+      const status = workingWorkspaces.has(workspace.id) ? 0
+        : stalled || reasons.some((reason) => reason.kind !== "pr-open") ? 1
+        : chat?.state === "created" ? 3 : 2;
+      statusByRoot.set(rootId, Math.min(statusByRoot.get(rootId) ?? status, status));
+    }
+    return STATUS_GROUPS.map((group, index) => ({
+      ...group,
+      items: sortWorkspaceGroup(sidebarWorkspaces.filter((workspace) =>
+        !workspace.pinned && !isInArchivedSection(workspace) &&
+        !priorityWorkspaceIds.has(workspace.id) && statusByRoot.get(workspace.id) === index
+      ), [])
+    })).filter((group) => group.items.length > 0);
+  }, [snapshot.sessions, unsnoozedWorkspaces, chatTree, rawPriorityByWorkspace, workingWorkspaces, sidebarWorkspaces, priorityWorkspaceIds]);
+  const listGroups = viewMode === "status" ? statusGroups : dateGroups;
 
   // The projects view has no project to file a repo-less chat under, so they
   // gather in a Chat group below the project groups. Pinned still wins — a row
@@ -842,15 +937,29 @@ export function Sidebar({
   // only takes git workspaces, so a running chat stays in its recency bucket
   // or the Chat group. Shared by the two reveal effects below.
   const revealWorkspaceGroup = useCallback(
-    (workspace: DashboardSnapshot["workspaces"][number]): void => {
+    (selectedWorkspace: DashboardSnapshot["workspaces"][number], expandCollapsedAncestors: boolean): void => {
+      if (expandCollapsedAncestors) {
+        const ancestors: string[] = [];
+        let parentId = chatTree.parentByWorkspace.get(selectedWorkspace.id);
+        while (parentId) {
+          ancestors.push(parentId);
+          parentId = chatTree.parentByWorkspace.get(parentId);
+        }
+        setCollapsedChats((current) => {
+          if (!ancestors.some((id) => current.has(id))) return current;
+          return new Set([...current].filter((id) => !ancestors.includes(id)));
+        });
+      }
+      const rootId = chatTree.rootByWorkspace.get(selectedWorkspace.id) ?? selectedWorkspace.id;
+      const workspace = sidebarWorkspaces.find((candidate) => candidate.id === rootId) ?? selectedWorkspace;
       const groupKey = workspace.pinned
         ? PINNED_GROUP_KEY
         : priorityWorkspaceIds.has(workspace.id)
           ? PRIORITY_GROUP_KEY
           : viewMode === "projects" && workspace.kind === "scratch"
             ? SIDE_CHATS_GROUP_KEY
-            : viewMode === "sessions"
-              ? dateGroups.find((group) => group.items.some((item) => item.id === workspace.id))
+            : viewMode !== "projects"
+              ? listGroups.find((group) => group.items.some((item) => item.id === workspace.id))
                   ?.key ?? null
               : null;
       // Older is a history dump, often dozens of rows. Auto-opening it to
@@ -869,14 +978,28 @@ export function Sidebar({
         expandProjectVisibility(workspace.projectId);
       }
     },
-    [dateGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
+    [chatTree, sidebarWorkspaces, listGroups, expandProjectVisibility, priorityWorkspaceIds, viewMode]
   );
+
+  useEffect(() => {
+    if (!detachedToReveal || chatTree.parentByWorkspace.has(detachedToReveal)) return;
+    const workspace = sidebarWorkspaces.find((candidate) => candidate.id === detachedToReveal);
+    if (workspace) {
+      revealWorkspaceGroup(workspace, true);
+      setExpandedProjectIds((current) => new Set([...current, workspace.projectId]));
+      const dateGroup = listGroups.find((group) => group.items.some((item) => item.id === workspace.id));
+      if (dateGroup) {
+        setExpandedDateGroups((current) => new Set([...current, dateGroup.key]));
+        setCollapsedDateGroups((current) => new Set([...current].filter((key) => key !== dateGroup.key)));
+      }
+    }
+    setDetachedToReveal(null);
+  }, [detachedToReveal, chatTree, sidebarWorkspaces, revealWorkspaceGroup, listGroups]);
 
   // A newly launched (or newly selected) session must not vanish into a
   // collapsed section: expand the group that hosts the selected row. Older is
-  // the exception (see revealWorkspaceGroup). Keyed on the id *changing* —
-  // once revealed, the user may still collapse the group over a selected row
-  // without this snapping it back open.
+  // the exception (see revealWorkspaceGroup). A selection entering a new
+  // grouping reveals its destination. Collapsing that same group stays closed.
   const lastExpandedForWorkspaceId = useRef<string | null>(null);
   // The shelf opens when the selection moves to a shelved chat, or the selected
   // chat enters the shelf. The effect depends on this flag, not on the shelf
@@ -886,13 +1009,19 @@ export function Sidebar({
   useEffect(() => {
     if (selectedChatIsShelved) setSnoozedExpanded(true);
   }, [selectedWorkspaceId, selectedChatIsShelved]);
+  const selectedRootWorkspace = sidebarWorkspaces.find((workspace) => workspace.id === selectedRootId);
+  const selectedGroupKey = selectedRootWorkspace?.pinned ? PINNED_GROUP_KEY
+    : selectedRootId && priorityWorkspaceIds.has(selectedRootId) ? PRIORITY_GROUP_KEY
+    : viewMode === "projects" ? selectedRootWorkspace?.projectId
+    : listGroups.find((group) => group.items.some((workspace) => workspace.id === selectedRootId))?.key;
+  const selectedRevealKey = `${selectedWorkspaceId}:${selectedRootId}:${viewMode}:${selectedGroupKey}`;
   useEffect(() => {
-    if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedWorkspaceId) return;
-    const workspace = sidebarWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
+    if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedRevealKey) return;
+    const workspace = unsnoozedWorkspaces.find((candidate) => candidate.id === selectedWorkspaceId);
     if (!workspace || isInArchivedSection(workspace)) return;
-    lastExpandedForWorkspaceId.current = selectedWorkspaceId;
-    revealWorkspaceGroup(workspace);
-  }, [revealWorkspaceGroup, selectedWorkspaceId, sidebarWorkspaces]);
+    lastExpandedForWorkspaceId.current = selectedRevealKey;
+    revealWorkspaceGroup(workspace, true);
+  }, [revealWorkspaceGroup, selectedWorkspaceId, selectedRevealKey, unsnoozedWorkspaces]);
 
   // A workspace that APPEARS without being selected — a fork, or a session an
   // agent launched from inside another session — must also surface, so the
@@ -917,7 +1046,9 @@ export function Sidebar({
       if (next.has(workspace.id)) continue;
       next.add(workspace.id);
       if (isInArchivedSection(workspace) || snoozeShelf.shelfIds.has(workspace.id)) continue;
-      revealWorkspaceGroup(workspace);
+      // A chat collapsed over its launched chats stays collapsed: the user
+      // chose that, and the new chat surfaces once they open it.
+      revealWorkspaceGroup(workspace, false);
     }
     knownWorkspaceIdsRef.current = next;
   }, [revealWorkspaceGroup, allSidebarWorkspaces, snoozeShelf]);
@@ -1022,6 +1153,12 @@ export function Sidebar({
 
   const handleWorkspaceDragStart = useCallback((event: ReactDragEvent<HTMLDivElement>, workspaceId: string): void => {
     event.stopPropagation();
+    // Launched chats render inside their root's draggable wrapper. A drag that
+    // starts on one of them would otherwise move the root.
+    if (event.target instanceof Element && event.target.closest(".sidebar-chat-children")) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData(WORKSPACE_DRAG_MIME, workspaceId);
     event.dataTransfer.effectAllowed = "copyMove";
     setDraggingWorkspaceId(workspaceId);
@@ -1090,11 +1227,88 @@ export function Sidebar({
     endWorkspaceDrag();
   }, []);
 
+  const descendantActivity = useMemo(() => {
+    const summaries = new Map<string, { working: number; attention: number; unread: number }>();
+    for (const workspace of unsnoozedWorkspaces) {
+      let parentId = chatTree.parentByWorkspace.get(workspace.id);
+      while (parentId) {
+        const summary = summaries.get(parentId) ?? { working: 0, attention: 0, unread: 0 };
+        if (workingWorkspaces.has(workspace.id)) summary.working += 1;
+        if (rawPriorityByWorkspace.get(workspace.id)?.attention) summary.attention += 1;
+        if (unreadWorkspaces.has(workspace.id)) summary.unread += 1;
+        summaries.set(parentId, summary);
+        parentId = chatTree.parentByWorkspace.get(parentId);
+      }
+    }
+    return summaries;
+  }, [unsnoozedWorkspaces, chatTree, workingWorkspaces, rawPriorityByWorkspace, unreadWorkspaces]);
+  const renderChat = (
+    workspace: DashboardSnapshot["workspaces"][number],
+    overrides: Partial<SidebarSessionRowProps> = {}
+  ): JSX.Element => {
+    const children = chatTree.childrenByWorkspace.get(workspace.id) ?? [];
+    const expanded = !collapsedChats.has(workspace.id);
+    const isNested = chatTree.parentByWorkspace.has(workspace.id);
+    const priority = rawPriorityByWorkspace.get(workspace.id);
+    const activity = descendantActivity.get(workspace.id);
+    const childActivity = activity?.attention ? `${activity.attention} need attention`
+      : activity?.working ? `${activity.working} working`
+      : activity?.unread ? `${activity.unread} unread` : undefined;
+    return (
+      <>
+        <SidebarSessionRow
+          workspace={workspace}
+          isWorking={workingWorkspaces.has(workspace.id)}
+          hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
+          copyableIds={copyableIdsByWorkspace.get(workspace.id)}
+          importedProvider={importedProviderByWorkspace.get(workspace.id)}
+          launchedByLabel={isNested ? undefined : launchedByLabelByWorkspace.get(workspace.id)}
+          arcLabel={arcLabelByWorkspace.get(workspace.id)}
+          isSelected={selectedWorkspaceId === workspace.id}
+          isOpenInGrid={openWorkspaceIds.has(workspace.id)}
+          canDragToGrid={canDragWorkspaceToGrid}
+          onOpenWorkspaceChat={onOpenWorkspaceChat}
+          onArchiveWorkspace={onArchiveWorkspace}
+          onOpenInIde={onOpenInIde}
+          onOpenInWindow={onOpenInWindow}
+          onTogglePin={onToggleWorkspacePinned}
+          onRename={onRenameWorkspace}
+          onFork={onForkWorkspace}
+          onSetIcon={onSetWorkspaceIcon}
+          onSyncNow={onSyncNowWorkspace}
+          onAddToPriority={!workspace.pinned && (viewMode === "status" ? !workspace.priorityAddedAt : !priority) ? addToPriority : undefined}
+          onRemoveFromPriority={priority && (priority.attention !== null || workspace.priorityAddedAt) ? onRemoveFromPriority : undefined}
+          priorityReason={priority?.reason ?? undefined}
+          onSnooze={onSnoozeWorkspace}
+          detectedIdes={detectedIdes}
+          defaultIde={defaultIde}
+          {...overrides}
+          childrenExpanded={children.length ? expanded : undefined}
+          childCount={children.length || undefined}
+          childActivity={childActivity}
+          onToggleChildren={children.length ? toggleChatChildren : undefined}
+          onDetach={isNested ? detachChat : undefined}
+        />
+        {children.length > 0 && expanded ? (
+          <div className="sidebar-chat-children" role="group" aria-label={`Chats launched from ${workspace.taskLabel || workspace.branch}`}>
+            {children.map((child) => (
+              <div key={child.id} className="sidebar-chat-child">
+                {renderChat(child, { subtitle: child.projectId !== workspace.projectId ? projectNameById.get(child.projectId) : undefined })}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </>
+    );
+  };
+
+  // The version lives in the menu header; the chip speaks up only while local
+  // data is not ready, so a failed load is never silent.
   const identitySubLabel = loadState === "loading"
     ? "Starting…"
     : loadState === "error"
       ? "Couldn't load local data"
-      : APP_VERSION;
+      : null;
   const runIdentityAction = useCallback((action: () => void): void => {
     setIdentityMenuOpen(false);
     action();
@@ -1105,7 +1319,7 @@ export function Sidebar({
   // newest recency bucket in sessions view, the "Projects" header in projects
   // view. It falls back to a quiet label-less strip only when sessions view
   // has no bucket to host it.
-  const leadDateGroupKey = viewMode === "sessions" ? dateGroups[0]?.key ?? null : null;
+  const leadListGroupKey = viewMode !== "projects" ? listGroups[0]?.key ?? null : null;
   const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
   const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
   const archivedCollapsed = !archivedExpanded;
@@ -1248,7 +1462,7 @@ export function Sidebar({
   );
   const sideChatsCollapsed = collapsedDateGroups.has(SIDE_CHATS_GROUP_KEY);
   const sideChatsExpanded = expandedDateGroups.has(SIDE_CHATS_GROUP_KEY);
-  const visibleSideChats = visibleSidebarItems(sideChatWorkspaces, selectedWorkspaceId, sideChatsExpanded);
+  const visibleSideChats = visibleSidebarItems(sideChatWorkspaces, selectedRootId, sideChatsExpanded);
   const hiddenSideChatCount = sideChatWorkspaces.length - visibleSideChats.length;
   // Projects view only, below the project groups. The sessions view files
   // chats into the recency buckets like any other row.
@@ -1286,29 +1500,7 @@ export function Sidebar({
           <>
             {visibleSideChats.map((workspace) => (
               <div key={workspace.id} className="session-row-wrap">
-                <SidebarSessionRow
-                  workspace={workspace}
-                  isWorking={workingWorkspaces.has(workspace.id)}
-                  hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
-                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
-                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
-                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
-                  isSelected={selectedWorkspaceId === workspace.id}
-                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                  canDragToGrid={canDragWorkspaceToGrid}
-                  onOpenWorkspaceChat={onOpenWorkspaceChat}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onOpenInIde={onOpenInIde}
-                  onOpenInWindow={onOpenInWindow}
-                  onTogglePin={onToggleWorkspacePinned}
-                  onRename={onRenameWorkspace}
-                  onSetIcon={onSetWorkspaceIcon}
-                  onSyncNow={onSyncNowWorkspace}
-                  onAddToPriority={addToPriority}
-                  onSnooze={onSnoozeWorkspace}
-                  detectedIdes={detectedIdes}
-                  defaultIde={defaultIde}
-                />
+                {renderChat(workspace)}
               </div>
             ))}
             {sideChatWorkspaces.length > SIDEBAR_SESSION_LIMIT ? (
@@ -1411,6 +1603,12 @@ export function Sidebar({
             <span className="rail-nav-label">Browser</span>
           </button>
         ) : null}
+        {onOpenClaudeArtifacts && typeof window !== "undefined" && window.argmax?.browser ? (
+          <button className="rail-nav-item" type="button" title="Claude artifacts" aria-label="Artifacts" onClick={onOpenClaudeArtifacts}>
+            <span className="rail-nav-glyph" aria-hidden="true"><Shapes size={14} /></span>
+            <span className="rail-nav-label">Artifacts</span>
+          </button>
+        ) : null}
         <button
           className="rail-nav-item"
           type="button"
@@ -1428,7 +1626,7 @@ export function Sidebar({
 
       <div className="project-list-scroll scroll-fade">
         <div className="project-list">
-        {viewMode === "sessions" && leadDateGroupKey === null ? (
+        {viewMode !== "projects" && leadListGroupKey === null ? (
           <div className="rail-heading">{sidebarActions}</div>
         ) : null}
         {/* Arcs sit above everything else: a body of work spanning several
@@ -1463,29 +1661,7 @@ export function Sidebar({
                 }
                 onDragEnd={handleWorkspaceDragEnd}
               >
-                <SidebarSessionRow
-                  workspace={workspace}
-                  isWorking={workingWorkspaces.has(workspace.id)}
-                  hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
-                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
-                  subtitle={subtitleFor(workspace.projectId)}
-                  importedProvider={importedProviderByWorkspace.get(workspace.id)}
-                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
-                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
-                  isSelected={selectedWorkspaceId === workspace.id}
-                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                  canDragToGrid={canDragWorkspaceToGrid}
-                  onOpenWorkspaceChat={onOpenWorkspaceChat}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onOpenInIde={onOpenInIde}
-                  onOpenInWindow={onOpenInWindow}
-                  onTogglePin={onToggleWorkspacePinned}
-                  onRename={onRenameWorkspace}
-                  onSetIcon={onSetWorkspaceIcon}
-                  onSyncNow={onSyncNowWorkspace}
-                  detectedIdes={detectedIdes}
-                  defaultIde={defaultIde}
-                />
+                {renderChat(workspace, { subtitle: subtitleFor(workspace.projectId) })}
               </div>
             ))}
           </div>
@@ -1504,22 +1680,23 @@ export function Sidebar({
                 <span className="project-name-text">Priority</span>
                 {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
               </span>
-              {onClearPriority && dismissablePriorityIds.length > 0 ? (
+              {onClearPriority ? (
                 <button
-                  className="session-priority-clear"
+                  className="small-icon"
                   type="button"
-                  title="Clear priority"
-                  aria-label="Clear priority"
+                  title={dismissablePriorityIds.length === 0
+                    ? "Nothing to clear while every chat here is running"
+                    : "Clear Priority"}
+                  aria-label="Clear Priority"
+                  disabled={dismissablePriorityIds.length === 0}
                   onClick={(event) => {
                     event.stopPropagation();
                     onClearPriority(dismissablePriorityIds);
                   }}
                 >
-                  <X size={14} aria-hidden="true" />
+                  <Eraser size={16} aria-hidden="true" />
                 </button>
-              ) : (
-                <span aria-hidden="true" />
-              )}
+              ) : null}
             </div>
             {priorityCollapsed ? null : priorityEntries.map((entry) => (
               <div
@@ -1533,36 +1710,7 @@ export function Sidebar({
                 }
                 onDragEnd={handleWorkspaceDragEnd}
               >
-                <SidebarSessionRow
-                  workspace={entry.workspace}
-                  isWorking={entry.working}
-                  hasUnreadResponse={unreadWorkspaces.has(entry.workspace.id)}
-                  copyableIds={copyableIdsByWorkspace.get(entry.workspace.id)}
-                  subtitle={subtitleFor(entry.workspace.projectId)}
-                  importedProvider={importedProviderByWorkspace.get(entry.workspace.id)}
-                  launchedByLabel={launchedByLabelByWorkspace.get(entry.workspace.id)}
-                  arcLabel={arcLabelByWorkspace.get(entry.workspace.id)}
-                  isSelected={selectedWorkspaceId === entry.workspace.id}
-                  isOpenInGrid={openWorkspaceIds.has(entry.workspace.id)}
-                  canDragToGrid={canDragWorkspaceToGrid}
-                  onOpenWorkspaceChat={onOpenWorkspaceChat}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onOpenInIde={onOpenInIde}
-                  onOpenInWindow={onOpenInWindow}
-                  onTogglePin={onToggleWorkspacePinned}
-                  onRename={onRenameWorkspace}
-                  onSetIcon={onSetWorkspaceIcon}
-                  onSyncNow={onSyncNowWorkspace}
-                  onRemoveFromPriority={
-                    entry.attention !== null || entry.workspace.priorityAddedAt
-                      ? onRemoveFromPriority
-                      : undefined
-                  }
-                  onSnooze={onSnoozeWorkspace}
-                  priorityReason={entry.reason ?? undefined}
-                  detectedIdes={detectedIdes}
-                  defaultIde={defaultIde}
-                />
+                {renderChat(entry.workspace, { subtitle: subtitleFor(entry.workspace.projectId) })}
               </div>
             ))}
           </div>
@@ -1580,20 +1728,22 @@ export function Sidebar({
             </div>
           </div>
         ) : null}
-        {viewMode === "sessions"
-          ? dateGroups.map((group) => {
+        {viewMode !== "projects"
+          ? listGroups.map((group) => {
               const isCollapsed = collapsedDateGroups.has(group.key);
               const totalCount = group.items.length;
               const showAll = expandedDateGroups.has(group.key);
-              const visibleItems = visibleSidebarItems(group.items, selectedWorkspaceId, showAll);
+              const visibleItems = visibleSidebarItems(group.items, selectedRootId, showAll);
               const hiddenCount = totalCount - visibleItems.length;
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
-              const isLead = group.key === leadDateGroupKey;
+              const isLead = group.key === leadListGroupKey;
               return (
                 <div
                   className="project-group session-date-group"
                   data-collapsed={isCollapsed ? "true" : undefined}
                   key={group.key}
+                  role={viewMode === "status" ? "group" : undefined}
+                  aria-label={viewMode === "status" ? `${group.label} chats` : undefined}
                 >
                   <div
                     className={`project-row session-date-row${isLead ? " session-date-row-lead" : ""}`}
@@ -1616,31 +1766,7 @@ export function Sidebar({
                           key={workspace.id}
                           className="session-row-wrap"
                         >
-                          <SidebarSessionRow
-                            workspace={workspace}
-                            isWorking={workingWorkspaces.has(workspace.id)}
-                            hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
-                            copyableIds={copyableIdsByWorkspace.get(workspace.id)}
-                            subtitle={subtitleFor(workspace.projectId)}
-                            importedProvider={importedProviderByWorkspace.get(workspace.id)}
-                            launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
-                            arcLabel={arcLabelByWorkspace.get(workspace.id)}
-                            isSelected={selectedWorkspaceId === workspace.id}
-                            isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                            canDragToGrid={canDragWorkspaceToGrid}
-                            onOpenWorkspaceChat={onOpenWorkspaceChat}
-                            onArchiveWorkspace={onArchiveWorkspace}
-                            onOpenInIde={onOpenInIde}
-                            onOpenInWindow={onOpenInWindow}
-                            onTogglePin={onToggleWorkspacePinned}
-                            onRename={onRenameWorkspace}
-                            onSetIcon={onSetWorkspaceIcon}
-                            onSyncNow={onSyncNowWorkspace}
-                            onAddToPriority={addToPriority}
-                            onSnooze={onSnoozeWorkspace}
-                            detectedIdes={detectedIdes}
-                            defaultIde={defaultIde}
-                          />
+                          {renderChat(workspace, { subtitle: subtitleFor(workspace.projectId) })}
                         </div>
                       ))}
                       {hasOverflow ? (
@@ -1680,7 +1806,7 @@ export function Sidebar({
               const isCollapsed = collapsedProjectIds.has(project.id);
               const totalCount = projectWorkspaces.length;
               const showAll = expandedProjectIds.has(project.id);
-              const visibleWorkspaces = visibleSidebarItems(projectWorkspaces, selectedWorkspaceId, showAll);
+              const visibleWorkspaces = visibleSidebarItems(projectWorkspaces, selectedRootId, showAll);
               const hiddenCount = totalCount - visibleWorkspaces.length;
               const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
               const isDragging = draggingId === project.id;
@@ -1724,12 +1850,20 @@ export function Sidebar({
                     onOpenProject(project.id);
                   }}
                 >
+                  <span className="project-name-glyph" aria-hidden="true">
+                    {isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
+                  </span>
                   <span className="project-name-text">{project.name}</span>
+                  {pinnedProjectIdSet.has(project.id) ? (
+                    <span className="project-pin-mark" title="Pinned">
+                      <Pin size={11} aria-label="Pinned" />
+                    </span>
+                  ) : null}
                 </button>
                 {onRemoveProject ? (
                   <div className="project-picker-anchor project-actions-anchor">
                     <button
-                      ref={projectMenuState?.projectId === project.id ? projectMenuTriggerRef : null}
+                      ref={projectMenuState?.projectId === project.id ? projectMenu.setAnchor : null}
                       className="small-icon project-actions-trigger"
                       type="button"
                       title={`Actions for ${project.name}`}
@@ -1742,9 +1876,7 @@ export function Sidebar({
                           closeProjectMenu();
                           return;
                         }
-                        // Stash the trigger up front so the layout effect can
-                        // measure it on the same render pass.
-                        projectMenuTriggerRef.current = event.currentTarget;
+                        projectMenu.setAnchor(event.currentTarget);
                         setProjectMenuState({ projectId: project.id, mode: "menu" });
                       }}
                     >
@@ -1780,29 +1912,7 @@ export function Sidebar({
                       }
                       onDragEnd={handleWorkspaceDragEnd}
                     >
-                      <SidebarSessionRow
-                        workspace={workspace}
-                        isWorking={workingWorkspaces.has(workspace.id)}
-                        hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
-                        copyableIds={copyableIdsByWorkspace.get(workspace.id)}
-                        launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
-                        arcLabel={arcLabelByWorkspace.get(workspace.id)}
-                        isSelected={selectedWorkspaceId === workspace.id}
-                        isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                        canDragToGrid={canDragWorkspaceToGrid}
-                        onOpenWorkspaceChat={onOpenWorkspaceChat}
-                        onArchiveWorkspace={onArchiveWorkspace}
-                        onOpenInIde={onOpenInIde}
-                        onOpenInWindow={onOpenInWindow}
-                        onTogglePin={onToggleWorkspacePinned}
-                        onRename={onRenameWorkspace}
-                        onSetIcon={onSetWorkspaceIcon}
-                        onSyncNow={onSyncNowWorkspace}
-                        onAddToPriority={addToPriority}
-                        onSnooze={onSnoozeWorkspace}
-                        detectedIdes={detectedIdes}
-                        defaultIde={defaultIde}
-                      />
+                      {renderChat(workspace)}
                     </div>
                   ))}
                   {hasOverflow ? (
@@ -1844,28 +1954,7 @@ export function Sidebar({
             </div>
             {snoozedCollapsed ? null : snoozedWorkspaces.map((workspace) => (
               <div key={workspace.id} className="session-row-wrap">
-                <SidebarSessionRow
-                  workspace={workspace}
-                  isWorking={workingWorkspaces.has(workspace.id)}
-                  hasUnreadResponse={unreadWorkspaces.has(workspace.id)}
-                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
-                  subtitle={projectNameById.get(workspace.projectId) ?? null}
-                  importedProvider={importedProviderByWorkspace.get(workspace.id)}
-                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
-                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
-                  isSelected={selectedWorkspaceId === workspace.id}
-                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                  canDragToGrid={false}
-                  onOpenWorkspaceChat={onOpenWorkspaceChat}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onOpenInIde={onOpenInIde}
-                  onOpenInWindow={onOpenInWindow}
-                  onRename={onRenameWorkspace}
-                  onSetIcon={onSetWorkspaceIcon}
-                  onUnsnooze={onUnsnoozeWorkspace}
-                  detectedIdes={detectedIdes}
-                  defaultIde={defaultIde}
-                />
+                {renderChat(workspace, { subtitle: projectNameById.get(workspace.projectId), canDragToGrid: false, onTogglePin: undefined, onAddToPriority: undefined, onSnooze: undefined, onUnsnooze: onUnsnoozeWorkspace })}
               </div>
             ))}
           </div>
@@ -1887,27 +1976,7 @@ export function Sidebar({
             </div>
             {archivedCollapsed ? null : archivedWorkspaces.map((workspace) => (
               <div key={workspace.id} className="session-row-wrap">
-                <SidebarSessionRow
-                  workspace={workspace}
-                  isWorking={false}
-                  hasUnreadResponse={false}
-                  copyableIds={copyableIdsByWorkspace.get(workspace.id)}
-                  subtitle={projectNameById.get(workspace.projectId) ?? null}
-                  importedProvider={importedProviderByWorkspace.get(workspace.id)}
-                  launchedByLabel={launchedByLabelByWorkspace.get(workspace.id)}
-                  arcLabel={arcLabelByWorkspace.get(workspace.id)}
-                  isSelected={selectedWorkspaceId === workspace.id}
-                  isOpenInGrid={openWorkspaceIds.has(workspace.id)}
-                  canDragToGrid={false}
-                  onOpenWorkspaceChat={onOpenWorkspaceChat}
-                  onArchiveWorkspace={onArchiveWorkspace}
-                  onOpenInIde={onOpenInIde}
-                  onOpenInWindow={onOpenInWindow}
-                  onRename={onRenameWorkspace}
-                  onSetIcon={onSetWorkspaceIcon}
-                  detectedIdes={detectedIdes}
-                  defaultIde={defaultIde}
-                />
+                {renderChat(workspace, { subtitle: projectNameById.get(workspace.projectId), isWorking: false, hasUnreadResponse: false, canDragToGrid: false, onTogglePin: undefined, onAddToPriority: undefined, onSnooze: undefined })}
               </div>
             ))}
           </div>
@@ -1915,39 +1984,66 @@ export function Sidebar({
         </div>
       </div>
 
-      {projectMenuState && projectMenuPos
+      {projectMenuState
         ? (() => {
             const activeProject = snapshot.projects.find((p) => p.id === projectMenuState.projectId);
             if (!activeProject || !onRemoveProject) return null;
             return createPortal(
               <ul
-                ref={projectMenuPopoverRef}
+                ref={projectMenu.setPopover}
                 className="project-picker-popover project-actions-popover"
                 role="menu"
                 aria-label={`${activeProject.name} actions`}
-                style={{
-                  position: "fixed",
-                  top: projectMenuPos.top,
-                  right: projectMenuPos.right,
-                  left: "auto",
-                  bottom: "auto"
-                }}
+                style={projectMenu.floatingStyles}
               >
                 {projectMenuState.mode === "menu" ? (
-                  <li role="none">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="project-picker-item project-actions-destructive"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setProjectMenuState({ projectId: activeProject.id, mode: "confirm" });
-                      }}
-                    >
-                      <Trash2 size={14} aria-hidden="true" />
-                      Remove project
-                    </button>
-                  </li>
+                  <>
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item"
+                        onClick={() => {
+                          closeProjectMenu();
+                          toggleProjectPinned(activeProject.id);
+                        }}
+                      >
+                        {pinnedProjectIdSet.has(activeProject.id)
+                          ? <PinOff size={14} aria-hidden="true" />
+                          : <Pin size={14} aria-hidden="true" />}
+                        {pinnedProjectIdSet.has(activeProject.id) ? "Unpin Project" : "Pin Project"}
+                      </button>
+                    </li>
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item"
+                        onClick={() => {
+                          closeProjectMenu();
+                          showSettings("projects", "settings-project-folders", activeProject.id);
+                        }}
+                      >
+                        <Settings2 size={14} aria-hidden="true" />
+                        Edit Project
+                      </button>
+                    </li>
+                    <li className="project-picker-divider" role="separator" />
+                    <li role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="project-picker-item project-actions-destructive"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setProjectMenuState({ projectId: activeProject.id, mode: "confirm" });
+                        }}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                        Remove Project
+                      </button>
+                    </li>
+                  </>
                 ) : (
                   <li role="none">
                     <p className="project-actions-confirm-text">
@@ -1973,7 +2069,6 @@ export function Sidebar({
                           onRemoveProject(activeProject.id);
                         }}
                       >
-                        <Trash2 size={14} aria-hidden="true" />
                         Remove
                       </button>
                     </div>
@@ -1996,13 +2091,6 @@ export function Sidebar({
             aria-expanded={identityMenuOpen}
             onClick={() => setIdentityMenuOpen((open) => !open)}
           >
-            {mascotVisible ? (
-              // The avatar box is a fixed 30px square, so it goes with the fox
-              // rather than leaving a gap beside the name.
-              <span className="identity-avatar" aria-hidden="true">
-                <Mascot size={24} className="identity-avatar-mascot" />
-              </span>
-            ) : null}
             <span className="identity-meta">
               <span className="identity-name">Argmax</span>
               {identitySubLabel ? (
@@ -2031,6 +2119,19 @@ export function Sidebar({
                   <kbd>⌘K</kbd>
                 </button>
               </li>
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="project-picker-item identity-menu-item"
+                  onClick={() => runIdentityAction(showKeyboardCheatSheet)}
+                >
+                  <Keyboard size={14} aria-hidden="true" />
+                  <span>Keyboard Shortcuts</span>
+                  <kbd>⌘/</kbd>
+                </button>
+              </li>
+              <li className="project-picker-divider" role="separator" />
               <li role="none">
                 <button
                   type="button"
@@ -2065,18 +2166,7 @@ export function Sidebar({
                   <span>Diagnostics & Logs</span>
                 </button>
               </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(showKeyboardCheatSheet)}
-                >
-                  <Keyboard size={14} aria-hidden="true" />
-                  <span>Keyboard Shortcuts</span>
-                  <kbd>⌘/</kbd>
-                </button>
-              </li>
+              <li className="project-picker-divider" role="separator" />
               <li role="none">
                 <button
                   type="button"
@@ -2091,6 +2181,24 @@ export function Sidebar({
             </ul>
           ) : null}
         </div>
+        <button
+          type="button"
+          className="small-icon sidebar-footer-settings"
+          aria-label="Open settings"
+          title="Settings (⌘,)"
+          onClick={openSettings}
+        >
+          <Settings size={15} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="small-icon"
+          aria-label="Open command palette"
+          title="Command palette (⌘K)"
+          onClick={openCommandPalette}
+        >
+          <Search size={15} aria-hidden="true" />
+        </button>
       </div>
       <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
     </aside>

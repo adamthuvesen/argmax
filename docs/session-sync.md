@@ -1,5 +1,9 @@
 # Session Sync
 
+When several projects share the same primary folder, new external chats have no unique project owner.
+Automatic import skips those chats and records the ambiguity in the diagnostic log.
+Previously imported chats keep their recorded project and continue receiving transcript updates.
+
 Session sync imports sessions started in external provider CLIs (such as running `claude` in a terminal) by reading provider transcript files. Configured in Settings → Agents → Chat sync (the UI's display name for this).
 
 ## Behavior

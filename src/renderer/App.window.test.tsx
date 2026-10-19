@@ -26,12 +26,12 @@ describe("App windows", () => {
     render(<App />);
 
     fireEvent.contextMenu(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open in new window" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in New Window" }));
 
     await waitFor(() => {
       expect(openSessionWindow).toHaveBeenCalledWith({ sessionId: "session-1" });
     });
-    expect(screen.queryByRole("menuitem", { name: "Open in new window" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open in New Window" })).toBeNull();
   });
 
   it("boots a torn-off window on the chat named in its URL", async () => {

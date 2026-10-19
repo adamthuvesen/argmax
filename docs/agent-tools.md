@@ -271,8 +271,8 @@ and are not recorded as successful reads.
 
 Agents may read and edit linked repositories as needed for the task, following each repository's instructions and session permissions. Use normal file or shell tools for edits.
 
-Linked repositories ([memory.md](memory.md#linked-repositories)) ride the same
-two tools. `sources_list` always returns the enabled roots as
+Additional project folders ([memory.md](memory.md#linked-repositories)) use the same
+two tools. `sources_list` returns enabled roots outside the chat's pinned working folder as
 `linkedRepos: [{ name, root, summary? }]`. The optional generated summary is descriptive context, not repository instructions. Passing `linked_repo` (and optionally `path`, a
 directory relative to the root) lists that directory instead, up to 500 entries
 a page with `nextOffset`, hiding `.git`. `sources_read` takes exactly one of `id`

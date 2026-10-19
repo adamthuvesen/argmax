@@ -1296,6 +1296,7 @@ mod tests {
                     merge_cleanup: Default::default(),
                 },
                 branch_template: None,
+                overview: None,
                 counts: crate::persistence::projects::ProjectCounts {
                     active: 0,
                     blocked: 0,

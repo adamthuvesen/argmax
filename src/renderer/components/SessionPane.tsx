@@ -10,7 +10,8 @@ import {
   type JSX,
   type MouseEvent as ReactMouseEvent
 } from "react";
-import { FileDiff, FolderTree, GitCommitVertical, Globe } from "lucide-react";
+import { FileDiff, FolderTree, Globe } from "lucide-react";
+import type { ReviewSideChatContext } from "./ReviewSideChat.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { SendInputResult } from "../../shared/bindings.js";
@@ -39,7 +40,6 @@ import type { FontSize } from "../lib/fonts.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
-import { lastTurnEditedPaths } from "../lib/lastTurnFiles.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { resolveOpenablePath } from "../lib/openableFile.js";
 import { showErrorToast } from "../state/toast.js";
@@ -57,7 +57,6 @@ import type { ToolCall } from "../lib/toolCalls.js";
 import { agentTabId, multitaskTabId } from "../lib/agentTabs.js";
 import { useAgentTabs } from "../hooks/useAgentTabs.js";
 import { importChunk } from "../lib/importChunk.js";
-import { CommitDialog } from "./CommitDialog.js";
 import { ApprovalSurface } from "./ApprovalSurface.js";
 import { DebugPanel } from "./debug/DebugPanel.js";
 // ReviewPanel lazy-mounted (ralph B4); Vite emits a single ReviewPanel-*
@@ -109,6 +108,12 @@ function isEditorEscapeTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(".xterm, .cm-editor") !== null;
 }
 
+/** The unlaunched side-chat prompt lives only in the mounted review panel, so
+ *  Escape there must not close the panel even in the expanded view. */
+function isSideChatComposerTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(".review-side-chat-composer") !== null;
+}
+
 function hasActiveDialog(): boolean {
   return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
     .some((dialog) => dialog.getAttribute("aria-hidden") !== "true");
@@ -157,6 +162,7 @@ export function SessionPane({
   onOpenChanges,
   onOpenFile,
   onOpenSideChat,
+  sideChat,
   onOpenSession,
   onOpenDetails,
   defaultIde = null,
@@ -219,6 +225,7 @@ export function SessionPane({
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
+  sideChat?: ReviewSideChatContext;
   onOpenSession?: (sessionId: string) => void;
   onOpenDetails?: (
     seedPrompt: string,
@@ -342,16 +349,16 @@ export function SessionPane({
     const interval = window.setInterval(() => void poll(), 1500);
     return () => window.clearInterval(interval);
   }, [cursorBackgroundAgentKey, onLoadAgentEvents, sessionId]);
-  // Which files the agent wrote in its newest turn, for the review panel's
-  // "Last turn" scope. Null without a session: there is no turn to scope to.
-  const lastTurnPaths = useMemo(() => lastTurnEditedPaths(visibleEvents), [visibleEvents]);
-  const [isCommitDialogOpen, setIsCommitDialogOpen] = useState(false);
-  const reviewState = useReviewState(reviewSource, session ? lastTurnPaths : null, {
+  const reviewState = useReviewState(reviewSource, {
     claimsBrowserRequests: isFocused,
-    preloadChanges: onOpenChanges ? undefined : isFocused || isCommitDialogOpen,
+    preloadChanges: onOpenChanges ? undefined : isFocused,
     sessionId
   });
   const [isLogOpen, setIsLogOpen] = useState(false);
+  const [isReviewExpanded, setIsReviewExpanded] = useState(false);
+  useEffect(() => {
+    if (!reviewState.isPanelOpen) setIsReviewExpanded(false);
+  }, [reviewState.isPanelOpen, sessionId]);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
   const escapeTerminationPendingRef = useRef<object | null>(null);
   // Null while the dock is on its automatic share of the pane; a pixel width
@@ -371,6 +378,7 @@ export function SessionPane({
   const gridClass = [
     "session-grid",
     reviewState.isPanelOpen && "review-open",
+    reviewState.isPanelOpen && isReviewExpanded && "review-expanded",
     isLogOpen && "log-open"
   ]
     .filter(Boolean)
@@ -526,8 +534,6 @@ export function SessionPane({
     [agentsInOverlay, hostsMultitasks, openMultitaskInPanel, openMultitaskOverlay]
   );
 
-  const handleOpenCommitDialog = useCallback(() => setIsCommitDialogOpen(true), []);
-  const handleCloseCommitDialog = useCallback(() => setIsCommitDialogOpen(false), []);
   // Review-panel line comments land on the conversation's composer as diff
   // notes. The conversation owns that state; it registers a sink here so its
   // sibling ReviewPanel can feed it without lifting the state up.
@@ -548,15 +554,6 @@ export function SessionPane({
     },
     [onOpenWorkspaceInIde, workspaceId]
   );
-  // After a commit the staged/changed set has shifted; refresh the workspace
-  // status so the Changes panel updates immediately (the refresh publishes a
-  // dashboard delta that bumps changedFilesKey) rather than showing stale rows
-  // until the panel is reopened.
-  const handleCommitted = useCallback((): void => {
-    if (!workspaceId || !window.argmax) return;
-    void window.argmax.workspaces.refreshStatus(workspaceId).catch(() => undefined);
-  }, [workspaceId]);
-
   // Warm the heavy xterm chunk on idle once a workspace is present, so the first
   // ⌘J paints the terminal immediately instead of showing blank panel space
   // while the bundle downloads. Deferred to idle so it never competes with the
@@ -630,7 +627,6 @@ export function SessionPane({
   // closure each render so the read is current without re-registering.
   const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
   paletteLiveRef.current = (): PaletteSurfaceLive => {
-    const changedCount = reviewState.files.length;
     const actions: PaletteItem[] = [
       {
         id: "pane:toggle-files",
@@ -665,17 +661,6 @@ export function SessionPane({
             run: toggleBrowserPane
           }]
         : []),
-      ...(changedCount > 0
-        ? [{
-            id: "pane:commit",
-            label: "Commit changes",
-            subtitle: `${changedCount} changed ${changedCount === 1 ? "file" : "files"}`,
-            group: "Actions" as const,
-            icon: GitCommitVertical,
-            keywords: ["git", "stage", "save"],
-            run: handleOpenCommitDialog
-          }]
-        : [])
     ];
     return {
       filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
@@ -732,10 +717,10 @@ export function SessionPane({
           event.ctrlKey ||
           event.altKey ||
           event.shiftKey ||
-          isEditorEscapeTarget(event.target) ||
+          (isReviewExpanded ? isSideChatComposerTarget(event.target) : isEditorEscapeTarget(event.target)) ||
           hasActiveDialog()
         ) return;
-        if (isLogOpen) {
+        if (isLogOpen && !isReviewExpanded) {
           event.preventDefault();
           setIsLogOpen(false);
           return;
@@ -786,6 +771,7 @@ export function SessionPane({
   }, [
     isFocused,
     isLogOpen,
+    isReviewExpanded,
     onTerminateSession,
     reviewClosePanel,
     reviewIsPanelOpen,
@@ -958,7 +944,6 @@ export function SessionPane({
           defaultIde={defaultIde}
           detectedIdes={detectedIdes}
           onOpenInIde={handleOpenInIde}
-          onOpenCommitDialog={handleOpenCommitDialog}
           registerAnnotationSink={registerAnnotationSink}
           onSendSessionInput={onSendSessionInput}
           onCancelQueuedMessage={onCancelQueuedMessage}
@@ -1054,6 +1039,7 @@ export function SessionPane({
       {reviewState.isPanelOpen ? (
         <Suspense fallback={null}>
           <ReviewPanel
+            sideChat={sideChat}
             agents={{
               events: visibleEvents,
               defaultToolCallsDisplay,
@@ -1076,19 +1062,11 @@ export function SessionPane({
             review={reviewState}
             isFocused={isFocused}
             onAddDiffNote={session ? handleAddDiffNote : undefined}
-            onResizePanelMouseDown={onReviewPanelResizeMouseDown}
+            isExpanded={isReviewExpanded}
+            onToggleExpanded={() => setIsReviewExpanded((expanded) => !expanded)}
+            onResizePanelMouseDown={isReviewExpanded ? undefined : onReviewPanelResizeMouseDown}
           />
         </Suspense>
-      ) : null}
-      {workspace ? (
-        <CommitDialog
-          open={isCommitDialogOpen}
-          onClose={handleCloseCommitDialog}
-          onCommitted={handleCommitted}
-          workspaceId={workspace.id}
-          files={reviewState.files}
-          defaultMessage={workspace.taskLabel}
-        />
       ) : null}
       {isLogOpen ? (
         <DebugPanel

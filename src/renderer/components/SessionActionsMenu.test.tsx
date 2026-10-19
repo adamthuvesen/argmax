@@ -2,11 +2,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { SessionActionsMenu } from "./SessionActionsMenu.js";
-import { resetToastForTests, toastSnapshot } from "../state/toast.js";
+import { resetToastForTests } from "../state/toast.js";
 
 function installArgmax(
   listForSession: ReturnType<typeof vi.fn>,
-  viewOrCreatePr: ReturnType<typeof vi.fn> = vi.fn(),
   prepareCloud: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue({
     provider: "codex",
     repository: "adamthuvesen/private-sandbox",
@@ -24,11 +23,6 @@ function installArgmax(
     value: {
       prs: {
         listForSession
-      },
-      git: {
-        push: vi.fn(),
-        createBranch: vi.fn(),
-        viewOrCreatePr
       },
       cloud: {
         prepare: prepareCloud,
@@ -119,25 +113,6 @@ describe("SessionActionsMenu", () => {
     delete (window as { argmax?: unknown }).argmax;
   });
 
-  it("reports a failed push in the shared toast", async () => {
-    vi.spyOn(window.argmax!.git, "push").mockRejectedValue(new Error("remote refused"));
-    render(
-      <SessionActionsMenu
-        isLogOpen={false}
-        onBrowseFiles={vi.fn()}
-        onToggleLog={vi.fn()}
-        session={session()}
-        workspace={workspace()}
-      />
-    );
-
-    await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
-
-    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "remote refused" }));
-    expect(screen.queryByText("remote refused")).not.toBeInTheDocument();
-  });
 
   it("hides actions until opened and routes main menu clicks", async () => {
     const onBrowseFiles = vi.fn();
@@ -152,13 +127,14 @@ describe("SessionActionsMenu", () => {
       />
     );
 
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
     await openMenu();
 
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Browse files" }));
+    expect(screen.getByRole("menuitem", { name: "Browse Files" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Git actions" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Browse Files" }));
     expect(onBrowseFiles).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
 
     await waitFor(() => {
       expect(listForSession).toHaveBeenCalledWith({ sessionId: "session-1" });
@@ -183,7 +159,7 @@ describe("SessionActionsMenu", () => {
     );
 
     await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open browser" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open Browser" }));
 
     // No target URL: the claiming pane restores its own tab strip rather than
     // navigating to a hardcoded page.
@@ -203,7 +179,7 @@ describe("SessionActionsMenu", () => {
       environmentDescription: "Default",
       environments: [{ id: "env-default", name: "Default" }]
     });
-    installArgmax(listForSession, vi.fn(), prepareCloud);
+    installArgmax(listForSession, prepareCloud);
 
     render(
       <SessionActionsMenu
@@ -216,7 +192,7 @@ describe("SessionActionsMenu", () => {
     );
 
     await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Send task to Codex Cloud…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Send Task to Codex Cloud…" }));
 
     expect(await screen.findByRole("dialog", { name: "Send task to Codex Cloud" })).toBeInTheDocument();
     expect(prepareCloud).toHaveBeenCalledWith({ sessionId: "session-1", provider: "codex" });
@@ -237,108 +213,9 @@ describe("SessionActionsMenu", () => {
     expect(screen.queryByRole("menuitem", { name: /Cloud/ })).not.toBeInTheDocument();
   });
 
-  it("switches between the main menu and git actions in place", async () => {
-    render(
-      <SessionActionsMenu
-        isLogOpen
-        onBrowseFiles={() => {}}
-        onOpenCommitDialog={() => {}}
-        onToggleLog={() => {}}
-        session={session()}
-        workspace={workspace()}
-      />
-    );
 
-    await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
 
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Push" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Create PR for checkout branch" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to chat actions" }));
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
-  });
-
-  it("opens an existing pull request in the system browser from git actions", async () => {
-    const viewOrCreatePr = vi.fn().mockResolvedValue({
-      action: "opened",
-      url: "https://github.com/o/r/pull/12",
-      prNumber: 12
-    });
-    installArgmax(listForSession, viewOrCreatePr);
-
-    const workspaceWithPr: WorkspaceSummary = {
-      ...workspace(),
-      prs: [
-        {
-          sessionId: "session-1",
-          prNumber: 12,
-          url: "https://github.com/o/r/pull/12",
-          title: "Tidy chat",
-          prState: "OPEN",
-          headRefName: "feature/tidy-chat",
-          relationship: "worked",
-          activityAt: "2026-05-12T15:00:01.000Z",
-          updatedAt: "2026-05-12T15:00:01.000Z",
-          checkState: "success",
-          isPrimary: true,
-          isPinned: false,
-          isWatched: false,
-          refreshError: null
-        }
-      ]
-    };
-
-    render(
-      <SessionActionsMenu
-        isLogOpen={false}
-        onBrowseFiles={vi.fn()}
-        onToggleLog={vi.fn()}
-        session={session()}
-        workspace={workspaceWithPr}
-      />
-    );
-
-    await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open pull request #12" }));
-
-    expect(
-      (window as unknown as { argmax: { system: { openPath: ReturnType<typeof vi.fn> } } }).argmax.system
-        .openPath
-    ).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/12" });
-    expect(viewOrCreatePr).not.toHaveBeenCalled();
-  });
-
-  it("creates a pull request only for the checkout branch", async () => {
-    const viewOrCreatePr = vi.fn().mockResolvedValue({
-      action: "created",
-      url: "https://github.com/o/r/pull/13",
-      prNumber: 13
-    });
-    installArgmax(listForSession, viewOrCreatePr);
-    render(
-      <SessionActionsMenu
-        isLogOpen={false}
-        onBrowseFiles={vi.fn()}
-        onToggleLog={vi.fn()}
-        session={session()}
-        workspace={workspace()}
-      />
-    );
-
-    await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Git actions" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Create PR for checkout branch" }));
-
-    await waitFor(() =>
-      expect(viewOrCreatePr).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        expectedBranch: "feature/tidy-chat"
-      })
-    );
-  });
 });
 
 describe("SessionActionsMenu — Open in IDE", () => {
@@ -434,7 +311,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
       />
     );
     await openMenu();
-    expect(screen.queryByRole("menuitem", { name: /^Open in (?!new window)/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Open in (?!New Window)/ })).toBeNull();
     unmount();
 
     render(
@@ -452,7 +329,7 @@ describe("SessionActionsMenu — Open in IDE", () => {
     await openMenu();
     // A greyed-out row nobody can ever click explains nothing; with no IDE
     // installed there is simply no row.
-    expect(screen.queryByRole("menuitem", { name: /^Open in (?!new window)/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Open in (?!New Window)/ })).toBeNull();
   });
 });
 
@@ -481,7 +358,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    expect(screen.queryByRole("menuitem", { name: "Open launching chat" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open Launching Chat" })).toBeNull();
     unmount();
 
     render(
@@ -494,7 +371,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    expect(screen.queryByRole("menuitem", { name: "Open launching chat" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open Launching Chat" })).toBeNull();
   });
 
   it("starts an arc from the chat, and says why it cannot while a turn runs", async () => {
@@ -510,7 +387,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Start an arc from this chat…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start an Arc from This Chat…" }));
     expect(run).toHaveBeenCalledTimes(1);
     unmount();
 
@@ -525,7 +402,7 @@ describe("SessionActionsMenu — launching chat", () => {
       />
     );
     await openMenu();
-    const item = screen.getByRole("menuitem", { name: "Start an arc from this chat…" });
+    const item = screen.getByRole("menuitem", { name: "Start an Arc from This Chat…" });
     expect(item).toBeDisabled();
     expect(item).toHaveAttribute("title", "Wait for this turn to finish");
   });

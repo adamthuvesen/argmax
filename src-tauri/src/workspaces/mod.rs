@@ -25,4 +25,6 @@ pub use orchestration::{
 pub enum WorkspaceTargetKind {
     Workspace,
     Project,
+    #[serde(rename = "projectFolder")]
+    ProjectFolder,
 }

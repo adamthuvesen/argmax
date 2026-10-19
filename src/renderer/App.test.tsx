@@ -19,7 +19,8 @@ import {
   listBranches,
   listProjectFiles,
   mockDashboardSnapshot,
-  pickProjectFolder,
+  createProject,
+  pickProjectDirectory,
   primaryProject,
   providersDiscover,
   secondProject,
@@ -31,6 +32,13 @@ import {
   workspaceRow,
   sessionRow
 } from "../test/appTestHarness.js";
+
+async function submitNewProject(name: string): Promise<void> {
+  fireEvent.change(await screen.findByLabelText("Project name"), { target: { value: name } });
+  fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+}
 
 /** Paste of a screenshot: a clipboard carrying one path-less image file. */
 function pasteScreenshot(target: HTMLElement): void {
@@ -656,6 +664,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createCurrentWorkspace).toHaveBeenCalledWith({
         projectId: "project-1",
+        projectFolderId: "project-1:primary",
         taskLabel: "Implement PTY launch"
       })
     );
@@ -876,6 +885,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createIsolatedWorkspace).toHaveBeenCalledWith({
         projectId: "project-1",
+        projectFolderId: "project-1:primary",
         taskLabel: "Implement PTY launch",
         baseRef: "main"
       })
@@ -901,6 +911,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createIsolatedWorkspace).toHaveBeenCalledWith({
         projectId: "project-1",
+        projectFolderId: "project-1:primary",
         taskLabel: "Resume the migration",
         baseRef: "main"
       })
@@ -1160,7 +1171,8 @@ describe("App", () => {
 
   it("adds a second project, selects it, and launches from that project", async () => {
     const dotfilesProject = secondProject();
-    pickProjectFolder.mockResolvedValue({ cancelled: false, project: dotfilesProject });
+    createProject.mockResolvedValue(dotfilesProject);
+    pickProjectDirectory.mockResolvedValue({ cancelled: false, path: dotfilesProject.repoPath });
 
     render(<App />);
 
@@ -1170,9 +1182,10 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
+    await submitNewProject("Dotfiles");
     expect(await screen.findByRole("button", { name: "Dotfiles" })).toBeInTheDocument();
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
-    expect(screen.getByText("Added Dotfiles.")).toBeInTheDocument();
+    expect(screen.getByText("Created Dotfiles.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Task prompt"), {
       target: { value: "Update shell aliases" }
@@ -1182,6 +1195,7 @@ describe("App", () => {
     await waitFor(() =>
       expect(createCurrentWorkspace).toHaveBeenCalledWith({
         projectId: "project-2",
+        projectFolderId: "project-2:primary",
         taskLabel: "Update shell aliases"
       })
     );
@@ -1189,7 +1203,8 @@ describe("App", () => {
 
   it("selects the added project even while a workspace session is open", async () => {
     const dotfilesProject = secondProject();
-    pickProjectFolder.mockResolvedValue({ cancelled: false, project: dotfilesProject });
+    createProject.mockResolvedValue(dotfilesProject);
+    pickProjectDirectory.mockResolvedValue({ cancelled: false, path: dotfilesProject.repoPath });
 
     render(<App />);
 
@@ -1200,6 +1215,7 @@ describe("App", () => {
     // The chat must actually be open (workspace selected) before adding.
     await screen.findByLabelText("Conversation");
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
+    await submitNewProject("Dotfiles");
 
     // The launcher's own project chip — not the sidebar group — must target
     // the fresh project.
@@ -1209,26 +1225,31 @@ describe("App", () => {
   });
 
   it("leaves state unchanged when folder selection is cancelled", async () => {
-    pickProjectFolder.mockResolvedValue({ cancelled: true });
+    pickProjectDirectory.mockResolvedValue({ cancelled: true, path: null });
 
     render(<App />);
 
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
 
-    await waitFor(() => expect(pickProjectFolder).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: "Add folder" }));
+    await waitFor(() => expect(pickProjectDirectory).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(createProject).not.toHaveBeenCalled();
     expect(dashboardList).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
   it("shows a clear error when folder registration fails", async () => {
-    pickProjectFolder.mockRejectedValue(new Error("Argmax requires a local git repository."));
+    createProject.mockRejectedValue(new Error("Argmax requires a local git repository."));
 
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Add Project" }));
 
+    await submitNewProject("Argmax");
     expect(await screen.findByRole("status")).toHaveTextContent("Argmax requires a local git repository.");
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
@@ -1326,14 +1347,15 @@ describe("App", () => {
   });
 
   it("auto-dismisses info toasts after the 4s window", async () => {
-    pickProjectFolder.mockResolvedValueOnce({ cancelled: false, project: primaryProject() });
+    createProject.mockResolvedValueOnce(primaryProject());
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       render(<App />);
       fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
 
       fireEvent.click(screen.getByRole("button", { name: "Add Project" }));
-      await screen.findByText(/Added /);
+      await submitNewProject("Argmax");
+      await screen.findByText(/Created /);
 
       // Flush React's post-commit effect that schedules the dismiss setTimeout
       // before advancing fake timers; otherwise the timer is scheduled from a
@@ -1346,7 +1368,7 @@ describe("App", () => {
         vi.advanceTimersByTime(5000);
       });
 
-      await waitFor(() => expect(screen.queryByText(/Added /)).toBeNull());
+      await waitFor(() => expect(screen.queryByText(/Created /)).toBeNull());
     } finally {
       vi.useRealTimers();
     }

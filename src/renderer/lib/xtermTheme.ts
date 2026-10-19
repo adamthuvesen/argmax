@@ -8,7 +8,6 @@
 
 import { themeAppearance } from "./theme.js";
 import { readColorToken } from "./pixelField.js";
-import { DEFAULT_BACKGROUND_INTENSITY } from "./backgroundIntensity.js";
 import { isWindowTranslucent } from "./windowTranslucency.js";
 
 const LIGHT_XTERM_THEME = {
@@ -123,10 +122,7 @@ export function readActiveXtermTheme(): XtermThemeObject {
   const base = getXtermTheme(themeAppearance(document.documentElement.getAttribute("data-theme")));
   const intensity = document.documentElement.getAttribute("data-background-intensity");
   let background: string = base.background;
-  // Light mode remixes every level, the default included, so only dark's
-  // default keeps the static palette.
-  const shipped = base === DARK_XTERM_THEME && intensity === String(DEFAULT_BACKGROUND_INTENSITY);
-  if (document.body && intensity && !shipped) {
+  if (document.body && intensity) {
     const { r, g, b } = readColorToken("--terminal-surface", document.body);
     background = `rgb(${r}, ${g}, ${b})`;
   }

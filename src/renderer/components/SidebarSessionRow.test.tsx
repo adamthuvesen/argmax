@@ -83,6 +83,23 @@ function rowProps() {
 describe("SidebarSessionRow", () => {
   afterEach(() => cleanup());
 
+  it("forks the clicked chat from its context menu and closes the menu", async () => {
+    const { fireEvent } = await import("@testing-library/react");
+    const onFork = vi.fn();
+    render(<SidebarSessionRow workspace={workspaceBase} {...rowProps()} onFork={onFork} />);
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Fork" }));
+
+    expect(onFork).toHaveBeenCalledWith("workspace-1");
+    expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
+  });
+
+  it("updates the fork action when its callback changes", () => {
+    const props = { workspace: workspaceBase, ...rowProps(), onFork: vi.fn() };
+    expect(sidebarSessionRowEqual(props, { ...props, onFork: vi.fn() })).toBe(false);
+  });
+
   it("keeps the IDE chooser in the right-click menu, not on the hovered row", async () => {
     const { fireEvent } = await import("@testing-library/react");
     render(
@@ -515,7 +532,7 @@ describe("SidebarSessionRow", () => {
     expect(row.querySelector('[data-pr="closed"]')).toBeNull();
   });
 
-  it("gives an idle completed row the lead ring, with the state still in its title", () => {
+  it("gives an idle completed row the resting dot, with the state still in its title", () => {
     render(
       <SidebarSessionRow
         workspace={workspaceBase}
@@ -525,11 +542,11 @@ describe("SidebarSessionRow", () => {
 
     const row = screen.getByTitle(/Build the dashboard — complete/);
     // No status glyph: a done session is not worth a column of checks. The
-    // marker column keeps its width and draws the muted ring instead.
+    // marker column keeps its width and draws the muted resting dot instead.
     // `.status-marker` rather than "svg": the working nest is HTML now, so an
     // svg check would pass whether or not a mark was rendered.
     expect(row.querySelector(".status-marker")).toBeNull();
-    expect(row.querySelector(".session-link-lead-ring")).not.toBeNull();
+    expect(row.querySelector(".session-link-lead-dot")).not.toBeNull();
   });
 
   it("keeps a leading marker on rows that carry a live signal", () => {
@@ -842,7 +859,7 @@ describe("styles.css startup contract", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Sync now" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sync Now" }));
 
     expect(onSyncNow).toHaveBeenCalledTimes(1);
   });
@@ -858,7 +875,7 @@ describe("styles.css startup contract", () => {
     );
 
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    expect(screen.queryByRole("menuitem", { name: "Sync now" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Sync Now" })).toBeNull();
   });
 });
 
@@ -877,7 +894,7 @@ describe("SidebarSessionRow copy ids", () => {
       />
     );
     fireEvent.contextMenu(screen.getByRole("button", { name: /Build the dashboard/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Copy ids" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy IDs" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("session   session-1\nworkspace workspace-1"));
     expect(screen.queryByRole("menu", { name: "Chat actions" })).not.toBeInTheDocument();
   });

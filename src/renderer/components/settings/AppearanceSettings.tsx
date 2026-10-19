@@ -64,6 +64,7 @@ import {
   toContrast,
   type Contrast
 } from "../../lib/contrast.js";
+import { setSidebarChatsNested, useSidebarChatNesting } from "../../lib/sidebarChatNesting.js";
 import { setMascotVisible, useMascotVisible } from "../../lib/mascotVisibility.js";
 import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
@@ -97,6 +98,8 @@ export function AppearanceSettings({
   onAccentChange,
   userBubbleTint,
   onUserBubbleTintChange,
+  sidebarClaudeArtifactsVisible = false,
+  onSidebarClaudeArtifactsVisibleChange,
   sidebarArcsVisible,
   onSidebarArcsVisibleChange,
   sidebarArchivedVisible,
@@ -156,6 +159,8 @@ export function AppearanceSettings({
   onAccentChange: (accentId: AccentId) => void;
   userBubbleTint: UserBubbleTint;
   onUserBubbleTintChange: (tint: UserBubbleTint) => void;
+  sidebarClaudeArtifactsVisible?: boolean;
+  onSidebarClaudeArtifactsVisibleChange?: (v: boolean) => void;
   sidebarArcsVisible: boolean;
   onSidebarArcsVisibleChange: (v: boolean) => void;
   sidebarArchivedVisible: boolean;
@@ -213,9 +218,10 @@ export function AppearanceSettings({
   const activityMark = useActivityMark();
   const sessionUnderline = useSessionUnderline();
   const activityIconColorMode = useActivityIconColorMode();
-  // Same reason as the activity mark: the fox renders from four unrelated
+  // Same reason as the activity mark: the fox renders from three unrelated
   // places, so it reads its own store rather than a prop. See lib/mascotVisibility.ts.
   const mascotVisible = useMascotVisible();
+  const chatNesting = useSidebarChatNesting();
 
   return (
     <>
@@ -466,8 +472,24 @@ export function AppearanceSettings({
           }
         />
         <SettingRow
+          label="Launched chats"
+          description="Show chats beneath the chat that launched them."
+          control={
+            <SegmentedControl
+              ariaLabel="Launched chats"
+              name="sidebar-chat-nesting"
+              value={chatNesting.nested ? "nested" : "separate"}
+              onChange={(value) => setSidebarChatsNested(value === "nested")}
+              options={[
+                { value: "nested", label: "Nested" },
+                { value: "separate", label: "Separate" }
+              ]}
+            />
+          }
+        />
+        <SettingRow
           label="Show arcs"
-          description="Show the Arcs section in the sidebar."
+          description="Show New arc and the Arcs section in the sidebar."
           control={
             <Toggle
               ariaLabel="Show arcs"
@@ -498,6 +520,11 @@ export function AppearanceSettings({
             />
           }
         />
+        {onSidebarClaudeArtifactsVisibleChange ? <SettingRow
+          label="Claude artifacts"
+          description="Show Artifacts in the sidebar and review panel. Opens Claude artifacts in Argmax's browser."
+          control={<Toggle ariaLabel="Claude artifacts" checked={sidebarClaudeArtifactsVisible} onChange={onSidebarClaudeArtifactsVisibleChange} />}
+        /> : null}
         <SettingRow
           label="Translucent window"
           description="Let the desktop show through the app's background, blurred the way Finder's sidebar is. Cards, panels and the composer stay solid."
@@ -526,7 +553,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Workspace card in agent view"
-          description="Branch, changed lines, and one click into changes, files, terminal, commit, and the pull request. Needs a pane wide enough to sit beside the conversation."
+          description="Branch, changed lines, and one click into changes, files, terminal, and the pull request. Needs a pane wide enough to sit beside the conversation."
           control={
             <Toggle
               ariaLabel="Workspace card in agent view"
@@ -537,7 +564,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Fox mascot"
-          description="Draw the fox on the launch screen, in the sidebar's Argmax chip, and on the mobile new-chat screen."
+          description="Draw the fox on the launch screen, the empty state, and the mobile new-chat screen."
           control={
             <Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />
           }

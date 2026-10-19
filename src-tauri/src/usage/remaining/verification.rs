@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 
-use super::{claude, HttpAnswer, RemainingSource};
+use super::{claude, HttpAnswer, OpencodeGateway, RemainingSource};
 use crate::sync::home_dir;
 
 const FIXTURE_TOKEN: &str = "argmax-verification-token";
@@ -77,6 +77,10 @@ impl RemainingSource for VerificationRemainingSource {
     fn codex_rate_limits(&self) -> Result<Value, String> {
         Err(DISABLED.into())
     }
+
+    fn opencode_gateway(&self) -> (OpencodeGateway, Result<Option<String>, String>) {
+        (OpencodeGateway::Openrouter, Err(DISABLED.into()))
+    }
 }
 
 #[cfg(test)]
@@ -123,5 +127,6 @@ mod tests {
         assert_eq!(source.keychain_password("Claude Code-credentials"), None);
         assert_eq!(source.env("HOME"), None);
         assert_eq!(source.codex_rate_limits(), Err(DISABLED.into()));
+        assert_eq!(source.opencode_gateway().1, Err(DISABLED.into()));
     }
 }

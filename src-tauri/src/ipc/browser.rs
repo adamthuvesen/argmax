@@ -59,7 +59,8 @@ pub struct BrowserNewTabEvent {
 
 /// A browser shortcut pressed while the page (not the panel chrome) had
 /// focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
-/// `reload`, `back`, `forward`, `find`, or a native-page `focus` notification.
+/// `reopen-tab`, `next-tab`, `previous-tab`, `reload`, `back`, `forward`,
+/// `find`, or a native-page `focus` notification.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserPageCommandEvent {
@@ -218,21 +219,35 @@ const BROWSER_INIT_SCRIPT: &str = r#"
   window.addEventListener(
     "keydown",
     function (event) {
-      if (window.__argmaxBrowserPopup) return;
-      if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (window.__argmaxBrowserPopup || !event.isTrusted) return;
       var key = event.key.toLowerCase();
-      var command =
-        key === "w" ? "close-tab" :
-        key === "t" ? "new-tab" :
-        key === "r" ? "reload" :
-        key === "l" ? "focus-address" :
-        key === "f" ? "find" : null;
+      var command = null;
+      if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
+        command = event.shiftKey ? "previous-tab" : "next-tab";
+      } else if (event.metaKey && !event.ctrlKey && !event.altKey) {
+        command = event.shiftKey ? (key === "t" ? "reopen-tab" : null) :
+          key === "w" ? "close-tab" :
+          key === "t" ? "new-tab" :
+          key === "r" ? "reload" :
+          key === "l" ? "focus-address" :
+          key === "f" ? "find" : null;
+      }
       if (!command) return;
       event.preventDefault();
       window.location.href = "argmax-newtab://command?c=" + command;
     },
     true
   );
+  // Bubble phase, and never preventDefault: the page gets Escape first to
+  // close its own modal, clear a field or cancel an edit.
+  window.addEventListener("keydown", function (event) {
+    if (window.__argmaxBrowserPopup || !event.isTrusted || event.defaultPrevented) return;
+    if (event.key !== "Escape" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing || event.repeat) return;
+    var target = event.target;
+    if (target && target.closest && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    if (document.querySelector('dialog[open], [aria-modal="true"]')) return;
+    window.location.href = "argmax-newtab://command?c=close-panel";
+  });
   // Mouse thumb buttons: 3 = back, 4 = forward. Navigate the page directly:
   // a tab can receive these events without a mounted pane to relay a command.
   var historyCommand = function (button) {
@@ -479,7 +494,11 @@ fn page_command(url: &Url) -> Option<&'static str> {
     let (_, command) = url.query_pairs().find(|(key, _)| key == "c")?;
     match command.as_ref() {
         "close-tab" => Some("close-tab"),
+        "close-panel" => Some("close-panel"),
         "new-tab" => Some("new-tab"),
+        "reopen-tab" => Some("reopen-tab"),
+        "next-tab" => Some("next-tab"),
+        "previous-tab" => Some("previous-tab"),
         "focus-address" => Some("focus-address"),
         "reload" => Some("reload"),
         "back" => Some("back"),
@@ -793,7 +812,7 @@ fn open_tab_with_url(
                         "browser dialog captured on an agent tab"
                     );
                 } else if let Some(command) = page_command(url) {
-                    if command == "focus-address" || command == "find" {
+                    if matches!(command, "focus-address" | "find" | "close-panel") {
                         // DOM focus in the renderer does not move the native
                         // first responder out of the child WKWebView.
                         if let Some(main) = nav_app.get_webview("main") {
@@ -1701,6 +1720,10 @@ mod tests {
         assert_eq!(page_command(&find), Some("find"));
         let focus = Url::parse("argmax-newtab://command?c=focus").unwrap();
         assert_eq!(page_command(&focus), Some("focus"));
+        for command in ["reopen-tab", "next-tab", "previous-tab", "close-panel"] {
+            let url = Url::parse(&format!("argmax-newtab://command?c={command}")).unwrap();
+            assert_eq!(page_command(&url), Some(command));
+        }
         let unknown = Url::parse("argmax-newtab://command?c=quit-app").unwrap();
         assert_eq!(page_command(&unknown), None);
         // `open` navigations carry URLs, never commands — and vice versa.

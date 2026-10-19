@@ -16,8 +16,8 @@ afterEach(() => {
 });
 
 describe("activity icon color mode", () => {
-  it("keeps semantic color as the default", () => {
-    expect(activityIconColorModeSnapshot()).toBe("color");
+  it("defaults to monochrome icons", () => {
+    expect(activityIconColorModeSnapshot()).toBe("monochrome");
   });
 
   it("puts monochrome mode on the document and persists it", () => {
@@ -30,18 +30,18 @@ describe("activity icon color mode", () => {
   });
 
   it("restores the persisted mode at boot", () => {
-    window.localStorage.setItem(ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY, "monochrome");
+    window.localStorage.setItem(ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY, "color");
     resetActivityIconColorModeForTests();
 
     initActivityIconColorMode();
 
-    expect(document.documentElement.dataset.activityIconColor).toBe("monochrome");
+    expect(document.documentElement.dataset.activityIconColor).toBe("color");
   });
 
   it("ignores a stored value it does not ship", () => {
     window.localStorage.setItem(ACTIVITY_ICON_COLOR_MODE_STORAGE_KEY, "duotone");
     resetActivityIconColorModeForTests();
 
-    expect(activityIconColorModeSnapshot()).toBe("color");
+    expect(activityIconColorModeSnapshot()).toBe("monochrome");
   });
 });

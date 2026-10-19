@@ -17,7 +17,7 @@ use crate::{
         inputs::{
             WorkspacesArchiveInput, WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput,
         },
-        orchestration::{resolve_registered_checkout, WorkspacesCreateAlongsideInput},
+        orchestration::WorkspacesCreateAlongsideInput,
         WorkspaceService,
     },
 };
@@ -175,13 +175,16 @@ pub(crate) async fn launch_with_receipt(
         };
         workspaces
             .create_isolated(WorkspacesCreateIsolatedInput {
+                project_folder_id: None,
                 project_id,
                 task_label,
                 base_ref,
             })
             .await
     } else if let Some(requested) = spec.path.as_deref() {
-        let (path, branch) = resolve_registered_checkout(&project.repo_path, requested).await?;
+        let (working_project, path, branch) = workspaces
+            .resolve_project_checkout(&project.id, requested)
+            .await?;
         if let Some(expected) = spec.branch.as_deref() {
             if expected != branch {
                 return Err(ArgmaxError::service("LAUNCH_BRANCH_MISMATCH", format!("{path} is on '{branch}', not '{expected}'. Check out that branch there first, or omit branch to use '{branch}'.")));
@@ -192,10 +195,10 @@ pub(crate) async fn launch_with_receipt(
             task_label,
             path,
             branch,
-            base_ref: project
+            base_ref: working_project
                 .default_branch
                 .clone()
-                .unwrap_or_else(|| project.current_branch.clone()),
+                .unwrap_or_else(|| working_project.current_branch.clone()),
         })
     } else if let Some(checkout) = spec.alongside {
         workspaces.create_alongside(WorkspacesCreateAlongsideInput {
@@ -207,6 +210,7 @@ pub(crate) async fn launch_with_receipt(
         })
     } else {
         workspaces.create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id,
             task_label,
         })

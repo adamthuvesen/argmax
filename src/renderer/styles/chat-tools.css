@@ -285,7 +285,7 @@
   height: 26px;
   padding: 0 var(--space-2);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: color-mix(in oklab, var(--pr-open) 14%, transparent);
   color: var(--pr-open);
   font-family: var(--font-prose);
@@ -363,7 +363,7 @@
   width: max-content;
   min-width: 168px;
   padding: 10px 12px 11px;
-  background: var(--panel);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);
@@ -577,7 +577,7 @@
   border: 0;
   /* Matches the launcher composer's corner radius so the two input surfaces
      read as the same component. */
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-composer);
   background: var(--composer-surface);
   /* The composer fill and this quiet, single-layer lift seat the field on the
      surface; --composer-edge draws the hairline paper needs, as an inset ring
@@ -654,7 +654,7 @@
   min-width: 220px;
   max-width: 300px;
   padding: 10px 12px 11px;
-  background: var(--panel);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-2);

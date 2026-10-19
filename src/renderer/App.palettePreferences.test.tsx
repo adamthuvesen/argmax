@@ -81,7 +81,7 @@ it("updates sidebar intensity from Appearance and restores it after reopening", 
   await screen.findByRole("button", { name: "Build dashboard" });
   await openSettings("Appearance");
   const slider = await screen.findByRole("slider", { name: "Sidebar intensity" });
-  expect(slider).toHaveValue("70");
+  expect(slider).toHaveValue("60");
   fireEvent.change(slider, { target: { value: "85" } });
   expect(window.localStorage.getItem(SIDEBAR_INTENSITY_STORAGE_KEY)).toBe("85");
   expect(document.documentElement).toHaveAttribute("data-sidebar-intensity", "85");
@@ -178,25 +178,27 @@ it("uses next-action labels and persists the boolean Actions", async () => {
   expect(window.argmax?.system.setKeepAwake).toHaveBeenCalledWith(false);
 });
 
-it("persists the Arcs setting and updates the sidebar immediately", async () => {
+it("defaults Arcs off and persists enabling and disabling the sidebar feature", async () => {
   const first = render(<App />);
   await screen.findByRole("button", { name: "Build dashboard" });
-  expect(screen.getByRole("button", { name: "New arc" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "New arc" })).toBeNull();
   await openSettings("Appearance");
   const toggle = await screen.findByRole("checkbox", { name: "Show arcs" });
-  expect(toggle).toBeChecked();
+  expect(toggle).not.toBeChecked();
   fireEvent.click(toggle);
-  expect(window.localStorage.getItem(SIDEBAR_ARCS_KEY)).toBe("false");
+  expect(window.localStorage.getItem(SIDEBAR_ARCS_KEY)).toBe("true");
   await closeSettings();
-  expect(screen.queryByRole("button", { name: "New arc" })).toBeNull();
+  expect(screen.getByRole("button", { name: "New arc" })).toBeInTheDocument();
   first.unmount();
 
   render(<App />);
   await screen.findByRole("button", { name: "Build dashboard" });
+  expect(screen.getByRole("button", { name: "New arc" })).toBeInTheDocument();
   await openSettings("Appearance");
   const restored = await screen.findByRole("checkbox", { name: "Show arcs" });
-  expect(restored).not.toBeChecked();
+  expect(restored).toBeChecked();
   fireEvent.click(restored);
+  expect(window.localStorage.getItem(SIDEBAR_ARCS_KEY)).toBe("false");
   await closeSettings();
-  expect(screen.getByRole("button", { name: "New arc" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "New arc" })).toBeNull();
 });

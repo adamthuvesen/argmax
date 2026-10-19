@@ -16,7 +16,7 @@
 
 .project-check-reasons li {
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: var(--panel-sunken);
   color: var(--chip-ink);
   font-size: var(--text-xs);

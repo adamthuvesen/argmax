@@ -1,0 +1,66 @@
+.review-side-chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-6);
+  gap: var(--space-5);
+  overflow: auto;
+}
+
+.review-side-chat-launch {
+  --session-inline-padding: clamp(var(--session-inline-padding-min, 22px), calc((100% - var(--chat-content-width, 780px)) / 2), 2000px);
+  container: side-chat / size;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding-block: var(--space-1_5) var(--space-6);
+}
+
+.review-side-chat-intro {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--space-4) var(--space-6);
+  text-align: center;
+  color: var(--muted);
+  overflow: auto;
+}
+
+.review-side-chat-intro h2 {
+  margin: var(--space-3) 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: 500;
+}
+
+.review-side-chat-intro p,
+.review-side-chat-empty > p {
+  max-width: 380px;
+  margin: 0;
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.review-side-chat-composer {
+  flex: 0 0 auto;
+}
+
+@container side-chat (max-height: 260px) {
+  .review-side-chat-intro {
+    display: none;
+  }
+
+  .review-side-chat-composer {
+    margin-top: auto;
+  }
+}

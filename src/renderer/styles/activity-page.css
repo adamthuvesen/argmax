@@ -128,7 +128,7 @@
   min-width: 0;
   padding: var(--space-6);
   border: 0.5px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--panel);
 }
 
@@ -279,7 +279,7 @@
   justify-items: start;
   padding: var(--space-3) var(--space-4);
   border: 0.5px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: var(--panel-soft);
   color: var(--text-soft);
   font-size: var(--text-sm);
@@ -329,7 +329,7 @@
   text-align: center;
   padding: 72px var(--space-6);
   border: 0.5px dashed var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
 }
 
 .activity-blank-headline {
@@ -395,7 +395,7 @@
   gap: var(--space-6) 32px;
   padding: var(--space-6);
   border: 0.5px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--panel);
 }
 
@@ -445,7 +445,7 @@
   gap: var(--space-2);
   padding: var(--space-6);
   border: 0.5px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--panel);
 }
 
@@ -462,7 +462,7 @@
 
 .activity-skeleton-half {
   height: 300px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
 }
 
 .activity-skeleton-note {

@@ -62,7 +62,7 @@ describe("launcher prompt across context changes", () => {
     await waitFor(() => expect(toastSnapshot()?.message).toBe(
       "Your local changes would be overwritten by checkout."
     ));
-    expect(switchBranch).toHaveBeenCalledWith("project-1", "feature");
+    expect(switchBranch).toHaveBeenCalledWith("project-1", "feature", "project-1:primary");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(prompt).toHaveValue("Refactor the auth guard");
     expect(prompt).toBeEnabled();
@@ -175,7 +175,7 @@ describe("launcher prompt across context changes", () => {
     const names = within(picker)
       .getAllByRole("option")
       .map((option) => optionName(option))
-      .filter((name) => name && name !== "Browse folder…");
+      .filter((name) => name && name !== "New project");
     expect(names[0]).toBe("Dotfiles");
     fireEvent.mouseDown(document.querySelector(".picker-dismiss-layer") as Element);
 

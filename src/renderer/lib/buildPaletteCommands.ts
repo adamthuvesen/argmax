@@ -31,7 +31,9 @@ import { SETTINGS_GROUPS, type SettingsGroupId } from "../components/settings/se
 import { buildSettingCommands, type SettingCommandsInput } from "./settingCommands.js";
 import { titleFromPrompt } from "./projects.js";
 import { collapseHome } from "./pathDisplay.js";
-import { computeWorkspaceAttention, type PriorityAttention } from "./priority.js";
+import { computeWorkspaceAttention, workingWorkspaceIds, type PriorityAttention } from "./priority.js";
+
+import { workspaceHasUnreadResponse } from "./sessionUnread.js";
 
 type BuildPaletteCommandsInput = {
   snapshot: DashboardSnapshot;
@@ -102,7 +104,6 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     openInIde,
     onOpenInNewWindow,
     paneActions = [],
-    nowMs,
     onOpenWorkspace,
     onSelectProject,
     onClearGrid,
@@ -168,7 +169,12 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   // Chats waiting on the user, the same fresh, undismissed attention the
   // sidebar's Priority section draws. The chat on screen needs no jump.
   function attentionActions(): PaletteCommand[] {
-    const attention = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, nowMs);
+    const working = workingWorkspaceIds(snapshot.sessions);
+    const unreadIds = new Set(snapshot.workspaces.filter((workspace) => workspaceHasUnreadResponse(workspace, {
+      selectedWorkspaceId: selectedSession?.workspaceId ?? null,
+      working: working.has(workspace.id)
+    })).map((workspace) => workspace.id));
+    const attention = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, unreadIds);
     return [...attention].flatMap(([workspaceId, entry]) => {
       if (workspaceId === selectedSession?.workspaceId) return [];
       if (workspaceById.get(workspaceId)?.kind === "popup") return [];

@@ -99,6 +99,7 @@ describe("CloudTaskDialog", () => {
         open
         provider="cursor"
         projectId="project-1"
+        projectFolderId="folder-secondary"
         initialBrief="Inspect README"
         onClose={vi.fn()}
       />
@@ -120,9 +121,10 @@ describe("CloudTaskDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
 
     expect(await screen.findByRole("link", { name: "Open in Cursor Cloud" })).toBeInTheDocument();
-    expect(prepare).toHaveBeenCalledWith({ projectId: "project-1", provider: "cursor" });
+    expect(prepare).toHaveBeenCalledWith({ projectId: "project-1", projectFolderId: "folder-secondary", provider: "cursor" });
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({
       projectId: "project-1",
+      projectFolderId: "folder-secondary",
       provider: "cursor",
       environmentId: "env-work"
     }));

@@ -392,7 +392,11 @@ impl WorkspaceService {
                     }
                     let registration = {
                         let connection = self.database.connection();
-                        require_project(&connection, &workspace.project_id).and_then(|project| {
+                        crate::persistence::project_folders::require_workspace_project(
+                            &connection,
+                            &workspace.id,
+                        )
+                        .and_then(|project| {
                             worktree_is_registered_blocking(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
@@ -468,7 +472,10 @@ impl WorkspaceService {
                 {
                     let project = {
                         let connection = self.database.connection();
-                        require_project(&connection, &workspace.project_id)?
+                        crate::persistence::project_folders::require_workspace_project(
+                            &connection,
+                            &workspace.id,
+                        )?
                     };
                     match repair_archived_worktree(
                         Path::new(&project.repo_path),
@@ -484,7 +491,11 @@ impl WorkspaceService {
                 } else {
                     let registration = {
                         let connection = self.database.connection();
-                        require_project(&connection, &workspace.project_id).and_then(|project| {
+                        crate::persistence::project_folders::require_workspace_project(
+                            &connection,
+                            &workspace.id,
+                        )
+                        .and_then(|project| {
                             worktree_is_registered_blocking(
                                 Path::new(&project.repo_path),
                                 Path::new(&workspace.path),
@@ -623,8 +634,9 @@ impl WorkspaceService {
         let connection = self.database.read_connection();
         connection
             .query_row(
-                "SELECT workspaces.state, workspaces.updated_at, projects.repo_path \
+                "SELECT workspaces.state, workspaces.updated_at, COALESCE(project_folders.root_path, projects.repo_path) \
                  FROM workspaces LEFT JOIN projects ON projects.id = workspaces.project_id \
+                 LEFT JOIN project_folders ON project_folders.id = workspaces.project_folder_id \
                  WHERE workspaces.id = ?",
                 [workspace_id],
                 |row| {
@@ -656,15 +668,81 @@ impl WorkspaceService {
         &self.database
     }
 
+    pub async fn resolve_project_checkout(
+        &self,
+        project_id: &str,
+        requested: &str,
+    ) -> ArgmaxResult<(crate::persistence::projects::ProjectSummary, String, String)> {
+        let folders = {
+            let connection = self.database.read_connection();
+            crate::persistence::project_folders::list_project_folders(&connection, project_id)?
+        };
+        for folder in folders.into_iter().filter(|folder| folder.enabled) {
+            if let Ok((path, branch)) =
+                resolve_registered_checkout(&folder.root_path, requested).await
+            {
+                let connection = self.database.read_connection();
+                let project = crate::persistence::project_folders::project_for_folder(
+                    &connection,
+                    &folder.id,
+                )?;
+                return Ok((project, path, branch));
+            }
+        }
+        Err(ArgmaxError::service(
+            "PROJECT_CHECKOUT_NOT_FOUND",
+            "Choose a Git checkout from an enabled project folder.",
+        ))
+    }
+
     pub async fn create_isolated(
         self: &Arc<Self>,
         input: WorkspacesCreateIsolatedInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
-        let (project, global_branch_template) = {
+        let folder_id = {
+            let connection = self.database.read_connection();
+            let (project, folder_id) = crate::persistence::project_folders::project_for_launch(
+                &connection,
+                input.project_id.as_str(),
+                input.project_folder_id.as_deref(),
+            )?;
+            if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+                return Err(ArgmaxError::service(
+                    "WORKSPACE_GIT_REQUIRED",
+                    "Choose a Git repository to create a worktree.",
+                ));
+            }
+            folder_id
+        };
+        self.create_isolated_in_folder(input, Some(folder_id)).await
+    }
+
+    pub(super) async fn create_isolated_in_folder(
+        self: &Arc<Self>,
+        input: WorkspacesCreateIsolatedInput,
+        folder_id: Option<String>,
+    ) -> ArgmaxResult<WorkspaceSummary> {
+        let (project, global_branch_template, project_folder_id) = {
             let connection = self.database.connection();
+            let project = match folder_id.as_deref() {
+                Some(folder_id) => {
+                    crate::persistence::project_folders::project_for_folder(&connection, folder_id)?
+                }
+                None => require_project(&connection, input.project_id.as_str())?,
+            };
+            if project.id != input.project_id.as_str() {
+                return Err(ArgmaxError::service(
+                    "PROJECT_FOLDER_MISMATCH",
+                    "That folder belongs to another project.",
+                ));
+            }
             (
-                require_project(&connection, input.project_id.as_str())?,
+                project,
                 crate::persistence::app_settings::branch_template(&connection),
+                folder_id.or(crate::persistence::project_folders::primary_folder_id(
+                    &connection,
+                    input.project_id.as_str(),
+                )?),
             )
         };
         let base_ref = input
@@ -840,7 +918,14 @@ impl WorkspaceService {
         // non-Send connection guard end before the discard await below.
         let persisted = (|| {
             let connection = self.database.connection();
-            let workspace = persist_workspace(
+            if input.project_folder_id.is_some() {
+                crate::persistence::project_folders::project_for_launch(
+                    &connection,
+                    input.project_id.as_str(),
+                    input.project_folder_id.as_deref(),
+                )?;
+            }
+            let workspace = crate::persistence::workspaces::persist_workspace_in_folder(
                 &connection,
                 &PersistWorkspaceInput {
                     id: Uuid::new_v4().to_string(),
@@ -855,6 +940,7 @@ impl WorkspaceService {
                     dirty: false,
                     changed_files: 0,
                 },
+                project_folder_id.as_deref(),
             )?;
             record_workspace_created_branch(
                 &connection,
@@ -981,9 +1067,48 @@ impl WorkspaceService {
         self: &Arc<Self>,
         input: WorkspacesCreateCurrentInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
-        let project = {
+        let (mut project, folder_id) = {
             let connection = self.database.connection();
-            require_project(&connection, input.project_id.as_str())?
+            crate::persistence::project_folders::project_for_launch(
+                &connection,
+                input.project_id.as_str(),
+                input.project_folder_id.as_deref(),
+            )?
+        };
+        if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+            let connection = self.database.connection();
+            let workspace = crate::persistence::workspaces::persist_workspace_in_folder(
+                &connection,
+                &PersistWorkspaceInput {
+                    id: Uuid::new_v4().to_string(),
+                    project_id: project.id,
+                    task_label: input.task_label.as_str().to_string(),
+                    branch: String::new(),
+                    base_ref: String::new(),
+                    path: project.repo_path,
+                    state: "created".into(),
+                    shared_workspace: true,
+                    kind: "folder".into(),
+                    dirty: false,
+                    changed_files: 0,
+                },
+                Some(&folder_id),
+            )?;
+            self.publish(DashboardDelta {
+                workspaces: vec![workspace.clone()],
+                ..DashboardDelta::default()
+            });
+            return Ok(workspace);
+        }
+        let branch = run_git_text_blocking(
+            Path::new(&project.repo_path),
+            ["branch", "--show-current"],
+            GIT_DEFAULT_TIMEOUT,
+        )?;
+        project.current_branch = if branch.trim().is_empty() {
+            "HEAD".into()
+        } else {
+            branch.trim().into()
         };
         self.create_alongside(WorkspacesCreateAlongsideInput {
             project_id: input.project_id,
@@ -1006,24 +1131,42 @@ impl WorkspaceService {
         self: &Arc<Self>,
         input: WorkspacesCreateAlongsideInput,
     ) -> ArgmaxResult<WorkspaceSummary> {
+        self.create_alongside_in_folder(input, None)
+    }
+
+    fn create_alongside_in_folder(
+        self: &Arc<Self>,
+        input: WorkspacesCreateAlongsideInput,
+        folder_id: Option<&str>,
+    ) -> ArgmaxResult<WorkspaceSummary> {
         let connection = self.database.connection();
         let project = require_project(&connection, input.project_id.as_str())?;
-        let workspace = persist_workspace(
-            &connection,
-            &PersistWorkspaceInput {
-                id: Uuid::new_v4().to_string(),
-                project_id: project.id.clone(),
-                task_label: input.task_label.as_str().to_string(),
-                branch: input.branch,
-                base_ref: input.base_ref,
-                path: input.path,
-                state: "created".to_string(),
-                shared_workspace: true,
-                kind: "git".to_string(),
-                dirty: false,
-                changed_files: 0,
-            },
-        )?;
+        let kind = if input.branch.is_empty() && input.base_ref.is_empty() {
+            "folder"
+        } else {
+            "git"
+        };
+        let persisted = PersistWorkspaceInput {
+            id: Uuid::new_v4().to_string(),
+            project_id: project.id.clone(),
+            task_label: input.task_label.as_str().to_string(),
+            branch: input.branch,
+            base_ref: input.base_ref,
+            path: input.path,
+            state: "created".to_string(),
+            shared_workspace: true,
+            kind: kind.to_string(),
+            dirty: false,
+            changed_files: 0,
+        };
+        let workspace = match folder_id {
+            Some(folder_id) => crate::persistence::workspaces::persist_workspace_in_folder(
+                &connection,
+                &persisted,
+                Some(folder_id),
+            )?,
+            None => persist_workspace(&connection, &persisted)?,
+        };
         self.publish(DashboardDelta {
             projects: list_projects(&connection)?,
             workspaces: vec![workspace.clone()],
@@ -1046,10 +1189,30 @@ impl WorkspaceService {
     /// been archived into recovery storage, because that directory is about to
     /// be deleted.
     pub async fn list_checkouts(&self, project_id: &str) -> ArgmaxResult<Vec<ProjectCheckout>> {
+        self.list_checkouts_in_folder(project_id, None).await
+    }
+
+    pub async fn list_checkouts_in_folder(
+        &self,
+        project_id: &str,
+        folder_id: Option<&str>,
+    ) -> ArgmaxResult<Vec<ProjectCheckout>> {
         let repo_path = {
             let connection = self.database.read_connection();
-            require_project(&connection, project_id)?.repo_path
+            crate::persistence::project_folders::project_for_launch(
+                &connection,
+                project_id,
+                folder_id,
+            )?
+            .0
+            .repo_path
         };
+        if !crate::persistence::project_folders::folder_is_git(&repo_path)? {
+            return Err(ArgmaxError::service(
+                "PROJECT_GIT_REQUIRED",
+                "Choose a Git repository to select a checkout.",
+            ));
+        }
         let stdout = run_git_text(
             Path::new(&repo_path),
             ["worktree", "list", "--porcelain"],
@@ -1096,8 +1259,19 @@ impl WorkspaceService {
         };
         let project = {
             let connection = self.database.read_connection();
-            require_project(&connection, input.project_id.as_str())?
+            crate::persistence::project_folders::project_for_launch(
+                &connection,
+                input.project_id.as_str(),
+                input.project_folder_id.as_deref(),
+            )?
+            .0
         };
+        if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+            return Err(ArgmaxError::service(
+                "WORKSPACE_GIT_REQUIRED",
+                "Choose a Git repository to attach a checkout.",
+            ));
+        }
         let (path, branch) =
             resolve_registered_checkout(&project.repo_path, input.path.as_str()).await?;
         if branch != input.branch.as_str() {
@@ -1119,14 +1293,25 @@ impl WorkspaceService {
                 "Pick another checkout.",
             ));
         }
-        self.create_alongside(WorkspacesCreateAlongsideInput {
-            project_id: input.project_id,
-            task_label: input.task_label,
-            path,
-            branch,
-            // Review compares against this, the same as `create_current`.
-            base_ref: project.default_branch.unwrap_or(project.current_branch),
-        })
+        {
+            let connection = self.database.read_connection();
+            crate::persistence::project_folders::project_for_launch(
+                &connection,
+                input.project_id.as_str(),
+                input.project_folder_id.as_deref(),
+            )?;
+        }
+        self.create_alongside_in_folder(
+            WorkspacesCreateAlongsideInput {
+                project_id: input.project_id,
+                task_label: input.task_label,
+                path,
+                branch,
+                // Review compares against this, the same as `create_current`.
+                base_ref: project.default_branch.unwrap_or(project.current_branch),
+            },
+            input.project_folder_id.as_deref(),
+        )
     }
 
     /// The workspace that owns the tree at `path`: the live row that is not a
@@ -1354,7 +1539,10 @@ impl WorkspaceService {
                 ));
             }
             let source_workspace = find_workspace_by_id(&connection, &source_session.workspace_id)?;
-            let source_project = require_project(&connection, &source_workspace.project_id)?;
+            let source_project = crate::persistence::project_folders::require_workspace_project(
+                &connection,
+                &source_workspace.id,
+            )?;
             // A checkout move stays inside the project it started in; only a
             // project move has a second project to look up, and only it has to
             // be somewhere else.
@@ -1392,6 +1580,7 @@ impl WorkspaceService {
                 )
                 .map_err(ArgmaxError::invalid)?;
                 self.create_isolated(WorkspacesCreateIsolatedInput {
+                    project_folder_id: None,
                     project_id,
                     task_label,
                     base_ref: Some(base_ref),
@@ -1401,6 +1590,7 @@ impl WorkspaceService {
             MoveDestination::Project {
                 worktree: false, ..
             } => self.create_current(WorkspacesCreateCurrentInput {
+                project_folder_id: None,
                 project_id,
                 task_label,
             })?,
@@ -1996,7 +2186,10 @@ impl WorkspaceService {
         if recovery_path.exists() && !Path::new(&prior.path).exists() {
             let project = {
                 let connection = self.database.connection();
-                require_project(&connection, &prior.project_id)?
+                crate::persistence::project_folders::require_workspace_project(
+                    &connection,
+                    &prior.id,
+                )?
             };
             let repair_path = recovery_path.clone();
             let branch = prior.branch.clone();
@@ -2067,7 +2260,10 @@ impl WorkspaceService {
 
         let project = {
             let connection = self.database.connection();
-            match require_project(&connection, &workspace.project_id) {
+            match crate::persistence::project_folders::require_workspace_project(
+                &connection,
+                &workspace.id,
+            ) {
                 Ok(project) => project,
                 Err(error) => {
                     self.abandon_archive(&prior, lease)?;
@@ -2662,7 +2858,8 @@ impl WorkspaceService {
                     .as_ref()
                     .is_some_and(|root| path.starts_with(root))
             });
-        let acp_path_to_evict = (archived.kind != "git").then(|| archived.path.clone());
+        let acp_path_to_evict =
+            matches!(archived.kind.as_str(), "scratch" | "popup").then(|| archived.path.clone());
         let service = Arc::clone(self);
         tokio::spawn(async move {
             service.teardown_workspace_processes(&workspace_id).await;
@@ -2843,7 +3040,7 @@ impl WorkspaceService {
             let connection = self.database.connection();
             find_workspace_by_id(&connection, workspace_id)?
         };
-        if workspace.state == "archived" {
+        if workspace.state == "archived" || workspace.kind == "folder" {
             return Ok(workspace);
         }
         if !workspace.shared_workspace && workspace.kind == "git" {
@@ -2851,7 +3048,10 @@ impl WorkspaceService {
             if !path.exists() {
                 let project = {
                     let connection = self.database.connection();
-                    require_project(&connection, &workspace.project_id)
+                    crate::persistence::project_folders::require_workspace_project(
+                        &connection,
+                        &workspace.id,
+                    )
                 };
                 let registration = match project {
                     Ok(project) => {
@@ -2934,7 +3134,10 @@ impl WorkspaceService {
             {
                 let project = {
                     let connection = self.database.connection();
-                    require_project(&connection, &workspace.project_id)
+                    crate::persistence::project_folders::require_workspace_project(
+                        &connection,
+                        &workspace.id,
+                    )
                 };
                 let registration = match project {
                     Ok(project) => {

@@ -1,25 +1,23 @@
-/* The marker column runs one size ladder, 2:1 (docs/design/sidebar-marker-scale):
+/* The marker column runs one size ladder (docs/design/sidebar-marker-scale):
    14px for any mark with a shape — a picked icon, a status glyph, the working
-   nest — and 7px for any mark that is only a circle, which is the unread dot
-   and the calm row's ring. A new mark picks the step its shape belongs to
-   rather than a size of its own. */
+   nest — 7px for the unread dot, and 5px for the calm row's resting dot. A new
+   mark picks the step its shape belongs to rather than a size of its own.
+   The trailing column holds the row's age. */
 .session-link {
   position: relative;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
-  gap: 9px;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  gap: var(--space-2_5);
   align-items: center;
   width: 100%;
-  min-height: 34px;
+  min-height: 30px;
   padding: 0 var(--space-2_5);
   /* Resting titles sit one ink step below primary so the selected row (which
      keeps --text) is the only bright label in the list. */
   color: var(--text-soft);
   text-align: left;
   border: 0;
-  /* A two-line row is ~52px tall; --radius-md read as a square tile at that
-     height, and --radius-lg still read boxy, so the row takes --radius-xl. */
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-row);
   background: transparent;
   cursor: pointer;
   font-size: var(--text-sm);
@@ -28,7 +26,22 @@
 }
 
 .session-link.session-link-has-pr-count {
-  grid-template-columns: 14px minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+}
+
+/* Time since the row's last activity, right-aligned so the list keeps a
+   straight right edge the way the marker column keeps a straight left one.
+   It sits on the title line, and gives its place to the action cluster when
+   the row is hovered or focused. */
+.session-link-age {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+}
+
+.session-row:is(:hover, :focus-within) .session-link-age {
+  visibility: hidden;
 }
 
 .session-pr-count {
@@ -39,7 +52,7 @@
   padding: 0 var(--space-1);
   color: var(--muted);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -76,7 +89,7 @@
 .session-link:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--ink);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-row);
 }
 
 .session-link span {
@@ -93,48 +106,35 @@
    column steady between one- and two-line rows. */
 .session-link.session-link-stacked {
   align-items: start;
-  padding-top: 7px;
-  padding-bottom: 7px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 /* Calm rows have no live signal and no picked icon, so they fill the marker
-   column with a ring instead: the column always carries a mark, and every title
-   in the list starts at the same x. Hollow on purpose. The unread marker below
-   is the same 7px circle filled in the accent, and a ring cannot be mistaken
-   for it — the difference is categorical rather than a matter of tint or size,
-   which is what holds up this small. */
-.session-link-lead-ring {
+   column with one small resting dot: the column always carries a mark, and
+   every title in the list starts at the same x. The unread marker below is a
+   7px dot in the accent at full strength; the resting dot is smaller, muted,
+   and faded, so the two differ in size, hue, and weight at once. */
+.session-link-lead-dot {
   display: grid;
   place-items: center;
   width: 14px;
   height: 18px;
   /* Half ink washes out on the light surface; dark keeps the quieter step. */
-  --lead-ring-opacity: 0.7;
+  --lead-dot-opacity: 0.55;
 }
 
-:root[data-theme="dark"] .session-link-lead-ring {
-  --lead-ring-opacity: 0.5;
+:root[data-theme="dark"] .session-link-lead-dot {
+  --lead-dot-opacity: 0.45;
 }
 
-.session-link-lead-ring::before {
+.session-link-lead-dot::before {
   content: "";
-  width: 7px;
-  height: 7px;
-  border: 1px solid var(--muted);
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  opacity: var(--lead-ring-opacity);
-}
-
-/* A chat row swaps the ring for a bubble at the ring's weight: same box, same
-   1px muted stroke, same opacity, so the two alternate in one list without
-   the bubble reading as a signal. */
-.session-link-lead-ring[data-chat="true"]::before {
-  content: none;
-}
-
-.session-link-lead-ring[data-chat="true"] svg {
-  color: var(--muted);
-  opacity: var(--lead-ring-opacity);
+  background: var(--muted);
+  opacity: var(--lead-dot-opacity);
 }
 
 .session-unread-marker {
@@ -160,6 +160,12 @@
      slack, so a start-aligned glyph lands on the line without a per-row
      offset. */
   line-height: 18px;
+}
+
+/* Two-line rows breathe a little more than one-line rows: the subtitle is
+   secondary, so it gets its own air instead of sitting on the title. */
+.session-link-stacked .session-link-text {
+  gap: 2px;
 }
 
 /* Optical, not geometric: a glyph box that matches the title's line box measures
@@ -249,24 +255,106 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-row);
   transition: background var(--duration-fast) var(--ease);
   /* Off-screen rows skip layout + paint — a no-JS, no-dependency windowing for
      long session lists. Rows stay in the DOM, so keyboard nav and the sidebar's
      `.session-link` queries still work; hover popovers/menus are portaled to the
-     body, so paint containment never clips them. `auto 34px` seeds the row
+     body, so paint containment never clips them. `auto 30px` seeds the row
      height (matching .session-link's min-height) so the scrollbar stays stable,
      then remembers each row's real size once rendered. Unsupported engines just
      ignore it and render the full list. */
   content-visibility: auto;
-  contain-intrinsic-size: auto 34px;
+  contain-intrinsic-size: auto 30px;
 }
 
 .session-row .session-link {
   flex: 1 1 auto;
   min-width: 0;
-  padding-right: var(--space-1_5);
+  padding-right: var(--space-2_5);
 }
+
+/* The title owns the row at rest. Pointer or focus pulls in the action
+   cluster, and only then does the title give up its tail to make room. */
+.session-row:is(:hover, :focus-within) .session-link {
+  padding-right: calc(2 * var(--sidebar-action-size) + 2px + var(--sidebar-action-inset) + var(--space-1));
+}
+
+/* Sub-chats hang off the parent's marker on a tree rail: a branch (├) into
+   every child and an elbow (└) into the last. The rail runs at the marker
+   column's center, so --tree-rail-x is the row's left padding (--tree-link-pad inside a
+   child) plus half the 14px column, and --tree-row-mid is a one-line row's marker center. The
+   parent draws its own stretch from under its marker to its bottom edge,
+   because only it knows where its marker sits. A child row starts just past
+   the elbow's curve, so its hover and selected fill covers the straight run of
+   the connector and never clips the turn; the row gives the extra indent back
+   from its own left padding, so the child marker stays put. Each child sits
+   --tree-row-gap below the row above it, the same air as top-level rows, so two
+   fills never touch; the gap is padding inside the child, so the rail runs
+   through it unbroken. */
+.sidebar-chat-children {
+  --tree-rail-x: calc(var(--tree-link-pad, var(--space-2_5)) + 7px);
+  --tree-row-mid: 15px;
+  --tree-row-gap: 2px;
+  padding-left: var(--space-6);
+}
+
+.session-row:has(+ .sidebar-chat-children) .session-link::after,
+.sidebar-chat-child::before,
+.sidebar-chat-child:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  border: 0 solid var(--line-strong);
+}
+
+.session-row:has(+ .sidebar-chat-children) .session-link::after {
+  left: calc(var(--tree-link-pad, var(--space-2_5)) + 7px);
+  top: 26px;
+  bottom: 0;
+  border-left-width: 1px;
+}
+
+.session-row:has(+ .sidebar-chat-children) .session-link:not(.session-link-stacked)::after {
+  top: 25px;
+}
+
+.sidebar-chat-child {
+  position: relative;
+  min-width: 0;
+  padding-top: var(--tree-row-gap);
+  --tree-link-pad: var(--space-1_5);
+}
+
+.sidebar-chat-child > .session-row > .session-link {
+  padding-left: var(--tree-link-pad);
+}
+
+.sidebar-chat-child::before {
+  left: calc(var(--tree-rail-x) - var(--space-6));
+  top: 0;
+  width: 13px;
+  height: calc(var(--tree-row-gap) + var(--tree-row-mid));
+  border-left-width: 1px;
+  border-bottom-width: 1px;
+  border-bottom-left-radius: 6px;
+}
+
+.sidebar-chat-child:not(:last-child)::before {
+  height: auto;
+  bottom: 0;
+  border-bottom-width: 0;
+  border-radius: 0;
+}
+
+.sidebar-chat-child:not(:last-child)::after {
+  left: calc(var(--tree-rail-x) - var(--space-6));
+  top: calc(var(--tree-row-gap) + var(--tree-row-mid));
+  width: 13px;
+  border-top-width: 1px;
+}
+
 
 .session-row .session-link.session-link-renaming {
   padding-right: var(--space-2_5);
@@ -307,11 +395,14 @@
   min-width: 140px;
 }
 
-/* Two action slots reserved at rest so the badge and actions align across every
-   row without shifting on hover. A running chat mounts no archive button, but
-   the second slot remains reserved so its badge column matches completed rows. */
+/* Two action slots, overlaid on the row's right edge so they cost the title
+   nothing at rest. A running chat mounts no archive button, but the second slot
+   remains so the pin lands in the same column on every row. */
 .session-row-actions {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
   display: grid;
   grid-template-columns: repeat(2, var(--sidebar-action-size));
   width: calc(2 * var(--sidebar-action-size) + 2px);
@@ -336,7 +427,7 @@
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
 }
@@ -406,15 +497,25 @@
   background: var(--line-strong);
 }
 
+/* No hairline: the footer is set off by the space above it, like the
+   sections. The chip opens the Argmax menu; the two icons beside it are the
+   destinations people reach for most. */
 .sidebar-footer {
   display: flex;
   align-items: center;
+  position: relative;
+  gap: 2px;
   min-height: 40px;
   margin-top: auto;
   padding: var(--space-2) 0 0;
   color: var(--muted-strong);
-  border-top: 1px solid var(--line-soft);
   font-size: var(--text-sm);
+}
+
+/* The chip shares the row with two icons, so the menu measures against the
+   whole footer instead: at the chip's width the shortcut column would clip. */
+.sidebar-footer .identity-menu-anchor {
+  position: static;
 }
 
 .identity-menu-anchor {
@@ -428,10 +529,10 @@
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: var(--space-2_5);
+  gap: var(--space-1_5);
   padding: var(--space-1_5) var(--space-2_5);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-row);
   background: transparent;
   color: var(--muted-strong);
   font: inherit;
@@ -446,36 +547,19 @@
   color: var(--text);
 }
 
-.identity-avatar {
-  position: relative;
-  display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  place-items: center;
-  color: var(--text);
-  transform: translateY(2px);
-}
-
-.identity-avatar-mascot {
-  width: 24px;
-  height: 24px;
-}
-
 .identity-meta {
   display: grid;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   line-height: 1.2;
   gap: 2px;
 }
 
 .identity-name {
-  font-family: var(--font-mono);
   color: var(--text);
   font-size: var(--text-sm);
-  font-weight: calc(400 + var(--font-weight-offset));
-  letter-spacing: -0.003em;
+  font-weight: calc(500 + var(--font-weight-offset));
+  letter-spacing: -0.005em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -485,17 +569,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1_5);
-  font-family: var(--font-mono);
   color: var(--muted);
-  font-size: var(--text-2xs);
-  letter-spacing: 0.01em;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .identity-menu-chevron {
-  margin-left: auto;
   flex: 0 0 auto;
   color: var(--muted);
   transition: transform var(--duration-base) var(--ease), color var(--duration-fast) var(--ease);
@@ -732,7 +813,7 @@
   width: 100%;
   height: 100%;
   border: 2px dashed var(--accent);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--accent-soft);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
 }

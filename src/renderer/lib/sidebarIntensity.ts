@@ -3,7 +3,7 @@ export type SidebarIntensity = number;
 
 export const SIDEBAR_INTENSITY_MIN = 0;
 export const SIDEBAR_INTENSITY_MAX = 100;
-export const DEFAULT_SIDEBAR_INTENSITY = 70;
+export const DEFAULT_SIDEBAR_INTENSITY = 60;
 export const SIDEBAR_INTENSITY_STORAGE_KEY = "argmax.sidebar.level";
 export const SIDEBAR_INTENSITY_PRESETS: readonly SidebarIntensity[] = [0, 25, 50, 70, 85, 100];
 

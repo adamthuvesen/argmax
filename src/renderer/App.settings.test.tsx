@@ -48,7 +48,7 @@ async function openArgmaxMenu(): Promise<HTMLElement> {
 // async, so wait for the item to come out of its "no IDEs yet" disabled state.
 async function openIdeMenu(): Promise<HTMLElement> {
   fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
-  const ideItem = await screen.findByRole("menuitem", { name: /^Open in (?!new window)/ });
+  const ideItem = await screen.findByRole("menuitem", { name: /^Open in (?!New Window)/ });
   await waitFor(() => expect(ideItem).not.toBeDisabled());
   fireEvent.click(ideItem);
   return ideItem;
@@ -436,7 +436,7 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Build dashboard" }));
-    const ideItem = await screen.findByRole("menuitem", { name: /^Open in (?!new window)/ });
+    const ideItem = await screen.findByRole("menuitem", { name: /^Open in (?!New Window)/ });
     expect(ideItem).toBeDisabled();
     expect(ideItem).toHaveAttribute("title", "Worktree not ready yet");
   });
@@ -713,7 +713,7 @@ describe("App settings", () => {
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Appearance");
     const slider = screen.getByRole("slider", { name: "Font heaviness" });
-    expect(slider).toHaveValue("5");
+    expect(slider).toHaveValue("4");
     const ink = document.documentElement.getAttribute("data-ink-strength");
     fireEvent.change(slider, { target: { value: "10" } });
     expect(window.localStorage.getItem("argmax.font.heaviness")).toBe("10");
@@ -883,6 +883,7 @@ describe("App settings", () => {
 
 
   it("settings Appearance page takes user bubbles off the accent and back", async () => {
+    window.localStorage.setItem(USER_BUBBLE_TINT_STORAGE_KEY, "accent");
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 

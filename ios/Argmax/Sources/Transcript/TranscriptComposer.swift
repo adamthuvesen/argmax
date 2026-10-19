@@ -18,7 +18,6 @@ struct TranscriptComposer: View {
     @State private var focused = false
     @State private var sending = false
     @State private var stopping = false
-    @State private var openingPullRequest = false
     @State private var sendingQueuedID: String?
     @State private var failure: String?
     @State private var picking: Picking?
@@ -61,7 +60,7 @@ struct TranscriptComposer: View {
             // work stays in view like the desktop checks lane.
             VStack(alignment: .leading, spacing: Spacing.snug) {
                 if let pullRequest {
-                    pullRequestPill(pullRequest, sessionID: composer.sessionId)
+                    pullRequestPill(pullRequest)
                 }
                 if !composerMultitasks.isEmpty {
                     TranscriptComposerMultitaskSection(
@@ -114,9 +113,9 @@ struct TranscriptComposer: View {
         return ChatPullRequest(workspace: workspace)
     }
 
-    private func pullRequestPill(_ pullRequest: ChatPullRequest, sessionID: String) -> some View {
+    private func pullRequestPill(_ pullRequest: ChatPullRequest) -> some View {
         Button {
-            openPullRequest(sessionID: sessionID)
+            openPullRequest(number: pullRequest.number)
         } label: {
             HStack(spacing: Spacing.tight) {
                 GitPullRequestStatusMark(kind: pullRequest.kind, size: 14)
@@ -131,8 +130,7 @@ struct TranscriptComposer: View {
             .contentShape(.rect)
         }
         .buttonStyle(PressDim())
-        .disabled(openingPullRequest)
-        .opacity(openingPullRequest ? 0.65 : 1)
+        .disabled(pullRequestURL(number: pullRequest.number) == nil)
         .accessibilityLabel(pullRequest.accessibilityLabel)
     }
 
@@ -215,24 +213,17 @@ struct TranscriptComposer: View {
         .onDisappear { dictation.discard() }
     }
 
-    private func openPullRequest(sessionID: String) {
-        guard !openingPullRequest else { return }
-        openingPullRequest = true
-        failure = nil
-        Task {
-            do {
-                let result = try await store.client.viewPullRequest(sessionID: sessionID)
-                guard let url = URL(string: result.url) else {
-                    failure = "Your Mac sent an invalid pull request link."
-                    openingPullRequest = false
-                    return
-                }
-                openURL(url)
-            } catch {
-                failure = hostFailureMessage(error)
-            }
-            openingPullRequest = false
-        }
+    private func pullRequestURL(number: Int) -> URL? {
+        guard let workspace = store.snapshot.workspaces.first(where: { $0.id == workspaceID }),
+              let storedURL = workspace.prs?.first(where: { $0.prNumber == number })?.url,
+              let url = URL(string: storedURL),
+              url.scheme == "https" else { return nil }
+        return url
+    }
+
+    private func openPullRequest(number: Int) {
+        guard let url = pullRequestURL(number: number) else { return }
+        openURL(url)
     }
 
     /// Model and effort inside one chip: two decisions, two tap targets, one

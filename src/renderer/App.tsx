@@ -41,7 +41,7 @@ import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
 import { SkeletonPane } from "./components/SkeletonPane.js";
 import { Sidebar } from "./components/Sidebar.js";
-import { BrowserPage } from "./components/BrowserPage.js";
+import { BROWSER_PAGE_OWNER_ID, activateBrowserTab, createBrowserTab, getBrowserTabs } from "./lib/browserPanel.js";
 import { SettingsRail } from "./components/settings/SettingsRail.js";
 import { MAX_COLS, findSessionCell, focusedCell, terminalWorkspaceId } from "./lib/gridState.js";
 import { findSharedCheckoutWorkspace } from "./lib/projectCheckoutWorkspace.js";
@@ -53,6 +53,7 @@ import { useAppGridSelection } from "./hooks/useAppGridSelection.js";
 import { useAppDestinations } from "./hooks/useAppDestinations.js";
 import { useAppMenuCommands } from "./hooks/useAppMenuCommands.js";
 import { useWorkspaceActions } from "./hooks/useWorkspaceActions.js";
+import { NewProjectDialog } from "./components/NewProjectDialog.js";
 import { useProjectActions } from "./hooks/useProjectActions.js";
 import { useDashboardSession } from "./hooks/useDashboardSession.js";
 import { SessionTimelineProvider } from "./hooks/useSessionTimeline.js";
@@ -63,6 +64,7 @@ import {
   SettingsPanel,
   ActivityPanel,
   ArcPage,
+  BrowserPage,
   UsagePanel,
   useLazyOverlayPrefetch
 } from "./hooks/useLazyOverlayPrefetch.js";
@@ -169,10 +171,12 @@ import {
   TURN_CHANGES_EXPANDED_KEY,
   RANDOM_SESSION_ICON_KEY,
   SIDEBAR_ARCS_KEY,
+  SIDEBAR_CLAUDE_ARTIFACTS_KEY,
   SIDEBAR_ARCHIVED_KEY,
   SIDEBAR_PRIORITY_KEY,
   WORKSPACE_CARD_KEY,
   DEVELOPER_TOOLS_KEY,
+  ClaudeArtifactsContext,
   DeveloperToolsContext,
   PrMilestoneCelebrationContext,
   resolveChatVerbosity,
@@ -205,7 +209,7 @@ import {
   type AppNavigationDestination
 } from "./hooks/useAppNavigationHistory.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
-import { mergeDashboardDelta } from "./lib/snapshot.js";
+import { mergeDashboardDelta, mergeProjectSummary } from "./lib/snapshot.js";
 import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
 
 
@@ -287,7 +291,8 @@ export function App(): JSX.Element {
     () => resolveChatVerbosity(chatVerbosity),
     [chatVerbosity]
   );
-  const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, true);
+  const [sidebarClaudeArtifactsVisible, setSidebarClaudeArtifactsVisible] = useBooleanUiPreference(SIDEBAR_CLAUDE_ARTIFACTS_KEY, false);
+  const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, false);
   const [sidebarArchivedVisible, setSidebarArchivedVisible] = useBooleanUiPreference(SIDEBAR_ARCHIVED_KEY, true);
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [windowTranslucent, setWindowTranslucent] = useBooleanUiPreference(WINDOW_TRANSLUCENT_KEY, false);
@@ -823,7 +828,7 @@ export function App(): JSX.Element {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isFullLauncherOpen]);
 
-  const { addProject, removeProject } = useProjectActions({
+  const { addProject, removeProject, newProjectOpen, closeNewProject, createProject } = useProjectActions({
     projects: snapshot.projects,
     selectedProjectId: selectedProject?.id ?? null,
     setSelectedProjectId,
@@ -919,6 +924,18 @@ export function App(): JSX.Element {
     },
     [snapshot.sessions]
   );
+  const onForkWorkspaceRow = useCallback(
+    (workspaceId: string): void => {
+      const session = chatSessionFor(snapshot.sessions, workspaceId);
+      if (!session) {
+        showErrorToast("This chat isn't loaded — try refreshing the dashboard.");
+        return;
+      }
+      void forkSession(session.id);
+    },
+    [forkSession, snapshot.sessions]
+  );
+
   // Session-pane "Open in <IDE>" menu action: same handler, no default pinning.
   const onOpenWorkspaceInIdePane = useCallback(
     (workspaceId: string, ide: IdeId): void => {
@@ -942,6 +959,13 @@ export function App(): JSX.Element {
     openWorkspaceChat,
     setBrowserPageOpen: setIsBrowserPageOpen
   });
+  const onOpenClaudeArtifacts = useCallback((): void => {
+    const url = "https://claude.ai/artifacts";
+    const existing = getBrowserTabs(BROWSER_PAGE_OWNER_ID).find((tab) => tab.url === url);
+    if (existing) activateBrowserTab(existing.id);
+    else createBrowserTab(BROWSER_PAGE_OWNER_ID, url);
+    onOpenBrowserRow();
+  }, [onOpenBrowserRow]);
   useStandaloneBrowserLinks({
     active: standalonePageOpen,
     onOpenInAppBrowser: onOpenBrowserRow
@@ -1409,7 +1433,7 @@ export function App(): JSX.Element {
           if (p.id !== updated.id) return p;
           if (p === updated) return p;
           mutated = true;
-          return updated;
+          return mergeProjectSummary(p, updated);
         });
         return mutated ? { ...s, projects } : s;
       });
@@ -1427,7 +1451,8 @@ export function App(): JSX.Element {
       attachments?: ComposerAttachment[],
       goalCondition?: string,
       background?: boolean,
-      pickedCheckout?: LaunchCheckout
+      pickedCheckout?: LaunchCheckout,
+      projectFolderId?: string
     ): Promise<LaunchedChat> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to launch local agents.");
@@ -1443,34 +1468,39 @@ export function App(): JSX.Element {
       // branch; `current` runs in the project's existing checkout (shared
       // workspace). A grid cell can launch with an explicit project that
       // differs from `selectedProject`, so resolve the base branch by id.
-      const launchingProject =
+      const api = window.argmax;
+      const folderContext = projectFolderId
+        ? await api.projects.getFolderContext({ projectId, projectFolderId })
+        : null;
+      const launchingProject = folderContext?.project ??
         snapshot.projects.find((p) => p.id === projectId) ?? selectedProject ?? null;
+      const launchMode = folderContext && !folderContext.isGit ? "current" : workspaceMode;
       // Worktree creation blocks on the project's setup command (installed
       // once per fresh worktree, before the agent starts). Say so, or a slow
       // `npm install` reads as a hung launch.
-      if (workspaceMode === "worktree" && launchingProject?.settings.setupCommand.trim()) {
+      if (launchMode === "worktree" && launchingProject?.settings.setupCommand.trim()) {
         showInfoToast(
           `Running setup command in the new worktree: ${launchingProject.settings.setupCommand}`
         );
       }
-      const api = window.argmax;
       // A branch picked in the launcher belongs to the project it was picked
       // in. Project check can move the launch to another project, and a pick
       // made there means nothing in this one.
-      const checkout = pickedCheckout?.projectId === projectId ? pickedCheckout : null;
-      const base = { projectId, taskLabel };
+      const checkout = pickedCheckout?.projectId === projectId &&
+        pickedCheckout.projectFolderId === projectFolderId && folderContext?.isGit !== false ? pickedCheckout : null;
+      const base = { projectId, taskLabel, ...(projectFolderId ? { projectFolderId } : {}) };
       // No checkout has the picked branch: the project root takes it now, at
       // launch, unless a worktree is being made from it. Git decides: the branch
       // the root is on is a no-op, and one a worktree gained in the meantime is
       // refused. The cached current branch can lag the disk, so it is not read.
-      if (checkout && !checkout.path && workspaceMode !== "worktree") {
-        handleProjectUpdated(await api.projects.switchBranch(projectId, checkout.branch));
+      if (checkout && !checkout.path && launchMode !== "worktree") {
+        handleProjectUpdated(await api.projects.switchBranch(projectId, checkout.branch, projectFolderId));
       }
       // `git worktree add -b` works even when the base is checked out elsewhere.
       // A branch already checked out is reached by running in that checkout; the
       // host refuses it if it has moved to another branch since the picker listed it.
       const workspace =
-        workspaceMode === "worktree"
+        launchMode === "worktree"
           ? await api.workspaces.createIsolated({
               ...base,
               baseRef: checkout?.branch ?? launchingProject?.currentBranch ?? null
@@ -1890,7 +1920,7 @@ export function App(): JSX.Element {
   );
 
   const loadPaletteFiles = useCallback(
-    async (source: { kind: "workspace" | "project"; id: string }): Promise<string[]> => {
+    async (source: { kind: "workspace" | "project" | "projectFolder"; id: string }): Promise<string[]> => {
       const entries = await listFilesFor(source.kind, source.id);
       return entries.map((entry) => entry.path);
     },
@@ -1971,8 +2001,8 @@ export function App(): JSX.Element {
         onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
         goalEnabled={goalEnabled}
-        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition, projectId, background, checkout) =>
-          launchTask(prompt, model, agentMode, projectId ?? project?.id, workspaceMode, attachments, goalCondition, background, checkout)}
+        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition, projectId, background, checkout, projectFolderId) =>
+          launchTask(prompt, model, agentMode, projectId ?? project?.id, workspaceMode, attachments, goalCondition, background, checkout, projectFolderId)}
         onLaunchSideChat={(prompt, model, agentMode, attachments, goalCondition, background) =>
           launchSideChat(prompt, { model, agentMode, attachments, goalCondition, background })}
         model={launchModel}
@@ -2078,19 +2108,16 @@ export function App(): JSX.Element {
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
     <DeveloperToolsContext.Provider value={developerToolsEnabled}>
+    <ClaudeArtifactsContext.Provider value={sidebarClaudeArtifactsVisible}>
     <SessionTimelineProvider store={timelines}>
     <main
       className="app-shell"
       tabIndex={-1}
       style={{
         gridTemplateColumns:
-          // Settings owns the sidebar column: the rail is fixed-width and is
-          // shown even when the app sidebar is collapsed.
-          settingsRailOpen
-            ? "var(--settings-rail-width) minmax(0, 1fr)"
-            : effectiveSidebarCollapsed
-              ? "minmax(0, 1fr)"
-              : `${sidebarWidth}px minmax(0, 1fr)`,
+          effectiveSidebarCollapsed && !settingsRailOpen
+            ? "minmax(0, 1fr)"
+            : `${sidebarWidth}px minmax(0, 1fr)`,
         ["--sidebar-width" as string]: `${sidebarWidth}px`
       }}
       data-resizing={isResizing ? "true" : undefined}
@@ -2145,6 +2172,7 @@ export function App(): JSX.Element {
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
+      {newProjectOpen ? <NewProjectDialog onClose={closeNewProject} onCreate={createProject} /> : null}
       <NewArcDialog
         open={promoteSource !== null}
         onClose={hidePromoteArcDialog}
@@ -2237,6 +2265,7 @@ export function App(): JSX.Element {
           loadState={loadState}
           onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
           onRenameWorkspace={onRenameWorkspaceRow}
+          onForkWorkspace={onForkWorkspaceRow}
           onRemoveFromPriority={onRemoveFromPriorityRow}
           onAddToPriority={onAddToPriorityRow}
           onSnoozeWorkspace={onSnoozeRow}
@@ -2269,6 +2298,7 @@ export function App(): JSX.Element {
           scheduleSelected={isScheduledTasksOpen}
           hackingSelected={isLedgerOpen}
           onOpenBrowser={secondaryWindow ? undefined : onOpenBrowserRow}
+          onOpenClaudeArtifacts={!secondaryWindow && sidebarClaudeArtifactsVisible ? onOpenClaudeArtifacts : undefined}
           snapshot={snapshot}
           detectedIdes={detectedIdes}
           defaultIde={defaultIde}
@@ -2307,6 +2337,8 @@ export function App(): JSX.Element {
                 onDefaultEffortChange={handleDefaultEffortChange}
                 chatVerbosity={chatVerbosity}
                 onChatVerbosityChange={setChatVerbosity}
+                sidebarClaudeArtifactsVisible={sidebarClaudeArtifactsVisible}
+                onSidebarClaudeArtifactsVisibleChange={setSidebarClaudeArtifactsVisible}
                 sidebarArcsVisible={sidebarArcsVisible}
                 onSidebarArcsVisibleChange={setSidebarArcsVisible}
                 sidebarArchivedVisible={sidebarArchivedVisible}
@@ -2408,7 +2440,9 @@ export function App(): JSX.Element {
               </div>
             </>
           ) : isBrowserPageOpen ? (
-            <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
+            <Suspense fallback={<SkeletonPane label="Loading browser" />}>
+              <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
+            </Suspense>
           ) : isArcPageOpen && selectedArcId ? (
             <Suspense fallback={<SkeletonPane label="Loading arc" />}>
               <ArcPage
@@ -2455,6 +2489,31 @@ export function App(): JSX.Element {
               onLoadSessionEvents={loadSessionEvents}
               onLoadAgentEvents={loadAgentEvents}
               onNewSession={openNewSessionPaneInGrid}
+              sideChat={{
+                launch: (prompt, options) => launchSideChat(prompt, { ...options, background: true }),
+                selectedModel: launchModel,
+                onModelChange: handleLaunchModelChange,
+                autoRouting: autoRoutingEnabled,
+                fastModeEnabled,
+                onFastModeEnabledChange: setFastModeEnabled,
+                sessionsById,
+                workspacesById,
+                pendingMessages: snapshot.pendingMessages,
+                chatFontSize,
+                defaultToolCallsDisplay: toolCallsDisplay,
+                defaultToolCallGroupsExpanded: toolCallGroupsExpanded,
+                thinkingDisplay,
+                onLoadSessionEvents: loadSessionEvents,
+                onCancelQueuedMessage: cancelQueuedMessage,
+                onClearSession: clearSession,
+                onOpenFullChat: openSessionById,
+                onSendQueuedMessageNow: sendQueuedMessageNow,
+                onSendSessionInput: sendSessionInput,
+                onTerminateSession: (sessionId, options) => terminateSession(sessionId, {
+                  ...options,
+                  restoreLauncherOnEarlyStop: false
+                })
+              }}
               onOpenSideChat={async (seedPrompt) => {
                 await launchSideChat(seedPrompt);
               }}
@@ -2497,6 +2556,7 @@ export function App(): JSX.Element {
       </section>
     </main>
     </SessionTimelineProvider>
+    </ClaudeArtifactsContext.Provider>
     </DeveloperToolsContext.Provider>
     </PrMilestoneCelebrationContext.Provider>
   );

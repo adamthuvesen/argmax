@@ -142,6 +142,9 @@ export type ProjectSettings = Bindings.ProjectSettings;
 export type MergeCleanup = Bindings.MergeCleanup;
 
 export type RegisterProjectInput = Bindings.ProjectsRegisterInput;
+export type CreateProjectInput = Bindings.ProjectsCreateInput;
+export type ConfigureProjectInput = Bindings.ProjectsConfigureInput;
+export type ProjectFolder = Bindings.ProjectFolderSummary;
 export type RemoveProjectInput = Bindings.ProjectsRemoveInput;
 export type UpdateProjectSettingsInput = Bindings.ProjectsUpdateSettingsInput;
 export type CreateWorkspaceInput = Bindings.WorkspacesCreateIsolatedInput;
@@ -255,7 +258,6 @@ export type ChangedFileSummary = Bindings.ChangedFileSummary;
 export type WorkspaceDiff = Bindings.WorkspaceDiff;
 export type ReviewIndexFileInput = Bindings.ReviewIndexFileInput;
 export type ReviewIndexHunkInput = Bindings.ReviewIndexHunkInput;
-export type ReviewCommitStagedInput = Bindings.ReviewCommitStagedInput;
 export type Checkpoint = Bindings.Checkpoint;
 export type CheckpointsListInput = Bindings.CheckpointsListInput;
 export type CheckpointsPreviewRewindInput = Bindings.CheckpointsPreviewRewindInput;
@@ -295,16 +297,8 @@ export type WorkspaceContentSearchResult = Bindings.WorkspaceContentSearchResult
 export type WorkspaceFileWriteResult = Bindings.WorkspaceFileWriteResult;
 
 export type RunCheckInput = Bindings.ChecksRunInput;
-export type GitCommitInput = OptionalNullable<Bindings.GitCommitInput, "selectedFiles">;
-export type GitPushInput = Bindings.GitPushInput;
-export type GitCreateBranchInput = Bindings.GitCreateBranchInput;
-export type GitViewOrCreatePrInput = OptionalNullable<Bindings.GitViewOrCreatePrInput, "expectedBranch">;
 
-export type GitCommitResult = Bindings.GitCommitResult;
 export type WorkspaceArchiveResult = Retype<Bindings.WorkspaceArchiveResult, { workspace: WorkspaceSummary }>;
-export type GitPushResult = Bindings.GitPushResult;
-export type GitCreateBranchResult = Bindings.GitCreateBranchResult;
-export type GitViewOrCreatePrResult = Bindings.GitViewOrCreatePrResult;
 export type SkillsListInput = OptionalNullable<Bindings.SkillsListInput, "workspaceId">;
 export type ConnectionsListInput = OptionalNullable<Bindings.ConnectionsListInput, "workspaceId">;
 export type OpenInIdeInput = Bindings.WorkspacesOpenInIdeInput;
@@ -313,6 +307,8 @@ export type SkillSource = Bindings.SkillSource;
 export type SkillSummary = Bindings.SkillSummary;
 export type ConnectionSummary = Bindings.ConnectionSummary;
 export type ProjectSummary = Bindings.ProjectSummary;
+export type ProjectOverview = NonNullable<ProjectSummary["overview"]>;
+export type ProjectOverviewDocument = NonNullable<ProjectOverview["saved"]>;
 export type LinkedRepo = Bindings.LinkedRepo;
 
 /** Untagged on the wire, so the binding has `cancelled: boolean` on both arms. */
@@ -334,7 +330,7 @@ export type ProjectFolderPickResult = WireSubtype<
  * from the sidebar. Repo-coupled UI (review, gh, branch chips, grouping)
  * gates on this field.
  */
-export type WorkspaceKind = "git" | "scratch" | "popup";
+export type WorkspaceKind = "git" | "scratch" | "popup" | "folder";
 
 /** Stable id of the hidden singleton project owning every scratch workspace.
  *  Mirrors `SCRATCH_PROJECT_ID` in src-tauri/src/workspaces/orchestration.rs.
@@ -531,15 +527,24 @@ export interface ArgmaxApi {
   };
   projects: {
     list: () => Promise<ProjectSummary[]>;
+    create: (input: CreateProjectInput) => Promise<ProjectSummary>;
+    configure: (input: ConfigureProjectInput) => Promise<ProjectSummary>;
+    generateOverview: (input: { projectId: string }) => Promise<ProjectSummary>;
+    updateOverview: (input: { projectId: string; text: string; expectedRevision: number }) => Promise<ProjectSummary>;
+    applyOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
+    discardOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
+    getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>;
+    getFolderContext: (input: { projectId: string; projectFolderId?: string }) => Promise<{ project: ProjectSummary; isGit: boolean; folderId: string }>;
+    pickDirectory: () => Promise<{ cancelled: boolean; path: string | null }>;
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
     remove: (input: RemoveProjectInput) => Promise<void>;
     updateSettings: (input: UpdateProjectSettingsInput) => Promise<ProjectSummary>;
-    listBranches: (projectId: string) => Promise<string[]>;
+    listBranches: (projectId: string, projectFolderId?: string) => Promise<string[]>;
     /** The project's usable checkouts and the branch checked out in each. */
-    listCheckouts: (projectId: string) => Promise<ProjectCheckout[]>;
-    refreshBranch: (projectId: string) => Promise<ProjectSummary>;
-    switchBranch: (projectId: string, branch: string) => Promise<ProjectSummary>;
+    listCheckouts: (projectId: string, projectFolderId?: string) => Promise<ProjectCheckout[]>;
+    refreshBranch: (projectId: string, projectFolderId?: string) => Promise<ProjectSummary>;
+    switchBranch: (projectId: string, branch: string, projectFolderId?: string) => Promise<ProjectSummary>;
     /** Project check: whether the prompt reads like work for another project. */
     checkPrompt: (input: ProjectsCheckPromptInput) => Promise<ProjectCheck>;
     /** Sets or clears (`null`) this project's branch template. */
@@ -662,7 +667,6 @@ export interface ArgmaxApi {
     revertHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     stageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
     unstageHunk: (input: ReviewIndexHunkInput) => Promise<void>;
-    commitStaged: (input: ReviewCommitStagedInput) => Promise<GitCommitResult>;
     listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
     /** `contextLines` is only honored for a single-file request; omit it for
      *  git's default context. See ReviewLoadDiffInput. */
@@ -687,7 +691,7 @@ export interface ArgmaxApi {
     readExternalFile: (path: string) => Promise<WorkspaceFilePreview>;
     statExternalFile: (path: string) => Promise<WorkspaceFileStat>;
     grepContent: (input: {
-      kind: "workspace" | "project";
+      kind: "workspace" | "project" | "projectFolder";
       id: string;
       query: string;
     }) => Promise<WorkspaceContentSearchResult>;
@@ -847,12 +851,6 @@ export interface ArgmaxApi {
     setPrimary: (input: Bindings.PrsSetPrimaryInput) => Promise<SessionPrSummary[]>;
     dismiss: (input: Bindings.PrsDismissInput) => Promise<SessionPrSummary[]>;
     cleanup: (input: Bindings.PrsCleanupInput) => Promise<PrCleanupReport>;
-  };
-  git: {
-    commit: (input: GitCommitInput) => Promise<GitCommitResult>;
-    push: (input: GitPushInput) => Promise<GitPushResult>;
-    createBranch: (input: GitCreateBranchInput) => Promise<GitCreateBranchResult>;
-    viewOrCreatePr: (input: GitViewOrCreatePrInput) => Promise<GitViewOrCreatePrResult>;
   };
   terminal: {
     spawn: (input: TerminalSpawnInput) => Promise<{ terminalId: string }>;

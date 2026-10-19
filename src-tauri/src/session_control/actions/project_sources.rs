@@ -26,7 +26,9 @@ use crate::{
     persistence::{
         database::Database,
         events::{persist_timeline_event, PersistTimelineEventInput, TimelineEvent},
-        linked_repos::{find_linked_repo_by_name, list_enabled_linked_repos, LinkedRepo},
+        linked_repos::{
+            find_workspace_linked_repo_by_name, list_workspace_linked_repos, LinkedRepo,
+        },
         project_sources::{
             get_source, insert_source, list_sources, ProjectSource, ProjectSourceAddedBy,
             ProjectSourceKind, SourceInput,
@@ -50,7 +52,13 @@ pub(super) fn list_project_sources(
 ) -> Result<SessionControlResponse, SessionControlError> {
     let target = resolve_session_workspace(&database, &parent.session_id, None)?;
     if let Some(name) = action.linked_repo.as_deref() {
-        return list_linked_directory(&action, name, &target.project.id, &database);
+        return list_linked_directory(
+            &action,
+            name,
+            &target.project.id,
+            &target.workspace.id,
+            &database,
+        );
     }
     if action.path.is_some() {
         return Err(orphan_path_error());
@@ -59,7 +67,7 @@ pub(super) fn list_project_sources(
         let connection = database.read_connection();
         (
             list_sources(&connection, &target.project.id).map_err(argmax_protocol_error)?,
-            list_enabled_linked_repos(&connection, &target.project.id)
+            list_workspace_linked_repos(&connection, &target.workspace.id)
                 .map_err(argmax_protocol_error)?,
         )
     };
@@ -108,10 +116,12 @@ fn list_linked_directory(
     action: &SourcesListAction,
     name: &str,
     project_id: &str,
+    workspace_id: &str,
     database: &Arc<Database>,
 ) -> Result<SessionControlResponse, SessionControlError> {
-    let repo = find_linked_repo_by_name(&database.read_connection(), project_id, name.trim())
-        .map_err(argmax_protocol_error)?;
+    let repo =
+        find_workspace_linked_repo_by_name(&database.read_connection(), workspace_id, name.trim())
+            .map_err(argmax_protocol_error)?;
     let path = action.path.as_deref().unwrap_or("");
     let offset = action.offset.unwrap_or(0) as usize;
     let listing = linked_roots::list_directory(
@@ -258,7 +268,6 @@ pub(super) async fn read_project_source(
                 name,
                 action.path.as_deref(),
                 max_chars,
-                &target.project.id,
                 &parent.session_id,
                 &database,
                 &workspaces,
@@ -375,7 +384,6 @@ async fn read_linked_file(
     name: &str,
     path: Option<&str>,
     max_chars: usize,
-    project_id: &str,
     session_id: &str,
     database: &Arc<Database>,
     workspaces: &Arc<WorkspaceService>,
@@ -386,8 +394,19 @@ async fn read_linked_file(
             "Pass `path`, the file to read inside the linked repository.",
         )
     })?;
-    let repo = find_linked_repo_by_name(&database.read_connection(), project_id, name.trim())
-        .map_err(argmax_protocol_error)?;
+    let repo = {
+        let connection = database.read_connection();
+        let workspace_id: String = connection
+            .query_row(
+                "SELECT workspace_id FROM sessions WHERE id = ?",
+                [session_id],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error)
+            .map_err(argmax_protocol_error)?;
+        find_workspace_linked_repo_by_name(&connection, &workspace_id, name.trim())
+            .map_err(argmax_protocol_error)?
+    };
     let read = linked_roots::read_text(&repo, path, max_chars)
         .await
         .map_err(argmax_protocol_error)?;
@@ -1119,6 +1138,97 @@ mod tests {
         let mut sorted = seen.clone();
         sorted.sort();
         assert_eq!(seen, sorted, "pages are contiguous and in order");
+    }
+
+    #[tokio::test]
+    async fn source_tools_follow_the_chats_folder_after_primary_changes() {
+        use crate::persistence::project_folders::{
+            configure_project_folders, PersistProjectFolderInput,
+        };
+        let (original, database, parent, workspaces) = fixture();
+        let next = tempfile::tempdir().unwrap();
+        std::fs::write(next.path().join("README.md"), "new primary context").unwrap();
+        let next_path = next
+            .path()
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let folders = [
+            original.path().to_string_lossy().into_owned(),
+            next_path.clone(),
+        ]
+        .into_iter()
+        .map(|root_path| PersistProjectFolderInput {
+            root_path,
+            current_branch: "main".to_owned(),
+            default_branch: Some("main".to_owned()),
+            remote: None,
+            settings: ProjectSettings {
+                worktree_location: "/tmp/test-worktrees".to_owned(),
+                setup_command: String::new(),
+                check_commands: Vec::new(),
+                merge_cleanup: Default::default(),
+            },
+        })
+        .collect::<Vec<_>>();
+        configure_project_folders(
+            &database.connection(),
+            "p1",
+            "Renamed",
+            &folders,
+            &next_path,
+        )
+        .unwrap();
+        let response = list_project_sources(
+            SourcesListAction {
+                offset: None,
+                limit: None,
+                linked_repo: None,
+                path: None,
+            },
+            parent.clone(),
+            Arc::clone(&database),
+        )
+        .unwrap();
+        let SessionControlResult::SourcesListed(list) = response.result else {
+            panic!("expected listing");
+        };
+        assert_eq!(list.linked_repos.len(), 1);
+        assert_eq!(list.linked_repos[0].root, next_path);
+        let read = read_project_source(
+            SourcesReadAction {
+                id: None,
+                linked_repo: Some(list.linked_repos[0].name.clone()),
+                path: Some("README.md".to_owned()),
+                max_chars: None,
+            },
+            parent.clone(),
+            Arc::clone(&database),
+            Arc::clone(&workspaces),
+            None,
+        )
+        .await
+        .unwrap();
+        let SessionControlResult::SourceRead(read) = read.result else {
+            panic!("expected read");
+        };
+        assert_eq!(read.content, "new primary context");
+        let error = read_project_source(
+            SourcesReadAction {
+                id: None,
+                linked_repo: Some("primary".to_owned()),
+                path: Some("README.md".to_owned()),
+                max_chars: None,
+            },
+            parent,
+            database,
+            workspaces,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.code, "LINKED_REPO_WORKING_FOLDER");
     }
 
     #[tokio::test]

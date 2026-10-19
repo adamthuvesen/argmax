@@ -73,9 +73,84 @@
   }
 }
 
+.fork-merge-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 4vh 16px;
+  background: rgba(20, 24, 32, 0.32);
+  z-index: 130;
+}
+
 .fork-merge-dialog {
   width: min(640px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2_5);
+  background: var(--panel);
+  border-radius: var(--radius-2xl);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-popover);
+  padding: 20px 24px 18px;
 }
+
+.fork-merge-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fork-merge-dialog-header h2 {
+  margin: 0;
+  font-size: var(--text-md-plus);
+}
+
+.fork-merge-dialog-header button {
+  background: transparent;
+  border: 0;
+  font-size: var(--text-xl);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.fork-merge-dialog-empty {
+  margin: 0;
+  padding: var(--space-3) 0;
+  color: var(--muted-strong);
+  font-size: var(--text-base);
+  text-align: center;
+}
+
+.fork-merge-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.fork-merge-dialog-actions button {
+  height: 30px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.fork-merge-dialog-actions .fork-merge-dialog-submit {
+  background: var(--ink, #1f2937);
+  color: var(--bubble-on-ink);
+  border-color: var(--ink, #1f2937);
+}
+
+.fork-merge-dialog-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 
 .fork-merge-summary,
 .fork-merge-note {

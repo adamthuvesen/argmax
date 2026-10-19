@@ -7,7 +7,8 @@ import { searchChatTitles, type ChatDirectoryEntry } from "../state/chatDirector
 
 export type FileAutocompleteSource =
   | { kind: "workspace"; id: string }
-  | { kind: "project"; id: string };
+  | { kind: "project"; id: string }
+  | { kind: "projectFolder"; id: string };
 
 /**
  * One row of the `@` menu: a file or folder to mention, or a chat to attach as

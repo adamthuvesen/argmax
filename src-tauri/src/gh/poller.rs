@@ -590,10 +590,13 @@ fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions>
         .into_iter()
         .filter(|id| !active.contains(id))
         .collect();
-    let all = active
-        .into_iter()
-        .chain(open_pr_only.iter().cloned())
-        .collect();
+    let mut all = Vec::new();
+    for session_id in active.into_iter().chain(open_pr_only.iter().cloned()) {
+        let git_workspace = conn.query_row("SELECT EXISTS (SELECT 1 FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE s.id = ? AND w.kind = 'git')", [&session_id], |row| row.get::<_, bool>(0)).map_err(crate::persistence::sqlite_error)?;
+        if git_workspace {
+            all.push(session_id);
+        }
+    }
     Ok(PollableSessions {
         all,
         open_pr_only,
@@ -1413,11 +1416,17 @@ mod tests {
     /// Archiving on merge is opt-in per project; the fixture starts opted out.
     fn enable_archive_on_merge(database: &Arc<Database>) {
         let conn = database.connection();
-        conn.execute(
-            "UPDATE projects SET merge_cleanup = 'archive' WHERE id = 'p1'",
-            [],
-        )
-        .expect("enable archive on merge");
+        let mut settings = crate::persistence::projects::require_project(&conn, "p1")
+            .expect("project settings")
+            .settings;
+        settings.merge_cleanup = MergeCleanup::Archive;
+        crate::persistence::projects::update_project_settings(&conn, "p1", &settings)
+            .expect("enable archive on merge");
+        assert_eq!(
+            crate::persistence::projects::workspace_merge_cleanup(&conn, "w1")
+                .expect("workspace merge cleanup"),
+            MergeCleanup::Archive,
+        );
     }
 
     fn record_explicit_pr(
@@ -4429,6 +4438,11 @@ Apply the merge gate before merging.\n{PR_URL}"
             [repo.main.display().to_string()],
         )
         .expect("project path");
+        conn.execute(
+            "UPDATE project_folders SET root_path = ?1 WHERE project_id = 'p1' AND is_primary = 1",
+            [repo.main.display().to_string()],
+        )
+        .expect("project folder path");
         conn.execute(
             "UPDATE workspaces SET path = ?1, branch = 'fix-parser' WHERE id = 'w1'",
             [repo.chat.display().to_string()],

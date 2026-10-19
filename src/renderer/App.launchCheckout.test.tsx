@@ -69,6 +69,7 @@ describe("launching into the branch picked in the launcher", () => {
     expect(createAlongsideWorkspace).toHaveBeenCalledWith({
       projectId: "project-1",
       taskLabel: expect.any(String) as string,
+      projectFolderId: "project-1:primary",
       path: LINKED,
       branch: "feature"
     });
@@ -106,7 +107,7 @@ describe("launching into the branch picked in the launcher", () => {
     await start();
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledOnce());
-    expect(switchBranch).toHaveBeenCalledWith("project-1", "free");
+    expect(switchBranch).toHaveBeenCalledWith("project-1", "free", "project-1:primary");
     expect(switchBranch.mock.invocationCallOrder[0]).toBeLessThan(
       createCurrentWorkspace.mock.invocationCallOrder[0] ?? Infinity
     );
@@ -123,7 +124,7 @@ describe("launching into the branch picked in the launcher", () => {
     await start();
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledOnce());
-    expect(switchBranch).toHaveBeenCalledWith("project-1", "main");
+    expect(switchBranch).toHaveBeenCalledWith("project-1", "main", "project-1:primary");
     expect(createAlongsideWorkspace).not.toHaveBeenCalled();
   });
 

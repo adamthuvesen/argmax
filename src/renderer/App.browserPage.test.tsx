@@ -1,10 +1,10 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import { BROWSER_PAGE_OPEN_KEY } from "./lib/uiPreferences.js";
-import { setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
+import { BROWSER_PAGE_OPEN_KEY, SIDEBAR_CLAUDE_ARTIFACTS_KEY } from "./lib/uiPreferences.js";
+import { closeSettings, openSettings, setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
 import type { BrowserAgentOpenEvent } from "../shared/types.js";
-import { resetBrowserTabsForTests } from "./lib/browserPanel.js";
+import { BROWSER_PAGE_OWNER_ID, getBrowserTabs, resetBrowserTabsForTests } from "./lib/browserPanel.js";
 
 async function renderApp(): Promise<void> {
   render(<App />);
@@ -19,6 +19,69 @@ describe("App browser page", () => {
   beforeEach(() => {
     resetBrowserTabsForTests();
     setupAppTestMocks();
+  });
+
+  it("keeps Claude artifacts optional and persists the sidebar shortcut setting", async () => {
+    await renderApp();
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
+    await openSettings("Appearance");
+    const toggle = await screen.findByRole("checkbox", { name: "Claude artifacts" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(window.localStorage.getItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY)).toBe("true");
+    await closeSettings();
+    expect(screen.getByRole("button", { name: "Artifacts" })).toBeInTheDocument();
+    cleanup();
+    await renderApp();
+    expect(screen.getByRole("button", { name: "Artifacts" })).toBeInTheDocument();
+    await openSettings("Appearance");
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Claude artifacts" }));
+    await closeSettings();
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY)).toBe("false");
+  });
+
+  it("opens Claude artifacts in the built-in browser and reuses the catalog tab", async () => {
+    window.localStorage.setItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY, "true");
+    const open = vi.spyOn(window.argmax!.browser, "open");
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    expect(await screen.findByRole("region", { name: "Browser" })).toBeInTheDocument();
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.objectContaining({ url: "https://claude.ai/artifacts" })));
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).filter((tab) => tab.url === "https://claude.ai/artifacts")).toHaveLength(1);
+  });
+
+  it("swaps to the artifacts page while Browser is open, and leaves no page painted over a chat", async () => {
+    window.localStorage.setItem(SIDEBAR_CLAUDE_ARTIFACTS_KEY, "true");
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 40, 800, 600));
+    // Native visibility per tab: open shows a page, set-bounds shows or hides it.
+    const shown = new Map<string, boolean>();
+    const api = window.argmax!.browser;
+    const open = api.open.bind(api);
+    vi.spyOn(api, "open").mockImplementation(async (input) => {
+      shown.set(input.tabId, true);
+      return open(input);
+    });
+    const setBounds = api.setBounds.bind(api);
+    vi.spyOn(api, "setBounds").mockImplementation(async (input) => {
+      shown.set(input.tabId, input.visible);
+      return setBounds(input);
+    });
+    const visibleUrls = (): string[] => [...shown]
+      .filter(([, visible]) => visible)
+      .map(([tabId]) => getBrowserTabs(BROWSER_PAGE_OWNER_ID).find((tab) => tab.id === tabId)?.url ?? tabId);
+    await renderApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "Browser" }));
+    await screen.findByRole("region", { name: "Browser" });
+    await waitFor(() => expect(visibleUrls()).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    await waitFor(() => expect(visibleUrls()).toEqual(["https://claude.ai/artifacts"]));
+
+    fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
+    await screen.findByRole("region", { name: "Conversation" });
+    await waitFor(() => expect(visibleUrls()).toEqual([]));
   });
 
   it("opens from the rail and keeps the session sidebar", async () => {
@@ -102,9 +165,11 @@ describe("App browser page", () => {
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     const review = await screen.findByRole("complementary", { name: "Review panel" });
-    fireEvent.click(within(review).getByRole("tab", { name: "Browser" }));
+    fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
+    fireEvent.change(within(review).getByRole("textbox", { name: "Search or enter a URL" }), { target: { value: "https://example.com" } });
+    fireEvent.click(within(review).getByRole("button", { name: "Open address" }));
 
-    expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
+    expect(within(review).getByRole("tab", { name: /example\.com/ })).toHaveAttribute("aria-selected", "true");
     expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Browser" })).not.toBeInTheDocument();
   });
@@ -126,7 +191,8 @@ describe("App browser page", () => {
     expect(within(review).getByRole("tab", { name: "Browser" })).toHaveAttribute("aria-selected", "true");
     expect(within(review).getByRole("group", { name: "Browser" })).toBeInTheDocument();
 
-    fireEvent.click(within(review).getByRole("tab", { name: "Files" }));
+    fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
+    fireEvent.click(within(review).getByRole("button", { name: "Files" }));
     act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-2", url: "https://example.com/next" }));
     expect(within(review).getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
 

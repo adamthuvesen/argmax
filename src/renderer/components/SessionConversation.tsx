@@ -221,7 +221,6 @@ export function SessionConversation({
   defaultIde = null,
   detectedIdes = [],
   onOpenInIde,
-  onOpenCommitDialog,
   onSendSessionInput,
   onCancelQueuedMessage,
   onSendQueuedMessageNow,
@@ -320,7 +319,6 @@ export function SessionConversation({
   detectedIdes?: DetectedIde[];
   /** Opens this pane's workspace in the given IDE (session actions menu). */
   onOpenInIde?: (ide: IdeId) => void;
-  onOpenCommitDialog?: () => void;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -1518,7 +1516,6 @@ export function SessionConversation({
               isWorkspaceCardEnabled={workspaceCardEnabled}
               onBrowseFiles={review.openPanelInFilesMode}
               onNewSession={onNewSession ? () => onNewSession() : undefined}
-              onOpenCommitDialog={onOpenCommitDialog}
               onToggleLog={onToggleLog}
               onToggleWorkspaceCard={handleToggleWorkspaceCard}
               onOpenLaunchingChat={
@@ -1586,9 +1583,18 @@ export function SessionConversation({
             isTerminalOpen={isTerminalOpen ?? false}
             onBrowseFiles={review.openPanelInFilesMode}
             onHide={() => onHideWorkspaceCard?.()}
-            onOpenChanges={review.toggleChangesPanel}
+            onOpenChanges={() => {
+              review.projectFolderChanges?.clearSelection();
+              if (review.projectFolderChanges?.selection) review.openChangesPanel();
+              else review.toggleChangesPanel();
+            }}
+            workingFolderName={repoNameFromPath(review.projectFolderChanges?.workingFolder?.rootPath) ?? review.projectFolderChanges?.workingFolder?.name}
+            projectFolderChanges={review.projectFolderChanges?.groups}
+            onOpenFolderChanges={(folderId, filePath) => {
+              review.projectFolderChanges?.selectFile(folderId, filePath);
+              review.openChangesPanel();
+            }}
             onOpenAgents={handleOpenAgents}
-            onOpenCommitDialog={onOpenCommitDialog}
             onToggleTerminal={() => onToggleTerminal?.()}
             session={session}
             setStatus={setStatus}
@@ -1704,7 +1710,7 @@ export function SessionConversation({
         {session ? <ForkBar sessionId={session.id} onOpenSession={onOpenSession} /> : null}
         <ChangedFilesCard
           workspaceId={workspace?.id}
-          checkCommands={project?.settings.checkCommands ?? []}
+          checkCommands={workspace?.checkCommands ?? project?.settings.checkCommands ?? []}
           checks={checks ?? []}
           onRunCheck={onRunCheck}
         />

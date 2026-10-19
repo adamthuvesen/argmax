@@ -92,6 +92,10 @@ export let openSessionWindow: AppTestMockFn<ArgmaxApi["windows"]["openSession"]>
 let approvalsPending: AppTestMockFn<ArgmaxApi["approvals"]["pending"]>;
 let approvalsResolve: AppTestMockFn<ArgmaxApi["approvals"]["resolve"]>;
 export let questionsResolve: AppTestMockFn<ArgmaxApi["questions"]["resolve"]>;
+export let createProject: AppTestMockFn<ArgmaxApi["projects"]["create"]>;
+export let configureProject: AppTestMockFn<ArgmaxApi["projects"]["configure"]>;
+export let getProjectFolders: AppTestMockFn<ArgmaxApi["projects"]["getFolders"]>;
+export let pickProjectDirectory: AppTestMockFn<ArgmaxApi["projects"]["pickDirectory"]>;
 export let pickProjectFolder: AppTestMockFn<ArgmaxApi["projects"]["pickFolder"]>;
 export let listBranches: AppTestMockFn<ArgmaxApi["projects"]["listBranches"]>;
 export let listCheckouts: AppTestMockFn<ArgmaxApi["projects"]["listCheckouts"]>;
@@ -261,6 +265,18 @@ export function setupAppTestMocks(): void {
   questionsResolve = vi.fn<ArgmaxApi["questions"]["resolve"]>().mockImplementation(({ sessionId, requestId, dismissed }) =>
     Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" })
   );
+  createProject = vi.fn<ArgmaxApi["projects"]["create"]>().mockImplementation(({ name, primaryPath }) =>
+    Promise.resolve({ ...primaryProject(), name, repoPath: primaryPath })
+  );
+  configureProject = vi.fn<ArgmaxApi["projects"]["configure"]>().mockImplementation(({ projectId, name, primaryPath }) =>
+    Promise.resolve({ ...(snapshot.projects.find((project) => project.id === projectId) ?? primaryProject()), name, repoPath: primaryPath })
+  );
+  getProjectFolders = vi.fn<ArgmaxApi["projects"]["getFolders"]>().mockImplementation(({ projectId }) => {
+    const project = snapshot.projects.find((candidate) => candidate.id === projectId) ?? primaryProject();
+    return Promise.resolve([{ id: `${projectId}:primary`, projectId, name: project.name, rootPath: project.repoPath,
+      isPrimary: true, enabled: true, summary: null }]);
+  });
+  pickProjectDirectory = vi.fn<ArgmaxApi["projects"]["pickDirectory"]>().mockResolvedValue({ cancelled: false, path: primaryProject().repoPath });
   pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
     cancelled: false,
     project: primaryProject()
@@ -480,6 +496,18 @@ export function setupAppTestMocks(): void {
     },
     projects: {
       list: () => Promise.resolve(snapshot.projects),
+      create: createProject,
+      configure: configureProject,
+      generateOverview: () => Promise.resolve(primaryProject()),
+      updateOverview: () => Promise.resolve(primaryProject()),
+      applyOverviewDraft: () => Promise.resolve(primaryProject()),
+      discardOverviewDraft: () => Promise.resolve(primaryProject()),
+      getFolders: getProjectFolders,
+      getFolderContext: vi.fn().mockImplementation(({ projectId, projectFolderId }: { projectId: string; projectFolderId?: string }) => Promise.resolve({
+        project: snapshot.projects.find((project) => project.id === projectId) ?? primaryProject(),
+        isGit: true, folderId: projectFolderId ?? `${projectId}:primary`
+      })),
+      pickDirectory: pickProjectDirectory,
       pickFolder: pickProjectFolder,
       register: () => Promise.resolve(primaryProject()),
       remove: () => Promise.resolve(),
@@ -618,12 +646,11 @@ export function setupAppTestMocks(): void {
       stageHunk: () => Promise.resolve(),
       unstageHunk: () => Promise.resolve(),
       revertHunk: () => Promise.resolve(),
-      commitStaged: () => Promise.resolve({ commitSha: "test", branch: "main", indexCleanupWarning: null, postCommitWarning: null })
     },
     workspace: {
-      listFiles: (target) => target.kind === "project" ? listProjectFiles(target) : listWorkspaceFiles(target),
-      readFile: (target, path) => target.kind === "project" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
-      writeFile: (target, path, content, mtime) => target.kind === "project"
+      listFiles: (target) => target.kind !== "workspace" ? listProjectFiles(target) : listWorkspaceFiles(target),
+      readFile: (target, path) => target.kind !== "workspace" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
+      writeFile: (target, path, content, mtime) => target.kind !== "workspace"
         ? writeProjectFile(target, path, content, mtime)
         : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
@@ -762,12 +789,6 @@ export function setupAppTestMocks(): void {
       setPrimary: () => Promise.resolve([]),
       dismiss: () => Promise.resolve([]),
       cleanup: () => Promise.reject(new Error("prs.cleanup is not stubbed"))
-    },
-    git: {
-      commit: () => Promise.resolve({ commitSha: "deadbeef", branch: "main" }),
-      push: () => Promise.resolve({ branch: "main", upstreamSet: false }),
-      createBranch: () => Promise.resolve({ branch: "feature/x" }),
-      viewOrCreatePr: () => Promise.resolve({ action: "opened", url: "https://x", prNumber: 1 })
     },
     terminal: {
       spawn: () => Promise.resolve({ terminalId: "test-terminal" }),

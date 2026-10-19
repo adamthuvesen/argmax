@@ -4,6 +4,10 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 
 ## Migrations
 
+Migration v75 adds the `folder` workspace kind for chats in plain project folders.
+It rebuilds `workspaces` with explicit column copies and preserves child foreign keys and indexes.
+These workspaces share user-owned directories. They skip Git setup, watchers, status, and directory deletion on archive.
+
 [migrations.rs](../src-tauri/src/persistence/migrations.rs) runs append-only schema migrations with SHA-256 checksum verification on startup. Applied migrations must never be edited.
 
 - FTS5 sidecar tables index timeline events and learnings.
@@ -51,6 +55,12 @@ Rust manages SQLite storage under [src-tauri/src/persistence](../src-tauri/src/p
 - `provider_bindings`, `provider_binding_turns`, `session_forks` and `fork_merges` (v65) back native continuity. A binding is one native conversation a session holds with a provider (`active`, `parked` or `invalid`, with its working directory, config hash, the newest event it had seen when the session left it, and `pending_since_event_id`, the messages still owed after a rejoin until the provider shows output); the turn table maps a user message to the provider's own turn id. `session_forks` is the fork lineage (source, child, boundary message, last copied event, workspace mode, native plan). Its source reference is `ON DELETE SET NULL`: the child keeps its history when the source chat is deleted. `fork_merges` is the idempotent merge ledger, unique on `(fork, through event)`. All cursors are event ids, not rowids, so `VACUUM` cannot move a boundary. Everything cascades with its session. The migration backfills an `active` binding for every session that already held a native id, except a fork child still waiting to fork (`resume_fork = 1`), whose id is its source's. See [providers.md](providers.md#native-continuity-and-forks).
 
 Reads take pooled `SQLITE_OPEN_READ_ONLY` connections through `Database::read_connection`, not the writer `Mutex<Connection>`, so a read never queues behind a write. A write attempted on the read path fails loudly; that is the point. See [performance.md](performance.md).
+
+Project overviews (v74) use `projects.overview_json` for saved text, refresh drafts, sources, status, and revision.
+`overview_generation_json` stores the active generation token and folder configuration.
+Completion must match both before saving a result. Edits require the current revision.
+Database startup marks interrupted generations failed and clears their tokens. It does not restart provider calls.
+See [workspaces.md](workspaces.md#project-overview) for the user flow.
 
 `routines` (v19) stores scheduled tasks: a prompt plus schedule that the
 in-app scheduler launches as normal top-level sessions. `created_by` (v50)
@@ -165,6 +175,17 @@ columns, preserving IDs, pinned decisions, the v60 `signals_json` values, the
 next route ID, and the session index.
 
 ## Repositories
+
+Migration v73 adds `project_folders` and `workspaces.project_folder_id`.
+It preserves project ids and converts each original repository into its project's primary folder.
+Linked folders retain their ids, summaries, and enabled state.
+Folder roots are unique within each project, so separate projects can include the same directory.
+Removed folders retain their rows for existing workspaces.
+Primary changes update the project's compatibility projection without moving existing chats.
+Repository settings and lifecycle operations resolve through each workspace's recorded folder.
+
+`projects.pr_repository_folder_id` retains the original repository used by the existing PR cache.
+This preview rejects PR tracking and cleanup for workspaces in other project folders.
 
 `data_migrations` (v46) records one-time upgrades that depend on local paths.
 The external worktree location upgrade updates only legacy-default project

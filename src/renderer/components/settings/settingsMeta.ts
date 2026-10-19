@@ -93,6 +93,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Show arcs",
           "Show archived chats",
           "Priority section in sidebar",
+          "Claude artifacts",
           "Translucent window",
           "Window translucency",
           "Workspace card in agent view",

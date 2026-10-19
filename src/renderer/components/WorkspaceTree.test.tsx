@@ -56,7 +56,7 @@ describe("WorkspaceTree virtualization", () => {
     render(<WorkspaceTree state={makeState(entries)} height={600} />);
 
     const rendered = screen.getAllByRole("treeitem");
-    // 600px / 24px per row = 25 visible + 16 overscan = ~41 max.
+    // 600px / 26px per row = 23 visible + 16 overscan = ~39 max.
     // Allow comfortable headroom but assert we're nowhere near 10k.
     expect(rendered.length).toBeLessThan(100);
     expect(rendered.length).toBeGreaterThan(10);
@@ -212,8 +212,8 @@ describe("WorkspaceTree virtualization", () => {
     rerender(<WorkspaceTree state={makeState(entries)} />);
 
     expect(observed).toHaveLength(1);
-    // 1200px / 24px per row = 50 rows plus overscan. The 400px seed would cap
-    // this at 25, which is what left files cut off below the fold.
+    // 1200px / 26px per row = 46 rows plus overscan. The 400px seed would cap
+    // this at 23, which is what left files cut off below the fold.
     expect(screen.getAllByRole("treeitem").length).toBeGreaterThan(40);
   });
 
@@ -225,7 +225,7 @@ describe("WorkspaceTree virtualization", () => {
     ];
     const state = { ...makeState(entries), selectedPath: "AGENTS.md" };
 
-    render(<WorkspaceTree state={state} height={72} />);
+    render(<WorkspaceTree state={state} height={78} />);
 
     const scroller = screen.getByRole("tree");
     expect(scroller.scrollTop).toBe(0);

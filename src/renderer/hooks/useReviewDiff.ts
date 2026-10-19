@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangedFileSummary, ReviewComparison, WorkspaceDiff } from "../../shared/types.js";
 import type { ReviewIpcDispatch } from "../lib/reviewIpc.js";
 import type { ReviewSourceKind } from "../lib/reviewIpc.js";
 import { errorMessage } from "../../shared/error.js";
 import { nextDiffContext } from "../lib/diff.js";
-import { filterToLastTurn } from "../lib/lastTurnFiles.js";
 import type { AsyncState } from "./useReviewState.js";
 
 interface UseReviewDiffResult {
@@ -20,11 +19,6 @@ interface UseReviewDiffResult {
   resetForSourceChange: () => void;
   /** Ask git for more unchanged context around the open file's hunks. */
   expandDiffContext: () => void;
-  updateFileIndex: (filePath: string, revision: string, stage: boolean) => Promise<void>;
-  revertFile: (filePath: string, revision: string) => Promise<void>;
-  revertHunk: (filePath: string, revision: string, hunkIndex: number) => Promise<void>;
-  commitStaged: (message: string) => Promise<void>;
-  updateHunkIndex: (filePath: string, revision: string, hunkIndex: number, stage: boolean) => Promise<void>;
 }
 
 export function useReviewDiff(args: {
@@ -36,7 +30,6 @@ export function useReviewDiff(args: {
   enabled?: boolean;
   preloadFirstFile?: boolean;
   autoSelectFirstFile: boolean;
-  lastTurnPaths?: readonly string[] | null;
   onOpenChanges: () => void;
 }): UseReviewDiffResult {
   const {
@@ -48,7 +41,6 @@ export function useReviewDiff(args: {
     enabled = true,
     preloadFirstFile = false,
     autoSelectFirstFile,
-    lastTurnPaths = null,
     onOpenChanges
   } = args;
 
@@ -164,21 +156,16 @@ export function useReviewDiff(args: {
     // is reused above, so a successful preload never causes a second Git read.
   }, [enabled, autoSelectFirstFile, sourceId, sourceKind, changedFilesKey, comparison, dispatch, actionRevision]);
 
-  const visibleFiles = useMemo(
-    () => lastTurnPaths === null ? files : filterToLastTurn(files, lastTurnPaths),
-    [files, lastTurnPaths]
-  );
-
   useEffect(() => {
     setSelectedFilePath((currentPath) => {
-      if (currentPath && visibleFiles.some((file) => file.path === currentPath)) {
+      if (currentPath && files.some((file) => file.path === currentPath)) {
         return currentPath;
       }
-      return autoSelectFirstFile ? visibleFiles[0]?.path ?? null : null;
+      return autoSelectFirstFile ? files[0]?.path ?? null : null;
     });
-  }, [autoSelectFirstFile, visibleFiles]);
+  }, [autoSelectFirstFile, files]);
 
-  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? visibleFiles[0]?.path ?? null : null);
+  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? files[0]?.path ?? null : null);
   useEffect(() => {
     const token = ++diffLoadToken.current;
     if (!sourceId || !sourceKind || !requestedFilePath || !dispatch || !window.argmax) {
@@ -277,49 +264,8 @@ export function useReviewDiff(args: {
     });
   }, [selectedFilePath]);
 
-  const updateFileIndex = useCallback(async (filePath: string, revision: string, stage: boolean): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await (stage ? dispatch.stageFile(filePath, revision) : dispatch.unstageFile(filePath, revision)); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch]);
-
-  const updateHunkIndex = useCallback(async (
-    filePath: string,
-    revision: string,
-    hunkIndex: number,
-    stage: boolean
-  ): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await (stage
-      ? dispatch.stageHunk(filePath, revision, hunkIndex, contextLines)
-      : dispatch.unstageHunk(filePath, revision, hunkIndex, contextLines)); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch, contextLines]);
-
-  const revertFile = useCallback(async (filePath: string, revision: string): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await dispatch.revertFile(filePath, revision); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch]);
-
-  const revertHunk = useCallback(async (
-    filePath: string,
-    revision: string,
-    hunkIndex: number
-  ): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    try { await dispatch.revertHunk(filePath, revision, hunkIndex, contextLines); }
-    finally { setActionRevision((value) => value + 1); }
-  }, [dispatch, contextLines]);
-
-  const commitStaged = useCallback(async (message: string): Promise<void> => {
-    if (!dispatch) throw new Error("Review actions are unavailable.");
-    await dispatch.commitStaged(message);
-    setActionRevision((value) => value + 1);
-  }, [dispatch]);
-
   return {
-    files: visibleFiles,
+    files,
     filesState,
     filesError,
     selectedFilePath,
@@ -329,11 +275,6 @@ export function useReviewDiff(args: {
     openFile,
     refreshChanges,
     resetForSourceChange,
-    expandDiffContext,
-    updateFileIndex,
-    revertFile,
-    revertHunk,
-    commitStaged,
-    updateHunkIndex
+    expandDiffContext
   };
 }

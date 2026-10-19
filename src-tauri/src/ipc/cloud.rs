@@ -12,7 +12,6 @@ use crate::{
     error::{ArgmaxError, ArgmaxResult},
     persistence::{
         events::persist_timeline_event,
-        projects::require_project,
         sessions::{find_session_by_id, update_session_last_activity},
         time::now_iso,
         workspaces::find_workspace_by_id,
@@ -36,6 +35,8 @@ pub struct CloudPrepareInput {
     pub session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
     /// What the user typed after `/cloud`. Only a chat source takes one: it
     /// becomes the brief's closing instruction after the chat's transcript.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -63,6 +64,8 @@ pub struct CloudLaunchInput {
     pub session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
     pub repository: String,
     pub branch: String,
     pub commit: String,
@@ -202,7 +205,8 @@ pub(crate) async fn cloud_prepare_impl(
             "Only a chat's cloud task takes a separate instruction. A project's task is its brief.",
         ));
     }
-    let checkout = cloud_checkout(state, source, input.instruction).await?;
+    let checkout =
+        cloud_checkout(state, source, input.instruction, input.project_folder_id).await?;
     let snapshot = validate_checkout(checkout.path).await?;
     let environments = prepare_provider(state, provider, &snapshot.repository).await?;
     let (environment_id, environment_description) = selected_environment(&environments);
@@ -243,7 +247,8 @@ pub(crate) async fn cloud_launch_impl(
     }
     let _launch_guard = CloudLaunchGuard::acquire(&source.launch_key())?;
 
-    let checkout = cloud_checkout(state, source.clone(), None).await?;
+    let checkout =
+        cloud_checkout(state, source.clone(), None, input.project_folder_id.clone()).await?;
     let snapshot = validate_checkout(checkout.path).await?;
     ensure_preview_is_current(&snapshot, &input)?;
     if !environment_is_current(state, provider, &snapshot.repository, &input.environment_id).await?
@@ -384,20 +389,42 @@ async fn cloud_checkout(
     state: &AppState,
     source: CloudSource,
     instruction: Option<String>,
+    folder_id: Option<String>,
 ) -> ArgmaxResult<CloudCheckout> {
     let database = super::live_database(state)?;
     super::read_off_main(move || {
         let connection = database.read_connection();
-        checkout_from_connection(&connection, &source, instruction.as_deref())
+        checkout_from_connection_in_folder(
+            &connection,
+            &source,
+            instruction.as_deref(),
+            folder_id.as_deref(),
+        )
     })
     .await
 }
 
+#[cfg(test)]
 fn checkout_from_connection(
     connection: &rusqlite::Connection,
     source: &CloudSource,
     instruction: Option<&str>,
 ) -> ArgmaxResult<CloudCheckout> {
+    checkout_from_connection_in_folder(connection, source, instruction, None)
+}
+
+fn checkout_from_connection_in_folder(
+    connection: &rusqlite::Connection,
+    source: &CloudSource,
+    instruction: Option<&str>,
+    folder_id: Option<&str>,
+) -> ArgmaxResult<CloudCheckout> {
+    if folder_id.is_some() && source.session_id().is_some() {
+        return Err(ArgmaxError::service(
+            "CLOUD_SOURCE_CONFLICT",
+            "Choose a folder only when launching from a project.",
+        ));
+    }
     match source {
         CloudSource::Session(session_id) => {
             let session = find_session_by_id(connection, session_id)?;
@@ -415,7 +442,15 @@ fn checkout_from_connection(
             })
         }
         CloudSource::Project(project_id) => {
-            let project = require_project(connection, project_id)?;
+            let (project, _) = crate::persistence::project_folders::project_for_launch(
+                connection, project_id, folder_id,
+            )?;
+            if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+                return Err(ArgmaxError::service(
+                    "CLOUD_GIT_CHECKOUT_REQUIRED",
+                    "Cloud tasks need a Git repository.",
+                ));
+            }
             Ok(CloudCheckout {
                 path: PathBuf::from(project.repo_path),
                 brief: String::new(),
@@ -484,6 +519,7 @@ mod tests {
     fn input() -> CloudLaunchInput {
         let snapshot = snapshot();
         CloudLaunchInput {
+            project_folder_id: None,
             provider: CloudProvider::Claude,
             session_id: Some("session-1".to_string()),
             project_id: None,
@@ -537,6 +573,13 @@ mod tests {
             projects::{persist_project, PersistProjectInput, ProjectSettings},
         };
 
+        let root = tempfile::tempdir().unwrap();
+        crate::git::exec::run_git_text_blocking(
+            root.path(),
+            ["init", "-q"],
+            crate::git::exec::GIT_DEFAULT_TIMEOUT,
+        )
+        .unwrap();
         let database = Database::open_in_memory().expect("database");
         let connection = database.connection();
         persist_project(
@@ -544,7 +587,7 @@ mod tests {
             &PersistProjectInput {
                 id: "project-1".to_string(),
                 name: "Private sandbox".to_string(),
-                repo_path: "/tmp/private-sandbox".to_string(),
+                repo_path: root.path().display().to_string(),
                 current_branch: "main".to_string(),
                 default_branch: Some("main".to_string()),
                 settings: ProjectSettings {
@@ -563,8 +606,65 @@ mod tests {
             None,
         )
         .expect("resolve project checkout");
-        assert_eq!(checkout.path, PathBuf::from("/tmp/private-sandbox"));
+        assert_eq!(checkout.path, root.path());
         assert!(checkout.brief.is_empty());
+        let secondary = tempfile::tempdir().unwrap();
+        crate::git::exec::run_git_text_blocking(
+            secondary.path(),
+            ["init", "-q"],
+            crate::git::exec::GIT_DEFAULT_TIMEOUT,
+        )
+        .unwrap();
+        let plain = tempfile::tempdir().unwrap();
+        let project =
+            crate::persistence::projects::require_project(&connection, "project-1").unwrap();
+        let folders = [root.path(), secondary.path(), plain.path()]
+            .into_iter()
+            .map(
+                |path| crate::persistence::project_folders::PersistProjectFolderInput {
+                    root_path: path.display().to_string(),
+                    current_branch: "main".into(),
+                    default_branch: Some("main".into()),
+                    remote: None,
+                    settings: project.settings.clone(),
+                },
+            )
+            .collect::<Vec<_>>();
+        crate::persistence::project_folders::configure_project_folders(
+            &connection,
+            "project-1",
+            "Project",
+            &folders,
+            root.path().to_str().unwrap(),
+        )
+        .unwrap();
+        let configured =
+            crate::persistence::project_folders::list_project_folders(&connection, "project-1")
+                .unwrap();
+        let selected = configured
+            .iter()
+            .find(|folder| folder.root_path == secondary.path().display().to_string())
+            .unwrap();
+        let checkout = checkout_from_connection_in_folder(
+            &connection,
+            &CloudSource::Project("project-1".into()),
+            None,
+            Some(&selected.id),
+        )
+        .unwrap();
+        assert_eq!(checkout.path, secondary.path());
+        let selected = configured
+            .iter()
+            .find(|folder| folder.root_path == plain.path().display().to_string())
+            .unwrap();
+        assert!(checkout_from_connection_in_folder(
+            &connection,
+            &CloudSource::Project("project-1".into()),
+            None,
+            Some(&selected.id)
+        )
+        .is_err());
+
         assert!(checkout_from_connection(
             &connection,
             &CloudSource::Project("missing-project".to_string()),

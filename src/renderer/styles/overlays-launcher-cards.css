@@ -69,7 +69,7 @@
   color: var(--muted);
   background: none;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out);
@@ -118,7 +118,7 @@
   padding: var(--space-2_5) var(--space-3);
   /* The gauge every other option list in the app uses — the slash menu, the
      file popover. A row here is the same kind of thing they hold. */
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-row);
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-out);
 }
@@ -138,7 +138,7 @@
 
 .question-dock-key {
   font-family: var(--font-mono);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
   line-height: 1;
@@ -269,7 +269,7 @@
   color: var(--bubble-on-ink);
   background: var(--ink);
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: background var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out);

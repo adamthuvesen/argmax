@@ -1,4 +1,4 @@
-export type ReviewPanelMode = "changes" | "files" | "agents" | "browser" | "terminal";
+export type ReviewPanelMode = "changes" | "files" | "agents" | "browser" | "terminal" | "new" | "side-chat";
 
 export interface ReviewLayout {
   modes: [ReviewPanelMode] | [ReviewPanelMode, ReviewPanelMode];
@@ -17,7 +17,9 @@ const REVIEW_PANEL_MODES: readonly ReviewPanelMode[] = [
   "files",
   "agents",
   "browser",
-  "terminal"
+  "terminal",
+  "new",
+  "side-chat"
 ];
 
 export function isReviewPanelMode(value: unknown): value is ReviewPanelMode {

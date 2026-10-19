@@ -5,6 +5,7 @@
  */
 export interface LaunchCheckout {
   projectId: string;
+  projectFolderId?: string;
   branch: string;
   /** The checkout that has `branch` checked out, or null when no checkout does. */
   path: string | null;

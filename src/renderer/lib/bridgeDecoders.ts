@@ -21,7 +21,7 @@ export function workspace(row: Wire.WorkspaceSummary): Client.WorkspaceSummary {
   return {
     ...row,
     state: member(row.state, ["created", "running", "waiting", "blocked", "complete", "failed", "cancelled", "archiving", "archive-failed", "kept", "archived"], "workspace.state"),
-    kind: member(row.kind, ["git", "scratch", "popup"], "workspace.kind"),
+    kind: member(row.kind, ["git", "scratch", "popup", "folder"], "workspace.kind"),
     prState: row.prState == null ? null : member(row.prState, prStates, "workspace.prState"),
     prSummaryState: row.prSummaryState == null ? row.prSummaryState : member(row.prSummaryState, prStates, "workspace.prSummaryState"),
     prCheckState: row.prCheckState == null ? null : member(row.prCheckState, checkStates, "workspace.prCheckState")

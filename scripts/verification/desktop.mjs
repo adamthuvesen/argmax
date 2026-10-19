@@ -299,6 +299,40 @@ export async function ensureDesktopForeground(browser) {
   return { changed: visibilityState !== "visible", pid: processInfo.pid };
 }
 
+export async function pressNativeEscape(browser) {
+  const processInfo = desktopProcesses.get(browser);
+  if (!processInfo) throw new Error("Native Escape requires an owned verification app process");
+  if (process.platform !== "darwin") throw new Error("Native Escape verification requires macOS");
+  if (matchingProcessIdentities(await processSnapshot(), [processInfo]).length !== 1) {
+    throw new Error("Verification app process changed identity before native Escape");
+  }
+  // Child webviews remove the main renderer from WebDriver's window list.
+  const source = [
+    "import AppKit",
+    "import CoreGraphics",
+    "func refuse(_ message: String) -> Never { fputs(message + \"\\n\", stderr); exit(2) }",
+    `let pid = pid_t(${processInfo.pid})`,
+    "guard let app = NSRunningApplication(processIdentifier: pid),",
+    '  app.bundleIdentifier == "com.argmax.verification",',
+    `  app.executableURL?.resolvingSymlinksInPath().path == ${JSON.stringify(await realpath(processInfo.executable))}`,
+    'else { refuse("Native Escape target is not the owned verification app") }',
+    'guard CGPreflightPostEventAccess() else { refuse("Native Escape requires macOS Accessibility permission") }',
+    'guard app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) else { refuse("Cannot activate native Escape target") }',
+    "let deadline = Date().addingTimeInterval(2)",
+    "while NSWorkspace.shared.frontmostApplication?.processIdentifier != pid && Date() < deadline { RunLoop.current.run(until: Date().addingTimeInterval(0.01)) }",
+    "guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: true),",
+    "  let up = CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: false)",
+    'else { refuse("Cannot create native Escape events") }',
+    "down.flags = []; up.flags = []",
+    "guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid, !app.isTerminated",
+    'else { refuse("Native Escape target is not foreground") }',
+    "down.postToPid(pid); up.postToPid(pid)",
+    'print("{\\"pid\\":\\(pid),\\"method\\":\\"CGEventPostToPid\\"}")',
+  ].join("\n");
+  const result = await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
+  return JSON.parse(result.stdout);
+}
+
 async function desktopProcessForPort(port, expectedBinary) {
   const listener = await runChecked(
     "/usr/sbin/lsof",

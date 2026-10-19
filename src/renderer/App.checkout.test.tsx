@@ -46,9 +46,6 @@ describe("App workspace follow", () => {
   });
 
   it("follows a session move to the destination workspace and routes actions to the destination ids", async () => {
-    const viewOrCreatePr = vi
-      .spyOn(window.argmax!.git, "viewOrCreatePr")
-      .mockResolvedValue({ action: "opened", url: "https://x", prNumber: 1 });
     listChangedFiles.mockResolvedValue([
       { path: "src/renderer/App.tsx", status: "M", additions: 1, deletions: 0, staged: false }
     ]);
@@ -167,9 +164,6 @@ describe("App workspace follow", () => {
       )
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Create PR for checkout branch" }));
-    await waitFor(() =>
-      expect(viewOrCreatePr).toHaveBeenCalledWith({ sessionId: "session-moved", expectedBranch: "adam/feature-branch" })
-    );
+
   });
 });

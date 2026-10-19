@@ -70,12 +70,14 @@ describe("cloud launch from the composer", () => {
     expect(screen.queryByRole("textbox", { name: "Task brief" })).not.toBeInTheDocument();
     expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({
       projectId: project.id,
+      projectFolderId: `${project.id}:primary`,
       provider: selectedModel.provider
     });
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
     expect(await screen.findByRole("link", { name: `Open in ${hostedName}` })).toBeInTheDocument();
     expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(expect.objectContaining({
       projectId: project.id,
+      projectFolderId: `${project.id}:primary`,
       provider: selectedModel.provider
     }));
     expect(launchLocal).not.toHaveBeenCalled();
@@ -109,7 +111,7 @@ describe("cloud launch from the composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review cloud task" }));
     expect(await screen.findByText("Inspect README")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Task brief" })).not.toBeInTheDocument();
-    expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({ projectId: project.id, provider: "claude" });
+    expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({ projectId: project.id, projectFolderId: `${project.id}:primary`, provider: "claude" });
     expect(window.argmax!.cloud.launch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
     expect(await screen.findByRole("link", { name: "Open in Claude Cloud" })).toBeInTheDocument();

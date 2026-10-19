@@ -18,7 +18,7 @@
   justify-content: flex-end;
   gap: 2px;
   flex: 0 0 auto;
-  min-height: 28px;
+  min-height: 20px;
   padding: 0 var(--space-1_5);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease);
@@ -30,8 +30,8 @@
 }
 
 .workspace-tree-toolbar .small-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 
 .workspace-tree-toolbar .small-icon:disabled {
@@ -46,7 +46,7 @@
   overflow: auto;
   padding: var(--space-1_5);
   font-family: var(--font-ui);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
 }
 
 /* Under the strip the scroller needs less of its own top gap; surfaces with no
@@ -71,11 +71,11 @@
   align-items: center;
   gap: var(--space-1_5);
   width: calc(100% - 4px);
-  min-height: 24px;
+  min-height: 26px;
   margin: 0 2px;
   padding-right: var(--space-2_5);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-row);
   color: var(--muted-strong);
   background-color: transparent;
   cursor: pointer;
@@ -195,7 +195,7 @@
 .changes-tree-row-shell {
   position: relative;
   width: calc(100% - 4px);
-  height: 24px;
+  height: 26px;
   margin: 0 2px;
 }
 
@@ -226,15 +226,20 @@
   border: 1px solid var(--changes-tree-status);
   border-radius: var(--radius-xs);
   color: var(--changes-tree-status);
-  font-family: var(--font-ui);
-  font-size: 9px;
-  font-weight: calc(650 + var(--font-weight-offset));
-  line-height: 1;
-  /* Centring places the line box, not the ink. Geist sits +, − and · on a
-     common axis 0.055em below that box's middle, so all three drew 0.5px low.
-     A 1px bottom pad shortens the content box and lifts them back; border-box
-     keeps the badge 13px. */
-  padding-bottom: 1px;
+}
+
+.changes-tree-status svg {
+  width: 7px;
+  height: 7px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+}
+
+.changes-tree-status circle {
+  fill: currentColor;
+  stroke: none;
 }
 
 .changes-tree-status[data-status="added"] {
@@ -256,7 +261,7 @@
   gap: 1px;
   padding-left: var(--space-1);
   background: color-mix(in oklab, var(--review-sidebar) 94%, var(--text));
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--duration-fast) var(--ease);
@@ -342,7 +347,7 @@
   min-height: 26px;
   padding: 0 8px;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted-strong);
   font-family: var(--font-ui);
@@ -389,7 +394,7 @@
   min-height: 42px;
   padding: 6px 9px;
   border: 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-row);
   background: transparent;
   color: var(--text-soft);
   text-align: left;
@@ -399,7 +404,7 @@
 .agent-roster-popover li[data-active="true"] .agent-roster-item,
 .agent-roster-item:hover,
 .agent-roster-popover li[aria-selected="true"] .agent-roster-item {
-  background: var(--row-selected);
+  background: var(--popover-row-active);
   color: var(--text);
 }
 
@@ -481,7 +486,7 @@
   height: 26px;
   font-family: var(--font-ui);
   font-size: var(--text-sm);
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   color: var(--muted);
   background: transparent;
   transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
@@ -596,7 +601,7 @@
 .file-tab-close-prompt-actions button {
   padding: 5px 9px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--panel);
   color: var(--text-soft);
   font: inherit;
@@ -679,7 +684,7 @@
   padding: 0 var(--space-1);
   border: 1px solid var(--line);
   border-bottom-width: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--panel-soft);
   color: var(--muted-strong);
   font-family: var(--font-ui);
@@ -779,7 +784,7 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid rgba(192, 132, 32, 0.35);
   border-left-width: 3px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: rgba(245, 200, 100, 0.08);
   font-size: var(--text-sm);
   color: var(--text-soft);
@@ -800,7 +805,7 @@
   height: 30px;
   padding: 0 9px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted-strong);
   font: inherit;
@@ -906,7 +911,7 @@
   height: 26px;
   padding: 0 var(--space-2);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--panel-sunken);
   color: var(--text);
   font-family: var(--font-code);
@@ -931,7 +936,7 @@
   min-width: 26px;
   padding: 0 7px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: color-mix(in oklab, var(--panel) 86%, var(--panel-sunken));
   color: var(--text-soft);
   cursor: pointer;
@@ -995,7 +1000,7 @@
   height: 26px;
   padding: 0;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   color: var(--muted-strong);
   font-size: 0;
   position: relative;
@@ -1229,7 +1234,7 @@
    panel's own background, which is usually the thing being checked. */
 .image-file-preview-frame img {
   margin: auto;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-surface);
   outline: 1px solid var(--line-soft);
   background-color: var(--panel-sunken);
   background-image: conic-gradient(
@@ -1343,7 +1348,7 @@
   min-height: 20px;
   padding: 1px 6px;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: var(--panel);
   color: var(--muted-strong);
   font: var(--text-2xs) / 1 var(--font-ui);
@@ -1419,7 +1424,7 @@
   margin: 4px 5px;
   padding: 0;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: color-mix(in oklab, var(--panel-soft) 55%, transparent);
   color: var(--muted);
   font-family: var(--font-ui);
@@ -1464,7 +1469,7 @@
      behind a rounded outline. */
   overflow: hidden;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
 }
 
 .diff-hunk + .diff-hunk,
@@ -1493,7 +1498,7 @@
 .diff-omitted {
   margin: var(--space-2) 0;
   border: 1px solid var(--line-soft);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
 }
 
 .diff-omitted-expand {
@@ -1523,7 +1528,7 @@
   margin: var(--space-2) 0;
   padding: 7px 10px;
   border: 1px solid var(--amber);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--amber-soft);
   color: var(--text);
   font-family: var(--font-ui);
@@ -1579,7 +1584,7 @@
   align-items: center;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-row);
   background: var(--panel);
 }
 
@@ -1600,7 +1605,7 @@
   width: 100%;
   min-height: 44px;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   padding: var(--space-1_5) var(--space-2);
   font-family: var(--font-ui);
   font-size: var(--text-sm);
@@ -1622,7 +1627,7 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   border: 1px solid var(--line);
   background: var(--panel);
   cursor: pointer;
@@ -1696,7 +1701,7 @@
   padding: 12px 14px 14px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-surface);
   box-shadow: var(--shadow-2);
   /* The form sits inside the diff's monospace context; the UI chrome reads
      in the app face, only the file:line stays code. */
@@ -1717,7 +1722,7 @@
   min-height: 56px;
   resize: none;
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   background: var(--panel-soft);
   color: var(--text);
   font-family: var(--font-ui);
@@ -1743,7 +1748,7 @@
 .diff-comment-cancel,
 .diff-comment-submit {
   border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   font-family: var(--font-ui);
   font-size: var(--text-xs-plus);
   padding: 5px 12px;

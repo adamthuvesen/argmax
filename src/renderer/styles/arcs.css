@@ -65,7 +65,7 @@
   padding: 20px 24px 18px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-dialog);
   box-shadow: var(--shadow-popover);
 }
 
@@ -109,7 +109,7 @@
   height: var(--composer-chip-height);
   padding: 0 var(--space-2);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-ui);
   background: var(--composer-chip);
   color: var(--chip-ink);
   font-size: var(--text-xs);
@@ -230,13 +230,11 @@
   border-top: 1px solid var(--line-soft);
 }
 
-/* Same shape as .commit-dialog-actions button: a modal footer's plain
-   Cancel, with the submit action filled in ink to read as the one default
-   action in the dialog. */
+/* The submit action is filled to mark the default action. */
 .new-arc-dialog-actions button {
   height: 30px;
   padding: 0 14px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   border: 1px solid var(--line);
   background: var(--panel);
   font-size: var(--text-sm);
@@ -352,7 +350,7 @@
   white-space: nowrap;
   background: transparent;
   border: 0.5px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   color: inherit;
   font: inherit;
   letter-spacing: inherit;
@@ -371,7 +369,7 @@
   margin: -1px -5px;
   background: var(--composer-surface);
   border: 0.5px solid var(--line-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   font-family: inherit;
 }
 
@@ -461,7 +459,7 @@
   padding: 0 6px;
   background: none;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   color: var(--muted-strong);
   font: inherit;
   font-size: var(--text-xs);
@@ -858,7 +856,7 @@ button.arc-event-subject:hover {
   min-width: 0;
   padding: 14px;
   border: 0.5px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   background: var(--panel);
 }
 
@@ -928,7 +926,7 @@ button.arc-event-subject:hover {
   gap: var(--space-2_5);
   padding: 6px 8px;
   margin: 0 -8px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-row);
 }
 
 .arc-trigger-row:hover {

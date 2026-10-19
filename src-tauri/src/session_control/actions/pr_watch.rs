@@ -35,6 +35,11 @@ pub(super) fn watch_pr(
             "A side chat has no repository, so it has no pull request to watch.",
         ));
     }
+    crate::persistence::project_folders::assert_workspace_pr_repository(
+        &database.read_connection(),
+        &target.workspace.id,
+    )
+    .map_err(argmax_protocol_error)?;
     let pr_number = resolve_pr_number(&database, &parent.session_id, action.pr)?;
     // A PR Argmax has not read yet is accepted: the poller views a watched PR
     // by number on its next tick.
@@ -109,6 +114,11 @@ pub(super) async fn cleanup_pr(
             "A side chat has no repository, so it has no pull request to clean up.",
         ));
     }
+    crate::persistence::project_folders::assert_workspace_pr_repository(
+        &database.read_connection(),
+        &target.workspace.id,
+    )
+    .map_err(argmax_protocol_error)?;
     let pr_number = resolve_pr_number(&database, &parent.session_id, action.pr)?;
     // A PR Argmax already knows is open or closed is refused without a GitHub
     // call. Cleanup itself re-reads the PR before it touches anything.

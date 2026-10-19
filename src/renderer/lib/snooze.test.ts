@@ -99,16 +99,13 @@ describe("snooze shelf", () => {
     expect(snoozeTimerDelay(NOW + 365 * 86_400_000, NOW)).toBe(MAX_TIMER_MS);
   });
 
-  it("offers three future instants, the later two at 9:00 local time", () => {
+  it("offers tomorrow at 9:00 local time", () => {
     const from = new Date(2026, 9, 4, 22, 30, 0);
-    const [hour, tomorrow, week] = snoozeChoices(from);
-    expect(Date.parse(hour.until)).toBe(from.getTime() + 3_600_000);
+    const choices = snoozeChoices(from);
+    expect(choices).toHaveLength(1);
+    const [tomorrow] = choices;
     const next = new Date(tomorrow.until);
     expect([next.getDate(), next.getHours(), next.getMinutes()]).toEqual([5, 9, 0]);
-    const later = new Date(week.until);
-    expect([later.getDate(), later.getHours()]).toEqual([11, 9]);
-    for (const choice of [hour, tomorrow, week]) {
-      expect(Date.parse(choice.until)).toBeGreaterThan(from.getTime());
-    }
+    expect(Date.parse(tomorrow.until)).toBeGreaterThan(from.getTime());
   });
 });

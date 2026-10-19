@@ -104,12 +104,6 @@ fn sweep_provider(
         .collect();
 
     for session in discovered {
-        let Some(project_id) = owning_project(&project_roots, &session.cwd) else {
-            // Sessions outside every registered project are not this app's
-            // business — that filter is what keeps the sweep small.
-            continue;
-        };
-
         match existing_by_external.get(session.external_id.as_str()) {
             Some(record) => {
                 if record.source_mtime_ms >= session.source_mtime_ms {
@@ -120,6 +114,9 @@ fn sweep_provider(
                 }
             }
             None => {
+                let Some(project_id) = owning_project(&project_roots, &session.cwd) else {
+                    continue;
+                };
                 // A conversation id Argmax already owns is a session it
                 // launched itself; importing it would duplicate it.
                 if known_ids.contains(&session.external_id) {
@@ -143,10 +140,17 @@ fn sweep_provider(
 }
 
 fn owning_project(roots: &[(String, PathBuf)], cwd: &Path) -> Option<String> {
-    roots
+    let (id, root) = roots
         .iter()
-        .find(|(_, root)| cwd == root || cwd.starts_with(root))
-        .map(|(id, _)| id.clone())
+        .find(|(_, root)| cwd == root || cwd.starts_with(root))?;
+    if roots
+        .iter()
+        .any(|(other_id, other_root)| other_id != id && other_root == root)
+    {
+        tracing::warn!(path = %cwd.display(), "session import skipped: folder belongs to multiple projects");
+        return None;
+    }
+    Some(id.clone())
 }
 
 fn import(
@@ -421,4 +425,23 @@ fn iso_from_ms(ms: i64) -> String {
     chrono::DateTime::from_timestamp_millis(ms)
         .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod project_ownership_tests {
+    use super::*;
+
+    #[test]
+    fn shared_roots_do_not_assign_imports_by_project_sort_order() {
+        let roots = vec![
+            ("one".to_owned(), PathBuf::from("/repos/app")),
+            ("two".to_owned(), PathBuf::from("/repos/app")),
+            ("parent".to_owned(), PathBuf::from("/repos")),
+        ];
+        assert_eq!(owning_project(&roots, Path::new("/repos/app/src")), None);
+        assert_eq!(
+            owning_project(&roots, Path::new("/repos/other")),
+            Some("parent".to_owned())
+        );
+    }
 }

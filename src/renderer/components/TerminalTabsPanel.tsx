@@ -60,16 +60,20 @@ function nextLabel(existing: readonly TerminalTabMeta[], base: string): string {
 export function TerminalTabsPanel({
   workspaceId,
   visible,
-  cwdLabel
+  cwdLabel,
+  controlledTabId
 }: {
+  controlledTabId?: string;
   workspaceId: string;
   visible: boolean;
   /** Shown in the status strip: where these shells are running. */
   cwdLabel?: string | null;
 }): JSX.Element {
-  const { tabs, activeTabId } = useSyncExternalStore(subscribeTerminalTabs, () =>
+  const { tabs, activeTabId: storedActiveTabId } = useSyncExternalStore(subscribeTerminalTabs, () =>
     getWorkspaceTerminalState(workspaceId)
   );
+
+  const activeTabId = controlledTabId ?? storedActiveTabId;
 
   // Protect this workspace's terminals from LRU eviction while its panel is
   // mounted anywhere.
@@ -82,6 +86,7 @@ export function TerminalTabsPanel({
   // right after the first run already seeded.
   const seededRef = useRef(false);
   useEffect(() => {
+    if (controlledTabId) return;
     if (tabs.length > 0) {
       seededRef.current = true;
       return;
@@ -90,7 +95,7 @@ export function TerminalTabsPanel({
     seededRef.current = true;
     if (getWorkspaceTerminalState(workspaceId).tabs.length > 0) return;
     addTerminalTab(workspaceId, SHELL_LABEL);
-  }, [tabs, workspaceId]);
+  }, [controlledTabId, tabs, workspaceId]);
 
   const addTab = useCallback(() => {
     addTerminalTab(workspaceId, nextLabel(getWorkspaceTerminalState(workspaceId).tabs, SHELL_LABEL));
@@ -192,7 +197,7 @@ export function TerminalTabsPanel({
 
   return (
     <div className="review-terminal">
-      <div className="file-tabs-shell">
+      {!controlledTabId ? <div className="file-tabs-shell">
         <div className="file-tabs" role="tablist" aria-label="Terminal tabs" aria-orientation="horizontal">
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -240,10 +245,10 @@ export function TerminalTabsPanel({
         >
           <Plus size={13} aria-hidden="true" />
         </button>
-      </div>
+      </div> : null}
 
       <div className="terminal-tab-bodies">
-        {tabs.map((tab) => {
+        {(controlledTabId ? tabs.filter((tab) => tab.id === controlledTabId) : tabs).map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
             <div
@@ -252,7 +257,8 @@ export function TerminalTabsPanel({
               data-active={isActive}
               role="tabpanel"
               id={`terminal-tabpanel-${tab.id}`}
-              aria-labelledby={`terminal-tab-${tab.id}`}
+              aria-labelledby={controlledTabId ? undefined : `terminal-tab-${tab.id}`}
+              aria-label={controlledTabId ? tab.label : undefined}
               aria-hidden={!isActive}
             >
               <TerminalInstance

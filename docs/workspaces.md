@@ -2,6 +2,48 @@
 
 Rust manages workspace lifecycle, file operations, and git integration under `src-tauri/src/`.
 
+## Projects and folders
+
+Create a project with a name and local folders. The first folder is primary unless another is selected.
+The primary must be a Git repository. Additional folders can contain code or documentation without Git.
+Settings → Projects edits the name, folder list, and primary folder.
+The same directory can belong to several projects.
+
+New chats default to the primary folder. Right-click the launcher’s project name to choose another folder for each chat.
+Shift+F10 opens the same menu. The tooltip shows the selected folder and path.
+The folder choice does not change the project's primary folder. Branches, files, and terminal follow the selected folder.
+Git folders support existing checkouts and isolated worktrees. Plain folders start directly, with no branch or worktree controls.
+Each workspace records its project folder and actual checkout.
+Changing the primary affects future chats and leaves existing checkouts attached to their original repository.
+Repository settings, checks, and cleanup follow that recorded folder.
+
+Agents receive the enabled folder list and can read or edit those folders as the task requires.
+Folder membership does not promise identical filesystem permissions across providers.
+An isolated chat uses its worktree for its working repository and the existing checkouts for additional folders.
+Argmax does not create a worktree in every project folder.
+
+Arcs coordinate work within or across projects. Creating a project does not create an arc.
+See [arcs.md](arcs.md) for coordinator and member behavior.
+
+### Project overview
+
+Creating a named project starts a background overview generation. The project is usable immediately.
+The helper reads bounded samples from enabled folders, including the primary folder.
+It describes the project's purpose and folder roles, with references to sampled files.
+It does not run repository instructions or infer unsupported relationships.
+
+Settings → Projects shows the editable overview, its generation time, and sources.
+Existing projects can generate an overview there. Refresh produces a separate draft.
+Apply draft replaces the saved overview. Discard keeps the saved overview.
+Saving manual edits during generation prevents the initial result from replacing them.
+Concurrent changes in another window produce a conflict instead of overwriting newer edits.
+
+Generation failures keep the saved overview and expose a retry action.
+Restart interrupts unfinished generation. It does not automatically repeat provider calls.
+Results from an outdated folder configuration are rejected.
+Each new agent turn receives the saved overview as descriptive context to verify against current files.
+An unapplied draft never enters agent context. The overview describes the project, not an arc's progress.
+
 ## Workspaces
 
 [src-tauri/src/workspaces](../src-tauri/src/workspaces) handles workspace creation, status polling, pinning, archiving, and IDE launching.
@@ -21,7 +63,7 @@ Rust manages workspace lifecycle, file operations, and git integration under `sr
 - **Worktree location:** New projects default to `~/.argmax/worktrees/<project-id>/`. A one-time upgrade on database open switches project settings still pointing to the old `<repo>/.argmax/worktrees` default to this location for future launches. Custom locations and existing workspace paths stay unchanged. Settings → Projects accepts an absolute directory inside or outside the repo, including a return to the old location after upgrading. Creation resolves that directory and refuses an existing destination, including a symlink. Scratch profiles using `ARGMAX_DATA_DIR` keep worktrees under `<ARGMAX_DATA_DIR>/local-state/worktrees/<project-id>/`.
 - **Worktree setup:** `create_isolated` returns as soon as the checkout exists. `git worktree add` runs with hooks disabled, then a background task replays the repository's `post-checkout` hook with `git hook run` (git 2.36+, only when the hook exists) and runs the project's configured setup command, each through `CheckService` as a check row in the new worktree. Check children get the login-shell `PATH`, like git's do. Failures are recorded on the check rows and never fail the workspace, and the agent's first turn may start while they run.
 - **Archiving:**
-  - Successful archives leave the active list and appear in a collapsed Archived section at the bottom of the sidebar in either grouping. The chats start hidden on each app launch. Expanding the section lets the user read archived transcripts, but the composer cannot send to an archived workspace. Recovery access for isolated checkout files lives in Settings, while notifications are reserved for failures or changes that need attention.
+  - Successful archives leave the active list and appear in a collapsed Archived section at the bottom of the sidebar in every grouping. The chats start hidden on each app launch. Expanding the section lets the user read archived transcripts, but the composer cannot send to an archived workspace. Recovery access for isolated checkout files lives in Settings, while notifications are reserved for failures or changes that need attention.
   - Settings → Appearance → Layout → Show archived chats hides or shows the entire Archived section. It is on by default, with the section collapsed.
   - Shared checkouts mark `archived` immediately and drain child processes in the background.
   - Isolated worktrees mark `archiving`, cancel child processes, expire pending approvals, evict warm Cursor ACP instances, and use `git worktree move` to retain the complete checkout under `local-state/workspace-archive/<workspace-id>`. The moved checkout stays registered with Git, so tracked, untracked, and ignored files remain available. Settings → Advanced → Diagnostics → Archived workspaces opens the recovery root.
@@ -60,7 +102,7 @@ A launch that loses step 1 or 2 deletes nothing but its own empty directory and 
 
 `$ARGMAX_BIN session move (--project <name-or-path> | --path <checkout>) --prompt <what-to-do-there>` schedules an explicit handoff from inside an active agent turn. When the turn settles, `WorkspaceService` creates a destination workspace and copies the timeline into a fresh session. The source workspace is never retargeted: a workspace's `path` is write-once, so landing somewhere new always means a new row.
 
-Exactly one destination is required. `--project` moves to another project — a registered name, or the absolute path of a repository Argmax has never opened, which is registered on first use ([agent-tools.md](agent-tools.md)). `--path` moves to another checkout of the *same* project — any directory `git worktree list` reports for its repository, including the main one. That is the supported answer to "this work belongs in a different worktree"; running `cd` inside a tool call only moves the agent's shell, leaving the workspace, its diff, and its commit and pull-request actions pointed at the checkout the session started in, and the next turn relaunches back there.
+Exactly one destination is required. `--project` moves to another project — a registered name, or the absolute path of a repository Argmax has never opened, which is registered on first use ([agent-tools.md](agent-tools.md)). `--path` moves to another checkout of the *same* project — any directory `git worktree list` reports for its repository, including the main one. That is the supported answer to "this work belongs in a different worktree"; running `cd` inside a tool call only moves the agent's shell, leaving the workspace, its diff, and its repository status pointed at the checkout the session started in, and the next turn relaunches back there.
 
 Every provider's launch instructions and the MCP server instructions require
 `session_move` with `path` and a continuation `prompt` when continuing in another
@@ -79,6 +121,9 @@ A cross-project move always leaves the provider conversation id empty. A `--path
 `session.moved` marks the handoff in both timelines; its payload carries `checkoutMode` (`shared`, `worktree`, or `attached`) and `conversationCarried`. The renderer follows the destination only when the source session is still selected.
 
 ## Forking at a finished turn
+
+Right-click a sidebar chat → **Fork** copies its full visible history into a new chat in the same checkout.
+The turn must finish before a whole-chat fork can start.
 
 The Fork action under a finished turn forks the chat at that turn, in the same checkout. A second action forks it into an isolated checkout. The new chat opens with the visible history up to the end of that turn and no provider conversation: its first message starts one, with the provider chosen in the composer then. The source chat is never modified. Provider mechanics, the exact-versus-fresh rule, and why files are not rewound are in [providers.md](providers.md#native-continuity-and-forks).
 
@@ -108,6 +153,21 @@ A fork chat shows a **Forked chat** card above the composer with **Open source**
 - `scratch`: User-facing side chats under the hidden `scratch-side-chats` project ID.
 - `popup`: Ephemeral sessions used by the "More details" popup. Closing the popup terminates the session and deletes the temporary directory.
 
+## Sidebar Status Grouping
+
+The sidebar's **Group by** menu offers Projects, Date, and Status. Projects remains the default. The selected grouping persists across restarts.
+
+In the Projects grouping, **Pin Project** in a project's ⋯ menu moves that project to the top of the list. A pinned project carries a small pin after its name. Pinned projects keep the order they were pinned in, whatever the sort mode. The sort mode orders the rest. Pins are a desktop sidebar preference like the sort mode and manual order: they persist in `localStorage.argmax.sidebar.pinnedProjects` and do not reach the iPhone app.
+
+Status keeps Pinned first. Manually prioritized chats retain their separate Priority section when that setting is enabled. Other chats appear once under these groups:
+
+- **Working**: a chat or its nested chats have an active turn.
+- **Needs attention**: an unresolved approval, question, failure, block, failed PR checks, or an unread completed reply needs attention.
+- **Completed**: the turn has ended and has no remaining attention reason. This includes cancelled turns. An open PR alone does not require attention.
+- **Not started**: the chat has not started a turn.
+
+Empty groups stay hidden. Nested chats remain with their parent. Working descendants place the whole tree in Working, followed by attention from any descendant. Reading a completed reply keeps the selected tree in Needs attention until the user leaves that chat. Group collapse and overflow controls match Date grouping. Snoozed and Archived remain separate shelves.
+
 ## Sidebar Priority Section
 
 Repository sessions and repo-less sessions use the same Priority rules.
@@ -118,23 +178,23 @@ Workspaces holding at least one live **reason**, and workspaces with a live turn
 | --- | --- | --- |
 | `approval-needed` | a pending approval | the decision |
 | `question-asked` | an unanswered `AskUserQuestion` (see [chat-cards.md](chat-cards.md)) | answering it |
-| `blocked` | session `blocked` / `waiting` | 30 minutes of silence |
-| `failed` | session `failed` | 30 minutes of silence |
+| `blocked` | session `blocked` / `waiting` | resolution or explicit dismissal |
+| `failed` | session `failed` | resolution or explicit dismissal |
 | `ci-red` | the attributed PR's check rollup at `failure` ([gh.md](gh.md)) | checks going green, or the PR closing |
-| `review-ready` | a completed turn **whose reply is still unread** | opening the chat, or 30 minutes of silence |
+| `review-ready` | a completed turn **whose reply is still unread** | reading the reply and leaving the chat |
 | `pr-open` | the attributed PR at `OPEN` | the PR merging or closing |
 
-- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Only the reasons a clock can resolve carry `PRIORITY_IDLE_MS` (30 minutes from the last message); an approval, a question, a red check and an open PR are all still true half an hour later, so they wait for the event that ends them. A row leaves once *every* reason holding it has lapsed.
+- Calculated client-side in [src/renderer/lib/priority.ts](../src/renderer/lib/priority.ts). Reasons never expire with time. A row leaves once every reason is resolved or dismissed. The selected chat stays in place after reading until you leave it.
 - Reading is asymmetric: opening a chat resolves `review-ready` and nothing else. Unread state is this device's own (`localStorage`, see [sessionUnread.ts](../src/renderer/lib/sessionUnread.ts)), so the phone and the desktop disagree about what has been read.
 - Default order: working rows first, then by reason strength (the table above), then by last message descending.
 - Drag Priority chats to set their order in either sidebar view. The order persists across restarts in `localStorage.argmax.sidebar.workspaceOrder`, under `priority`, like Pinned ordering. New entries follow the saved order and use the default order among themselves. The row's accessible title names its strongest reason.
 - Pinned status takes precedence over Priority.
-- Right-click "Done" (`workspaces:set-priority-dismissed`) clears every reason that was already true, and nothing that happens afterwards: a PR going red after a dismissal brings the row back, because `ci-red` is newer than the dismissal. Each reason carries its own `since` for that comparison — a session reason uses `attention_changed_at`, a PR reason the poller's `pr_activity_at`. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and the header's Clear skips it.
+- Right-click "Done" (`workspaces:set-priority-dismissed`) clears every reason that was already true, and nothing that happens afterwards: a PR going red after a dismissal brings the row back, because `ci-red` is newer than the dismissal. Each reason carries its own `since` for that comparison — a session reason uses `attention_changed_at`, a PR reason the poller's `pr_activity_at`. Manual adds (`workspaces:set-priority-added`) persist until cleared. A row that is only listed because its turn is running has no "Done" — it leaves when the turn ends — and bulk clearing skips it. The eraser on the Priority row clears every chat without a running turn, unread ones included. Clearing does not mark a chat read, so its unread dot still shows where the chat lives. The eraser is disabled only while every chat in Priority is running.
 - The "Priority section in sidebar" setting hides the whole section, running rows included; they fall back to their date bucket or project group.
 
 ## Snooze Shelf
 
-Right-click a chat → **Snooze for 1 hour**, **Snooze until tomorrow** (9:00 local), or **Snooze for a week**. The row leaves its section (Priority, date bucket, project group, Chat) and goes to a **Snoozed** shelf above Archived. The shelf is collapsed on every launch. Right-click a shelved row → **Unsnooze** returns it at once, and a snooze that reaches its time returns it by itself.
+Right-click a chat → **Snooze until tomorrow** (9:00 local). The row leaves its section (Priority, date bucket, project group, Chat) and goes to a **Snoozed** shelf above Archived. The shelf is collapsed on every launch. Right-click a shelved row → **Unsnooze** returns it at once, and a snooze that reaches its time returns it by itself.
 
 A snooze is display metadata. `workspaces.snoozed_until` (RFC 3339, millisecond UTC, stored by `workspaces:set-snoozed-until`) is the only thing written. It never changes the workspace state, the session, attention, checks, or what the gh poller does: a PR that merges still settles the workspace, and merge cleanup still runs. Rust accepts only a future instant at most 366 days out, and `null` clears it.
 
@@ -158,36 +218,49 @@ An attributed pull request replaces the default status marker with a GitHub PR g
 
 ## Review
 
-The review panel can show two views stacked vertically. Right-click a view tab and choose **Split below**, or drag a tab onto the upper or lower half of the panel. Drag the divider to resize the views, or focus it and use the arrow keys. Each view appears once. Selecting a tab already shown in the other half swaps the views. Actions from the chat use the half where the requested view is already visible. Closing either half expands the remaining view.
+Changes groups the chat's checkout and the project's other enabled folders.
+Additional repositories show uncommitted changes across their shared checkout, including edits from other chats.
+Their diffs are for inspection only. The Changes sidebar has no staging or revert actions.
+Refresh reads every group. Workspace and session state changes refresh the groups without a recurring poll.
+
+This preview tracks pull requests only for each project's original primary repository.
+Chats in other repositories receive an explicit error from PR tracking and cleanup actions.
+Use a separate project when those repositories need their own PR tracking.
+
+The review panel can show two tabs stacked vertically. Right-click a tab in the strip and choose **Show above** or **Show below**. The tab menu is the only way to split: dragging a tab only reorders the strip. Any two tabs can share the panel, including two browser pages, but only one file tab is visible at a time. Drag the divider to resize the views, or focus it and use the arrow keys. Selecting a tab already visible focuses its half. Actions from the chat use the half where the requested view is already visible. Closing either half expands the remaining view and keeps its tabs in the strip.
 
 The dock's width is a third of the pane (floored at its 360px minimum, capped at 560px) until the user drags its inner edge, which pins a pixel width in `argmax.session.rightPanel.pinnedWidth` and holds it from then on. Opening a subagent, Changes, Files, Browser or the Terminal all land on that one width — the dock is one column whichever view is in it.
 
 Resizing temporarily hides native browser pages so they cannot swallow the drag's mouse events. Releasing the mouse or moving focus out of the window ends the drag and restores the cursor.
 
-The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves the arrangement for its next open. Full-screen review surfaces keep their explicit initial visibility and a single view.
+The session review panel remembers its visibility, view arrangement, and divider position per session in localStorage. Returning to a chat or restarting the app restores them. Closing the whole sidebar preserves its tabs. The tab-row expand button fills the chat workspace, including tiled chat layouts. It preserves mounted resources and restores the previous layout when toggled again. Escape closes the sidebar. `⌘T` opens a New tab and `⌘⇧T` reopens the last closed tab in the focused chat's open panel, wherever keyboard focus is; a dialog keeps the keys. The sidebar toggle reopens a single New tab view. Explicit Changes, Files, Terminal, and browser actions open their requested content. Full-screen review surfaces keep their explicit initial visibility and a single view.
 
-Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads a clean active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. New chat starts with the panel closed, even when a chat in the shared checkout shows its terminal. Opening the launcher panel explicitly restores its layout. Existing single-mode session preferences remain the fallback until a layout is saved.
+Layouts live in `argmax.reviewPanel.layout.<sessionId>`. The Files view's open tabs and active tab are kept per session in `argmax.reviewPanel.files.<sessionId>`: returning to a chat reopens them and reloads a clean active file from disk, and closing the last tab clears the entry. The launcher uses one shared `argmax.reviewPanel.layout.launcher` preference across projects. New chat starts with the panel closed, even when a chat in the shared checkout shows its terminal. The launcher panel toggle also opens New tab and retains existing tabs. Existing single-mode session preferences remain the fallback until a layout is saved.
 
 Unsaved Files edits stay in memory when switching chats or projects, scoped to the pane and source checkout. Returning restores the draft and checks the disk version without replacing the edited text. Saving still uses the draft's original disk timestamp to detect external changes. Draft contents do not survive an app restart.
 
 [src-tauri/src/review/git_review.rs](../src-tauri/src/review/git_review.rs) provides diff calculations and file lists.
 
-### Comparison Scopes
+### Branch changes
 
-| Scope | `ReviewComparison` | Git Range |
-|---|---|---|
-| All on branch (default) | `branch` | `merge-base(base_ref, HEAD)` → working tree + untracked |
-| Committed | `committed` | `merge-base(base_ref, HEAD)..HEAD` |
-| Uncommitted | `workingTree` | `HEAD` → working tree + untracked |
-| Last turn | `branch` (client-filtered) | File-writing tool calls in the most recent turn |
+Changes always shows every difference from the base branch, including committed,
+uncommitted, and untracked files. The sidebar has no comparison setting.
+Older saved comparison preferences no longer affect its file list or diffs.
 
-Last turn keeps the selected diff within its filtered file list. When the selected file drops out, Changes selects the first remaining file or clears the detail view if the list is empty.
+The review API retains these comparisons for callers that need an explicit Git range:
+
+| `ReviewComparison` | Git range |
+|---|---|
+| `branch` | `merge-base(base_ref, HEAD)` → working tree + untracked |
+| `committed` | `merge-base(base_ref, HEAD)..HEAD` |
+| `workingTree` | `HEAD` → working tree + untracked |
 
 Base ref resolution checks `workspace.base_ref`, then `origin/<default>`, then local `<default>`.
 
 ### Review actions
 
-The Uncommitted comparison offers file and hunk staging, unstaging, and reverting.
+The `workingTree` API comparison supports file and hunk staging, unstaging, and reverting.
+The Changes sidebar uses `branch` and does not expose these actions.
 Every mutation carries the displayed revision. Rust reconstructs the patch and
 checks HEAD, index, and working-tree state under the canonical checkout lock.
 An obsolete revision fails with a refresh instruction. Another session working in
@@ -206,8 +279,7 @@ which every mutation refuses. Opening a file in those scopes is roughly seven
 times cheaper for it.
 
 Reverting restores unstaged changes and saves a recovery checkpoint first.
-Untracked file deletion remains a Files action. **Commit staged** commits the
-existing index, including partial staging. It requires a commit message.
+Untracked file deletion remains a Files action. Agents create commits and pull requests through their Git tools.
 
 ### Revert to a turn
 
@@ -268,9 +340,9 @@ Images are the one file kind the text read can't carry: `workspace:read-file` re
 
 ## Git
 
-[src-tauri/src/git](../src-tauri/src/git) executes git commands via direct argv arguments for branching, commits, pushing, and pull request actions.
-
-Selected-file commits build and commit through a temporary index, leaving unrelated staged entries in the checkout index alone. If the follow-up reset of that real index is blocked, the commit still returns its new SHA with an `indexCleanupWarning`; the commit dialog keeps the successful result visible and asks the user to repair the index rather than reporting a false failure. Git writes from Argmax serialize per canonical checkout, including separate IPC-created service instances that target a shared workspace.
+[src-tauri/src/git](../src-tauri/src/git) executes Git commands for checkout lifecycle, review, checkpoints, and PR cleanup.
+Agents own commits, pushes, and pull request creation. The app displays repository changes and existing PR links.
+Git writes from Argmax serialize per canonical checkout, including separate sessions that share a checkout.
 
 ### PR Cleanup
 

@@ -80,7 +80,7 @@ export function ForkMergeDialog({
 
   return createPortal(
     <div
-      className="commit-dialog-overlay motion-modal-overlay"
+      className="fork-merge-dialog-overlay motion-modal-overlay"
       data-motion-state="open"
       role="dialog"
       aria-modal="true"
@@ -90,19 +90,19 @@ export function ForkMergeDialog({
       }}
       tabIndex={-1}
     >
-      <div ref={dialogRef} className="commit-dialog fork-merge-dialog motion-modal-surface">
-        <header className="commit-dialog-header">
+      <div ref={dialogRef} className="fork-merge-dialog motion-modal-surface">
+        <header className="fork-merge-dialog-header">
           <h2>Bring findings back</h2>
           <button type="button" aria-label="Close" onClick={onClose} disabled={sending}>
             ×
           </button>
         </header>
         {loadError ? (
-          <p className="commit-dialog-empty" role="alert">
+          <p className="fork-merge-dialog-empty" role="alert">
             {loadError}
           </p>
         ) : preview === null ? (
-          <p className="commit-dialog-empty">Reading the fork…</p>
+          <p className="fork-merge-dialog-empty">Reading the fork…</p>
         ) : (
           <>
             <p className="fork-merge-summary">
@@ -139,14 +139,14 @@ export function ForkMergeDialog({
             )}
           </>
         )}
-        <footer className="commit-dialog-actions">
+        <footer className="fork-merge-dialog-actions">
           <button type="button" onClick={onClose} disabled={sending}>
             {preview?.nothingNew ? "Close" : "Cancel"}
           </button>
           {preview?.nothingNew ? null : (
             <button
               type="button"
-              className="commit-dialog-submit"
+              className="fork-merge-dialog-submit"
               disabled={!canSend}
               onClick={() => void send()}
             >

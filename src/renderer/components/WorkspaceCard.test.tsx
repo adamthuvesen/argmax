@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceSummary } from "../../shared/types.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
+import type { ProjectFolderChanges } from "../hooks/useProjectFolderChanges.js";
 import { baseSession, workspace } from "../../test/sessionConversationTestHarness.js";
 import { emblemForCodename, emblemForKey } from "../lib/agentEmblems.js";
 import type { WorkspaceSessionPr } from "../lib/sessionPrs.js";
@@ -49,6 +50,9 @@ function renderCard(
   overrides: {
     changeSummary?: { fileCount: number; additions: number; deletions: number } | null;
     changesState?: AsyncState;
+    projectFolderChanges?: ProjectFolderChanges[];
+    workingFolderName?: string;
+    onOpenFolderChanges?: (folderId: string, filePath: string) => void;
     setStatus?: (status: { kind: "error" | "info"; message: string } | null) => void;
     subagents?: SubagentCluster | null;
     workspace?: WorkspaceSummary;
@@ -62,11 +66,13 @@ function renderCard(
           : { fileCount: 3, additions: 229, deletions: 44 }
       }
       changesState={overrides.changesState ?? "ready"}
+      workingFolderName={overrides.workingFolderName}
+      projectFolderChanges={overrides.projectFolderChanges}
+      onOpenFolderChanges={overrides.onOpenFolderChanges}
       isTerminalOpen={false}
       onBrowseFiles={vi.fn()}
       onHide={vi.fn()}
       onOpenChanges={vi.fn()}
-      onOpenCommitDialog={vi.fn()}
       onToggleTerminal={vi.fn()}
       session={baseSession()}
       setStatus={overrides.setStatus ?? vi.fn()}
@@ -77,6 +83,35 @@ function renderCard(
 }
 
 describe("WorkspaceCard", () => {
+  it("shows changed additional repositories separately when the chat checkout is clean", () => {
+    const onOpenFolderChanges = vi.fn();
+    const group = (id: string, enabled = true, changed = true): ProjectFolderChanges => ({
+      folder: { id, projectId: "project", name: id, rootPath: `/repos/${id}`, isPrimary: false, enabled, summary: null },
+      files: changed ? [{ path: "README.md", status: "M", additions: id === "app" ? 3 : 7, deletions: 1, staged: false }] : [],
+      error: null
+    });
+    renderCard({
+      changeSummary: null,
+      workingFolderName: "primary",
+      projectFolderChanges: [group("app"), group("dbt"), group("disabled", false), group("clean", true, false)],
+      onOpenFolderChanges
+    });
+    expect(screen.getByRole("button", { name: "Changes" })).toBeDisabled();
+    expect(screen.getByText("primary")).toBeVisible();
+    expect(screen.getByText("Changes")).toBeVisible();
+    expect(screen.queryByText("Chat checkout")).not.toBeInTheDocument();
+    expect(screen.queryByText("Shared checkout")).not.toBeInTheDocument();
+    const app = screen.getByRole("button", { name: "Changes in app" });
+    expect(app).toHaveTextContent("+3");
+    const dbt = screen.getByRole("button", { name: "Changes in dbt" });
+    expect(dbt).toHaveTextContent("+7");
+    fireEvent.click(app);
+    fireEvent.click(dbt);
+    expect(onOpenFolderChanges.mock.calls).toEqual([["app", "README.md"], ["dbt", "README.md"]]);
+    expect(screen.queryByRole("button", { name: "Changes in disabled" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Changes in clean" })).not.toBeInTheDocument();
+  });
+
   afterEach(() => {
     cleanup();
     delete (window as { argmax?: unknown }).argmax;
@@ -88,6 +123,8 @@ describe("WorkspaceCard", () => {
     const card = screen.getByRole("complementary", { name: "Workspace" });
     expect(card.textContent).toContain("argmax/dashboard");
     expect(card.textContent).toContain("from main");
+    expect(screen.queryByRole("button", { name: "Commit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create PR for checkout branch" })).not.toBeInTheDocument();
   });
 
   it("keeps shared checkout context in the tooltip without a repeated heading", () => {
@@ -128,7 +165,6 @@ describe("WorkspaceCard", () => {
         onBrowseFiles={vi.fn()}
         onHide={vi.fn()}
         onOpenChanges={vi.fn()}
-        onOpenCommitDialog={vi.fn()}
         onToggleTerminal={vi.fn()}
         session={baseSession()}
         setStatus={vi.fn()}
@@ -156,7 +192,6 @@ describe("WorkspaceCard", () => {
         onBrowseFiles={vi.fn()}
         onHide={vi.fn()}
         onOpenChanges={vi.fn()}
-        onOpenCommitDialog={vi.fn()}
         onToggleTerminal={vi.fn()}
         session={baseSession()}
         setStatus={vi.fn()}
@@ -177,27 +212,10 @@ describe("WorkspaceCard", () => {
     expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
   });
 
-  it("creates a pull request for the exact checkout branch", async () => {
-    const viewOrCreatePr = vi.fn().mockResolvedValue({ action: "created", url: "https://x/1", prNumber: 1 });
-    const openPath = vi.fn().mockResolvedValue({ ok: true });
-    (window as { argmax?: unknown }).argmax = { git: { viewOrCreatePr }, system: { openPath } };
-    const setStatus = vi.fn();
-
-    renderCard({ setStatus });
-    fireEvent.click(screen.getByRole("button", { name: "Create PR for checkout branch" }));
-    expect(viewOrCreatePr).toHaveBeenCalledWith({
-      sessionId: "session-a",
-      expectedBranch: "argmax/dashboard"
-    });
-    await waitFor(() => expect(openPath).toHaveBeenCalledWith({ path: "https://x/1" }));
-    expect(setStatus).toHaveBeenCalledExactlyOnceWith(null);
-  });
 
   it("opens an existing pull request by its stored URL without resolving by checkout", () => {
-    const viewOrCreatePr = vi.fn();
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as { argmax?: unknown }).argmax = {
-      git: { viewOrCreatePr },
       system: { openPath }
     };
     renderCard({ workspace: workspaceWithPrs([sessionPr()]) });
@@ -208,18 +226,14 @@ describe("WorkspaceCard", () => {
     fireEvent.click(prRow);
 
     expect(openPath).toHaveBeenCalledWith({ path: "https://github.com/o/r/pull/762" });
-    expect(viewOrCreatePr).not.toHaveBeenCalled();
   });
 
   it("keeps a PR without a stored URL disabled instead of falling back to creation", () => {
-    const viewOrCreatePr = vi.fn();
-    (window as { argmax?: unknown }).argmax = { git: { viewOrCreatePr } };
     renderCard({ workspace: workspaceWithPrs([sessionPr({ url: null })]) });
 
     const prRow = screen.getByRole("button", { name: "PR #762 Alfred Slack status" });
     expect(prRow).toBeDisabled();
     expect(prRow).toHaveAccessibleDescription(/has no URL/);
-    expect(viewOrCreatePr).not.toHaveBeenCalled();
   });
 
   it("shows current PRs first and keeps older associations expandable", () => {
@@ -308,20 +322,6 @@ describe("WorkspaceCard", () => {
     await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "info", message: report }));
   });
 
-  it("reports a failed pull-request call through the shared toast", async () => {
-    resetToastForTests();
-    const setStatus = vi.fn();
-    (window as { argmax?: unknown }).argmax = {
-      git: { viewOrCreatePr: vi.fn().mockRejectedValue(new Error("gh not authenticated")) },
-      system: { openPath: vi.fn() }
-    };
-
-    renderCard({ setStatus });
-    fireEvent.click(screen.getByRole("button", { name: "Create PR for checkout branch" }));
-
-    await waitFor(() => expect(toastSnapshot()?.message).toBe("gh not authenticated"));
-    expect(setStatus).toHaveBeenCalledWith(null);
-  });
 
   it("shows the subagent roster once the session spawns agents", () => {
     renderCard({ subagents: subagentCluster() });

@@ -23,10 +23,11 @@
 
 import { access, copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import { delay, runChecked } from "./common.mjs";
-import { ensureDesktopForeground, openContextMenu, pressChord, pressMouseDown, readComposerText, selectComposerText, setInputValue, typeIntoComposer, waitForCodeMirror } from "./desktop.mjs";
+import { ensureDesktopForeground, openContextMenu, pressChord, pressMouseDown, pressNativeEscape, readComposerText, selectComposerText, setInputValue, typeIntoComposer, waitForCodeMirror } from "./desktop.mjs";
 import { writeJson } from "./evidence.mjs";
 import {
   VERIFICATION_BARRIERS,
@@ -838,7 +839,6 @@ export async function verifyForkMergeBack({
 }
 
 
-const SNOOZE_HOUR_MS = 60 * 60 * 1000;
 
 // Text match for controls whose role the renderer does not fix (menu items,
 // settings nav entries).
@@ -915,10 +915,15 @@ export async function verifyWorkspaceSettings({
   // 1. Snooze shelf: snooze from the row menu, find it on the collapsed shelf, unsnooze.
   const rowSelector = `[data-workspace-id="${workspace.id}"] button[data-open][title]`;
   diagnose("snooze-contextmenu", await openContextMenu(browser, rowSelector));
-  await clickByText(browser, "Snooze for 1 hour", 10_000);
+  const expectedSnooze = await browser.execute(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    return tomorrow.toISOString();
+  });
+  await clickByText(browser, "Snooze Until Tomorrow", 10_000);
   const snoozedUntil = await waitForSnooze(bridge, workspace.id, (value) => value !== null, 10_000, "snooze");
-  const remainingMs = Date.parse(snoozedUntil) - Date.now();
-  check(assertions, "snooze-lasts-about-an-hour", remainingMs > SNOOZE_HOUR_MS - 5 * 60_000 && remainingMs <= SNOOZE_HOUR_MS, snoozedUntil);
+  check(assertions, "snooze-until-tomorrow-morning", snoozedUntil === expectedSnooze, snoozedUntil);
   check(assertions, "snooze-leaves-execution-state-alone", (await waitForCompleted(bridge, source.id, 5_000, "snoozed chat")).state === seeded.state);
   // The snoozed chat is the open one, so the shelf opens by itself to keep it
   // in view (Sidebar.tsx). Hide it, then show it again: both are real toggles.
@@ -964,16 +969,15 @@ export async function verifyWorkspaceSettings({
   check(assertions, "project-template-saves", true);
   screenshots.push(await screenshot(browser, evidenceDir, "settings-branch-names"));
 
-  const linkedCard = "#settings-linked-repos";
+  const linkedCard = "#settings-project-folders";
   const linkedDir = path.join(path.dirname(repoPath), "linked-docs");
   await mkdir(linkedDir, { recursive: true });
   await writeFile(path.join(linkedDir, "README.md"), "# Shared API\n\nShared API contracts and types for the application.\n");
   const canonicalLinked = await realpath(linkedDir);
-  const linkedRows = () => sqliteRows(databasePath, "SELECT * FROM project_linked_repos");
-  check(assertions, "linked-repository-has-no-path-input", !(await (await browser.$(`${linkedCard} input[type=\"text\"]`)).isExisting()));
+  const linkedRows = async () => (await bridge.call("projects:get-folders", { projectId: project.id })).filter((folder) => !folder.isPrimary);
   for (const [bad, expected] of [
     ["relative/dir", "must be absolute"],
-    [repoPath, "cannot be, contain, or sit inside"],
+    [repoPath, "LINKED_REPO_OVERLAPS_PROJECT"],
   ]) {
     const error = await browser.execute(async (projectId, candidate) => {
       try {
@@ -987,29 +991,35 @@ export async function verifyWorkspaceSettings({
   }
   // This driver controls the webview, not the OS folder sheet. Script only that
   // selection result and keep persistence, helper generation, and row actions real.
-  await browser.execute(() => { window.argmax.linkedRepos.pickFolder = async () => null; });
-  await clickByText(browser, "Connect repository…", 5_000);
+  await browser.execute(() => { window.argmax.projects.pickDirectory = async () => ({ cancelled: true, path: null }); });
+  await clickByText(browser, "Add folder", 5_000);
   check(assertions, "linked-repository-picker-cancellation-keeps-list-empty", (await linkedRows()).length === 0);
   await browser.execute((candidate) => {
-    window.argmax.linkedRepos.pickFolder = ({ projectId: owner }) =>
-      window.argmax.linkedRepos.add({ projectId: owner, repo: { name: null, path: candidate } });
+    window.argmax.projects.pickDirectory = async () => ({ cancelled: false, path: candidate });
   }, linkedDir);
-  await clickByText(browser, "Connect repository…", 5_000);
+  await clickByText(browser, "Add folder", 5_000);
   await waitForText(browser, `${linkedCard} strong`, "linked-docs", 10_000);
+  check(assertions, "project-folder-draft-does-not-persist", (await linkedRows()).length === 0);
+  await clickByText(browser, "Save project", 5_000);
+  await browser.waitUntil(async () => (await linkedRows()).length === 1, { timeout: 10_000 });
+  const generateSummary = await browser.$('[aria-label="Generate summary for linked-docs"]');
+  await generateSummary.waitForClickable({ timeout: 10_000 });
+  await generateSummary.click();
   const expectedSummary = "Shared API contracts and types for the application.";
   await waitForText(browser, linkedCard, expectedSummary, 20_000);
   const added = (await linkedRows()).find((row) => Object.values(row).includes(canonicalLinked));
-  check(assertions, "linked-repository-stores-canonical-root", Boolean(added) && added.enabled === 1, added);
+  check(assertions, "linked-repository-stores-canonical-root", Boolean(added) && added.enabled === true, added);
   check(assertions, "linked-repository-summary-generated-and-persisted", added.summary === expectedSummary, added);
   screenshots.push(await screenshot(browser, evidenceDir, "settings-linked-repository"));
-  await (await browser.$('[aria-label="Enable linked repository linked-docs"]')).click();
-  await browser.waitUntil(async () => (await linkedRows())[0]?.enabled === 0, {
+  await (await browser.$('[aria-label="Include linked-docs in agent context"]')).click();
+  await browser.waitUntil(async () => (await linkedRows())[0]?.enabled === false, {
     timeout: 10_000,
     interval: 150,
     timeoutMsg: "Toggling the linked repository did not disable it",
   });
   check(assertions, "linked-repository-toggle-disables-it", true);
-  await (await browser.$('[aria-label="Remove linked repository linked-docs"]')).click();
+  await (await browser.$('[aria-label="Remove folder linked-docs"]')).click();
+  await clickByText(browser, "Save project", 5_000);
   await browser.waitUntil(async () => (await linkedRows()).length === 0, {
     timeout: 10_000,
     interval: 150,
@@ -1171,6 +1181,8 @@ export async function verifyWorkspaceSettings({
   check(assertions, "unoccupied-branch-chat-runs-in-the-main-checkout", (await providerCwdFor(invocationLog, scenarios.occupiedCheckout.prompt)) === (await realpath(repoPath)) && checkoutChat.id !== oldChat.id);
   await stillAsItWas("unoccupied-branch");
 
+  await verifyNamedProject({ bridge, browser, repoPath, invocationLog, evidenceDir, screenshots, assertions });
+
   const events = await readAllEvents(bridge, source.id);
   const result = {
     session: await waitForCompleted(bridge, source.id, 5_000, "settings seed chat"),
@@ -1183,6 +1195,265 @@ export async function verifyWorkspaceSettings({
   return result;
 }
 
+
+async function verifyNamedProject({ bridge, browser, repoPath, invocationLog, evidenceDir, screenshots, assertions }) {
+  const secondary = path.join(path.dirname(repoPath), "project-secondary");
+  await mkdir(secondary, { recursive: true });
+  await git(secondary, "init", "-q", "-b", "main");
+  await git(secondary, "config", "user.email", "fixture@argmax.test");
+  await git(secondary, "config", "user.name", "Argmax fixture");
+  await writeFile(path.join(secondary, "README.md"), "secondary baseline\n");
+  await git(secondary, "add", "README.md");
+  await git(secondary, "commit", "-q", "-m", "initial");
+  const secondaryRoot = await realpath(secondary);
+  const primaryRoot = await realpath(repoPath);
+
+  await (await browser.$('[aria-label="New chat"]')).click();
+  await (await browser.$('[aria-label="Switch project"]')).click();
+  const newProject = await browser.$('//button[normalize-space(.)="New project"]');
+  await newProject.waitForClickable({ timeout: 5_000 });
+  await newProject.click();
+  const dialog = await browser.$('[role="dialog"][aria-labelledby="new-project-heading"]');
+  await dialog.waitForDisplayed({ timeout: 10_000 });
+  await setInputValue(browser, await dialog.$("input"), "Connected project");
+  await browser.execute((folders) => {
+    window.argmax.projects.pickDirectory = async () => ({ cancelled: false, path: folders.shift() });
+  }, [primaryRoot, secondaryRoot]);
+  await clickByText(browser, "Add folder", 5_000);
+  await clickByText(browser, "Add folder", 5_000);
+  screenshots.push(await screenshot(browser, evidenceDir, "create-named-project"));
+  await clickByText(browser, "Create project", 5_000);
+  await browser.waitUntil(async () => (await bridge.call("projects:list", {})).some((row) => row.name === "Connected project"), { timeout: 10_000 });
+  const named = (await bridge.call("projects:list", {})).find((row) => row.name === "Connected project");
+  const folders = await bridge.call("projects:get-folders", { projectId: named.id });
+  check(assertions, "named-project-has-two-folders-and-one-primary", folders.length === 2 && folders.filter((folder) => folder.isPrimary).length === 1, folders);
+  check(assertions, "same-repository-can-belong-to-two-projects", (await bridge.call("projects:list", {})).filter((row) => row.repoPath === primaryRoot).length === 2);
+  const original = await bridge.call("workspaces:create-current", { projectId: named.id, taskLabel: "Pinned original" });
+
+  const projectActions = await browser.$('[aria-label="Actions for Connected project"]');
+  await projectActions.waitForExist({ timeout: 10_000 });
+  await projectActions.moveTo();
+  await browser.waitUntil(async () => {
+    await browser.execute(() => document.querySelector('[aria-label="Actions for Connected project"]')?.focus());
+    return projectActions.isClickable();
+  }, { timeout: 10_000, timeoutMsg: "Project actions did not become clickable after hover and focus" });
+  await projectActions.click();
+  const projectMenu = await browser.$('[role="menu"][aria-label="Connected project actions"]');
+  await projectMenu.waitForDisplayed({ timeout: 5_000 });
+  const menuFits = await browser.execute(() => {
+    const rect = document.querySelector('[role="menu"][aria-label="Connected project actions"]').getBoundingClientRect();
+    return rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
+  });
+  check(assertions, "project-menu-stays-in-window", menuFits);
+  screenshots.push(await screenshot(browser, evidenceDir, "project-actions"));
+  await (await browser.$('//button[@role="menuitem" and normalize-space(.)="Edit Project"]')).click();
+  await verifyProjectOverview({ bridge, browser, projectId: named.id, evidenceDir, screenshots, assertions });
+  const makePrimary = await browser.$('[aria-label="Make project-secondary primary"]');
+  await makePrimary.waitForDisplayed({ timeout: 10_000 });
+  await makePrimary.click();
+  await clickByText(browser, "Save project", 5_000);
+  await browser.waitUntil(async () => (await bridge.call("projects:list", {})).find((row) => row.id === named.id)?.repoPath === secondaryRoot, { timeout: 10_000 });
+  const next = await bridge.call("workspaces:create-current", { projectId: named.id, taskLabel: "New primary" });
+  const snapshot = await bridge.call("dashboard:list", {});
+  check(assertions, "changing-primary-pins-existing-chat", snapshot.workspaces.find((row) => row.id === original.id)?.path === primaryRoot);
+  check(assertions, "changing-primary-affects-new-chat", next.path === secondaryRoot && next.projectFolderId !== original.projectFolderId);
+  screenshots.push(await screenshot(browser, evidenceDir, "project-primary-changed"));
+
+  await writeFile(path.join(secondaryRoot, "README.md"), "secondary folder diff marker\n");
+  const secondaryFolder = folders.find((folder) => folder.rootPath === secondaryRoot);
+  const changes = await bridge.call("review:list-changed-files", { kind: "projectFolder", id: secondaryFolder.id, comparison: "workingTree" });
+  check(assertions, "secondary-repository-changes-have-own-root", changes.some((file) => file.path === "README.md"), changes);
+  const diff = await bridge.call("review:load-diff", { kind: "projectFolder", id: secondaryFolder.id, filePath: "README.md", comparison: "workingTree", contextLines: null });
+  check(assertions, "secondary-repository-diff-reads-correct-file", JSON.stringify(diff).includes("secondary folder diff marker"));
+
+  const chat = await bridge.call("providers:launch", {
+    workspaceId: original.id,
+    provider: VERIFICATION_PROVIDER.provider,
+    prompt: VERIFICATION_SCENARIOS.workspaceSettings.prompt,
+    modelLabel: VERIFICATION_PROVIDER.modelLabel,
+    modelId: VERIFICATION_PROVIDER.modelId,
+    reasoningEffort: null, fastMode: false, agentMode: null, permissionMode: null,
+    cols: 120, rows: 32, attachments: null,
+  });
+  await waitForCompleted(bridge, chat.id, 30_000, "named project chat");
+  const overviewLaunch = (await readInvocations(invocationLog)).find((entry) => entry.prompt?.includes("Project overview (descriptive context"));
+  check(assertions, "saved-project-overview-reaches-agent", overviewLaunch?.prompt?.includes("Verification project overview"), overviewLaunch?.prompt);
+  await clickByText(browser, "Back", 5_000);
+  const chatRow = await browser.$(`[data-workspace-id="${original.id}"] button[data-status][title]`);
+  await chatRow.waitForClickable({ timeout: 10_000 });
+  await chatRow.click();
+  const folderChanges = await browser.$('[aria-label="Changes in project-secondary"]');
+  await folderChanges.waitForDisplayed({ timeout: 10_000 });
+  check(assertions, "workspace-card-shows-secondary-repository", await folderChanges.isDisplayed());
+  screenshots.push(await screenshot(browser, evidenceDir, "project-workspace-card"));
+  await folderChanges.click();
+  await waitForText(browser, ".review-diff-scroll", "secondary folder diff marker", 10_000);
+  check(assertions, "workspace-card-opens-secondary-diff", true);
+  screenshots.push(await screenshot(browser, evidenceDir, "project-secondary-diff"));
+  const cardText = await browser.execute(() => document.querySelector('.workspace-card')?.textContent ?? "");
+  check(assertions, "workspace-card-has-no-manual-git-actions", !/Chat checkout|Shared checkout|Create pull request/.test(cardText));
+  await verifyNestedChats({ bridge, browser, sessionId: chat.id, evidenceDir, screenshots, assertions });
+  await verifyLaunchFolder({ bridge, browser, named, primaryRoot, secondaryRoot, invocationLog, evidenceDir, screenshots, assertions });
+}
+
+async function verifyLaunchFolder({ bridge, browser, named, primaryRoot, secondaryRoot, invocationLog, evidenceDir, screenshots, assertions }) {
+  const notes = path.join(path.dirname(primaryRoot), "project-notes");
+  await mkdir(notes, { recursive: true });
+  await writeFile(path.join(notes, "notes.md"), "Plain folder launch evidence\n");
+  const notesRoot = await realpath(notes);
+  await bridge.call("projects:configure", { projectId: named.id, name: named.name,
+    folders: [primaryRoot, secondaryRoot, notesRoot], primaryPath: secondaryRoot });
+  await browser.refresh();
+  for (const [root, plain] of [[primaryRoot, false], [notesRoot, true]]) {
+    const before = (await bridge.call("dashboard:list", {})).sessions.map((session) => session.id);
+    const field = await openLauncher(browser, 10_000);
+    await (await browser.$('[aria-label="Switch project"]')).click();
+    await (await browser.$(`//*[@aria-label="Select project"]//button[.//*[normalize-space(.)="${named.name}"]]`)).click();
+    const choose = await browser.$('[aria-label="Switch project"]');
+    await choose.waitForClickable({ timeout: 10_000 });
+    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes("Right-click to choose a folder"), {
+      timeout: 10_000,
+      timeoutMsg: "The selected project's folders did not become available",
+    });
+    diagnose("launch-folder-contextmenu", await openContextMenu(browser, '[aria-label="Switch project"]'));
+    const folders = await bridge.call("projects:get-folders", { projectId: named.id });
+    const folder = folders.find((entry) => entry.rootPath === root);
+    const option = await browser.$(`//*[@aria-label="Work in"]//button[@title="${root}"]`);
+    await option.waitForClickable({ timeout: 10_000 });
+    screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder-menu" : "launcher-folder-menu"));
+    await option.click();
+    await browser.waitUntil(async () => (await choose.getAttribute("title")).includes(`Work in ${path.basename(folder.rootPath)}`), { timeout: 10_000 });
+    if (plain) {
+      await browser.waitUntil(async () => !(await (await browser.$('[aria-label="Switch branch"]')).isExisting()), { timeout: 10_000 });
+      check(assertions, "plain-folder-hides-worktree-control", !(await (await browser.$('[aria-label="Worktree"]')).isExisting()));
+    } else {
+      const toggle = await browser.$('[aria-label="Worktree"]');
+      if (await toggle.getAttribute("aria-pressed") === "true") await toggle.click();
+    }
+    const prompt = `${VERIFICATION_SCENARIOS.workspaceSettings.prompt} folder-${plain ? "plain" : "git"}`;
+    await typeIntoComposer(browser, field, prompt);
+    const start = await browser.$('[aria-label="Start agent"]');
+    await start.waitForClickable({ timeout: 10_000 });
+    screenshots.push(await screenshot(browser, evidenceDir, plain ? "launcher-plain-folder" : "launcher-selected-folder"));
+    await start.click();
+    const session = await waitForNewCompletedChat(bridge, before, 30_000, "selected folder chat");
+    const workspace = (await bridge.call("dashboard:list", {})).workspaces.find((entry) => entry.id === session.workspaceId);
+    check(assertions, `launcher-${plain ? "plain" : "git"}-folder-root`, workspace.path === root && workspace.projectFolderId === folder.id, workspace);
+    check(assertions, `launcher-${plain ? "plain" : "git"}-provider-cwd`, (await providerCwdFor(invocationLog, prompt)) === root);
+    check(assertions, "launcher-folder-selection-preserves-primary", (await bridge.call("projects:list", {})).find((project) => project.id === named.id).repoPath === secondaryRoot);
+    if (plain) {
+      check(assertions, "plain-folder-workspace-kind", workspace.kind === "folder");
+      const files = await bridge.call("workspace:list-files", { kind: "workspace", id: workspace.id });
+      check(assertions, "plain-folder-files-available", files.some((file) => file.path === "notes.md"));
+    }
+  }
+}
+
+async function verifyProjectOverview({ bridge, browser, projectId, evidenceDir, screenshots, assertions }) {
+  const readOverview = async () => (await bridge.call("projects:list", {})).find((row) => row.id === projectId)?.overview;
+  await browser.waitUntil(async () => (await readOverview())?.status !== "generating", { timeout: 30_000, timeoutMsg: "automatic project overview generation did not finish" });
+  const initial = await readOverview();
+  check(assertions, "project-overview-generated-automatically", Boolean(initial?.saved?.text && initial.saved.generatedAt && initial.saved.sources.length), initial);
+  const editor = await browser.$('[aria-label="Project overview"]');
+  await editor.waitForDisplayed({ timeout: 10_000 });
+  await browser.waitUntil(async () => (await editor.getValue()) === initial.saved.text, { timeout: 5_000 });
+  screenshots.push(await screenshot(browser, evidenceDir, "project-overview-generated"));
+  await setInputValue(browser, editor, "My edited project overview.");
+  await clickByText(browser, "Save overview", 5_000);
+  await browser.waitUntil(async () => (await readOverview())?.saved?.text === "My edited project overview.", { timeout: 5_000 });
+  await clickByText(browser, "Refresh overview", 5_000);
+  await browser.waitUntil(async () => Boolean((await readOverview())?.draft), { timeout: 30_000 });
+  const refreshed = await readOverview();
+  check(assertions, "refresh-keeps-manual-overview-until-applied", refreshed.saved.text === "My edited project overview." && refreshed.draft.text.includes("Verification project overview"), refreshed);
+  await (await browser.$('//button[normalize-space(.)="Apply draft"]')).waitForClickable({ timeout: 10_000 });
+  screenshots.push(await screenshot(browser, evidenceDir, "project-overview-refresh-draft"));
+  await clickByText(browser, "Discard draft", 5_000);
+  await browser.waitUntil(async () => !(await readOverview())?.draft, { timeout: 5_000 });
+  check(assertions, "discard-overview-draft-retains-edits", (await readOverview()).saved.text === "My edited project overview.");
+  await clickByText(browser, "Refresh overview", 5_000);
+  await browser.waitUntil(async () => Boolean((await readOverview())?.draft), { timeout: 30_000 });
+  await clickByText(browser, "Apply draft", 10_000);
+  await browser.waitUntil(async () => (await readOverview())?.saved?.text.includes("Verification project overview"), { timeout: 5_000 });
+  const applied = await readOverview();
+  check(assertions, "apply-overview-draft-updates-saved-context", !applied.draft && applied.saved.text.includes("Verification project overview"));
+}
+
+async function verifyNestedChats({ bridge, browser, sessionId, evidenceDir, screenshots, assertions }) {
+  const child = await bridge.call("session:multitask", {
+    sessionId, prompt: VERIFICATION_SCENARIOS.workspaceSettings.prompt,
+    taskLabel: "Linked project check", worktree: false
+  });
+  await waitForCompleted(bridge, child.sessionId, 30_000, "nested multitask");
+  const childRowSelector = `[data-workspace-id="${child.workspaceId}"]`;
+  const childRow = await browser.$(childRowSelector);
+  await childRow.waitForDisplayed({ timeout: 10_000 });
+  const isNested = () => browser.execute((selector) => Boolean(document.querySelector(selector)?.closest('[role="group"][aria-label^="Chats launched from"]')), childRowSelector);
+  check(assertions, "launched-chat-nested-by-default", await isNested());
+  const nestingLayout = await browser.execute((selector) => {
+    const child = document.querySelector(selector);
+    const group = child.closest('[role="group"][aria-label^="Chats launched from"]');
+    const parent = group.previousElementSibling.getBoundingClientRect();
+    const row = child.getBoundingClientRect();
+    return { parentBottom: parent.bottom, childTop: row.top, childWidth: row.width };
+  }, childRowSelector);
+  check(assertions, "nested-chats-stack-below-parent", nestingLayout.childTop >= nestingLayout.parentBottom && nestingLayout.childWidth > 150, nestingLayout);
+  screenshots.push(await screenshot(browser, evidenceDir, "nested-chats"));
+  const parentWorkspaceId = (await bridge.call("dashboard:list", {})).sessions.find((session) => session.id === sessionId).workspaceId;
+  const parentRowSelector = `[data-workspace-id="${parentWorkspaceId}"] button[data-status]`;
+  await openContextMenu(browser, parentRowSelector);
+  const collapse = await browser.$('[aria-label="Collapse chats launched from Pinned original"]');
+  await collapse.waitForClickable({ timeout: 5_000 });
+  await collapse.click();
+  check(assertions, "chat-disclosure-collapses-children", !await childRow.isExisting());
+  await openContextMenu(browser, parentRowSelector);
+  await (await browser.$('[aria-label="Expand chats launched from Pinned original"]')).waitForClickable({ timeout: 5_000 });
+  await (await browser.$('[aria-label="Expand chats launched from Pinned original"]')).click();
+  await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 5_000 });
+
+  const sidebarWidth = await browser.execute(() => document.querySelector('.sidebar').getBoundingClientRect().width);
+  await (await browser.$('[aria-label="Customize"]')).click();
+  const settingsWidth = await browser.execute(() => document.querySelector('.settings-rail').getBoundingClientRect().width);
+  check(assertions, "customize-keeps-sidebar-width", Math.abs(sidebarWidth - settingsWidth) < 1, { sidebarWidth, settingsWidth });
+  await clickByText(browser, "Appearance", 5_000);
+  const separate = await browser.$('//label[.//input[@name="sidebar-chat-nesting" and @value="separate"]]');
+  await separate.waitForExist({ timeout: 5_000 });
+  await separate.click();
+  await clickByText(browser, "Back", 5_000);
+  const priorityToggle = await browser.$('[aria-label="Show Priority chats"]');
+  if (await priorityToggle.isExisting()) {
+    await browser.execute(() => document.querySelector('[aria-label="Show Priority chats"]').focus());
+    await priorityToggle.click();
+  }
+  await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 5_000 });
+  check(assertions, "launched-chat-setting-flattens-sidebar", !await isNested());
+  await (await browser.$('[aria-label="Customize"]')).click();
+  await (await browser.$('//label[.//input[@name="sidebar-chat-nesting" and @value="nested"]]')).click();
+  await clickByText(browser, "Back", 5_000);
+  await browser.waitUntil(isNested, { timeout: 5_000 });
+  await openContextMenu(browser, `${childRowSelector} button[data-status]`);
+  const detach = await browser.$('//button[@role="menuitem" and normalize-space(.)="Detach to Top Level"]');
+  await detach.waitForClickable({ timeout: 5_000 });
+  screenshots.push(await screenshot(browser, evidenceDir, "nested-chat-actions"));
+  await detach.click();
+  await browser.waitUntil(async () => !await isNested(), { timeout: 5_000 });
+  const detachedSession = (await bridge.call("dashboard:list", {})).sessions.find((row) => row.id === child.sessionId);
+  check(assertions, "detaching-preserves-launch-relationship", detachedSession?.launchedBySessionId === sessionId);
+  await browser.refresh();
+  await browser.waitUntil(async () => await browser.execute((workspaceId) => {
+    const stored = JSON.parse(localStorage.getItem("argmax.sidebar.chatNesting") ?? "null");
+    return stored?.detachedIds.includes(workspaceId);
+  }, child.workspaceId), { timeout: 10_000 });
+  await (await browser.$('[aria-label="Actions for Connected project"]')).waitForExist({ timeout: 10_000 });
+  for (const label of ["Show Priority chats", "Show Connected project chats"]) {
+    const toggle = await browser.$(`[aria-label="${label}"]`);
+    if (await toggle.isExisting()) {
+      await browser.execute((label) => document.querySelector(`[aria-label="${label}"]`).focus(), label);
+      await toggle.click();
+    }
+  }
+  await (await browser.$(childRowSelector)).waitForDisplayed({ timeout: 10_000 });
+  check(assertions, "chat-detachment-persists-after-reload", !await isNested());
+}
 
 async function git(cwd, ...args) {
   const { stdout } = await runChecked("git", args, { cwd, timeoutMs: 20_000 });
@@ -1560,6 +1831,151 @@ export async function verifyComposerEditor({
 // focuses one of its own fields, while the page's `document.hasFocus()` still
 // reads false. What the person feels is the app document losing focus: their
 // keystrokes stop landing in the composer until they click it again.
+async function verifyMixedBrowserTabs(browser, source, workspace, baseUrl, nativeEscapePath, timeoutMs, assertions, evidenceDir) {
+  await openWorkspaceRow(browser, workspace.id, timeoutMs);
+  await waitForIdleControls(browser, timeoutMs);
+  await browser.execute(function driveMixedTabs(sessionId, base, escapePath) {
+    const api = window.argmax.browser;
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const wait = async (read, label, attempts = 100) => {
+      for (let n = 0; n < attempts; n += 1) {
+        const value = await read();
+        if (value) return value;
+        await pause(100);
+      }
+      throw new Error(`Timed out: ${label}`);
+    };
+    const tab = (url) => [...document.querySelectorAll('[aria-label="Workspace tabs"] [role="tab"]')].find((item) => item.getAttribute('aria-label') === url);
+    const menuItem = (text) => [...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent.trim() === text);
+    const evaluate = async (tabId, script) => JSON.parse((await api.evaluate({ tabId, script, timeoutMs: 5000 })).resultJson);
+    const bounds = {};
+    const originalBounds = api.setBounds;
+    const originalOpen = api.open;
+    const openCalls = [];
+    let phase = "opening pages";
+    api.open = async (input) => {
+      const call = { input, status: "pending" };
+      openCalls.push(call);
+      try {
+        const result = await originalOpen(input);
+        call.status = "resolved";
+        return result;
+      } catch (cause) {
+        call.status = "rejected";
+        call.message = String(cause?.message ?? cause);
+        throw cause;
+      }
+    };
+    api.setBounds = async (input) => {
+      const result = await originalBounds(input);
+      bounds[input.tabId] = input;
+      return result;
+    };
+    window.__verifyMixedTabs = null;
+    void (async () => {
+      const opened = [];
+      try {
+        const firstUrl = `${base}first`;
+        const secondUrl = `${base}second`;
+        const first = await api.openForSession({ sessionId, url: firstUrl });
+        opened.push(first.tabId);
+        await wait(() => tab(firstUrl), 'first browser workspace tab');
+        const second = await api.openForSession({ sessionId, url: secondUrl });
+        opened.push(second.tabId);
+        await wait(() => tab(secondUrl), 'second browser workspace tab');
+        phase = 'split pages';
+        tab(firstUrl).click();
+        await wait(() => bounds[first.tabId]?.visible, 'first visible');
+        tab(secondUrl).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 100 }));
+        (await wait(() => menuItem('Show Below'), 'split menu')).click();
+        await wait(() => bounds[first.tabId]?.visible && bounds[second.tabId]?.visible, 'both browser pages visible');
+        const splitBounds = JSON.parse(JSON.stringify(bounds));
+        const persisted = JSON.parse(localStorage.getItem(`argmax.reviewPanel.layout.${sessionId}`));
+        await evaluate(first.tabId, 'window.__reviewTabMarker = 42; 42');
+        document.querySelector('[aria-label="Workspace tabs"] [aria-label="Changes"]').click();
+        await wait(() => !bounds[second.tabId]?.visible, 'second page hidden on switch');
+        tab(secondUrl).click();
+        await wait(() => bounds[second.tabId]?.visible, 'second page restored');
+        const retained = await evaluate(first.tabId, 'window.__reviewTabMarker');
+        phase = 'expand panel';
+        const panel = document.querySelector('[aria-label="Review panel"]');
+        const originalWidth = panel.getBoundingClientRect().width;
+        document.querySelector('[aria-label="Expand panel"]').click();
+        await wait(() => panel.getBoundingClientRect().width > originalWidth, 'expanded panel width');
+        const expandedWidth = panel.getBoundingClientRect().width;
+        const expandedRetained = await evaluate(first.tabId, 'window.__reviewTabMarker');
+        document.querySelector('[aria-label="Restore panel size"]').click();
+        await wait(() => Math.abs(panel.getBoundingClientRect().width - originalWidth) < 2, 'restored panel width');
+
+        phase = 'close page';
+        document.querySelector(`[aria-label="Close ${secondUrl}"]`).click();
+        await wait(() => !tab(secondUrl), 'closed browser tab removed');
+        const afterClose = await api.listTabs({ sessionId });
+        phase = 'reopen page';
+        document.querySelector('[aria-label="New workspace tab"]').dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        (await wait(() => menuItem('Reopen Closed Tab'), 'reopen action')).click();
+        await wait(() => tab(secondUrl), 'reopened browser tab');
+        const afterReopen = await wait(async () => {
+          const registry = await api.listTabs({});
+          return registry.tabs.some((item) => item.url === secondUrl && item.tabId !== second.tabId) ? registry : null;
+        }, 'reopened native browser page', 400);
+        opened.push(...afterReopen.tabs.map((item) => item.tabId));
+        phase = 'Escape from expanded native browser';
+        document.querySelector('[aria-label="Expand panel"]').click();
+        await wait(() => document.querySelector('[aria-label="Restore panel size"]'), 'expanded again');
+        const reopened = afterReopen.tabs.find((item) => item.url === secondUrl && item.tabId !== second.tabId);
+        await evaluate(reopened.tabId, `(() => {
+          window.__verifyNativeEscape = {};
+          window.addEventListener('keydown', function record(event) {
+            if (event.key !== 'Escape') return;
+            window.__verifyNativeEscape.event = { isTrusted: event.isTrusted, target: event.target.tagName };
+            window.removeEventListener('keydown', record, true);
+          }, true);
+          document.body.tabIndex = -1;
+          document.body.focus();
+          return true;
+        })()`);
+        await api.focus(reopened.tabId);
+        await evaluate(reopened.tabId, `fetch(${JSON.stringify(escapePath)}, { method: 'POST' })
+          .then(async (response) => {
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error);
+            window.__verifyNativeEscape.sent = result;
+          }).catch((error) => { window.__verifyNativeEscape.error = String(error.message); }); true`);
+        const nativeEscape = await wait(async () => {
+          const state = await evaluate(reopened.tabId, 'window.__verifyNativeEscape');
+          if (state.error) throw new Error(state.error);
+          return state.sent && state.event ? state : null;
+        }, 'native Escape received by browser page', 200);
+        await wait(() => !document.querySelector('[aria-label="Review panel"]'), 'Escape closes panel');
+        window.__verifyMixedTabs = { first: first.tabId, second: second.tabId, splitBounds, persisted, retained, afterClose, afterReopen, openCalls, originalWidth, expandedWidth, expandedRetained, nativeEscape, escapeClosed: true };
+      } catch (error) {
+        window.__verifyMixedTabs = { failureMessage: String(error?.message ?? error), phase, openCalls, bounds, html: document.querySelector('[aria-label="Review panel"]')?.outerHTML?.slice(0, 12000) };
+      } finally {
+        api.setBounds = originalBounds;
+        api.open = originalOpen;
+        for (const id of new Set(opened)) await api.close(id).catch(() => undefined);
+      }
+    })();
+  }, source.id, baseUrl, nativeEscapePath);
+  const result = await browser.waitUntil(
+    () => browser.execute(() => window.__verifyMixedTabs).catch(() => null),
+    { timeout: timeoutMs, interval: 250, timeoutMsg: 'Mixed browser tabs probe did not finish' },
+  );
+  await writeJson(path.join(evidenceDir, 'mixed-browser-tabs.json'), result);
+  if (result.failureMessage) throw new Error(`${result.phase}: ${result.failureMessage}`);
+  const first = result.splitBounds[result.first];
+  const second = result.splitBounds[result.second];
+  check(assertions, 'two-browser-tabs-have-independent-visible-bounds', first.visible && second.visible && first.bounds.y + first.bounds.height <= second.bounds.y + 1, { first, second });
+  check(assertions, 'mixed-tab-layout-persists-both-browser-panes', result.persisted.version === 2 && result.persisted.paneTabIds.length === 2, result.persisted);
+  check(assertions, 'switching-tabs-preserves-page-state', result.retained === 42, result.retained);
+  check(assertions, 'expansion-preserves-page-and-restores-width', result.expandedWidth > result.originalWidth && result.expandedRetained === 42, result);
+  check(assertions, 'native-page-Escape-closes-expanded-panel', result.escapeClosed === true && result.nativeEscape.event.isTrusted === true, result.nativeEscape);
+
+  check(assertions, 'closing-one-browser-keeps-the-other', result.afterClose.tabs.some((tab) => tab.tabId === result.first) && !result.afterClose.tabs.some((tab) => tab.tabId === result.second), result.afterClose);
+  check(assertions, 'reopening-creates-a-fresh-page', result.afterReopen.tabs.some((tab) => tab.url.endsWith('/second') && tab.tabId !== result.second), result.afterReopen);
+}
+
 export async function verifyBrowserFocus({ bridge, browser, source, workspace, outputDir, timeoutMs, verifyUi }) {
   const evidenceDir = path.join(outputDir, "native");
   await mkdir(evidenceDir, { recursive: true });
@@ -1574,7 +1990,20 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
     expectIdle: true,
   }));
 
-  const page = createServer((_request, response) => {
+  const nativeEscapePath = `/native-escape-${randomUUID()}`;
+  let escapeRequested = false;
+  const page = createServer((request, response) => {
+    if (request.url === nativeEscapePath && request.method === "POST" && !escapeRequested) {
+      escapeRequested = true;
+      void pressNativeEscape(browser).then((result) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(result));
+      }).catch((error) => {
+        response.writeHead(503, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: error.message }));
+      });
+      return;
+    }
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end('<!doctype html><title>Focus probe</title><input id="probe" aria-label="Probe field">');
   });
@@ -1645,6 +2074,7 @@ export async function verifyBrowserFocus({ bridge, browser, source, workspace, o
       result.after.documentHasFocus && result.after.composerActive && result.after.blurs === 0, result.after);
     check(assertions, "composer-text-is-untouched", (await readComposerText(browser, field)) === "keep typing");
     screenshots.push(await screenshot(browser, evidenceDir, "focus-launcher-after-probe"));
+    await verifyMixedBrowserTabs(browser, source, workspace, `http://127.0.0.1:${page.address().port}/`, nativeEscapePath, timeoutMs, assertions, evidenceDir);
   } finally {
     page.close();
   }

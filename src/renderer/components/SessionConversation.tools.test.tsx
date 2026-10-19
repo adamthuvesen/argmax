@@ -819,26 +819,26 @@ describe("SessionConversation — tools & chrome", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
 
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug log" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Browse Files" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitemcheckbox", { name: "Debug Log" })).toBeNull();
   });
 
   it("dismisses the session actions popover when clicking inside the conversation area", () => {
     renderConversation(baseSession({ state: "complete" }));
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    expect(screen.getByRole("menuitem", { name: "Browse files" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Browse Files" })).toBeInTheDocument();
 
     fireEvent.mouseDown(screen.getByRole("region", { name: "Conversation" }));
 
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
   });
 
   it("dismisses the session actions popover after toggling the debug log", () => {
     renderConversation(baseSession({ state: "complete" }));
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Debug log" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Debug Log" }));
 
-    expect(screen.queryByRole("menuitem", { name: "Browse files" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
   });
 
 });

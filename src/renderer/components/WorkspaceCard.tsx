@@ -4,10 +4,8 @@ import {
   FileDiff,
   Files,
   GitBranch,
-  GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
-  GitPullRequestArrow,
   GitPullRequestClosed,
   MoreHorizontal,
   SquareTerminal,
@@ -20,6 +18,7 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { agentStatusLabel } from "../lib/agentLaunch.js";
+import { repoNameFromPath } from "../lib/projects.js";
 import { openWebUrl } from "../lib/openWebUrl.js";
 import type { SubagentCluster } from "../lib/subagentSummary.js";
 import {
@@ -34,6 +33,8 @@ import { ChangeCount } from "./ChangeCount.js";
 import type { ComposerStatus } from "./SessionComposer.js";
 import { GithubIcon } from "./GithubIcon.js";
 import { showErrorToast, showInfoToast } from "../state/toast.js";
+import type { ProjectFolderChanges } from "../hooks/useProjectFolderChanges.js";
+import { summarizeChangedFiles } from "../lib/changedFiles.js";
 
 /** Avatars shown before the stack folds into a +N chip. Matches the reference
  *  density: four or five colored marks read as a team, more read as noise. */
@@ -44,7 +45,7 @@ const VISIBLE_PR_LIMIT = 3;
  * Floating summary of the session's worktree, parked in the conversation's
  * right gutter: which branch the work sits on, how much it has changed, and
  * one click into every surface that already exists for it (changes, files,
- * terminal, commit, PR), plus the subagents the session has spawned.
+ * terminal, PR), plus the subagents the session has spawned.
  *
  * It owns no state of its own. Every row hands off to the surface that does.
  * The card is an index into the pane, not a second place to read it, which is
@@ -58,12 +59,14 @@ export function WorkspaceCard({
   onBrowseFiles,
   onHide,
   onOpenChanges,
+  onOpenFolderChanges,
   onOpenAgents,
-  onOpenCommitDialog,
   onToggleTerminal,
   session,
   setStatus,
   subagents,
+  projectFolderChanges = [],
+  workingFolderName,
   workspace
 }: {
   /** Null until the changed-file list has loaded for this workspace. */
@@ -74,19 +77,22 @@ export function WorkspaceCard({
   onBrowseFiles: () => void;
   onHide: () => void;
   onOpenChanges: () => void;
+  onOpenFolderChanges?: (folderId: string, filePath: string) => void;
   onOpenAgents?: () => void;
-  onOpenCommitDialog?: () => void;
   onToggleTerminal: () => void;
   session: SessionSummary | null;
   setStatus: (status: ComposerStatus | null) => void;
   /** Subagents the session has launched; null hides the section. */
   subagents?: SubagentCluster | null;
+  projectFolderChanges?: ProjectFolderChanges[];
+  workingFolderName?: string;
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const [isPrPending, setIsPrPending] = useState(false);
   const [isPrHistoryOpen, setIsPrHistoryOpen] = useState(false);
   const [branchCopyFlash, copyBranch] = useCopyToClipboard();
   const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
+  const changedFolders = projectFolderChanges.filter((group) => group.folder.enabled && !group.error && group.files.length > 0);
   const changesLabel = changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
   const prs = workspaceSessionPrs(workspace);
   const primaryPr = primaryWorkspacePr(workspace);
@@ -107,20 +113,6 @@ export function WorkspaceCard({
     // that call rather than making a second one.
     void refreshSessionPrs(session.id)?.catch(() => undefined);
   }, [session?.id, workspace.kind, workspace.branch]);
-
-  const createPr = (event: MouseEvent<HTMLButtonElement>): void => {
-    if (!session || !window.argmax) return;
-    const flip = event.metaKey || event.ctrlKey;
-    setIsPrPending(true);
-    setStatus(null);
-    void window.argmax.git
-      .viewOrCreatePr({ sessionId: session.id, expectedBranch: workspace.branch })
-      .then((result) => {
-        openWebUrl(result.url, { flip });
-      })
-      .catch((error: unknown) => showErrorToast(errorMessage(error)))
-      .finally(() => setIsPrPending(false));
-  };
 
   const setPrimaryPr = (prNumber: number | null): void => {
     if (!session || !window.argmax?.prs?.setPrimary) return;
@@ -210,9 +202,11 @@ export function WorkspaceCard({
       </div>
 
       <div className="workspace-card-rows">
+        {workingFolderName || changedFolders.length > 0 ? <div className="workspace-card-section-label">Changes</div> : null}
         <WorkspaceCardRow
           icon={<FileDiff size={13} aria-hidden="true" />}
-          label="Changes"
+          label={workingFolderName ?? "Changes"}
+          ariaLabel="Changes"
           // A clean worktree has no diff to open, so the row goes quiet and
           // disabled instead of leading to an empty panel. Only the states that
           // are not yet a verdict — loading, failed — say so in the meta slot.
@@ -235,6 +229,26 @@ export function WorkspaceCard({
           }
           onClick={onOpenChanges}
         />
+        {changedFolders.map(({ folder, files }) => {
+          const totals = summarizeChangedFiles(files);
+          const folderName = repoNameFromPath(folder.rootPath) ?? folder.name;
+          return (
+            <div key={folder.id} className="workspace-card-folder-changes">
+              <WorkspaceCardRow
+                icon={<FileDiff size={13} aria-hidden="true" />}
+                label={folderName}
+                ariaLabel={`Changes in ${folderName}`}
+                title={`Review ${files.length} changed ${files.length === 1 ? "file" : "files"} in ${folder.rootPath}. This shared checkout can include changes from other chats.`}
+                meta={<ChangeCount additions={totals.additions} deletions={totals.deletions} />}
+                disabled={!onOpenFolderChanges}
+                onClick={() => { if (files[0]) onOpenFolderChanges?.(folder.id, files[0].path); }}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="workspace-card-rows">
         <WorkspaceCardRow
           icon={<Files size={13} aria-hidden="true" />}
           label="Files"
@@ -247,24 +261,6 @@ export function WorkspaceCard({
           pressed={isTerminalOpen}
           title="Toggle the integrated terminal (⌘J)"
           onClick={onToggleTerminal}
-        />
-      </div>
-
-      <div className="workspace-card-rows">
-        <WorkspaceCardRow
-          icon={<GitCommitHorizontal size={13} aria-hidden="true" />}
-          label="Commit"
-          disabled={!onOpenCommitDialog}
-          title={workspace.dirty ? "Select files and commit" : "Select files and commit (worktree is clean)"}
-          onClick={() => onOpenCommitDialog?.()}
-        />
-        <WorkspaceCardRow
-          icon={<GitPullRequestArrow size={13} aria-hidden="true" />}
-          ariaLabel="Create PR for checkout branch"
-          label="Create pull request"
-          disabled={!session || isPrPending}
-          title={`Create a pull request for ${workspace.branch}`}
-          onClick={createPr}
         />
       </div>
 

@@ -7,12 +7,21 @@ export const IPC_CHANNELS = [
   "health:ping",
   "projects:list",
   "projects:pick-folder",
+  "projects:pick-directory",
+  "projects:create",
+  "projects:configure",
+  "projects:get-folders",
+  "projects:generate-overview",
+  "projects:update-overview",
+  "projects:apply-overview-draft",
+  "projects:discard-overview-draft",
   "projects:check-prompt",
   "projects:resolve-check",
   "dashboard:list",
   "projects:register",
   "projects:remove",
   "projects:update-settings",
+  "projects:get-folder-context",
   "projects:list-branches",
   "projects:refresh-branch",
   "projects:switch-branch",
@@ -75,7 +84,6 @@ export const IPC_CHANNELS = [
   "review:unstage-file",
   "review:stage-hunk",
   "review:unstage-hunk",
-  "review:commit-staged",
   "review:revert-file",
   "review:revert-hunk",
   "goal:set",
@@ -160,10 +168,6 @@ export const IPC_CHANNELS = [
   "prs:set-primary",
   "prs:dismiss",
   "prs:cleanup",
-  "git:commit",
-  "git:push",
-  "git:create-branch",
-  "git:view-or-create-pr",
   "remote:get-status",
   "remote:set-config",
   "remote:test-notification",
@@ -218,12 +222,21 @@ export interface IpcCommands {
   "health:ping": Commands["healthPing"];
   "projects:list": Commands["projectsList"];
   "projects:pick-folder": Commands["projectsPickFolder"];
+  "projects:pick-directory": Commands["projectsPickDirectory"];
+  "projects:create": Commands["projectsCreate"];
+  "projects:configure": Commands["projectsConfigure"];
+  "projects:get-folders": Commands["projectsGetFolders"];
+  "projects:generate-overview": Commands["projectsGenerateOverview"];
+  "projects:update-overview": Commands["projectsUpdateOverview"];
+  "projects:apply-overview-draft": Commands["projectsApplyOverviewDraft"];
+  "projects:discard-overview-draft": Commands["projectsDiscardOverviewDraft"];
   "projects:check-prompt": Commands["projectsCheckPrompt"];
   "projects:resolve-check": Commands["projectsResolveCheck"];
   "dashboard:list": Commands["dashboardList"];
   "projects:register": Commands["projectsRegister"];
   "projects:remove": Commands["projectsRemove"];
   "projects:update-settings": Commands["projectsUpdateSettings"];
+  "projects:get-folder-context": Commands["projectsGetFolderContext"];
   "projects:list-branches": Commands["projectsListBranches"];
   "projects:refresh-branch": Commands["projectsRefreshBranch"];
   "projects:switch-branch": Commands["projectsSwitchBranch"];
@@ -286,7 +299,6 @@ export interface IpcCommands {
   "review:unstage-file": Commands["reviewUnstageFile"];
   "review:stage-hunk": Commands["reviewStageHunk"];
   "review:unstage-hunk": Commands["reviewUnstageHunk"];
-  "review:commit-staged": Commands["reviewCommitStaged"];
   "review:revert-file": Commands["reviewRevertFile"];
   "review:revert-hunk": Commands["reviewRevertHunk"];
   "goal:set": Commands["goalSet"];
@@ -371,10 +383,6 @@ export interface IpcCommands {
   "prs:set-primary": Commands["prsSetPrimary"];
   "prs:dismiss": Commands["prsDismiss"];
   "prs:cleanup": Commands["prsCleanup"];
-  "git:commit": Commands["gitCommit"];
-  "git:push": Commands["gitPush"];
-  "git:create-branch": Commands["gitCreateBranch"];
-  "git:view-or-create-pr": Commands["gitViewOrCreatePr"];
   "remote:get-status": Commands["remoteGetStatus"];
   "remote:set-config": Commands["remoteSetConfig"];
   "remote:test-notification": Commands["remoteTestNotification"];

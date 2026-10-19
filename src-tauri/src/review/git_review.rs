@@ -21,6 +21,9 @@ use crate::{
         tree_snapshot::{fingerprint_worktree, index_tree},
     },
     persistence::database::Database,
+    persistence::project_folders::{
+        project_for_folder, require_active_project_folder, require_workspace_project,
+    },
     persistence::projects::require_project,
     persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
     util::workspace_paths::{resolve_inside, PathError},
@@ -157,6 +160,9 @@ pub async fn list_changed_files(
     comparison: ReviewComparison,
 ) -> ArgmaxResult<Vec<ChangedFileSummary>> {
     let (repo_path, base_ref) = resolve_review_target(database, kind, id, comparison).await?;
+    if !Path::new(&repo_path).join(".git").exists() {
+        return Ok(Vec::new());
+    }
     list_changed_files_at_path(repo_path, baseline_for(comparison, base_ref.as_deref())).await
 }
 
@@ -169,6 +175,12 @@ pub async fn load_diff(
     context_lines: Option<u32>,
 ) -> ArgmaxResult<WorkspaceDiff> {
     let (repo_path, base_ref) = resolve_review_target(database, kind, id, comparison).await?;
+    if !Path::new(&repo_path).join(".git").exists() {
+        return Err(ArgmaxError::service(
+            "REVIEW_GIT_REQUIRED",
+            "Changes are available for Git repositories.",
+        ));
+    }
     // The WorkspaceDiff response shape keys on `workspaceId`; a project review
     // reuses it for the repoPath-rooted view, and the renderer never round-trips
     // the id back.
@@ -192,13 +204,20 @@ async fn resolve_review_target(
     comparison: ReviewComparison,
 ) -> ArgmaxResult<(String, Option<String>)> {
     match kind {
-        WorkspaceTargetKind::Project => {
+        WorkspaceTargetKind::ProjectFolder | WorkspaceTargetKind::Project => {
             let project = {
-                // A read-only lookup; nothing upstream just wrote this row,
-                // so the reader pool is safe and avoids the writer mutex.
                 let connection = database.read_connection();
-                require_project(&connection, id)?
+                match kind {
+                    WorkspaceTargetKind::ProjectFolder => {
+                        require_active_project_folder(&connection, id)?;
+                        project_for_folder(&connection, id)?
+                    }
+                    _ => require_project(&connection, id)?,
+                }
             };
+            if !Path::new(&project.repo_path).join(".git").exists() {
+                return Ok((project.repo_path, None));
+            }
             let primary = project
                 .default_branch
                 .as_deref()
@@ -214,6 +233,9 @@ async fn resolve_review_target(
         }
         WorkspaceTargetKind::Workspace => {
             let (workspace, default_branch) = load_workspace_with_default_branch(database, id)?;
+            if workspace.kind == "folder" {
+                return Ok((workspace.path, None));
+            }
             let base_ref = pick_review_base(
                 Path::new(&workspace.path),
                 comparison,
@@ -248,7 +270,7 @@ fn load_workspace_with_default_branch(
     // for a plain SELECT.
     let connection = database.read_connection();
     let workspace = find_workspace_by_id(&connection, workspace_id)?;
-    let default_branch = require_project(&connection, &workspace.project_id)
+    let default_branch = require_workspace_project(&connection, workspace_id)
         .ok()
         .and_then(|project| project.default_branch);
     Ok((workspace, default_branch))
@@ -634,6 +656,9 @@ fn review_target_path(
     let path = match kind {
         WorkspaceTargetKind::Workspace => find_workspace_by_id(&connection, id)?.path,
         WorkspaceTargetKind::Project => require_project(&connection, id)?.repo_path,
+        WorkspaceTargetKind::ProjectFolder => {
+            require_active_project_folder(&connection, id)?.root_path
+        }
     };
     validate_repo_path(Path::new(&path))
 }
@@ -1433,6 +1458,68 @@ mod tests {
             .await
             .trim(),
         )
+    }
+
+    #[tokio::test]
+    async fn folder_review_uses_folder_branch_base_and_skips_plain_directories() {
+        use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
+        let repo = review_repo().await;
+        test_git(repo.path(), &["checkout", "-b", "topic"]).await;
+        std::fs::write(repo.path().join("staged.txt"), "committed change\n").unwrap();
+        test_git(repo.path(), &["add", "staged.txt"]).await;
+        test_git(repo.path(), &["commit", "-m", "change"]).await;
+        let plain = tempfile::tempdir().unwrap();
+        let database = Database::open_in_memory().unwrap();
+        for (id, path) in [
+            ("git-project", repo.path()),
+            ("plain-project", plain.path()),
+        ] {
+            persist_project(
+                &database.connection(),
+                &PersistProjectInput {
+                    id: id.into(),
+                    name: id.into(),
+                    repo_path: path.display().to_string(),
+                    current_branch: "topic".into(),
+                    default_branch: Some("main".into()),
+                    settings: ProjectSettings {
+                        worktree_location: "/tmp/worktrees".into(),
+                        setup_command: String::new(),
+                        check_commands: Vec::new(),
+                        merge_cleanup: Default::default(),
+                    },
+                },
+            )
+            .unwrap();
+        }
+        let files = list_changed_files(
+            &database,
+            WorkspaceTargetKind::ProjectFolder,
+            "primary:git-project",
+            ReviewComparison::Branch,
+        )
+        .await
+        .unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "staged.txt");
+        assert!(list_changed_files(
+            &database,
+            WorkspaceTargetKind::ProjectFolder,
+            "primary:git-project",
+            ReviewComparison::WorkingTree
+        )
+        .await
+        .unwrap()
+        .is_empty());
+        assert!(list_changed_files(
+            &database,
+            WorkspaceTargetKind::ProjectFolder,
+            "primary:plain-project",
+            ReviewComparison::Branch
+        )
+        .await
+        .unwrap()
+        .is_empty());
     }
 
     #[test]

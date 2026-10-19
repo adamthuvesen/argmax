@@ -1,4 +1,5 @@
-import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
+import type { ProjectFoldersDraft } from "../components/ProjectFoldersForm.js";
 import type { DashboardSnapshot } from "../../shared/types.js";
 import { persistLaunchProjectId } from "../lib/launchProjectPreference.js";
 import { mergeDashboardDelta } from "../lib/snapshot.js";
@@ -23,26 +24,27 @@ export function useProjectActions({
   setSelectedSessionId,
   setSnapshot
 }: ProjectActions) {
-  const addProject = useCallback(async (): Promise<void> => {
-    const api = window.argmax;
-    if (!api) {
-      showErrorToast("Open Argmax on your Mac to add a project.");
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const addProject = useCallback((): void => {
+    if (!window.argmax) {
+      showErrorToast("Open Argmax on your Mac to create a project.");
       return;
     }
-    try {
-      const result = await api.projects.pickFolder();
-      if (result.cancelled) return;
-      // Clear workspace selection before changing the selected project.
-      setSelectedSessionId(null);
-      setSelectedWorkspaceId(null);
-      persistLaunchProjectId(result.project.id);
-      setSelectedProjectId(result.project.id);
-      clearPaneGrid();
-      setSnapshot((current) => mergeDashboardDelta(current, { projects: [result.project] }));
-      showInfoToast(`Added ${result.project.name}.`);
-    } catch (error) {
-      showErrorToast(error instanceof Error ? error.message : "Argmax requires a local git repository.");
-    }
+    setNewProjectOpen(true);
+  }, []);
+  const closeNewProject = useCallback(() => setNewProjectOpen(false), []);
+  const createProject = useCallback(async (draft: ProjectFoldersDraft): Promise<void> => {
+    const api = window.argmax;
+    if (!api) throw new Error("Open Argmax on your Mac to create a project.");
+    const project = await api.projects.create(draft);
+    setSelectedSessionId(null);
+    setSelectedWorkspaceId(null);
+    persistLaunchProjectId(project.id);
+    setSelectedProjectId(project.id);
+    clearPaneGrid();
+    setSnapshot((current) => mergeDashboardDelta(current, { projects: [project] }));
+    setNewProjectOpen(false);
+    showInfoToast(`Created ${project.name}.`);
   }, [setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
 
   const removeProject = useCallback(async (projectId: string): Promise<void> => {
@@ -74,5 +76,5 @@ export function useProjectActions({
     }
   }, [projects, selectedProjectId, setSelectedProjectId, setSelectedSessionId, setSelectedWorkspaceId, setSnapshot]);
 
-  return { addProject, removeProject };
+  return { addProject, removeProject, newProjectOpen, closeNewProject, createProject };
 }

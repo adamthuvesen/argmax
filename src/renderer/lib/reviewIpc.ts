@@ -1,6 +1,5 @@
 import type {
   ChangedFileSummary,
-  GitCommitResult,
   ReviewComparison,
   WorkspaceDiff,
   WorkspaceFileEntry,
@@ -26,7 +25,6 @@ export interface ReviewIpcDispatch {
   stageHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
   unstageHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
   revertHunk: (filePath: string, revision: string, hunkIndex: number, contextLines?: number | null) => Promise<void>;
-  commitStaged: (message: string) => Promise<GitCommitResult>;
   listFiles: () => Promise<WorkspaceFileEntry[]>;
   readFile: (filePath: string) => Promise<WorkspaceFilePreview>;
   /** Returns null when the IPC bridge is unavailable (e.g. vitest). */
@@ -90,10 +88,6 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
     revertHunk: (filePath, revision, hunkIndex, contextLines) => {
       if (!window.argmax) return noBridge();
       return window.argmax.review.revertHunk({ kind, id, filePath, revision, hunkIndex, contextLines: contextLines ?? null });
-    },
-    commitStaged: (message) => {
-      if (!window.argmax || kind !== "workspace") return noBridge();
-      return window.argmax.review.commitStaged({ workspaceId: id, message });
     },
     listFiles: () => {
       if (!window.argmax) return noBridge();

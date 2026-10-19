@@ -1,0 +1,211 @@
+/* Every tab is a visible shape, not just a label: a resting tab wears a faint
+   ink wash, hover a firmer one, and the active tab is the one raised surface.
+   Ink rather than a surface token, so the steps hold on any panel ground and
+   at any dial setting. */
+.review-tabs-bar {
+  --review-tab-rest: color-mix(in oklab, var(--text) 5%, transparent);
+  --review-tab-hover: color-mix(in oklab, var(--text) 8%, transparent);
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  gap: 3px;
+}
+
+.review-resource-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 2px;
+  padding: 2px;
+}
+
+.review-resource-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.review-resource-tab {
+  position: relative;
+  display: flex;
+  flex: 0 0 var(--review-tab-width, 180px);
+  align-items: center;
+  min-width: 132px;
+  max-width: 216px;
+  scroll-snap-align: start;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  background: var(--review-tab-rest);
+  color: var(--muted);
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+}
+
+.review-resource-tab:hover {
+  background: var(--review-tab-hover);
+  color: var(--text);
+}
+
+.review-resource-tab[data-visible="true"] {
+  color: var(--text);
+}
+
+/* The active tab is the one lit surface in the strip. On paper that is the
+   white field with a hairline and a whisper of shadow. In dark the composer
+   tone sits darker than the panel at the default dials, below the resting
+   washes, so the active tab takes the strongest ink step instead. */
+.review-resource-tab[data-active="true"] {
+  background: var(--composer-surface);
+  border-color: var(--line);
+  box-shadow: var(--shadow-1);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .review-resource-tab[data-active="true"] {
+  background: color-mix(in oklab, var(--text) 13%, transparent);
+  border-color: var(--line-strong);
+}
+
+.review-resource-tab[data-active="true"] .review-resource-tab-icon {
+  color: var(--text-soft);
+}
+
+.review-resource-tab[data-drop-target="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 3px auto 3px -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+}
+
+.review-resource-tab[data-drop-side="after"]::before {
+  left: auto;
+  right: -3px;
+}
+
+.review-resource-tab-select {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-1) 0 var(--space-2_5);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm-plus);
+  font-weight: var(--weight-ui);
+  cursor: pointer;
+}
+
+.review-resource-tab-select:hover {
+  background: transparent;
+}
+
+.review-resource-tab-icon {
+  display: flex;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.review-resource-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-resource-tab-dirty {
+  flex: 0 0 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted-strong);
+}
+
+.review-resource-tab-close,
+.review-tab-scroll,
+.review-tab-add {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.review-resource-tab-close {
+  width: 20px;
+  height: 20px;
+  margin-right: 3px;
+  opacity: 0;
+}
+
+.review-resource-tab:is(:hover, :focus-within, [data-active="true"]) .review-resource-tab-close {
+  opacity: 1;
+}
+
+.review-resource-tab-close:hover,
+.review-tab-add:hover,
+.review-tab-add[aria-expanded="true"] {
+  background: var(--overlay-med);
+  color: var(--text);
+}
+
+.review-tab-add {
+  width: 28px;
+  height: 28px;
+}
+
+.review-resource-tab-menu {
+  min-width: 210px;
+  max-width: calc(100vw - 16px);
+}
+
+.review-resource-tab-menu .project-picker-item:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-resource-tab {
+    transition: none;
+  }
+}
+
+.review-tab-scroll-controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.review-tab-scroll {
+  width: 24px;
+  height: 28px;
+}
+
+.review-tab-scroll:hover:not(:disabled) {
+  background: var(--overlay-med);
+  color: var(--text);
+}
+
+.review-tab-scroll:disabled {
+  opacity: .3;
+  cursor: default;
+}

@@ -74,6 +74,51 @@ command_catalogue! {
     "projects:pick-folder" => projects::projects_pick_folder, desktop,
     |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
 
+    "projects:pick-directory" => projects::projects_pick_directory, desktop,
+    |state, input, default_agent, channel| { Err(ArgmaxError::service("REMOTE_UNSUPPORTED", format!("{channel} is only available in the desktop app"))) };
+
+    "projects:create" => projects::projects_create, control,
+    |state, input, default_agent, channel| {
+        let input: ProjectsCreateInput = parse(channel, input)?;
+        encode(projects::projects_create_impl(state, input).await?)
+    };
+
+    "projects:configure" => projects::projects_configure, control,
+    |state, input, default_agent, channel| {
+        let input: ProjectsConfigureInput = parse(channel, input)?;
+        encode(projects::projects_configure_impl(state, input).await?)
+    };
+
+    "projects:get-folders" => projects::projects_get_folders, read,
+    |state, input, default_agent, channel| {
+        let input: ProjectsGetFoldersInput = parse(channel, input)?;
+        encode(projects::projects_get_folders_impl(state, input).await?)
+    };
+
+    "projects:generate-overview" => project_overviews::projects_generate_overview, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsGenerateOverviewInput = parse(channel, input)?;
+        encode(project_overviews::projects_generate_overview_impl(state, input).await?)
+    };
+
+    "projects:update-overview" => project_overviews::projects_update_overview, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsUpdateOverviewInput = parse(channel, input)?;
+        encode(project_overviews::projects_update_overview_impl(state, input).await?)
+    };
+
+    "projects:apply-overview-draft" => project_overviews::projects_apply_overview_draft, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsOverviewDraftInput = parse(channel, input)?;
+        encode(project_overviews::projects_apply_overview_draft_impl(state, input).await?)
+    };
+
+    "projects:discard-overview-draft" => project_overviews::projects_discard_overview_draft, control,
+    |state, input, default_agent, channel| {
+        let input: project_overviews::ProjectsOverviewDraftInput = parse(channel, input)?;
+        encode(project_overviews::projects_discard_overview_draft_impl(state, input).await?)
+    };
+
     "projects:check-prompt" => projects::projects_check_prompt, control,
     |state, input, default_agent, channel| {
             let input: ProjectsCheckPromptInput = parse(channel, input)?;
@@ -112,6 +157,12 @@ command_catalogue! {
             let input: ProjectsUpdateSettingsInput = parse(channel, input)?;
             encode(projects::projects_update_settings_impl(state, input)?)
         };
+
+    "projects:get-folder-context" => projects::projects_get_folder_context, read,
+    |state, input, default_agent, channel| {
+        let input: ProjectsGetFolderContextInput = parse(channel, input)?;
+        encode(projects::projects_get_folder_context_impl(state, input).await?)
+    };
 
     "projects:list-branches" => projects::projects_list_branches, read,
     |state, input, default_agent, channel| {
@@ -477,11 +528,6 @@ command_catalogue! {
                 review::review_update_hunk_index_impl(state, input, channel == "review:stage-hunk")
                     .await?,
             )
-        };
-
-    "review:commit-staged" => review::review_commit_staged, control,
-    |state, input, default_agent, channel| {
-            encode(review::review_commit_staged_impl(state, parse(channel, input)?).await?)
         };
 
     "review:revert-file" => review::review_revert_file, control,
@@ -903,30 +949,6 @@ command_catalogue! {
     |state, input, default_agent, channel| {
             let input: PrsCleanupInput = parse(channel, input)?;
             encode(prs::prs_cleanup_impl(state, input).await?)
-        };
-
-    "git:commit" => git_ops::git_commit, control,
-    |state, input, default_agent, channel| {
-            let input: GitCommitInput = parse(channel, input)?;
-            encode(git_ops::git_commit_impl(state, input).await?)
-        };
-
-    "git:push" => git_ops::git_push, control,
-    |state, input, default_agent, channel| {
-            let input: GitPushInput = parse(channel, input)?;
-            encode(git_ops::git_push_impl(state, input).await?)
-        };
-
-    "git:create-branch" => git_ops::git_create_branch, control,
-    |state, input, default_agent, channel| {
-            let input: GitCreateBranchInput = parse(channel, input)?;
-            encode(git_ops::git_create_branch_impl(state, input).await?)
-        };
-
-    "git:view-or-create-pr" => git_ops::git_view_or_create_pr, control,
-    |state, input, default_agent, channel| {
-            let input: GitViewOrCreatePrInput = parse(channel, input)?;
-            encode(git_ops::git_view_or_create_pr_impl(state, input).await?)
         };
 
     "remote:get-status" => remote::remote_get_status, desktop,

@@ -12,7 +12,7 @@
    sidebar-intensity.css. Lines and scrollbars stay grey at the
    white end so borders still separate surfaces there.
 
-   Dark: 70 is the palette Argmax ships, and the number there leaves every
+   Dark: 70 is the original palette, and the number there leaves every
    literal in tokens.css untouched. Below it surfaces lighten toward a mid
    charcoal (0 is the lightest), above it they darken toward black but stop two thirds of the way
    there at 100 (the fall is scaled by 67%), because full black was never
@@ -75,4 +75,14 @@
   --scrollbar-thumb-hover: color-mix(in oklab, color-mix(in oklab, #8a857b, #8a857b var(--background-lift)), #8a857b var(--background-fall));
   --overlay-panel: color-mix(in oklab, color-mix(in oklab, #171716, #2f2f2e var(--background-lift)), #000000 var(--background-fall));
   --overlay-panel-raised: color-mix(in oklab, color-mix(in oklab, #292926, #41413f var(--background-lift)), #161614 var(--background-fall));
+}
+
+/* Dark popovers ride the lighter of the two dials, the page's or the side
+   panels', on the panel ramp, then lift 4% toward white. A menu can open over
+   either ground, and this keeps it a step above both. */
+:root[data-theme="dark"]:is([data-background-intensity], [data-sidebar-intensity]) {
+  --popover-at: min(var(--background-intensity, 70), var(--sidebar-intensity, 70));
+  --popover-lift: calc(max(0, 70 - var(--popover-at)) / 70 * 100%);
+  --popover-fall: calc(max(0, var(--popover-at) - 70) / 30 * 67%);
+  --popover: color-mix(in oklab, color-mix(in oklab, color-mix(in oklab, #1a1a1a, #323232 var(--popover-lift)), #050505 var(--popover-fall)), #ffffff 4%);
 }

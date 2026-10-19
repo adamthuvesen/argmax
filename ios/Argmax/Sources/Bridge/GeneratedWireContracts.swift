@@ -101,14 +101,17 @@ struct WireAgentReference: Encodable, Sendable {
 
 struct WireProjectsListBranchesInput: Encodable, Sendable {
     var projectId: String
+    var projectFolderId: WireField<String> = .absent
 
     enum CodingKeys: String, CodingKey {
         case projectId
+        case projectFolderId
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(projectId, forKey: .projectId)
+        try projectFolderId.encode(into: &container, forKey: .projectFolderId)
     }
 }
 
@@ -127,11 +130,13 @@ struct WireProvidersDiscoverInput: Encodable, Sendable {
 
 struct WireWorkspacesCreateIsolatedInput: Encodable, Sendable {
     var projectId: String
+    var projectFolderId: WireField<String> = .absent
     var taskLabel: String
     var baseRef: WireField<String> = .absent
 
     enum CodingKeys: String, CodingKey {
         case projectId
+        case projectFolderId
         case taskLabel
         case baseRef
     }
@@ -139,6 +144,7 @@ struct WireWorkspacesCreateIsolatedInput: Encodable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(projectId, forKey: .projectId)
+        try projectFolderId.encode(into: &container, forKey: .projectFolderId)
         try container.encode(taskLabel, forKey: .taskLabel)
         try baseRef.encode(into: &container, forKey: .baseRef)
     }
@@ -146,16 +152,19 @@ struct WireWorkspacesCreateIsolatedInput: Encodable, Sendable {
 
 struct WireWorkspacesCreateCurrentInput: Encodable, Sendable {
     var projectId: String
+    var projectFolderId: WireField<String> = .absent
     var taskLabel: String
 
     enum CodingKeys: String, CodingKey {
         case projectId
+        case projectFolderId
         case taskLabel
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(projectId, forKey: .projectId)
+        try projectFolderId.encode(into: &container, forKey: .projectFolderId)
         try container.encode(taskLabel, forKey: .taskLabel)
     }
 }
@@ -496,22 +505,6 @@ struct WireSessionForkInput: Encodable, Sendable {
         try container.encode(sessionId, forKey: .sessionId)
         try boundaryEventId.encode(into: &container, forKey: .boundaryEventId)
         try workspace.encode(into: &container, forKey: .workspace)
-    }
-}
-
-struct WireGitViewOrCreatePrInput: Encodable, Sendable {
-    var sessionId: String
-    var expectedBranch: WireField<String> = .absent
-
-    enum CodingKeys: String, CodingKey {
-        case sessionId
-        case expectedBranch
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(sessionId, forKey: .sessionId)
-        try expectedBranch.encode(into: &container, forKey: .expectedBranch)
     }
 }
 

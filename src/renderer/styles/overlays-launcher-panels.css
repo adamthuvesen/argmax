@@ -99,7 +99,7 @@
 .debug-segmented {
   display: flex;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -126,7 +126,7 @@
   color: var(--text);
   background: var(--panel-sunken);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
 }
 
 .debug-search {
@@ -160,7 +160,7 @@
   color: var(--muted-strong);
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
@@ -266,7 +266,7 @@
   font-size: var(--text-3xs);
   color: var(--text-soft);
   background: var(--panel-sunken);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-surface);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -297,7 +297,7 @@
   color: var(--muted-strong);
   background: var(--panel-soft);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
@@ -469,7 +469,7 @@
   color: var(--muted-strong);
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
@@ -532,7 +532,7 @@
 
   html:not(:has(.mobile-shell)) .session-input {
     padding: 8px 12px 7px;
-    border-radius: var(--radius-2xl);
+    border-radius: var(--radius-composer);
   }
 
   html:not(:has(.mobile-shell)) .session-input textarea {

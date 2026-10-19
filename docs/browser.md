@@ -4,11 +4,32 @@ Argmax has a native browser with separate tab strips for chats and the Browser p
 
 Web links in rendered file previews use the same browser preference as chat links. A plain click opens the configured destination, and ⌘/Ctrl-click opens the other browser without navigating the app's main view. Links routed to Argmax open a new tab on every click, preserving existing tabs.
 
-**Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
+**Browser page.** The left rail's Browser item (and ⌘K → Open Browser) fills the workspace with the tab strip and address bar. The session sidebar stays. Closing the last tab closes the Browser page. Reopening then starts at the default page, without restoring the closed tab. Click a chat, New chat, or Esc to leave. The page remembers it was showing across a restart (`argmax.browser.pageOpen`). There is no dedicated shortcut; `⌘B` still toggles the right sidebar.
 
-**Review panel.** In a chat, Browser is one of the review-panel modes, beside Changes, Files, Agents, and [Terminal](terminal.md). The session actions menu has an "Open browser" item. This is the sidebar next to a transcript, for watching a session browse.
+**Claude artifacts shortcut.** Settings → Appearance → Layout → Claude artifacts adds an Artifacts shortcut in the sidebar and the review panel’s New tab page. It is off by default. The shortcut opens `https://claude.ai/artifacts` in its browser surface and reuses an existing tab at that URL. The review panel keeps the page beside the chat. Opening the shortcut focuses the page without selecting the address or showing suggestions. Blank new tabs focus the address field. Sign in through the page as needed. The shortcut uses the website without syncing artifacts.
 
-Each chat remembers the panel's visibility and view arrangement across navigation and restarts. Browser can occupy either half of a split review panel. Returning to a chat with Browser visible restores it and claims the native surface again. Focusing the other half leaves Browser visible and keeps its ownership.
+**New tab.** The plus button opens an address/search field and available tools. It has no suggested content. Side chat starts a separate chat only after submission. Closing its tab leaves the chat running, and reopening uses the same session. Files and Changes keep their file navigation on the left.
+
+**Review panel.** Each chat has one shared tab strip for Changes, Files, Agents,
+individual files, browser pages, terminals, and side chats. The `+` button opens
+the New tab page. When enabled, Claude artifacts appears among its tools. The
+standalone Browser page retains its browser-only strip.
+
+Chats remember tab order, visible panes, and the split ratio. Drag tabs to reorder
+them. Right-click a tab and choose **Show above** or **Show below** to arrange two
+views. Two different browser pages can remain visible together. Selecting a tab
+already visible focuses its pane. Closing a pane preserves its tabs.
+
+Close a tab with its × or Cmd/Ctrl+W. Cmd/Ctrl+T opens the New tab page, and
+Cmd/Ctrl+Shift+T reopens the most recently closed tab while the panel has focus.
+Ctrl+Tab cycles through the shared strip. The tab menu also offers reopening.
+Reopening a browser tab starts a fresh page at its saved URL. Hiding the panel or
+switching tabs preserves existing pages.
+
+The layout stores resource references in a versioned snapshot. Browser metadata,
+file buffers, and terminal runtimes remain in their existing stores. Old mode-only
+layouts migrate on read. File tabs keep the existing save/discard/cancel prompt.
+Only one file editor can be visible at a time, including the Files tool.
 
 The first agent tab opened or activated while its chat is mounted opens the right sidebar on Browser. This reveal is remembered per session across navigation and restarts. Later agent opens and activations update the browser request without switching the selected sidebar view, changing split focus, or reopening a closed sidebar. Agent activity in a chat that is not mounted does not reveal it later.
 
@@ -20,7 +41,13 @@ Links from chat open in the system browser by default; Settings → General → 
 
 Each chat can show its browser alongside other chats in the grid. Opening, navigating, or closing Browser in one cell leaves the other cells' browsers visible. Each scope positions and hides only its own active native webview.
 
-Ownership is scoped to the tab strip in [browserPanel.ts](../src/renderer/lib/browserPanel.ts) (`claimBrowserSurface` / `releaseBrowserSurface`). If two panels show the same scope, the most recent claimant shows that scope's webview and the other shows a "The browser moved to another pane" placeholder. Different scopes do not displace each other. [useReviewState.ts](../src/renderer/hooks/useReviewState.ts) claims while Browser is visible in either half and releases when it leaves the layout, the panel closes, or the cell unmounts. [BrowserPage.tsx](../src/renderer/components/BrowserPage.tsx) claims the workspace page's own scope.
+The standalone Browser page retains scope ownership. Browser surfaces in the
+review panel claim individual tab IDs through `claimBrowserTabSurface` and
+`releaseBrowserTabSurface` in [browserPanel.ts](../src/renderer/lib/browserPanel.ts).
+Each pane positions only its own native webview. Two panes cannot claim the same
+page at once. An ownership transfer reapplies the new pane's bounds after a late
+native open, so the previous owner cannot hide or reposition it. Unmounting hides
+a page, while closing a browser tab destroys its native webview.
 
 Focus routes chat links and menu requests to the focused cell, or to the launcher when it is the only surface on screen. If Browser is already visible in a split panel, the request uses that half. Window keyboard shortcuts and the close-tab menu act on the focused browser panel. Native page commands and new-tab events route by the source tab's scope. Native page focus is relayed to the grid and review panel so app-menu commands follow the page the user clicked. The rail item opens the Browser page.
 
@@ -194,7 +221,7 @@ A screenshot taken through a tool starts at about 720 device pixels wide on Reti
 
 The catalogue marks these commands `desktop`: they manipulate the desktop app's native child webviews.
 
-Closing a tab (`browser:close`) disposes the webview. Leaving Browser mode sets `visible: false` to preserve page session state and scroll position.
+Closing a tab (`browser:close`) disposes the webview. Leaving Browser mode sets `visible: false` to preserve page session state and scroll position. A tab activated in the store from outside the panel, such as the Artifacts row or a link from a standalone page, hides the page that was showing and shows the new one. Without that, leaving the Browser page hid only the new active tab and left the old page painted over the app.
 
 ## Capture and Evaluation
 
@@ -217,6 +244,7 @@ Both are async commands with a deadline. WebKit answers on the main queue and th
 - `⌘F`: Find in page on the active tab of the focused browser panel or Browser page. From the app's own DOM it opens the find bar directly; from inside a page the init-script relay carries it, and Rust hands native focus back to the main webview so the find field receives typing. Enter / Shift+Enter walk matches, Escape closes and clears the highlights.
 - `⌘R`: Reload the tab when focused in the page or browser chrome. In development builds, app reload stays available in View → Reload and View → Force Reload, neither with a shortcut: `⌘⇧R` opens the launcher's folder picker.
 - `⌃Tab` / `⌃⇧Tab`: Next / previous tab.
+- Escape inside a page: closes the browser panel, but only when the page did not handle it. The relay listens in the bubble phase and skips the key when the page called `preventDefault`, when focus is in an editable field, or when the page shows an open `dialog` or `[aria-modal="true"]` element. Every page shortcut ignores synthetic events (`!event.isTrusted`), so an agent's `browser_press_key` never closes the panel or switches tabs.
 - `⌥←` / `⌥→` with a tab focused: move that tab one slot, the keyboard's way to reorder.
 - `⌘W`: Closes the active browser tab in the focused panel. The menu command tries the browser first, then the review panel's file tabs, then the focused pane — `requestCloseActiveBrowserTab()` reports whether the focused browser consumed it.
 - Mouse thumb buttons: back (button 3) / forward (button 4), both over the browser chrome and inside a page.

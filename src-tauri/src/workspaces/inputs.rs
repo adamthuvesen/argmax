@@ -10,6 +10,8 @@ use specta::Type;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspacesCreateIsolatedInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
     pub task_label: TaskLabel,
     pub base_ref: Option<BaseRef>,
 }
@@ -18,6 +20,8 @@ pub struct WorkspacesCreateIsolatedInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspacesCreateCurrentInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
     pub task_label: TaskLabel,
 }
 
@@ -27,6 +31,8 @@ pub struct WorkspacesCreateCurrentInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspacesCreateInCheckoutInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
     pub task_label: TaskLabel,
     pub path: NonEmptyString,
     /// The branch the person saw checked out at `path`. The launch is refused

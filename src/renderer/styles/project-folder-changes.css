@@ -1,0 +1,127 @@
+.review-list-col:has(> .project-folder-changes) {
+  overflow-y: auto;
+}
+
+.review-list-col:has(> .project-folder-changes) > .changes-tree-col {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.review-list-col:has(> .project-folder-changes) .changes-tree {
+  flex: none;
+  overflow: visible;
+}
+
+.project-folder-changes {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: var(--space-1_5);
+  font-size: var(--text-sm);
+}
+
+.project-folder-change-working + .project-folder-changes {
+  padding-top: 0;
+}
+
+.project-folder-change-working {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 6px 6px 0;
+  font-size: var(--text-sm);
+}
+
+.project-folder-change-group summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  list-style: none;
+}
+
+.project-folder-change-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.project-folder-change-group summary > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.project-folder-change-group[open] > summary .project-folder-change-chevron {
+  transform: rotate(90deg);
+}
+
+.project-folder-change-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: var(--weight-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-folder-change-total {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.project-folder-changes p {
+  margin: 4px 6px 8px 38px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.project-folder-changes .project-folder-changes-error {
+  color: var(--rose);
+}
+
+.project-folder-change-group summary:hover {
+  background: var(--row-hover);
+}
+
+.project-folder-change-group summary:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.project-folder-change-group {
+  position: relative;
+}
+
+/* The toolbar sits on the group's header row with no ground of its own, so
+   the row's hover fill runs under the icons. A panel-colored ground here read
+   as a dark slab on the lit row in dark mode. */
+.project-folder-change-group > .changes-tree-col > .workspace-tree-toolbar {
+  position: absolute;
+  top: 6px;
+  right: var(--space-2);
+  min-height: 20px;
+  padding: 0;
+}
+
+/* While the toolbar shows, the header gives up its width (two 20px buttons and
+   their gap), so a long name truncates before the icons instead of under them.
+   Pointing at the icons keeps the header lit: they act on that row. */
+.project-folder-change-group[open]:has(> .changes-tree-col):is(:hover, :focus-within) > summary {
+  padding-right: calc(var(--space-2) + 42px + var(--space-1));
+}
+
+.project-folder-change-group:has(> .changes-tree-col > .workspace-tree-toolbar:hover) > summary {
+  background: var(--row-hover);
+}
+
+.project-folder-change-group:hover > .changes-tree-col > .workspace-tree-toolbar,
+.project-folder-change-group:focus-within > .changes-tree-col > .workspace-tree-toolbar {
+  opacity: 1;
+}
+
+.project-folder-change-group[open]:has(> .changes-tree-col):hover > summary .project-folder-change-total,
+.project-folder-change-group[open]:has(> .changes-tree-col):focus-within > summary .project-folder-change-total {
+  visibility: hidden;
+}

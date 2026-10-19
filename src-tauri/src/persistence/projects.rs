@@ -29,6 +29,7 @@ pub fn migrate_default_worktree_locations(
             [root.to_string_lossy().as_ref()],
         )
         .map_err(sqlite_error)?;
+    transaction.execute("UPDATE project_folders SET worktree_location = p.worktree_location FROM projects p WHERE project_folders.project_id = p.id AND is_primary = 1", []).map_err(sqlite_error)?;
     transaction.commit().map_err(sqlite_error)?;
     Ok(updated)
 }
@@ -120,6 +121,8 @@ pub struct ProjectSummary {
     /// has its own validated channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overview: Option<super::project_overviews::ProjectOverview>,
     pub counts: ProjectCounts,
     pub latest_activity_at: Option<String>,
 }
@@ -192,7 +195,7 @@ pub fn persist_project(
           @check_commands_json, @merge_cleanup, '{}',
           @created_at, @updated_at
         )
-        ON CONFLICT(repo_path) DO UPDATE SET
+        ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           current_branch = excluded.current_branch,
           default_branch = excluded.default_branch,
@@ -216,7 +219,10 @@ pub fn persist_project(
         })
         .map_err(sqlite_error)?;
 
-    require_project_by_repo_path(connection, &input.repo_path)
+    connection.execute("INSERT OR IGNORE INTO project_folders (id, project_id, name, root_path, is_primary, current_branch, default_branch, worktree_location, setup_command, check_commands_json, merge_cleanup, created_at, updated_at) SELECT 'primary:' || id, id, 'primary', repo_path, 1, current_branch, default_branch, worktree_location, setup_command, check_commands_json, merge_cleanup, created_at, updated_at FROM projects WHERE id = ?", [&input.id]).map_err(sqlite_error)?;
+    connection.execute("UPDATE projects SET pr_repository_folder_id = COALESCE(pr_repository_folder_id, 'primary:' || id) WHERE id = ?", [&input.id]).map_err(sqlite_error)?;
+    super::project_folders::sync_primary_from_project(connection, &input.id)?;
+    require_project(connection, &input.id)
 }
 
 pub fn update_project_settings(
@@ -250,6 +256,7 @@ pub fn update_project_settings(
             "@updated_at": now_iso(),
         })
         .map_err(sqlite_error)?;
+    super::project_folders::sync_primary_from_project(connection, project_id)?;
     require_project(connection, project_id)
 }
 
@@ -270,6 +277,7 @@ pub fn set_project_branch_template(
     if changes == 0 {
         return Err(ArgmaxError::record_not_found("project", project_id));
     }
+    super::project_folders::sync_primary_from_project(connection, project_id)?;
     require_project(connection, project_id)
 }
 
@@ -288,9 +296,10 @@ pub fn workspace_merge_cleanup(
     let mut statement = connection
         .prepare_cached(
             r#"
-        SELECT CASE WHEN w.shared_workspace THEN 'off' ELSE p.merge_cleanup END
+        SELECT CASE WHEN w.shared_workspace THEN 'off' ELSE COALESCE(f.merge_cleanup, p.merge_cleanup) END
         FROM workspaces w
         JOIN projects p ON p.id = w.project_id
+        LEFT JOIN project_folders f ON f.id = w.project_folder_id
         WHERE w.id = ?
         "#,
         )
@@ -321,6 +330,7 @@ pub fn update_project_branch(
     statement
         .execute((branch, now_iso(), project_id))
         .map_err(sqlite_error)?;
+    super::project_folders::sync_primary_from_project(connection, project_id)?;
     require_project(connection, project_id)
 }
 
@@ -331,11 +341,17 @@ pub fn find_project_by_repo_path(
     let mut statement = connection
         .prepare_cached("SELECT * FROM projects WHERE repo_path = ?")
         .map_err(sqlite_error)?;
-    match statement.query_row([repo_path], bare_project_row_to_summary) {
-        Ok(project) => Ok(Some(project)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(error) => Err(sqlite_error(error)),
+    let mut rows = statement
+        .query_map([repo_path], bare_project_row_to_summary)
+        .map_err(sqlite_error)?;
+    let first = rows.next().transpose().map_err(sqlite_error)?;
+    if rows.next().is_some() {
+        return Err(ArgmaxError::service(
+            "PROJECT_PATH_AMBIGUOUS",
+            "This folder belongs to several projects. Choose a project by name or ID.",
+        ));
     }
+    Ok(first)
 }
 
 pub fn find_project_by_id(
@@ -370,20 +386,11 @@ pub fn update_project_remote(
     project_id: &str,
     remote: Option<&ProjectRemote>,
 ) -> ArgmaxResult<()> {
-    let mut statement = connection.prepare_cached("UPDATE projects SET repo_remote_owner = ?, repo_remote_name = ?, updated_at = ? WHERE id = ?",
-    )
-    .map_err(sqlite_error)?;
-    let changes = statement
-        .execute((
-            remote.map(|value| value.owner.as_str()),
-            remote.map(|value| value.name.as_str()),
-            now_iso(),
-            project_id,
-        ))
-        .map_err(sqlite_error)?;
-    if changes == 0 {
-        return Err(ArgmaxError::record_not_found("project", project_id));
-    }
+    let project = require_project(connection, project_id)?;
+    let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
+    transaction.execute("UPDATE project_folders SET repo_remote_owner = ?1, repo_remote_name = ?2 WHERE id = (SELECT pr_repository_folder_id FROM projects WHERE id = ?3)", (remote.map(|remote| remote.owner.as_str()), remote.map(|remote| remote.name.as_str()), project_id)).map_err(sqlite_error)?;
+    transaction.execute("UPDATE projects SET repo_remote_owner = ?1, repo_remote_name = ?2 WHERE id = ?3 AND repo_path = (SELECT root_path FROM project_folders WHERE id = projects.pr_repository_folder_id)", (remote.map(|remote| remote.owner.as_str()), remote.map(|remote| remote.name.as_str()), project.id)).map_err(sqlite_error)?;
+    transaction.commit().map_err(sqlite_error)?;
     Ok(())
 }
 
@@ -409,7 +416,7 @@ pub fn parse_github_remote(url: &str) -> Option<ProjectRemote> {
     })
 }
 
-fn discover_repo_remote(repo_path: &str) -> Option<ProjectRemote> {
+pub(crate) fn discover_repo_remote(repo_path: &str) -> Option<ProjectRemote> {
     let path = std::path::Path::new(repo_path);
     if !path.exists() {
         return None;
@@ -432,7 +439,7 @@ pub fn get_project_remote(
 ) -> ArgmaxResult<Option<ProjectRemote>> {
     let mut statement = connection
         .prepare_cached(
-            "SELECT repo_path, repo_remote_owner, repo_remote_name FROM projects WHERE id = ?",
+            "SELECT f.root_path AS repo_path, f.repo_remote_owner, f.repo_remote_name FROM projects p JOIN project_folders f ON f.id = p.pr_repository_folder_id WHERE p.id = ?",
         )
         .map_err(sqlite_error)?;
     let (repo_path, remote) = match statement.query_row([project_id], |row| {
@@ -483,14 +490,6 @@ fn project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
     project_summary_from_row(row, counts, latest_activity_at)
 }
 
-fn require_project_by_repo_path(
-    connection: &Connection,
-    repo_path: &str,
-) -> ArgmaxResult<ProjectSummary> {
-    find_project_by_repo_path(connection, repo_path)?
-        .ok_or_else(|| ArgmaxError::service("PROJECT_NOT_PERSISTED", repo_path.to_owned()))
-}
-
 fn bare_project_row_to_summary(row: &Row<'_>) -> rusqlite::Result<ProjectSummary> {
     // No JOINed aggregate columns in this query shape, so counts are zero.
     let latest_activity_at = row.get("updated_at")?;
@@ -536,6 +535,18 @@ fn project_summary_from_row(
             },
         },
         branch_template: row.get("branch_template")?,
+        overview: row
+            .get::<_, Option<String>>("overview_json")?
+            .map(|value| {
+                serde_json::from_str(&value).map_err(|error| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(error),
+                    )
+                })
+            })
+            .transpose()?,
         counts,
         latest_activity_at,
     })

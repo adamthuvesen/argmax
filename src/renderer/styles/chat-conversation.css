@@ -418,7 +418,7 @@
 .conversation-surface .conversation-header-actions .small-icon {
   width: 22px;
   height: 22px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
 }
 
 .session-title {
@@ -781,9 +781,6 @@
   color: var(--muted-strong);
 }
 
-/* Same corner as the composer and the user bubble: a full-width surface in
-   the pane, not the tight chip --radius-md is for. Padding is pulled out with
-   the radius so the prose clears the curve at the corners. */
 .agent-activity-final {
   display: flex;
   min-width: 0;
@@ -791,14 +788,14 @@
   gap: var(--space-2);
   padding: 14px 18px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-chat);
   background: var(--panel);
 }
 
 .agent-activity-empty {
   padding: 14px 18px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-dialog);
   background: var(--panel-soft);
   color: var(--muted);
   font-size: var(--text-sm);
@@ -979,7 +976,7 @@
   min-width: 0;
   max-width: min(78%, 920px);
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-chat);
   animation: msg-in 240ms var(--ease);
 }
 
@@ -1169,7 +1166,7 @@
      three different values between unlike blocks reads as drift, not rhythm. */
   margin: 18px 0;
   padding: 12px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-surface);
   background: var(--panel-sunken);
   border: 1px solid var(--line);
   overflow-x: auto;
@@ -1387,7 +1384,7 @@
   max-width: 100%;
   margin: 18px auto;
   padding: 12px 8px 10px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: transparent;
   overflow: visible;
   outline: 1px solid transparent;
@@ -1431,7 +1428,7 @@
   min-height: 22px;
   background: color-mix(in oklab, var(--panel) 82%, var(--panel-sunken) 18%);
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   color: var(--muted);
   cursor: pointer;
   font-family: var(--font-ui);
@@ -1537,7 +1534,7 @@
   margin: var(--space-1) 0 0;
   padding: var(--space-2_5) var(--space-3);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-surface);
   background: color-mix(in oklab, var(--panel-sunken) 70%, transparent);
   color: var(--text-soft);
   font-family: var(--font-code);
@@ -1553,7 +1550,7 @@
   margin-top: var(--space-2);
 }
 
-/* Full-size mermaid: window-level, same stack as the commit dialog (below
+/* Full-size mermaid: window-level, same stack as the Create project dialog (below
    search, above pane chrome). The inline view scales. This is native size. */
 .mermaid-diagram-overlay {
   position: fixed;
@@ -1574,7 +1571,7 @@
   max-height: 90vh;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-dialog);
   box-shadow: var(--shadow-popover);
   overflow: hidden;
 }
@@ -1765,7 +1762,7 @@
   max-width: 100%;
   /* Same corner as `.session-input` and `.composer`: a sent prompt should read
      as the same surface the user just typed into, not a tighter chip. */
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-chat);
   color: var(--user-message-fg);
   background: var(--user-message-bg);
   box-shadow: var(--user-message-shadow);
@@ -1960,4 +1957,23 @@
 .conversation-show-earlier-count {
   color: var(--muted-strong);
   font-variant-numeric: tabular-nums;
+}
+
+.session-grid.review-open.review-expanded,
+.app-shell[data-review-panel-side="left"] .session-grid.review-open.review-expanded {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.session-grid.review-expanded > .session-main-column,
+.session-grid.review-expanded > .debug-panel {
+  display: none;
+}
+
+.session-multigrid:has(.review-expanded) > .session-multigrid-row:not(:has(.review-expanded)),
+.session-multigrid-row:has(.review-expanded) > :not(:has(.review-expanded)) {
+  display: none;
+}
+
+.session-multigrid-row:has(.review-expanded) {
+  grid-template-columns: minmax(0, 1fr) !important;
 }

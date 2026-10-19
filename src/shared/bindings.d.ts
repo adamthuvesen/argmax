@@ -24,6 +24,70 @@ async projectsPickFolder(input: ProjectsPickFolderInput) : Promise<Result<Projec
     else return { status: "error", error: e  as any };
 }
 },
+async projectsPickDirectory(input: ProjectsPickFolderInput) : Promise<Result<ProjectDirectoryPickResult, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_pick_directory", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsCreate(input: ProjectsCreateInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_create", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsConfigure(input: ProjectsConfigureInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_configure", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsGetFolders(input: ProjectsGetFoldersInput) : Promise<Result<ProjectFolderSummary[], ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_get_folders", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsGenerateOverview(input: ProjectsGenerateOverviewInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_generate_overview", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsUpdateOverview(input: ProjectsUpdateOverviewInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_update_overview", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsApplyOverviewDraft(input: ProjectsOverviewDraftInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_apply_overview_draft", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsDiscardOverviewDraft(input: ProjectsOverviewDraftInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_discard_overview_draft", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Project check: whether the prompt reads like work for another project.
  * Never fails for want of an answer — no key, a Jev error or a short prompt
@@ -75,6 +139,14 @@ async projectsRemove(input: ProjectsRemoveInput) : Promise<Result<null, ArgmaxEr
 async projectsUpdateSettings(input: ProjectsUpdateSettingsInput) : Promise<Result<ProjectSummary, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("projects_update_settings", { input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async projectsGetFolderContext(input: ProjectsGetFolderContextInput) : Promise<Result<ProjectFolderContext, ArgmaxError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("projects_get_folder_context", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -596,14 +668,6 @@ async reviewStageHunk(input: ReviewIndexHunkInput) : Promise<Result<null, Argmax
 async reviewUnstageHunk(input: ReviewIndexHunkInput) : Promise<Result<null, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("review_unstage_hunk", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async reviewCommitStaged(input: ReviewCommitStagedInput) : Promise<Result<GitCommitResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("review_commit_staged", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -1296,38 +1360,6 @@ async prsDismiss(input: PrsDismissInput) : Promise<Result<SessionPrSummary[], Ar
 async prsCleanup(input: PrsCleanupInput) : Promise<Result<PrCleanupReport, ArgmaxError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("prs_cleanup", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitCommit(input: GitCommitInput) : Promise<Result<GitCommitResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_commit", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitPush(input: GitPushInput) : Promise<Result<GitPushResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_push", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitCreateBranch(input: GitCreateBranchInput) : Promise<Result<GitCreateBranchResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_create_branch", { input }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async gitViewOrCreatePr(input: GitViewOrCreatePrInput) : Promise<Result<GitViewOrCreatePrResult, ArgmaxError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("git_view_or_create_pr", { input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -2107,7 +2139,8 @@ export type BrowserOpenedTab = { tabId: string }
 /**
  * A browser shortcut pressed while the page (not the panel chrome) had
  * focus. `command` is one of `close-tab`, `new-tab`, `focus-address`,
- * `reload`, `back`, `forward`, `find`, or a native-page `focus` notification.
+ * `reopen-tab`, `next-tab`, `previous-tab`, `reload`, `back`, `forward`,
+ * `find`, or a native-page `focus` notification.
  */
 export type BrowserPageCommandEvent = { tabId: string; command: string }
 export type BrowserReloadInput = { tabId: string }
@@ -2195,8 +2228,8 @@ export type ClearOpencodeGatewayKeyInput = { gateway: OpencodeGateway }
 export type CloudEnvironment = { id: string; name: string }
 export type CloudHandoffPreview = { provider: CloudProvider; repository: string; branch: string; commit: string; brief: string; environments: CloudEnvironment[]; environmentDescription: string; environmentId: string }
 export type CloudHandoffResult = { url: string; warning?: string | null }
-export type CloudLaunchInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; repository: string; branch: string; commit: string; brief: string; environmentId: string }
-export type CloudPrepareInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null;
+export type CloudLaunchInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; projectFolderId?: string | null; repository: string; branch: string; commit: string; brief: string; environmentId: string }
+export type CloudPrepareInput = { provider: CloudProvider; sessionId?: string | null; projectId?: string | null; projectFolderId?: string | null;
 /**
  * What the user typed after `/cloud`. Only a chat source takes one: it
  * becomes the brief's closing instruction after the chat's transcript.
@@ -2346,26 +2379,6 @@ prMergedAt: string | null;
  * Legacy rows without a branch retain a fallback on isolated workspaces.
  */
 headRefName: string | null }
-export type GitCommitInput = { workspaceId: WorkspaceId; message: GitCommitMessage; selectedFiles: RelativePath[] | null }
-export type GitCommitMessage = string
-export type GitCommitResult = { commitSha: string; branch: string;
-/**
- * The commit reached HEAD, but resetting the real index after a
- * selected-file commit failed. The user can repair the index without
- * losing the completed commit.
- */
-indexCleanupWarning?: string | null;
-/**
- * The commit succeeded, but Argmax could not read follow-up metadata such
- * as the full SHA or current branch.
- */
-postCommitWarning?: string | null }
-export type GitCreateBranchInput = { workspaceId: WorkspaceId; branch: BranchName }
-export type GitCreateBranchResult = { branch: string }
-export type GitPushInput = { workspaceId: WorkspaceId }
-export type GitPushResult = { branch: string; upstreamSet: boolean }
-export type GitViewOrCreatePrInput = { sessionId: SessionId; expectedBranch: BranchName | null }
-export type GitViewOrCreatePrResult = { action: "opened"; url: string; prNumber: number } | { action: "created"; url: string; prNumber: number | null }
 export type Goal = { id: string; workspaceId: string; sessionId: string;
 /**
  * The whole configuration: one free-text completion condition.
@@ -2505,6 +2518,9 @@ export type OpencodeGateway = "openrouter" | "vercel"
  * A gateway without a key here falls back to OpenCode's own login.
  */
 export type OpencodeGatewaySettings = { gateway: OpencodeGateway; openrouterKeyHint?: string | null; vercelKeyHint?: string | null }
+export type OverviewDocument = { text: string; sources: OverviewSource[]; generatedAt: string | null }
+export type OverviewSource = { folderId: string; path: string }
+export type OverviewStatus = "idle" | "generating" | "failed"
 export type PageExtraction = { tabId?: string; url: string; title: string; state?: string; metadata: PageMetadata; headings: PageHeading[]; sections: PageSection[]; tables: PageTable[]; links: PageLink[]; items?: PageItem[]; fields?: PageField[]; truncated: boolean }
 export type PageField = { name: string; value: string; role: string; ref?: string | null }
 export type PageFindResult = { tabId: string; matches: FoundElement[] }
@@ -2637,8 +2653,12 @@ export type ProjectCheckout = { branch: string; path: string;
  */
 isMain: boolean }
 export type ProjectCounts = { active: number; blocked: number; failed: number; reviewReady: number }
+export type ProjectDirectoryPickResult = { cancelled: boolean; path: string | null }
+export type ProjectFolderContext = { project: ProjectSummary; isGit: boolean; folderId: string }
 export type ProjectFolderPickResult = { cancelled: boolean } | { cancelled: boolean; project: ProjectSummary }
+export type ProjectFolderSummary = { id: string; projectId: string; name: string; rootPath: string; isPrimary: boolean; enabled: boolean; summary: string | null }
 export type ProjectId = string
+export type ProjectOverview = { revision: number; saved: OverviewDocument | null; draft: OverviewDocument | null; status: OverviewStatus; error: string | null }
 export type ProjectSettings = { worktreeLocation: string; setupCommand: string; checkCommands: string[];
 /**
  * What a merged PR does to the isolated workspace on its branch. Off
@@ -2662,7 +2682,7 @@ export type ProjectSummary = { id: string; name: string; repoPath: string; curre
  * settings form saves through `projects:update-settings`, and this value
  * has its own validated channel.
  */
-branchTemplate?: string | null; counts: ProjectCounts; latestActivityAt: string | null }
+branchTemplate?: string | null; overview?: ProjectOverview | null; counts: ProjectCounts; latestActivityAt: string | null }
 export type ProjectsCheckPromptInput = {
 /**
  * The project the launcher is aimed at.
@@ -2673,11 +2693,17 @@ projectId: ProjectId; prompt: Prompt;
  * suggest another one but never switches away on its own.
  */
 pickedByHand: boolean }
-export type ProjectsListBranchesInput = { projectId: ProjectId }
-export type ProjectsListCheckoutsInput = { projectId: ProjectId }
+export type ProjectsConfigureInput = { projectId: ProjectId; name: NonEmptyString; folders: string[]; primaryPath: string }
+export type ProjectsCreateInput = { name: NonEmptyString; folders: string[]; primaryPath: string }
+export type ProjectsGenerateOverviewInput = { projectId: ProjectId }
+export type ProjectsGetFolderContextInput = { projectId: ProjectId; projectFolderId?: string | null }
+export type ProjectsGetFoldersInput = { projectId: ProjectId }
+export type ProjectsListBranchesInput = { projectId: ProjectId; projectFolderId?: string | null }
+export type ProjectsListCheckoutsInput = { projectId: ProjectId; projectFolderId?: string | null }
 export type ProjectsListInput = Record<string, never>
+export type ProjectsOverviewDraftInput = { projectId: ProjectId; expectedRevision: number }
 export type ProjectsPickFolderInput = Record<string, never>
-export type ProjectsRefreshBranchInput = { projectId: ProjectId }
+export type ProjectsRefreshBranchInput = { projectId: ProjectId; projectFolderId?: string | null }
 export type ProjectsRegisterInput = { repoPath: RepoPath }
 export type ProjectsRemoveInput = { projectId: ProjectId }
 export type ProjectsResolveCheckInput = { checkId: NonEmptyString; outcome: ProjectCheckOutcome;
@@ -2690,7 +2716,8 @@ export type ProjectsSetBranchTemplateInput = { projectId: ProjectId;
  * `null` removes the project's override.
  */
 template: string | null }
-export type ProjectsSwitchBranchInput = { projectId: ProjectId; branch: BranchName }
+export type ProjectsSwitchBranchInput = { projectId: ProjectId; projectFolderId?: string | null; branch: BranchName }
+export type ProjectsUpdateOverviewInput = { projectId: ProjectId; text: string; expectedRevision: number }
 export type ProjectsUpdateSettingsInput = { projectId: ProjectId; settings: ProjectSettingsInput }
 export type Prompt = string
 export type ProviderCapabilityReport = { provider: ProviderId; displayName: string; binaryName: string; installed: boolean; binaryPath: string | null; version: string | null;
@@ -2866,7 +2893,6 @@ export type RemoteTestNotificationInput = Record<string, never>
 export type RemoteUnregisterPushDeviceInput = { token: string }
 export type RendererStallMetrics = { count: number; totalMs: number; longestMs: number }
 export type RepoPath = string
-export type ReviewCommitStagedInput = { workspaceId: string; message: string }
 /**
  * Which baseline the review diff is computed against.
  *
@@ -3452,9 +3478,9 @@ export type WorkspaceReadFileInput = { kind: WorkspaceTargetKind; id: WorkspaceT
 export type WorkspaceStatFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath }
 export type WorkspaceStatusInput = { workspaceIds: WorkspaceId[] | null }
 export type WorkspaceStatusSnapshot = { workspaces: WorkspaceSummary[]; sessions: SessionSummary[]; checks: CheckRun[] }
-export type WorkspaceSummary = { id: string; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean;
+export type WorkspaceSummary = { id: string; projectFolderId?: string | null; checkCommands?: string[] | null; projectId: string; taskLabel: string; branch: string; baseRef: string; path: string; state: string; sharedWorkspace: boolean;
 /**
- * 'git' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
+ * 'git' | 'folder' | 'scratch' | 'popup' — see `PersistWorkspaceInput::kind`. Every
  * repo-coupled surface (review, gh, branch chips, sidebar grouping) gates
  * on this rather than on which UI created the workspace.
  */
@@ -3544,23 +3570,23 @@ icon: string | null;
  */
 iconColor: string | null }
 export type WorkspaceTargetId = string
-export type WorkspaceTargetKind = "workspace" | "project"
+export type WorkspaceTargetKind = "workspace" | "project" | "projectFolder"
 export type WorkspaceViewedObservationInput = { workspaceId: WorkspaceId; observedActivityAt: string }
 export type WorkspaceWriteFileInput = { kind: WorkspaceTargetKind; id: WorkspaceTargetId; filePath: RelativePath; content: FileContent; expectedMtimeMs: NullableExpectedMtimeMs }
 export type WorkspacesArchiveInput = { workspaceId: WorkspaceId; force: boolean | null }
 export type WorkspacesAutotitleInput = { workspaceId: WorkspaceId; provider: ProviderId; modelId: NonEmptyString; prompt: Prompt }
-export type WorkspacesCreateCurrentInput = { projectId: ProjectId; taskLabel: TaskLabel }
+export type WorkspacesCreateCurrentInput = { projectId: ProjectId; projectFolderId?: string | null; taskLabel: TaskLabel }
 /**
  * A workspace in a checkout that already exists, named by the launcher after
  * the person picked a branch that a worktree has checked out.
  */
-export type WorkspacesCreateInCheckoutInput = { projectId: ProjectId; taskLabel: TaskLabel; path: NonEmptyString;
+export type WorkspacesCreateInCheckoutInput = { projectId: ProjectId; projectFolderId?: string | null; taskLabel: TaskLabel; path: NonEmptyString;
 /**
  * The branch the person saw checked out at `path`. The launch is refused
  * when the checkout has moved to another branch since.
  */
 branch: BranchName }
-export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; taskLabel: TaskLabel; baseRef: BaseRef | null }
+export type WorkspacesCreateIsolatedInput = { projectId: ProjectId; projectFolderId?: string | null; taskLabel: TaskLabel; baseRef: BaseRef | null }
 export type WorkspacesCreateScratchInput = { taskLabel: TaskLabel; kind: ScratchWorkspaceKind | null }
 export type WorkspacesKeepInput = { workspaceId: WorkspaceId }
 export type WorkspacesMarkViewedInput = { workspaces: WorkspaceViewedObservationInput[] }

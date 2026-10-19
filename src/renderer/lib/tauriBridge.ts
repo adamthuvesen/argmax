@@ -17,10 +17,6 @@ import type {
   CloudLaunchInput,
   CloudPrepareInput,
   DashboardDelta,
-  GitCommitInput,
-  GitCreateBranchInput,
-  GitPushInput,
-  GitViewOrCreatePrInput,
   LaunchProviderSessionInput,
   OpenInIdeInput,
   ProviderSessionInput,
@@ -248,19 +244,28 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     },
     projects: {
       list: () => invokeCommand("projects:list"),
+      create: (input) => invokeCommand("projects:create", input),
+      configure: (input) => invokeCommand("projects:configure", input),
+      generateOverview: (input) => invokeCommand("projects:generate-overview", input),
+      updateOverview: (input) => invokeCommand("projects:update-overview", input),
+      applyOverviewDraft: (input) => invokeCommand("projects:apply-overview-draft", input),
+      discardOverviewDraft: (input) => invokeCommand("projects:discard-overview-draft", input),
+      getFolderContext: (input) => invokeCommand("projects:get-folder-context", input),
+      getFolders: (input) => invokeCommand("projects:get-folders", input),
+      pickDirectory: () => invokeCommand("projects:pick-directory"),
       pickFolder: () => invokeCommand("projects:pick-folder").then(decode.pickedFolder),
       register: (input: RegisterProjectInput) => invokeCommand("projects:register", input),
       remove: (input: RemoveProjectInput) => invokeCommand("projects:remove", input).then(() => undefined),
       updateSettings: (input: UpdateProjectSettingsInput) =>
         invokeCommand("projects:update-settings", input),
-      listBranches: (projectId: string) =>
-        invokeCommand("projects:list-branches", { projectId }),
-      listCheckouts: (projectId: string) =>
-        invokeCommand("projects:list-checkouts", { projectId }),
-      refreshBranch: (projectId: string) =>
-        invokeCommand("projects:refresh-branch", { projectId }),
-      switchBranch: (projectId: string, branch: string) =>
-        invokeCommand("projects:switch-branch", { projectId, branch }),
+      listBranches: (projectId: string, projectFolderId?: string) =>
+        invokeCommand("projects:list-branches", { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
+      listCheckouts: (projectId: string, projectFolderId?: string) =>
+        invokeCommand("projects:list-checkouts", { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
+      refreshBranch: (projectId: string, projectFolderId?: string) =>
+        invokeCommand("projects:refresh-branch", { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
+      switchBranch: (projectId: string, branch: string, projectFolderId?: string) =>
+        invokeCommand("projects:switch-branch", { projectId, branch, ...(projectFolderId ? { projectFolderId } : {}) }),
       setBranchTemplate: (input) => invokeCommand("projects:set-branch-template", input),
       checkPrompt: (input) => invokeCommand("projects:check-prompt", input),
       resolveCheck: (input) => invokeCommand("projects:resolve-check", input).then(() => undefined)
@@ -390,7 +395,6 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       revertHunk: (input) => invokeCommand("review:revert-hunk", input).then(() => undefined),
       stageHunk: (input) => invokeCommand("review:stage-hunk", input).then(() => undefined),
       unstageHunk: (input) => invokeCommand("review:unstage-hunk", input).then(() => undefined),
-      commitStaged: (input) => invokeCommand("review:commit-staged", input),
       listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) =>
         invokeCommand("review:list-changed-files", { ...target, comparison }),
       loadDiff: (
@@ -564,14 +568,6 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       setPrimary: (input) => invokeCommand("prs:set-primary", input),
       dismiss: (input) => invokeCommand("prs:dismiss", input),
       cleanup: (input) => invokeCommand("prs:cleanup", input)
-    },
-    git: {
-      commit: (input: GitCommitInput) => invokeCommand("git:commit", input),
-      push: (input: GitPushInput) => invokeCommand("git:push", input),
-      createBranch: (input: GitCreateBranchInput) =>
-        invokeCommand("git:create-branch", input),
-      viewOrCreatePr: (input: GitViewOrCreatePrInput) =>
-        invokeCommand("git:view-or-create-pr", input)
     },
     terminal: {
       spawn: (input: TerminalSpawnInput) => invokeCommand("terminal:spawn", input),

@@ -36,7 +36,7 @@ describe("backgroundIntensity", () => {
 
   it("carries a stored 1–10 level over as level × 10", () => {
     window.localStorage.setItem("argmax.background.intensity", "7");
-    expect(readStoredBackgroundIntensity()).toBe(DEFAULT_BACKGROUND_INTENSITY);
+    expect(readStoredBackgroundIntensity()).toBe(70);
     window.localStorage.setItem("argmax.background.intensity", "10");
     expect(readStoredBackgroundIntensity()).toBe(100);
     window.localStorage.setItem(BACKGROUND_INTENSITY_STORAGE_KEY, "12");

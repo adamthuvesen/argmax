@@ -27,10 +27,7 @@
   padding: var(--workspace-card-inset);
   background: var(--panel);
   border: 1px solid var(--line);
-  /* The same corner as the launcher, the composer shell and every popover:
-     this card is floating chrome, and at 14px it read tighter than the
-     surfaces it sits beside. */
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-chat);
   box-shadow: var(--shadow-2);
   animation: surface-in var(--motion-base) var(--ease-out);
 }
@@ -445,6 +442,10 @@
   transition: color var(--motion-fast) var(--ease-out);
 }
 
+.workspace-card-folder-changes {
+  min-width: 0;
+}
+
 .workspace-card-row-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -559,7 +560,7 @@
   width: max-content;
   min-width: 164px;
   padding: var(--space-1);
-  background: var(--panel);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-2);
@@ -580,7 +581,7 @@
 .workspace-card-pr-actions-menu button:hover,
 .workspace-card-pr-actions-menu button:focus-visible {
   color: var(--text);
-  background: var(--panel-soft);
+  background: var(--popover-row-active);
   outline: none;
 }
 

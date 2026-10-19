@@ -80,7 +80,7 @@
   color: var(--text-soft);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -124,7 +124,7 @@
   padding: 0;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
   overflow: hidden;
 }
 
@@ -310,7 +310,7 @@
   color: var(--muted);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
@@ -445,7 +445,7 @@
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   transition:
     border-color var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out);
@@ -506,7 +506,7 @@
   line-height: 1.5;
   color: var(--muted-strong);
   background: var(--accent-soft);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-surface);
 }
 
 .sched-readback strong {
@@ -525,13 +525,6 @@
    chips, toggles and menus. */
 .sched-picker {
   width: var(--sched-control-width);
-}
-
-/* The picker trigger is the settings primitive, which still carries the
-   settings page's tighter corner. Round it here so the pickers and the text
-   inputs above them share one edge down the column. */
-.sched-picker .settings-picker-trigger {
-  border-radius: var(--radius-lg);
 }
 
 /* ---------- Run-at picker (RunAtPicker.tsx) ----------
@@ -592,7 +585,7 @@
   color: var(--text-soft);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
@@ -629,7 +622,7 @@
   color: var(--text);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: background-color var(--motion-fast) var(--ease-out);
 }

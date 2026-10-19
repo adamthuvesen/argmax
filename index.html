@@ -10,7 +10,7 @@
       (function () {
         try {
           var raw = localStorage.getItem("argmax.theme.mode");
-          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "dark";
+          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "system";
           var resolved =
             mode === "system"
               ? window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -28,32 +28,25 @@
             ? level
             : /^(?:[1-9]|10)$/.test(legacy || "")
               ? String(Number(legacy) * 10)
-              : null;
-          if (intensity !== null) {
-            root.setAttribute("data-background-intensity", intensity);
-            root.style.setProperty("--background-intensity", intensity);
-          }
+              : "100";
+          root.setAttribute("data-background-intensity", intensity);
+          root.style.setProperty("--background-intensity", intensity);
           var contrast = localStorage.getItem("argmax.contrast.level");
           if (/^(?:100|[1-9]?\d)$/.test(contrast || "")) {
-            // The contrast rules only apply under [data-background-intensity],
-            // so a saved contrast with no saved background gets the default 70
-            // that React applies on mount.
-            if (intensity === null) {
-              root.setAttribute("data-background-intensity", "70");
-              root.style.setProperty("--background-intensity", "70");
-            }
             root.setAttribute("data-contrast", contrast);
             root.style.setProperty("--contrast", contrast);
           }
           // Mirrors lib/sidebarIntensity.ts. Without it a saved level paints
           // the default sidebars until React mounts, then snaps.
           var sidebar = localStorage.getItem("argmax.sidebar.level");
-          if (/^(?:100|[1-9]?\d)$/.test(sidebar || "")) {
-            root.setAttribute("data-sidebar-intensity", sidebar);
-            root.style.setProperty("--sidebar-intensity", sidebar);
-          }
+          sidebar = /^(?:100|[1-9]?\d)$/.test(sidebar || "") ? sidebar : "60";
+          root.setAttribute("data-sidebar-intensity", sidebar);
+          root.style.setProperty("--sidebar-intensity", sidebar);
         } catch (e) {
-          document.documentElement.setAttribute("data-theme", "dark");
+          document.documentElement.setAttribute(
+            "data-theme",
+            window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+          );
         }
       })();
     </script>

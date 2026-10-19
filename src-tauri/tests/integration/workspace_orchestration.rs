@@ -176,6 +176,7 @@ async fn create_isolated_adds_worktree_and_persists_row() {
     let service = WorkspaceService::with_publisher(database.clone(), publisher);
 
     let input = WorkspacesCreateIsolatedInput {
+        project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("Hello World!".to_owned()).expect("task label"),
         base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -342,6 +343,7 @@ async fn create_isolated_rejects_relative_worktree_location_before_creating_it()
 
     let error = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("Relative root".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -377,6 +379,7 @@ async fn create_and_archive_isolated_worktree_under_external_configured_root() {
 
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("External worktree".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -471,6 +474,7 @@ async fn create_isolated_runs_setup_command_after_returning() {
 
     let summary = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("Setup run".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -533,6 +537,7 @@ async fn create_isolated_replays_the_post_checkout_hook_after_returning() {
 
     let summary = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("Hooked".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -588,6 +593,7 @@ async fn create_isolated_survives_failing_setup_command() {
 
     let summary = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("Setup fails".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -643,6 +649,7 @@ async fn create_isolated_rejects_nonexistent_base_ref() {
     // A well-formed name that does not resolve (e.g. a merged-and-pruned branch)
     // must be rejected up front, not forked into a broken worktree.
     let input = WorkspacesCreateIsolatedInput {
+        project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("Task".to_owned()).expect("task label"),
         base_ref: Some(BaseRef::try_from("adam/rust-port".to_owned()).expect("base ref")),
@@ -730,6 +737,7 @@ async fn create_current_records_shared_workspace_pointing_at_repo() {
     let service = WorkspaceService::new(database.clone());
 
     let input = WorkspacesCreateCurrentInput {
+        project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("explore".to_owned()).expect("task label"),
     };
@@ -769,6 +777,7 @@ async fn create_current_records_project_default_as_base_ref() {
     let service = WorkspaceService::new(database);
 
     let input = WorkspacesCreateCurrentInput {
+        project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("explore".to_owned()).expect("task label"),
     };
@@ -790,6 +799,7 @@ fn create_current_installs_watcher_without_tokio_context() {
     let service = WorkspaceService::new(database);
 
     let input = WorkspacesCreateCurrentInput {
+        project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("explore".to_owned()).expect("task label"),
     };
@@ -1224,6 +1234,7 @@ async fn archive_isolated_worktree_succeeds_when_worktree_is_already_removed_fro
     let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("already removed".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -1263,6 +1274,7 @@ async fn startup_completes_an_archive_after_the_worktree_was_moved() {
     let (service, recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Interrupted archive".to_string()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
@@ -1469,6 +1481,7 @@ async fn archive_isolated_worktree_kept_when_dirty_and_not_forced() {
     let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("archive isolated".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -1503,6 +1516,7 @@ async fn isolated_worktree_with_colocated_chat(
 ) -> (WorkspaceSummary, WorkspaceSummary) {
     let owner = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("owning chat".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -1543,6 +1557,7 @@ fn in_checkout_input(
     branch: &str,
 ) -> argmax_lib::workspaces::inputs::WorkspacesCreateInCheckoutInput {
     argmax_lib::workspaces::inputs::WorkspacesCreateInCheckoutInput {
+        project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("new chat".to_owned()).expect("task label"),
         path: argmax_lib::ipc::validation::NonEmptyString::try_from(path.to_owned()).expect("path"),
@@ -1568,6 +1583,7 @@ async fn list_checkouts_names_the_branch_of_every_usable_checkout() {
     let (service, _recovery) = service_with_archive_recovery(&database);
     let linked = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("linked".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -1576,6 +1592,7 @@ async fn list_checkouts_names_the_branch_of_every_usable_checkout() {
         .expect("linked worktree");
     let archived = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("archived".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -1697,6 +1714,7 @@ async fn create_in_checkout_refuses_what_it_cannot_prove() {
     let (service, _recovery) = service_with_archive_recovery(&database);
     let owner = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("owner".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -2171,6 +2189,7 @@ fn workspaces_sharing_a_checkout_share_one_os_watch() {
     for label in ["explore", "refactor", "review"] {
         let summary = service
             .create_current(WorkspacesCreateCurrentInput {
+                project_folder_id: None,
                 project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
                 task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
             })
@@ -2208,6 +2227,7 @@ async fn refresh_checkout_updates_every_workspace_from_one_read() {
     for label in ["one", "two"] {
         let summary = service
             .create_current(WorkspacesCreateCurrentInput {
+                project_folder_id: None,
                 project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
                 task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
             })
@@ -2505,6 +2525,7 @@ async fn archive_keeps_the_worktree_when_provider_teardown_fails() {
 
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("stuck agent".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -2608,6 +2629,7 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
     let service = WorkspaceService::new(Arc::clone(&database));
     let source_workspace = service
         .create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Move this chat".to_string()).expect("task label"),
         })
@@ -2618,6 +2640,7 @@ async fn move_session_copies_history_without_native_resume_and_can_keep_source()
     // session that dispatched the work.
     let parent_workspace = service
         .create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Parent chat".to_string()).expect("task label"),
         })
@@ -2715,6 +2738,7 @@ fn checkout_move_fixture(
     let service = WorkspaceService::new(Arc::clone(database));
     let source_workspace = service
         .create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Move this chat".to_string()).expect("task label"),
         })
@@ -2838,6 +2862,7 @@ async fn move_session_refuses_a_checkout_another_workspace_owns_or_one_with_no_b
     // directory out from under the moved chat.
     let owned = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Owns a worktree".to_string()).expect("task label"),
             base_ref: None,
@@ -2957,6 +2982,7 @@ async fn move_session_archives_clean_source_and_can_create_isolated_destination(
     let service = WorkspaceService::new(Arc::clone(&database));
     let source_workspace = service
         .create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Move isolated".to_string()).expect("task label"),
         })
@@ -3015,6 +3041,7 @@ async fn move_session_keeps_dirty_isolated_source_without_forcing_archive() {
     let (service, _recovery) = service_with_archive_recovery(&database);
     let source_workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Dirty source".to_string()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
@@ -3075,6 +3102,7 @@ async fn each_move_adds_an_arrival_the_copied_transcript_carries_on() {
     let service = WorkspaceService::new(Arc::clone(&database));
     let source_workspace = service
         .create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("project-0".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Move twice".to_string()).expect("task label"),
         })
@@ -3132,6 +3160,7 @@ async fn archive_failed_workspace_requires_fresh_force_and_preserves_changes() {
     let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Retry Archive".to_string()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
@@ -3199,6 +3228,7 @@ async fn archive_retains_ignored_files_and_repeated_calls_find_the_same_recovery
     let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Ignored output".to_string()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_string()).expect("base ref")),
@@ -3257,6 +3287,7 @@ async fn merged_checkout_removal_deletes_the_worktree_and_keeps_the_chat_listed(
     let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("merged work".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -3324,6 +3355,7 @@ async fn merged_checkout_removal_deletes_the_created_branch_the_agent_left() {
     for (label, commit_on_created) in [("left untouched", false), ("committed to", true)] {
         let workspace = service
             .create_isolated(WorkspacesCreateIsolatedInput {
+                project_folder_id: None,
                 project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
                 task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
                 base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -3375,6 +3407,7 @@ async fn merged_checkout_removal_keeps_a_checkout_with_commits_after_the_merge()
     let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("follow-up work".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -3410,6 +3443,7 @@ async fn merged_checkout_removal_keeps_the_checkout_when_the_merged_head_is_unkn
     let (service, _recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("updated on github".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -3461,6 +3495,7 @@ async fn archived_isolated_workspace(
 ) -> (WorkspaceSummary, String) {
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -3525,6 +3560,7 @@ async fn archive_expiry_keeps_directories_of_workspaces_that_are_not_archived() 
     let (service, recovery) = service_with_archive_recovery(&database);
     let workspace = service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from("Kept work".to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -3572,6 +3608,7 @@ fn archive_expiry_removes_an_orphaned_directory_only_once_it_is_old() {
 async fn create_with_label(service: &Arc<WorkspaceService>, label: &str) -> WorkspaceSummary {
     service
         .create_isolated(WorkspacesCreateIsolatedInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
             task_label: TaskLabel::try_from(label.to_owned()).expect("task label"),
             base_ref: Some(BaseRef::try_from("main".to_owned()).expect("base ref")),
@@ -3911,6 +3948,7 @@ async fn fork_into_an_isolated_checkout_starts_from_the_current_files_not_a_turn
     let service = WorkspaceService::new(Arc::clone(&database));
     let source_workspace = service
         .create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
             project_id: ProjectId::try_from("source-project".to_string()).expect("project id"),
             task_label: TaskLabel::try_from("Fork me".to_string()).expect("task label"),
         })
@@ -4290,4 +4328,330 @@ async fn a_queued_merge_claim_survives_the_fork_moving() {
         .unwrap();
     let drained = fork_merge::preview(&database, &moved.session.id).expect("preview");
     assert!(drained.unconfirmed_merge_id.is_none());
+}
+
+#[tokio::test]
+async fn forks_keep_the_original_repository_after_primary_change_and_folder_removal() {
+    use argmax_lib::ipc::inputs::ForkWorkspaceMode;
+    use argmax_lib::persistence::project_folders::{
+        configure_project_folders, PersistProjectFolderInput,
+    };
+    use argmax_lib::workspaces::orchestration::fork::ForkRequest;
+
+    let source = seed_git_repo(&[("source.txt", "source repository\n")]);
+    let next_primary = seed_git_repo(&[("other.txt", "other repository\n")]);
+    ensure_main_branch(source.path());
+    ensure_main_branch(next_primary.path());
+    let worktrees = tempfile::tempdir().unwrap();
+    let database = Arc::new(Database::open_in_memory().unwrap());
+    build_named_project(
+        &database,
+        "source-project",
+        "Source",
+        source.path().to_str().unwrap(),
+        worktrees.path().to_str().unwrap(),
+    );
+    let service = WorkspaceService::new(Arc::clone(&database));
+    let original = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_folder_id: None,
+            project_id: "source-project".to_owned().try_into().unwrap(),
+            task_label: "Original".to_owned().try_into().unwrap(),
+        })
+        .unwrap();
+    seed_completed_session(&database, &original.id, "source-session");
+    {
+        let connection = database.connection();
+        configure_project_folders(
+            &connection,
+            "source-project",
+            "Renamed",
+            &[PersistProjectFolderInput {
+                root_path: next_primary.path().to_str().unwrap().to_owned(),
+                current_branch: "main".to_owned(),
+                default_branch: Some("main".to_owned()),
+                remote: None,
+                settings: ProjectSettings {
+                    worktree_location: worktrees.path().join("other").to_str().unwrap().to_owned(),
+                    setup_command: String::new(),
+                    check_commands: Vec::new(),
+                    merge_cleanup: Default::default(),
+                },
+            }],
+            next_primary.path().to_str().unwrap(),
+        )
+        .unwrap();
+    }
+    for mode in [ForkWorkspaceMode::Shared, ForkWorkspaceMode::Isolated] {
+        let forked = service
+            .fork_session_at(ForkRequest {
+                session_id: "source-session".to_owned(),
+                boundary_event_id: None,
+                workspace: mode,
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            forked.workspace.project_folder_id,
+            original.project_folder_id
+        );
+        let path = std::path::Path::new(&forked.workspace.path);
+        assert!(path.join("source.txt").is_file());
+        assert!(!path.join("other.txt").exists());
+    }
+}
+
+fn add_launcher_folder(database: &Database, root: &std::path::Path) -> String {
+    use argmax_lib::persistence::project_folders::{
+        configure_project_folders, list_project_folders, PersistProjectFolderInput,
+    };
+    let connection = database.connection();
+    let project = find_project_by_id(&connection, PROJECT_ID)
+        .unwrap()
+        .unwrap();
+    let folders = [project.repo_path.clone(), root.display().to_string()]
+        .into_iter()
+        .map(|root_path| PersistProjectFolderInput {
+            root_path,
+            current_branch: "main".into(),
+            default_branch: Some("main".into()),
+            remote: None,
+            settings: project.settings.clone(),
+        })
+        .collect::<Vec<_>>();
+    configure_project_folders(
+        &connection,
+        PROJECT_ID,
+        "Connected",
+        &folders,
+        &project.repo_path,
+    )
+    .unwrap();
+    list_project_folders(&connection, PROJECT_ID)
+        .unwrap()
+        .into_iter()
+        .find(|folder| !folder.is_primary)
+        .unwrap()
+        .id
+}
+
+#[tokio::test]
+async fn create_in_checkout_preserves_selected_folder_across_checkouts_of_the_same_repository() {
+    let primary = seed_git_repo(&[("README.md", "shared repository")]);
+    ensure_main_branch(primary.path());
+    let checkouts = tempfile::tempdir().unwrap();
+    let secondary = checkouts.path().join("secondary");
+    let third = checkouts.path().join("third");
+    for (path, branch) in [(&secondary, "secondary"), (&third, "third")] {
+        run_git(
+            primary.path(),
+            &["worktree", "add", "-b", branch, path.to_str().unwrap()],
+        );
+    }
+    let database = Arc::new(Database::open_in_memory().unwrap());
+    build_project(
+        &database,
+        primary.path().to_str().unwrap(),
+        checkouts.path().to_str().unwrap(),
+    );
+    let folder_id = add_launcher_folder(&database, &secondary);
+    database
+        .connection()
+        .execute(
+            "UPDATE project_folders SET check_commands_json = ?1 WHERE id = ?2",
+            (r#"["npm run secondary-check"]"#, &folder_id),
+        )
+        .unwrap();
+    let service = WorkspaceService::new(database.clone());
+
+    for (path, branch) in [(third.as_path(), "third"), (primary.path(), "main")] {
+        let mut input = in_checkout_input(path.to_str().unwrap(), branch);
+        input.project_folder_id = Some(folder_id.clone());
+        let workspace = service.create_in_checkout(input).await.unwrap();
+
+        assert_eq!(
+            workspace.project_folder_id.as_deref(),
+            Some(folder_id.as_str())
+        );
+        assert_eq!(workspace.branch, branch);
+        assert_eq!(
+            std::path::Path::new(&workspace.path)
+                .canonicalize()
+                .unwrap(),
+            path.canonicalize().unwrap()
+        );
+        let persisted = find_workspace_by_id(&database.read_connection(), &workspace.id).unwrap();
+        assert_eq!(persisted.project_folder_id, workspace.project_folder_id);
+        assert_eq!(
+            persisted.check_commands,
+            Some(vec!["npm run secondary-check".to_owned()])
+        );
+    }
+    let project = find_project_by_id(&database.read_connection(), PROJECT_ID)
+        .unwrap()
+        .unwrap();
+    assert_eq!(project.repo_path, primary.path().to_str().unwrap());
+}
+
+#[tokio::test]
+async fn launcher_folder_selection_pins_git_current_and_worktree_without_changing_primary() {
+    let primary = seed_git_repo(&[("README.md", "primary")]);
+    let secondary = seed_git_repo(&[("README.md", "secondary")]);
+    run_git(secondary.path(), &["checkout", "-b", "secondary-only"]);
+    let worktrees = tempfile::tempdir().unwrap();
+    let database = Arc::new(Database::open_in_memory().unwrap());
+    build_project(
+        &database,
+        &primary.path().display().to_string(),
+        &worktrees.path().display().to_string(),
+    );
+    let folder_id = add_launcher_folder(&database, secondary.path());
+    let service = WorkspaceService::new(database.clone());
+    let current = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: PROJECT_ID.to_owned().try_into().unwrap(),
+            project_folder_id: Some(folder_id.clone()),
+            task_label: "secondary".to_owned().try_into().unwrap(),
+        })
+        .unwrap();
+    assert_eq!(
+        std::path::Path::new(&current.path).canonicalize().unwrap(),
+        secondary.path().canonicalize().unwrap()
+    );
+    assert_eq!(current.branch, "secondary-only");
+    assert_eq!(
+        current.project_folder_id.as_deref(),
+        Some(folder_id.as_str())
+    );
+    let isolated = service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: PROJECT_ID.to_owned().try_into().unwrap(),
+            project_folder_id: Some(folder_id.clone()),
+            task_label: "secondary isolated".to_owned().try_into().unwrap(),
+            base_ref: Some("secondary-only".to_owned().try_into().unwrap()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        isolated.project_folder_id.as_deref(),
+        Some(folder_id.as_str())
+    );
+    assert_eq!(
+        std::fs::read_to_string(std::path::Path::new(&isolated.path).join("README.md")).unwrap(),
+        "secondary"
+    );
+    let project = find_project_by_id(&database.read_connection(), PROJECT_ID)
+        .unwrap()
+        .unwrap();
+    assert_eq!(project.repo_path, primary.path().display().to_string());
+    assert_eq!(project.current_branch, "main");
+    let roots = argmax_lib::persistence::linked_repos::list_workspace_linked_repos(
+        &database.read_connection(),
+        &current.id,
+    )
+    .unwrap();
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0].root_path, primary.path().display().to_string());
+    build_named_project(
+        &database,
+        "foreign-project",
+        "Foreign",
+        &primary.path().display().to_string(),
+        &worktrees.path().display().to_string(),
+    );
+    let foreign_folder_id = argmax_lib::persistence::project_folders::primary_folder_id(
+        &database.read_connection(),
+        "foreign-project",
+    )
+    .unwrap()
+    .unwrap();
+    let denied = service.create_current(WorkspacesCreateCurrentInput {
+        project_id: PROJECT_ID.to_owned().try_into().unwrap(),
+        project_folder_id: Some(foreign_folder_id),
+        task_label: "denied".to_owned().try_into().unwrap(),
+    });
+    assert!(denied.is_err());
+    database
+        .connection()
+        .execute(
+            "UPDATE project_folders SET removed = 1 WHERE id = ?",
+            [&folder_id],
+        )
+        .unwrap();
+    assert!(service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: PROJECT_ID.to_owned().try_into().unwrap(),
+            project_folder_id: Some(folder_id),
+            task_label: "removed".to_owned().try_into().unwrap(),
+        })
+        .is_err());
+}
+
+#[tokio::test]
+async fn launcher_plain_folder_starts_without_git_and_archive_keeps_files() {
+    let primary = seed_git_repo(&[("README.md", "primary")]);
+    let plain = tempfile::tempdir().unwrap();
+    std::fs::write(plain.path().join("notes.md"), "Keep these notes").unwrap();
+    let database = Arc::new(Database::open_in_memory().unwrap());
+    build_project(
+        &database,
+        &primary.path().display().to_string(),
+        &primary.path().join("worktrees").display().to_string(),
+    );
+    let folder_id = add_launcher_folder(&database, plain.path());
+    let service = WorkspaceService::new(database.clone());
+    let workspace = service
+        .create_current(WorkspacesCreateCurrentInput {
+            project_id: PROJECT_ID.to_owned().try_into().unwrap(),
+            project_folder_id: Some(folder_id.clone()),
+            task_label: "notes".to_owned().try_into().unwrap(),
+        })
+        .unwrap();
+    assert_eq!(workspace.kind, "folder");
+    assert!(workspace.shared_workspace);
+    assert!(workspace.branch.is_empty());
+    assert_eq!(
+        workspace.project_folder_id.as_deref(),
+        Some(folder_id.as_str())
+    );
+    assert!(!plain.path().join(".git").exists());
+    assert_eq!(service.open_watcher_count(), 0);
+    let sibling = service
+        .create_alongside(WorkspacesCreateAlongsideInput {
+            project_id: PROJECT_ID.to_owned().try_into().unwrap(),
+            task_label: "sibling".to_owned().try_into().unwrap(),
+            path: workspace.path.clone(),
+            branch: String::new(),
+            base_ref: String::new(),
+        })
+        .unwrap();
+    assert_eq!(sibling.kind, "folder");
+    assert_eq!(sibling.project_folder_id, workspace.project_folder_id);
+
+    assert_eq!(
+        service.refresh_status(&workspace.id).await.unwrap().kind,
+        "folder"
+    );
+    assert!(service
+        .create_isolated(WorkspacesCreateIsolatedInput {
+            project_id: PROJECT_ID.to_owned().try_into().unwrap(),
+            project_folder_id: Some(folder_id),
+            task_label: "invalid".to_owned().try_into().unwrap(),
+            base_ref: None,
+        })
+        .await
+        .is_err());
+    let archived = service
+        .archive(WorkspacesArchiveInput {
+            workspace_id: workspace.id.try_into().unwrap(),
+            force: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(archived.workspace.state, "archived");
+    assert_eq!(
+        std::fs::read_to_string(plain.path().join("notes.md")).unwrap(),
+        "Keep these notes"
+    );
+    assert!(!plain.path().join(".git").exists());
 }

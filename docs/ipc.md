@@ -35,7 +35,7 @@ The renderer facade validates persisted string enums before exposing narrower cl
 These decoders are shared by command results and dashboard pushes.
 Raw malformed timeline payloads remain available in an explicit diagnostic envelope.
 
-File and review operations use a `{ kind: "workspace" | "project", id }` target resolved in Rust.
+File and review operations use a `{ kind: "workspace" | "project" | "projectFolder", id }` target resolved in Rust.
 
 `session:agent-events` fetches subagent activity for `{ sessionId, parentToolUseId }`. It imports trace events for the parent tool call and returns rows scoped to the subagent lifecycle. Main chat views use `session:events-since` to avoid trace disk scans.
 
@@ -159,7 +159,7 @@ with the reason.
 
 ## Workspace settings channels
 
-`linked-repos:list`, `linked-repos:add`, `linked-repos:pick-folder`, `linked-repos:summarize`, `linked-repos:set-enabled`, and `linked-repos:remove` manage a project's linked repositories ([memory.md](memory.md#linked-repositories)). `projects:set-branch-template` sets or clears (`null`) a project's branch template, and `settings:branch-template` / `settings:set-branch-template` read and write the app-wide one ([workspaces.md](workspaces.md#branch-name-templates)). A template is validated on save, and a rejection arrives as `InvalidInput` whose issue message the settings form shows (`validationMessage` in `src/shared`). `workspaces:set-snoozed-until` takes `{ workspaceId, until }` with a future RFC 3339 instant, or `null` to unsnooze ([workspaces.md](workspaces.md#snooze-shelf)). All are `desktop` except the snooze write, which is `control` like the other row writes; `WorkspaceSummary.snoozedUntil` rides every snapshot and delta and is omitted when unset.
+`projects:create` and `projects:configure` save a named project with folder paths and one primary path. `projects:get-folders` returns its active folders. `projects:pick-directory` opens the native folder picker without creating a project. The `linked-repos:*` commands remain compatibility APIs for supplementary folders and their context summaries ([memory.md](memory.md#linked-repositories)). `projects:set-branch-template` sets or clears (`null`) a project's branch template, and `settings:branch-template` / `settings:set-branch-template` read and write the app-wide one ([workspaces.md](workspaces.md#branch-name-templates)). A template is validated on save, and a rejection arrives as `InvalidInput` whose issue message the settings form shows (`validationMessage` in `src/shared`). `workspaces:set-snoozed-until` takes `{ workspaceId, until }` with a future RFC 3339 instant, or `null` to unsnooze ([workspaces.md](workspaces.md#snooze-shelf)). All are `desktop` except the snooze write, which is `control` like the other row writes; `WorkspaceSummary.snoozedUntil` rides every snapshot and delta and is omitted when unset.
 
 ## Project sources
 
@@ -220,9 +220,7 @@ and publish affected workspace metadata. Remote mutations use the same handlers.
 [PR cleanup](workspaces.md#pr-cleanup) for a merged PR. It returns the
 structured report with its plain `text`, and it never archives the chat.
 
-Existing PR links open their stored URL. `git:view-or-create-pr` is the separate
-checkout creation action and accepts `expectedBranch` to reject a stale card
-before calling GitHub.
+Existing PR links open their stored URL. Agents create commits, push branches, and create pull requests through their Git tools.
 
 ## Contract checks
 

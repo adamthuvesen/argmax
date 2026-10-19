@@ -11,18 +11,18 @@ afterEach(() => {
 });
 
 describe("theme", () => {
-  it("defaults to dark when nothing is stored", () => {
-    expect(readStoredTheme()).toBe("dark");
-  });
-
-  it("reads a previously stored mode", () => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, "system");
+  it("defaults to system when nothing is stored", () => {
     expect(readStoredTheme()).toBe("system");
   });
 
-  it("falls back to dark when storage holds an unknown id", () => {
-    window.localStorage.setItem(THEME_STORAGE_KEY, "midnight");
+  it("reads a previously stored mode", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
     expect(readStoredTheme()).toBe("dark");
+  });
+
+  it("falls back to system when storage holds an unknown id", () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, "midnight");
+    expect(readStoredTheme()).toBe("system");
   });
 
   it("resolves system against the OS preference", () => {

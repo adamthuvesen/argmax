@@ -17,9 +17,10 @@ import { reviewStub as baseReviewStub } from "../../test/reviewFixture.js";
 import { resetBrowserTabsForTests } from "../lib/browserPanel.js";
 import { requestCloseActiveReviewFileTab } from "../lib/reviewFilePanel.js";
 import { addTerminalTab, resetTerminalTabsForTests } from "../lib/terminalTabs.js";
+import { ClaudeArtifactsContext } from "../lib/uiPreferences.js";
 import { ReviewPanel } from "./ReviewPanel.js";
 import { readBundledCss } from "../styles/readBundledCss.js";
-import { resetToastForTests, toastSnapshot } from "../state/toast.js";
+import { useProjectFolderChanges } from "../hooks/useProjectFolderChanges.js";
 
 function reviewStub(): ReviewState {
   return baseReviewStub({
@@ -32,7 +33,6 @@ function reviewStub(): ReviewState {
     openBrowser: vi.fn(),
     openTerminal: vi.fn(),
     setMode: vi.fn(),
-    setChangesScope: vi.fn(),
     openFile: vi.fn(),
     expandDiffContext: vi.fn(),
     openChangesPanel: vi.fn(),
@@ -55,6 +55,41 @@ function setReviewMode(review: ReviewState, mode: ReviewState["mode"]): void {
 }
 
 describe("ReviewPanel changes layout", () => {
+  it("shows supplementary diffs without offering the chat checkout's write actions", async () => {
+    const original = window.argmax;
+    const review = reviewStub();
+    review.projectChanges = { projectId: "project", workingFolderId: "working", workingRootPath: "/chat", refreshKey: null };
+    const loadDiff = vi.fn().mockResolvedValue({
+      workspaceId: "other", filePath: "src/a.ts", content: "@@ -1 +1 @@\n-old\n+other repository\n", revision: "other-revision"
+    });
+    window.argmax = {
+      projects: { getFolders: vi.fn().mockResolvedValue([
+        { id: "working", projectId: "project", name: "working", rootPath: "/repo", isPrimary: true, enabled: true, summary: null },
+        { id: "other", projectId: "project", name: "other", rootPath: "/other", isPrimary: false, enabled: true, summary: null }
+      ]) },
+      review: { listChangedFiles: vi.fn().mockResolvedValue(review.files), loadDiff }
+    } as unknown as ArgmaxApi;
+    function PanelWithFolderChanges() {
+      const projectFolderChanges = useProjectFolderChanges(review.projectChanges, true);
+      return <ReviewPanel review={{ ...review, projectFolderChanges }} />;
+    }
+    try {
+      render(<PanelWithFolderChanges />);
+      fireEvent.click(await within(await screen.findByRole("region", { name: "Other project folders" })).findByTitle("src/a.ts"));
+      await screen.findByText("other repository");
+      expect(loadDiff).toHaveBeenCalledWith({ kind: "projectFolder", id: "other" }, "src/a.ts", "workingTree", undefined);
+      expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Revert/ })).not.toBeInTheDocument();
+      expect(screen.queryByText(/These can include other chats/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Back to chat changes" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getAllByTitle("src/a.ts")[0]);
+      expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
+    } finally {
+      cleanup();
+      window.argmax = original;
+    }
+  });
+
   it("shows changed-file loading failures instead of an empty panel", () => {
     const review = reviewStub();
     review.files = [];
@@ -70,19 +105,6 @@ describe("ReviewPanel changes layout", () => {
 
   afterEach(() => {
     cleanup();
-    resetToastForTests();
-  });
-
-  it("reports a failed review action in the shared toast", async () => {
-    const review = reviewStub();
-    review.changesScope = "uncommitted";
-    review.updateFileIndex = vi.fn().mockRejectedValue(new Error("index locked"));
-    render(<ReviewPanel review={review} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Stage src/a.ts" }));
-
-    await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "error", message: "index locked" }));
-    expect(screen.queryByText("index locked")).not.toBeInTheDocument();
   });
 
   it("renders changed files as a tree beside the selected file diff", () => {
@@ -155,38 +177,10 @@ describe("ReviewPanel changes layout", () => {
     expect(screen.queryByRole("button", { name: /Comment on line/ })).toBeNull();
   });
 
-  it("picks the changes scope from a chip that defaults to the whole branch", () => {
-    const review = reviewStub();
-    const setChangesScope = vi.fn();
-    review.setChangesScope = setChangesScope;
-
-    render(<ReviewPanel review={review} />);
-
-    const chip = screen.getByRole("button", { name: "Changes shown: All on branch" });
-    fireEvent.click(chip);
-
-    const options = screen.getByRole("listbox", { name: "Changes shown" });
-    expect(within(options).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "All on branch",
-      "Committed",
-      "Uncommitted",
-      "Last turn"
-    ]);
-
-    fireEvent.click(within(options).getByRole("button", { name: "Committed" }));
-    expect(setChangesScope).toHaveBeenCalledWith("committed");
-    expect(screen.queryByRole("listbox", { name: "Changes shown" })).toBeNull();
-  });
-
-  it("hides Last turn when the source has no transcript", () => {
-    const review = reviewStub();
-    review.availableScopes = ["branch", "committed", "uncommitted"];
-
-    render(<ReviewPanel review={review} />);
-    fireEvent.click(screen.getByRole("button", { name: "Changes shown: All on branch" }));
-
-    const options = screen.getByRole("listbox", { name: "Changes shown" });
-    expect(within(options).queryByRole("button", { name: "Last turn" })).toBeNull();
+  it("does not offer change-scope settings", () => {
+    render(<ReviewPanel review={reviewStub()} />);
+    expect(screen.queryByRole("button", { name: /Changes shown/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("All on branch")).not.toBeInTheDocument();
   });
 
   it("collapses the expanded changed file row without changing Files mode state", () => {
@@ -238,7 +232,7 @@ describe("ReviewPanel changes layout", () => {
     setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
 
-    expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("335px");
+    expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("250px");
     clientWidth.mockRestore();
   });
 
@@ -253,7 +247,7 @@ describe("ReviewPanel changes layout", () => {
     fireEvent.mouseMove(document, { clientX: 1000 });
     fireEvent.mouseUp(document);
 
-    expect(window.localStorage.getItem("argmax.reviewPanel.leftColumnWidth")).toBe("335");
+    expect(window.localStorage.getItem("argmax.reviewPanel.leftColumnWidth")).toBe("250");
     clientWidth.mockRestore();
   });
 });
@@ -553,6 +547,18 @@ describe("ReviewPanel browser mode", () => {
     delete (window as { argmax?: ArgmaxApi }).argmax;
     render(<ReviewPanel review={reviewStub()} />);
     expect(screen.queryByRole("tab", { name: "Browser" })).toBeNull();
+  });
+
+  it("shows Artifacts only when enabled and opens it in this panel", () => {
+    const review = reviewStub();
+    const { rerender } = render(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
+    rerender(<ClaudeArtifactsContext.Provider value><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
+    expect(review.setPaneMode).toHaveBeenCalledWith(0, "browser");
+    expect(review.openBrowser).toHaveBeenLastCalledWith("https://claude.ai/artifacts");
+    rerender(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
   });
 
   it("opens the browser in the pane whose tab was clicked", () => {

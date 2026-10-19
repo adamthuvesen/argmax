@@ -247,6 +247,12 @@ struct WorkspaceSummary: Codable, Hashable, Sendable, Identifiable {
     var iconColor: String?
     /// Shared host acknowledgement of the activity actually shown on a device.
     var lastViewedAt: String? = nil
+    var prs: [WorkspacePullRequest]? = nil
+}
+
+struct WorkspacePullRequest: Codable, Hashable, Sendable {
+    var prNumber: Int
+    var url: String?
 }
 
 /// `SessionSummary` — one chat with one provider.

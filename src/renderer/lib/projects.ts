@@ -7,6 +7,7 @@ import { chatReferencesAsTitles } from "./composerContext.js";
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 const expandedProjectsStorageKey = "argmax.sidebar.expandedProjects";
 export const projectOrderStorageKey = "argmax.sidebar.projectOrder";
+export const pinnedProjectsStorageKey = "argmax.sidebar.pinnedProjects";
 const workspaceOrderStorageKey = "argmax.sidebar.workspaceOrder";
 export const projectSortModeStorageKey = "argmax.sidebar.projectSortMode";
 export const sidebarViewModeStorageKey = "argmax.sidebar.viewMode";
@@ -19,11 +20,10 @@ export type ProjectSortMode = "recent" | "alphabetical" | "manual";
 
 const projectSortModes: readonly ProjectSortMode[] = ["recent", "alphabetical", "manual"];
 
-// "projects" groups sessions under their project (the default). "sessions"
-// flattens every session into a single date-bucketed list, ignoring projects.
-export type SidebarViewMode = "projects" | "sessions";
+// Projects is the default. Date and Status group chats across projects.
+export type SidebarViewMode = "projects" | "sessions" | "status";
 
-const sidebarViewModes: readonly SidebarViewMode[] = ["projects", "sessions"];
+const sidebarViewModes: readonly SidebarViewMode[] = ["projects", "sessions", "status"];
 
 // The value is written as a bare JSON string ("recent"); tolerate plain strings
 // too in case the key was set manually for debugging.
@@ -98,6 +98,14 @@ export function loadProjectOrder(): string[] {
 
 export function saveProjectOrder(ids: string[]): void {
   writeStorageJson(projectOrderStorageKey, ids);
+}
+
+export function loadPinnedProjectIds(): string[] {
+  return loadStringArray(pinnedProjectsStorageKey);
+}
+
+export function savePinnedProjectIds(ids: string[]): void {
+  writeStorageJson(pinnedProjectsStorageKey, ids);
 }
 
 function writeStorageJson(storageKey: string, value: unknown): void {
@@ -238,6 +246,22 @@ export function sortProjectsBy(
   }
   // "recent" — pass through the snapshot order (DB sorts by latest activity DESC).
   return projects;
+}
+
+/**
+ * Pinned projects lead the list in the order they were pinned, whatever the
+ * sort mode; the mode orders everything after them. An id with no project
+ * (removed since it was pinned) is skipped.
+ */
+export function pinnedProjectsFirst(
+  projects: ProjectSummary[],
+  pinnedIds: readonly string[]
+): ProjectSummary[] {
+  if (pinnedIds.length === 0) return projects;
+  const byId = new Map(projects.map((project) => [project.id, project]));
+  const pinned = pinnedIds.flatMap((id) => byId.get(id) ?? []);
+  const pinnedSet = new Set(pinned.map((project) => project.id));
+  return [...pinned, ...projects.filter((project) => !pinnedSet.has(project.id))];
 }
 
 function applyProjectOrder(projects: ProjectSummary[], order: string[]): ProjectSummary[] {

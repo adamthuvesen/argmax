@@ -196,6 +196,17 @@ describe("tab persistence", () => {
     window.localStorage.removeItem("argmax.browser.tabs");
   });
 
+  it("ignores a persisted last URL when every tab was closed", async () => {
+    window.localStorage.setItem("argmax.browser.tabs", JSON.stringify({
+      scopes: { [BROWSER_PAGE_OWNER_ID]: { activeTabId: null, lastUrl: "https://claude.ai", tabs: [] } }
+    }));
+    vi.resetModules();
+    const fresh = await import("./browserPanel.js");
+    expect(fresh.getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([]);
+    expect(fresh.lastBrowsedUrl(BROWSER_PAGE_OWNER_ID)).toBe(fresh.DEFAULT_BROWSER_URL);
+    fresh.resetBrowserTabsForTests();
+  });
+
   it("restores each scope's strip independently", async () => {
     window.localStorage.setItem(
       "argmax.browser.tabs",

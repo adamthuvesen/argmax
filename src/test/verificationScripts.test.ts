@@ -17,6 +17,7 @@ import {
   matchingProcessIdentities,
   NATIVE_STOP_MINIMUM_SESSION_AGE_MS,
   parseMacosConsoleLockState,
+  pressNativeEscape,
 } from "../../scripts/verification/desktop.mjs";
 import { checkoutFingerprint, runChecked, writeTripwires } from "../../scripts/verification/common.mjs";
 import { redact } from "../../scripts/verification/evidence.mjs";
@@ -457,6 +458,10 @@ describe("machine-command tripwires", () => {
 });
 
 describe("verification evidence", () => {
+  it("refuses native Escape without an owned verification app process", async () => {
+    await expect(pressNativeEscape({})).rejects.toThrow("Native Escape requires an owned verification app process");
+  });
+
   it("rejects a reused process id when the start time changed", () => {
     const expected = [{ pid: 42, parentPid: 1, startedAt: "Sun Sep 13 10:00:00 2026" }];
     const reused = [{ pid: 42, parentPid: 1, startedAt: "Sun Sep 13 10:01:00 2026" }];

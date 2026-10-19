@@ -42,6 +42,32 @@ function renderPane(
 }
 
 describe("SessionConversation workspace card", () => {
+  it("opens the additional repository's diff from its workspace card row", () => {
+    const selectFile = vi.fn();
+    const openChangesPanel = vi.fn();
+    const clearSelection = vi.fn();
+    const review = reviewStub({
+      openChangesPanel,
+      files: [{ path: "README.md", status: "M", additions: 1, deletions: 0, staged: false }],
+      projectFolderChanges: {
+        workingFolder: null,
+        groups: [{
+          folder: { id: "dbt", projectId: "project", name: "dbt", rootPath: "/repos/dbt", isPrimary: false, enabled: true, summary: null },
+          files: [{ path: "README.md", status: "M", additions: 4, deletions: 0, staged: false }],
+          error: null
+        }],
+        error: null, selection: null, selectedFolder: null, diff: null, diffError: null, loadingDiff: false,
+        selectFile, clearSelection, refresh: vi.fn(), expandContext: vi.fn()
+      }
+    });
+    renderPane({ review });
+    fireEvent.click(screen.getByRole("button", { name: "Changes in dbt" }));
+    expect(selectFile).toHaveBeenCalledExactlyOnceWith("dbt", "README.md");
+    expect(openChangesPanel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Changes" }));
+    expect(clearSelection).toHaveBeenCalledTimes(1);
+  });
+
   afterEach(() => {
     cleanup();
   });
@@ -75,7 +101,7 @@ describe("SessionConversation workspace card", () => {
     renderPane({ review: reviewStub({ isPanelOpen: true }), onToggleWorkspaceCard });
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    const item = screen.getByRole("menuitemcheckbox", { name: "Workspace card" });
+    const item = screen.getByRole("menuitemcheckbox", { name: "Workspace Card" });
     // The card is off-screen behind the review panel, but the preference is on.
     expect(item).toHaveAttribute("aria-checked", "true");
 
@@ -88,7 +114,7 @@ describe("SessionConversation workspace card", () => {
     renderPane({ workspace: sideChat, workspaceCardEnabled: false });
 
     fireEvent.click(screen.getByRole("button", { name: "Chat actions" }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Workspace card" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Workspace Card" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Workspace card is on. It shows up on chats that have a git worktree."

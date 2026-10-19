@@ -14,9 +14,9 @@ pub use crate::workspaces::inputs::*;
 
 use super::validation::{
     AttachmentMimeType, Base64ImageData, BranchName, CommandText, DiffContextLines, FileContent,
-    GitCommitMessage, NonEmptyString, OpenPath, PermissionMode, ProjectId, Prompt, ProviderId,
-    QuestionRequestId, ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId,
-    StreamChunk, TerminalId, ThemeMode, WorkspaceId,
+    NonEmptyString, OpenPath, PermissionMode, ProjectId, Prompt, ProviderId, QuestionRequestId,
+    ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId, StreamChunk, TerminalId,
+    ThemeMode, WorkspaceId,
 };
 
 macro_rules! empty_input {
@@ -189,6 +189,29 @@ pub struct ProjectSettingsInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsRegisterInput {
     pub repo_path: RepoPath,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsCreateInput {
+    pub name: NonEmptyString,
+    pub folders: Vec<String>,
+    pub primary_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsConfigureInput {
+    pub project_id: ProjectId,
+    pub name: NonEmptyString,
+    pub folders: Vec<String>,
+    pub primary_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsGetFoldersInput {
+    pub project_id: ProjectId,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -382,24 +405,32 @@ pub struct BrowserEvaluateInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsListBranchesInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsListCheckoutsInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsRefreshBranchInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectsSwitchBranchInput {
     pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
     pub branch: BranchName,
 }
 
@@ -885,34 +916,6 @@ pub struct PrsCleanupInput {
     pub pr_number: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitCommitInput {
-    pub workspace_id: WorkspaceId,
-    pub message: GitCommitMessage,
-    pub selected_files: Option<Vec<RelativePath>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitPushInput {
-    pub workspace_id: WorkspaceId,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitCreateBranchInput {
-    pub workspace_id: WorkspaceId,
-    pub branch: BranchName,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct GitViewOrCreatePrInput {
-    pub session_id: SessionId,
-    pub expected_branch: Option<BranchName>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1036,15 +1039,6 @@ mod tests {
             "expectedMtimeMs": null
         });
         assert!(serde_json::from_value::<WorkspaceWriteFileInput>(too_large).is_err());
-    }
-
-    #[test]
-    fn branch_inputs_reject_argument_injection() {
-        let bad = serde_json::json!({
-            "workspaceId": "w1",
-            "branch": "-bad"
-        });
-        assert!(serde_json::from_value::<GitCreateBranchInput>(bad).is_err());
     }
 
     #[test]
@@ -1191,4 +1185,12 @@ pub struct UsageSummaryInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UsageRouterCostInput {
     pub window: crate::usage::UsageWindow,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectsGetFolderContextInput {
+    pub project_id: ProjectId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_folder_id: Option<String>,
 }

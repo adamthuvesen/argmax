@@ -1,4 +1,4 @@
-import type { DashboardDelta, DashboardSnapshot, PendingMessage, TimelineEvent } from "../../shared/types.js";
+import type { DashboardDelta, DashboardSnapshot, PendingMessage, ProjectSummary, TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { isSubAgentProseEcho, supersededAnswerDeltaIds } from "./turnBoundaries.js";
 
@@ -12,6 +12,13 @@ export const emptySnapshot: DashboardSnapshot = {
   checks: [],
   pendingMessages: {}
 };
+
+export function mergeProjectSummary(existing: ProjectSummary | undefined, incoming: ProjectSummary): ProjectSummary {
+  if (existing?.overview && existing.overview.revision > (incoming.overview?.revision ?? 0)) {
+    return { ...incoming, overview: existing.overview };
+  }
+  return incoming;
+}
 
 /**
  * Drops message.delta events that have a subsequent message.completed within
@@ -179,7 +186,8 @@ export function mergeDashboardDelta(
 
   const projects = delta.projects
     ? (() => {
-        const merged = upsertById(snapshot.projects, delta.projects);
+        const existing = new Map(snapshot.projects.map((project) => [project.id, project]));
+        const merged = upsertById(snapshot.projects, delta.projects.map((project) => mergeProjectSummary(existing.get(project.id), project)));
         return merged === snapshot.projects ? snapshot.projects : sortProjects(merged);
       })()
     : snapshot.projects;

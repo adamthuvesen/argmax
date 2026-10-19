@@ -13,9 +13,9 @@
   --fox-blush: #e08a78;
 
   color-scheme: light;
-  --font-ui: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-prose: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+  --font-prose: var(--font-ui);
+  --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
   --font-code: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", "SF Mono", Menlo, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
   /* Programming ligatures off, for surfaces showing text the app did not
      author: a pytest banner's run of `=` fuses into one solid bar, and a
@@ -53,6 +53,12 @@
      file tabs, and the review mode sliding indicator. A small lift keeps it
      distinct on the paper sidebar without reading as a gray block. */
   --row-selected: #e8e8e8;
+  /* Every floating surface (pickers, menus, the slash and file lists, the
+     command palette) paints --popover, and its hover and keyboard-cursor row
+     is one step off it. Paper menus are the panel white, already the lightest
+     thing on screen; dark derives its own, see the dark block. */
+  --popover: var(--panel);
+  --popover-row-active: color-mix(in oklab, var(--popover), #000000 5%);
   /* Code/terminal block fill in chat. Lighter than --panel-sunken in light
      mode so output blocks read airier; dark reuses its sunken surface. */
   --code-surface: #f4f6f7;
@@ -157,7 +163,7 @@
      under a true 500 so emphasis reads as a step, not a jump. Bold inside
      rendered prose needs a larger step to show in a paragraph; see
      `.markdown strong` in chat-conversation.css. */
-  --font-weight-offset: 0;
+  --font-weight-offset: -25;
   --weight-ui: calc(400 + var(--font-weight-offset));
   --weight-prose: calc(400 + var(--font-weight-offset));
   --weight-medium: calc(470 + var(--font-weight-offset));
@@ -251,12 +257,19 @@
      override — it reads on paper and on charcoal alike. */
   --shadow-popover: 0 24px 60px -20px rgba(0, 0, 0, 0.35);
 
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-2xl: 20px;
+  --radius-ui: 10px;
+  --radius-chat: 20px;
+  --radius-composer: 25px;
+  --radius-xs: var(--radius-ui);
+  --radius-sm: var(--radius-ui);
+  --radius-md: var(--radius-ui);
+  --radius-lg: var(--radius-ui);
+  --radius-xl: var(--radius-ui);
+  --radius-2xl: var(--radius-ui);
+  --radius-control: var(--radius-ui);
+  --radius-row: var(--radius-ui);
+  --radius-surface: var(--radius-ui);
+  --radius-dialog: var(--radius-ui);
 
   /* Sidebar row action icons — shared by the project row (… / chevron) and the
      session row (ide / pin / archive) so both stay one size and right-align on
@@ -722,6 +735,12 @@
      hover gray instead. Selection is then separated from hover by ink, not
      fill: the selected row keeps --text and, in the model picker, weight 500. */
   --row-selected: var(--panel-soft);
+  /* A floating surface reads as raised only if it is lighter than what it
+     opens over. Tied to --panel it followed the page dial toward black and
+     sat darker than the sidebar beside it, so it takes the panel a small lift
+     instead; background-intensity.css keeps that true at every dial setting. */
+  --popover: color-mix(in oklab, #1a1a1a, #ffffff 4%);
+  --popover-row-active: color-mix(in oklab, var(--popover), #ffffff 5%);
 }
 
 /* Ink-strength rungs. Level 7 owns no rule — :root defaults are its rung.
@@ -918,13 +937,6 @@
               box-shadow 220ms var(--ease-out, ease-out) !important;
 }
 
-/* Light gets shadows, dark gets *light*: in dark mode a primary action picks
-   up a soft warm glow instead of a crisp ring. */
-:root[data-theme="dark"] .project-actions-confirm-buttons .project-actions-destructive:hover {
-  box-shadow: var(--shadow-1),
-              0 0 28px -8px color-mix(in oklab, var(--accent) 55%, transparent);
-}
-
 /* Dark's global selection stays stronger; user message bubbles have their own
    fg-tinted selection token because they sit on the accent slab. */
 :root[data-theme="dark"] ::selection {
@@ -965,6 +977,12 @@
   --font-ui: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
   --font-prose: var(--font-ui);
   --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", "Cascadia Mono", "Segoe UI Mono", monospace;
+}
+
+:root[data-font="system-mono"],
+:root[data-font="geist-mono"],
+:root[data-font="ibm-plex-mono"] {
+  --font-prose: "Geist Variable", "Geist Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 :root[data-font="system-mono"] {

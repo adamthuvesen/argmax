@@ -26,6 +26,7 @@ use crate::git::exec::{
     run_git_text, run_git_text_with_allowed_exit_codes_and_options, GitExecOptions,
 };
 use crate::persistence::database::Database;
+use crate::persistence::project_folders::require_active_project_folder;
 use crate::persistence::projects::require_project;
 use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::sync::LockOrRecover;
@@ -192,11 +193,60 @@ impl WorkspaceFilesService {
         match kind {
             WorkspaceTargetKind::Workspace => Ok(find_workspace_by_id(&connection, id)?.path),
             WorkspaceTargetKind::Project => Ok(require_project(&connection, id)?.repo_path),
+            WorkspaceTargetKind::ProjectFolder => {
+                Ok(require_active_project_folder(&connection, id)?.root_path)
+            }
         }
     }
 }
 
 async fn list_files_at_path(repo_path: &str) -> ArgmaxResult<Vec<WorkspaceFileEntry>> {
+    if !Path::new(repo_path).join(".git").exists() {
+        let root = repo_path.to_owned();
+        return tokio::task::spawn_blocking(move || {
+            let mut files = Vec::new();
+            for entry in walkdir::WalkDir::new(&root)
+                .follow_links(false)
+                .into_iter()
+                .filter_entry(|entry| {
+                    entry.depth() == 0
+                        || !matches!(
+                            entry.file_name().to_str(),
+                            Some(".git" | "node_modules" | "target" | "dist")
+                        )
+                })
+            {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => {
+                        tracing::debug!(%error, "files: skipped unreadable folder entry");
+                        continue;
+                    }
+                };
+                if entry.file_type().is_file() {
+                    if files.len() >= 20_000 {
+                        return Err(ArgmaxError::service(
+                            "FILES_LIST_TOO_LARGE",
+                            "This folder contains more than 20,000 files. Choose a smaller folder.",
+                        ));
+                    }
+                    let path = entry
+                        .path()
+                        .strip_prefix(&root)
+                        .map_err(|error| {
+                            ArgmaxError::service("FILES_LIST_FAILED", error.to_string())
+                        })?
+                        .to_string_lossy()
+                        .into_owned();
+                    files.push(WorkspaceFileEntry { path });
+                }
+            }
+            files.sort_by(|left, right| left.path.cmp(&right.path));
+            Ok(files)
+        })
+        .await
+        .map_err(|error| ArgmaxError::service("FILES_LIST_FAILED", error.to_string()))?;
+    }
     // `ls-files -z --cached --others --exclude-standard` mirrors the IDE
     // view: tracked + untracked-but-not-ignored. De-dupe — a file tracked
     // AND modified in the index can appear twice.
@@ -422,6 +472,59 @@ async fn grep_content_at_path(
             truncated: false,
         });
     }
+    if !Path::new(repo_path).join(".git").exists() {
+        let mut raw = String::new();
+        let query = trimmed.to_lowercase();
+        let mut matched_files = 0;
+        let mut scanned_bytes = 0;
+        let mut scan_truncated = false;
+        for file in list_files_at_path(repo_path).await? {
+            let preview = match read_file_at_path(repo_path, &file.path).await {
+                Ok(preview) => preview,
+                Err(error) => {
+                    tracing::debug!(path = %file.path, %error, "files: search skipped unreadable file");
+                    continue;
+                }
+            };
+            if let WorkspaceFilePreview::Text { content, .. } = preview {
+                scanned_bytes += content.len();
+                if scanned_bytes > 16 * 1_048_576 {
+                    scan_truncated = true;
+                    break;
+                }
+                let matches: Vec<_> = content
+                    .lines()
+                    .enumerate()
+                    .filter(|(_, line)| line.to_lowercase().contains(&query))
+                    .take(11)
+                    .collect();
+                if matches.is_empty() {
+                    continue;
+                }
+                matched_files += 1;
+                for (index, line) in matches {
+                    raw.push_str(&format!(
+                        "{}\0{}\0{}\n",
+                        file.path,
+                        index + 1,
+                        line.chars().take(320).collect::<String>()
+                    ));
+                }
+                if matched_files > 50 {
+                    break;
+                }
+            }
+        }
+        let mut result = parse_git_grep_output(
+            &raw,
+            &GrepParseOptions {
+                max_files: 50,
+                max_matches_per_file: 10,
+            },
+        );
+        result.truncated |= scan_truncated;
+        return Ok(result);
+    }
     // git grep flags: -n line numbers, --null NUL-separate fields,
     // --no-color strip ANSI, -I skip binaries, -F fixed-string, -i ignore case,
     // --untracked include untracked, -e separator so a query starting
@@ -517,6 +620,44 @@ mod tests {
     use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::path::Path;
     use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn plain_folder_files_and_search_do_not_need_git() {
+        let folder = TempDir::new().unwrap();
+        std::fs::write(folder.path().join("notes.md"), "folder notes\nfind this\n").unwrap();
+        let root = folder.path().to_str().unwrap();
+        assert_eq!(
+            list_files_at_path(root).await.unwrap(),
+            vec![WorkspaceFileEntry {
+                path: "notes.md".into()
+            }]
+        );
+        let matches = grep_content_at_path(root, "FIND").await.unwrap();
+        assert_eq!(matches.files[0].path, "notes.md");
+        assert_eq!(matches.files[0].matches[0].line, 2);
+        assert!(!folder.path().join(".git").exists());
+    }
+
+    #[tokio::test]
+    async fn plain_folder_listing_and_search_skip_unreadable_entries() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = TempDir::new().unwrap();
+        std::fs::write(folder.path().join("latin1.txt"), b"find \xe9t\xe9\n").unwrap();
+        std::fs::write(folder.path().join("notes.md"), "find this\n").unwrap();
+        let locked = folder.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(locked.join("hidden.md"), "find hidden\n").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let root = folder.path().to_str().unwrap();
+        let listed = list_files_at_path(root).await;
+        let matches = grep_content_at_path(root, "find").await;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let listed = listed.unwrap();
+        assert!(listed.iter().any(|entry| entry.path == "notes.md"));
+        let matches = matches.unwrap();
+        assert!(matches.files.iter().any(|file| file.path == "notes.md"));
+        assert!(!matches.files.iter().any(|file| file.path == "latin1.txt"));
+    }
 
     async fn run_git(repo: &Path, args: &[&str]) {
         run_git_text(repo, args, GIT_TIMEOUT)

@@ -8,6 +8,7 @@ import { resetToastForTests } from "../state/toast.js";
 import {
   createCurrentWorkspace,
   createIsolatedWorkspace,
+  getProjectFolders,
   launchProvider,
   setupAppTestMocks,
   snapshot
@@ -25,6 +26,11 @@ const session = { ...snapshot.sessions[0], id: "session-real", workspaceId: work
 
 async function launcher(): Promise<EditorView> {
   const box = await screen.findByRole("textbox", { name: "Task prompt" });
+  // A launch waits for the project's folders, so a send before they load is ignored.
+  await waitFor(() => expect(getProjectFolders).toHaveBeenCalled());
+  await act(async () => {
+    await getProjectFolders.mock.results.at(-1)?.value;
+  });
   const view = EditorView.findFromDOM(box);
   if (!view) throw new Error("the prompt is not a CodeMirror editor");
   return view;

@@ -730,6 +730,12 @@ body > .picker-popover-portaled.settings-picker-popover {
   --route-switch-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* The isolation above traps the open menus' z-index inside the pill, so the
+   chips after it (diff, branch) would paint over the Fast mode submenu. */
+.model-picker-cluster--chip:has([aria-expanded="true"]) {
+  z-index: 30;
+}
+
 .route-switch-flush,
 .route-switch-ring {
   position: absolute;

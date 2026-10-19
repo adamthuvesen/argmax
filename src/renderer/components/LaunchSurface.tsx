@@ -700,11 +700,13 @@ export function LaunchSurface({
     void window.argmax.projects
       .refreshBranch(projectId, selectedFolderId)
       .then(async (updated) => {
-        if (cancelled || updated.currentBranch === knownBranch) return;
+        if (cancelled) return;
+        // A secondary folder's refresh answers with the primary's summary, so
+        // its branch is only known from the folder context.
         if (selectedFolderIsPrimary === false) {
           const context = await window.argmax!.projects.getFolderContext({ projectId, projectFolderId: selectedFolderId });
-          if (!cancelled) updateLaunchProject(context.project);
-        } else onBranchSwitch(updated);
+          if (!cancelled && context.project.currentBranch !== knownBranch) updateLaunchProject(context.project);
+        } else if (updated.currentBranch !== knownBranch) onBranchSwitch(updated);
       })
       .catch(() => {
         // Best-effort refresh; a transient git failure leaves the persisted

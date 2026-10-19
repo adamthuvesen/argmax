@@ -61,7 +61,9 @@ export function useLaunchFolder(project: ProjectSummary | null) {
     projectFolderId: folderId,
     project: removedSelection ? null : isSecondary ? resolved?.project ?? null : project,
     isGit: isSecondary ? resolved?.isGit ?? false : true,
-    ready: !error && foldersState?.projectId === projectId && (!isSecondary || resolved !== null),
+    // Until a folder is picked by hand the launch goes to the primary, which
+    // the backend resolves itself, so it need not wait for the folder list.
+    ready: !error && (selectedByHand === null || (foldersState?.projectId === projectId && (!isSecondary || resolved !== null))),
     error,
     updateProject,
     retry: () => {

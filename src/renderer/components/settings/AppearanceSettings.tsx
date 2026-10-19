@@ -65,6 +65,7 @@ import {
   type Contrast
 } from "../../lib/contrast.js";
 import { setSidebarChatsNested, useSidebarChatNesting } from "../../lib/sidebarChatNesting.js";
+import { setForkBarVisible, useForkBarVisible } from "../../lib/forkBarVisibility.js";
 import { setMascotVisible, useMascotVisible } from "../../lib/mascotVisibility.js";
 import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
@@ -221,6 +222,7 @@ export function AppearanceSettings({
   // Same reason as the activity mark: the fox renders from three unrelated
   // places, so it reads its own store rather than a prop. See lib/mascotVisibility.ts.
   const mascotVisible = useMascotVisible();
+  const forkBarVisible = useForkBarVisible();
   const chatNesting = useSidebarChatNesting();
 
   return (
@@ -560,6 +562,13 @@ export function AppearanceSettings({
               checked={workspaceCardVisible}
               onChange={onWorkspaceCardVisibleChange}
             />
+          }
+        />
+        <SettingRow
+          label="Fork bar in forked chats"
+          description="Name the chat a fork came from, with a link back to it and Bring findings back."
+          control={
+            <Toggle ariaLabel="Fork bar in forked chats" checked={forkBarVisible} onChange={setForkBarVisible} />
           }
         />
         <SettingRow

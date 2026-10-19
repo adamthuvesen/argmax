@@ -22,7 +22,7 @@ Preconditions: `launch` completed and `doctor` exits 0. No source edits during t
 
 - **Fork and merge.** Run `node .agents/skills/verify-argmax/verify.mjs drive fork-merge`.
   The fork and merge are native clicks: the turn footer's "Fork from this turn" and
-  "Fork from this turn into an isolated checkout", the fork bar's "Open source" and
+  "Fork from this turn into an isolated checkout", the fork bar's source-chat link and
   "Bring findings back", and the merge dialog's "Queue for source", "Close" and "Cancel".
   IPC and SQLite are the second read.
 - **Proof.** `native/fork-merge.json` lists the assertions and a `coverage` block.

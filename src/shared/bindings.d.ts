@@ -2319,7 +2319,11 @@ export type ForkContinuation =
  */
 "latest"
 export type ForkInfo = { id: string; sourceSessionId: string; boundaryEventId: string | null; workspace: ForkWorkspaceMode; continuation: ForkContinuation }
-export type ForkLineage = { forkId: string; sourceSessionId: string | null; boundaryEventId: string | null;
+export type ForkLineage = { forkId: string; sourceSessionId: string | null;
+/**
+ * The source chat's title; `None` once the source is deleted.
+ */
+sourceLabel: string | null; boundaryEventId: string | null;
 /**
  * `shared` or `isolated`.
  */

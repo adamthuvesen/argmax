@@ -1,12 +1,14 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ForkLineage, ForkMergePreview } from "../../shared/types.js";
+import { setForkBarVisible } from "../lib/forkBarVisibility.js";
 import { dismissToast } from "../state/toast.js";
 import { ForkBar } from "./ForkBar.js";
 
 const lineage: ForkLineage = {
   forkId: "fork-1",
   sourceSessionId: "source-1",
+  sourceLabel: "Parser rewrite",
   boundaryEventId: "u2",
   workspace: "shared",
   lastMergedThroughEventId: null
@@ -54,7 +56,10 @@ function stubSession(overrides: Record<string, unknown>): void {
 
 describe("ForkBar", () => {
   beforeEach(() => dismissToast());
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    setForkBarVisible(true);
+  });
 
   it("renders nothing for a chat that was not forked", async () => {
     stubSession({});
@@ -63,12 +68,23 @@ describe("ForkBar", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("opens the source chat", async () => {
+  it("names the source chat and opens it", async () => {
     stubSession({ forkLineage: vi.fn().mockResolvedValue(lineage) });
     const onOpenSession = vi.fn();
     render(<ForkBar sessionId="child-1" onOpenSession={onOpenSession} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Open source" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Parser rewrite" }));
     expect(onOpenSession).toHaveBeenCalledWith("source-1");
+  });
+
+  it("stays hidden, without asking for lineage, when turned off in Settings", async () => {
+    setForkBarVisible(false);
+    stubSession({ forkLineage: vi.fn().mockResolvedValue(lineage) });
+    const { container } = render(<ForkBar sessionId="child-1" />);
+    expect(container).toBeEmptyDOMElement();
+    expect(window.argmax!.session.forkLineage).not.toHaveBeenCalled();
+
+    act(() => setForkBarVisible(true));
+    expect(await screen.findByRole("region", { name: "Forked chat" })).toBeVisible();
   });
 
   it("previews what the source receives and sends exactly the previewed position", async () => {

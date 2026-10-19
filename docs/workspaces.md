@@ -134,7 +134,7 @@ The Fork action under a finished turn forks the chat at that turn, in the same c
 
 ### Bringing findings back
 
-A fork chat shows a **Forked chat** card above the composer with **Open source** and **Bring findings back**. The second opens a preview: the source's name, the message the fork started from, how many visible messages the fork added since the fork or its last merge, and the exact text the source would receive. Confirming sends that text as the source's next message, attributed to the fork. A source that is mid-turn queues it through the ordinary follow-up queue; it is never steered into the running turn.
+A fork chat shows a one-line fork bar above the composer: **Forked from** the source chat's title, which opens the source, and **Bring findings back**. Settings → Appearance → **Fork bar in forked chats** hides it. **Bring findings back** opens a preview: the source's name, the message the fork started from, how many visible messages the fork added since the fork or its last merge, and the exact text the source would receive. Confirming sends that text as the source's next message, attributed to the fork. A source that is mid-turn queues it through the ordinary follow-up queue; it is never steered into the running turn.
 
 - **No git merge, no file restore.** It moves context, not changes.
 - **Range.** A merge covers the fork's visible messages (the same eligibility as a provider handoff) in the earliest range no live claim covers, up to the position the preview showed. Positions are visible messages, never trace rows, which are rewritten after the fact, so a trace import is not a finding and cannot move the cursor. At most 40 messages and 24k characters go; older ones drop and the text points at `session_read` on the fork.

@@ -1173,11 +1173,16 @@ describe("MobileApp", () => {
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     fireEvent.click(within(sheet).getByRole("button", { name: "New chat here" }));
     fireEvent.change(await screen.findByLabelText("Task"), { target: { value: "Follow up work" } });
+    // The project's currentBranch belongs to its primary folder, so a plain
+    // new worktree leaves the base to the host.
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    const workspaceSheet = await screen.findByRole("dialog", { name: "Choose workspace" });
+    fireEvent.click(within(workspaceSheet).getByRole("button", { name: "New worktree" }));
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
     await waitFor(() => {
       expect(createIsolatedWorkspace).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: snapshot.projects[0].id, projectFolderId: "folder-data" })
+        expect.objectContaining({ projectId: snapshot.projects[0].id, projectFolderId: "folder-data", baseRef: null })
       );
     });
   });

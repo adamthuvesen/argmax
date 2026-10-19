@@ -304,9 +304,11 @@ export function NewSessionScreen({
     const repoTarget = sideChat ? null : project;
     try {
       const taskLabel = titleFromPrompt(trimmed);
+      // The project's currentBranch describes its primary folder; for another
+      // folder, null lets the host take that folder's own branch.
       const baseRef =
         workspaceMode === "worktree"
-          ? chosenBaseRef ?? repoTarget?.currentBranch ?? null
+          ? chosenBaseRef ?? (sourceFolderId ? null : repoTarget?.currentBranch ?? null)
           : null;
       const workspace = repoTarget
         ? workspaceMode === "worktree"

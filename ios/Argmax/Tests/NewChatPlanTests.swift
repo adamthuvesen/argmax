@@ -53,6 +53,23 @@ final class NewChatPlanTests: XCTestCase {
         XCTAssertEqual(input.baseRef, "main")
     }
 
+    func testANewWorktreeInAnotherFolderLeavesTheBaseToTheHost() throws {
+        let plan = try XCTUnwrap(
+            NewChatPlan(
+                mode: .worktree,
+                project: project,
+                baseRef: nil,
+                model: model,
+                titleModelId: "claude-sonnet-5-5",
+                prompt: "Tidy the chat list",
+                projectFolderId: "folder-data"
+            )
+        )
+        guard case .isolated(let input) = plan.creation else { return XCTFail("expected an isolated workspace") }
+        XCTAssertNil(input.baseRef)
+        XCTAssertEqual(input.projectFolderId, "folder-data")
+    }
+
     func testBranchFromCarriesTheChosenBranch() throws {
         let plan = try XCTUnwrap(plan(.branchFrom, project: project, baseRef: "adam/feat-x"))
         guard case .isolated(let input) = plan.creation else { return XCTFail("expected an isolated workspace") }

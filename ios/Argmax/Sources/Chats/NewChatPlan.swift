@@ -92,7 +92,9 @@ struct NewChatPlan: Sendable {
                 CreateIsolatedWorkspaceInput(
                     projectId: project.id,
                     taskLabel: taskLabel,
-                    baseRef: baseRef ?? project.currentBranch,
+                    // currentBranch describes the primary folder; for another
+                    // folder, nil lets the host take that folder's own branch.
+                    baseRef: baseRef ?? (projectFolderId == nil ? project.currentBranch : nil),
                     projectFolderId: projectFolderId
                 )
             )

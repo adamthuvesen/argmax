@@ -108,6 +108,12 @@ function isEditorEscapeTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(".xterm, .cm-editor") !== null;
 }
 
+/** The unlaunched side-chat prompt lives only in the mounted review panel, so
+ *  Escape there must not close the panel even in the expanded view. */
+function isSideChatComposerTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(".review-side-chat-composer") !== null;
+}
+
 function hasActiveDialog(): boolean {
   return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
     .some((dialog) => dialog.getAttribute("aria-hidden") !== "true");
@@ -711,7 +717,7 @@ export function SessionPane({
           event.ctrlKey ||
           event.altKey ||
           event.shiftKey ||
-          (!isReviewExpanded && isEditorEscapeTarget(event.target)) ||
+          (isReviewExpanded ? isSideChatComposerTarget(event.target) : isEditorEscapeTarget(event.target)) ||
           hasActiveDialog()
         ) return;
         if (isLogOpen && !isReviewExpanded) {

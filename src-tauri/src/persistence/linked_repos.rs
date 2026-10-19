@@ -78,7 +78,7 @@ pub fn list_workspace_linked_repos(
     connection: &Connection,
     workspace_id: &str,
 ) -> ArgmaxResult<Vec<LinkedRepo>> {
-    let mut statement = connection.prepare_cached(&format!("SELECT {COLUMNS} FROM project_folders WHERE project_id = (SELECT project_id FROM workspaces WHERE id = ?1) AND removed = 0 AND enabled = 1 AND id IS NOT (SELECT project_folder_id FROM workspaces WHERE id = ?1) ORDER BY name, id")).map_err(sqlite_error)?;
+    let mut statement = connection.prepare_cached(&format!("SELECT {COLUMNS} FROM project_folders WHERE project_id = (SELECT project_id FROM workspaces WHERE id = ?1) AND removed = 0 AND enabled = 1 AND id != (SELECT project_folder_id FROM workspaces WHERE id = ?1) ORDER BY name, id")).map_err(sqlite_error)?;
     let rows = statement
         .query_map([workspace_id], row_to_linked_repo)
         .map_err(sqlite_error)?
@@ -516,6 +516,22 @@ mod tests {
 
         delete_linked_repo(&connection, "p1", &repo.id).unwrap();
         assert!(list_linked_repos(&connection, "p1").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_workspace_without_a_folder_gets_no_linked_repos() {
+        let project = TempDir::new().unwrap();
+        let database = database(project.path());
+        let connection = database.connection();
+        connection
+            .execute(
+                "INSERT INTO workspaces (id, project_id, task_label, branch, base_ref, path, state, last_activity_at, created_at, updated_at) VALUES ('w1', 'p1', 'task', 'b', 'main', '/tmp/w1', 'running', 't', 't', 't')",
+                [],
+            )
+            .unwrap();
+        assert!(list_workspace_linked_repos(&connection, "w1")
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

@@ -659,8 +659,10 @@ export async function verifyForkMergeBack({
   }));
   check(assertions, "child-chat-hides-turn-two", !(await bodyHas(scenarios.forkTurnTwo.visibleText)));
   const barShot = await screenshot(browser, evidenceDir, "fork-bar");
-  await clickInForkBar(browser, "Open source", 10_000);
-  await waitForBody(scenarios.forkTurnTwo.visibleText, '"Open source" did not open the source chat');
+  const sourceLabel = dashboardAfterFork.workspaces.find((entry) => entry.id === workspace.id).taskLabel;
+  check(assertions, "fork-bar-names-the-source", (await bar.getText()).includes(sourceLabel), { sourceLabel });
+  await clickInForkBar(browser, sourceLabel, 10_000);
+  await waitForBody(scenarios.forkTurnTwo.visibleText, "The source chat's name did not open the source chat");
   check(assertions, "open-source-action-opens-the-source", true);
   await openWorkspaceRow(browser, childWorkspace.id, timeoutMs);
   await sendInput(childId, scenarios.forkChild.prompt);
@@ -814,7 +816,7 @@ export async function verifyForkMergeBack({
   const isolatedShot = await screenshot(browser, evidenceDir, "fork-isolated");
 
   const coverage = {
-    forkAndMergeDrive: "native clicks: turn footer fork actions (shared and isolated), fork bar Open source and Bring findings back, merge dialog Queue for source, Close and Cancel",
+    forkAndMergeDrive: "native clicks: turn footer fork actions (shared and isolated), fork bar source link and Bring findings back, merge dialog Queue for source, Close and Cancel",
     secondRead: "SQLite (session_forks, fork_merges, pending_messages, events), IPC (session:fork-lineage, repeated session:fork-merge), provider prompt log",
     notDriven: "merge into an idle source (Send to source), and a fork of a running source",
   };

@@ -697,6 +697,10 @@ fn finish(
 pub struct ForkLineage {
     pub fork_id: String,
     pub source_session_id: Option<String>,
+    /// The source chat's workspace, so the renderer can follow renames.
+    pub source_workspace_id: Option<String>,
+    /// The source chat's title; `None` once the source is deleted.
+    pub source_label: Option<String>,
     pub boundary_event_id: Option<String>,
     /// `shared` or `isolated`.
     pub workspace: String,
@@ -711,9 +715,20 @@ pub fn lineage(database: &Database, session_id: &str) -> ArgmaxResult<Option<For
         return Ok(None);
     };
     let last = latest_merge(&connection, &fork.id)?;
+    let source_workspace = match &fork.source_session_id {
+        Some(source_session_id) => {
+            let source = find_session_by_id(&connection, source_session_id)?;
+            Some(find_workspace_by_id(&connection, &source.workspace_id)?)
+        }
+        None => None,
+    };
     Ok(Some(ForkLineage {
         fork_id: fork.id,
         source_session_id: fork.source_session_id,
+        source_workspace_id: source_workspace
+            .as_ref()
+            .map(|workspace| workspace.id.clone()),
+        source_label: source_workspace.map(|workspace| workspace.task_label),
         boundary_event_id: fork.boundary_event_id,
         workspace: fork.workspace_mode,
         last_merged_through_event_id: last.map(|merge| merge.through_event_id),
@@ -1345,5 +1360,16 @@ mod tests {
         let (database, _) = forked().await;
         assert!(lineage(&database, "s1").unwrap().is_none());
         assert!(preview(&database, "s1").is_err());
+    }
+
+    #[tokio::test]
+    async fn lineage_names_the_source_like_the_preview_does() {
+        let (database, child) = forked().await;
+        let lineage = lineage(&database, &child).unwrap().expect("fork lineage");
+        let preview = preview(&database, &child).unwrap();
+        assert_eq!(
+            lineage.source_label.as_deref(),
+            Some(preview.source_label.as_str())
+        );
     }
 }

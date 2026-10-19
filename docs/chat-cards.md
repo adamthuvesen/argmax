@@ -578,7 +578,7 @@ When a row expands to a **single** file, the card header collapses to just its `
 
 A finished turn that wrote files ends with [TurnChangesCard.tsx](../src/renderer/components/TurnChangesCard.tsx), rendered by `TurnBlock` under the turn body and above the hover footer.
 
-A finished turn's hover footer holds Copy reply, **Fork from this turn** (same checkout), **Fork from this turn into an isolated checkout**, and Revert. Both fork actions send the user message that began the turn as `boundaryEventId`; the footer hides itself on the live turn. A chat made by a fork shows a **Forked chat** card in the composer lane ([ForkBar.tsx](../src/renderer/components/ForkBar.tsx)) with **Open source** and **Bring findings back**, which opens [ForkMergeDialog.tsx](../src/renderer/components/ForkMergeDialog.tsx). See [workspaces.md](workspaces.md#forking-at-a-finished-turn).
+A finished turn's hover footer holds Copy reply, **Fork from this turn** (same checkout), **Fork from this turn into an isolated checkout**, and Revert. Both fork actions send the user message that began the turn as `boundaryEventId`; the footer hides itself on the live turn. A chat made by a fork shows a one-line fork bar in the composer lane ([ForkBar.tsx](../src/renderer/components/ForkBar.tsx)): **Forked from** the source chat's title, which opens the source, and **Bring findings back**, which opens [ForkMergeDialog.tsx](../src/renderer/components/ForkMergeDialog.tsx). Settings → Appearance → **Fork bar in forked chats** hides it. See [workspaces.md](workspaces.md#forking-at-a-finished-turn).
 
 The expanded file list scrolls after reaching 320px or 40% of the viewport height, whichever is smaller. The summary and Review action stay above the scrolling list.
 

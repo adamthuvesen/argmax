@@ -1,74 +1,64 @@
 /* ---- Forked chats ---- */
 
-/* A card in the composer lane (`.session-meta-cards`): where this chat came
-   from and the way back. It carries no color of its own — a fork is ordinary
-   work. */
+/* A quiet line in the composer lane (`.session-meta-cards`): where this chat
+   came from and the way back. No card and no color of its own — a fork is
+   ordinary work, and the bar stays for the fork's whole life. */
 .fork-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1_5);
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-2xl);
-  background: var(--panel);
-  color: var(--muted-strong);
+  padding: 0 var(--space-3);
+  color: var(--muted);
   font-size: var(--text-xs);
+  line-height: 1.5;
 }
 
 .fork-bar > svg {
   flex-shrink: 0;
-  color: var(--muted);
 }
 
 .fork-bar-label {
-  flex: 1 1 180px;
+  flex: 1 1 auto;
   min-width: 0;
-  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.fork-bar-actions {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: var(--space-1_5);
-  margin-left: auto;
+.fork-bar-source {
+  color: var(--muted-strong);
 }
 
-.fork-bar-actions button {
-  min-height: 28px;
-  padding: var(--space-1) var(--space-3);
+.fork-bar button {
+  padding: 0;
   border: 0;
-  border-radius: var(--radius-2xl);
   background: transparent;
   color: var(--muted-strong);
-  font-size: var(--text-xs);
-  white-space: nowrap;
+  font: inherit;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+  transition: color var(--duration-fast) var(--ease);
 }
 
-.fork-bar-actions .fork-bar-return {
-  background: var(--composer-chip);
+.fork-bar .fork-bar-return {
+  flex-shrink: 0;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.fork-bar button:hover {
   color: var(--text);
-  font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.fork-bar-actions button:hover {
-  background: var(--row-hover);
-  color: var(--text);
-}
-
-.fork-bar-actions .fork-bar-return:hover {
-  background: var(--composer-chip-hover);
-}
-
-.fork-bar-actions button:focus-visible {
+.fork-bar button:focus-visible {
+  border-radius: var(--radius-sm);
   box-shadow: var(--ring);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fork-bar-actions button {
+  .fork-bar button {
     transition: none;
   }
 }

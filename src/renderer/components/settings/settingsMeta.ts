@@ -97,6 +97,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
           "Translucent window",
           "Window translucency",
           "Workspace card in agent view",
+          "Fork bar in forked chats",
           "Fox mascot",
           "Context indicator in composer",
           "Celebrate PR milestones"

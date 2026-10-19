@@ -1887,6 +1887,7 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
         <Suspense fallback={null}>
           <ReviewPanel
             review={reviewState}
+            isFocused={isFocused}
             isExpanded={isReviewExpanded}
             onToggleExpanded={() => setIsReviewExpanded((expanded) => !expanded)}
           />

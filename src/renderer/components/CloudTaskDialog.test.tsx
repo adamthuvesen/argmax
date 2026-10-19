@@ -150,7 +150,7 @@ describe("CloudTaskDialog", () => {
       "href",
       "https://claude.ai/code/task-1"
     );
-    expect(screen.getByRole("link", { name: "Open in Claude Cloud" })).toHaveFocus();
+    await waitFor(() => expect(screen.getByRole("link", { name: "Open in Claude Cloud" })).toHaveFocus());
     expect(screen.getByTitle("https://claude.ai/code/task-1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
     expect(launch).toHaveBeenLastCalledWith({

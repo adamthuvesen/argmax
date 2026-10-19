@@ -51,7 +51,7 @@ describe("App fork navigation", () => {
     window.argmax!.session.forkLineage = vi.fn((input: { sessionId: string }) =>
       Promise.resolve(
         input.sessionId === session.id
-          ? { forkId: "fork-1", sourceSessionId: "session-1", sourceLabel: "Build dashboard", boundaryEventId: null, workspace: "shared", lastMergedThroughEventId: null }
+          ? { forkId: "fork-1", sourceSessionId: "session-1", sourceWorkspaceId: "workspace-1", sourceLabel: "Build dashboard", boundaryEventId: null, workspace: "shared", lastMergedThroughEventId: null }
           : null
       )
     );

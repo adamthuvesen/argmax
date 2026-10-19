@@ -8,6 +8,7 @@ import { ForkBar } from "./ForkBar.js";
 const lineage: ForkLineage = {
   forkId: "fork-1",
   sourceSessionId: "source-1",
+  sourceWorkspaceId: "workspace-1",
   sourceLabel: "Parser rewrite",
   boundaryEventId: "u2",
   workspace: "shared",
@@ -74,6 +75,26 @@ describe("ForkBar", () => {
     render(<ForkBar sessionId="child-1" onOpenSession={onOpenSession} />);
     fireEvent.click(await screen.findByRole("button", { name: "Parser rewrite" }));
     expect(onOpenSession).toHaveBeenCalledWith("source-1");
+  });
+
+  it("follows a rename of the source chat", async () => {
+    let onDelta: ((delta: { workspaces: { id: string; taskLabel: string }[] }) => void) | null = null;
+    stubSession({ forkLineage: vi.fn().mockResolvedValue(lineage) });
+    window.argmax = {
+      ...window.argmax,
+      dashboard: {
+        ...window.argmax?.dashboard,
+        onDelta: vi.fn((listener: typeof onDelta) => {
+          onDelta = listener;
+          return () => undefined;
+        })
+      }
+    } as unknown as typeof window.argmax;
+    render(<ForkBar sessionId="child-1" onOpenSession={vi.fn()} />);
+    await screen.findByRole("button", { name: "Parser rewrite" });
+
+    act(() => onDelta!({ workspaces: [{ id: "workspace-1", taskLabel: "Parser rewrite v2" }] }));
+    expect(screen.getByRole("button", { name: "Parser rewrite v2" })).toBeVisible();
   });
 
   it("stays hidden, without asking for lineage, when turned off in Settings", async () => {

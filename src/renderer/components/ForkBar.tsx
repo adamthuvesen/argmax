@@ -43,6 +43,21 @@ export function ForkBar({
     };
   }, [sessionId, visible]);
 
+  // Renames reach the renderer as dashboard deltas, not as a new lineage read.
+  const sourceWorkspaceId = lineage?.sourceWorkspaceId ?? null;
+  useEffect(() => {
+    if (!sourceWorkspaceId) return;
+    return window.argmax?.dashboard?.onDelta?.((delta) => {
+      const renamed = delta.workspaces?.find((workspace) => workspace.id === sourceWorkspaceId);
+      if (!renamed) return;
+      setLineage((current) =>
+        current && current.sourceLabel !== renamed.taskLabel
+          ? { ...current, sourceLabel: renamed.taskLabel }
+          : current
+      );
+    });
+  }, [sourceWorkspaceId]);
+
   if (!visible || !lineage) return null;
   const sourceSessionId = lineage.sourceSessionId;
   const sourceLabel = lineage.sourceLabel ?? "the source chat";

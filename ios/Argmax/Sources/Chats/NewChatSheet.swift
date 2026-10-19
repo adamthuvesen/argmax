@@ -473,6 +473,11 @@ struct NewChatSheet: View {
         projects.first { $0.id == projectID }
     }
 
+    /// The source chat's folder, only while the sheet still targets its project.
+    private var selectedFolderID: String? {
+        sourceFolder.flatMap { $0.projectID == selectedProject?.id ? $0.folderID : nil }
+    }
+
     private var selectedModel: CatalogModel? {
         catalog.model(provider: model.provider, modelId: model.modelId)
     }
@@ -488,8 +493,7 @@ struct NewChatSheet: View {
             titleModelId: catalog.provider(model.provider)?.titleModelId ?? model.modelId,
             prompt: prompt,
             attachments: images.attachments,
-            // Only while the sheet still targets the source chat's project.
-            projectFolderId: sourceFolder.flatMap { $0.projectID == selectedProject?.id ? $0.folderID : nil }
+            projectFolderId: selectedFolderID
         )
     }
 
@@ -559,7 +563,7 @@ struct NewChatSheet: View {
     private func loadBranchesIfNeeded() async {
         guard mode.takesBaseRef, let project = selectedProject else { return }
         do {
-            branches = try await client.listBranches(projectID: project.id)
+            branches = try await client.listBranches(projectID: project.id, folderID: selectedFolderID)
             if let baseRef, !branches.contains(baseRef) { self.baseRef = nil }
         } catch {
             branches = []

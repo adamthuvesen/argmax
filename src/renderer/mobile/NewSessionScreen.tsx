@@ -212,11 +212,12 @@ export function NewSessionScreen({
       (workspaces ?? []).filter(
         (w) =>
           w.projectId === project?.id &&
+          (!sourceFolderId || w.projectFolderId === sourceFolderId) &&
           w.kind === "git" &&
           !w.sharedWorkspace &&
           w.branch.length > 0
       ),
-    [project?.id, workspaces]
+    [project?.id, sourceFolderId, workspaces]
   );
 
   // Keep the mobile launcher on the same draft keys as the desktop launcher.

@@ -1161,9 +1161,18 @@ describe("MobileApp", () => {
   it("starts a new chat here in the source chat's project folder", async () => {
     mockDashboardSnapshot({
       ...snapshot,
-      workspaces: snapshot.workspaces.map((workspace) =>
-        workspace.taskLabel === "Build dashboard" ? { ...workspace, projectFolderId: "folder-data" } : workspace
-      )
+      workspaces: [
+        ...snapshot.workspaces.map((workspace) =>
+          workspace.taskLabel === "Build dashboard" ? { ...workspace, projectFolderId: "folder-data" } : workspace
+        ),
+        {
+          ...snapshot.workspaces[0],
+          id: "workspace-other-folder",
+          projectFolderId: "folder-web",
+          taskLabel: "Polish site",
+          branch: "argmax/site"
+        }
+      ]
     });
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
@@ -1177,6 +1186,7 @@ describe("MobileApp", () => {
     // new worktree leaves the base to the host.
     fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     const workspaceSheet = await screen.findByRole("dialog", { name: "Choose workspace" });
+    expect(within(workspaceSheet).queryByRole("button", { name: "Polish site argmax/site" })).not.toBeInTheDocument();
     fireEvent.click(within(workspaceSheet).getByRole("button", { name: "New worktree" }));
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 

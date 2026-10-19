@@ -461,10 +461,12 @@ extension BridgeClient {
         try await request("projects:list", as: [ProjectSummary].self)
     }
 
-    func listBranches(projectID: String) async throws -> [String] {
+    /// A nil folder is omitted, so a host older than named projects still
+    /// accepts the input.
+    func listBranches(projectID: String, folderID: String? = nil) async throws -> [String] {
         try await request(
             "projects:list-branches",
-            input: ListBranchesInput(projectId: projectID),
+            input: ListBranchesInput(projectId: projectID, projectFolderId: folderID.map(WireField.value) ?? .absent),
             as: [String].self
         )
     }

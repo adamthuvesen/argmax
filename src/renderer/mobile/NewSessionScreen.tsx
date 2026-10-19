@@ -200,16 +200,24 @@ export function NewSessionScreen({
     [projectId, projects]
   );
 
+  // "New chat here" from a chat in a secondary folder starts in that folder,
+  // until another project is picked.
+  const sourceFolderId =
+    initialWorkspace && initialWorkspace.projectId === project?.id
+      ? initialWorkspace.projectFolderId ?? undefined
+      : undefined;
+
   const projectWorktrees = useMemo(
     () =>
       (workspaces ?? []).filter(
         (w) =>
           w.projectId === project?.id &&
+          (!sourceFolderId || w.projectFolderId === sourceFolderId) &&
           w.kind === "git" &&
           !w.sharedWorkspace &&
           w.branch.length > 0
       ),
-    [project?.id, workspaces]
+    [project?.id, sourceFolderId, workspaces]
   );
 
   // Keep the mobile launcher on the same draft keys as the desktop launcher.
@@ -297,18 +305,25 @@ export function NewSessionScreen({
     const repoTarget = sideChat ? null : project;
     try {
       const taskLabel = titleFromPrompt(trimmed);
+      // The project's currentBranch describes its primary folder; for another
+      // folder, null lets the host take that folder's own branch.
       const baseRef =
         workspaceMode === "worktree"
-          ? chosenBaseRef ?? repoTarget?.currentBranch ?? null
+          ? chosenBaseRef ?? (sourceFolderId ? null : repoTarget?.currentBranch ?? null)
           : null;
       const workspace = repoTarget
         ? workspaceMode === "worktree"
           ? await window.argmax.workspaces.createIsolated({
               projectId: repoTarget.id,
               taskLabel,
-              baseRef
+              baseRef,
+              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {})
             })
-          : await window.argmax.workspaces.createCurrent({ projectId: repoTarget.id, taskLabel })
+          : await window.argmax.workspaces.createCurrent({
+              projectId: repoTarget.id,
+              taskLabel,
+              ...(sourceFolderId ? { projectFolderId: sourceFolderId } : {})
+            })
         : await window.argmax.workspaces.createScratch({ taskLabel, kind: null });
       let session: SessionSummary;
       try {
@@ -366,6 +381,7 @@ export function NewSessionScreen({
     prompt,
     setPrompt,
     sideChat,
+    sourceFolderId,
     workspaceMode
   ]);
 

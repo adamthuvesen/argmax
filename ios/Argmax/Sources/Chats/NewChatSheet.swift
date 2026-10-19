@@ -15,6 +15,8 @@ struct NewChatSheet: View {
     private let client: BridgeClient
     private let preselectedProjectID: String?
     private let branchFromWorkspaceID: String?
+    /// The folder of the chat "New chat here" came from, with its project.
+    private let sourceFolder: (projectID: String, folderID: String)?
     private let onLaunched: (WorkspaceSummary, SessionSummary) -> Void
     private let catalog = ProviderCatalog.bundled
 
@@ -80,6 +82,9 @@ struct NewChatSheet: View {
         // as the base, which is what the web pre-selects for the same tap.
         let source = branchFromWorkspaceID.flatMap { id in
             store.snapshot.workspaces.first { $0.id == id }
+        }
+        sourceFolder = source.flatMap { workspace in
+            workspace.projectFolderId.map { (projectID: workspace.projectId, folderID: $0) }
         }
         let branchable = source.map { $0.kind == .git && !$0.sharedWorkspace && !$0.branch.isEmpty } ?? false
         let contextualCode = source.map { $0.kind == .git }
@@ -468,6 +473,11 @@ struct NewChatSheet: View {
         projects.first { $0.id == projectID }
     }
 
+    /// The source chat's folder, only while the sheet still targets its project.
+    private var selectedFolderID: String? {
+        sourceFolder.flatMap { $0.projectID == selectedProject?.id ? $0.folderID : nil }
+    }
+
     private var selectedModel: CatalogModel? {
         catalog.model(provider: model.provider, modelId: model.modelId)
     }
@@ -482,7 +492,8 @@ struct NewChatSheet: View {
             model: model,
             titleModelId: catalog.provider(model.provider)?.titleModelId ?? model.modelId,
             prompt: prompt,
-            attachments: images.attachments
+            attachments: images.attachments,
+            projectFolderId: selectedFolderID
         )
     }
 
@@ -552,7 +563,7 @@ struct NewChatSheet: View {
     private func loadBranchesIfNeeded() async {
         guard mode.takesBaseRef, let project = selectedProject else { return }
         do {
-            branches = try await client.listBranches(projectID: project.id)
+            branches = try await client.listBranches(projectID: project.id, folderID: selectedFolderID)
             if let baseRef, !branches.contains(baseRef) { self.baseRef = nil }
         } catch {
             branches = []

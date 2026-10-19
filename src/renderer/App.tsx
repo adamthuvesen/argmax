@@ -1232,6 +1232,14 @@ export function App(): JSX.Element {
     [handleLaunchModelChange, launcherProject, openLauncherPaneInGrid, selectedProject]
   );
 
+  const launchFolderRef = useRef<{ project: ProjectSummary; projectFolderId: string } | null>(null);
+  const handleLaunchFolderChange = useCallback(
+    (folder: { project: ProjectSummary; projectFolderId: string } | null): void => {
+      launchFolderRef.current = folder;
+    },
+    []
+  );
+
   const toggleIntegratedTerminal = useCallback((): void => {
     hideCommandPalette();
     hideKeyboardCheatSheet();
@@ -1240,14 +1248,17 @@ export function App(): JSX.Element {
 
     const toggleForProject = async (project: ProjectSummary): Promise<void> => {
       if (!window.argmax) return;
+      const folder = launchFolderRef.current?.project.id === project.id ? launchFolderRef.current : null;
+      const target = folder?.project ?? project;
       let checkout: WorkspaceSummary | null = findSharedCheckoutWorkspace(
-        project,
+        target,
         snapshot.workspaces
       );
       if (!checkout) {
         const created = await window.argmax.workspaces.createCurrent({
           projectId: project.id,
-          taskLabel: project.name
+          taskLabel: target.name,
+          ...(folder ? { projectFolderId: folder.projectFolderId } : {})
         });
         checkout = created;
         setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [created] }));
@@ -2025,6 +2036,7 @@ export function App(): JSX.Element {
         sideChatMode={launcherSideChatMode}
         workspaces={snapshot.workspaces}
         onCheckoutWorkspaceCreated={handleCheckoutWorkspaceCreated}
+        onLaunchFolderChange={handleLaunchFolderChange}
       />
     ),
     [
@@ -2032,6 +2044,7 @@ export function App(): JSX.Element {
       fastModeEnabled,
       goalEnabled,
       handleCheckoutWorkspaceCreated,
+      handleLaunchFolderChange,
       handleProjectUpdated,
       handleLaunchModelChange,
       chatFontSize,

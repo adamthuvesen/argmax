@@ -90,7 +90,9 @@ pub fn require_active_project_folder(
             "That folder is no longer in this project. Choose another folder.",
         ));
     }
-    require_project_folder(connection, id)
+    let folder = require_project_folder(connection, id)?;
+    require_folder_root_on_disk(&folder.root_path)?;
+    Ok(folder)
 }
 
 pub fn primary_folder_id(
@@ -147,7 +149,14 @@ pub fn project_for_launch(
                 "That folder is no longer in this project. Choose another folder.",
             )
         })?;
-    let path = Path::new(&folder.root_path);
+    require_folder_root_on_disk(&folder.root_path)?;
+    Ok((project_for_folder(connection, &folder.id)?, folder.id))
+}
+
+/// A folder root swapped for a symlink would move every later read and
+/// write to wherever the link points, so it is refused like a missing one.
+fn require_folder_root_on_disk(root_path: &str) -> ArgmaxResult<()> {
+    let path = Path::new(root_path);
     if !path.is_dir()
         || path
             .symlink_metadata()
@@ -158,7 +167,7 @@ pub fn project_for_launch(
             "That project folder is unavailable or its location changed.",
         ));
     }
-    Ok((project_for_folder(connection, &folder.id)?, folder.id))
+    Ok(())
 }
 
 pub fn folder_is_git(root: &str) -> ArgmaxResult<bool> {
@@ -405,6 +414,27 @@ mod tests {
             other => panic!("unexpected error {other:?}"),
         }
         assert!(require_project_folder(&connection, "primary:p1").is_ok());
+    }
+
+    #[test]
+    fn a_folder_root_swapped_for_a_symlink_is_refused_by_id() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path().join("application");
+        let elsewhere = temp.path().join("elsewhere");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&elsewhere).unwrap();
+        let database = Database::open_in_memory().unwrap();
+        let connection = database.connection();
+        project(&connection, "p1", root.to_str().unwrap());
+        assert!(require_active_project_folder(&connection, "primary:p1").is_ok());
+        std::fs::remove_dir(&root).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &root).unwrap();
+        match require_active_project_folder(&connection, "primary:p1").unwrap_err() {
+            ArgmaxError::ServiceError { sub_code, .. } => {
+                assert_eq!(sub_code, "PROJECT_FOLDER_UNAVAILABLE")
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
     }
 
     #[test]

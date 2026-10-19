@@ -196,7 +196,8 @@ export function LaunchSurface({
   registerPaletteFileContext,
   sideChatMode = false,
   workspaces = [],
-  onCheckoutWorkspaceCreated
+  onCheckoutWorkspaceCreated,
+  onLaunchFolderChange
 }: {
   /** Offer the Auto rows in the model picker (a routing key is saved). */
   autoRouting?: boolean;
@@ -254,6 +255,9 @@ export function LaunchSurface({
    *  row that backs the launcher's Terminal tab. */
   workspaces?: readonly WorkspaceSummary[];
   onCheckoutWorkspaceCreated?: (workspace: WorkspaceSummary) => void;
+  /** The focused launcher's hand-picked secondary folder, or null, so the
+   *  app-wide terminal toggle opens that folder's checkout. */
+  onLaunchFolderChange?: (folder: { project: ProjectSummary; projectFolderId: string } | null) => void;
 }): JSX.Element {
   const isFocusedRef = useRef(isFocused);
   isFocusedRef.current = isFocused;
@@ -417,6 +421,13 @@ export function LaunchSurface({
     },
     [onCheckoutWorkspaceCreated]
   );
+  useEffect(() => {
+    if (!isFocused || !onLaunchFolderChange) return undefined;
+    onLaunchFolderChange(activeProject && selectedFolderId && selectedFolderIsPrimary === false
+      ? { project: activeProject, projectFolderId: selectedFolderId }
+      : null);
+    return () => onLaunchFolderChange(null);
+  }, [activeProject, isFocused, onLaunchFolderChange, selectedFolderId, selectedFolderIsPrimary]);
   const { terminalWorkspaceId, ensureCheckoutWorkspace } = useProjectCheckoutTerminal(
     activeProject,
     workspaces,

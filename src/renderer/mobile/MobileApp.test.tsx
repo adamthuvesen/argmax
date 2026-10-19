@@ -175,7 +175,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    const row = within(section).getByRole("button", { name: /Build dashboard/ });
+    const row = (await within(section).findByRole("button", { name: /Build dashboard/ }));
     expect(row).toHaveTextContent("Argmax");
     expect(within(row).getByLabelText("running")).toBeInTheDocument();
   });
@@ -241,7 +241,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    const row = within(section).getByRole("button", { name: /Build dashboard/ });
+    const row = (await within(section).findByRole("button", { name: /Build dashboard/ }));
     // The parent's own turn is over; the sibling's is not, so this row still
     // carries the nest — a multitask has no list row of its own.
     expect(within(row).getByLabelText("running")).toBeInTheDocument();
@@ -294,9 +294,9 @@ describe("MobileApp", () => {
     const search = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(search, { target: { value: "dashboard" } });
 
-    expect(within(section).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect((await within(section).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
     fireEvent.change(search, { target: { value: "argmax" } });
-    expect(within(section).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect((await within(section).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
   });
 
   it("floats working and attention rows into Priority, with pinned rows above it", async () => {
@@ -357,7 +357,7 @@ describe("MobileApp", () => {
         "needs approval"
       )
     ).toBeInTheDocument();
-    expect(within(priority).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect((await within(priority).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
     // The marker carries it now; nothing spells the attention out in text.
     expect(priority).not.toHaveTextContent("needs approval");
   });
@@ -383,7 +383,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    expect(within(section).getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
+    expect((await within(section).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Stranded launch/ })).not.toBeInTheDocument();
   });
 
@@ -420,7 +420,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const list = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(list).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
 
     const row = await screen.findByRole("button", {
@@ -503,7 +503,7 @@ describe("MobileApp", () => {
       render(<MobileApp />);
 
       const list = await screen.findByRole("region", { name: "Chat list" });
-      fireEvent.click(within(list).getByRole("button", { name: /Build dashboard/ }));
+      fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
       await screen.findByRole("region", { name: "Conversation" });
 
       fireEvent.click(
@@ -618,7 +618,7 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     const list = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(list).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(
       await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
@@ -694,7 +694,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const list = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(list).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(
       await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") })
@@ -720,7 +720,7 @@ describe("MobileApp", () => {
     section.scrollTop = 240;
     fireEvent.scroll(section);
 
-    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Chat list" })).not.toBeInTheDocument();
     // The parked list still sits in the shell, so a keyboard-sized viewport
@@ -765,7 +765,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const priority = await screen.findByRole("region", { name: "Priority" });
-    const row = within(priority).getByRole("button", { name: /Build dashboard/ });
+    const row = (await within(priority).findByRole("button", { name: /Build dashboard/ }));
     fireEvent.click(row);
     await screen.findByRole("region", { name: "Conversation" });
 
@@ -792,7 +792,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
 
     const fork = vi.fn().mockResolvedValue({
@@ -816,7 +816,7 @@ describe("MobileApp", () => {
     ]);
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
     await screen.findByRole("tablist", { name: "Review mode" });
@@ -849,7 +849,7 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
@@ -889,7 +889,7 @@ describe("MobileApp", () => {
     listChangedFiles.mockResolvedValue([]);
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
     const conversation = await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
@@ -933,7 +933,7 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(within(section).getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
     await waitFor(() => expect(sessionEventsSince).toHaveBeenCalled());
 
@@ -1023,7 +1023,7 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await screen.findByRole("button", { name: /Build dashboard/ })));
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Stop chat" }));
@@ -1135,7 +1135,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
 
@@ -1154,6 +1154,45 @@ describe("MobileApp", () => {
           projectId: snapshot.projects[0].id,
           baseRef: "argmax/dashboard"
         })
+      );
+    });
+  });
+
+  it("starts a new chat here in the source chat's project folder", async () => {
+    mockDashboardSnapshot({
+      ...snapshot,
+      workspaces: [
+        ...snapshot.workspaces.map((workspace) =>
+          workspace.taskLabel === "Build dashboard" ? { ...workspace, projectFolderId: "folder-data" } : workspace
+        ),
+        {
+          ...snapshot.workspaces[0],
+          id: "workspace-other-folder",
+          projectFolderId: "folder-web",
+          taskLabel: "Polish site",
+          branch: "argmax/site"
+        }
+      ]
+    });
+    render(<MobileApp />);
+    await screen.findByRole("region", { name: "Chat list" });
+
+    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
+    const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "New chat here" }));
+    fireEvent.change(await screen.findByLabelText("Task"), { target: { value: "Follow up work" } });
+    // The project's currentBranch belongs to its primary folder, so a plain
+    // new worktree leaves the base to the host.
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    const workspaceSheet = await screen.findByRole("dialog", { name: "Choose workspace" });
+    expect(within(workspaceSheet).queryByRole("button", { name: "Polish site argmax/site" })).not.toBeInTheDocument();
+    fireEvent.click(within(workspaceSheet).getByRole("button", { name: "New worktree" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
+
+    await waitFor(() => {
+      expect(createIsolatedWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: snapshot.projects[0].id, projectFolderId: "folder-data", baseRef: null })
       );
     });
   });
@@ -1280,8 +1319,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     const list = await screen.findByRole("region", { name: "Chat list" });
 
-    const row = within(list)
-      .getByRole("button", { name: /Build dashboard/ })
+    const row = (await within(list).findByRole("button", { name: /Build dashboard/ }))
       .closest(".mobile-session-item");
     if (!row) throw new Error("no row");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
@@ -1322,7 +1360,7 @@ describe("MobileApp", () => {
     await screen.findByRole("region", { name: "Chat list" });
     const setPinned = vi.spyOn(window.argmax!.workspaces, "setPinned");
 
-    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     fireEvent.click(within(sheet).getByRole("button", { name: "Pin to top" }));
@@ -1353,7 +1391,7 @@ describe("MobileApp", () => {
     });
     window.argmax!.session.fork = fork;
 
-    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     fireEvent.click(within(sheet).getByRole("button", { name: /^Fork chat/ }));
@@ -1369,7 +1407,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
 
@@ -1380,7 +1418,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await screen.findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
 
     // The phone's back button pops the entry the session screen pushed.
@@ -1397,7 +1435,7 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click(screen.getByRole("button", { name: /Build dashboard/ }));
+    fireEvent.click((await screen.findByRole("button", { name: /Build dashboard/ })));
     await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
     await screen.findByRole("tablist", { name: "Review mode" });
@@ -1457,7 +1495,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    const row = screen.getByRole("button", { name: /Build dashboard/ }).closest("li");
+    const row = (await screen.findByRole("button", { name: /Build dashboard/ })).closest("li");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
     const sheet = await screen.findByRole("dialog", { name: "Chat actions" });
     expect(sheet).toHaveAttribute("aria-modal", "true");

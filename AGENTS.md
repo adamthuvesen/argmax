@@ -33,6 +33,16 @@ npm run precheck        # pre-push gate: CI's checks, scoped to what the branch 
 npm run tauri:build     # production Tauri bundle
 ```
 
+Rebuild and install:
+
+```bash
+npm run tauri:dev:isolated  # dev rebuild: starts the dev instance (watch build), never the installed app
+npm run install:ios         # build ios/Argmax and install it on the connected iPhone
+# Release build: no script installs it. Adam runs this, or a chat the installed app does not host:
+npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/Argmax.app \
+  && ditto src-tauri/target/release/bundle/macos/Argmax.app /Applications/Argmax.app && open /Applications/Argmax.app
+```
+
 ## Critical Conventions
 
 - **Argmax is developed from inside Argmax.** The installed app (`/Applications/Argmax.app`) hosts the chats that do the work; the build under test is a second instance on its own profile: `npm run tauri:dev:isolated` (`ARGMAX_DATA_DIR=~/.argmax-dev`). Plain `tauri dev` shares the installed app's data dir, hits the instance lock, and exits. Never quit, kill, or replace the installed app from a chat it hosts. Rust edits restart the dev instance and kill every session it hosts, so only throwaway verification chats belong there. Details in [docs/verification.md](docs/verification.md#the-dev-instance-next-to-the-installed-app).
@@ -42,6 +52,8 @@ npm run tauri:build     # production Tauri bundle
 - **Renderer tests** query by **role / aria-label / title**, never by `className`.
 - **iPhone type goes through the roles in [Typography.swift](ios/Argmax/Sources/Design/Typography.swift).** A `.font(...)` at a call site is a surface Settings → Typeface cannot reach; `npm run check:ios-fonts` enforces it, and `npm run build:ios-fonts` regenerates the bundled Geist faces.
 - **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles/tokens.css](src/renderer/styles/tokens.css); see [docs/styling.md](docs/styling.md).
+- **A visual-design ask gets 3 mockups before code.** Build only the one the user picks.
+- **Every visual change ships light and dark screenshots.** `node .agents/skills/verify-argmax/verify.mjs ui` writes `ui-light.png` and `ui-dark.png` under `.verify/runs/`; put both in the report.
 - **Shared values, not duplicates.** Model labels, ids, reasoning levels, and pricing live in [src/shared/providerModels.ts](src/shared/providerModels.ts), but a model id is also read by Rust, the routing grid, and the generated iPhone catalogue. Use the checklist in [docs/providers.md](docs/providers.md#adding-or-retiring-a-model) to add or retire one.
 - **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
 - **An image reaches the user only through Markdown.** `![what it shows](path)` on its own line, pointing inside the checkout or at a path Argmax handed you (a `browser_screenshot`'s `path`). An image a tool returned lands in the model's context, not the chat, and a remote `http(s)` image is drawn as a link rather than fetched. See [docs/chat-cards.md](docs/chat-cards.md).

@@ -4517,7 +4517,7 @@ Apply the merge gate before merging.\n{PR_URL}"
                 "PR #42 (Fix parser): merged as {merge7} (head {head7}).\nCleanup:\n\
 PR #42 merged as {merge7} (head {head7})\nRemote: origin/fix-parser deleted\n\
 Base: main fast-forwarded in {}\nLocal: fix-parser kept (checked out by this chat's worktree)\n\
-Chat: kept, checkout {} kept\nThis watch has ended.\n{PR_URL}",
+Chat: kept, checkout {} kept; call pr_cleanup to remove it when this turn ends\nThis watch has ended.\n{PR_URL}",
                 repo.main.display(),
                 repo.chat.display()
             )

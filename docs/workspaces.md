@@ -348,7 +348,9 @@ Git writes from Argmax serialize per canonical checkout, including separate sess
 
 After a PR merges, Argmax does the git cleanup itself, with no model turn, for every provider. One function, `cleanup_merged_pr` in [pr_cleanup.rs](../src-tauri/src/git/pr_cleanup.rs), serves the `pr_cleanup` agent tool, the `prs:cleanup` IPC command (the **Clean up** action on a merged PR row in the workspace card), and a PR watch with `cleanupOnMerge` ([gh.md](gh.md#pr-watch)).
 
-Cleanup never archives, hides, or deletes the chat. The chat's checkout stays. The report says what was kept. With `merge_cleanup = remove-checkout`, the merge hook deletes the checkout first and then runs this cleanup, so step 4 finds no worktree on the branch ([gh.md](gh.md#merge-cleanup)).
+Cleanup never archives, hides, or deletes the chat. The report says what was kept. With `merge_cleanup = remove-checkout`, the merge hook deletes the checkout first and then runs this cleanup, so step 4 finds no worktree on the branch ([gh.md](gh.md#merge-cleanup)).
+
+The `pr_cleanup` tool also removes the chat's own worktree, at the end of the turn that called it. Removal stops every process in the checkout, and the calling agent is one of them, so it is a scheduled after-turn action like `workspace_archive` ([agent-tools.md](agent-tools.md)). The row is `session_after_turn` with `action = 'archive'` and a `mergedPr` payload, so boot recovery keeps the promise. When the turn ends, `remove_merged_checkout` runs as for `remove-checkout`: it stops Argmax's processes, then every other process whose working directory is inside the checkout (a dev server, a watcher, a test runner; matched by path with `lsof`), deletes the checkout, and runs this cleanup again, which can now delete the local branch. The chat stays in its sidebar section, read-only ([ADR 0014](adr/0014-merged-chats-stay-listed-without-a-checkout.md)), and its timeline gets a note with the result. The checkout stays, and the report says why, when it is a shared checkout, has uncommitted or untracked changes, or has a HEAD the merged PR does not contain. The IPC command and a watch's `cleanupOnMerge` keep the checkout, because the merged notice starts a turn in it; that notice tells the agent to call `pr_cleanup`.
 
 1. Read the PR with `gh pr view`. Refuse with `PR_NOT_MERGED` unless it is merged. Record `headRefOid` as the merged head and `mergeCommit.oid` as the merge commit.
 2. Remote branch. Skip it when the head repository's owner is not `origin`'s owner (a fork PR). Otherwise check `git ls-remote --heads origin refs/heads/<branch>`. GitHub may have deleted it already. If it is there, delete it with `git push --force-with-lease=refs/heads/<branch>:<merged head> origin --delete refs/heads/<branch>`. A `stale info` rejection means the branch moved past the merged head, so it stays and the report names the divergence.
@@ -363,5 +365,5 @@ PR #72 merged as abc1234 (head def5678)
 Remote: origin/fix-parser deleted
 Base: main fast-forwarded in /path/to/repo
 Local: fix-parser kept (checked out by this chat's worktree)
-Chat: kept, checkout /path/to/worktree kept
+Chat: kept, checkout /path/to/worktree removed when this turn ends
 ```

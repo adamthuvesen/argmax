@@ -339,6 +339,164 @@ pub fn cleanup_pty_session_after_leader_exit(session_id: u32) -> std::io::Result
     session_signal_result(errors)
 }
 
+/// `lsof` and `ps` each get this long. `lsof -b -S 2` already avoids
+/// blocking on a hung network mount; this bounds everything else.
+#[cfg(unix)]
+const PROCESS_SCAN_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[cfg(unix)]
+async fn scan_output(program: &str, args: &[&str]) -> std::io::Result<String> {
+    let mut command = tokio::process::Command::new(program);
+    command.args(args).kill_on_drop(true);
+    let output = tokio::time::timeout(PROCESS_SCAN_TIMEOUT, command.output())
+        .await
+        .map_err(|_| std::io::Error::other(format!("{program} timed out")))??;
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    // lsof exits 1 when one process could not be read, with the rest listed.
+    if !output.status.success() && stdout.trim().is_empty() {
+        return Err(std::io::Error::other(format!(
+            "{program} exited with {} and printed nothing",
+            output.status
+        )));
+    }
+    Ok(stdout)
+}
+
+/// One `ps` row: the parent, whether the process has a controlling terminal
+/// (`??` on macOS, `?` on Linux when it has none), and whether it runs from a
+/// macOS app bundle, as a GUI app launchd started does.
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy)]
+struct ProcessRow {
+    parent: i32,
+    has_terminal: bool,
+    is_app: bool,
+}
+
+#[cfg(unix)]
+async fn process_table() -> std::io::Result<std::collections::HashMap<i32, ProcessRow>> {
+    let stdout = scan_output("/bin/ps", &["-A", "-o", "pid=,ppid=,tty=,comm="]).await?;
+    let mut table = std::collections::HashMap::new();
+    for line in stdout.lines() {
+        // `comm` is last because it can hold spaces.
+        let mut fields = line.trim_start().splitn(4, char::is_whitespace);
+        let (Some(pid), Some(parent), Some(tty)) = (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        let command = fields.next().unwrap_or_default();
+        if let (Ok(pid), Ok(parent)) = (pid.parse(), parent.trim().parse()) {
+            table.insert(
+                pid,
+                ProcessRow {
+                    parent,
+                    has_terminal: !matches!(tty.trim(), "??" | "?"),
+                    is_app: command.contains(".app/Contents/"),
+                },
+            );
+        }
+    }
+    Ok(table)
+}
+
+/// Only what Argmax left behind: no controlling terminal, and either an
+/// orphan that is not an app (a background job whose agent is gone) or a
+/// descendant of Argmax. A shell the user opened in the checkout, an editor
+/// and its helpers, or a terminal `claude` session are none of these, so they
+/// keep running.
+#[cfg(unix)]
+fn argmax_left_it(pid: i32, table: &std::collections::HashMap<i32, ProcessRow>, own: i32) -> bool {
+    if pid <= 1 || pid == own {
+        return false;
+    }
+    let Some(row) = table.get(&pid) else {
+        return false;
+    };
+    if row.has_terminal {
+        return false;
+    }
+    if row.parent == 1 {
+        return !row.is_app;
+    }
+    let mut ancestor = row.parent;
+    for _ in 0..64 {
+        if ancestor == own {
+            return true;
+        }
+        match table.get(&ancestor) {
+            Some(next) if ancestor > 1 => ancestor = next.parent,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Processes whose working directory is `root` or inside it, by `lsof`,
+/// filtered by [`argmax_left_it`]. `root` must be canonical: `lsof` reports
+/// resolved paths.
+#[cfg(unix)]
+async fn processes_in_directory(root: &std::path::Path) -> std::io::Result<Vec<Pid>> {
+    let lsof = if cfg!(target_os = "macos") {
+        "/usr/sbin/lsof"
+    } else {
+        "lsof"
+    };
+    let stdout = scan_output(lsof, &["-b", "-S", "2", "-nP", "-w", "-d", "cwd", "-Fpn"]).await?;
+    let mut inside = Vec::new();
+    let mut pid = None;
+    for line in stdout.lines() {
+        if let Some(raw) = line.strip_prefix('p') {
+            pid = raw.parse::<i32>().ok();
+        } else if let (Some(path), Some(found)) = (line.strip_prefix('n'), pid) {
+            if std::path::Path::new(path).starts_with(root) {
+                inside.push(found);
+            }
+        }
+    }
+    if inside.is_empty() {
+        return Ok(Vec::new());
+    }
+    let table = process_table().await?;
+    let own = std::process::id() as i32;
+    Ok(inside
+        .into_iter()
+        .filter(|pid| argmax_left_it(*pid, &table, own))
+        .map(Pid::from_raw)
+        .collect())
+}
+
+/// Stops the processes Argmax left running inside `root`, such as a dev
+/// server, watcher, or test runner in a checkout that is about to be deleted.
+/// Matching is by working directory, so processes in other checkouts are
+/// never touched, and [`argmax_left_it`] spares the user's own. SIGTERM, then
+/// SIGKILL for what is still there after the grace window. Returns how many
+/// processes it signaled; `Err` means the scan failed and nothing was sent.
+#[cfg(unix)]
+pub async fn terminate_processes_in_directory(root: &std::path::Path) -> std::io::Result<usize> {
+    let root = root.canonicalize()?;
+    let found = processes_in_directory(&root).await?;
+    if found.is_empty() {
+        return Ok(0);
+    }
+    for pid in &found {
+        let _ = kill(*pid, Signal::SIGTERM);
+    }
+    let deadline = Instant::now() + Duration::from_millis(GRACEFUL_TIMEOUT_MS);
+    while Instant::now() < deadline && found.iter().any(|pid| kill(*pid, None).is_ok()) {
+        sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
+    }
+    // A fresh scan, so a PID reused after its process exited is not killed.
+    for pid in processes_in_directory(&root).await? {
+        let _ = kill(pid, Signal::SIGKILL);
+    }
+    Ok(found.len())
+}
+
+#[cfg(not(unix))]
+pub async fn terminate_processes_in_directory(_root: &std::path::Path) -> std::io::Result<usize> {
+    Ok(0)
+}
+
 #[cfg(not(unix))]
 pub fn signal_target_term_and_kill_blocking(_target: SignalTarget, _reaped: Option<&AtomicBool>) {}
 
@@ -469,6 +627,36 @@ pub enum TerminateOutcome {
 mod tests {
     use super::*;
     use tokio::process::Command;
+
+    /// Only what Argmax left in a checkout is stopped: an orphan or a
+    /// descendant of Argmax, never one with a terminal, never an unrelated
+    /// process tree, never Argmax itself or launchd.
+    #[test]
+    fn only_processes_argmax_left_behind_are_stopped() {
+        let own = 100;
+        let row = |parent, has_terminal, is_app| ProcessRow {
+            parent,
+            has_terminal,
+            is_app,
+        };
+        let table: std::collections::HashMap<i32, ProcessRow> = [
+            (100, row(1, false, true)),    // Argmax
+            (200, row(100, false, false)), // an agent Argmax launched
+            (201, row(200, false, false)), // its dev server
+            (300, row(1, false, false)),   // a background job whose agent is gone
+            (400, row(1, true, false)),    // a shell in the user's terminal
+            (401, row(400, true, false)),  // what that shell runs
+            (500, row(1, false, true)),    // an editor
+            (501, row(500, false, false)), // its language server
+        ]
+        .into_iter()
+        .collect();
+        let stopped: Vec<i32> = [1, 100, 200, 201, 300, 400, 401, 500, 501, 999]
+            .into_iter()
+            .filter(|pid| argmax_left_it(*pid, &table, own))
+            .collect();
+        assert_eq!(stopped, vec![200, 201, 300]);
+    }
 
     #[tokio::test]
     async fn long_running_sleep_is_terminated_and_reaped() {

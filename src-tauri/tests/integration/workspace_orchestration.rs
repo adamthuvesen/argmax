@@ -3299,12 +3299,32 @@ async fn merged_checkout_removal_deletes_the_worktree_and_keeps_the_chat_listed(
     std::fs::create_dir_all(checkout.join("ignored")).expect("ignored dir");
     std::fs::write(checkout.join("ignored/build.bin"), "output").expect("ignored file");
     let merged_head = run_git_stdout(checkout, &["rev-parse", "HEAD"]);
+    // A dev server an agent left running in the checkout: no terminal, and a
+    // descendant of this process, which stands in for Argmax.
+    let mut server = {
+        use std::os::unix::process::CommandExt;
+        let mut command = std::process::Command::new("sleep");
+        command.arg("60").current_dir(checkout.join("ignored"));
+        // SAFETY: `setsid` is async-signal-safe and touches no parent state.
+        unsafe {
+            command.pre_exec(|| {
+                nix::unistd::setsid()
+                    .map(|_| ())
+                    .map_err(std::io::Error::from)
+            });
+        }
+        command.spawn().expect("spawn a process in the checkout")
+    };
 
     let removed = service
         .remove_merged_checkout(&workspace.id, merged_head.trim())
         .await
         .expect("remove merged checkout");
 
+    assert!(
+        server.try_wait().expect("server status").is_some(),
+        "a process running in the checkout is stopped"
+    );
     assert_eq!(removed.state, "archived");
     assert!(removed.checkout_removed_at.is_some());
     assert_eq!(removed.recovery_path, None);

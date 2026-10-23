@@ -160,7 +160,9 @@ pub(super) async fn handle_session_control(
         SessionControlAction::ArcStatus(_) => arc_status(parent, database),
         SessionControlAction::PrWatch(action) => watch_pr(action, parent, database),
         SessionControlAction::PrUnwatch(action) => unwatch_pr(action, parent, database),
-        SessionControlAction::PrCleanup(action) => cleanup_pr(action, parent, database).await,
+        SessionControlAction::PrCleanup(action) => {
+            cleanup_pr(action, parent, database, workspaces, providers, registry).await
+        }
         SessionControlAction::VisualizationPreview(input) => {
             let app = app.ok_or_else(|| {
                 protocol_error(

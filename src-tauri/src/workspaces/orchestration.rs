@@ -2618,6 +2618,21 @@ impl WorkspaceService {
                     return Err(error);
                 }
             }
+            // Argmax's own processes stopped above. A dev server or watcher an
+            // agent started in the background would outlive the checkout.
+            match crate::util::process_control::terminate_processes_in_directory(checkout).await {
+                Ok(0) => {}
+                Ok(stopped) => tracing::info!(
+                    workspace_id,
+                    stopped,
+                    "merge cleanup: stopped processes running in the checkout"
+                ),
+                Err(error) => tracing::warn!(
+                    workspace_id,
+                    ?error,
+                    "merge cleanup: could not list processes running in the checkout"
+                ),
+            }
             // No `--force`: Git refuses a tree with changes the status read
             // above missed, which keeps the files instead of losing them.
             let removed = {

@@ -1962,6 +1962,7 @@ async fn a_promise_whose_workspace_is_already_archived_is_dropped() {
             "session-agent",
             &AfterTurnAction::Archive(ArchiveRequest {
                 workspace_id: "workspace-session-agent".to_string(),
+                merged_pr: None,
             }),
         )
         .expect("promise an archive");

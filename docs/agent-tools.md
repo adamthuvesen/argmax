@@ -66,7 +66,7 @@ belong to that session. Argmax multitasks have their own session credentials.
 | `schedule_resume` | `scheduleId` | `{scheduleId, name, nextRunAt?}` |
 | `pr_watch` | `pr?`, `cleanupOnMerge?` | `{projectId, prNumber, url?, headSha?, watching}` — wakes this session about the PR until it merges or closes |
 | `pr_unwatch` | `pr?` | `{removed}` |
-| `pr_cleanup` | `pr?` | `{prNumber, branch, baseBranch, mergedHead, mergeCommit, remote, base, local, checkoutPath, text}`; each step is `{outcome, detail}`. Git cleanup after a merge. Never archives the chat. |
+| `pr_cleanup` | `pr?` | `{prNumber, branch, baseBranch, mergedHead, mergeCommit, remote, base, local, checkoutPath, text}`; each step is `{outcome, detail}`. Git cleanup after a merge, then this chat's worktree is removed when the turn ends. Never archives the chat. |
 | `arc_status` | — | The caller's Arc: `{arcId, name, state, dir, brief, briefTruncated, coordinatorSessionId?, callerIsCoordinator, members: [{sessionId, taskLabel, projectName, state, prNumber?, prState?}], truncated, launchesLast24h, limits: {maxActiveMembers, maxLaunchesPerDay}, now, notesBytes?, notesApproxTokens?, notesOversized, logBytes?}`. `now` is the local clock; `notesOversized` is true above 24 KB of `NOTES.md`. `NOT_IN_ARC` if the caller is not attached to one. |
 
 A goal makes this session keep working until a separate evaluator judges the
@@ -387,8 +387,11 @@ whether there was one.
 `pr_cleanup` does the git cleanup after a merge, with no shell steps. `pr`
 defaults to the session's primary PR. It deletes the remote branch only while
 it still points at the merged head, fast-forwards the base where it is checked
-out, deletes the local branch only when nothing owns it, and prunes. It never
-archives or hides the chat. Errors are `PR_NOT_MERGED`, `PR_NOT_FOUND`, and
+out, deletes the local branch only when nothing owns it, and prunes. When the
+turn ends, it removes the chat's own worktree, stops the processes running in
+it, and deletes the local branch, unless the checkout is shared, has
+uncommitted changes, or has commits after the merge. It never archives or
+hides the chat: the chat stays listed, read-only. Errors are `PR_NOT_MERGED`, `PR_NOT_FOUND`, and
 `PROJECT_NOT_ALLOWED`. See [workspaces.md](workspaces.md#pr-cleanup).
 
 A notice arrives through the inbox like any other system notice, so the

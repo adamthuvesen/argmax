@@ -865,8 +865,9 @@ the remote branch only while it still points at the merged head (never for a for
 fast-forward the base branch in the worktree that has it checked out when that worktree is clean \
 and idle, delete the local branch only when no worktree has it checked out and its tip is the \
 merged head, and prune. Refuses with PR_NOT_MERGED unless GitHub reports the PR merged. Returns a \
-report with one line per step; follow up only on what it skipped. It never archives or hides this \
-chat and keeps its checkout."
+report with one line per step; follow up only on what it skipped. When this turn ends it removes \
+this chat's own worktree and stops processes running in it, unless it has uncommitted changes or \
+commits after the merge. It never archives or hides this chat: it stays listed, read-only."
     )]
     async fn pr_cleanup(
         &self,

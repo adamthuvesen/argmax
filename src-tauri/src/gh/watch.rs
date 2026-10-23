@@ -230,7 +230,9 @@ async fn run_one_watch(
     }
 
     // Cleanup runs before the merged notice, and so before archive on merge,
-    // which waits for this watch to end. It never archives the chat.
+    // which waits for this watch to end. It never archives the chat. The
+    // notice starts a turn in the chat's checkout, so the checkout cannot go
+    // yet: `pr_cleanup` from that turn removes it when the turn ends.
     let cleanup = if terminal == Some(Terminal::Merged) && watch.cleanup_on_merge {
         let text = match crate::git::pr_cleanup::cleanup_merged_pr(
             database,
@@ -240,7 +242,14 @@ async fn run_one_watch(
         )
         .await
         {
-            Ok(report) => report.text,
+            Ok(mut report) => {
+                if let Some(path) = report.checkout_path.clone() {
+                    report.set_chat_checkout(&format!(
+                        "checkout {path} kept; call pr_cleanup to remove it when this turn ends"
+                    ));
+                }
+                report.text
+            }
             Err(error) => format!("Cleanup failed: {error}"),
         };
         tracing::info!(

@@ -21,7 +21,9 @@ use crate::{
         validation::{Prompt, SessionId, WorkspaceId},
     },
     persistence::{
-        after_turn::{AfterTurnAction, ArchiveRequest, MoveDestinationRecord, MoveRequest},
+        after_turn::{
+            AfterTurnAction, ArchiveRequest, MergedPrRequest, MoveDestinationRecord, MoveRequest,
+        },
         database::Database,
         events::{count_move_arrivals, persist_timeline_event, PersistTimelineEventInput},
         sessions::find_session_by_id,
@@ -70,6 +72,7 @@ pub(super) async fn schedule_workspace_archive(
     WorkspaceId::try_from(workspace.id.clone()).map_err(invalid_input_error)?;
     let scheduled = AfterTurnAction::Archive(ArchiveRequest {
         workspace_id: workspace.id.clone(),
+        merged_pr: None,
     });
 
     let (settled_tx, settled_rx) = oneshot::channel();
@@ -299,6 +302,20 @@ pub(super) async fn run_after_turn(
     registry: Arc<SessionLaunchRegistry>,
 ) {
     match action {
+        AfterTurnAction::Archive(ArchiveRequest {
+            workspace_id,
+            merged_pr: Some(merged_pr),
+        }) => {
+            run_merged_checkout_removal(
+                &workspace_id,
+                merged_pr,
+                &session_id,
+                &database,
+                &workspaces,
+                &registry,
+            )
+            .await
+        }
         AfterTurnAction::Archive(request) => {
             run_archive(request, &session_id, &workspaces, &registry).await
         }
@@ -314,6 +331,48 @@ pub(super) async fn run_after_turn(
             .await
         }
     }
+}
+
+/// The removal `pr_cleanup` promised: delete the merged checkout, then run PR
+/// cleanup again, which can now delete the local branch because nothing has
+/// it checked out. The chat stays listed, read-only, and its timeline says
+/// what happened, because the agent that asked has already ended its turn.
+async fn run_merged_checkout_removal(
+    workspace_id: &str,
+    merged_pr: MergedPrRequest,
+    session_id: &str,
+    database: &Arc<Database>,
+    workspaces: &Arc<WorkspaceService>,
+    registry: &Arc<SessionLaunchRegistry>,
+) {
+    let outcome = workspaces
+        .remove_merged_checkout(workspace_id, &merged_pr.merged_head)
+        .await;
+    registry.finish_after_turn(session_id);
+    let note = match outcome {
+        Ok(result) if result.workspace.checkout_removed_at.is_some() => {
+            let service = crate::gh::service::GhService::new(Arc::clone(database));
+            let local = match crate::git::pr_cleanup::cleanup_merged_pr(
+                database,
+                &service,
+                session_id,
+                merged_pr.pr_number,
+            )
+            .await
+            {
+                Ok(report) => format!("Local: {}", report.local.detail),
+                Err(error) => format!("Local branch not checked: {error}"),
+            };
+            format!("Checkout removed. {local}. Cleaned up. Start a new chat for follow-ups.")
+        }
+        Ok(_) => {
+            "Checkout kept: it has uncommitted changes or commits the merged PR does not contain."
+                .to_string()
+        }
+        Err(error) => format!("Checkout not removed: {error}"),
+    };
+    tracing::info!(workspace_id, session_id, %note, "pr_cleanup: scheduled checkout removal");
+    record_after_turn_note(database, workspaces, session_id, "pr.cleanup", note);
 }
 
 async fn run_archive(

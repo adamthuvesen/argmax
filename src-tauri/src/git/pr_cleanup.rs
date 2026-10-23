@@ -3,8 +3,9 @@
 // tool, the `prs:cleanup` IPC command, and a watch with `cleanupOnMerge` all
 // call `cleanup_merged_pr`.
 //
-// Cleanup never archives, hides, or deletes the chat. The chat's checkout
-// stays, and so does any branch a worktree has checked out.
+// Cleanup never archives, hides, or deletes the chat. Any branch a worktree
+// has checked out stays. `pr_cleanup` from the chat itself then removes the
+// chat's own checkout when its turn ends (session_control/actions/pr_watch.rs).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -62,8 +63,8 @@ pub struct PrCleanupReport {
     pub remote: PrCleanupStep,
     pub base: PrCleanupStep,
     pub local: PrCleanupStep,
-    /// The chat's checkout, which cleanup always keeps. `None` when it is not
-    /// on disk, for example after the chat was archived.
+    /// The chat's checkout. This function keeps it; `None` when it is not on
+    /// disk, for example after it was removed or the chat was archived.
     pub checkout_path: Option<String>,
     /// The plain-text report, one line per step.
     pub text: String,
@@ -172,14 +173,7 @@ pub async fn cleanup_merged_pr(
     }
 
     let checkout_path = chat_checkout.map(|path| path.display().to_string());
-    let text = report_text(
-        pr_number,
-        merge_commit.as_deref(),
-        &merged_head,
-        [&remote, &base, &local],
-        checkout_path.as_deref(),
-    );
-    Ok(PrCleanupReport {
+    let mut report = PrCleanupReport {
         pr_number,
         branch,
         base_branch,
@@ -188,9 +182,29 @@ pub async fn cleanup_merged_pr(
         remote,
         base,
         local,
+        text: String::new(),
         checkout_path,
-        text,
-    })
+    };
+    let chat = match report.checkout_path.as_deref() {
+        Some(path) => format!("checkout {path} kept"),
+        None => "its checkout is not on disk".to_string(),
+    };
+    report.set_chat_checkout(&chat);
+    Ok(report)
+}
+
+impl PrCleanupReport {
+    /// Rewrites the `Chat:` line. `pr_cleanup` from the chat itself uses this
+    /// to say its checkout is removed when the turn ends.
+    pub(crate) fn set_chat_checkout(&mut self, checkout: &str) {
+        self.text = report_text(
+            self.pr_number,
+            self.merge_commit.as_deref(),
+            &self.merged_head,
+            [&self.remote, &self.base, &self.local],
+            checkout,
+        );
+    }
 }
 
 fn step(outcome: PrCleanupOutcome, detail: String) -> PrCleanupStep {
@@ -206,18 +220,14 @@ fn report_text(
     merge_commit: Option<&str>,
     merged_head: &str,
     [remote, base, local]: [&PrCleanupStep; 3],
-    checkout_path: Option<&str>,
+    checkout: &str,
 ) -> String {
     let merged = match merge_commit {
         Some(commit) => format!("merged as {} (head {})", short(commit), short(merged_head)),
         None => format!("merged (head {})", short(merged_head)),
     };
-    let chat = match checkout_path {
-        Some(path) => format!("kept, checkout {path} kept"),
-        None => "kept (its checkout is not on disk)".to_string(),
-    };
     format!(
-        "PR #{pr_number} {merged}\nRemote: {}\nBase: {}\nLocal: {}\nChat: {chat}",
+        "PR #{pr_number} {merged}\nRemote: {}\nBase: {}\nLocal: {}\nChat: kept, {checkout}",
         remote.detail, base.detail, local.detail
     )
 }

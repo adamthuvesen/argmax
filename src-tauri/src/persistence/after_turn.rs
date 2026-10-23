@@ -30,6 +30,18 @@ pub enum AfterTurnAction {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArchiveRequest {
     pub workspace_id: String,
+    /// Set by `pr_cleanup`: delete the checkout of this merged PR instead of
+    /// retaining it, and keep the chat in its sidebar section (ADR 0014).
+    /// Absent in rows written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merged_pr: Option<MergedPrRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MergedPrRequest {
+    pub pr_number: i64,
+    pub merged_head: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,6 +325,32 @@ mod tests {
         );
     }
 
+    /// An archive row written before `mergedPr` existed still reads, and a
+    /// merged-checkout removal round-trips.
+    #[test]
+    fn archive_rows_read_with_and_without_a_merged_pr() {
+        assert_eq!(
+            AfterTurnAction::from_row(ACTION_ARCHIVE, r#"{"workspaceId":"workspace-1"}"#)
+                .expect("old row"),
+            AfterTurnAction::Archive(ArchiveRequest {
+                workspace_id: "workspace-1".to_string(),
+                merged_pr: None,
+            })
+        );
+        let removal = AfterTurnAction::Archive(ArchiveRequest {
+            workspace_id: "workspace-1".to_string(),
+            merged_pr: Some(MergedPrRequest {
+                pr_number: 72,
+                merged_head: "abc".to_string(),
+            }),
+        });
+        let payload = removal.payload_json().expect("payload");
+        assert_eq!(
+            AfterTurnAction::from_row(ACTION_ARCHIVE, &payload).expect("new row"),
+            removal
+        );
+    }
+
     /// Both disposals end the chat, so the row is the durable half of the
     /// one-slot rule: a second insert is refused by the primary key.
     #[test]
@@ -325,6 +363,7 @@ mod tests {
             "session-1",
             &AfterTurnAction::Archive(ArchiveRequest {
                 workspace_id: "workspace-1".to_string(),
+                merged_pr: None,
             }),
         )
         .expect_err("the move already owns the slot");

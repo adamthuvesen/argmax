@@ -680,6 +680,10 @@ impl ProviderSessionService {
                     "ARCHIVE_HAS_QUEUED_MESSAGES",
                     "Send or cancel queued follow-ups before archiving this chat.",
                 ),
+                AfterTurn::RemoveCheckout => ArgmaxError::service(
+                    "ARCHIVE_HAS_QUEUED_MESSAGES",
+                    "Send or cancel queued follow-ups before removing this chat's checkout.",
+                ),
             });
         }
         Ok(())
@@ -701,6 +705,12 @@ impl ProviderSessionService {
             AfterTurn::Archive => ArgmaxError::service(
                 "ARCHIVE_ALREADY_PENDING",
                 "This chat is archiving after the current turn. New follow-ups are disabled.",
+            ),
+            // Same code as an archive: the scheduler treats both as "the chat
+            // is going away".
+            AfterTurn::RemoveCheckout => ArgmaxError::service(
+                "ARCHIVE_ALREADY_PENDING",
+                "This chat's checkout is removed after the current turn. The chat stays listed, read-only. New follow-ups are disabled.",
             ),
         })
     }
@@ -778,6 +788,7 @@ impl ProviderSessionService {
                     payload: json!({ "operation": match pending {
                         AfterTurn::Move => "session.move",
                         AfterTurn::Archive => "workspace.archive",
+                        AfterTurn::RemoveCheckout => "pr.cleanup",
                     } }),
                     created_at: None,
                 },

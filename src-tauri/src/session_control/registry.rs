@@ -74,12 +74,18 @@ impl Drop for InboxWaitGuard {
 pub enum AfterTurn {
     Move,
     Archive,
+    /// `pr_cleanup` removes the merged checkout; the chat stays listed,
+    /// read-only. Stored as an archive row with a merged PR.
+    RemoveCheckout,
 }
 
 impl AfterTurn {
     pub(super) fn of(action: &AfterTurnAction) -> Self {
         match action {
             AfterTurnAction::Move(_) => AfterTurn::Move,
+            AfterTurnAction::Archive(request) if request.merged_pr.is_some() => {
+                AfterTurn::RemoveCheckout
+            }
             AfterTurnAction::Archive(_) => AfterTurn::Archive,
         }
     }
@@ -94,6 +100,10 @@ fn already_pending(existing: AfterTurn) -> SessionControlError {
         AfterTurn::Archive => protocol_error(
             "ARCHIVE_ALREADY_PENDING",
             "An archive is already scheduled for this session.",
+        ),
+        AfterTurn::RemoveCheckout => protocol_error(
+            "ARCHIVE_ALREADY_PENDING",
+            "This chat's checkout is already being removed after this turn.",
         ),
     }
 }
@@ -626,6 +636,7 @@ mod tests {
     fn archive_action(session_id: &str) -> AfterTurnAction {
         AfterTurnAction::Archive(ArchiveRequest {
             workspace_id: format!("workspace-{session_id}"),
+            merged_pr: None,
         })
     }
 

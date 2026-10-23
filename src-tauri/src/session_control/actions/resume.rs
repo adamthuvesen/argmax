@@ -132,7 +132,10 @@ async fn resume_one(
                 workspaces,
                 session_id,
                 operation(&request.action),
-                match request.action {
+                match &request.action {
+                    AfterTurnAction::Archive(archive) if archive.merged_pr.is_some() => {
+                        "Resuming the checkout removal scheduled before Argmax last quit. The chat stays listed, read-only.".to_string()
+                    }
                     AfterTurnAction::Archive(_) => {
                         "Resuming the archive scheduled before Argmax last quit.".to_string()
                     }
@@ -190,6 +193,7 @@ fn judge(
 fn operation(action: &AfterTurnAction) -> &'static str {
     match action {
         AfterTurnAction::Move(_) => "session.move",
+        AfterTurnAction::Archive(archive) if archive.merged_pr.is_some() => "pr.cleanup",
         AfterTurnAction::Archive(_) => "workspace.archive",
     }
 }

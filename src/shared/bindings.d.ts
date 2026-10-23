@@ -2596,8 +2596,8 @@ export type PrCleanupOutcome =
 "diverged" | "failed"
 export type PrCleanupReport = { prNumber: number; branch: string; baseBranch: string; mergedHead: string; mergeCommit: string | null; remote: PrCleanupStep; base: PrCleanupStep; local: PrCleanupStep;
 /**
- * The chat's checkout, which cleanup always keeps. `None` when it is not
- * on disk, for example after the chat was archived.
+ * The chat's checkout. This function keeps it; `None` when it is not on
+ * disk, for example after it was removed or the chat was archived.
  */
 checkoutPath: string | null;
 /**

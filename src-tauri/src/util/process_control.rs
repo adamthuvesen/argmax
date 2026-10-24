@@ -376,27 +376,31 @@ struct ProcessRow {
 #[cfg(unix)]
 async fn process_table() -> std::io::Result<std::collections::HashMap<i32, ProcessRow>> {
     let stdout = scan_output("/bin/ps", &["-A", "-o", "pid=,ppid=,tty=,comm="]).await?;
-    let mut table = std::collections::HashMap::new();
-    for line in stdout.lines() {
-        // `comm` is last because it can hold spaces.
-        let mut fields = line.trim_start().splitn(4, char::is_whitespace);
-        let (Some(pid), Some(parent), Some(tty)) = (fields.next(), fields.next(), fields.next())
-        else {
-            continue;
-        };
-        let command = fields.next().unwrap_or_default();
-        if let (Ok(pid), Ok(parent)) = (pid.parse(), parent.trim().parse()) {
-            table.insert(
-                pid,
-                ProcessRow {
-                    parent,
-                    has_terminal: !matches!(tty.trim(), "??" | "?"),
-                    is_app: command.contains(".app/Contents/"),
-                },
-            );
-        }
-    }
-    Ok(table)
+    Ok(stdout.lines().filter_map(parse_ps_row).collect())
+}
+
+/// One `ps -o pid=,ppid=,tty=,comm=` line. `ps` right-aligns and pads the
+/// columns, so fields are split on runs of spaces; `comm` is the rest of the
+/// line because it can hold spaces.
+#[cfg(unix)]
+fn parse_ps_row(line: &str) -> Option<(i32, ProcessRow)> {
+    let mut rest = line.trim_start();
+    let mut field = || {
+        let (value, tail) = rest.split_once(char::is_whitespace)?;
+        rest = tail.trim_start();
+        Some(value)
+    };
+    let pid = field()?.parse().ok()?;
+    let parent = field()?.parse().ok()?;
+    let tty = field()?;
+    Some((
+        pid,
+        ProcessRow {
+            parent,
+            has_terminal: !matches!(tty, "??" | "?"),
+            is_app: rest.contains(".app/Contents/"),
+        },
+    ))
 }
 
 /// Only what Argmax left behind: no controlling terminal, and either an
@@ -627,6 +631,26 @@ pub enum TerminateOutcome {
 mod tests {
     use super::*;
     use tokio::process::Command;
+
+    /// `ps` pads its columns, so a pid and a parent of different widths are
+    /// separated by several spaces.
+    #[test]
+    fn ps_rows_parse_with_padded_columns() {
+        let (pid, row) = parse_ps_row("  333     1 ??       /usr/libexec/logd").expect("row");
+        assert_eq!(
+            (pid, row.parent, row.has_terminal, row.is_app),
+            (333, 1, false, false)
+        );
+        let (pid, row) = parse_ps_row(
+            "48211 48190 ttys003  /Applications/Visual Studio Code.app/Contents/MacOS/Electron",
+        )
+        .expect("row");
+        assert_eq!(
+            (pid, row.parent, row.has_terminal, row.is_app),
+            (48211, 48190, true, true)
+        );
+        assert!(parse_ps_row("").is_none());
+    }
 
     /// Only what Argmax left in a checkout is stopped: an orphan or a
     /// descendant of Argmax, never one with a terminal, never an unrelated

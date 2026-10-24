@@ -3315,15 +3315,56 @@ async fn merged_checkout_removal_deletes_the_worktree_and_keeps_the_chat_listed(
         }
         command.spawn().expect("spawn a process in the checkout")
     };
+    // What the removal's scan sees for this process, for the failure message.
+    let server_pid = server.id().to_string();
+    let seen_before = |program: &str, args: &[&str]| {
+        std::process::Command::new(program)
+            .args(args)
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .unwrap_or_else(|error| format!("{program} failed: {error}"))
+    };
+    let ps_row = seen_before(
+        "/bin/ps",
+        &["-o", "pid=,ppid=,tty=,comm=", "-p", &server_pid],
+    );
+    let lsof_cwd = seen_before(
+        "/usr/sbin/lsof",
+        &[
+            "-b",
+            "-S",
+            "2",
+            "-nP",
+            "-w",
+            "-a",
+            "-p",
+            &server_pid,
+            "-d",
+            "cwd",
+            "-Fpn",
+        ],
+    );
 
     let removed = service
         .remove_merged_checkout(&workspace.id, merged_head.trim())
         .await
         .expect("remove merged checkout");
 
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    let stopped = loop {
+        if server.try_wait().expect("server status").is_some() {
+            break true;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = server.kill();
+            break false;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    };
     assert!(
-        server.try_wait().expect("server status").is_some(),
-        "a process running in the checkout is stopped"
+        stopped,
+        "a process running in the checkout is stopped; test pid {}, ps: {ps_row:?}, lsof: {lsof_cwd:?}",
+        std::process::id()
     );
     assert_eq!(removed.state, "archived");
     assert!(removed.checkout_removed_at.is_some());

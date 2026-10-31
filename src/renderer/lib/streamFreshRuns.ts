@@ -16,7 +16,7 @@ import type { Element, Nodes, Parents, RootContent } from "hast";
  * `startTime` to the moment the text was revealed makes that handover invisible.
  */
 
-export const FRESH_RUN_CLASS = "stream-fresh";
+const FRESH_RUN_CLASS = "stream-fresh";
 
 /** How long a run takes to reach full ink: several runs are in flight at once,
     which reads as one soft gradient behind the writing head. */

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type JSX } from "react";
+import { systemActions } from "../data/bridgeActions.js";
 import type { IpcChannelStats, PerformanceStatus } from "../../shared/types.js";
 import { formatBytes } from "../lib/formatBytes.js";
 
@@ -59,11 +60,11 @@ export function PerfOverlay(): JSX.Element | null {
     if (!enabled) return;
     aliveRef.current = true;
     const ensureRecorder = async (): Promise<void> => {
-      const api = typeof window !== "undefined" ? window.argmax : undefined;
-      if (typeof api?.system?.performanceStatus !== "function") return;
-      const current = await api.system.performanceStatus();
-      if (!current.recording && typeof api.system.performanceStart === "function") {
-        const started = await api.system.performanceStart();
+      const system = systemActions();
+      if (typeof system?.performanceStatus !== "function") return;
+      const current = await system.performanceStatus();
+      if (!current.recording && typeof system.performanceStart === "function") {
+        const started = await system.performanceStart();
         ownedRecording.current = started.startedAt;
         if (aliveRef.current) setPerformance(started);
       } else if (aliveRef.current) {
@@ -71,19 +72,19 @@ export function PerfOverlay(): JSX.Element | null {
       }
     };
     const tick = async (): Promise<void> => {
-      const api = typeof window !== "undefined" ? window.argmax : undefined;
-      if (!api?.system?.debugSnapshot) return;
+      const system = systemActions();
+      if (!system?.debugSnapshot) return;
       try {
         // Not `system:diagnostics`: at 1 Hz its nine `COUNT(*)` scans and `ps`
         // shellout cost far more than the five numbers drawn here. The log
         // cursor is advanced and the lines dropped — the HUD only wants stats,
         // and carrying the cursor keeps each tick from re-sending the ring.
-        const snapshot = await api.system.debugSnapshot({ afterLogSeq: logCursor.current });
+        const snapshot = await system.debugSnapshot({ afterLogSeq: logCursor.current });
         if (!aliveRef.current) return;
         logCursor.current = snapshot.logs.at(-1)?.seq ?? logCursor.current;
         setStats(snapshot.ipcStats);
-        if (typeof api.system.performanceStatus === "function") {
-          setPerformance(await api.system.performanceStatus());
+        if (typeof system.performanceStatus === "function") {
+          setPerformance(await system.performanceStatus());
         }
       } catch {
         // Diagnostics IPC is non-essential for the HUD; swallow polling errors.
@@ -98,11 +99,11 @@ export function PerfOverlay(): JSX.Element | null {
       window.clearInterval(id);
       const startedAt = ownedRecording.current;
       ownedRecording.current = null;
-      const api = typeof window !== "undefined" ? window.argmax : undefined;
-      if (startedAt && typeof api?.system?.performanceStatus === "function") {
-        void api.system.performanceStatus().then((current) => {
+      const system = systemActions();
+      if (startedAt && typeof system?.performanceStatus === "function") {
+        void system.performanceStatus().then((current) => {
           if (current.recording && current.startedAt === startedAt) {
-            return api.system.performanceStop();
+            return system.performanceStop();
           }
           return undefined;
         }).catch(() => undefined);

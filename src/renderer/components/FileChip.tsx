@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { fileActions, resolveFileForOpening, systemActions } from "../data/bridgeActions.js";
 import { createPortal } from "react-dom";
 import { formatFileChipLabel } from "../lib/fileChipPath.js";
 import { useFilePreview } from "../lib/filePreview.js";
-import { resolveOpenablePath } from "../lib/openableFile.js";
 import { isExternalFilePath } from "../lib/reviewIpc.js";
 import { withToast } from "../lib/withToast.js";
 import { showToast } from "../state/toast.js";
@@ -28,13 +28,13 @@ type FileChipProps = {
 const confirmedFiles = new Set<string>();
 
 async function isFileOnDisk(path: string, workspaceId: string | null | undefined): Promise<boolean> {
-  const api = window.argmax;
-  if (!api) return false;
+  const files = fileActions();
+  if (!files) return false;
   try {
     if (isExternalFilePath(path)) {
-      await api.workspace.statExternalFile(path);
+      await files.statExternalFile(path);
     } else if (workspaceId) {
-      await api.workspace.statFile({ kind: "workspace", id: workspaceId }, path);
+      await files.statFile({ kind: "workspace", id: workspaceId }, path);
     } else {
       return false;
     }
@@ -80,12 +80,12 @@ export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: File
       onOpen(path, { line, preferIde });
       return;
     }
-    const api = window.argmax;
-    if (!api) return;
+    const system = systemActions();
+    if (!system) return;
     // `workspaces.openInIde` takes no path and would open the whole repo, so
     // hand the file itself to the system, resolved against the workspace.
     void withToast(
-      () => api.system.openPath(workspaceCwd ? { path, cwd: workspaceCwd } : { path }),
+      () => system.openPath(workspaceCwd ? { path, cwd: workspaceCwd } : { path }),
       showToast,
       "Could not open this file."
     );
@@ -123,7 +123,7 @@ export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: File
     const node = chipRef.current;
     if (!node || !workspaceId) return;
     const request = ++previewRequestRef.current;
-    const resolved = await resolveOpenablePath(window.argmax, workspaceId, path);
+    const resolved = await resolveFileForOpening(workspaceId, path);
     if (previewRequestRef.current !== request) return;
     setPreviewPath(resolved);
     setPreviewResolutionError(resolved ? null : "No single matching file in this workspace.");

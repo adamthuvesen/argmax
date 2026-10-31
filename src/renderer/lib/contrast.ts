@@ -1,3 +1,5 @@
+import { APPEARANCE_LEVEL_PATTERN } from "./appearanceLevel.js";
+
 /**
  * How firmly borders and dividers separate surfaces, a whole number from 0 to
  * 100. 50 is the line color Argmax ships and the arithmetic in
@@ -27,7 +29,7 @@ export function toContrast(raw: string | number | null | undefined): Contrast | 
   if (typeof raw === "number") {
     return Number.isInteger(raw) && raw >= CONTRAST_MIN && raw <= CONTRAST_MAX ? raw : null;
   }
-  if (typeof raw !== "string" || !/^(?:100|[1-9]?\d)$/.test(raw)) return null;
+  if (typeof raw !== "string" || !APPEARANCE_LEVEL_PATTERN.test(raw)) return null;
   return Number(raw);
 }
 

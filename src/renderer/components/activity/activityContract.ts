@@ -10,16 +10,16 @@ export type {
   ActivityCadence,
   ActivityGithubState,
   ActivityHeatmapDay,
-  ActivityPrState,
+  
   ActivityPullRequest,
   ActivityRepository,
   ActivityResolution,
   ActivityReview,
   ActivityReviewState,
-  ActivityScanPhase,
-  ActivityScanState,
+  
+  
   ActivitySeriesPoint,
-  ActivitySeriesRepository,
+  
   ActivityStreaks,
   ActivitySummary,
   ActivitySummaryInput,

@@ -9,7 +9,8 @@ import {
   Puzzle,
   RefreshCw
 } from "lucide-react";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import type { ConnectionSummary, ProviderId } from "../../shared/types.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -30,24 +31,28 @@ export function ConnectionCatalog({
   compact?: boolean;
 }): JSX.Element {
   const [load, setLoad] = useState<LoadState>({ state: "loading", rows: [] });
-  const loadConnections = useCallback(async (): Promise<void> => {
-    setLoad((current) => ({ state: "loading", rows: current.rows }));
-    try {
-      const rows = await window.argmax?.connections.list({ provider, workspaceId });
-      if (!rows) throw new Error("Connection inventory is unavailable in this preview.");
-      setLoad({ state: "ready", rows });
-    } catch (error) {
+  const { refetch, isAvailable } = useBridgeQuery({
+    key: ["connections.list", provider, workspaceId],
+    read: (api) => api.connections.list({ provider, workspaceId }),
+    onData: (rows) => setLoad({ state: "ready", rows }),
+    onError: (error) =>
       setLoad((current) => ({
         state: "error",
         rows: current.rows,
         message: error instanceof Error ? error.message : "Could not load connections."
-      }));
-    }
-  }, [provider, workspaceId]);
-
+      }))
+  });
+  const loadConnections = (): void => {
+    setLoad((current) => ({ state: "loading", rows: current.rows }));
+    void refetch();
+  };
   useEffect(() => {
-    void loadConnections();
-  }, [loadConnections]);
+    setLoad((current) =>
+      isAvailable
+        ? { state: "loading", rows: current.rows }
+        : { state: "error", rows: current.rows, message: "Connection inventory is unavailable in this preview." }
+    );
+  }, [isAvailable, provider, workspaceId]);
 
   const counts = summarize(load.rows);
   return (
@@ -73,7 +78,7 @@ export function ConnectionCatalog({
         <button
           type="button"
           className="connection-refresh"
-          onClick={() => void loadConnections()}
+          onClick={loadConnections}
           disabled={load.state === "loading"}
           aria-label={`Refresh ${PROVIDER_DISPLAY_NAMES[provider]} connections`}
           title="Refresh connections"

@@ -15,41 +15,36 @@
     <link rel="apple-touch-icon" href="./argmax-icon.png" />
     <link rel="icon" type="image/png" href="./argmax-icon.png" />
     <title>Argmax</title>
+    <!-- appearance-bootstrap:start -->
     <script>
-      // Resolve appearance before React mounts to avoid a flash on cold start —
-      // over the tailnet the module graph takes long enough that the flash is
-      // the first thing the phone shows. Mirrors index.html, lib/theme.ts,
-      // lib/accent.ts, and lib/userBubbleTint.ts; inline and dependency-free.
       (function () {
-        var root = document.documentElement;
-        try {
-          var raw = localStorage.getItem("argmax.theme.mode");
-          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "dark";
-          var resolved =
-            mode === "system"
-              ? window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light"
-              : mode;
-          root.setAttribute("data-theme", resolved);
-        } catch (e) {
-          root.setAttribute("data-theme", "dark");
-        }
-        try {
-          var accent = localStorage.getItem("argmax.accent.tint");
-          var accents = { green: 1, purple: 1, neutral: 1, orange: 1, blue: 1, coral: 1 };
-          root.setAttribute("data-accent", accents[accent] ? accent : "green");
-        } catch (e) {
-          root.setAttribute("data-accent", "green");
-        }
-        try {
-          var bubble = localStorage.getItem("argmax.chat.bubbleTint");
-          root.setAttribute("data-user-bubble", bubble === "neutral" ? "neutral" : "accent");
-        } catch (e) {
-          root.setAttribute("data-user-bubble", "accent");
-        }
+      var root = document.documentElement;
+      try {
+      var raw = localStorage.getItem("argmax.theme.mode");
+      var mode = raw === "system" || raw === "light" || raw === "dark" ? raw : "dark";
+      var resolved = mode === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+        : mode;
+      root.setAttribute("data-theme", resolved);
+      } catch (e) {
+      root.setAttribute("data-theme", "dark");
+      }
+      try {
+      var accent = localStorage.getItem("argmax.accent.tint");
+      var accents = {"green":1,"teal":1,"purple":1,"neutral":1,"black":1,"orange":1,"blue":1,"coral":1};
+      root.setAttribute("data-accent", accents[accent] ? accent : "green");
+      } catch (e) {
+      root.setAttribute("data-accent", "green");
+      }
+      try {
+      var bubble = localStorage.getItem("argmax.chat.bubbleTint");
+      root.setAttribute("data-user-bubble", bubble === "neutral" ? "neutral" : "accent");
+      } catch (e) {
+      root.setAttribute("data-user-bubble", "accent");
+      }
       })();
     </script>
+    <!-- appearance-bootstrap:end -->
     <script>
       // The mobile entry always talks to the remote WS bridge; set the flag
       // before the module graph loads so tauriBridge picks the WS transport.

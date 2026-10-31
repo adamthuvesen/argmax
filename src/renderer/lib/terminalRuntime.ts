@@ -84,7 +84,7 @@ export function syncTerminalSize(runtime: TerminalTabRuntime): void {
  * keys every shell binds, so the same fingers work here. Null leaves the key
  * to xterm.
  */
-export function macEditingKeySequence(event: KeyboardEvent): string | null {
+function macEditingKeySequence(event: KeyboardEvent): string | null {
   if (event.type !== "keydown" || event.ctrlKey || event.shiftKey || event.isComposing) return null;
   if (event.metaKey && !event.altKey) {
     if (event.key === "Backspace") return "\x15"; // ⌘⌫: kill the line (Ctrl+U)

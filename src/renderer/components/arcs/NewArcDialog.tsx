@@ -1,4 +1,6 @@
 import { Bot, Folder, TriangleAlert, X } from "lucide-react";
+import { arcActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { useEffect, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectSummary } from "../../../shared/types.js";
@@ -73,29 +75,24 @@ export function NewArcDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  useEffect(() => {
-    if (!open || !promoteSessionId || !window.argmax) return;
-    let cancelled = false;
-    setDraftState("drafting");
-    void window.argmax.arcs
-      .draftFromSession({ sessionId: promoteSessionId })
-      .then((draft) => {
-        if (cancelled) return;
-        if (draft.name === null || draft.brief === null) {
-          setDraftState("failed");
-          return;
-        }
-        if (!nameTouched.current) setName(draft.name);
-        if (!briefTouched.current) setBrief(draft.brief);
-        setDraftState("drafted");
-      })
-      .catch(() => {
-        if (!cancelled) setDraftState("failed");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, promoteSessionId]);
+  useBridgeQuery({
+    key: ["arcs.draftFromSession", promoteSessionId],
+    enabled: open && Boolean(promoteSessionId),
+    read: (api) => {
+      setDraftState("drafting");
+      return api.arcs.draftFromSession({ sessionId: promoteSessionId ?? "" });
+    },
+    onData: (draft) => {
+      if (draft.name === null || draft.brief === null) {
+        setDraftState("failed");
+        return;
+      }
+      if (!nameTouched.current) setName(draft.name);
+      if (!briefTouched.current) setBrief(draft.brief);
+      setDraftState("drafted");
+    },
+    onError: () => setDraftState("failed")
+  });
 
   useRestoreFocus(open);
 
@@ -123,10 +120,11 @@ export function NewArcDialog({
     submitting || trimmedName.length === 0 || (!promote && homeProjectId.length === 0) || briefMissing;
 
   const handlePromote = async (source: ArcPromoteSource): Promise<void> => {
-    if (!window.argmax) return;
+    const arcs = arcActions();
+    if (!arcs) return;
     setSubmitting(true);
     try {
-      await window.argmax.arcs.promote({
+      await arcs.promote({
         sessionId: source.sessionId,
         name: trimmedName,
         brief: brief.trim(),
@@ -149,14 +147,15 @@ export function NewArcDialog({
   };
 
   const handleSubmit = async (): Promise<void> => {
-    if (submitDisabled || !window.argmax) return;
+    const arcs = arcActions();
+    if (submitDisabled || !arcs) return;
     if (promote) {
       await handlePromote(promote);
       return;
     }
     setSubmitting(true);
     try {
-      const arc = await window.argmax.arcs.create({
+      const arc = await arcs.create({
         name: trimmedName,
         brief: brief.trim(),
         homeProjectId,
@@ -165,7 +164,7 @@ export function NewArcDialog({
       onClose();
       showArcPage(arc.id);
       try {
-        await window.argmax.arcs.launchCoordinator({
+        await arcs.launchCoordinator({
           arcId: arc.id,
           provider: model.provider,
           modelLabel: model.label,

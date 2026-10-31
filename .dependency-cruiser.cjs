@@ -13,7 +13,7 @@ module.exports = {
       name: "lib-imports-ui",
       severity: "error",
       comment: "lib and state hold logic with no UI. Move the UI-dependent part into a hook, or pass a value in.",
-      from: { path: "^src/renderer/(lib|state)/", pathNot: TEST },
+      from: { path: "^src/renderer/(lib|state|data)/", pathNot: TEST },
       to: { path: "^src/renderer/(components|hooks|mobile)/|^src/renderer/App" }
     },
     {

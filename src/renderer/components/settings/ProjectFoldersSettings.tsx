@@ -1,4 +1,6 @@
-import { useEffect, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
+import { projectActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { ProjectFolder, ProjectSummary } from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 import { ProjectFoldersForm, type ProjectFoldersDraft } from "../ProjectFoldersForm.js";
@@ -12,18 +14,14 @@ export function ProjectFoldersSettings({ project, onProjectUpdated }: {
   const [folders, setFolders] = useState<ProjectFolder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
-  const api = window.argmax?.projects;
+  useBridgeQuery({
+    key: ["projects.getFolders", project.id, revision],
+    read: (api) => api.projects.getFolders({ projectId: project.id }),
+    onData: (result) => { setFolders(result); setError(null); },
+    onError: (reason) => setError(validationMessage(reason))
+  });
 
-  useEffect(() => {
-    if (!api) return;
-    let active = true;
-    void api.getFolders({ projectId: project.id }).then((result) => {
-      if (active) { setFolders(result); setError(null); }
-    }).catch((reason: unknown) => {
-      if (active) setError(validationMessage(reason));
-    });
-    return () => { active = false; };
-  }, [api, project.id, revision]);
+  const api = projectActions();
 
   async function save(draft: ProjectFoldersDraft): Promise<void> {
     if (!api) return;

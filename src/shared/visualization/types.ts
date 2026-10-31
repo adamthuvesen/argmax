@@ -52,5 +52,3 @@ export type VisualizationHostMessage =
   | { type: "argmax:visualization-reset"; instanceId: string; groupId?: string }
   | { type: "argmax:visualization-original"; instanceId: string; active: boolean; groupId?: string };
 
-export const VISUALIZATION_RUNTIME_VERSION = 1;
-export const VISUALIZATION_STATE_BYTES = 16 * 1024;

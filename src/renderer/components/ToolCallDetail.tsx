@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState, type JSX, type ReactNode } from "react";
+import { systemActions } from "../data/bridgeActions.js";
 import { interpretFileChange } from "../lib/fileChange.js";
 import {
   argumentsFitFooter,
@@ -57,10 +58,10 @@ export function ToolCallDetail({
       onOpenFile(path);
       return;
     }
-    const api = window.argmax;
-    if (!api) return;
+    const system = systemActions();
+    if (!system) return;
     void withToast(
-      () => api.system.openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
+      () => system.openPath({ path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
       showToast,
       "Could not open this file."
     );

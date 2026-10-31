@@ -18,5 +18,3 @@ export interface ComposerField {
   closest(selector: string): Element | null;
 }
 
-/** Keyboard events reach the composers as the browser's own, not React's. */
-export type ComposerKeyEvent = KeyboardEvent;

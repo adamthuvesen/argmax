@@ -1,4 +1,5 @@
 import { CheckCircle2, History, X } from "lucide-react";
+import { browserActions } from "../data/bridgeActions.js";
 import { useCallback, useEffect, useId, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { ChromeProfile } from "../../shared/types.js";
@@ -16,7 +17,7 @@ interface ImportSummary {
 }
 
 export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.Element {
-  const browser = window.argmax?.browser ?? null;
+  const browser = browserActions() ?? null;
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const profileRequestRef = useRef(0);

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useState, type JSX } from "react";
+import { syncActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { errorMessage } from "../../../shared/error.js";
 import type { SyncStatus } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -21,34 +23,20 @@ const PROVIDER_LABELS: Record<(typeof PROVIDERS)[number], string> = {
  */
 export function SessionSyncSettings(): JSX.Element {
   const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async (): Promise<void> => {
-    if (!window.argmax) {
-      setLoadError("Open the Argmax desktop app to configure chat sync.");
-      return;
-    }
-    try {
-      setStatus(await window.argmax.sync.getStatus());
-      setLoadError(null);
-    } catch (error) {
-      setLoadError(errorMessage(error));
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const statusQuery = useBridgeQuery({ key: ["sync.getStatus"], read: (api) => api.sync.getStatus(), onData: setStatus });
+  const loadError = statusQuery.isAvailable ? statusQuery.error : "Open the Argmax desktop app to configure chat sync.";
 
   const save = useCallback(
     async (next: SyncStatus["config"]): Promise<void> => {
-      if (!window.argmax) return;
+      const sync = syncActions();
+      if (!sync) return;
       setBusy(true);
       setNote(null);
       try {
-        const updated = await window.argmax.sync.setConfig(next);
+        const updated = await sync.setConfig(next);
         setStatus(updated);
         if (updated.lastError) showErrorToast(updated.lastError);
         else setNote(syncSummary(updated));

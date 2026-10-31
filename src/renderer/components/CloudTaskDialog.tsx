@@ -1,4 +1,6 @@
 import { AlertCircle, Check, Copy, ExternalLink, X } from "lucide-react";
+import { cloudActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { useCallback, useEffect, useRef, useState, type JSX, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { errorMessage, errorSubCode } from "../../shared/error.js";
@@ -33,7 +35,7 @@ export function CloudTaskDialog({
   onClose: () => void;
 } & (
   | { sessionId: string; projectId?: never; projectFolderId?: never; initialBrief?: string }
-  | { sessionId?: never; projectId: string; projectFolderId?: string; initialBrief: string }
+  | { sessionId?: never; projectId: string; projectFolderId: string | undefined; initialBrief: string }
 )): JSX.Element | null {
   const [preview, setPreview] = useState<CloudHandoffPreview | null>(null);
   const [brief, setBrief] = useState("");
@@ -79,7 +81,7 @@ export function CloudTaskDialog({
       return;
     }
 
-    const request = ++requestGeneration.current;
+    ++requestGeneration.current;
     setPreview(null);
     setBrief("");
     setEnvironmentId("");
@@ -91,35 +93,34 @@ export function CloudTaskDialog({
     setLaunching(false);
     launchingRef.current = false;
 
-    if (!window.argmax?.cloud) {
+    if (!cloudActions()) {
       showErrorToast("Cloud tasks are available only in the Argmax desktop app.");
       setPreparing(false);
-      return;
     }
+  }, [open, prepareAttempt, sessionId, projectId, projectFolderId, instruction, provider]);
 
+  useBridgeQuery({
+    key: ["cloud.prepare", prepareAttempt, sessionId, projectId, projectFolderId, instruction, provider],
+    enabled: open,
     // A chat's brief comes back whole from Rust: its transcript, closed by the
     // user's instruction when they typed one. A project has no transcript, so
     // its brief is the instruction itself.
-    void window.argmax.cloud
-      .prepare(sessionId
-        ? { sessionId, provider, ...(instruction ? { instruction } : {}) }
-        : { projectId, provider, ...(projectFolderId ? { projectFolderId } : {}) })
-      .then((nextPreview) => {
-        if (requestGeneration.current !== request) return;
-        setPreview(nextPreview);
-        setBrief(nextPreview.brief.trim() ? nextPreview.brief : instruction);
-        setEnvironmentId(nextPreview.environmentId || (nextPreview.environments.length === 1
-          ? nextPreview.environments[0]?.id ?? ""
-          : ""));
-      })
-      .catch((cause: unknown) => {
-        if (requestGeneration.current !== request) return;
-        showErrorToast(errorMessage(cause) || "Couldn’t check this task’s setup.");
-      })
-      .finally(() => {
-        if (requestGeneration.current === request) setPreparing(false);
-      });
-  }, [open, prepareAttempt, sessionId, projectId, projectFolderId, instruction, provider]);
+    read: (api) => api.cloud?.prepare(sessionId
+      ? { sessionId, provider, ...(instruction ? { instruction } : {}) }
+      : { projectId, provider, ...(projectFolderId ? { projectFolderId } : {}) }),
+    onData: (nextPreview) => {
+      setPreview(nextPreview);
+      setBrief(nextPreview.brief.trim() ? nextPreview.brief : instruction);
+      setEnvironmentId(nextPreview.environmentId || (nextPreview.environments.length === 1
+        ? nextPreview.environments[0]?.id ?? ""
+        : ""));
+      setPreparing(false);
+    },
+    onError: (cause) => {
+      showErrorToast(errorMessage(cause) || "Couldn’t check this task’s setup.");
+      setPreparing(false);
+    }
+  });
 
   useEffect(() => {
     if (!open || launching) return;
@@ -132,7 +133,7 @@ export function CloudTaskDialog({
         : dialogRef.current?.querySelector<HTMLButtonElement>(".cloud-task-dialog-launch");
       target?.focus();
     }
-    else if (window.argmax?.cloud) {
+    else if (cloudActions()) {
       dialogRef.current?.querySelector<HTMLButtonElement>(".cloud-task-dialog-launch")?.focus();
     }
     else dialogRef.current?.focus();
@@ -142,14 +143,14 @@ export function CloudTaskDialog({
 
   const launch = async (): Promise<void> => {
     const trimmedBrief = brief.trim();
-    if (!preview || !trimmedBrief || !environmentId || busy || launchingRef.current || !window.argmax?.cloud) return;
+    if (!preview || !trimmedBrief || !environmentId || busy || launchingRef.current || !cloudActions()) return;
 
     const request = requestGeneration.current;
     launchingRef.current = true;
     setLaunching(true);
     setError(null);
     try {
-      const nextResult = await window.argmax.cloud.launch({
+      const nextResult = await cloudActions()!.launch({
         ...(sessionId ? { sessionId } : { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
         provider,
         repository: preview.repository,
@@ -303,7 +304,7 @@ export function CloudTaskDialog({
           <button ref={closeButtonRef} type="button" onClick={close} disabled={launching}>
             {result || deliveryUnknown ? "Close" : "Cancel"}
           </button>
-          {!preparing && !preview && window.argmax?.cloud ? (
+          {!preparing && !preview && cloudActions() ? (
             <button
               type="button"
               className="cloud-task-dialog-launch"

@@ -77,6 +77,22 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 | Run git through `git/exec.rs` | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
 | Imports point down the Rust layers | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
 | A turn ends only through `commit_turn_end` | `check:rust-boundaries` rule `turn-end-outside-owner` | 2026-11-04 |
+| Renderer imports point down: shared, lib and state, hooks, components | `dependency-cruiser` in `check:static`, with a ratchet | 2026-11-04 |
+| No secrets in staged files | `gitleaks` in `.githooks/pre-commit` | 2026-11-04 |
+| Components read with `useBridgeQuery` and write through `data/bridgeActions.ts`, never `window.argmax` | ESLint `no-restricted-properties` | 2026-11-04 |
+| An action on a project folder carries a required `ProjectTarget` | TypeScript | 2026-11-04 |
+| Do not hand-edit the appearance script in `index.html` or `mobile.html` | `check:static`, `scripts/build-appearance-bootstrap.mjs --check` | 2026-11-04 |
+| Exports and dependencies stay in use | `knip` in `check:static` | 2026-11-04 |
+
+## Agent Feedback
+
+Claude Code and Codex hooks in `scripts/agent-hooks/` give feedback at three speeds:
+
+1. After each edit: an instant check of the file, the subsystem doc to read, and the generator to run.
+2. At the end of a turn: type, lint, related tests, import rules, and `cargo check` on the files this session edited. A failure sends the agent back to fix it.
+3. At push: `precheck` runs every lane.
+
+Agents in other clients run `npm run check:changed` before they finish. To add guidance for a path, edit `scripts/agent-hooks/feedback-rules.json`.
 
 Precheck and CI run the same static gates through `npm run check:static`. See [docs/testing.md](docs/testing.md#ratchets).
 

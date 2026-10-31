@@ -54,7 +54,7 @@ export function pendingMessage(row: Wire.PendingMessage): Client.PendingMessage 
     reasoningEffort: row.reasoningEffort == null ? undefined : member(row.reasoningEffort, efforts, "pendingMessage.reasoningEffort"),
     recoveryStatus: row.recoveryStatus == null ? undefined : member(row.recoveryStatus, ["unsent", "delivery-unknown"], "pendingMessage.recoveryStatus") };
 }
-export function pendingMessages(rows: Wire.DashboardListSnapshot["pendingMessages"]): Client.DashboardSnapshot["pendingMessages"] {
+function pendingMessages(rows: Wire.DashboardListSnapshot["pendingMessages"]): Client.DashboardSnapshot["pendingMessages"] {
   return Object.fromEntries(Object.entries(rows).map(([id, messages]) => [id, messages?.map(pendingMessage) ?? []]));
 }
 export function dashboard(row: Wire.DashboardListSnapshot): Client.DashboardListSnapshot {

@@ -20,6 +20,8 @@ the result and treat dialog errors as failed actions. The plugin's injected
 | [src/shared/bindings.d.ts](../src/shared/bindings.d.ts) | Generated TypeScript types |
 | [src/shared/ipcSchemas.ts](../src/shared/ipcSchemas.ts) | Generated channel names and request/result associations |
 | [src/renderer/lib/tauriBridge.ts](../src/renderer/lib/tauriBridge.ts) | `window.argmax` implementation |
+| [src/renderer/data/useBridgeQuery.ts](../src/renderer/data/useBridgeQuery.ts) | The query hook that components read with |
+| [src/renderer/data/bridgeActions.ts](../src/renderer/data/bridgeActions.ts) | The accessors that components start writes with |
 
 ## Request Channels
 
@@ -125,6 +127,15 @@ notice. `resyncRequired` reloads metadata, pending approvals and queued messages
 then replaces subscribed histories. Desktop and mobile use the same recovery.
 Metadata invalidations are coalesced over 100 ms, while transcript reads remain
 immediate and drain revision pages before settling.
+
+## Calling a Channel from a Component
+
+Components do not touch `window.argmax`. ESLint rejects it in `src/renderer/components/**`.
+
+- A read that follows state uses [useBridgeQuery](../src/renderer/data/useBridgeQuery.ts). Pass the state in `key`. A reply lands only while its key is shown and no newer read or local write replaced it. A handler checks `query.isCurrent()` after an `await`.
+- A write, or a read that one click asks for, uses an accessor in [bridgeActions.ts](../src/renderer/data/bridgeActions.ts). An accessor returns `undefined` where the host has no such domain. List only those methods there, so a state-following read does not compile through an accessor.
+- A dashboard read does not use either. It stays on `loadDashboardSnapshot` and `dashboard:delta`, with no recurring poll.
+- Hooks in `src/renderer/hooks` and modules in `src/renderer/lib` may still call the bridge. Copy `useBridgeQuery` for a new read there.
 
 ## Adding a Channel
 

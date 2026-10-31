@@ -1,4 +1,5 @@
 import { FilePlus, FileX2, PanelRight, Pencil } from "lucide-react";
+import { systemActions } from "../data/bridgeActions.js";
 import { useMemo, type JSX } from "react";
 import type { FileChange } from "../lib/fileChange.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
@@ -29,10 +30,10 @@ export function FileChangeCard({
       onOpenFile(shortPath);
       return;
     }
-    const api = window.argmax;
-    if (!api) return;
+    const system = systemActions();
+    if (!system) return;
     void withToast(
-      () => api.system.openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
+      () => system.openPath({ path: change.path, ...(workspaceCwd ? { cwd: workspaceCwd } : {}) }),
       showToast,
       "Could not open this file."
     );

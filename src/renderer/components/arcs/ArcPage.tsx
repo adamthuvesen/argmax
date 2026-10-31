@@ -1,4 +1,6 @@
 import { Check, Clock, Copy, FolderOpen, Pencil, Trash2 } from "lucide-react";
+import { arcActions, bridgeAvailable, routineActions, systemActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type {
   ArcDetail,
@@ -163,28 +165,6 @@ export function ArcPage({
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
 
-  const loadDetail = useCallback(async (): Promise<void> => {
-    if (!window.argmax) {
-      const fallback = demoDetail(snapshotRef.current, arcId);
-      if (!fallback) {
-        setLoadError("This arc was not found.");
-        return;
-      }
-      setDetail(fallback);
-      applyRecord(fallback.arc);
-      setLoadError(null);
-      return;
-    }
-    try {
-      const next = await window.argmax.arcs.get({ id: arcId });
-      setDetail(next);
-      applyRecord(next.arc);
-      setLoadError(null);
-    } catch (error) {
-      setLoadError(errorMessage(error, "Could not load this arc."));
-    }
-  }, [arcId, applyRecord]);
-
   // Clear only when the page points at a different arc. A refetch for the same
   // arc keeps the page rendered and the drafts intact.
   useEffect(() => {
@@ -195,17 +175,36 @@ export function ArcPage({
   }, [arcId]);
 
   // summaryKey is not read by the load: it is what decides when to refetch.
+  useBridgeQuery({
+    key: ["arcs.get", arcId, summaryKey],
+    read: (api) => api.arcs.get({ id: arcId }),
+    onData: (next) => {
+      setDetail(next);
+      applyRecord(next.arc);
+      setLoadError(null);
+    },
+    onError: (error) => setLoadError(errorMessage(error, "Could not load this arc."))
+  });
   useEffect(() => {
-    void loadDetail();
-  }, [loadDetail, summaryKey]);
+    if (bridgeAvailable()) return;
+    const fallback = demoDetail(snapshotRef.current, arcId);
+    if (!fallback) {
+      setLoadError("This arc was not found.");
+      return;
+    }
+    setDetail(fallback);
+    applyRecord(fallback.arc);
+    setLoadError(null);
+  }, [arcId, applyRecord, summaryKey]);
 
-  const loadTriggers = useCallback(async (): Promise<void> => {
-    if (!window.argmax) return;
-    try {
-      const routines = await window.argmax.routines.list();
+  const { refetch: loadTriggers } = useBridgeQuery({
+    key: ["routines.list", arcId],
+    read: (api) => api.routines.list(),
+    onData: (routines) => {
       setTriggerRoutines(routines.filter((routine) => routine.arcId === arcId));
       setTriggersError(null);
-    } catch (error) {
+    },
+    onError: (error) => {
       const message = errorMessage(error, "Could not load triggers.");
       // The phone bridge does not carry scheduled tasks; that is not a failure.
       if (message.includes("only available in the desktop app")) {
@@ -214,11 +213,7 @@ export function ArcPage({
         setTriggersError(message);
       }
     }
-  }, [arcId]);
-
-  useEffect(() => {
-    void loadTriggers();
-  }, [loadTriggers]);
+  });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -243,14 +238,16 @@ export function ArcPage({
 
   const handleRemoveTrigger = useCallback(
     async (routine: Routine): Promise<void> => {
-      if (!window.argmax) return;
-      const confirmed = await window.argmax.system.confirm(
+      const routines = routineActions();
+      const system = systemActions();
+      if (!routines || !system) return;
+      const confirmed = await system.confirm(
         `Delete “${routine.name}”? Chats it already started stay in the sidebar.`
       );
       if (!confirmed) return;
       setRemovingRoutineId(routine.id);
       try {
-        await window.argmax.routines.delete(routine.id);
+        await routines.delete(routine.id);
         await loadTriggers();
       } catch (error) {
         showErrorToast(errorMessage(error, "Could not remove the trigger."));
@@ -322,10 +319,11 @@ export function ArcPage({
 
   const handleSetState = useCallback(
     async (state: ArcState): Promise<void> => {
-      if (!arc || !window.argmax) return;
+      const arcs = arcActions();
+      if (!arc || !arcs) return;
       setBusy(true);
       try {
-        applyArc(await window.argmax.arcs.setState({ id: arc.id, state }));
+        applyArc(await arcs.setState({ id: arc.id, state }));
       } catch (error) {
         showErrorToast(errorMessage(error, "Could not update the arc."));
       } finally {
@@ -337,10 +335,11 @@ export function ArcPage({
 
   const handleSetArchived = useCallback(
     async (archived: boolean): Promise<void> => {
-      if (!arc || !window.argmax) return;
+      const arcs = arcActions();
+      if (!arc || !arcs) return;
       setBusy(true);
       try {
-        applyArc(await window.argmax.arcs.setArchived({ id: arc.id, archived }));
+        applyArc(await arcs.setArchived({ id: arc.id, archived }));
       } catch (error) {
         showErrorToast(errorMessage(error, "Could not update the arc."));
       } finally {
@@ -351,7 +350,8 @@ export function ArcPage({
   );
 
   const handleSaveName = useCallback(async (): Promise<void> => {
-    if (!arc || !window.argmax) return;
+    const arcs = arcActions();
+    if (!arc || !arcs) return;
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === arc.name) {
       setNameDraft(arc.name);
@@ -360,7 +360,7 @@ export function ArcPage({
     }
     setBusy(true);
     try {
-      const updated = await window.argmax.arcs.update({ id: arc.id, name: trimmed, brief: null });
+      const updated = await arcs.update({ id: arc.id, name: trimmed, brief: null });
       applyArc(updated);
       setEditingName(false);
     } catch (error) {
@@ -373,10 +373,11 @@ export function ArcPage({
   const briefDirty = arc !== null && briefDraft !== arc.brief;
 
   const handleSaveBrief = useCallback(async (): Promise<void> => {
-    if (!arc || !window.argmax) return;
+    const arcs = arcActions();
+    if (!arc || !arcs) return;
     setBriefSaving(true);
     try {
-      applyArc(await window.argmax.arcs.update({ id: arc.id, name: null, brief: briefDraft }));
+      applyArc(await arcs.update({ id: arc.id, name: null, brief: briefDraft }));
     } catch (error) {
       showErrorToast(errorMessage(error, "Could not save the brief."));
     } finally {
@@ -386,9 +387,11 @@ export function ArcPage({
 
   const handleLaunchCoordinator = useCallback(
     async (isNew: boolean): Promise<void> => {
-      if (!arc || !window.argmax) return;
+      const arcs = arcActions();
+      const system = systemActions();
+      if (!arc || !arcs || !system) return;
       if (isNew) {
-        const confirmed = await window.argmax.system.confirm(
+        const confirmed = await system.confirm(
           "Start a new coordinator chat? The current one stays in the sidebar as history. The new chat starts fresh from BRIEF.md and NOTES.md."
         );
         if (!confirmed) return;
@@ -397,7 +400,7 @@ export function ArcPage({
       const model = resolveCoordinatorModel(coordinator, coordinatorSession);
       try {
         applyArc(
-          await window.argmax.arcs.launchCoordinator({
+          await arcs.launchCoordinator({
             arcId: arc.id,
             provider: model.provider,
             modelLabel: model.label,
@@ -659,7 +662,7 @@ export function ArcPage({
               >
                 {copyFlash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
               </button>
-              {window.argmax?.system ? (
+              {systemActions() ? (
                 <>
                   <button
                     type="button"
@@ -668,7 +671,7 @@ export function ArcPage({
                     title="Reveal in Finder"
                     onClick={() =>
                       void withToast(
-                        async () => window.argmax?.system.openPath({ path: arc.dir }),
+                        async () => systemActions()?.openPath({ path: arc.dir }),
                         showToast,
                         "Could not open the arc folder."
                       )
@@ -681,7 +684,7 @@ export function ArcPage({
                     className="settings-button"
                     onClick={() =>
                       void withToast(
-                        async () => window.argmax?.system.openPath({ path: `${arc.dir}/NOTES.md` }),
+                        async () => systemActions()?.openPath({ path: `${arc.dir}/NOTES.md` }),
                         showToast,
                         "Could not open NOTES.md."
                       )

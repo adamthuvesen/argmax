@@ -11,6 +11,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import { FileDiff, FolderTree, Globe } from "lucide-react";
+import { bridgeAvailable, browserActions, resolveFileForOpening, systemActions, workspaceActions } from "../data/bridgeActions.js";
 import type { ReviewSideChatContext } from "./ReviewSideChat.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
@@ -41,7 +42,6 @@ import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import { CHAT_PANE_MIN_WIDTH_PX } from "../lib/layoutConstants.js";
 import { useStableFilter } from "../hooks/useStableFilter.js";
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
-import { resolveOpenablePath } from "../lib/openableFile.js";
 import { showErrorToast } from "../state/toast.js";
 import { readStoredReviewPanelSide } from "../lib/reviewPanelSide.js";
 import { buildSessionToolCalls } from "../lib/sessionConversationModel.js";
@@ -575,18 +575,19 @@ export function SessionPane({
         onOpenFile(path, opts);
         return;
       }
-      if (opts?.preferIde && workspaceId && window.argmax) {
-        void window.argmax.workspaces
+      const workspaces = workspaceActions();
+      if (opts?.preferIde && workspaceId && workspaces) {
+        void workspaces
           .openInIde({ workspaceId, ide: "default" })
           .catch((error: unknown) => showErrorToast(error instanceof Error ? error.message : "Could not open the editor."));
         return;
       }
-      if (!workspaceId || !window.argmax) return;
+      if (!workspaceId || !bridgeAvailable()) return;
       // Agents reference files in chat by bare basename surprisingly often
       // (e.g. `research_journal.md`); resolving against the workspace tree
       // before opening avoids surfacing an ENOENT panel-error when the file
       // lives in a subdirectory — or doesn't exist at all.
-      void resolveOpenablePath(window.argmax, workspaceId, path).then((resolved) => {
+      void resolveFileForOpening(workspaceId, path).then((resolved) => {
         if (resolved) {
           reviewOpenInFilesView(resolved);
           return;
@@ -594,7 +595,7 @@ export function SessionPane({
         // Files outside this workspace cannot use its guarded preview. An
         // absolute path can still open in its system-associated application.
         if (path.startsWith("/")) {
-          void window.argmax?.system.openPath({ path }).catch((error: unknown) => {
+          void systemActions()?.openPath({ path }).catch((error: unknown) => {
             showErrorToast(error instanceof Error ? error.message : "Could not open the file.");
           });
           return;
@@ -649,7 +650,7 @@ export function SessionPane({
             keywords: ["diff", "review", "git status"],
             run: reviewState.toggleChangesPanel
           }]),
-      ...(window.argmax?.browser
+      ...(browserActions()
         ? [{
             id: "pane:toggle-browser",
             label: "Toggle browser panel",
@@ -751,7 +752,7 @@ export function SessionPane({
       // ⌘⇧I toggles the browser the way ⌘G toggles Files: open it in this
       // pane's panel, or close just the browser half of a split.
       if (event.shiftKey) {
-        if (key !== "i" || !window.argmax?.browser) return;
+        if (key !== "i" || !browserActions()) return;
         event.preventDefault();
         toggleBrowserPane();
         return;

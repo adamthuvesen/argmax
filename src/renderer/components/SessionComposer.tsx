@@ -49,6 +49,7 @@ import {
   type HostedCloudProvider
 } from "../../shared/cloudProviders.js";
 import { PROVIDER_DISPLAY_NAMES, successorModelId } from "../../shared/providerModels.js";
+import { goalActions, systemActions } from "../data/bridgeActions.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { selectionOfQueuedMessage } from "../lib/queuedSelection.js";
 import { canSteerQueuedMessage, hasSteeringContextHeadroom } from "../lib/queuedSteer.js";
@@ -509,7 +510,7 @@ export function SessionComposer({
         hint: "Open the worktree folder",
         icon: FolderOpen,
         run: () => {
-          void window.argmax?.system.openPath({ path: workspace.path }).catch((error: unknown) => {
+          void systemActions()?.openPath({ path: workspace.path }).catch((error: unknown) => {
             showErrorToast(error instanceof Error ? error.message : "Could not open the worktree folder.");
           });
         }
@@ -792,9 +793,9 @@ export function SessionComposer({
       shouldRefocusInput.current = true;
       try {
         if (goalCommand.kind === "clear") {
-          await window.argmax!.goals.clear({ sessionId: session.id });
+          await goalActions()!.clear({ sessionId: session.id });
         } else {
-          await window.argmax!.goals.set({
+          await goalActions()!.set({
             workspaceId: workspace.id,
             sessionId: session.id,
             condition: goalCommand.condition,

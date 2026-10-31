@@ -54,6 +54,12 @@ Shell state that several surfaces move lives in `src/renderer/state/`, not in `A
 | [workspaceDrag.ts](../src/renderer/state/workspaceDrag.ts) | The sidebar row being dragged towards the grid | Shell, sidebar |
 | [sidebarChrome.ts](../src/renderer/state/sidebarChrome.ts) | Sidebar collapse (persisted) and peek | Shell, sidebar |
 
+Components reach the bridge through one layer. [useBridgeQuery](../src/renderer/data/useBridgeQuery.ts) owns reads and drops a reply whose key changed. [bridgeActions.ts](../src/renderer/data/bridgeActions.ts) owns writes. See [ipc.md](ipc.md#calling-a-channel-from-a-component). The spike chose a local hook over TanStack Query: the library added 33,212 eager bytes and put the desktop entry 13,395 bytes over the [bundle budget](performance.md#eager-bundle).
+
+An action on a project folder carries a required [ProjectTarget](../src/renderer/lib/projectTarget.ts), so a surface cannot leave the folder out.
+
+The saved appearance is painted before any module loads by a script inlined in `index.html` and `mobile.html`. [appearanceBootstrap.ts](../src/renderer/lib/appearanceBootstrap.ts) is its source, and `npm run build:appearance-bootstrap` writes it. Do not edit it in the HTML.
+
 Snapshot and selection stay in [useDashboardSession](../src/renderer/hooks/useDashboardSession.ts); [useAppGridSelection](../src/renderer/hooks/useAppGridSelection.ts) resolves grid moves against that snapshot and writes them to `paneGrid`.
 
 Shell policy has separate owners. [useAppMenuCommands](../src/renderer/hooks/useAppMenuCommands.ts) resolves native menu commands, and [useAppDestinations](../src/renderer/hooks/useAppDestinations.ts) applies explicit sidebar and session navigation. [useProjectActions](../src/renderer/hooks/useProjectActions.ts) and [useWorkspaceActions](../src/renderer/hooks/useWorkspaceActions.ts) own catalog and workspace mutations with their selection repair. `App` supplies current selection and renders surfaces. The grid lays out cells, while `SessionPane` owns review state and approval resolution. [useSessionComposerState](../src/renderer/hooks/useSessionComposerState.ts) owns each conversation's model choice, status, and attached annotations; the transcript reads timeline events independently.

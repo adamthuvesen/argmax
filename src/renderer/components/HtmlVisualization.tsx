@@ -1,4 +1,6 @@
 import { Code2, Download, Maximize2, Minimize2, SlidersHorizontal } from "lucide-react";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
+import { visualizationActions } from "../data/bridgeActions.js";
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type { VisualizationRead } from "../../shared/types.js";
 import type { VisualizationAppearance, VisualizationControl, VisualizationControlGroup, VisualizationHostMessage } from "../../shared/visualization/types.js";
@@ -90,30 +92,36 @@ export function HtmlVisualization({ sessionId, artifactId, path, sourceEventId, 
   const savedState = useRef<VisualizationRead["state"] | null>(null);
   const savedControls = useRef<Record<string, string | number | boolean>>({});
 
+  useBridgeQuery({
+    key: ["visualization.read", sessionId, artifactId, path, sourceEventId, title, mode, retry],
+    read: (bridge) => {
+      const api = bridge.visualization;
+      if (!api) return undefined;
+      return (async () => {
+        let id = artifactId;
+        if (!id) {
+          if (!path) throw new Error("Visualization reference has no artifact or file.");
+          id = (await api.import({ sessionId, path, title, mode: mode ?? null, summary: null, sourceEventId: sourceEventId ?? null })).id;
+        }
+        return api.read({ sessionId, artifactId: id });
+      })();
+    },
+    onData: (value) => {
+      for (const [key, entry] of Object.entries(value.controlValues)) if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") savedControls.current[key] = entry;
+      setState({ kind: "ready", value });
+    },
+    onError: (error) => {
+      setState({ kind: "error", message: `Could not load visualization: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  });
+
   useEffect(() => {
-    let cancelled = false;
     setState({ kind: "loading" });
     savedState.current = null;
     savedControls.current = {};
     setGroups([]);
     setHeight(480);
-    const api = window.argmax?.visualization;
-    if (!api) { setState({ kind: "error", message: "Visualization access is unavailable." }); return; }
-    void (async () => {
-      let id = artifactId;
-      if (!id) {
-        if (!path) throw new Error("Visualization reference has no artifact or file.");
-        id = (await api.import({ sessionId, path, title, mode: mode ?? null, summary: null, sourceEventId: sourceEventId ?? null })).id;
-      }
-      const value = await api.read({ sessionId, artifactId: id });
-      if (!cancelled) {
-        for (const [key, entry] of Object.entries(value.controlValues)) if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") savedControls.current[key] = entry;
-        setState({ kind: "ready", value });
-      }
-    })().catch((error: unknown) => {
-      if (!cancelled) setState({ kind: "error", message: `Could not load visualization: ${error instanceof Error ? error.message : String(error)}` });
-    });
-    return () => { cancelled = true; };
+    if (!visualizationActions()) setState({ kind: "error", message: "Visualization access is unavailable." });
   }, [sessionId, artifactId, path, sourceEventId, title, mode, retry]);
 
   const send = (message: VisualizationHostMessage): void => iframeRef.current?.contentWindow?.postMessage(message, "*");
@@ -134,7 +142,7 @@ export function HtmlVisualization({ sessionId, artifactId, path, sourceEventId, 
         const frame = iframeRef.current.contentWindow;
         stateWrites.current = stateWrites.current.catch(() => {}).then(async () => {
           try {
-            const api = window.argmax?.visualization;
+            const api = visualizationActions();
             if (!api) throw new Error("Visualization state storage is unavailable.");
             await api.setState({ sessionId, artifactId: id, state: message.state });
             frame.postMessage({ type: "argmax:visualization-ack", instanceId: id, requestId: message.requestId }, "*");
@@ -191,7 +199,7 @@ export function HtmlVisualization({ sessionId, artifactId, path, sourceEventId, 
     const id = state.value.artifact.id;
     const values = { ...savedControls.current };
     stateWrites.current = stateWrites.current.catch(() => {}).then(async () => {
-      const api = window.argmax?.visualization;
+      const api = visualizationActions();
       if (!api) throw new Error("Visualization design storage is unavailable.");
       await api.setControls({ sessionId, artifactId: id, controlValues: values });
     }).catch(error => setActionError(`Could not save design controls: ${String(error)}`));
@@ -212,7 +220,7 @@ export function HtmlVisualization({ sessionId, artifactId, path, sourceEventId, 
         link.download = `${state.value.artifact.title.replace(/[^\p{L}\p{N}_.-]+/gu, "-")}.${state.value.source.slice(11, state.value.source.indexOf(";"))}`;
         link.click();
       } else {
-        const api = window.argmax?.visualization;
+        const api = visualizationActions();
         if (!api) throw new Error("Visualization export is unavailable.");
         await stateWrites.current;
         download(await api.export({ sessionId, artifactId: state.value.artifact.id }), state.value.artifact.title);

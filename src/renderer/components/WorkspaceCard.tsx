@@ -12,6 +12,7 @@ import {
   X
 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type JSX, type MouseEvent, type ReactNode } from "react";
+import { prActions } from "../data/bridgeActions.js";
 import { errorMessage } from "../../shared/error.js";
 import type { AsyncState } from "../hooks/useReviewState.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
@@ -115,20 +116,22 @@ export function WorkspaceCard({
   }, [session?.id, workspace.kind, workspace.branch]);
 
   const setPrimaryPr = (prNumber: number | null): void => {
-    if (!session || !window.argmax?.prs?.setPrimary) return;
+    const prs = prActions();
+    if (!session || !prs?.setPrimary) return;
     setIsPrPending(true);
     setStatus(null);
-    void window.argmax.prs
+    void prs
       .setPrimary({ sessionId: session.id, prNumber })
       .catch((error: unknown) => showErrorToast(errorMessage(error)))
       .finally(() => setIsPrPending(false));
   };
 
   const dismissPr = (prNumber: number): void => {
-    if (!session || !window.argmax?.prs?.dismiss) return;
+    const prs = prActions();
+    if (!session || !prs?.dismiss) return;
     setIsPrPending(true);
     setStatus(null);
-    void window.argmax.prs
+    void prs
       .dismiss({ sessionId: session.id, prNumber })
       .catch((error: unknown) => showErrorToast(errorMessage(error)))
       .finally(() => setIsPrPending(false));
@@ -136,10 +139,11 @@ export function WorkspaceCard({
 
   // Never archives the chat; the report says what was kept.
   const cleanupPr = (prNumber: number): void => {
-    if (!session || !window.argmax?.prs?.cleanup) return;
+    const prs = prActions();
+    if (!session || !prs?.cleanup) return;
     setIsPrPending(true);
     setStatus(null);
-    void window.argmax.prs
+    void prs
       .cleanup({ sessionId: session.id, prNumber })
       .then((report) => showInfoToast(report.text))
       .catch((error: unknown) => showErrorToast(errorMessage(error)))

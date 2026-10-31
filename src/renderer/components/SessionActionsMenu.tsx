@@ -12,6 +12,8 @@ import {
   Workflow
 } from "lucide-react";
 import { useCallback, useContext, useEffect, useState, type JSX } from "react";
+import { prActions, windowActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { createPortal } from "react-dom";
 import type { DetectedIde, IdeId, SessionSummary, WorkspaceSummary } from "../../shared/types.js";
 import { cloudProviderName, isHostedCloudProvider } from "../../shared/cloudProviders.js";
@@ -79,20 +81,17 @@ export function SessionActionsMenu({
 
   useDismissOnOutsideOrEscape(menu.anchorRef, actionsOpen, closeActions, menu.popoverRef);
 
+  const sessionId = session?.id;
+  useBridgeQuery({
+    key: ["prs.listForSession", sessionId],
+    enabled: sessionId !== undefined,
+    read: (api) => api.prs?.listForSession({ sessionId: sessionId ?? "" }),
+    onError: (error) => showErrorToast(error instanceof Error ? error.message : "Could not load pull requests.")
+  });
   useEffect(() => {
-    if (!session?.id || !window.argmax?.prs) return;
-    let cancelled = false;
-    void window.argmax.prs
-      .listForSession({ sessionId: session.id })
-      .catch((error) => {
-        if (cancelled) return;
-        showErrorToast(error instanceof Error ? error.message : "Could not load pull requests.");
-      });
-    void refreshSessionPrs(session.id)?.catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.id]);
+    if (!sessionId || !prActions()) return;
+    void refreshSessionPrs(sessionId)?.catch(() => undefined);
+  }, [sessionId]);
 
   // One item for the pinned default when detected. Without one, listing every
   // GUI IDE *is* the "Ask each time" setting — guessing a favorite here would
@@ -104,7 +103,7 @@ export function SessionActionsMenu({
   // Tearing off is a desktop gesture from the main window: the phone has no
   // windows, and a window already torn off would only focus itself.
   const canOpenInWindow =
-    typeof window !== "undefined" && window.argmax?.windows !== undefined && !isSecondaryWindow();
+    typeof window !== "undefined" && windowActions() !== undefined && !isSecondaryWindow();
 
   return (
     <>
@@ -244,7 +243,7 @@ export function SessionActionsMenu({
                         title="Show this chat in a desktop window of its own"
                         onClick={() => {
                           closeActions();
-                          void window.argmax?.windows.openSession({ sessionId: session.id }).catch((error: unknown) => {
+                          void windowActions()?.openSession({ sessionId: session.id }).catch((error: unknown) => {
                             showErrorToast(error instanceof Error ? error.message : "Couldn't open a new window.");
                           });
                         }}

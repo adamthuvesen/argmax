@@ -1,4 +1,5 @@
 import { usePrMilestone } from "../hooks/usePrMilestone.js";
+import { arcActions, questionActions } from "../data/bridgeActions.js";
 import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import { TurnExhale } from "./TurnExhale.js";
 import { showErrorToast } from "../state/toast.js";
@@ -1405,7 +1406,7 @@ export function SessionConversation({
       setStatus(null);
       shouldRefocusInput.current = true;
       if (blockingQuestionRequest) {
-        const resolveQuestion = window.argmax?.questions.resolve;
+        const resolveQuestion = questionActions()?.resolve;
         if (!resolveQuestion) {
           return false;
         }
@@ -1438,7 +1439,7 @@ export function SessionConversation({
       setDismissedQuestionId(liveQuestion.tool.id);
       return true;
     }
-    const resolveQuestion = window.argmax?.questions.resolve;
+    const resolveQuestion = questionActions()?.resolve;
     if (!resolveQuestion) {
       return false;
     }
@@ -1524,7 +1525,7 @@ export function SessionConversation({
                   : undefined
               }
               onStartArc={
-                session && !session.arcId && !session.imported && window.argmax?.arcs
+                session && !session.arcId && !session.imported && arcActions()
                   ? {
                       run: () => showPromoteArcDialog(session.id),
                       disabledReason: ["created", "running", "blocked"].includes(session.state)

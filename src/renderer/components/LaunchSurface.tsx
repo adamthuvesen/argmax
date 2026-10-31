@@ -27,6 +27,8 @@ import {
   type JSX
 } from "react";
 import { createPortal } from "react-dom";
+import { browserActions, projectActions, providerActions, workspaceActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import {
   SCRATCH_PROJECT_ID,
   type AgentMode,
@@ -73,6 +75,7 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import { useFileAutocomplete } from "../hooks/useFileAutocomplete.js";
 import { NO_PROJECT_CHECK, useProjectCheck } from "../hooks/useProjectCheck.js";
 import { useProjectCheckoutTerminal } from "../hooks/useProjectCheckoutTerminal.js";
+import { projectFileSource, type ProjectTarget } from "../lib/projectTarget.js";
 import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import {
   PICKER_MENU_EDGE_PADDING_PX,
@@ -223,14 +226,14 @@ export function LaunchSurface({
     model: ModelPickerSelection,
     agentMode: AgentMode,
     workspaceMode: WorkspaceMode,
-    attachments?: ComposerAttachment[],
-    goalCondition?: string,
-    projectId?: string,
+    attachments: ComposerAttachment[] | undefined,
+    goalCondition: string | undefined,
+    projectId: string | undefined,
     /** Start the chat without moving to it. */
-    background?: boolean,
+    background: boolean | undefined,
     /** The branch picked in the launcher. Nothing is checked out until this launch runs. */
-    checkout?: LaunchCheckout,
-    projectFolderId?: string
+    checkout: LaunchCheckout | undefined,
+    projectFolderId: string | undefined
   ) => Promise<LaunchedChat | void>;
   onLaunchSideChat?: (
     prompt: string,
@@ -257,7 +260,7 @@ export function LaunchSurface({
   onCheckoutWorkspaceCreated?: (workspace: WorkspaceSummary) => void;
   /** The focused launcher's hand-picked secondary folder, or null, so the
    *  app-wide terminal toggle opens that folder's checkout. */
-  onLaunchFolderChange?: (folder: { project: ProjectSummary; projectFolderId: string } | null) => void;
+  onLaunchFolderChange?: (folder: ProjectTarget | null) => void;
 }): JSX.Element {
   const isFocusedRef = useRef(isFocused);
   isFocusedRef.current = isFocused;
@@ -276,7 +279,7 @@ export function LaunchSurface({
   }, [chatMode, model.autoTier, model.provider]);
   const [cloudDraft, setCloudDraft] = useState<{
     projectId: string;
-    projectFolderId?: string;
+    projectFolderId: string | undefined;
     provider: HostedCloudProvider;
     brief: string;
   } | null>(null);
@@ -411,9 +414,13 @@ export function LaunchSurface({
   // the user inspect and edit files before starting a session. Cmd/Ctrl+B
   // toggles it (same shortcut as inside a session); no menu icon today, just
   // the keyboard shortcut.
-  const reviewSource = useMemo<ReviewSource | null>(
-    () => (activeProject ? { kind: "project", project: activeProject, projectFolderId: selectedFolderId } : null),
+  const launchTarget = useMemo<ProjectTarget | null>(
+    () => (activeProject ? { project: activeProject, projectFolderId: selectedFolderId ?? null } : null),
     [activeProject, selectedFolderId]
+  );
+  const reviewSource = useMemo<ReviewSource | null>(
+    () => (launchTarget ? { kind: "project", ...launchTarget } : null),
+    [launchTarget]
   );
   const onWorkspaceCreated = useCallback(
     (workspace: WorkspaceSummary): void => {
@@ -429,10 +436,9 @@ export function LaunchSurface({
     return () => onLaunchFolderChange(null);
   }, [activeProject, isFocused, onLaunchFolderChange, selectedFolderId, selectedFolderIsPrimary]);
   const { terminalWorkspaceId, ensureCheckoutWorkspace } = useProjectCheckoutTerminal(
-    activeProject,
+    launchTarget,
     workspaces,
-    onWorkspaceCreated,
-    selectedFolderId
+    onWorkspaceCreated
   );
   const reviewState = useReviewState(reviewSource, {
     claimsBrowserRequests,
@@ -495,7 +501,7 @@ export function LaunchSurface({
       return () => registerPaletteFileContext(null);
     }
     registerPaletteFileContext({
-      source: selectedFolderId ? { kind: "projectFolder", id: selectedFolderId } : { kind: "project", id: activeProject.id },
+      source: projectFileSource({ project: activeProject, projectFolderId: selectedFolderId ?? null }),
       onPick: reviewOpenInFilesView,
       readLive: readPaletteLive
     });
@@ -570,7 +576,7 @@ export function LaunchSurface({
         setProjectPickerOpen((open) => !open);
         return;
       }
-      if (key === "i" && window.argmax?.browser) {
+      if (key === "i" && browserActions()) {
         event.preventDefault();
         if (reviewIsPanelOpen && reviewModes.includes("browser")) {
           reviewClosePane(reviewModes[0] === "browser" ? 0 : 1);
@@ -705,53 +711,55 @@ export function LaunchSurface({
   // A checkout other than the project's own: the chat runs there, not in the
   // project root the Files, Changes and Terminal panels show.
   const runsInLinkedCheckout = workspaceMode !== "worktree" && checkout?.path != null && !checkout.isMain;
-  useEffect(() => {
-    if (!window.argmax || !projectId || !canUseGit) return undefined;
-    let cancelled = false;
-    void window.argmax.projects
-      .refreshBranch(projectId, selectedFolderId)
-      .then(async (updated) => {
-        if (cancelled) return;
-        // A secondary folder's refresh answers with the primary's summary, so
-        // its branch is only known from the folder context.
-        if (selectedFolderIsPrimary === false) {
-          const context = await window.argmax!.projects.getFolderContext({ projectId, projectFolderId: selectedFolderId });
-          if (!cancelled && context.project.currentBranch !== knownBranch) updateLaunchProject(context.project);
-        } else if (updated.currentBranch !== knownBranch) onBranchSwitch(updated);
-      })
-      .catch(() => {
-        // Best-effort refresh; a transient git failure leaves the persisted
-        // branch in place rather than surfacing an error on the launcher.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId, knownBranch, onBranchSwitch, selectedFolderId, canUseGit, updateLaunchProject, selectedFolderIsPrimary]);
+  // Best-effort refresh; a transient git failure leaves the persisted branch in
+  // place rather than surfacing an error on the launcher.
+  useBridgeQuery({
+    key: ["projects.refreshBranch", projectId, selectedFolderId, knownBranch, selectedFolderIsPrimary],
+    enabled: Boolean(projectId) && canUseGit,
+    read: async (api) => {
+      const id = projectId ?? "";
+      const updated = await api.projects.refreshBranch(id, selectedFolderId);
+      // A secondary folder's refresh answers with the primary's summary, so its
+      // branch is only known from the folder context.
+      if (selectedFolderIsPrimary !== false) return { project: updated, secondary: false };
+      const context = await api.projects.getFolderContext({ projectId: id, projectFolderId: selectedFolderId });
+      return { project: context.project, secondary: true };
+    },
+    onData: ({ project, secondary }) => {
+      if (project.currentBranch === knownBranch) return;
+      if (secondary) updateLaunchProject(project);
+      else onBranchSwitch(project);
+    }
+  });
 
-  const branchRequestKey = `${projectId ?? ""}:${selectedFolderId ?? ""}`;
-  const branchRequestKeyRef = useRef(branchRequestKey);
-  branchRequestKeyRef.current = branchRequestKey;
-  const openBranchPicker = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !activeProject || !canUseGit) return;
-    const requestKey = branchRequestKey;
-    setFolderPickerOpen(false);
-    setProjectPickerOpen(false);
-    setStatus(null);
-    try {
-      const [list, checkoutList] = await Promise.all([
-        (selectedFolderId ? window.argmax.projects.listBranches(activeProject.id, selectedFolderId) : window.argmax.projects.listBranches(activeProject.id)),
-        (selectedFolderId ? window.argmax.projects.listCheckouts(activeProject.id, selectedFolderId) : window.argmax.projects.listCheckouts(activeProject.id))
+  const branchPickerOptions = useBridgeQuery({
+    key: ["projects.listBranches", projectId, selectedFolderId],
+    enabled: false,
+    read: (api) => {
+      if (!activeProject) return undefined;
+      return Promise.all([
+        (selectedFolderId ? api.projects.listBranches(activeProject.id, selectedFolderId) : api.projects.listBranches(activeProject.id)),
+        (selectedFolderId ? api.projects.listCheckouts(activeProject.id, selectedFolderId) : api.projects.listCheckouts(activeProject.id))
       ]);
-      if (branchRequestKeyRef.current !== requestKey) return;
+    },
+    onData: ([list, checkoutList]) => {
       setBranches(list);
       setCheckouts(checkoutList);
       setBranchPickerOpen(true);
-    } catch (error) {
-      if (branchRequestKeyRef.current !== requestKey) return;
+    },
+    onError: (error) => {
       setBranchPickerOpen(false);
       showErrorToast(errorMessage(error) || "Could not load branches.");
     }
-  }, [activeProject, canUseGit, selectedFolderId, branchRequestKey]);
+  });
+  const { refetch: refetchBranchPickerOptions } = branchPickerOptions;
+  const openBranchPicker = useCallback(async (): Promise<void> => {
+    if (!activeProject || !canUseGit) return;
+    setFolderPickerOpen(false);
+    setProjectPickerOpen(false);
+    setStatus(null);
+    await refetchBranchPickerOptions();
+  }, [activeProject, canUseGit, refetchBranchPickerOptions]);
 
   // Picking a branch changes nothing on disk. It is held in the launcher and
   // sent with the launch, which decides what to do with it: run in the checkout
@@ -1015,7 +1023,7 @@ export function LaunchSurface({
     input: cloudMode ? "" : prompt,
     setInput: setPrompt,
     inputRef: promptInputRef,
-    source: activeProject && !cloudMode ? (selectedFolderId ? { kind: "projectFolder", id: selectedFolderId } : { kind: "project", id: activeProject.id }) : null,
+    source: launchTarget && !cloudMode ? projectFileSource(launchTarget) : null,
     chats: cloudMode ? undefined : chatDirectory
   });
   const chatChips = useMemo(
@@ -1292,8 +1300,8 @@ export function LaunchSurface({
     sessionId: string | null
   ): void => {
     if (!check.checkId) return;
-    void window.argmax?.projects
-      .resolveCheck({ checkId: check.checkId, outcome, sessionId })
+    void projectActions()
+      ?.resolveCheck({ checkId: check.checkId, outcome, sessionId })
       .catch(() => undefined);
   };
 
@@ -1911,12 +1919,13 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
 }
 
 async function undoSwitch(launched: LaunchedChat, relaunch: () => Promise<unknown>): Promise<void> {
-  const api = window.argmax;
-  if (!api) return;
+  const providers = providerActions();
+  const workspaces = workspaceActions();
+  if (!providers || !workspaces) return;
   try {
     // A chat that already finished has nothing to stop.
-    await api.providers.terminate(launched.sessionId).catch(() => undefined);
-    await api.workspaces.archive({ workspaceId: launched.workspaceId, force: true });
+    await providers.terminate(launched.sessionId).catch(() => undefined);
+    await workspaces.archive({ workspaceId: launched.workspaceId, force: true });
     await relaunch();
   } catch (error) {
     showErrorToast(errorMessage(error) || "Could not move the chat back.");

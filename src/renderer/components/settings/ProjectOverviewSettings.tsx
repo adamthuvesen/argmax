@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type JSX } from "react";
+import { projectActions } from "../../data/bridgeActions.js";
 import type { ProjectFolder, ProjectOverviewDocument, ProjectSummary } from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -19,7 +20,7 @@ export function ProjectOverviewSettings({ project, folders, onProjectUpdated }: 
   const dirty = editor.text !== editor.baseText;
   const conflict = dirty && editor.baseText !== savedText;
   const generating = overview?.status === "generating";
-  const api = window.argmax?.projects;
+  const api = projectActions();
 
   useEffect(() => {
     setEditor((current) => {

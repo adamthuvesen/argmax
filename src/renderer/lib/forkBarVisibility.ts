@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
  * `SessionConversation`, and one subscription in `ForkBar` beats threading a
  * prop through every pane and grid that renders a conversation.
  */
-export const FORK_BAR_VISIBLE_STORAGE_KEY = "argmax.forkBar.visible";
+const FORK_BAR_VISIBLE_STORAGE_KEY = "argmax.forkBar.visible";
 
 /** On: hidden, a fork has no other way back to its source. */
 const DEFAULT_FORK_BAR_VISIBLE = true;

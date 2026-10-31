@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type JSX } from "react";
+import { windowSnapshotActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { WindowSnapshotStatus } from "../../../shared/types.js";
 import { displayChord, recordChord } from "../../lib/windowSnapshotChord.js";
 import { isRemoteBridge } from "../../lib/tauriBridge.js";
@@ -16,23 +18,18 @@ function message(error: unknown): string {
  */
 export function WindowSnapshotSettings(): JSX.Element | null {
   // The remote browser has no chord to set and the channels are desktop-only.
-  const api = isRemoteBridge() ? undefined : window.argmax?.windowSnapshot;
+  const api = isRemoteBridge() ? undefined : windowSnapshotActions();
   const [status, setStatus] = useState<WindowSnapshotStatus | null>(null);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void api?.status().then(
-      (next) => {
-        if (!cancelled) setStatus(next);
-      },
-      (error: unknown) => showErrorToast(message(error))
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
+  useBridgeQuery({
+    key: ["windowSnapshot.status"],
+    enabled: api !== undefined,
+    read: (bridge) => bridge.windowSnapshot.status(),
+    onData: setStatus,
+    onError: (error) => showErrorToast(message(error))
+  });
 
   const configure = useCallback(
     async (enabled: boolean, chord: string): Promise<void> => {

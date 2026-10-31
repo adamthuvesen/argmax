@@ -1,4 +1,5 @@
 import { useState, type JSX } from "react";
+import { checkpointActions } from "../data/bridgeActions.js";
 import { Undo2 } from "lucide-react";
 import type { RewindPreview } from "../../shared/types.js";
 import { showErrorToast } from "../state/toast.js";
@@ -63,7 +64,7 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
             showErrorToast("No checkpoint was saved before this turn.");
             return;
           }
-          setPreview(await window.argmax!.checkpoints.previewRewind({ workspaceId, checkpointId }));
+          setPreview(await checkpointActions()!.previewRewind({ workspaceId, checkpointId }));
         })}
       >
         <Undo2 size={13} aria-hidden />
@@ -85,7 +86,7 @@ export function TurnRevert({ workspaceId, checkpointId, unavailableReason, disab
                 className="turn-revert-button turn-revert-button-commit"
                 disabled={pending}
                 onClick={() => void run(async () => {
-                  await window.argmax!.checkpoints.rewindFiles({
+                  await checkpointActions()!.rewindFiles({
                     workspaceId,
                     checkpointId: preview.checkpoint.id,
                     expectedFingerprint: preview.currentFingerprint

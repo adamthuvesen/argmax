@@ -9,7 +9,7 @@
  * A per-device convenience in localStorage, like the other recency lists.
  */
 
-export const PALETTE_USAGE_KEY = "argmax.palette.usage";
+const PALETTE_USAGE_KEY = "argmax.palette.usage";
 
 const HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 300;

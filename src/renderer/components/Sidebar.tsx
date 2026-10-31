@@ -33,6 +33,7 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import { createPortal } from "react-dom";
+import { browserActions, warmLedgerPrefetch } from "../data/bridgeActions.js";
 import type { DashboardSnapshot, DetectedIde, IdeId, ProjectSummary } from "../../shared/types.js";
 import { SCRATCH_PROJECT_ID } from "../../shared/types.js";
 import { APP_VERSION } from "../../shared/appVersion.js";
@@ -96,7 +97,6 @@ import {
 import { computePriorityEntries, workingWorkspaceIds } from "../lib/priority.js";
 import { computeSnoozeShelf, snoozeTimerDelay } from "../lib/snooze.js";
 import { formatSessionIds } from "../lib/sessionIds.js";
-import { warmLedgerPagesOnIntent } from "../lib/ledgerPrefetch.js";
 import { useUnreadWorkspaceIds } from "../lib/sessionUnread.js";
 import { chatSessionByWorkspace } from "../lib/workspaceChat.js";
 import { IdentityPlans } from "./IdentityPlans.js";
@@ -339,8 +339,8 @@ export function Sidebar({
   );
   const canDragWorkspaceToGrid = snapshot.sessions.length > 0;
   const warmLedgerPages = useCallback((): void => {
-    if (loadState !== "ready" || typeof window === "undefined" || !window.argmax) return;
-    warmLedgerPagesOnIntent(window.argmax);
+    if (loadState !== "ready" || typeof window === "undefined") return;
+    warmLedgerPrefetch();
   }, [loadState]);
   // Per-launch behavior: every project starts collapsed so no sessions are
   // visible on app start. After the first non-empty snapshot, we set a
@@ -1588,7 +1588,7 @@ export function Sidebar({
           </span>
           <span className="rail-nav-label">Hacking</span>
         </button>
-        {onOpenBrowser && typeof window !== "undefined" && window.argmax?.browser ? (
+        {onOpenBrowser && typeof window !== "undefined" && browserActions() ? (
           <button
             className="rail-nav-item"
             type="button"
@@ -1603,7 +1603,7 @@ export function Sidebar({
             <span className="rail-nav-label">Browser</span>
           </button>
         ) : null}
-        {onOpenClaudeArtifacts && typeof window !== "undefined" && window.argmax?.browser ? (
+        {onOpenClaudeArtifacts && typeof window !== "undefined" && browserActions() ? (
           <button className="rail-nav-item" type="button" title="Claude artifacts" aria-label="Artifacts" onClick={onOpenClaudeArtifacts}>
             <span className="rail-nav-glyph" aria-hidden="true"><Shapes size={14} /></span>
             <span className="rail-nav-label">Artifacts</span>

@@ -19,14 +19,14 @@ import type { AttentionState, ProviderId, ReasoningEffort, SessionState } from "
 import { isDeepLinkSessionId } from "./deepLink.js";
 
 /** `.impact(.light)` on send, `.notification(…)` for the other two. */
-export type NativeHapticKind = "light" | "success" | "warning";
+type NativeHapticKind = "light" | "success" | "warning";
 
 /** A queued follow-up, trimmed to what the native composer's compact stack
  *  draws: the text, the id its actions act on, and whether Steer is one of
  *  them — that rule reads the session and the row together
  *  (`canSteerQueuedMessage`), which the shell cannot do from this message
  *  alone. */
-export interface NativeQueuedMessage {
+interface NativeQueuedMessage {
   id: string;
   text: string;
   canSteer: boolean;

@@ -18,7 +18,8 @@ import {
   UserPlus,
   type LucideIcon
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { ArcTimelineCursor, ArcTimelineEvent } from "../../../shared/types.js";
 import {
   ARC_TIMELINE_FILTERS,
@@ -76,55 +77,40 @@ export function ArcTimeline({
 }): JSX.Element {
   const [events, setEvents] = useState<ArcTimelineEvent[] | null>(null);
   const [cursor, setCursor] = useState<ArcTimelineCursor | null>(null);
-  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<ArcTimelineFilter>("all");
   const loadedCount = useRef(0);
   // Bumped by an arc switch and by every refresh, so an earlier-page load that
   // started under the old arc or window cannot append into the new one.
-  const requestGeneration = useRef(0);
 
   useEffect(() => {
-    requestGeneration.current += 1;
     loadedCount.current = 0;
     setEvents(null);
     setCursor(null);
     setFilter("all");
   }, [arcId]);
 
+  const { isAvailable } = useBridgeQuery({
+    key: ["arcs.timeline", arcId, refreshKey],
+    read: (api) => api.arcs.timeline({ arcId, before: null, limit: Math.max(PAGE_SIZE, loadedCount.current) }),
+    onData: (page) => {
+      loadedCount.current = page.events.length;
+      setEvents(page.events);
+      setCursor(page.nextCursor);
+      setError(null);
+    },
+    onError: (cause) => setError(cause instanceof Error ? cause.message : "Could not load the timeline.")
+  });
   useEffect(() => {
-    if (!window.argmax) {
-      setEvents([]);
-      return;
-    }
-    requestGeneration.current += 1;
-    // An earlier-page load from the old generation no longer owns the button.
-    setLoadingEarlier(false);
-    let cancelled = false;
-    void window.argmax.arcs
-      .timeline({ arcId, before: null, limit: Math.max(PAGE_SIZE, loadedCount.current) })
-      .then((page) => {
-        if (cancelled) return;
-        loadedCount.current = page.events.length;
-        setEvents(page.events);
-        setCursor(page.nextCursor);
-        setError(null);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load the timeline.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [arcId, refreshKey]);
+    if (!isAvailable) setEvents([]);
+  }, [arcId, refreshKey, isAvailable]);
 
-  const loadEarlier = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !cursor) return;
-    const generation = requestGeneration.current;
-    setLoadingEarlier(true);
-    try {
-      const page = await window.argmax.arcs.timeline({ arcId, before: cursor, limit: PAGE_SIZE });
-      if (generation !== requestGeneration.current) return;
+  // A reload of the first page owns the list, so it drops an earlier page still in flight.
+  const earlierPage = useBridgeQuery({
+    key: ["arcs.timeline.earlier", arcId, refreshKey],
+    enabled: false,
+    read: (api) => api.arcs.timeline({ arcId, before: cursor, limit: PAGE_SIZE }),
+    onData: (page) => {
       setEvents((current) => {
         const next = [...(current ?? []), ...page.events];
         loadedCount.current = next.length;
@@ -132,13 +118,13 @@ export function ArcTimeline({
       });
       setCursor(page.nextCursor);
       setError(null);
-    } catch (cause) {
-      if (generation !== requestGeneration.current) return;
-      showErrorToast(cause instanceof Error ? cause.message : "Could not load earlier events.");
-    } finally {
-      if (generation === requestGeneration.current) setLoadingEarlier(false);
-    }
-  }, [arcId, cursor]);
+    },
+    onError: (cause) => showErrorToast(cause instanceof Error ? cause.message : "Could not load earlier events.")
+  });
+  const loadingEarlier = earlierPage.isLoading;
+  const loadEarlier = (): void => {
+    if (cursor) void earlierPage.refetch();
+  };
 
   const shown = useMemo(
     () => (events ?? []).filter((event) => matchesArcTimelineFilter(event, filter)),

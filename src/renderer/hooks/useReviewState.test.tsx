@@ -10,7 +10,7 @@ function workspaceSource(workspace: WorkspaceSummary): ReviewSource {
 }
 
 function projectSource(project: ProjectSummary): ReviewSource {
-  return { kind: "project", project };
+  return { kind: "project", project, projectFolderId: null };
 }
 
 function makeWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {

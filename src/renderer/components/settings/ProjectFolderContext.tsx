@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from "react";
+import { linkedRepoActions } from "../../data/bridgeActions.js";
 import type { LinkedRepo, ProjectFolder } from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 import { showErrorToast } from "../../state/toast.js";
@@ -12,7 +13,7 @@ export function ProjectFolderContext({ folder }: { folder: ProjectFolder }): JSX
   const [busy, setBusy] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const mounted = useRef(true);
-  const api = window.argmax?.linkedRepos;
+  const api = linkedRepoActions();
 
   async function observeSummary(request: Promise<LinkedRepo>): Promise<void> {
     setBusy(true);

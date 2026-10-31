@@ -20,6 +20,7 @@ export default tseslint.config(
       ".claude/**",
       ".argmax/worktrees/**",
       "eslint.config.js",
+      ".dependency-cruiser.cjs",
       "scripts/*.cjs",
       "scripts/**/*.mjs",
       // Project verification helpers use plain Node, like scripts/.
@@ -76,6 +77,25 @@ export default tseslint.config(
           object: "crypto",
           property: "randomUUID",
           message: "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+        }
+      ]
+    }
+  },
+  {
+    files: ["src/renderer/components/**/*.ts", "src/renderer/components/**/*.tsx"],
+    ignores: ["src/renderer/components/**/*.test.ts", "src/renderer/components/**/*.test.tsx"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "crypto",
+          property: "randomUUID",
+          message: "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+        },
+        {
+          object: "window",
+          property: "argmax",
+          message: "Components do not call the bridge. Read with useBridgeQuery from data/useBridgeQuery.js, which drops stale replies. Start a write from data/bridgeActions.js."
         }
       ]
     }

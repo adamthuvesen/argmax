@@ -31,15 +31,8 @@ function fixture() {
   const files = ["src/café.ts", "vite.config.ts", ".github/workflows/ci.yml"];
   for (const name of files) writeFileSync(path.join(repository, name), "initial\n");
   for (const name of [
-    "check-tauri-bridge.mjs",
-    "check-docs.mjs",
-    "check-architecture.mjs",
-    "export-remote-contracts.mjs",
-    "export-swift-contracts.mjs",
-    "check-main-thread-handlers.mjs",
-    "check-bundle.mjs",
-    "check-ios-fonts.mjs",
-    "export-provider-models.mjs"
+    "static-checks.mjs",
+    "check-bundle.mjs"
   ]) {
     writeFileSync(path.join(repository, "scripts", name), stub);
   }
@@ -97,7 +90,7 @@ describe("precheck CLI", () => {
     [".github/workflows/ci.yml", ["eslint", "cargo test", "check-bundle.mjs"]],
     ["vite.config.ts", ["vite build", "check-bundle.mjs"]],
     ["src-tauri/src/lib.rs", ["eslint", "cargo test", "check-bundle.mjs"]],
-    ["ios/Argmax/Sources/App.swift", ["eslint", "check-ios-fonts.mjs", "export-provider-models.mjs --check", "check-bundle.mjs"]],
+    ["ios/Argmax/Sources/App.swift", ["eslint", "static-checks.mjs", "check-bundle.mjs"]],
     ["assets/browser-blocking/light.txt", ["eslint", "cargo test", "check-bundle.mjs"]],
     ["index.html", ["eslint", "vite build", "check-bundle.mjs"]],
     ["Dockerfile", ["eslint", "cargo test", "check-bundle.mjs"]],
@@ -109,7 +102,7 @@ describe("precheck CLI", () => {
     for (const check of checks) expect(result.checks).toContain(check);
   });
 
-  it("runs only the docs check for documentation-only changes", () => {
+  it("runs only the static checks for documentation-only changes", () => {
     const repo = fixture();
     repo.change("docs/testing.md");
     const result = repo.run();
@@ -120,14 +113,7 @@ describe("precheck CLI", () => {
         .trim()
         .split("\n")
         .map((line) => line.split("/").pop())
-    ).toEqual([
-      "check-tauri-bridge.mjs",
-      "check-docs.mjs",
-      "check-architecture.mjs",
-      "export-remote-contracts.mjs --check",
-      "export-swift-contracts.mjs --check",
-      "check-main-thread-handlers.mjs"
-    ]);
+    ).toEqual(["static-checks.mjs"]);
   });
 
   it("rejects an invalid explicit base before running checks", () => {

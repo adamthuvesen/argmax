@@ -24,9 +24,6 @@ for (const channel of registrations.keys()) {
   if (!seen.has(channel)) problems.push(`missing catalogue entry: ${channel}. Add it to src-tauri/src/ipc/catalogue.rs.`);
 }
 
-if (/window\.argmax/.test(readFileSync("src/renderer/components/SessionMultiGrid.tsx", "utf8"))) {
-  problems.push("SessionMultiGrid.tsx: a layout component takes props and does not call the bridge.");
-}
 const app = readFileSync("src/renderer/App.tsx", "utf8");
 if (/api\.(?:workspaces\.openInIde|projects\.(?:pickFolder|remove))\(/.test(app)) {
   problems.push("App.tsx: catalog mutations belong in workspace/project action hooks");

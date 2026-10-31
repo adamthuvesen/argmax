@@ -1,3 +1,5 @@
+import { APPEARANCE_LEVEL_PATTERN } from "./appearanceLevel.js";
+
 /**
  * How strongly the app background follows the active theme, a whole number
  * from 0 to 100. Dark mode runs from a lifted charcoal at 0 through the shipped
@@ -12,7 +14,8 @@ export const BACKGROUND_INTENSITY_MAX = 100;
 export const DEFAULT_BACKGROUND_INTENSITY = 100;
 export const BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.level";
 /** The former 1–10 scale. Level n carried over as n × 10, so a saved 7 remains 70. */
-const LEGACY_BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.intensity";
+export const LEGACY_BACKGROUND_INTENSITY_STORAGE_KEY = "argmax.background.intensity";
+export const LEGACY_BACKGROUND_INTENSITY_PATTERN = /^(?:[1-9]|10)$/;
 
 /** Named stops offered in the command palette. */
 export const BACKGROUND_INTENSITY_PRESETS: readonly BackgroundIntensity[] = [0, 25, 50, 70, 85, 100];
@@ -31,7 +34,7 @@ export function toBackgroundIntensity(
       ? raw
       : null;
   }
-  if (typeof raw !== "string" || !/^(?:100|[1-9]?\d)$/.test(raw)) return null;
+  if (typeof raw !== "string" || !APPEARANCE_LEVEL_PATTERN.test(raw)) return null;
   return Number(raw);
 }
 
@@ -40,7 +43,7 @@ export function readStoredBackgroundIntensity(): BackgroundIntensity {
   const stored = toBackgroundIntensity(window.localStorage.getItem(BACKGROUND_INTENSITY_STORAGE_KEY));
   if (stored !== null) return stored;
   const legacy = window.localStorage.getItem(LEGACY_BACKGROUND_INTENSITY_STORAGE_KEY);
-  const legacyLevel = /^(?:[1-9]|10)$/.test(legacy ?? "") ? Number(legacy) : null;
+  const legacyLevel = LEGACY_BACKGROUND_INTENSITY_PATTERN.test(legacy ?? "") ? Number(legacy) : null;
   return legacyLevel === null ? DEFAULT_BACKGROUND_INTENSITY : legacyLevel * 10;
 }
 

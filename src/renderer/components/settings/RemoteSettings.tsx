@@ -1,5 +1,7 @@
 import { Check, Copy, RefreshCw, X } from "lucide-react";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { remoteActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
+import { useCallback, useRef, useState, type JSX } from "react";
 import { errorMessage } from "../../../shared/error.js";
 import type { RemoteStatus } from "../../../shared/types.js";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
@@ -14,7 +16,7 @@ import { SettingGroup, SettingNote, SettingRow, Toggle } from "./settingsPrimiti
  */
 export function RemoteSettings(): JSX.Element {
   const [status, setStatus] = useState<RemoteStatus | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [queryLoadError, setQueryLoadError] = useState<string | null>(null);
   const [portField, setPortField] = useState("");
   const [topicField, setTopicField] = useState("");
   const [keyPathField, setKeyPathField] = useState("");
@@ -32,30 +34,34 @@ export function RemoteSettings(): JSX.Element {
     setTeamIdField(next.apns.teamId ?? "");
   }, []);
 
+  const explicitLoad = useRef(false);
+  const statusQuery = useBridgeQuery({
+    key: ["remote.getStatus"],
+    read: (api) => api.remote.getStatus(),
+    onData: (next) => {
+      adoptStatus(next);
+      setQueryLoadError(null);
+    },
+    onError: (error) => {
+      if (explicitLoad.current) showErrorToast(errorMessage(error));
+      else setQueryLoadError(errorMessage(error));
+    }
+  });
+  const loadError = statusQuery.isAvailable ? queryLoadError : "Open the Argmax desktop app to configure remote access.";
+  const { refetch: refetchStatus } = statusQuery;
   const loadStatus = useCallback(async (explicit = false): Promise<void> => {
-    if (!window.argmax) {
-      setLoadError("Open the Argmax desktop app to configure remote access.");
-      return;
-    }
-    try {
-      adoptStatus(await window.argmax.remote.getStatus());
-      setLoadError(null);
-    } catch (error) {
-      if (explicit) showErrorToast(errorMessage(error));
-      else setLoadError(errorMessage(error));
-    }
-  }, [adoptStatus]);
-
-  useEffect(() => {
-    void loadStatus();
-  }, [loadStatus]);
+    explicitLoad.current = explicit;
+    await refetchStatus();
+    explicitLoad.current = false;
+  }, [refetchStatus]);
 
   // `fields` defaults to the drafts, which is what "Save changes" commits. The
   // enable toggle passes the saved values instead: flipping the switch must not
   // silently commit a half-typed port or an ntfy topic the user never saved.
   const saveConfig = useCallback(
     async (enabled: boolean, fields?: { port: string; ntfyTopic: string }): Promise<void> => {
-      if (!window.argmax || !status) return;
+      const remote = remoteActions();
+      if (!remote || !status) return;
       const source = fields ?? { port: portField, ntfyTopic: topicField };
       const port = Number.parseInt(source.port, 10);
       if (!Number.isInteger(port) || port < 1024 || port > 65535) {
@@ -65,7 +71,7 @@ export function RemoteSettings(): JSX.Element {
       setBusy(true);
       setNote(null);
       try {
-        const next = await window.argmax.remote.setConfig({
+        const next = await remote.setConfig({
           enabled,
           port,
           ntfyTopic: source.ntfyTopic
@@ -86,11 +92,12 @@ export function RemoteSettings(): JSX.Element {
   );
 
   const sendTestNotification = useCallback(async (): Promise<void> => {
-    if (!window.argmax) return;
+    const remote = remoteActions();
+    if (!remote) return;
     setBusy(true);
     setNote(null);
     try {
-      await window.argmax.remote.testNotification();
+      await remote.testNotification();
       setNote({ kind: "saved", message: "Test notification sent — check your phone." });
     } catch (error) {
       showErrorToast(`Test notification failed: ${errorMessage(error)}`);
@@ -101,12 +108,13 @@ export function RemoteSettings(): JSX.Element {
 
   const saveApnsConfig = useCallback(
     async (sandbox: boolean): Promise<void> => {
-      if (!window.argmax) return;
+      const remote = remoteActions();
+      if (!remote) return;
       setBusy(true);
       setNote(null);
       try {
         adoptStatus(
-          await window.argmax.remote.setApnsConfig({
+          await remote.setApnsConfig({
             keyPath: keyPathField,
             keyId: keyIdField,
             teamId: teamIdField,
@@ -124,11 +132,12 @@ export function RemoteSettings(): JSX.Element {
   );
 
   const removeDevice = useCallback(async (token: string): Promise<void> => {
-    if (!window.argmax) return;
+    const remote = remoteActions();
+    if (!remote) return;
     setBusy(true);
     setNote(null);
     try {
-      const devices = await window.argmax.remote.unregisterPushDevice({ token });
+      const devices = await remote.unregisterPushDevice({ token });
       setStatus((current) => (current ? { ...current, apns: { ...current.apns, devices } } : current));
     } catch (error) {
       showErrorToast(errorMessage(error));
@@ -138,11 +147,12 @@ export function RemoteSettings(): JSX.Element {
   }, []);
 
   const sendTestPush = useCallback(async (): Promise<void> => {
-    if (!window.argmax) return;
+    const remote = remoteActions();
+    if (!remote) return;
     setBusy(true);
     setNote(null);
     try {
-      const results = await window.argmax.remote.pushTest();
+      const results = await remote.pushTest();
       const failed = results.filter((result) => !result.ok);
       if (failed.length === 0) {
         setNote({ kind: "saved", message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.` });

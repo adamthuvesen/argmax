@@ -1,4 +1,5 @@
 import { useRef, useState, type JSX } from "react";
+import { settingsActions } from "../../data/bridgeActions.js";
 import type { ChatCleanupPreview } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
 import { SettingGroup, SettingNote, SettingRow } from "./settingsPrimitives.js";
@@ -19,7 +20,8 @@ export function ChatHistorySettings(): JSX.Element {
   const inFlight = useRef(false);
 
   async function reviewCleanup(): Promise<void> {
-    if (!window.argmax) {
+    const settings = settingsActions();
+    if (!settings) {
       showErrorToast("Open the Argmax app to manage chat history.");
       return;
     }
@@ -28,7 +30,7 @@ export function ChatHistorySettings(): JSX.Element {
     setBusy(true);
     setStatus(null);
     try {
-      const result = await window.argmax.settings.previewChatCleanup();
+      const result = await settings.previewChatCleanup();
       setPreview(result.chatCount > 0 ? result : null);
       if (result.chatCount === 0) setStatus("No inactive chats older than 7 days to delete.");
     } catch (cause) {
@@ -40,7 +42,8 @@ export function ChatHistorySettings(): JSX.Element {
   }
 
   async function deleteChats(): Promise<void> {
-    if (!window.argmax) {
+    const settings = settingsActions();
+    if (!settings) {
       showErrorToast("Open the Argmax app to manage chat history.");
       return;
     }
@@ -48,7 +51,7 @@ export function ChatHistorySettings(): JSX.Element {
     inFlight.current = true;
     setBusy(true);
     try {
-      const result = await window.argmax.settings.deleteOldChats({ cleanupId: preview.cleanupId });
+      const result = await settings.deleteOldChats({ cleanupId: preview.cleanupId });
       const skipped = result.skippedRecentCount + result.skippedRunningCount;
       const message =
         `Deleted ${result.deletedChatCount} ${result.deletedChatCount === 1 ? "chat" : "chats"}.` +

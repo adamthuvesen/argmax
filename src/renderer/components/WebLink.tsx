@@ -1,4 +1,5 @@
 import type { ComponentPropsWithoutRef, JSX } from "react";
+import { systemActions } from "../data/bridgeActions.js";
 import { openInBrowserPanel } from "../lib/browserPanel.js";
 import { readStoredLinkTarget } from "../lib/linkTarget.js";
 import { isRemoteBridge } from "../lib/tauriBridge.js";
@@ -16,7 +17,7 @@ type WebLinkProps = Omit<ComponentPropsWithoutRef<"a">, "href"> & { href: string
  * ⌘/Ctrl-click opens in the other one. The system browser needs an explicit
  * `system:open-path` — the Tauri webview swallows target="_blank" navigation,
  * so an unhandled click would do nothing. The anchor default stays only for
- * the browser demo, where window.argmax is absent.
+ * the browser demo, which has no bridge.
  */
 export function WebLink({ href, children, onClick, ...rest }: WebLinkProps): JSX.Element {
   return (
@@ -36,10 +37,9 @@ export function WebLink({ href, children, onClick, ...rest }: WebLinkProps): JSX
           if (!isSecondaryWindow() && (readStoredLinkTarget() === "argmax") !== flipped) {
             event.preventDefault();
             openInBrowserPanel(href, { newTab: true });
-          } else if (window.argmax) {
+          } else if (systemActions()) {
             event.preventDefault();
-            const api = window.argmax;
-            void withToast(() => api.system.openPath({ path: href }), showToast, "Could not open this link.");
+            void withToast(() => systemActions()!.openPath({ path: href }), showToast, "Could not open this link.");
           }
         }
         // After the link is handed off. A caller can dismiss a dialog here

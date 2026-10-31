@@ -1,3 +1,5 @@
+import { APPEARANCE_LEVEL_PATTERN } from "./appearanceLevel.js";
+
 /** Independent side-panel colors, from softer tones to stronger theme colors. */
 export type SidebarIntensity = number;
 
@@ -20,7 +22,7 @@ export function toSidebarIntensity(raw: string | number | null | undefined): Sid
       ? raw
       : null;
   }
-  if (typeof raw !== "string" || !/^(?:100|[1-9]?\d)$/.test(raw)) return null;
+  if (typeof raw !== "string" || !APPEARANCE_LEVEL_PATTERN.test(raw)) return null;
   return Number(raw);
 }
 

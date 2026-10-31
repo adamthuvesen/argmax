@@ -1,4 +1,6 @@
 import { useEffect, useState, type JSX } from "react";
+import { dashboardEvents } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { GitFork } from "lucide-react";
 import type { ForkLineage } from "../../shared/types.js";
 import { useForkBarVisible } from "../lib/forkBarVisibility.js";
@@ -24,30 +26,25 @@ export function ForkBar({
   const [merging, setMerging] = useState(false);
   const visible = useForkBarVisible();
 
+  useBridgeQuery({
+    key: ["session.forkLineage", sessionId],
+    enabled: visible,
+    // Optional all the way down: a host (or a test stub) that predates the fork
+    // channels simply has no lineage to show. A chat that cannot report its
+    // lineage is just an ordinary chat, so a failed read shows nothing.
+    read: (api) => api.session?.forkLineage?.({ sessionId }),
+    onData: setLineage
+  });
   useEffect(() => {
-    let cancelled = false;
     setLineage(null);
     setMerging(false);
-    if (!visible) return;
-    // Optional all the way down: a host (or a test stub) that predates the fork
-    // channels simply has no lineage to show.
-    void window.argmax?.session?.forkLineage?.({ sessionId })
-      .then((next) => {
-        if (!cancelled) setLineage(next);
-      })
-      .catch(() => {
-        // A chat that cannot report its lineage is just an ordinary chat.
-      });
-    return () => {
-      cancelled = true;
-    };
   }, [sessionId, visible]);
 
   // Renames reach the renderer as dashboard deltas, not as a new lineage read.
   const sourceWorkspaceId = lineage?.sourceWorkspaceId ?? null;
   useEffect(() => {
     if (!sourceWorkspaceId) return;
-    return window.argmax?.dashboard?.onDelta?.((delta) => {
+    return dashboardEvents()?.onDelta?.((delta) => {
       const renamed = delta.workspaces?.find((workspace) => workspace.id === sourceWorkspaceId);
       if (!renamed) return;
       setLineage((current) =>

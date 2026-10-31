@@ -1,4 +1,5 @@
 import { Folder, FolderPlus, X } from "lucide-react";
+import { projectActions } from "../data/bridgeActions.js";
 import { useId, useState, type JSX, type ReactNode } from "react";
 import type { CreateProjectInput } from "../../shared/types.js";
 import { validationMessage } from "../../shared/validationMessage.js";
@@ -62,10 +63,11 @@ export function ProjectFoldersForm({
   }
 
   async function addFolder(): Promise<void> {
-    if (!window.argmax) return;
+    const projects = projectActions();
+    if (!projects) return;
     updateBusy(true);
     try {
-      const selected = await window.argmax.projects.pickDirectory();
+      const selected = await projects.pickDirectory();
       if (selected.cancelled || !selected.path) return;
       const path = selected.path;
       if (folders.includes(path)) {

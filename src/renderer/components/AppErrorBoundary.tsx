@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { systemActions } from "../data/bridgeActions.js";
 import { logger } from "../../shared/logger.js";
 import { APP_VERSION } from "../../shared/appVersion.js";
 import { ISSUES_URL } from "../../shared/appLinks.js";
@@ -53,8 +54,8 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
   };
 
   private handleReportIssue = (): void => {
-    if (typeof window === "undefined" || !window.argmax) return;
-    void window.argmax.system.openPath({ path: ISSUES_URL }).catch(() => {
+    if (typeof window === "undefined") return;
+    void systemActions()?.openPath({ path: ISSUES_URL }).catch(() => {
       /* swallow — we're already in the error boundary path */
     });
   };

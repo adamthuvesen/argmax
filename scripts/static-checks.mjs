@@ -14,6 +14,7 @@ const CHECKS = [
   ["IPC channel parity", "scripts/check-tauri-bridge.mjs"],
   ["docs integrity", "scripts/check-docs.mjs"],
   ["architecture boundaries", "scripts/check-architecture.mjs"],
+  ["dead code", "node_modules/knip/bin/knip.js", "--no-progress"],
   ["Rust boundaries", "scripts/check-rust-boundaries.mjs"],
   ["renderer boundaries", "node_modules/dependency-cruiser/bin/dependency-cruiser.mjs", "--ignore-known", "--output-type", "err-long", "src"],
   ["remote contracts", "scripts/export-remote-contracts.mjs", "--check"],
@@ -21,7 +22,8 @@ const CHECKS = [
   ["main-thread handler allowlist", "scripts/check-main-thread-handlers.mjs"],
   ["iOS typography", "scripts/check-ios-fonts.mjs"],
   ["iOS model catalogue", "scripts/export-provider-models.mjs", "--check"],
-  ["visualization runtime", "scripts/build-visualization-runtime.mjs", "--check"]
+  ["visualization runtime", "scripts/build-visualization-runtime.mjs", "--check"],
+  ["appearance bootstrap", "scripts/build-appearance-bootstrap.mjs", "--check"]
 ];
 
 for (const [label, ...args] of CHECKS) {

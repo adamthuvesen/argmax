@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 export const SIDEBAR_CHAT_NESTING_STORAGE_KEY = "argmax.sidebar.chatNesting";
-export const SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY = "argmax.sidebar.collapsedChats";
+const SIDEBAR_COLLAPSED_CHATS_STORAGE_KEY = "argmax.sidebar.collapsedChats";
 
 interface SidebarChatNesting {
   nested: boolean;

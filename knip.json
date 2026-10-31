@@ -1,0 +1,48 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "scripts/**/*.mjs",
+    "scripts/**/*.d.mts",
+    ".agents/skills/verify-argmax/*.mjs",
+    "public/sw.js",
+    "src/renderer/main.tsx",
+    "src/renderer/mobile/main.tsx",
+    "src/shared/visualization/runtime.ts"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "scripts/**/*.mjs"
+  ],
+  "ignore": [
+    "src/shared/bindings.d.ts",
+    "docs/**",
+    "src-tauri/**",
+    "src/shared/ipcSchemas.ts"
+  ],
+  "ignoreDependencies": [
+    "typescript-7",
+    "@fontsource/geist-sans",
+    "lucide"
+  ],
+  "ignoreBinaries": [
+    "uv",
+    "swift",
+    "screencapture",
+    "sqlite3"
+  ],
+  "ignoreExportsUsedInFile": false,
+  "ignoreIssues": {
+    "src/shared/types.ts": [
+      "types"
+    ],
+    "src/shared/providerModels.ts": [
+      "exports"
+    ],
+    "src/test/appTestHarness.ts": [
+      "exports"
+    ],
+    "src/renderer/lib/layoutConstants.ts": [
+      "duplicates"
+    ]
+  }
+}

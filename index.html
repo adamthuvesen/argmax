@@ -4,52 +4,42 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Argmax</title>
+    <!-- appearance-bootstrap:start -->
     <script>
-      // Resolve theme before React mounts to avoid a light/dark flash on cold
-      // start. Mirrors lib/theme.ts; intentionally inline + dependency-free.
       (function () {
-        try {
-          var raw = localStorage.getItem("argmax.theme.mode");
-          var mode = raw === "light" || raw === "dark" || raw === "system" ? raw : "system";
-          var resolved =
-            mode === "system"
-              ? window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light"
-              : mode;
-          document.documentElement.setAttribute("data-theme", resolved);
-          // Mirrors lib/backgroundIntensity.ts and lib/contrast.ts: a 0-100 level,
-          // or the former 1-10 scale times ten. The CSS reads the custom
-          // properties, so the attribute alone would leave them unset.
-          var root = document.documentElement;
-          var level = localStorage.getItem("argmax.background.level");
-          var legacy = localStorage.getItem("argmax.background.intensity");
-          var intensity = /^(?:100|[1-9]?\d)$/.test(level || "")
-            ? level
-            : /^(?:[1-9]|10)$/.test(legacy || "")
-              ? String(Number(legacy) * 10)
-              : "100";
-          root.setAttribute("data-background-intensity", intensity);
-          root.style.setProperty("--background-intensity", intensity);
-          var contrast = localStorage.getItem("argmax.contrast.level");
-          if (/^(?:100|[1-9]?\d)$/.test(contrast || "")) {
-            root.setAttribute("data-contrast", contrast);
-            root.style.setProperty("--contrast", contrast);
-          }
-          // Mirrors lib/sidebarIntensity.ts. Without it a saved level paints
-          // the default sidebars until React mounts, then snaps.
-          var sidebar = localStorage.getItem("argmax.sidebar.level");
-          sidebar = /^(?:100|[1-9]?\d)$/.test(sidebar || "") ? sidebar : "60";
-          root.setAttribute("data-sidebar-intensity", sidebar);
-          root.style.setProperty("--sidebar-intensity", sidebar);
-        } catch (e) {
-          document.documentElement.setAttribute(
-            "data-theme",
-            window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-          );
-        }
+      var root = document.documentElement;
+      try {
+      var raw = localStorage.getItem("argmax.theme.mode");
+      var mode = raw === "system" || raw === "light" || raw === "dark" ? raw : "system";
+      var resolved = mode === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+        : mode;
+      root.setAttribute("data-theme", resolved);
+      var levelPattern = /^(?:100|[1-9]?\d)$/;
+      var level = localStorage.getItem("argmax.background.level");
+      var legacy = localStorage.getItem("argmax.background.intensity");
+      var intensity = levelPattern.test(level || "")
+        ? level
+        : /^(?:[1-9]|10)$/.test(legacy || "")
+          ? String(Number(legacy) * 10)
+          : "100";
+      root.setAttribute("data-background-intensity", intensity);
+      root.style.setProperty("--background-intensity", intensity);
+      var contrast = localStorage.getItem("argmax.contrast.level");
+      if (levelPattern.test(contrast || "")) {
+        root.setAttribute("data-contrast", contrast);
+        root.style.setProperty("--contrast", contrast);
+      }
+      var sidebar = localStorage.getItem("argmax.sidebar.level");
+      sidebar = levelPattern.test(sidebar || "") ? sidebar : "60";
+      root.setAttribute("data-sidebar-intensity", sidebar);
+      root.style.setProperty("--sidebar-intensity", sidebar);
+      } catch (e) {
+      root.setAttribute("data-theme", window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      }
       })();
     </script>
+    <!-- appearance-bootstrap:end -->
   </head>
   <body>
     <div id="root"></div>

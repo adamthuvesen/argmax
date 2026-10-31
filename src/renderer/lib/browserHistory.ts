@@ -15,7 +15,7 @@ export interface BrowserHistoryEntry {
 
 export const BROWSER_HISTORY_KEY = "argmax.browser.history";
 const MAX_ENTRIES = 10_000;
-export const MAX_SUGGESTIONS = 6;
+const MAX_SUGGESTIONS = 6;
 
 function isHistoryEntry(entry: unknown): entry is BrowserHistoryEntry {
   return typeof entry === "object" && entry !== null &&

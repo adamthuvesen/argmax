@@ -16,6 +16,9 @@ A canonical local directory included in a project. It carries its name, optional
 **Primary folder**:
 The project's default Git repository for new chats and coordinators. Changing it affects future launches. Existing chats keep their checkout and repository settings.
 
+**Project target**:
+The project folder that a desktop action applies to: a project and a required folder id, where `null` states the primary folder. Internal to the renderer ([projectTarget.ts](src/renderer/lib/projectTarget.ts)). The wire key stays optional, because the iPhone app ships separately.
+
 **Workspace**:
 One unit of assigned work, owned by one project — the thing a sidebar row represents. It is *not* a place on disk: many workspaces routinely point at the same checkout, and nothing constrains them to be distinct. Carries the task label, branch, base ref, dirty state, and lifecycle state.
 _Avoid_: Worktree, directory, folder, branch, project

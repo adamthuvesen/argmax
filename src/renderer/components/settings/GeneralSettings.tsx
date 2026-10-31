@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react";
+import { systemActions } from "../../data/bridgeActions.js";
 import { showErrorToast } from "../../state/toast.js";
 import { useState, type JSX } from "react";
 import type { DetectedIde, IdeId } from "../../../shared/types.js";
@@ -82,14 +83,15 @@ export function GeneralSettings({
   };
 
   const handleTestNotification = async (): Promise<void> => {
-    if (!window.argmax?.system?.testNotification) {
+    const system = systemActions();
+    if (!system?.testNotification) {
       showErrorToast("Test notifications need the desktop app.");
       return;
     }
     setIsTestingNotification(true);
     setTestNotificationStatus(null);
     try {
-      await window.argmax.system.testNotification();
+      await system.testNotification();
       setTestNotificationStatus(
         "Test notification sent. No banner? Check System Settings > Notifications > Argmax."
       );

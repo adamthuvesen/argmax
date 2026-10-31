@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type JSX } from "react";
+import { sourceActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { ProjectSource, SourceInput } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
 
@@ -6,38 +8,32 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
   const [sources, setSources] = useState<ProjectSource[]>([]);
   const [revision, setRevision] = useState(0);
   const explicitRefresh = useRef(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProjectSource | "new" | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let active = true;
-    const explicit = explicitRefresh.current;
-    explicitRefresh.current = false;
-    setLoading(true);
-    if (!explicit) setError(null);
-    const api = window.argmax?.sources;
-    if (!api) {
-      setLoading(false);
-
-      return;
-    }
-    void api.list({ projectId }).then((result) => {
-      if (active) {
-        setSources(result);
-        setError(null);
-      }
-    }).catch((reason: unknown) => {
-      if (!active) return;
+  const explicitRefreshInFlight = useRef(false);
+  const sourcesQuery = useBridgeQuery({
+    key: ["sources.list", projectId, revision],
+    read: (api) => api.sources?.list({ projectId }),
+    onData: (result) => {
+      setSources(result);
+      setError(null);
+    },
+    onError: (reason) => {
       const message = reason instanceof Error ? reason.message : "Could not load sources.";
-      if (explicit) showErrorToast(message);
+      if (explicitRefreshInFlight.current) showErrorToast(message);
       else setError(message);
-    }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    }
+  });
+  const loading = sourcesQuery.isLoading;
+  useEffect(() => {
+    explicitRefreshInFlight.current = explicitRefresh.current;
+    explicitRefresh.current = false;
+    if (!explicitRefreshInFlight.current) setError(null);
   }, [projectId, revision]);
 
   async function save(source: SourceInput): Promise<void> {
-    const api = window.argmax?.sources;
+    const api = sourceActions();
     if (!api) return;
     setBusy(true);
     setError(null);
@@ -55,7 +51,7 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
   }
 
   async function remove(id: string): Promise<void> {
-    const api = window.argmax?.sources;
+    const api = sourceActions();
     if (!api) return;
     setBusy(true);
     setError(null);
@@ -73,13 +69,13 @@ export function ProjectSourcesPanel({ projectId }: { projectId: string }): JSX.E
       <h3>Project sources</h3>
       <p className="settings-note">Save repository paths and web links with guidance on when to consult them. Agents can add references as they work and read current content on demand. Source reads appear in the chat.</p>
       <div className="project-source-actions">
-        <button className="settings-button" disabled={busy || loading || !window.argmax?.sources} onClick={() => setEditing("new")}>Add source</button>
+        <button className="settings-button" disabled={busy || loading || !sourceActions()} onClick={() => setEditing("new")}>Add source</button>
         <button className="settings-button" disabled={busy || loading} onClick={() => {
           explicitRefresh.current = true;
           setRevision((value) => value + 1);
         }}>Refresh sources</button>
       </div>
-      {!window.argmax?.sources ? <p className="settings-note">Open the Argmax app to manage project sources.</p> : null}
+      {!sourceActions() ? <p className="settings-note">Open the Argmax app to manage project sources.</p> : null}
       {error ? <p role="alert" className="settings-note">{error}</p> : null}
       {loading ? <p role="status" className="settings-note">Loading sources…</p> : null}
       {!loading && !error && sources.length === 0 ? <p className="settings-note">No sources yet. Try docs/architecture.md or a project specification URL.</p> : null}

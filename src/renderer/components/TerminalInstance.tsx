@@ -1,4 +1,5 @@
 import { useEffect, useRef, type JSX } from "react";
+import { bridgeAvailable } from "../data/bridgeActions.js";
 import { tryFit } from "../lib/xtermFit.js";
 import {
   attachTerminalTab,
@@ -31,7 +32,7 @@ export function TerminalInstance({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !window.argmax) return;
+    if (!container || !bridgeAvailable()) return;
 
     const runtime = attachTerminalTab(tabId, workspaceId, container, terminalId);
     runtimeRef.current = runtime;

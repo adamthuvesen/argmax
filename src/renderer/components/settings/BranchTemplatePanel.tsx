@@ -1,4 +1,6 @@
-import { useEffect, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
+import { projectActions, settingsActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import type { ProjectSummary } from "../../../shared/types.js";
 import { validationMessage } from "../../../shared/validationMessage.js";
 
@@ -26,31 +28,25 @@ export function BranchTemplatePanel({
   const [projectError, setProjectError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const api = window.argmax;
 
-  useEffect(() => {
-    let active = true;
+  useBridgeQuery({
+    key: ["settings.branchTemplate"],
     // Optional chaining: a host older than this setting has no such channel.
-    void api?.settings
-      ?.branchTemplate?.()
-      .then((settings) => {
-        if (!active) return;
-        setAppTemplate(settings.template ?? "");
-        setDefaultTemplate(settings.defaultTemplate);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [api]);
+    read: (api) => api.settings?.branchTemplate?.(),
+    onData: (settings) => {
+      setAppTemplate(settings.template ?? "");
+      setDefaultTemplate(settings.defaultTemplate);
+    }
+  });
 
   async function saveApp(): Promise<void> {
-    if (!api) return;
+    const settings = settingsActions();
+    if (!settings) return;
     setBusy(true);
     setAppError(null);
     setStatus(null);
     try {
-      const saved = await api.settings.setBranchTemplate({
+      const saved = await settings.setBranchTemplate({
         template: appTemplate.trim() === "" ? null : appTemplate.trim()
       });
       setAppTemplate(saved.template ?? "");
@@ -63,12 +59,13 @@ export function BranchTemplatePanel({
   }
 
   async function saveProject(): Promise<void> {
-    if (!api) return;
+    const projects = projectActions();
+    if (!projects) return;
     setBusy(true);
     setProjectError(null);
     setStatus(null);
     try {
-      const updated = await api.projects.setBranchTemplate({
+      const updated = await projects.setBranchTemplate({
         projectId: project.id,
         template: projectTemplate.trim() === "" ? null : projectTemplate.trim()
       });

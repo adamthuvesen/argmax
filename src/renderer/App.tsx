@@ -36,6 +36,8 @@ import { EmptyState } from "./components/EmptyState.js";
 import { KeyboardCheatSheet } from "./components/KeyboardCheatSheet.js";
 import { LaunchSurface, type LaunchedChat } from "./components/LaunchSurface.js";
 import type { LaunchCheckout } from "./lib/launchCheckout.js";
+import type { ProjectTarget } from "./lib/projectTarget.js";
+import { createProjectCheckout } from "./data/bridgeActions.js";
 import { PerfOverlay } from "./components/PerfOverlay.js";
 import { DetailsPopup } from "./components/DetailsPopup.js";
 import { MIN_RESIZABLE_CELL_WIDTH_PX, SessionMultiGrid } from "./components/SessionMultiGrid.js";
@@ -1232,9 +1234,9 @@ export function App(): JSX.Element {
     [handleLaunchModelChange, launcherProject, openLauncherPaneInGrid, selectedProject]
   );
 
-  const launchFolderRef = useRef<{ project: ProjectSummary; projectFolderId: string } | null>(null);
+  const launchFolderRef = useRef<ProjectTarget | null>(null);
   const handleLaunchFolderChange = useCallback(
-    (folder: { project: ProjectSummary; projectFolderId: string } | null): void => {
+    (folder: ProjectTarget | null): void => {
       launchFolderRef.current = folder;
     },
     []
@@ -1247,19 +1249,16 @@ export function App(): JSX.Element {
     closeWorkspacePages();
 
     const toggleForProject = async (project: ProjectSummary): Promise<void> => {
-      if (!window.argmax) return;
-      const folder = launchFolderRef.current?.project.id === project.id ? launchFolderRef.current : null;
-      const target = folder?.project ?? project;
+      const target: ProjectTarget = launchFolderRef.current?.project.id === project.id
+        ? launchFolderRef.current
+        : { project, projectFolderId: null };
       let checkout: WorkspaceSummary | null = findSharedCheckoutWorkspace(
-        target,
+        target.project,
         snapshot.workspaces
       );
       if (!checkout) {
-        const created = await window.argmax.workspaces.createCurrent({
-          projectId: project.id,
-          taskLabel: target.name,
-          ...(folder ? { projectFolderId: folder.projectFolderId } : {})
-        });
+        const created = await createProjectCheckout(target);
+        if (!created) return;
         checkout = created;
         setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [created] }));
       }
@@ -1459,11 +1458,11 @@ export function App(): JSX.Element {
       agentMode: AgentMode,
       projectIdOverride: string | undefined,
       workspaceMode: WorkspaceMode,
-      attachments?: ComposerAttachment[],
-      goalCondition?: string,
-      background?: boolean,
-      pickedCheckout?: LaunchCheckout,
-      projectFolderId?: string
+      attachments: ComposerAttachment[] | undefined,
+      goalCondition: string | undefined,
+      background: boolean | undefined,
+      pickedCheckout: LaunchCheckout | undefined,
+      projectFolderId: string | undefined
     ): Promise<LaunchedChat> => {
       if (!window.argmax) {
         throw new Error("Open Argmax on your Mac to launch local agents.");

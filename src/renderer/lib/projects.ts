@@ -7,7 +7,7 @@ import { chatReferencesAsTitles } from "./composerContext.js";
 export const collapsedProjectsStorageKey = "argmax.sidebar.collapsedProjects";
 const expandedProjectsStorageKey = "argmax.sidebar.expandedProjects";
 export const projectOrderStorageKey = "argmax.sidebar.projectOrder";
-export const pinnedProjectsStorageKey = "argmax.sidebar.pinnedProjects";
+const pinnedProjectsStorageKey = "argmax.sidebar.pinnedProjects";
 const workspaceOrderStorageKey = "argmax.sidebar.workspaceOrder";
 export const projectSortModeStorageKey = "argmax.sidebar.projectSortMode";
 export const sidebarViewModeStorageKey = "argmax.sidebar.viewMode";

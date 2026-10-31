@@ -25,6 +25,7 @@ import {
   X
 } from "lucide-react";
 import type { BrowserBounds, BrowserContentBlocking } from "../../shared/types.js";
+import { browserActions, systemActions } from "../data/bridgeActions.js";
 import { errorMessage } from "../../shared/error.js";
 import { browserFindScript, parseFindResult, type BrowserFindResult } from "../lib/browserFind.js";
 import {
@@ -193,7 +194,7 @@ export function BrowserPanel({
   onCycleTab,
   onClose
 }: BrowserPanelProps): JSX.Element {
-  const browser = window.argmax?.browser ?? null;
+  const browser = browserActions() ?? null;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const handledRequestRef = useRef<{ scopeId: string; seq: number } | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -754,7 +755,7 @@ export function BrowserPanel({
       findRequestRef.current += 1;
       const tabId = getCurrentTabId();
       if (findOpenRef.current && tabId) {
-        const cleanup = window.argmax?.browser;
+        const cleanup = browserActions();
         void cleanup
           ?.evaluate({ tabId, script: browserFindScript("clear") })
           .catch(() => undefined);
@@ -1191,7 +1192,7 @@ export function BrowserPanel({
 
   const handleOpenExternal = (): void => {
     if (!activeTab) return;
-    void window.argmax?.system.openPath({ path: activeTab.url }).catch(() => undefined);
+    void systemActions()?.openPath({ path: activeTab.url }).catch(() => undefined);
   };
 
   const activeHostname = activeTab ? normalizedHostname(activeTab.url) : null;

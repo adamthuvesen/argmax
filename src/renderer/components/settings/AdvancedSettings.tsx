@@ -1,4 +1,6 @@
 import { ChevronRight, ClipboardCopy, ExternalLink, FolderOpen } from "lucide-react";
+import { systemActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import { useEffect, useState, type JSX } from "react";
 import type { DiagnosticsReport, PerformanceStatus, ProjectSummary } from "../../../shared/types.js";
 import { APP_VERSION_LABEL } from "../../../shared/appVersion.js";
@@ -50,34 +52,24 @@ export function AdvancedSettings({
   const stats = diagnostics?.databaseStats;
   const readyPhase = diagnostics?.startupPhases.find((phase) => phase.phase === "window.ready-to-show");
 
+  const { refetch: refetchPerformanceStatus } = useBridgeQuery({
+    key: ["system.performanceStatus"],
+    enabled: performanceOpen,
+    read: (api) => api.system.performanceStatus(),
+    onData: setPerformanceStatus,
+    onError: (error) => setDiagnosticsStatus(error instanceof Error ? error.message : "Could not read performance status.")
+  });
   useEffect(() => {
     if (!performanceOpen) return undefined;
-    let alive = true;
-    const refresh = async (): Promise<void> => {
-      try {
-        const api = window.argmax;
-        if (!api) return;
-        const status = await api.system.performanceStatus();
-        if (alive) setPerformanceStatus(status);
-      } catch (error) {
-        if (alive) {
-          setDiagnosticsStatus(error instanceof Error ? error.message : "Could not read performance status.");
-        }
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 1_000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [performanceOpen, setDiagnosticsStatus]);
+    const timer = window.setInterval(() => void refetchPerformanceStatus(), 1_000);
+    return () => window.clearInterval(timer);
+  }, [performanceOpen, refetchPerformanceStatus]);
 
   const startPerformanceRecording = async (): Promise<void> => {
     try {
-      const api = window.argmax;
-      if (!api) throw new Error("Argmax runtime is unavailable.");
-      const status = await api.system.performanceStart();
+      const system = systemActions();
+      if (!system) throw new Error("Argmax runtime is unavailable.");
+      const status = await system.performanceStart();
       setPerformanceStatus(status);
       setDiagnosticsStatus("Performance recording started. Samples stay in memory only.");
     } catch (error) {
@@ -87,9 +79,9 @@ export function AdvancedSettings({
 
   const stopPerformanceRecording = async (): Promise<void> => {
     try {
-      const api = window.argmax;
-      if (!api) throw new Error("Argmax runtime is unavailable.");
-      const capture = await api.system.performanceStop();
+      const system = systemActions();
+      if (!system) throw new Error("Argmax runtime is unavailable.");
+      const capture = await system.performanceStop();
       setPerformanceStatus({
         recording: capture.recording,
         startedAt: capture.startedAt,
@@ -105,9 +97,9 @@ export function AdvancedSettings({
 
   const downloadPerformanceRecording = async (): Promise<void> => {
     try {
-      const api = window.argmax;
-      if (!api) throw new Error("Argmax runtime is unavailable.");
-      savePerformanceCapture(await api.system.performanceCapture(), setDiagnosticsStatus, showErrorToast);
+      const system = systemActions();
+      if (!system) throw new Error("Argmax runtime is unavailable.");
+      savePerformanceCapture(await system.performanceCapture(), setDiagnosticsStatus, showErrorToast);
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Could not load performance capture.");
     }

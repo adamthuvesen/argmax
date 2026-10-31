@@ -196,8 +196,3 @@ export function decodeClipboardPayload(raw: string): ComposerClipboardPayload | 
   return consistent ? { v: CHAT_REFERENCE_VERSION, text, references: inText } : null;
 }
 
-/**
- * Where a link's chat stands. A chip for a chat that is no longer in the app
- * says so rather than offering to open nothing.
- */
-export type ChatReferenceStatus = "resolved" | "unresolved";

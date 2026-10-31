@@ -1,5 +1,7 @@
 import "../styles/goals.css";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
+import { dashboardEvents, goalActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { Target, X } from "lucide-react";
 import type { Goal, SessionSummary } from "../../shared/types.js";
 import { showErrorToast } from "../state/toast.js";
@@ -28,23 +30,16 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState(false);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    const api = window.argmax?.goals;
-    if (!api) return;
-    try {
-      setGoal(await api.get({ sessionId: session.id }));
-    } catch {
-      // A goal that cannot be read is not worth an error in the lane; the next
-      // goal delta re-reads it.
-    }
-  }, [session.id]);
+  // A goal that cannot be read is not worth an error in the lane; the next
+  // goal delta re-reads it.
+  const { refetch } = useBridgeQuery({
+    key: ["goals.get", session.id],
+    read: (api) => api.goals?.get({ sessionId: session.id }),
+    onData: setGoal
+  });
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    const dashboard = window.argmax?.dashboard;
+    const dashboard = dashboardEvents();
     if (!dashboard) return;
     // Goal writes always publish `goalChangedIds` (`publish_goal_changed`), so
     // that plus a resync is the whole signal. Reading on any delta touching
@@ -53,10 +48,10 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
     // turn.
     return dashboard.onDelta((delta) => {
       if (delta.resyncRequired || delta.goalChangedIds?.length) {
-        void refresh();
+        void refetch();
       }
     });
-  }, [refresh]);
+  }, [refetch]);
 
   if (!goal || goal.id === dismissed) return null;
 
@@ -65,7 +60,7 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
     if (pending) return;
     setPending(true);
     try {
-      if (active) await window.argmax!.goals.clear({ sessionId: session.id });
+      if (active) await goalActions()!.clear({ sessionId: session.id });
       setDismissed(goal.id);
       setGoal(null);
     } catch (failure) {

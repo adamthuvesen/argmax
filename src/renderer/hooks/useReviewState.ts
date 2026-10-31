@@ -1,7 +1,7 @@
+import type { ProjectTarget } from "../lib/projectTarget.js";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type {
   ChangedFileSummary,
-  ProjectSummary,
   WorkspaceDiff,
   WorkspaceFileEntry,
   WorkspaceFilePreview,
@@ -66,7 +66,7 @@ import { useProjectFolderChanges, type ProjectFolderChangesState } from "./usePr
 import { useWorkspaceFileList } from "./useWorkspaceFileList.js";
 
 export type AsyncState = "idle" | "loading" | "ready" | "error";
-export type { ReviewLayout, ReviewPanelMode, ReviewSplitPosition } from "../lib/reviewLayout.js";
+export type {  ReviewPanelMode,  } from "../lib/reviewLayout.js";
 
 export type WorkspaceFileSaveState = "idle" | "saving" | "error";
 
@@ -77,7 +77,7 @@ export type WorkspaceFileSaveState = "idle" | "saving" | "error";
  */
 export type ReviewSource =
   | { kind: "workspace"; workspace: WorkspaceSummary }
-  | { kind: "project"; project: ProjectSummary; projectFolderId?: string };
+  | ({ kind: "project" } & ProjectTarget);
 
 export interface WorkspaceFileTab {
   path: string;

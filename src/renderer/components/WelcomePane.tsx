@@ -8,7 +8,8 @@ import {
   RefreshCcw,
   XCircle
 } from "lucide-react";
-import { useCallback, useEffect, useState, type JSX } from "react";
+import { useCallback, useEffect, useRef, type JSX } from "react";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import type { DiscoveredProvider } from "../../shared/types.js";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { PROVIDER_INSTALL_HINTS } from "../lib/providerInstallHints.js";
@@ -25,31 +26,22 @@ import { WorkingNest } from "./WorkingNest.js";
  * providers has nothing to launch.
  */
 export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX.Element {
-  const [providers, setProviders] = useState<DiscoveredProvider[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-
+  // Initial detection reuses the cached reports; "Try again" forces a re-probe.
+  const forceDiscovery = useRef(false);
+  const query = useBridgeQuery<DiscoveredProvider[]>({
+    key: ["providers.discover"],
+    read: (api) => api.providers.discover(forceDiscovery.current)
+  });
+  const providers = query.data;
+  const refreshing = query.isLoading;
+  const loadError = query.isAvailable
+    ? refreshing ? null : query.error
+    : "Open Argmax on your Mac to detect providers.";
+  const { refetch } = query;
   const refresh = useCallback(async (force: boolean): Promise<void> => {
-    if (!window.argmax) {
-      setLoadError("Open Argmax on your Mac to detect providers.");
-      return;
-    }
-    setRefreshing(true);
-    setLoadError(null);
-    try {
-      const discovered = await window.argmax.providers.discover(force);
-      setProviders(discovered);
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Could not check which agents are installed.");
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Initial detection reuses the cached reports; "Try again" forces a re-probe.
-    void refresh(false);
-  }, [refresh]);
+    forceDiscovery.current = force;
+    await refetch();
+  }, [refetch]);
 
   const anyInstalled = providers !== null && providers.some((p) => p.installed);
   const installedSetupOrder = PROVIDER_SETUP_ORDER.filter((providerId) =>

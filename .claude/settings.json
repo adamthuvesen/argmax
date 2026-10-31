@@ -7,6 +7,21 @@
           { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/scripts/agent-hooks/pre-tool-use.mjs\"" }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/scripts/agent-hooks/post-tool-use.mjs\"", "timeout": 10 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/scripts/agent-hooks/stop.mjs\"", "timeout": 300 }
+        ]
+      }
     ]
   }
 }

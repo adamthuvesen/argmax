@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type JSX } from "react";
+import { projectActions } from "../../data/bridgeActions.js";
 import type { MergeCleanup, ProjectSummary } from "../../../shared/types.js";
 import { showErrorToast } from "../../state/toast.js";
 import { BranchTemplatePanel } from "./BranchTemplatePanel.js";
@@ -120,7 +121,8 @@ function ProjectSettingsForm({
 
   const save = useCallback(async (): Promise<void> => {
     setStatus(null);
-    if (!window.argmax) {
+    const projects = projectActions();
+    if (!projects) {
       showErrorToast("Open Argmax on your Mac to edit project settings.");
       return;
     }
@@ -133,7 +135,7 @@ function ProjectSettingsForm({
     }
     setSaving(true);
     try {
-      const updated = await window.argmax.projects.updateSettings({
+      const updated = await projects.updateSettings({
         projectId: project.id,
         settings: {
           setupCommand: setupCommand.trim(),

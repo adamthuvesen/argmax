@@ -10,6 +10,8 @@ import {
   type SetStateAction
 } from "react";
 import { Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { bridgeAvailable, routineActions, systemActions } from "../../data/bridgeActions.js";
+import { useBridgeQuery } from "../../data/useBridgeQuery.js";
 import {
   SCRATCH_PROJECT_ID,
   type ArcRecord,
@@ -157,48 +159,48 @@ export function ScheduledTasksPanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // A timer reload and an action's reload can overlap; only the latest one
-  // may commit, or an older list lands over the fresher one.
-  const reloadSeq = useRef(0);
+  const explicitReload = useRef(false);
+  const { refetch: refetchRoutines } = useBridgeQuery({
+    key: ["routines.list"],
+    read: (api) => api.routines.list(),
+    onData: (next) => {
+      setRoutines(next);
+      setLoadError(null);
+    },
+    onError: (error) => {
+      const message = errorMessage(error, "Could not load scheduled tasks.");
+      if (explicitReload.current) showErrorToast(message);
+      else setLoadError(message);
+    }
+  });
   const reload = useCallback(async (explicit = false): Promise<void> => {
-    if (!window.argmax) {
+    if (!bridgeAvailable()) {
       setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
       return;
     }
-    const seq = ++reloadSeq.current;
-    try {
-      const next = await window.argmax.routines.list();
-      if (seq !== reloadSeq.current) return;
-      setRoutines(next);
-      setLoadError(null);
-    } catch (error) {
-      if (seq !== reloadSeq.current) return;
-      const message = errorMessage(error, "Could not load scheduled tasks.");
-      if (explicit) showErrorToast(message);
-      else setLoadError(message);
-    }
-  }, []);
+    explicitReload.current = explicit;
+    await refetchRoutines();
+  }, [refetchRoutines]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!bridgeAvailable()) setLoadError("Open Argmax on your Mac to manage scheduled tasks.");
+  }, []);
 
   // Arcs only matter to the editor's "Arc coordinator" target, but the list
   // is small and shared across every project, so one load up front is
   // simpler than fetching on demand each time the editor opens.
-  useEffect(() => {
-    if (!window.argmax?.arcs) return;
-    window.argmax.arcs
-      .list({})
-      .then((loaded) => {
-        setArcs(loaded);
-        setArcsError(null);
-      })
-      .catch((error) => {
-        setArcs([]);
-        setArcsError(errorMessage(error, "Could not load Arcs."));
-      });
-  }, []);
+  useBridgeQuery({
+    key: ["arcs.list"],
+    read: (api) => api.arcs?.list({}),
+    onData: (loaded) => {
+      setArcs(loaded);
+      setArcsError(null);
+    },
+    onError: (error) => {
+      setArcs([]);
+      setArcsError(errorMessage(error, "Could not load Arcs."));
+    }
+  });
 
   // The scheduler fires in Rust, so "next run" goes stale on its own. Rather
   // than poll, re-read once the soonest due time has passed; every reload
@@ -260,7 +262,8 @@ export function ScheduledTasksPanel({
   const closeEditor = useCallback(() => setDraft(null), []);
 
   const saveDraft = useCallback(async () => {
-    if (!draft || !window.argmax) return;
+    const routines = routineActions();
+    if (!draft || !routines) return;
     if (!draft.name.trim()) {
       setSaveError("Give the task a name.");
       return;
@@ -285,7 +288,7 @@ export function ScheduledTasksPanel({
     setBusy(true);
     setSaveError(null);
     try {
-      await window.argmax.routines.upsert({
+      await routines.upsert({
         id: draft.routineId ?? uuidV4(),
         name: draft.name.trim(),
         projectId: draft.projectId,
@@ -314,10 +317,11 @@ export function ScheduledTasksPanel({
 
   const toggleEnabled = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      if (!routines) return;
       beginAction();
       try {
-        await window.argmax.routines.setEnabled(routine.id, !routine.enabled);
+        await routines.setEnabled(routine.id, !routine.enabled);
         await reload(true);
       } catch (error) {
         showErrorToast(errorMessage(error, "Could not update the task."));
@@ -328,11 +332,12 @@ export function ScheduledTasksPanel({
 
   const runNow = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      if (!routines) return;
       beginAction();
       setBusy(true);
       try {
-        await window.argmax.routines.runNow(routine.id);
+        await routines.runNow(routine.id);
         setStatus(`Started “${routine.name}”. The chat is in the sidebar.`);
         await reload(true);
       } catch (error) {
@@ -346,15 +351,16 @@ export function ScheduledTasksPanel({
 
   const removeRoutine = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      const system = systemActions();
+      if (!routines || !system) return;
       const { id, name } = routine;
-      const api = window.argmax;
       beginAction();
       setBusy(true);
       try {
-        const confirmed = await api.system.confirm(`Delete “${name}”? Chats it already started stay in the sidebar.`);
+        const confirmed = await system.confirm(`Delete “${name}”? Chats it already started stay in the sidebar.`);
         if (!confirmed) return;
-        await api.routines.delete(id);
+        await routines.delete(id);
         setStatus("Task deleted.");
         await reload(true);
       } catch (error) {
@@ -368,10 +374,11 @@ export function ScheduledTasksPanel({
 
   const resetSharedChat = useCallback(
     async (routine: Routine) => {
-      if (!window.argmax) return;
+      const routines = routineActions();
+      if (!routines) return;
       beginAction();
       try {
-        await window.argmax.routines.resetSession(routine.id);
+        await routines.resetSession(routine.id);
         setStatus(`“${routine.name}” will start a fresh chat on its next run.`);
         await reload(true);
       } catch (error) {

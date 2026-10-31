@@ -70,27 +70,6 @@ function isCodexFileChangeTool(lower: string): boolean {
   return lower === "file_change" || lower === "file-change" || lower === "filechange";
 }
 
-/**
- * Every file path a tool call wrote to, or `[]` for a tool that writes none.
- * Shares `interpretFileChange`'s tool recognition so the "last turn" review
- * scope and the inline diff card agree on what counts as an edit. Notebook
- * edits count here. `interpretFileChange` skips them only because they don't
- * fit its line-diff rendering, not because they aren't file writes.
- */
-export function editedFilePaths(name: string, input: Record<string, unknown>): string[] {
-  const lower = name.toLowerCase();
-  if (isCodexFileChangeTool(lower)) {
-    return unique((interpretCodexFileChange(input) ?? []).map((change) => change.path));
-  }
-  if (classifySingleFileTool(lower) === null) return [];
-  const path = pickString(input, SINGLE_FILE_PATH_KEYS);
-  return path ? [path] : [];
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
-}
-
 // Edit tools carry the before/after pair in snake_case (Claude) or camelCase
 // (opencode `edit`/`patch`); read both so one input-shape table serves every
 // provider.

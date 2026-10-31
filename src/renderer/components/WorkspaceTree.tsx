@@ -1,4 +1,5 @@
 import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
+import { systemActions } from "../data/bridgeActions.js";
 import { ChevronRight, ChevronsDownUp, ExternalLink, FolderOpen, RotateCw } from "lucide-react";
 import {
   useCallback,
@@ -236,8 +237,9 @@ export function WorkspaceTree({
   const openRowMenu = useCallback(
     (path: string, point: AnchorPoint): void => {
       setRowMenu({ path, point });
-      if (detectedIdes !== null || !window.argmax) return;
-      window.argmax.system
+      const system = systemActions();
+      if (detectedIdes !== null || !system) return;
+      system
         .listDetectedIdes()
         .then(setDetectedIdes)
         .catch(() => setDetectedIdes([]));
@@ -248,8 +250,9 @@ export function WorkspaceTree({
   const openRowIn = (app: OpenFileApp, appLabel: string): void => {
     const menu = rowMenu;
     closeRowMenu();
-    if (!menu || rootPath === null || !window.argmax) return;
-    window.argmax.system
+    const system = systemActions();
+    if (!menu || rootPath === null || !system) return;
+    system
       .openFileIn({ path: menu.path, cwd: rootPath, app })
       .catch((error: unknown) => showErrorToast(`Couldn't open in ${appLabel}. ${errorMessage(error)}`));
   };

@@ -12,7 +12,7 @@ import {
  * come from provider accounts over the network and Claude's endpoint
  * rate-limits, so opening a menu twice in a minute must not fetch twice.
  */
-export const REMAINING_STALE_AFTER_MS = 5 * 60_000;
+const REMAINING_STALE_AFTER_MS = 5 * 60_000;
 /** A lookup the user asks for by hand still waits this long after the last read. */
 const MANUAL_REFRESH_COOLDOWN_MS = 30_000;
 

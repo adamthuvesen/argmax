@@ -1,4 +1,5 @@
 import { createContext, useContext, lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type JSX, type ReactNode } from "react";
+import { systemActions } from "../data/bridgeActions.js";
 import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -560,11 +561,11 @@ const markdownComponents: Components = {
         onClick={(event) => {
           // Directory and extensionless links must never navigate the app webview.
           event.preventDefault();
-          const api = window.argmax;
-          if (!api) return;
+          const system = systemActions();
+          if (!system) return;
           const path = normalizeFileChipPath(href, null);
           void withToast(
-            () => api.system.openPath({
+            () => system.openPath({
               path,
               cwd: path.startsWith("/") ? undefined : workspace?.path
             }),

@@ -4,10 +4,10 @@
 // work in a checkout several sessions share.
 
 import { readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+import { editedPaths, ROOT } from "./hook-input.mjs";
+
 const GENERATED = JSON.parse(readFileSync(resolve(ROOT, "scripts/generated-files.json"), "utf8"));
 
 const SHARED_CHECKOUT_COMMANDS = [
@@ -17,9 +17,7 @@ const SHARED_CHECKOUT_COMMANDS = [
 ];
 
 function refusal(request) {
-  const filePath = request.tool_input?.file_path;
-  if (filePath) {
-    const path = relative(ROOT, resolve(filePath));
+  for (const path of editedPaths(request)) {
     const generated = GENERATED.find(({ pattern }) => new RegExp(pattern).test(path));
     if (generated) return `${path} is generated. Change its source, then run: ${generated.run}`;
   }

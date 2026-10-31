@@ -1,4 +1,6 @@
 import type { FontHeaviness } from "../lib/fontHeaviness.js";
+import { systemActions } from "../data/bridgeActions.js";
+import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import type { ProviderId } from "../../shared/types.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type {
@@ -19,7 +21,6 @@ import type { AccentId } from "../lib/accent.js";
 import type { UserBubbleTint } from "../lib/userBubbleTint.js";
 import { useAgentToolsSettings } from "../hooks/useAgentToolsSettings.js";
 import { showErrorToast } from "../state/toast.js";
-import { useAsyncLoad } from "../hooks/useAsyncLoad.js";
 import type { ReasoningEffort } from "../../shared/providerModels.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { NewSessionMode } from "../lib/newSessionMode.js";
@@ -234,43 +235,34 @@ export function SettingsPanel({
   // First load reuses the cached reports; every explicit "Refresh" (retry)
   // forces a re-probe so a provider installed after boot is actually detected.
   const hasDiscoveredRef = useRef(false);
-  const {
-    data: providers,
-    error: providerLoadError,
-    isLoading: refreshingProviders,
-    retry: refreshProviders
-  } = useAsyncLoad<DiscoveredProvider[]>(
-    () => {
+  const providersQuery = useBridgeQuery<DiscoveredProvider[]>({
+    key: ["providers.discover"],
+    read: (api) => {
       const force = hasDiscoveredRef.current;
       hasDiscoveredRef.current = true;
-      return window.argmax!.providers.discover(force);
-    },
-    {
-      missingApiMessage: "Open Argmax on your Mac to detect providers.",
-      fallbackMessage: "Could not check which agents are installed."
+      return api.providers.discover(force);
     }
-  );
+  });
+  const providers = providersQuery.data;
+  const refreshingProviders = providersQuery.isLoading;
+  const refreshProviders = providersQuery.refetch;
+  const providerLoadError = providersQuery.isAvailable
+    ? refreshingProviders ? null : providersQuery.error
+    : "Open Argmax on your Mac to detect providers.";
 
   const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);
   const [diagnosticsStatus, setDiagnosticsStatus] = useState<string | null>(null);
 
-  const loadDiagnostics = useCallback(async (): Promise<void> => {
-    if (!window.argmax) return;
-    try {
-      const report = await window.argmax.system.diagnostics();
-      setDiagnostics(report);
-    } catch (error) {
-      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not load diagnostics.");
-    }
-  }, []);
-
   // Only Advanced renders the report, and collecting it means nine `COUNT(*)`
   // scans over the whole database. Loading it from every group charged that to
   // opening Settings at all.
-  useEffect(() => {
-    if (activeGroup !== "advanced") return;
-    void loadDiagnostics();
-  }, [activeGroup, loadDiagnostics]);
+  useBridgeQuery({
+    key: ["system.diagnostics"],
+    enabled: activeGroup === "advanced",
+    read: (api) => api.system.diagnostics(),
+    onData: setDiagnostics,
+    onError: (error) => setDiagnosticsStatus(error instanceof Error ? error.message : "Could not load diagnostics.")
+  });
 
   const copyDiagnostics = useCallback(async (): Promise<void> => {
     if (!diagnostics) return;
@@ -283,28 +275,31 @@ export function SettingsPanel({
   }, [diagnostics]);
 
   const revealDatabase = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !diagnostics) return;
+    const system = systemActions();
+    if (!system || !diagnostics) return;
     try {
-      await window.argmax.system.openPath({ path: diagnostics.databasePath });
+      await system.openPath({ path: diagnostics.databasePath });
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Could not reveal database file.");
     }
   }, [diagnostics]);
 
   const openArchiveRecovery = useCallback(async (): Promise<void> => {
-    if (!window.argmax || !diagnostics) return;
+    const system = systemActions();
+    if (!system || !diagnostics) return;
     try {
-      await window.argmax.system.openPath({ path: diagnostics.archiveRecoveryPath });
+      await system.openPath({ path: diagnostics.archiveRecoveryPath });
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Could not open archived workspaces.");
     }
   }, [diagnostics]);
 
   const vacuumDatabase = useCallback(async (): Promise<void> => {
-    if (!window.argmax) return;
+    const system = systemActions();
+    if (!system) return;
     setDiagnosticsStatus("Compacting…");
     try {
-      await window.argmax.system.vacuumDatabase();
+      await system.vacuumDatabase();
       setDiagnosticsStatus("Storage compacted.");
     } catch (error) {
       setDiagnosticsStatus(null);

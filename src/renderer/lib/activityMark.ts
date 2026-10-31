@@ -166,7 +166,7 @@ type SessionUnderlineOption = {
 };
 
 export const SESSION_UNDERLINE_STORAGE_KEY = "argmax.activityMark.rowUnderline";
-export const DEFAULT_SESSION_UNDERLINE: SessionUnderlineId = "off";
+const DEFAULT_SESSION_UNDERLINE: SessionUnderlineId = "off";
 
 export const SESSION_UNDERLINE_OPTIONS: readonly SessionUnderlineOption[] = [
   {

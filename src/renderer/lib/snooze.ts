@@ -26,7 +26,7 @@ export function activeSnoozeUntil(workspace: WorkspaceSummary, nowMs: number): n
  * their normal section while snoozed: hiding the one thing an agent is waiting
  * on would stall it with nobody looking.
  */
-export function workspacesAwaitingAnswer(sessions: readonly SessionSummary[]): Set<string> {
+function workspacesAwaitingAnswer(sessions: readonly SessionSummary[]): Set<string> {
   const waiting = new Set<string>();
   for (const session of sessions) {
     if (URGENT_ATTENTION.has(session.attention)) waiting.add(session.workspaceId);

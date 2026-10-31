@@ -88,7 +88,7 @@ pub struct RouteDecision {
 /// The saved Jev key, or the error an Auto request gets without one: Auto
 /// routing is only on once a key is saved in Settings.
 pub fn require_api_key() -> ArgmaxResult<String> {
-    api_key::stored_key().ok_or_else(|| {
+    api_key::read_key()?.ok_or_else(|| {
         ArgmaxError::service(
             "ROUTING_NOT_CONFIGURED",
             "Auto routing needs a Jev API key. Add one in Settings → Agents.",

@@ -11,6 +11,7 @@ argmax-icons.local.json
 NOTES.local.md
 .claude/*
 !.claude/skills
+!.claude/settings.json
 maestro/
 COMPETITIVE_ANALYSIS.md
 

@@ -22,6 +22,7 @@
     "providers/fork_merge.rs": 5,
     "providers/opencode_gateway.rs": 1,
     "providers/session_service.rs": 7,
+    "providers/session_service_turn_end.rs": 1,
     "providers/subagent_trace/reconcile.rs": 1,
     "providers/subagent_trace/test_support.rs": 1,
     "questions/service.rs": 3,
@@ -46,10 +47,8 @@
     "workspaces/orchestration.rs": 5,
     "workspaces/orchestration/fork.rs": 6
   },
-  "git-outside-exec": {
-    "persistence/projects.rs": 1,
-    "providers/cloud.rs": 1
-  },
+  "git-outside-exec": {},
+  "turn-end-outside-owner": {},
   "persistence-imports-upward": {
     "persistence/app_settings.rs": 2,
     "persistence/arcs.rs": 1,

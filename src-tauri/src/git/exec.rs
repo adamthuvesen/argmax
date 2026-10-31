@@ -54,6 +54,24 @@ impl GitExecOptions {
         self.lossy_display = true;
         self
     }
+
+    /// For a command that talks to a remote. The cleared environment drops
+    /// what SSH and credential helpers read, and a prompt would hang until the
+    /// timeout because nothing can answer it.
+    pub fn remote_access(mut self) -> Self {
+        for key in [
+            "SSH_AUTH_SOCK",
+            "SSH_ASKPASS",
+            "GIT_SSH",
+            "GIT_SSH_COMMAND",
+            "GIT_ASKPASS",
+        ] {
+            if let Some(value) = std::env::var_os(key) {
+                self.env.push((key.into(), value));
+            }
+        }
+        self.with_env("GIT_TERMINAL_PROMPT", "0")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -85,7 +85,7 @@ pub async fn settings_routing(
 
 pub(crate) async fn settings_routing_impl(state: &AppState) -> ArgmaxResult<RoutingSettings> {
     // The first read spawns `security`, so it stays off the main thread.
-    let api_key = read_off_main(|| Ok(crate::routing::api_key::stored_key())).await?;
+    let api_key = read_off_main(crate::routing::api_key::read_key).await?;
     routing_settings(state, api_key)
 }
 

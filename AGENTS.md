@@ -49,7 +49,6 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 - **Imports inside `src/`** end in `.js`: `import { foo } from "./foo.js"` even though the file is `foo.ts`.
 - **All IPC** flows through `window.argmax.*`. Request/response channels are Rust `#[tauri::command]` handlers in [src-tauri/src/ipc](src-tauri/src/ipc), collected by `tauri-specta`, and exposed in [src/renderer/lib/tauriBridge.ts](src/renderer/lib/tauriBridge.ts). `src-tauri/tests/fixtures/channels.txt` and `npm run check:tauri-bridge` enforce channel parity.
 - **No native Node rebuild dance.** SQLite and PTYs live in Rust (`rusqlite`, `portable-pty`). Do not reintroduce `better-sqlite3`, `node-pty`, or native builder scripts.
-- **Renderer tests** query by **role / aria-label / title**, never by `className`.
 - **iPhone type goes through the roles in [Typography.swift](ios/Argmax/Sources/Design/Typography.swift).** A `.font(...)` at a call site is a surface Settings → Typeface cannot reach; `npm run check:ios-fonts` enforces it, and `npm run build:ios-fonts` regenerates the bundled Geist faces.
 - **Three themes: Light / Dark / System.** Tokens live in [src/renderer/styles/tokens.css](src/renderer/styles/tokens.css); see [docs/styling.md](docs/styling.md).
 - **A visual-design ask gets 3 mockups before code.** Build only the one the user picks.
@@ -64,6 +63,22 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 - **The mascot and the app icon are one sprite.** [assets/fox-mascot.txt](assets/fox-mascot.txt) is the source; [Mascot.tsx](src/renderer/components/Mascot.tsx) and [scripts/build-icons.mjs](scripts/build-icons.mjs) both read it, so an edit moves both. Icon artifacts are generated — run `npm run build:icons` and never hand-edit `assets/icon*`, `assets/Argmax.icon`, `src-tauri/icons`, or `ios/Argmax/Sources/Assets.xcassets`. See [docs/release.md](docs/release.md). The expression sprites ([fox-mascot-wink.txt](assets/fox-mascot-wink.txt), `-sleepy`, `-shades`) share that grid and palette and are read only by `Mascot.tsx`, so a body edit to the base sprite has to be mirrored into all three.
 - **SQLite migrations are append-only and checksummed.** Never edit an applied migration; see [docs/data.md](docs/data.md).
 - **Never commit secrets, `.env`, or AI-attribution lines.**
+
+## Enforced Rules
+
+| Rule | Enforced by | Added |
+|---|---|---|
+| Do not hand-edit generated files | `scripts/agent-hooks/pre-tool-use.mjs`, list in `scripts/generated-files.json` | 2026-11-04 |
+| Do not use blanket staging, stash, or restore in a shared checkout | `scripts/agent-hooks/pre-tool-use.mjs` | 2026-11-04 |
+| No AI attribution in commit messages | `.githooks/commit-msg` | 2026-11-04 |
+| Renderer tests query by role, label, or title | ESLint `testing-library/no-node-access`, `no-container`, with a ratchet | 2026-11-04 |
+| Decode timeline semantics with `decodeTimelineEvent()` | ESLint `no-restricted-syntax`, with a ratchet | 2026-11-04 |
+| SQL lives in `persistence/` | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
+| Run git through `git/exec.rs` | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
+| Imports point down the Rust layers | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
+| A turn ends only through `commit_turn_end` | `check:rust-boundaries` rule `turn-end-outside-owner` | 2026-11-04 |
+
+Precheck and CI run the same static gates through `npm run check:static`. See [docs/testing.md](docs/testing.md#ratchets).
 
 ## Agent Delegation
 

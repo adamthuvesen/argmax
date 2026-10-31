@@ -391,6 +391,10 @@ struct SendInputTestGate {
 /// The result slot a termination job publishes to; `None` while the job runs.
 type TerminationJob = watch::Receiver<Option<ArgmaxResult<()>>>;
 
+#[path = "session_service_turn_end.rs"]
+mod turn_end;
+use turn_end::{TurnEnd, TurnFollowUp, TurnRows};
+
 #[derive(Clone)]
 enum HandleEntry {
     Pending(Vec<PendingOp>),
@@ -1477,10 +1481,19 @@ impl ProviderSessionService {
                 Box::new(session.clone()),
             ))
         };
-        let Some(api_key) = crate::routing::api_key::stored_key() else {
-            return Ok(retained(
-                "Routing key unavailable, retaining the current model and effort",
-            ));
+        let api_key = match crate::routing::api_key::read_key() {
+            Ok(Some(api_key)) => api_key,
+            Ok(None) => {
+                return Ok(retained(
+                    "Routing key unavailable, retaining the current model and effort",
+                ));
+            }
+            Err(error) => {
+                tracing::warn!(target: "argmax::routing", "routing key read failed: {error}");
+                return Ok(retained(
+                    "Routing key could not be read, retaining the current model and effort",
+                ));
+            }
         };
         // Discovery and bounded transcript reads must not block the async
         // runtime. A context failure is a retained route, never a failed send.
@@ -3048,56 +3061,46 @@ impl ProviderSessionService {
         }
         for recovered_session in &recovered {
             let session_id = &recovered_session.id;
-            // The writer connection is dropped before publishing: the delta's
-            // push body reads through `read_connection`, whose fallback would
-            // re-lock the writer this thread may still be holding.
-            let (session, workspace, event, is_multitask, projects) = {
-                let connection = self.database.connection();
-                let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-                let session = update_session_state(
-                    &transaction,
+            let finished_at = now_iso();
+            let mut is_multitask = false;
+            self.commit_turn_end(
+                TurnEnd {
                     session_id,
-                    &SessionStateInput::transition(SessionState::Failed).finished_at(now_iso()),
-                )?;
-                // Mirror the session terminal-state onto the workspace so the
-                // dashboard doesn't keep showing a `running` workspace whose
-                // session was just marked `failed`.
-                let workspace = update_workspace_state_for_session_state_within_transaction(
-                    &transaction,
-                    &session.workspace_id,
-                    SessionState::Failed,
-                )?;
-                let event = persist_timeline_event(
-                    &transaction,
-                    &PersistTimelineEventInput {
-                        id: Uuid::new_v4().to_string(),
-                        session_id: session_id.clone(),
-                        r#type: "process_did_not_survive_restart".to_string(),
-                        message: "Provider process did not survive restart.".to_string(),
-                        payload: json!({}),
-                        created_at: None,
-                    },
-                )?;
-                let is_multitask = session_launch_kind(&transaction, session_id)
-                    .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
-                let projects = list_projects(&transaction)?;
-                transaction.commit().map_err(sqlite_error)?;
-                (session, workspace, event, is_multitask, projects)
-            };
-            self.publish(DashboardDelta {
-                projects,
-                workspaces: vec![workspace],
-                sessions: vec![session],
-                events: vec![event],
-                ..DashboardDelta::default()
-            });
+                    state: SessionState::Failed,
+                    finished_at: &finished_at,
+                    may_end: |_| true,
+                    yields_to_stop: false,
+                    remove_handle: false,
+                    pause_queue: false,
+                    reconcile_subagents: false,
+                },
+                |transaction| {
+                    let event = persist_timeline_event(
+                        transaction,
+                        &PersistTimelineEventInput {
+                            id: Uuid::new_v4().to_string(),
+                            session_id: session_id.clone(),
+                            r#type: "process_did_not_survive_restart".to_string(),
+                            message: "Provider process did not survive restart.".to_string(),
+                            payload: json!({}),
+                            created_at: None,
+                        },
+                    )?;
+                    is_multitask = session_launch_kind(transaction, session_id)
+                        .is_ok_and(|kind| kind == LAUNCH_KIND_MULTITASK);
+                    Ok(TurnRows {
+                        events: vec![event],
+                        ..TurnRows::default()
+                    })
+                },
+            )?;
             // A multitask that was mid-turn when the app went down never wrote
             // its finish row, so the chat that dispatched it would keep saying
             // "running alongside" for a process that died with the app. Boot is
             // where that becomes knowable, and the row says `failed` because
             // that is what happened to it.
             if is_multitask {
-                self.record_multitask_finish(session_id, SessionState::Failed, &now_iso());
+                self.record_multitask_finish(session_id, SessionState::Failed, &finished_at);
             }
             self.cancel_pending_interactions(session_id)?;
         }
@@ -3320,14 +3323,6 @@ impl ProviderSessionService {
             return Ok(());
         }
         self.capture_pr_branch(&event.session_id);
-        // Stop sets the marker before disposal. Keep this lock through commit
-        // so an exit that passed the first check cannot overwrite Stop.
-        let terminating = self.terminating.lock_or_recover("terminating");
-        if terminating.contains(&event.session_id) {
-            return Ok(());
-        }
-        let connection = self.database.connection();
-        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
         let succeeded =
             event.r#type == ProviderRuntimeEventType::Exit && event.exit_code == Some(0);
         let state = if succeeded {
@@ -3335,95 +3330,89 @@ impl ProviderSessionService {
         } else {
             SessionState::Failed
         };
+        let session_id = event.session_id.clone();
         let completed_at = event.created_at.clone();
-        let raw_output = persist_raw_output(
-            &transaction,
-            &PersistRawOutputInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: event.session_id.clone(),
-                stream: event.stream.as_str().to_string(),
-                content: event.message.clone(),
-                created_at: Some(event.created_at.clone()),
+        let ended = self.commit_turn_end(
+            TurnEnd {
+                session_id: &session_id,
+                state,
+                finished_at: &completed_at,
+                may_end: |_| true,
+                // Stop sets the marker before disposal, so an exit that passed
+                // the first check cannot overwrite it.
+                yields_to_stop: true,
+                remove_handle: true,
+                pause_queue: !succeeded,
+                reconcile_subagents: true,
+            },
+            |transaction| {
+                let raw_output = persist_raw_output(
+                    transaction,
+                    &PersistRawOutputInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: event.session_id.clone(),
+                        stream: event.stream.as_str().to_string(),
+                        content: event.message.clone(),
+                        created_at: Some(event.created_at.clone()),
+                    },
+                )?;
+                // For successful exits, persist `session.completed` with an empty
+                // message — the wait-thread's raw text ("X structured probe exited
+                // with code 0") is debug noise that was leaking into the chat
+                // bubble next to the actual assistant response. The exit code
+                // stays in the payload for diagnostics, and the raw message is
+                // preserved in `raw_outputs` above.
+                let (timeline_type, timeline_message) = if succeeded {
+                    ("session.completed".to_string(), String::new())
+                } else {
+                    ("error".to_string(), event.message)
+                };
+                // Cursor and OpenCode already recorded this turn's completion from
+                // their own output; a second `session.completed` from the exit would
+                // count the turn twice.
+                let already_completed = succeeded
+                    && crate::persistence::events::turn_completion_recorded(
+                        transaction,
+                        &event.session_id,
+                    )?;
+                let events = if already_completed {
+                    Vec::new()
+                } else {
+                    vec![persist_timeline_event(
+                        transaction,
+                        &PersistTimelineEventInput {
+                            id: Uuid::new_v4().to_string(),
+                            session_id: event.session_id.clone(),
+                            r#type: timeline_type,
+                            message: timeline_message,
+                            payload: json!({ "exitCode": event.exit_code }),
+                            created_at: Some(event.created_at),
+                        },
+                    )?]
+                };
+                Ok(TurnRows {
+                    events,
+                    raw_outputs: vec![raw_output],
+                })
             },
         )?;
-        let session = update_session_state(
-            &transaction,
-            &event.session_id,
-            &SessionStateInput::transition(state).finished_at(event.created_at.clone()),
-        )?;
-        let workspace = update_workspace_state_for_session_state_within_transaction(
-            &transaction,
-            &session.workspace_id,
-            state,
-        )?;
-        // For successful exits, persist `session.completed` with an empty
-        // message — the wait-thread's raw text ("X structured probe exited
-        // with code 0") is debug noise that was leaking into the chat
-        // bubble next to the actual assistant response. The exit code
-        // stays in the payload for diagnostics, and the raw message is
-        // preserved in `raw_outputs` above.
-        let (timeline_type, timeline_message) = if succeeded {
-            ("session.completed".to_string(), String::new())
-        } else {
-            ("error".to_string(), event.message)
+        let Some(ended) = ended else {
+            return Ok(());
         };
-        // Cursor and OpenCode already recorded this turn's completion from
-        // their own output; a second `session.completed` from the exit would
-        // count the turn twice.
-        let already_completed = succeeded
-            && crate::persistence::events::turn_completion_recorded(
-                &transaction,
-                &event.session_id,
-            )?;
-        let timeline_events = if already_completed {
-            Vec::new()
-        } else {
-            vec![persist_timeline_event(
-                &transaction,
-                &PersistTimelineEventInput {
-                    id: Uuid::new_v4().to_string(),
-                    session_id: event.session_id.clone(),
-                    r#type: timeline_type,
-                    message: timeline_message,
-                    payload: json!({ "exitCode": event.exit_code }),
-                    created_at: Some(event.created_at),
-                },
-            )?]
-        };
-        let mut delta = DashboardDelta {
-            projects: list_projects(&transaction)?,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            events: timeline_events,
-            raw_outputs: vec![raw_output],
-            ..DashboardDelta::default()
-        };
-        transaction.commit().map_err(sqlite_error)?;
-        drop(terminating);
-        self.handles
-            .lock_or_recover("handles")
-            .remove(&event.session_id);
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(&event.session_id);
-        let queue_paused = if succeeded {
-            Ok(())
-        } else {
-            self.pause_queue_with_connection(&connection, &event.session_id)
-        };
-        drop(connection);
-        self.append_reconciled_subagent_events(&event.session_id, &mut delta);
-        self.publish(delta);
         // The drain is what sends a follow-up the user queued during the turn.
         // It must not depend on the approvals cleanup succeeding: an error
         // there used to return early and strand the queue until the next turn.
-        let interactions_cancelled = self.cancel_pending_interactions(&event.session_id);
-        self.settle_session_after_turn(&event.session_id);
-        self.notify_launcher_of_turn_end(&event.session_id, state, &completed_at);
-        if succeeded {
-            self.drain_queue_after_complete(event.session_id);
-        }
-        interactions_cancelled.and(queue_paused)
+        let interactions_cancelled = self.cancel_pending_interactions(&session_id);
+        self.announce_turn_end(
+            &session_id,
+            state,
+            &completed_at,
+            TurnFollowUp {
+                settle: true,
+                drain_queue: succeeded,
+            },
+        );
+        interactions_cancelled.and(ended.queue_paused)
     }
 
     /// Arc and multitask writes are lifecycle effects. Ordinary completion
@@ -3719,106 +3708,96 @@ impl ProviderSessionService {
         provider: ProviderId,
         error: ArgmaxError,
     ) -> ArgmaxResult<()> {
-        let connection = self.database.connection();
-        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
         let completed_at = now_iso();
-        let session = update_session_state(
-            &transaction,
-            session_id,
-            &SessionStateInput::transition(SessionState::Failed).finished_at(completed_at.clone()),
-        )?;
-        let workspace = update_workspace_state_for_session_state_within_transaction(
-            &transaction,
-            &session.workspace_id,
-            SessionState::Failed,
-        )?;
-        let event = persist_timeline_event(
-            &transaction,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: session_id.to_string(),
-                r#type: "error".to_string(),
-                message: error.to_string(),
-                payload: json!({ "provider": provider.as_str() }),
-                created_at: None,
+        let ended = self.commit_turn_end(
+            TurnEnd {
+                session_id,
+                state: SessionState::Failed,
+                finished_at: &completed_at,
+                may_end: |_| true,
+                yields_to_stop: false,
+                remove_handle: false,
+                pause_queue: true,
+                reconcile_subagents: false,
+            },
+            |transaction| {
+                let event = persist_timeline_event(
+                    transaction,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.to_string(),
+                        r#type: "error".to_string(),
+                        message: error.to_string(),
+                        payload: json!({ "provider": provider.as_str() }),
+                        created_at: None,
+                    },
+                )?;
+                Ok(TurnRows {
+                    events: vec![event],
+                    ..TurnRows::default()
+                })
             },
         )?;
-        let delta = DashboardDelta {
-            projects: list_projects(&transaction)?,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            events: vec![event],
-            ..DashboardDelta::default()
-        };
-        transaction.commit().map_err(sqlite_error)?;
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
-        let pause_error = self
-            .pause_queue_with_connection(&connection, session_id)
-            .err();
-        // The writer connection is dropped before publishing: the delta's
-        // push body reads through `read_connection`, whose fallback would
-        // re-lock the writer this thread is still holding.
-        drop(connection);
-        self.publish(delta);
         // A launch that never started is still this session's turn ending, and
         // whoever launched it is owed that news: without it a multitask whose
         // CLI could not start leaves a row that says "Running" for as long as
         // the transcript lives, since the finish row it falls back to was never
         // written.
-        self.notify_launcher_of_turn_end(session_id, SessionState::Failed, &completed_at);
-        match pause_error {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
+        self.announce_turn_end(
+            session_id,
+            SessionState::Failed,
+            &completed_at,
+            TurnFollowUp {
+                settle: false,
+                drain_queue: false,
+            },
+        );
+        ended.map_or(Ok(()), |ended| ended.queue_paused)
     }
 
     fn cancel_session(self: &Arc<Self>, session_id: &str) -> ArgmaxResult<()> {
         self.capture_pr_branch(session_id);
-        let connection = self.database.connection();
-        let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-        let current = find_session_by_id(&transaction, session_id)?;
-        if !current.state.is_active() {
-            return Ok(());
-        }
         let completed_at = now_iso();
-        let session = update_session_state(
-            &transaction,
-            session_id,
-            &SessionStateInput::transition(SessionState::Cancelled)
-                .finished_at(completed_at.clone()),
-        )?;
-        let workspace = update_workspace_state_for_session_state_within_transaction(
-            &transaction,
-            &session.workspace_id,
-            SessionState::Cancelled,
-        )?;
-        let event = persist_timeline_event(
-            &transaction,
-            &PersistTimelineEventInput {
-                id: Uuid::new_v4().to_string(),
-                session_id: session_id.to_string(),
-                r#type: "session.cancelled".to_string(),
-                message: "Provider chat cancelled.".to_string(),
-                payload: json!({}),
-                created_at: Some(completed_at.clone()),
+        let ended = self.commit_turn_end(
+            TurnEnd {
+                session_id,
+                state: SessionState::Cancelled,
+                finished_at: &completed_at,
+                may_end: SessionState::is_active,
+                yields_to_stop: false,
+                remove_handle: false,
+                pause_queue: false,
+                reconcile_subagents: false,
+            },
+            |transaction| {
+                let event = persist_timeline_event(
+                    transaction,
+                    &PersistTimelineEventInput {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: session_id.to_string(),
+                        r#type: "session.cancelled".to_string(),
+                        message: "Provider chat cancelled.".to_string(),
+                        payload: json!({}),
+                        created_at: Some(completed_at.clone()),
+                    },
+                )?;
+                Ok(TurnRows {
+                    events: vec![event],
+                    ..TurnRows::default()
+                })
             },
         )?;
-        let delta = DashboardDelta {
-            projects: list_projects(&transaction)?,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            events: vec![event],
-            ..DashboardDelta::default()
-        };
-        transaction.commit().map_err(sqlite_error)?;
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
-        drop(connection);
-        self.publish(delta);
-        self.notify_launcher_of_turn_end(session_id, SessionState::Cancelled, &completed_at);
+        if ended.is_some() {
+            self.announce_turn_end(
+                session_id,
+                SessionState::Cancelled,
+                &completed_at,
+                TurnFollowUp {
+                    settle: false,
+                    drain_queue: false,
+                },
+            );
+        }
         Ok(())
     }
 
@@ -4430,50 +4409,29 @@ impl ProviderSessionService {
 
         self.capture_pr_branch(session_id);
         let completed_at = now_iso();
-        let (session, workspace, projects) = {
-            let terminating = self.terminating.lock_or_recover("terminating");
-            if terminating.contains(session_id) {
-                return Ok(());
-            }
-            let connection = self.database.connection();
-            let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-            if find_session_by_id(&transaction, session_id)?.state != SessionState::Running {
-                return Ok(());
-            }
-            let session = update_session_state(
-                &transaction,
+        let ended = self.commit_turn_end(
+            TurnEnd {
                 session_id,
-                &SessionStateInput::transition(SessionState::Complete)
-                    .finished_at(completed_at.clone()),
-            )?;
-            let workspace = update_workspace_state_for_session_state_within_transaction(
-                &transaction,
-                &session.workspace_id,
-                SessionState::Complete,
-            )?;
-            let projects = list_projects(&transaction)?;
-            transaction.commit().map_err(sqlite_error)?;
-            (session, workspace, projects)
+                state: SessionState::Complete,
+                finished_at: &completed_at,
+                may_end: |state| state == SessionState::Running,
+                yields_to_stop: true,
+                remove_handle: true,
+                pause_queue: false,
+                reconcile_subagents: false,
+            },
+            |_| Ok(TurnRows::default()),
+        )?;
+        let Some(ended) = ended else {
+            return Ok(());
         };
-
-        let entry = self.handles.lock_or_recover("handles").remove(session_id);
-        self.flush_queue
-            .lock_or_recover("flush queue")
-            .delete_session(session_id);
-
-        self.publish(DashboardDelta {
-            projects,
-            workspaces: vec![workspace],
-            sessions: vec![session],
-            ..DashboardDelta::default()
-        });
 
         // The turn is over here, so its approvals are stale — the exit path
         // clears them at this same point. Like there, a failure must not return
         // early: the queue drain below is what sends a follow-up the user typed
         // during the turn.
         let mut first_error = self.cancel_pending_interactions(session_id).err();
-        if let Some(HandleEntry::Resolved(handle)) = entry {
+        if let Some(HandleEntry::Resolved(handle)) = ended.handle {
             if let Err(error) = handle.terminate().await {
                 let _ = self.abort_session_after_turn(
                     session_id,
@@ -4482,15 +4440,17 @@ impl ProviderSessionService {
                 first_error.get_or_insert(error);
             }
         }
-        self.settle_session_after_turn(session_id);
         // Cursor ends a turn on `result/success` rather than on a process exit,
-        // so this is that provider's only turn-end seam — and whoever launched
-        // this session is told here, exactly as the exit path tells them. Left
-        // out, a Cursor child never reported back at all: no completion notice
-        // for an agent's launch, and no `multitask.finished` row, so its chat
-        // row could only say that it had stopped, never what it found.
-        self.notify_launcher_of_turn_end(session_id, SessionState::Complete, &completed_at);
-        self.drain_queue_after_complete(session_id.to_string());
+        // so this is that provider's only turn-end seam.
+        self.announce_turn_end(
+            session_id,
+            SessionState::Complete,
+            &completed_at,
+            TurnFollowUp {
+                settle: true,
+                drain_queue: true,
+            },
+        );
         match first_error {
             Some(error) => Err(error),
             None => Ok(()),
@@ -5366,6 +5326,71 @@ mod tests {
                 .state,
             "complete"
         );
+    }
+
+    #[test]
+    fn every_turn_end_mirrors_the_workspace_and_writes_one_event() {
+        type EndTurn = fn(&Arc<ProviderSessionService>) -> ArgmaxResult<()>;
+        let paths: [(EndTurn, SessionState, &str); 3] = [
+            (
+                |service| service.cancel_session("session-1"),
+                SessionState::Cancelled,
+                "session.cancelled",
+            ),
+            (
+                |service| {
+                    service.record_launch_failure(
+                        "session-1",
+                        ProviderId::Claude,
+                        ArgmaxError::service("TEST", "no CLI"),
+                    )
+                },
+                SessionState::Failed,
+                "error",
+            ),
+            (
+                |service| {
+                    service.handle_lifecycle_event(ProviderRuntimeEvent {
+                        session_id: "session-1".to_string(),
+                        r#type: ProviderRuntimeEventType::Exit,
+                        stream: super::super::normalizer::ProviderOutputStream::System,
+                        message: "provider exited".to_string(),
+                        exit_code: Some(0),
+                        created_at: "2026-10-03T10:00:00.000Z".to_string(),
+                    })
+                },
+                SessionState::Complete,
+                "session.completed",
+            ),
+        ];
+        for (end_turn, state, event_type) in paths {
+            let database = database_with_running_session();
+            let service = ProviderSessionService::with_launcher(
+                Arc::clone(&database),
+                Arc::new(CountingFailureLauncher::default()),
+                |_| {},
+            );
+            end_turn(&service).expect("turn ends");
+            let connection = database.connection();
+            let session = find_session_by_id(&connection, "session-1").unwrap();
+            assert_eq!(session.state, state, "{event_type}");
+            let workspace_state: String = connection
+                .query_row(
+                    "SELECT state FROM workspaces WHERE id = ?1",
+                    [&session.workspace_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(workspace_state, state.as_str(), "{event_type}");
+            let events: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM events WHERE session_id = 'session-1' AND type = ?1",
+                    [event_type],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(events, 1, "{event_type}");
+        }
     }
 
     #[test]

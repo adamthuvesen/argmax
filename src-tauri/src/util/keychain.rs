@@ -40,13 +40,9 @@ impl KeychainSecret {
         }
     }
 
-    pub fn stored(&self) -> Option<String> {
-        self.read().ok().flatten()
-    }
-
-    /// The saved key, telling a failed read apart from no key. A caller that
-    /// would otherwise fall back to some other credential uses this, so a
-    /// locked Keychain fails the call instead of billing another account.
+    /// The saved key, telling a failed read apart from no key. This is the
+    /// only read: a locked Keychain must never look like a missing key, or a
+    /// caller can fall back to another credential and bill another account.
     pub fn read(&self) -> ArgmaxResult<Option<String>> {
         // No key is the definite answer here, so nothing retries.
         if keychain_fenced() {

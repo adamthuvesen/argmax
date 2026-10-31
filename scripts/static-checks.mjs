@@ -15,6 +15,7 @@ const CHECKS = [
   ["docs integrity", "scripts/check-docs.mjs"],
   ["architecture boundaries", "scripts/check-architecture.mjs"],
   ["Rust boundaries", "scripts/check-rust-boundaries.mjs"],
+  ["renderer boundaries", "node_modules/dependency-cruiser/bin/dependency-cruiser.mjs", "--ignore-known", "--output-type", "err-long", "src"],
   ["remote contracts", "scripts/export-remote-contracts.mjs", "--check"],
   ["Swift contracts", "scripts/export-swift-contracts.mjs", "--check"],
   ["main-thread handler allowlist", "scripts/check-main-thread-handlers.mjs"],

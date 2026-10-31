@@ -26,6 +26,12 @@ const RULES = [
     fix: "Run git through src-tauri/src/git/exec.rs, which sets GIT_LITERAL_PATHSPECS and the environment."
   },
   {
+    id: "turn-end-outside-owner",
+    pattern: /SessionStateInput::transition\(\s*SessionState::(?:Complete|Failed|Cancelled)\b/g,
+    allowed: (path) => path === "providers/session_service_turn_end.rs",
+    fix: "End a turn through commit_turn_end in src-tauri/src/providers/session_service_turn_end.rs."
+  },
+  {
     id: "persistence-imports-upward",
     pattern: /crate::(?:ipc|providers|sessions|workspaces|gh)\b/g,
     allowed: (path) => !path.startsWith("persistence/"),

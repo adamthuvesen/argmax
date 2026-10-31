@@ -380,7 +380,7 @@ fn prepare(
     if mode == ProjectCheckMode::Off {
         return Ok(None);
     }
-    let Some(api_key) = super::api_key::stored_key() else {
+    let Some(api_key) = super::api_key::read_key()? else {
         return Ok(None);
     };
     let text = match data_dir {

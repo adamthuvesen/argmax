@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join } from "node:path";
-import ts from "typescript";
 
 const problems = [];
 const catalogue = readFileSync("src-tauri/src/ipc/catalogue.rs", "utf8");
@@ -25,20 +24,8 @@ for (const channel of registrations.keys()) {
   if (!seen.has(channel)) problems.push(`missing catalogue entry: ${channel}. Add it to src-tauri/src/ipc/catalogue.rs.`);
 }
 
-const rendererRules = [
-  ["src/renderer/components/SessionMultiGrid.tsx", /tauriBridge|state\/overlays|snapshot/i],
-  ["src/renderer/hooks/useAppMenuCommands.ts", /(?:^|\/)App\.js$|\/components\//],
-  ["src/renderer/hooks/useAppDestinations.ts", /(?:^|\/)App\.js$|\/components\//],
-];
-for (const [file, forbidden] of rendererRules) {
-  const source = readFileSync(file, "utf8");
-  const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-  for (const statement of ast.statements) {
-    if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && forbidden.test(statement.moduleSpecifier.text)) {
-      problems.push(`${file}: forbidden dependency ${statement.moduleSpecifier.text}. Pass the value in from the parent. The rule is in scripts/check-architecture.mjs.`);
-    }
-  }
-  if (file.endsWith("SessionMultiGrid.tsx") && /window\.argmax/.test(source)) problems.push(`${file}: layout must not invoke application commands`);
+if (/window\.argmax/.test(readFileSync("src/renderer/components/SessionMultiGrid.tsx", "utf8"))) {
+  problems.push("SessionMultiGrid.tsx: a layout component takes props and does not call the bridge.");
 }
 const app = readFileSync("src/renderer/App.tsx", "utf8");
 if (/api\.(?:workspaces\.openInIde|projects\.(?:pickFolder|remove))\(/.test(app)) {

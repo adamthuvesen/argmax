@@ -12,8 +12,8 @@ static JEV_KEY: KeychainSecret = KeychainSecret::new(
     "ROUTING_KEYCHAIN_FAILED",
 );
 
-pub fn stored_key() -> Option<String> {
-    JEV_KEY.stored()
+pub fn read_key() -> ArgmaxResult<Option<String>> {
+    JEV_KEY.read()
 }
 
 pub fn store_key(api_key: &str) -> ArgmaxResult<()> {
@@ -57,7 +57,7 @@ mod tests {
     #[test]
     fn verification_never_reaches_the_keychain() {
         if std::env::var_os(VERIFICATION_CHILD_ENV).is_some() {
-            assert_eq!(stored_key(), None);
+            assert_eq!(read_key().expect("fenced read"), None);
             assert!(clear_key().is_ok());
             let error = store_key("ts_live_0123456789abcdef").expect_err("store is fenced");
             assert!(error.to_string().contains("verification mode"));

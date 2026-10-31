@@ -421,15 +421,12 @@ pub(crate) fn discover_repo_remote(repo_path: &str) -> Option<ProjectRemote> {
     if !path.exists() {
         return None;
     }
-    let output = std::process::Command::new("git")
-        .args(["config", "--get", "remote.origin.url"])
-        .current_dir(path)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let url = String::from_utf8_lossy(&output.stdout);
+    let url = crate::git::exec::run_git_text_blocking(
+        path,
+        ["config", "--get", "remote.origin.url"],
+        crate::git::exec::GIT_DEFAULT_TIMEOUT,
+    )
+    .ok()?;
     parse_github_remote(&url)
 }
 

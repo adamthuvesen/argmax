@@ -157,7 +157,7 @@ historical marker syntax now uses import and artifact reads.
 3. Add one entry to `ipc/catalogue.rs` with its handler and remote access policy.
 4. Implement the typed remote operation in that entry, or mark it `desktop`.
 5. Add the method to `ArgmaxApi` in `src/shared/types.ts` and `src/renderer/lib/tauriBridge.ts`.
-6. Run `npm run generate:contracts`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:tauri-bridge` and `check:main-thread`).
+6. Run `npm run generate:contracts`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:static`, which covers bridge parity and `check:main-thread`).
 
 A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,
@@ -235,7 +235,7 @@ Existing PR links open their stored URL. Agents create commits, push branches, a
 
 ## Contract checks
 
-`npm run check:contracts` checks handler names, application dependency direction, and generated client contracts.
+`npm run check:static` checks handler names, application dependency direction, and generated client contracts.
 The Rust integration tests also check generated TypeScript freshness.
 `remoteReadChannels.json` is generated from the catalogue, with the remote-only delta cursor added explicitly.
 MCP tools retain their own explicit session-control exposure. Registering an IPC channel does not expose an agent tool.

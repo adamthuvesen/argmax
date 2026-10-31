@@ -261,7 +261,7 @@ if (scope.rust) {
 }
 
 if (scope.js) {
-  step("eslint", "npx", ["eslint", ".", "--cache", "--cache-location", "node_modules/.cache/eslint/"]);
+  step("eslint", "npx", ["eslint", ".", "--cache", "--cache-strategy", "content", "--cache-location", "node_modules/.cache/eslint/"]);
   // TypeScript 7 (the `typescript-7` alias); see docs/testing.md.
   step("tsc", "node", ["node_modules/typescript-7/bin/tsc", "--noEmit"]);
   // `--changed` runs only the test files whose import graph reaches a

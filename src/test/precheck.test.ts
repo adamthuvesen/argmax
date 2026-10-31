@@ -169,11 +169,11 @@ describe("precheck CLI", () => {
     expect(result.checks).toBe("");
   });
 
-  it("passes --cache and --cache-location to eslint", () => {
+  it("passes the shared content-strategy cache to eslint", () => {
     const repo = fixture();
     repo.change("src/café.ts");
     const result = repo.run();
     expect(result.status, result.stderr).toBe(0);
-    expect(result.checks).toContain("eslint . --cache --cache-location node_modules/.cache/eslint/");
+    expect(result.checks).toContain("eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/");
   });
 });

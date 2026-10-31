@@ -18,9 +18,9 @@ assets/           Icon sources and the mascot sprite
 
 ```bash
 npm run tauri:dev:isolated  # dev app on its own profile (~/.argmax-dev), next to the installed app
-npm run check:changed       # type, lint, tests, and import rules for the files you changed
-npm run check:static        # the static gates precheck and CI share
-npm run precheck            # pre-push gate: CI's checks, scoped to the branch
+npm run check:fast          # the fast lane: eslint, tsc, and static gates in parallel; CI's first job runs it
+npm run check:changed       # the agent hooks' loop: type, lint, related tests, and import rules for changed files
+npm run precheck            # the pre-push gate: every CI lane, scoped to what the branch changed
 npm test                    # Vitest, perf, and Cargo tests
 npm run test:ios            # XCTest on a simulator
 npm run install:ios         # build and install the phone app on the connected iPhone
@@ -75,7 +75,7 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 | A change the phone's suite can see runs that suite | `npm run test:ios` in precheck and in the CI `ios` job | 2026-11-04 |
 | Transcript scroll decisions live in `TranscriptScrollModel`, not the view | Recorded sequences in `TranscriptScrollModelTests` | 2026-11-04 |
 | Relative imports end in `.js`, even for a `.ts` file | ESLint `no-restricted-imports` | 2026-11-06 |
-| IPC channels match between Rust and the bridge | `check:tauri-bridge`, list in `src-tauri/tests/fixtures/channels.txt` | 2026-11-06 |
+| IPC channels match between Rust and the bridge | `scripts/check-tauri-bridge.mjs` in `check:static`, list in `src-tauri/tests/fixtures/channels.txt` | 2026-11-06 |
 | iPhone type goes through the roles in `Typography.swift` | `check:ios-fonts` | 2026-11-06 |
 | Never edit an applied migration | `verify_applied_checksum` in `migrations.rs`, test `checksum_drift_is_reported_for_applied_migration` | 2026-11-06 |
 | A mascot expression changes only its face | Overlay files composed by `withExpression` in `Mascot.tsx` | 2026-11-06 |

@@ -23,7 +23,7 @@ jobs:
       ios: ${{ steps.filter.outputs.ios }}
       docs: ${{ steps.filter.outputs.docs }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
@@ -64,8 +64,8 @@ jobs:
 
   rust:
     name: rust ${{ matrix.check }}
-    needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' }}
+    needs: [changes, js-static]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.js-static.result != 'failure' && needs.changes.outputs.rust == 'true' }}
     # macOS is the only shipping target and its minutes bill at 10x, so this
     # lane runs only the Rust crate and nothing that Linux could do instead.
     runs-on: macos-latest
@@ -80,9 +80,9 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: 0
       CARGO_PROFILE_TEST_DEBUG: 0
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.95"
           components: clippy, rustfmt
@@ -92,7 +92,7 @@ jobs:
       # A source change still rebuilds affected targets. The SHA lets main
       # refresh the immutable cache instead of retaining an old workspace build.
       - id: rust-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -133,7 +133,7 @@ jobs:
       # Main refreshes the shared build. A cold PR can seed its own scoped
       # cache so verification does not require merging an unmeasured change.
       - if: ${{ github.ref == 'refs/heads/main' || steps.rust-cache.outputs.cache-matched-key == '' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -141,6 +141,9 @@ jobs:
             src-tauri/target
           key: ${{ steps.rust-cache.outputs.cache-primary-key }}
 
+  # The fast lane. Every slower job needs it, so a lint or type error fails
+  # in minutes without spending macOS runner time. A skipped fast lane (an
+  # iOS-only change) does not block the others.
   js-static:
     name: js lint · typecheck · parity
     needs: changes
@@ -148,9 +151,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
           cache: npm
@@ -160,31 +163,26 @@ jobs:
       # Type-aware rules depend on imported files, not just the file being
       # linted. Reuse results only when the whole TS program and config match.
       - id: eslint-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ runner.temp }}/eslint/.eslintcache
+          path: node_modules/.cache/eslint
           key: eslint-${{ runner.os }}-${{ hashFiles('src/**', '*.ts', '*.js', '*.json') }}
 
-      - run: |
-          mkdir -p "$RUNNER_TEMP/eslint"
-          npm run lint -- --cache --cache-strategy content --cache-location "$RUNNER_TEMP/eslint/.eslintcache"
-
-      - run: npm run typecheck
-
-      # The same list precheck runs. These checks read Rust sources and docs, so
-      # this lane also runs for Rust-only and docs-only PRs.
-      - run: npm run check:static
+      # The fast lane, as run locally: eslint, tsc, and the static checks that
+      # precheck shares. They read Rust sources and docs, so this job also runs
+      # for Rust-only and docs-only PRs.
+      - run: npm run check:fast
 
       - if: ${{ steps.eslint-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ runner.temp }}/eslint/.eslintcache
+          path: node_modules/.cache/eslint
           key: ${{ steps.eslint-cache.outputs.cache-primary-key }}
 
   js-tests:
     name: js tests (${{ matrix.shard }}/8)
-    needs: changes
-    if: ${{ needs.changes.outputs.js == 'true' }}
+    needs: [changes, js-static]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.js-static.result != 'failure' && needs.changes.outputs.js == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     # Eight independent shards distribute the test files across runners.
@@ -193,9 +191,9 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
           cache: npm
@@ -210,14 +208,14 @@ jobs:
 
   bundle:
     name: bundle budget
-    needs: changes
-    if: ${{ needs.changes.outputs.js == 'true' }}
+    needs: [changes, js-static]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.js-static.result != 'failure' && needs.changes.outputs.js == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
           cache: npm
@@ -232,16 +230,16 @@ jobs:
 
   ios:
     name: ios tests
-    needs: changes
-    if: ${{ needs.changes.outputs.ios == 'true' }}
+    needs: [changes, js-static]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.js-static.result != 'failure' && needs.changes.outputs.ios == 'true' }}
     # The same command precheck runs. macOS minutes bill at 10x, so only a
     # change the phone's suite can see pays for this runner.
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
 
@@ -251,15 +249,16 @@ jobs:
 
   dependency-audit:
     name: dependency audit
-    needs: changes
+    needs: [changes, js-static]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.js-static.result != 'failure' }}
     # Advisories change on their own clock. Run on every PR so a new advisory
     # cannot first appear in the full push-to-main build after merge.
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
 
@@ -270,10 +269,10 @@ jobs:
       # Dependabot tracks those separately for routine upgrades.
       - run: npm audit --omit=dev --audit-level=high
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       # Prebuilt cargo-audit binary — avoids a from-source compile.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
         with:
           tool: cargo-audit
 

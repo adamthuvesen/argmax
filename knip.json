@@ -16,6 +16,7 @@
   ],
   "ignoreDependencies": [
     "@fontsource/geist-sans",
+    "dependency-cruiser",
     "lucide"
   ],
   "ignoreBinaries": [

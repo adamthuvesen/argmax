@@ -16,7 +16,8 @@ npm run test:perf       # Vitest performance benchmarks
 npm run test:rust       # Cargo test suite for every crate in the src-tauri workspace (includes the bindings freshness test)
 npm run test:ios        # XCTest suite on a simulator (see "iPhone Tests" below)
 npm run lint:rust       # cargo clippy over every target, warnings are errors
-npm run check:static    # Every static gate; precheck and CI run this same list
+npm run check:fast      # eslint, tsc, and check:static in parallel; CI js-static runs this
+npm run check:static    # Every static gate; precheck runs this same list
 npm run check:rust-boundaries # Rust layer rules, with a ratchet on existing violations
 npm run doctor          # Check the local verification environment
 npm run verify          # Build and exercise a disposable app with scripted providers

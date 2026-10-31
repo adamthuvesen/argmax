@@ -11,9 +11,8 @@ mod resume;
 mod wait;
 mod workspace_tools;
 
-pub(crate) use crate::application::session_launch::{task_label, AlongsideCheckout, LaunchSpec};
 #[cfg(test)]
-use crate::application::session_launch::{DEFAULT_TASK_LABEL, MAX_TASK_LABEL_BYTES};
+use crate::application::session_launch::{task_label, DEFAULT_TASK_LABEL, MAX_TASK_LABEL_BYTES};
 pub(crate) use launch::{check_in_routine_id, launch_with_spec};
 pub use resume::resume_after_turn_actions;
 

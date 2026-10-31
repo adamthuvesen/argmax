@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::State;
 
-use super::{live_database, read_off_main};
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::validation::{NonEmptyString, ProjectId};
 use argmax_store::project_sources::{self, ProjectSource, ProjectSourceAddedBy, SourceInput};

@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::State;
 
-use super::{live_database, publish_dashboard_changed, read_off_main};
+use super::publish_dashboard_changed;
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::validation::NonEmptyString;
 use argmax_contracts::validation::{ProviderId, ReasoningEffort};

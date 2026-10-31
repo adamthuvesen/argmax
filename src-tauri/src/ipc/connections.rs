@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use tauri::State;
 
-use super::{inputs::ConnectionsListInput, live_database};
+use super::inputs::ConnectionsListInput;
+use crate::state::live_database;
 use crate::{
     connections::{list_connections, ConnectionSummary},
     state::AppState,

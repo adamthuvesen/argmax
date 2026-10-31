@@ -11,7 +11,7 @@ use crate::{
 use argmax_contracts::error::ArgmaxResult;
 use argmax_store::checkpoints::Checkpoint;
 
-use super::{live_database, read_off_main};
+use crate::state::{live_database, read_off_main};
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

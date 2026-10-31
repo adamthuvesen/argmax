@@ -4,8 +4,8 @@
 
 use tauri::{AppHandle, State};
 
-use super::{live_database, read_off_main};
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use crate::window_snapshot::shortcut::{
     configure, status, Settings, WindowSnapshotConfigureInput, WindowSnapshotState,
     WindowSnapshotStatus,

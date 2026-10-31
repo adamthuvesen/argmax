@@ -1,6 +1,7 @@
 use tauri::State;
 
-use super::{inputs::*, live_database, read_off_main};
+use super::inputs::*;
+use crate::state::{live_database, read_off_main};
 use crate::{
     files::git_grep_parser::WorkspaceContentSearchResult,
     files::workspace_files::{

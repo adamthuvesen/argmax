@@ -1,7 +1,8 @@
 use tauri::State;
 
-use super::{inputs::*, live_database, read_off_main};
+use super::inputs::*;
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use argmax_contracts::error::ArgmaxResult;
 use argmax_store::learnings::{
     delete_learning, list_learnings, update_learning, Learning, UpdateLearningInput,

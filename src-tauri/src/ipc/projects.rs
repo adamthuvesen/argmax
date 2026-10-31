@@ -8,10 +8,10 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::inputs::*;
-use super::{live_database, read_off_main};
 use crate::application::project_registration::*;
 use crate::routing::project_check::ProjectCheck;
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_process::git_exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use argmax_store::database::Database;

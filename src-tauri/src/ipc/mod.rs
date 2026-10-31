@@ -60,7 +60,7 @@ pub fn attest_person_for_tests() -> PersonAttestation {
 pub mod catalogue;
 pub use catalogue::{specta_builder, REGISTERED_CHANNELS};
 
-pub(crate) use crate::state::{live_database, read_off_main};
+use crate::state::{live_database, read_off_main};
 
 /// Tell subscribers to reload the dashboard snapshot after an Arc changes.
 /// Missing provider service is a no-op: boot has not finished installing

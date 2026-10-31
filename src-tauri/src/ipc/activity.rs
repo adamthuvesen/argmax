@@ -5,10 +5,11 @@ use chrono::Utc;
 use chrono_tz::Tz;
 use tauri::State;
 
-use super::{inputs::ActivitySummaryInput, live_database, read_off_main};
+use super::inputs::ActivitySummaryInput;
 use crate::activity::scanner::{spawn_sweep, ActivityScanProgress};
 use crate::activity::{github, summary, ActivityScanPhase, ActivityScanState, ActivitySummary};
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use crate::util::gh_runner::default_gh_runner;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 

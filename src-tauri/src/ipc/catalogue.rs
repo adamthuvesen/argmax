@@ -552,7 +552,7 @@ command_catalogue! {
             let input: crate::goals::service::GoalSessionInput = parse(channel, input)?;
             let service = goals::live_goals(state)?;
             encode(
-                crate::ipc::read_off_main(move || service.get_for_session(&input.session_id))
+                crate::state::read_off_main(move || service.get_for_session(&input.session_id))
                     .await?,
             )
         };
@@ -562,7 +562,7 @@ command_catalogue! {
             let input: crate::goals::service::GoalListInput = parse(channel, input)?;
             let service = goals::live_goals(state)?;
             encode(
-                crate::ipc::read_off_main(move || service.list(input.workspace_id.as_deref()))
+                crate::state::read_off_main(move || service.list(input.workspace_id.as_deref()))
                     .await?,
             )
         };

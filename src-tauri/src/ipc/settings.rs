@@ -6,16 +6,14 @@ use std::time::Duration as StdDuration;
 use tauri::State;
 use uuid::Uuid;
 
-use super::{
-    inputs::{
-        ClearOpencodeGatewayKeyInput, DeleteOldChatsInput, SetBrowserToolsInput,
-        SetOpencodeGatewayInput, SetOpencodeGatewayKeyInput, SetProjectCheckInput,
-        SetRoutingKeyInput, SettingsRoutingInput,
-    },
-    live_database, read_off_main,
+use super::inputs::{
+    ClearOpencodeGatewayKeyInput, DeleteOldChatsInput, SetBrowserToolsInput,
+    SetOpencodeGatewayInput, SetOpencodeGatewayKeyInput, SetProjectCheckInput, SetRoutingKeyInput,
+    SettingsRoutingInput,
 };
 use crate::providers::opencode_gateway::{self, OpencodeGateway};
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use crate::workspaces::lifecycle::ArchiveOutcome;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::validation::SessionId;
@@ -69,7 +67,7 @@ fn routing_settings(state: &AppState, api_key: Option<String>) -> ArgmaxResult<R
     let project_check = project_check_mode(&database.read_connection());
     Ok(RoutingSettings {
         enabled: api_key.is_some(),
-        key_hint: api_key.as_deref().map(crate::routing::api_key::key_hint),
+        key_hint: api_key.as_deref().map(crate::util::keychain::key_hint),
         project_check,
     })
 }

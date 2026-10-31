@@ -9,7 +9,7 @@ use super::super::{
     protocol_error,
     registry::ParentLaunchSettings,
 };
-use super::task_label;
+use crate::application::session_launch::task_label;
 use crate::{workspaces::inputs::WorkspacesSetLabelInput, workspaces::WorkspaceService};
 use argmax_contracts::validation::{TaskLabel, WorkspaceId};
 use argmax_store::{

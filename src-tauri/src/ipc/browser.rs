@@ -28,7 +28,6 @@ use crate::browser::automation::{
 };
 use crate::browser::registry::BrowserTabsEvent;
 use crate::browser::tabs::*;
-pub use crate::browser::tabs::{BrowserNewTabEvent, BrowserPageCommandEvent, BrowserStateEvent};
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
 use crate::state::AppState;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};

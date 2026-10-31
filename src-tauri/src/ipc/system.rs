@@ -11,9 +11,9 @@ use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_shell::ShellExt;
 
 use super::inputs::*;
-use super::{live_database, read_off_main};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::state::AppState;
+use crate::state::{live_database, read_off_main};
 use crate::util::log_buffer::LogEntry;
 use crate::util::performance::{PerformanceCapture, PerformanceStatus};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};

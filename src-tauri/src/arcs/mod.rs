@@ -17,8 +17,9 @@ pub use preamble::{coordinator_preamble, member_preamble, promoted_coordinator_p
 
 use std::sync::Arc as StdArc;
 
+use crate::application::session_launch::LaunchSpec;
 use crate::providers::session_service::ProviderSessionService;
-use crate::session_control::{launch_with_spec, LaunchSpec};
+use crate::session_control::launch_with_spec;
 use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;

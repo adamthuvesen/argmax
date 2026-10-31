@@ -1,5 +1,5 @@
 use super::inputs::*;
-use super::live_database;
+use crate::state::live_database;
 use crate::{
     checkpoints::service::CheckpointService,
     review::git_review::{self, ChangedFileSummary, WorkspaceDiff},

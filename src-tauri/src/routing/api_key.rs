@@ -24,8 +24,6 @@ pub fn clear_key() -> ArgmaxResult<()> {
     JEV_KEY.clear()
 }
 
-pub use crate::util::keychain::key_hint;
-
 pub(crate) fn validate_format(api_key: &str) -> ArgmaxResult<&str> {
     JEV_KEY.validate_format(api_key)
 }
@@ -45,7 +43,10 @@ mod tests {
 
     #[test]
     fn hint_shows_only_the_last_four_characters() {
-        assert_eq!(key_hint("ts_live_0123456789abcd"), "…abcd");
+        assert_eq!(
+            crate::util::keychain::key_hint("ts_live_0123456789abcd"),
+            "…abcd"
+        );
     }
 
     const VERIFICATION_CHILD_ENV: &str = "ARGMAX_VERIFICATION_KEYCHAIN_TEST_CHILD";

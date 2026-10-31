@@ -18,8 +18,9 @@ use super::super::{
 };
 use super::{
     project_tools::{schedule_same_session_wake, SameSessionWake},
-    resolve_or_register_project, task_label, LaunchSpec,
+    resolve_or_register_project,
 };
+use crate::application::session_launch::{task_label, LaunchSpec};
 use crate::{
     application::session_launch::{child_permission_mode, LaunchOutcome, LaunchReceiptTicket},
     arcs::member_preamble,

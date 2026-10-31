@@ -32,10 +32,11 @@ use serde_json::json;
 use specta::Type;
 use uuid::Uuid;
 
+use crate::application::session_launch::{task_label, AlongsideCheckout, LaunchSpec};
 use crate::arcs::member_preamble;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
-use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
+use crate::session_control::launch_with_spec;
 use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;

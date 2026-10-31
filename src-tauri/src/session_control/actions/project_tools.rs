@@ -20,9 +20,8 @@ use super::super::{
     FOLLOWUP_MAX_SECONDS, FOLLOWUP_MIN_SECONDS, LEARNINGS_SEARCH_DEFAULT_LIMIT,
     LEARNINGS_SEARCH_MAX_LIMIT, SCHEDULE_LIST_LIMIT, SCHEDULE_PROMPT_CHARS,
 };
-use super::{
-    messaging::cap_chars, resolve_project, task_label, workspace_tools::resolve_session_workspace,
-};
+use super::{messaging::cap_chars, resolve_project, workspace_tools::resolve_session_workspace};
+use crate::application::session_launch::task_label;
 use crate::routines::schedule;
 use argmax_store::{
     database::Database,

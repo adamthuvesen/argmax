@@ -7,7 +7,7 @@
 // The `async` flag is not a fix for blocking work: it is `tokio::spawn`, which
 // parks a worker that provider IO, the remote bridge, and the `dashboard:delta`
 // emit loop all share. Work that genuinely blocks belongs in `spawn_blocking`
-// (see `read_off_main` in src-tauri/src/ipc/mod.rs).
+// (see `read_off_main` in src-tauri/src/state.rs).
 //
 // Rather than guess which bodies block, this enforces the reviewable version of
 // the rule: every synchronous handler is named here with a reason. Adding one

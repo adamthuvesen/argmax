@@ -1,0 +1,31 @@
+[package]
+name = "argmax-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The Argmax SQLite store: migrations and every query."
+publish = false
+
+[dependencies]
+argmax-contracts = { path = "../argmax-contracts" }
+argmax-process = { path = "../argmax-process" }
+chrono.workspace = true
+phf.workspace = true
+regex.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+specta.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url = "2"
+uuid.workspace = true
+
+[features]
+# Test helpers the app crate's tests reach for. `cfg(test)` is off for a
+# dependency, so the app's dev-dependency turns this on instead.
+test-support = []
+
+[dev-dependencies]
+tempfile.workspace = true

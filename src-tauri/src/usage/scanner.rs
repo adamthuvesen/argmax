@@ -15,8 +15,8 @@ use std::{
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
+use crate::application::validation::ProviderId;
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::validation::ProviderId;
 use crate::persistence::{
     time::now_iso,
     usage_scan::{self, ScanFileRecord, UsageContribution},

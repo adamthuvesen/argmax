@@ -2,13 +2,7 @@
 use serde::Serialize;
 use specta::Type;
 
-#[derive(Clone, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalAgentOpenEvent {
-    pub terminal_id: String,
-    pub workspace_id: String,
-    pub command: Option<String>,
-}
+pub use crate::terminal::TerminalAgentOpenEvent;
 
 /// A type-level channel map. Clients index it by channel instead of choosing
 /// an unrelated payload type at each subscription.

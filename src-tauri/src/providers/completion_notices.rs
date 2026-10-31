@@ -12,7 +12,9 @@ use crate::{
     error::ArgmaxResult,
     persistence::{
         database::Database,
-        events::{find_event_by_id, latest_agent_answer, latest_user_message_id},
+        events::{
+            count_user_messages, find_event_by_id, latest_agent_answer, latest_user_message_id,
+        },
         session_messages::{
             clear_wake_due, insert_session_message, is_message_delivered, list_due_wakes,
             mark_message_delivered, mark_wake_due, NewSessionMessage, SessionMessage,
@@ -168,18 +170,6 @@ fn notice_body(
 /// prompt its launcher sent.
 fn turn_was_user_driven(latest_payload: &Value, is_first: bool) -> bool {
     !is_first && latest_payload.get("origin").is_none() && latest_payload.get("starter").is_none()
-}
-
-/// Every prompt the session has ever taken, clear boundaries included — only
-/// the very first one can be the launch prompt.
-fn count_user_messages(connection: &rusqlite::Connection, session_id: &str) -> ArgmaxResult<i64> {
-    connection
-        .prepare_cached(
-            "SELECT COUNT(*) FROM events WHERE session_id = ? AND type = 'user.message'",
-        )
-        .map_err(sqlite_error)?
-        .query_row([session_id], |row| row.get::<_, i64>(0))
-        .map_err(sqlite_error)
 }
 
 /// The moment a notice reports, in the machine's zone. A coordinator reads

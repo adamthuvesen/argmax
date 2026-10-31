@@ -494,7 +494,7 @@ export type SyncStatus = Retype<Bindings.SyncStatus, { config: SyncConfigInput }
 
 /** A stored scheduled task: a prompt plus schedule, fired by the Rust
  *  scheduler as a normal top-level session. Wire shape mirrors the Rust
- *  `Routine` record (see src-tauri/src/persistence/routines.rs).
+ *  `Routine` record (see src-tauri/crates/argmax-store/src/routines.rs).
  *
  *  Permission mode is not stored per task. New scheduled chats use the
  *  app-wide Tool permissions setting; follow-ups retain the existing

@@ -56,7 +56,7 @@ Merge cleanup disposes of workspaces automatically ([gh.md](gh.md#merge-cleanup)
 
 ### Branch name templates
 
-A branch template names the branch of each new isolated worktree. Precedence runs project, then app, then the built-in `argmax/{word}-{id}`. Both values are read from Rust, because every launch path needs them, including agent launches. [branch_names.rs](../src-tauri/src/workspaces/branch_names.rs) owns the placeholders and the validation, and a test checks the rules against the installed `git`.
+A branch template names the branch of each new isolated worktree. Precedence runs project, then app, then the built-in `argmax/{word}-{id}`. Both values are read from Rust, because every launch path needs them, including agent launches. [branch_names.rs](../src-tauri/crates/argmax-contracts/src/branch_names.rs) owns the placeholders and the validation, and a test checks the rules against the installed `git`.
 
 - `{type}` is always `feat`, because classifying the work would put a model call on chat startup.
 - A stored template that renders an invalid name for some label falls back to the built-in one and logs a warning, so a launch never fails on it.

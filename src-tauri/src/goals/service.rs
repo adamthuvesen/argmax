@@ -18,11 +18,8 @@ use tokio::{sync::broadcast, task::JoinHandle};
 use uuid::Uuid;
 
 use crate::{
+    application::validation::{NonEmptyString, Prompt, SessionId},
     error::{ArgmaxError, ArgmaxResult},
-    ipc::{
-        inputs::ProvidersSendInput,
-        validation::{NonEmptyString, Prompt, SessionId},
-    },
     persistence::{
         database::Database,
         events::goal_transcript_tail,
@@ -34,6 +31,7 @@ use crate::{
         time::now_iso,
         workspaces::find_workspace_by_id,
     },
+    providers::inputs::ProvidersSendInput,
     providers::{
         one_shot,
         runtime::parse_provider,

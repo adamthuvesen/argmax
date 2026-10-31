@@ -43,7 +43,6 @@ use crate::{
         },
         database::Database,
         sessions::find_session_by_id,
-        sqlite_error,
         workspaces::find_workspace_by_id,
     },
 };
@@ -176,25 +175,19 @@ fn standing(
     source_session_id: &str,
     marker: &str,
 ) -> ArgmaxResult<Standing> {
-    let delivered: bool = connection
-        .query_row(
-            "SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ?1 \
-             AND type = 'user.message' AND instr(message, ?2) > 0)",
-            rusqlite::params![source_session_id, marker],
-            |row| row.get(0),
-        )
-        .map_err(sqlite_error)?;
+    let delivered = crate::persistence::events::has_user_message_containing(
+        connection,
+        source_session_id,
+        marker,
+    )?;
     if delivered {
         return Ok(Standing::Delivered);
     }
-    let queued: bool = connection
-        .query_row(
-            "SELECT EXISTS (SELECT 1 FROM pending_messages WHERE session_id = ?1 \
-             AND instr(content, ?2) > 0)",
-            rusqlite::params![source_session_id, marker],
-            |row| row.get(0),
-        )
-        .map_err(sqlite_error)?;
+    let queued = crate::persistence::pending_messages::has_pending_message_containing(
+        connection,
+        source_session_id,
+        marker,
+    )?;
     Ok(if queued {
         Standing::Queued
     } else {
@@ -335,14 +328,11 @@ fn boundary_excerpt(connection: &Connection, fork: &ForkRecord) -> ArgmaxResult<
     let (Some(boundary), Some(source)) = (&fork.boundary_event_id, &fork.source_session_id) else {
         return Ok(None);
     };
-    Ok(connection
-        .query_row(
-            "SELECT message FROM events WHERE id = ?1 AND session_id = ?2",
-            rusqlite::params![boundary, source],
-            |row| row.get::<_, String>(0),
-        )
-        .ok()
-        .map(|message| excerpt(&message)))
+    Ok(
+        crate::persistence::events::event_message(connection, source, boundary)
+            .ok()
+            .map(|message| excerpt(&message)),
+    )
 }
 
 fn draft(
@@ -502,13 +492,11 @@ pub fn claim_range(
             "That fork position is gone. Preview the merge again.",
         )
     })?;
-    let in_fork: bool = connection
-        .query_row(
-            "SELECT EXISTS (SELECT 1 FROM events WHERE id = ?1 AND session_id = ?2)",
-            rusqlite::params![through_event_id, fork.child_session_id],
-            |row| row.get(0),
-        )
-        .map_err(sqlite_error)?;
+    let in_fork = crate::persistence::events::event_is_in_session(
+        &connection,
+        &fork.child_session_id,
+        through_event_id,
+    )?;
     // Only a visible message is a position a preview can name. A trace row
     // can be rewritten away later, which would withdraw the claim.
     if !in_fork || !is_visible_event(&connection, &fork.child_session_id, through_event_id)? {
@@ -776,7 +764,7 @@ mod tests {
             .fork_session_at(ForkRequest {
                 session_id: "s1".to_string(),
                 boundary_event_id: Some("u1".to_string()),
-                workspace: crate::ipc::inputs::ForkWorkspaceMode::Shared,
+                workspace: crate::workspaces::inputs::ForkWorkspaceMode::Shared,
             })
             .await
             .unwrap();

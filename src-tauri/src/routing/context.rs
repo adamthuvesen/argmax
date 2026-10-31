@@ -6,8 +6,8 @@ use std::{path::Path, sync::OnceLock};
 use rusqlite::Connection;
 
 use crate::{
+    application::validation::{ProviderId, ReasoningEffort},
     error::ArgmaxResult,
-    ipc::validation::{ProviderId, ReasoningEffort},
     persistence::{events::routing_visible_messages, turn_routes::recent_routing_decisions},
     providers::model_catalogue::ModelId,
     skills::registry::SkillRegistry,
@@ -309,7 +309,7 @@ fn invoked_skills(message: &str, available: &[&str]) -> (Vec<String>, bool) {
 #[cfg(test)]
 mod tests {
     use super::{build_follow_up_context, invoked_skills, refers_to_earlier_work};
-    use crate::ipc::validation::ProviderId;
+    use crate::application::validation::ProviderId;
 
     #[test]
     fn detects_invocations_but_not_mentions() {

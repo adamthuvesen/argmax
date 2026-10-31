@@ -6,7 +6,7 @@ The chat renders normalized timeline events as turns, activity rows, and cards. 
 
 | Concern | Owner |
 |---|---|
-| Timeline decoding | [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts), [timeline_semantics.rs](../src-tauri/src/persistence/timeline_semantics.rs) |
+| Timeline decoding | [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts), [timeline_semantics.rs](../src-tauri/crates/argmax-store/src/timeline_semantics.rs) |
 | Which events appear | `isConversationVisible` in [sessionConversationModel.ts](../src/renderer/lib/sessionConversationModel.ts) |
 | Turn folding | [foldConversation.ts](../src/renderer/lib/foldConversation.ts), [sessionTurnView.ts](../src/renderer/lib/sessionTurnView.ts) |
 | Conversation shell and turns | [SessionConversation.tsx](../src/renderer/components/SessionConversation.tsx), [SessionConversationTurn.tsx](../src/renderer/components/SessionConversationTurn.tsx), [TurnBlock.tsx](../src/renderer/components/TurnBlock.tsx) |

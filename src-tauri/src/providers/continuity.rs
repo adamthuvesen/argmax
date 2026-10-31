@@ -12,6 +12,7 @@
 //!   before admitting the turn, the launch runs once more as a fresh
 //!   conversation. An ambiguous failure is never retried.
 
+pub use crate::persistence::events::latest_turn_starter;
 use std::path::Path;
 
 use rusqlite::Connection;
@@ -252,25 +253,15 @@ fn child_untouched(connection: &Connection, fork: &ForkRecord) -> ArgmaxResult<b
         Some(event_id) => event_rowid(connection, event_id)?.unwrap_or(0),
         None => 0,
     };
-    let touched: bool = connection
-        .query_row(
-            "SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ?1 AND type = 'user.message' \
-             AND rowid > ?2)",
-            rusqlite::params![fork.child_session_id, floor],
-            |row| row.get(0),
-        )
-        .map_err(crate::persistence::sqlite_error)?;
-    Ok(!touched)
+    Ok(!crate::persistence::events::has_user_message_after(
+        connection,
+        &fork.child_session_id,
+        floor,
+    )?)
 }
 
 fn source_is_active(connection: &Connection, source_session_id: &str) -> ArgmaxResult<bool> {
-    let state: Option<String> = connection
-        .query_row(
-            "SELECT state FROM sessions WHERE id = ?",
-            [source_session_id],
-            |row| row.get(0),
-        )
-        .ok();
+    let state = crate::persistence::sessions::session_state_text(connection, source_session_id);
     Ok(state.is_none_or(|state| matches!(state.as_str(), "running" | "waiting" | "blocked")))
 }
 
@@ -285,15 +276,11 @@ fn source_at_boundary(connection: &Connection, fork: &ForkRecord) -> ArgmaxResul
     let Some(floor) = event_rowid(connection, last)? else {
         return Ok(false);
     };
-    let advanced: bool = connection
-        .query_row(
-            "SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ?1 AND type = 'user.message' \
-             AND rowid > ?2)",
-            rusqlite::params![source_session_id, floor],
-            |row| row.get(0),
-        )
-        .map_err(crate::persistence::sqlite_error)?;
-    Ok(!advanced)
+    Ok(!crate::persistence::events::has_user_message_after(
+        connection,
+        source_session_id,
+        floor,
+    )?)
 }
 
 /// The fresh launch to run once if the native one is definitely rejected.
@@ -383,25 +370,6 @@ pub fn observe_provider_line(
         &user_event_id,
         turn_id,
     )
-}
-
-/// The user message that began the newest provider run: the latest message
-/// that is not steering into one already running.
-pub fn latest_turn_starter(
-    connection: &Connection,
-    session_id: &str,
-) -> ArgmaxResult<Option<String>> {
-    use rusqlite::OptionalExtension;
-    connection
-        .query_row(
-            "SELECT id FROM events WHERE session_id = ?1 AND type = 'user.message' \
-             AND COALESCE(json_extract(payload_json, '$.delivery'), '') <> 'steer' \
-             ORDER BY rowid DESC LIMIT 1",
-            [session_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(crate::persistence::sqlite_error)
 }
 
 /// The Codex turn id recorded for a user message, when it names a native turn

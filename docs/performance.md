@@ -44,7 +44,7 @@ Every synchronous handler must be named in `MAIN_THREAD_ALLOWLIST` with a reason
 
 ## Database reads
 
-Reads take a pooled read-only connection ([`read_connection`](../src-tauri/src/persistence/database.rs)), not the single writer. WAL exists so readers and a writer can run at once, and one shared mutex threw that away. A read during a 400 ms write took 349 ms through the writer and 0.63 ms through the pool.
+Reads take a pooled read-only connection ([`read_connection`](../src-tauri/crates/argmax-store/src/database.rs)), not the single writer. WAL exists so readers and a writer can run at once, and one shared mutex threw that away. A read during a 400 ms write took 349 ms through the writer and 0.63 ms through the pool.
 
 - Readers open `SQLITE_OPEN_READ_ONLY`, so a write through the read path fails loudly.
 - In-memory databases have no pool, because a second handle would open a different database.

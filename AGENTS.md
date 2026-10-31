@@ -12,7 +12,7 @@ src/
 ├── shared/       Shared TS types + generated Tauri bindings
 └── test/         Vitest setup
 
-src-tauri/        Rust runtime, services, IPC handlers, persistence, packaging
+src-tauri/        Cargo workspace. src/: services, IPC, packaging. crates/: contracts, process, store (see docs/architecture.md#layers)
 ios/Argmax/       SwiftUI phone app: Sources/, Tests/ (XCTest, `npm run test:ios`), Resources/ (providerModels.json is generated); see docs/ios-performance.md
 fixtures/parity/  Case tables both the desktop and the phone run, for rules that exist in both
 scripts/          Lightweight CI/check scripts
@@ -75,9 +75,12 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 | No AI attribution in commit messages | `.githooks/commit-msg` | 2026-11-04 |
 | Renderer tests query by role, label, or title | ESLint `testing-library/no-node-access`, `no-container`, with a ratchet | 2026-11-04 |
 | Decode timeline semantics with `decodeTimelineEvent()` | ESLint `no-restricted-syntax`, with a ratchet | 2026-11-04 |
-| SQL lives in `persistence/` | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
-| Run git through `git/exec.rs` | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
-| Imports point down the Rust layers | `check:rust-boundaries`, with a ratchet | 2026-11-04 |
+| The store, process, and contracts crates cannot import upward | Cargo crate graph, compile errors E0432 and E0433 | 2026-11-04 |
+| SQL lives in `argmax-store` | `check:rust-boundaries` rule `sql-outside-store`, with a ratchet | 2026-11-04 |
+| Run git through `argmax_process::git_exec` | `check:rust-boundaries` rule `git-outside-exec` | 2026-11-04 |
+| Only `ipc/` and `remote/` import `crate::ipc` | `check:rust-boundaries` rule `lower-layer-imports-ipc` | 2026-11-04 |
+| Only a person IPC handler mints a `PersonAttestation` | `check:rust-boundaries` rule `person-attestation-outside-ipc`, and a test in `ipc/mod.rs` | 2026-11-04 |
+| A route lands only on a provider the availability probe reported | Rust type `AvailableProvider`, built only in `providers/discovery.rs` | 2026-11-04 |
 | A turn ends only through `commit_turn_end` | `check:rust-boundaries` rule `turn-end-outside-owner` | 2026-11-04 |
 | Renderer imports point down: shared, lib and state, hooks, components | `dependency-cruiser` in `check:static`, with a ratchet | 2026-11-04 |
 | No secrets in staged files | `gitleaks` in `.githooks/pre-commit` | 2026-11-04 |

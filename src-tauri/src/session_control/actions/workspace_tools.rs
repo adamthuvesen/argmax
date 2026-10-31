@@ -313,7 +313,7 @@ pub(super) fn spawn_terminal(
         if let Err(error) = app.emit_to(
             target_window.as_str(),
             "terminal:agent-open",
-            crate::ipc::events::TerminalAgentOpenEvent {
+            crate::terminal::TerminalAgentOpenEvent {
                 terminal_id: spawned.terminal_id.clone(),
                 workspace_id: target.workspace.id.clone(),
                 command: command.clone(),

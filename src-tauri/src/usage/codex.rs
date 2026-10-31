@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::ipc::validation::ProviderId;
+use crate::application::validation::ProviderId;
 use crate::providers::normalizer::{number_value, object_value, string_value};
 use crate::usage::records::{
     line_may_carry_usage, rfc3339_to_ms, TranscriptContext, UsageRecord, UsageRecordTokens,

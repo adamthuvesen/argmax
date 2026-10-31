@@ -41,7 +41,7 @@ const BINARY_SNIFF_BYTES: usize = 4096;
 
 /// Writes larger than this are rejected. Shared with the IPC schema cap
 /// in `validation::MAX_FILE_CONTENT_BYTES` so both boundaries agree.
-pub const MAX_WRITE_BYTES: usize = crate::ipc::validation::MAX_FILE_CONTENT_BYTES;
+pub const MAX_WRITE_BYTES: usize = crate::application::validation::MAX_FILE_CONTENT_BYTES;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 

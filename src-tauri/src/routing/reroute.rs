@@ -12,8 +12,9 @@ use super::{
     table::{self, AutoTier, RouteModel, RoutedModel},
     RouteDecision, RouteDecisionKind,
 };
+use crate::providers::discovery::AvailableProvider;
 use crate::{
-    ipc::validation::{ProviderId, ReasoningEffort},
+    application::validation::{ProviderId, ReasoningEffort},
     providers::{
         model_catalogue::ModelId,
         pricing::{cost_of, list_price, ModelPricing, UsageCounts},
@@ -96,7 +97,7 @@ pub struct FollowUpState {
     pub effort: Option<ReasoningEffort>,
     /// Providers whose CLI is installed. A ladder rung on another provider is
     /// skipped when it is not in here. Empty means unknown, so nothing is held.
-    pub available: Vec<ProviderId>,
+    pub available: Vec<AvailableProvider>,
     /// Input-side tokens of the latest turn: what a switch has to re-read.
     pub context_tokens: u64,
     /// Last-turn observations only cap the next-turn forecast. A long prior
@@ -161,7 +162,8 @@ pub fn follow_up_route(state: &FollowUpState, classification: &Classification) -
         && table::route_model(&state.model_id) == Some(&table::DEEPSEEK)
         && classification.follow_up_scope != Some(super::jev::FollowUpScope::NewTask)
         && classification.scope_confidence.unwrap_or(0.0) >= EFFORT_UP
-        && (state.available.is_empty() || state.available.contains(&table::SONNET.provider))
+        && (state.available.is_empty()
+            || super::is_available(&state.available, table::SONNET.provider))
     {
         return decision_from(
             state.tier,
@@ -386,7 +388,7 @@ pub fn escalate(
     provider: ProviderId,
     model_id: &ModelId,
     effort: Option<ReasoningEffort>,
-    available: &[ProviderId],
+    available: &[AvailableProvider],
     reason: &str,
 ) -> Option<RouteDecision> {
     next_rung(tier, provider, model_id, effort, available).map(|rung| {
@@ -411,7 +413,7 @@ fn next_rung(
     provider: ProviderId,
     model_id: &ModelId,
     effort: Option<ReasoningEffort>,
-    available: &[ProviderId],
+    available: &[AvailableProvider],
 ) -> Option<RoutedModel> {
     let rungs = if tier == AutoTier::Economy && provider == ProviderId::Codex {
         &[
@@ -439,7 +441,9 @@ fn next_rung(
     // holds at the top of the ladder when that CLI is not installed: the send
     // would persist the switch and then fail to launch.
     next.filter(|(model, _)| {
-        model.provider == provider || available.is_empty() || available.contains(&model.provider)
+        model.provider == provider
+            || available.is_empty()
+            || super::is_available(available, model.provider)
     })
     .map(|(model, effort)| RoutedModel {
         model,
@@ -779,8 +783,17 @@ mod tests {
         correction.correction = Some(0.95);
         for (available, moves) in [
             (vec![], true),
-            (vec![ProviderId::Codex, ProviderId::Claude], true),
-            (vec![ProviderId::Codex], false),
+            (
+                vec![
+                    AvailableProvider::assumed_for_test(ProviderId::Codex),
+                    AvailableProvider::assumed_for_test(ProviderId::Claude),
+                ],
+                true,
+            ),
+            (
+                vec![AvailableProvider::assumed_for_test(ProviderId::Codex)],
+                false,
+            ),
         ] {
             let mut chat = state(ProviderId::Codex, "gpt-6.1-sol", Some(High));
             chat.tier = AutoTier::Economy;

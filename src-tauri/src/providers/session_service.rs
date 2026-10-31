@@ -21,7 +21,6 @@ use std::{
 
 use crate::util::sync::LockOrRecover;
 use rusqlite::OptionalExtension;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
 use tokio::sync::{broadcast, watch};
@@ -61,7 +60,7 @@ use crate::{
     gh::service::{pr_numbers_from_command_event, GhService},
     git::ops::checkout_write_lock,
     goals::service::GoalService,
-    ipc::PersonAttestation,
+    persistence::authorship::PersonAttestation,
     persistence::{
         arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
         arcs,
@@ -235,27 +234,7 @@ fn ensure_goal_turn_admitted(
     }
 }
 
-/// Where a user turn came from, when it was not the person at the keyboard.
-/// Written onto the `user.message` payload as `origin`, which is what the chat
-/// renders as a "From <label>" bubble instead of an ordinary prompt.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct MessageOrigin {
-    /// The session that wrote it.
-    pub session_id: String,
-    /// That session's sidebar task label, resolved once at send time so the
-    /// bubble still names it after the sender is archived.
-    pub label: String,
-    /// `message` when another agent wrote here, `completion` when a session
-    /// this one launched has finished.
-    pub kind: String,
-    /// The `session_messages` row this turn delivers, when there is one. The
-    /// follow-up queue consults it at drain time so a message the recipient
-    /// already collected mid-turn — through `inbox_read`, while the queue held
-    /// it — is not also sent as a turn.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-}
+pub use argmax_contracts::messages::MessageOrigin;
 
 /// Who started a turn that carries no [`MessageOrigin`]: the person at the
 /// composer, a Goal's evaluator, the scheduler, or a session move. The
@@ -557,7 +536,7 @@ impl ProviderSessionService {
     }
 
     /// Installed providers, or empty when discovery is not wired in.
-    pub(crate) async fn available_providers(&self) -> Vec<ProviderId> {
+    pub(crate) async fn available_providers(&self) -> Vec<super::discovery::AvailableProvider> {
         match self.provider_discovery.get() {
             Some(discovery) => discovery.available_providers().await,
             None => Vec::new(),
@@ -5158,9 +5137,6 @@ pub struct SendInputResult {
     pub queued: bool,
 }
 
-/// The id a turn's usage is recorded under. An OpenCode turn on Vercel names
-/// the model as Vercel does, matching what OpenCode stores, so its own cost
-/// figure (the bill there) is trusted rather than OpenRouter's table.
 /// Whether a model id a client sent names the model this chat already runs. A
 /// client echoes the successor of a retired id, which is not a new pick.
 fn runs_stored_model(session: &SessionSummary, model_id: &str) -> bool {
@@ -5172,6 +5148,9 @@ fn runs_stored_model(session: &SessionSummary, model_id: &str) -> bool {
     }
 }
 
+/// The id a turn's usage is recorded under. An OpenCode turn on Vercel names
+/// the model as Vercel does, matching what OpenCode stores, so its own cost
+/// figure (the bill there) is trusted rather than OpenRouter's table.
 fn usage_model_id(provider: ProviderId, model_id: &ModelId) -> String {
     if provider == ProviderId::Opencode {
         super::opencode_gateway::selected().route_model_id(model_id)
@@ -5187,7 +5166,7 @@ mod tests {
     }
 
     use super::*;
-    use crate::ipc::validation::ReasoningEffort;
+    use crate::application::validation::ReasoningEffort;
     use crate::providers::runtime::{BoxFuture, EventCallback};
     use std::sync::atomic::{AtomicUsize, Ordering};
 

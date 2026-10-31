@@ -14,6 +14,7 @@ use uuid::Uuid;
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::approvals::{
+    cancel_pending_approval, cancel_pending_session_approvals, cancel_pending_workspace_approvals,
     find_approval_by_id, list_approvals_for_session, list_approvals_for_workspace,
     list_pending_approvals, persist_approval, resolve_approval, ApprovalRequest,
     PersistApprovalInput,
@@ -21,7 +22,6 @@ use crate::persistence::approvals::{
 use crate::persistence::database::Database;
 use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
 use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
-use crate::persistence::time::now_iso;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::runtime::DeltaPublisher;
 use crate::sessions::state::SessionState;
@@ -194,8 +194,7 @@ impl ApprovalService {
                 && approval.provider_request_id.as_deref() == Some(request_id)
         }) {
             native.remove(&approval.id);
-            tx.execute("UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE id = ? AND status = 'pending'", (now_iso(), &approval.id))
-                .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+            cancel_pending_approval(&tx, &approval.id)?;
             cancelled.push(find_approval_by_id(&tx, &approval.id)?);
         }
         let session = find_session_by_id(&tx, session_id)?;
@@ -340,15 +339,7 @@ impl ApprovalService {
         let tx = conn
             .unchecked_transaction()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        let mut statement = tx
-            .prepare_cached(
-                "UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE status = 'pending' AND session_id IN (SELECT id FROM sessions WHERE workspace_id = ?)",
-            )
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        statement
-            .execute((crate::persistence::time::now_iso(), workspace_id))
-            .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        drop(statement);
+        cancel_pending_workspace_approvals(&tx, workspace_id)?;
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
         native.retain(|id, _| !pending.iter().any(|approval| &approval.id == id));
@@ -379,11 +370,7 @@ impl ApprovalService {
         let tx = conn
             .unchecked_transaction()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        tx.execute(
-            "UPDATE approvals SET status = 'cancelled', resolved_at = ? WHERE session_id = ? AND status = 'pending'",
-            (now_iso(), session_id),
-        )
-        .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
+        cancel_pending_session_approvals(&tx, session_id)?;
         tx.commit()
             .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
         native.retain(|id, _| !pending.iter().any(|approval| &approval.id == id));

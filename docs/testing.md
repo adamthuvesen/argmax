@@ -13,7 +13,7 @@ npm run precheck -- --all  # Every lane regardless of what changed
 npm test                # Run unit, perf, and Rust test suites
 npm run test:unit       # Vitest unit and component tests
 npm run test:perf       # Vitest performance benchmarks
-npm run test:rust       # Cargo test suite for src-tauri (includes the bindings freshness test)
+npm run test:rust       # Cargo test suite for every crate in the src-tauri workspace (includes the bindings freshness test)
 npm run test:ios        # XCTest suite on a simulator (see "iPhone Tests" below)
 npm run lint:rust       # cargo clippy over every target, warnings are errors
 npm run check:static    # Every static gate; precheck and CI run this same list
@@ -186,5 +186,5 @@ Run only the integration binary, or only the unit tests:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --test integration
-cargo test --manifest-path src-tauri/Cargo.toml --lib
+cargo test --manifest-path src-tauri/Cargo.toml --workspace --lib
 ```

@@ -77,7 +77,7 @@ What it reads is the tail of the conversation: the prompts, the agent's prose,
 and each tool call with the command it ran and what that printed. The tool rows
 matter — a tool event's `message` is only the tool's *name*, so the evidence a
 verdict turns on lives in the payload, and `goal_transcript_tail`
-([events.rs](../src-tauri/src/persistence/events.rs)) pulls it out across the
+([events.rs](../src-tauri/crates/argmax-store/src/events.rs)) pulls it out across the
 shapes the five providers record it in.
 
 It reads that generously. The evaluator is there to catch a Goal that is *not*

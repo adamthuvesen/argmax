@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub use crate::application::validation::{TerminalCols, TerminalRows};
+pub use crate::browser::tabs::{BrowserBounds, BrowserOpenInput};
 pub use crate::providers::inputs::*;
 pub use crate::workspaces::inputs::*;
 
@@ -249,19 +250,6 @@ browser_tab_input!(BrowserFillCredentialsInput);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowserOpenInput {
-    pub url: String,
-    pub bounds: BrowserBounds,
-    pub tab_id: String,
-    /// Session that owns the tab. `None` for a tab the user opened, and for
-    /// the renderer re-materializing a tab it restored from a previous run —
-    /// the registry keeps the owner it already has in that case.
-    #[serde(default)]
-    pub owner_session_id: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserNavigateInput {
     pub url: String,
     pub tab_id: String,
@@ -271,18 +259,6 @@ pub struct BrowserNavigateInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserSetThemeInput {
     pub mode: ThemeMode,
-}
-
-/// Logical (CSS-pixel) rect of the renderer placeholder the browser webview
-/// is glued to. The main webview fills the whole window, so viewport
-/// coordinates map 1:1 onto window coordinates.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowserBounds {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -659,13 +635,6 @@ pub struct SessionForkMergeInput {
     pub session_id: SessionId,
     /// The fork position the preview showed.
     pub through_event_id: NonEmptyString,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "kebab-case")]
-pub enum ForkWorkspaceMode {
-    Shared,
-    Isolated,
 }
 
 /// Dispatch a multitask from a chat: a sibling session that runs alongside the

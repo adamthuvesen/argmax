@@ -1,11 +1,11 @@
 use super::super::{HandleEntry, PendingMessage, ProviderSessionService, SendInputResult};
 use super::{database_with_running_session, pending_message, CountingFailureLauncher};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::inputs::{
+use crate::providers::inputs::{
     ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
     QueuedMessageDelivery,
 };
-use crate::ipc::validation::{NonEmptyString, SessionId};
+use crate::application::validation::{NonEmptyString, SessionId};
 use crate::persistence::authorship::PromptAuthor;
 use crate::persistence::events::list_session_events_since;
 use crate::persistence::pending_messages::{list_session_pending_messages, replace_session_queue};

@@ -11,13 +11,11 @@ use super::super::{
 };
 use super::task_label;
 use crate::{
-    ipc::{
-        inputs::WorkspacesSetLabelInput,
-        validation::{TaskLabel, WorkspaceId},
-    },
+    application::validation::{TaskLabel, WorkspaceId},
     persistence::{
         database::Database, sessions::find_session_by_id, workspaces::find_workspace_by_id,
     },
+    workspaces::inputs::WorkspacesSetLabelInput,
     workspaces::WorkspaceService,
 };
 

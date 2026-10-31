@@ -592,7 +592,8 @@ fn pollable_sessions(database: &Arc<Database>) -> ArgmaxResult<PollableSessions>
         .collect();
     let mut all = Vec::new();
     for session_id in active.into_iter().chain(open_pr_only.iter().cloned()) {
-        let git_workspace = conn.query_row("SELECT EXISTS (SELECT 1 FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE s.id = ? AND w.kind = 'git')", [&session_id], |row| row.get::<_, bool>(0)).map_err(crate::persistence::sqlite_error)?;
+        let git_workspace =
+            crate::persistence::sessions::session_is_in_git_workspace(&conn, &session_id)?;
         if git_workspace {
             all.push(session_id);
         }
@@ -1079,11 +1080,7 @@ fn reserve_checkout(
     reserved: &mut HashSet<String>,
 ) -> bool {
     let conn = inner.database.read_connection();
-    match conn.query_row(
-        "SELECT path FROM workspaces WHERE id = ?1",
-        [workspace_id],
-        |row| row.get::<_, String>(0),
-    ) {
+    match crate::persistence::workspaces::workspace_path(&conn, workspace_id) {
         Ok(path) => reserved.insert(path),
         Err(error) => {
             tracing::warn!(%workspace_id, %error, "gh poller: could not reserve checkout");
@@ -1144,11 +1141,11 @@ fn merged_pr_has_watch(
     pr_number: i64,
 ) -> bool {
     let conn = inner.database.read_connection();
-    conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM pr_watches w JOIN sessions s ON s.id = w.session_id
-         WHERE s.workspace_id = ?1 AND w.project_id = ?2 AND w.pr_number = ?3)",
-        rusqlite::params![workspace_id, project_id, pr_number],
-        |row| row.get::<_, bool>(0),
+    crate::persistence::pr_watches::workspace_has_pr_watch(
+        &conn,
+        workspace_id,
+        project_id,
+        pr_number,
     )
     .unwrap_or_else(|error| {
         tracing::warn!(%workspace_id, ?error, "gh poller: PR watch guard failed");
@@ -1161,17 +1158,12 @@ fn merged_pr_has_watch(
 /// next tick after that turn settles fires it.
 fn workspace_is_busy(inner: &Arc<PollerInner>, workspace_id: &str) -> bool {
     let conn = inner.database.connection();
-    conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
-         JOIN workspaces target ON target.id = ?1
-         WHERE w.path = target.path AND s.state IN ('running', 'waiting', 'blocked'))",
-        [workspace_id],
-        |row| row.get::<_, bool>(0),
+    crate::persistence::workspaces::checkout_has_live_turn(&conn, workspace_id).unwrap_or_else(
+        |error| {
+            tracing::warn!(%workspace_id, ?error, "gh poller: running-session guard failed");
+            true
+        },
     )
-    .unwrap_or_else(|error| {
-        tracing::warn!(%workspace_id, ?error, "gh poller: running-session guard failed");
-        true
-    })
 }
 
 /// Only verified work on the checkout's branch can launch an editing agent.
@@ -1211,16 +1203,8 @@ fn workspace_prs_are_merged(inner: &Arc<PollerInner>, workspace_id: &str) -> boo
                     && pr.pr_state.as_deref() == Some("MERGED")
                     && pr.refresh_error.is_none()
             });
-            let unfinished_work = conn.query_row(
-                "SELECT EXISTS (
-                    SELECT 1 FROM session_pr_links links
-                    JOIN sessions s ON s.id = links.session_id
-                    JOIN gh_pull_requests pr ON pr.project_id = links.project_id AND pr.pr_number = links.pr_number
-                    WHERE s.workspace_id = ?1 AND links.relationship = 'worked'
-                      AND links.dismissed_at IS NULL
-                      AND (pr.pr_state IS NOT 'MERGED' OR pr.refresh_error IS NOT NULL)
-                )", [workspace_id], |row| row.get::<_, bool>(0),
-            );
+            let unfinished_work =
+                crate::persistence::workspaces::has_unfinished_pr_work(&conn, workspace_id);
             match unfinished_work {
                 Ok(unfinished) => primary_is_merged_work && !unfinished,
                 Err(error) => {

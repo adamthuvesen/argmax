@@ -13,8 +13,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Duration, Local, SecondsFormat, TimeZone, Timelike, Utc};
 use rusqlite::Connection;
 
+use crate::application::validation::ProviderId;
 use crate::error::ArgmaxResult;
-use crate::ipc::validation::ProviderId;
 use crate::persistence::usage_scan::{self, HourlyBucket};
 use crate::providers::pricing;
 use crate::usage::cursor::{calls_between, cursor_rates, CursorCall};

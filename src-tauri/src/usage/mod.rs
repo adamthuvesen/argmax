@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::ipc::validation::ProviderId;
+use crate::application::validation::ProviderId;
 
 pub mod claude;
 pub mod cli;

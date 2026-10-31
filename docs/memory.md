@@ -2,7 +2,7 @@
 
 Argmax stores project-scoped learnings in SQLite for review across sessions.
 
-- [src-tauri/src/persistence/learnings.rs](../src-tauri/src/persistence/learnings.rs): Persistence and FTS5 full-text search.
+- [src-tauri/crates/argmax-store/src/learnings.rs](../src-tauri/crates/argmax-store/src/learnings.rs): Persistence and FTS5 full-text search.
 - IPC channels: `learnings:list`, `learnings:update`, `learnings:delete`.
 
 Use docs or skills for persistent repository instructions; use learnings for project-specific facts discovered during agent execution.
@@ -76,7 +76,7 @@ What an agent gets, per launch (the roots are read from the database each time, 
 
 Path rules for reads: the path is relative; an absolute path, any `..`, a NUL byte, and any `.git` component (spelled or reached through a symlink inside the root) are refused; the resolved path must still be under the stored root after symlinks resolve, and the root itself must still resolve to the stored canonical path (a directory swapped for a symlink is `LINKED_REPO_ROOT_CHANGED`). Files use the same 1 MiB and binary limits as workspace previews. A launch leaves out a root that is gone or has moved rather than hand a provider a path the user did not approve. Secrets such as `.env` files inside a linked root are not filtered.
 
-- Persistence: `src-tauri/src/persistence/project_sources.rs` (sources), `src-tauri/src/persistence/linked_repos.rs` (linked repositories).
+- Persistence: `src-tauri/crates/argmax-store/src/project_sources.rs` (sources), `src-tauri/crates/argmax-store/src/linked_repos.rs` (linked repositories).
 - IPC: `linked-repos:list`, `linked-repos:add`, `linked-repos:pick-folder`, `linked-repos:summarize`, `linked-repos:set-enabled`, `linked-repos:remove`, all desktop-only.
 - IPC: `sources:list`, `sources:add`, `sources:update`, `sources:delete`.
 - Agent tools: `sources_list`, `sources_add`, `sources_read`.

@@ -1,0 +1,15 @@
+[package]
+name = "argmax-process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "How Argmax prepares a child process: the login-shell environment, provider environments, and the one git runner."
+publish = false
+
+[dependencies]
+argmax-contracts = { path = "../argmax-contracts" }
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

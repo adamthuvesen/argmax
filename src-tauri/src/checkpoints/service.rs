@@ -389,14 +389,7 @@ impl CheckpointService {
             )
         })?;
         let connection = self.database.read_connection();
-        let mut statement = connection.prepare_cached(
-            "SELECT w.path FROM sessions s JOIN workspaces w ON w.id = s.workspace_id WHERE s.state IN ('running', 'waiting', 'blocked')",
-        ).map_err(crate::persistence::sqlite_error)?;
-        let paths = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(crate::persistence::sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(crate::persistence::sqlite_error)?;
+        let paths = crate::persistence::workspaces::checkouts_with_live_turn(&connection)?;
         if paths
             .iter()
             .any(|path| std::fs::canonicalize(path).ok().as_ref() == Some(&canonical))

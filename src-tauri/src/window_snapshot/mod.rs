@@ -21,8 +21,8 @@ use std::path::Path;
 use serde::Serialize;
 use specta::Type;
 
+use crate::application::validation::{AttachmentMimeType, SessionId};
 use crate::attachments::store::AttachmentStore;
-use crate::ipc::validation::{AttachmentMimeType, SessionId};
 
 pub const ATTACH_EVENT: &str = "composer:attach-window-snapshot";
 pub const FAILED_EVENT: &str = "window-snapshot:failed";

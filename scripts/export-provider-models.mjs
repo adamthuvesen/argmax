@@ -260,7 +260,7 @@ function catalogueFailures({ models }) {
   return failures;
 }
 
-const RETIRED_ID_ROOTS = ["src-tauri/src", "src/renderer", "src/shared"];
+const RETIRED_ID_ROOTS = ["src-tauri/src", "src-tauri/crates", "src/renderer", "src/shared"];
 // These hold a retired id on purpose: the source of the map, its output, and the rate old usage rows bill at.
 const RETIRED_ID_HOMES = new Set([
   "src/shared/providerModels.ts",

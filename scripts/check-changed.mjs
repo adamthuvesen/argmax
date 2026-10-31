@@ -66,8 +66,12 @@ function checkTypescript(files) {
 function checkEslint(files) {
   const lintable = files.filter((file) => /\.(ts|tsx)$/.test(file) && file.startsWith("src/"));
   if (!lintable.length) return [];
-  const result = run("npx", ["--no-install", "eslint", "--no-warn-ignored", "--pass-on-unpruned-suppressions", "--format", "unix", ...lintable]);
-  return result.status === 0 ? [] : outputLines(result).filter((line) => line.includes(": "));
+  const result = run("npx", ["--no-install", "eslint", "--no-warn-ignored", "--pass-on-unpruned-suppressions", "--format", "json", ...lintable]);
+  if (result.status === 0) return [];
+  if (result.status !== 1) return [`eslint could not run:`, ...outputLines(result).slice(0, 8)];
+  return JSON.parse(result.stdout).flatMap(({ filePath, messages }) =>
+    messages.map(({ line, ruleId, message }) => `${relative(ROOT, filePath)}:${line}: ${message} (${ruleId})`)
+  );
 }
 
 function checkDependencies(files) {
@@ -77,10 +81,17 @@ function checkDependencies(files) {
   return result.status === 0 ? [] : outputLines(result).filter((line) => !/^(?:x \d+ dependency violations|‼)/.test(line));
 }
 
+/** A file nobody has edited cannot hold a peer's unfinished work, so its errors are this change's. */
+function isOwnedError(line, files) {
+  const path = `src-tauri/${line.split(":")[0]}`;
+  return files.includes(path) || run("git", ["diff", "--quiet", "HEAD", "--", path]).status === 0;
+}
+
 function checkRustCompiles(files) {
   if (!files.some((file) => file.endsWith(".rs"))) return [];
-  const result = run("cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml", "--message-format", "short"]);
-  return result.status === 0 ? [] : outputLines(result).filter((line) => line.includes(": error") || line.startsWith("error"));
+  const result = run("cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml", "--workspace", "--message-format", "short"]);
+  if (result.status === 0) return [];
+  return outputLines(result).filter((line) => line.includes(": error") && isOwnedError(line, files));
 }
 
 /** Every per-file check plus the program-wide ones, filtered to `files`. */

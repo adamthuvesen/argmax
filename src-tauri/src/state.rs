@@ -9,13 +9,14 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 
+use crate::application::validation::ThemeMode;
 use crate::approvals::service::ApprovalService;
 use crate::attachments::store::AttachmentStore;
 use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
+use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::gh::poller::GhPoller;
-use crate::ipc::validation::ThemeMode;
 use crate::notifications::{NotificationService, NotificationSink};
 use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
@@ -129,7 +130,7 @@ pub struct AppState {
     pub browser_theme: std::sync::Mutex<ThemeMode>,
     pub browser_content_blocking:
         tokio::sync::Mutex<crate::browser::content_blocking::ContentBlockingState>,
-    pub(crate) pending_browser_opens: std::sync::Mutex<crate::ipc::browser::PendingBrowserOpens>,
+    pub(crate) pending_browser_opens: std::sync::Mutex<crate::browser::tabs::PendingBrowserOpens>,
     /// Sessions torn off into windows of their own, by window label.
     pub chat_windows: crate::windows::ChatWindows,
 }
@@ -204,4 +205,35 @@ impl AppState {
             ..Self::default()
         }
     }
+}
+
+/// Run a blocking database read off the macOS main thread.
+///
+/// Tauri resolves a sync `#[tauri::command]` body inline on the main thread, so
+/// a 24 ms dashboard read is 24 ms the window cannot draw or handle input. The
+/// `async` flag is not the fix — it is `tokio::spawn`, which parks a shared
+/// worker that provider IO and the `dashboard:delta` emit loop also need.
+/// `spawn_blocking` uses the pool sized for exactly this.
+pub(crate) async fn read_off_main<T, F>(read: F) -> ArgmaxResult<T>
+where
+    F: FnOnce() -> ArgmaxResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(read)
+        .await
+        .map_err(|error| ArgmaxError::service("DATABASE_READ_JOIN", error.to_string()))?
+}
+
+pub(crate) fn live_database(state: &AppState) -> ArgmaxResult<Arc<Database>> {
+    state.db.get().cloned().ok_or_else(|| {
+        // A recorded open failure is the whole story; without one, boot is
+        // simply still in flight.
+        match state.db_open_error.get() {
+            Some(reason) => ArgmaxError::service("DATABASE_NOT_READY", reason),
+            None => ArgmaxError::service(
+                "DATABASE_NOT_READY",
+                "database is not initialized (startup may still be in progress)",
+            ),
+        }
+    })
 }

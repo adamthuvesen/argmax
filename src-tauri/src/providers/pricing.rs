@@ -1,5 +1,6 @@
 use crate::usage::records::UsageRecordTokens;
 use crate::util::sync::LockOrRecover;
+pub use argmax_contracts::usage::UsageCounts;
 use std::{
     collections::HashSet,
     sync::{Mutex, OnceLock},
@@ -16,15 +17,6 @@ pub struct ModelPricing {
     pub output: f64,
     pub cache_read: f64,
     pub cache_write: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct UsageCounts {
-    pub input: u64,
-    pub output: u64,
-    pub cache_read: u64,
-    pub cache_write: u64,
 }
 
 pub static MODEL_PRICING: phf::Map<&'static str, ModelPricing> = phf_map! {

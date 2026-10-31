@@ -24,6 +24,7 @@ pub mod js_dialogs;
 pub mod popup;
 pub mod registry;
 pub mod snapshot_image;
+pub mod tabs;
 pub mod theme;
 pub mod user_agent;
 pub mod user_scripts;

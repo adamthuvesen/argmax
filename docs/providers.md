@@ -5,7 +5,7 @@ Argmax manages Claude Code, Codex, Cursor Agent, OpenCode, and Grok Build throug
 ## Architecture
 
 - [adapters.rs](../src-tauri/src/providers/adapters.rs): Constructs CLI arguments for structured JSON modes. Centralizes auto-approve bypass flags.
-- [environment.rs](../src-tauri/src/providers/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
+- [environment.rs](../src-tauri/crates/argmax-process/src/environment.rs): Hydrates user login shell environment and PATH for spawned processes.
 - [discovery.rs](../src-tauri/src/providers/discovery.rs): Detects installed provider binaries and versions.
 - [cloud.rs](../src-tauri/src/providers/cloud.rs): Validates pushed GitHub branches, clones isolated launch checkouts, and builds bounded chat context.
 - [claude_cloud.rs](../src-tauri/src/providers/claude_cloud.rs), [codex_cloud.rs](../src-tauri/src/providers/codex_cloud.rs), and [cursor_cloud.rs](../src-tauri/src/providers/cursor_cloud.rs): Discover provider environments and launch separate hosted tasks.
@@ -281,7 +281,7 @@ account and a temporary project.
 
 ### Native continuity and forks
 
-Code: [continuity.rs](../src-tauri/src/providers/continuity.rs) (launch decisions), [persistence/continuity.rs](../src-tauri/src/persistence/continuity.rs) (rows, v65), [fork.rs](../src-tauri/src/workspaces/orchestration/fork.rs) (fork orchestration), [fork_merge.rs](../src-tauri/src/providers/fork_merge.rs) (bringing findings back).
+Code: [continuity.rs](../src-tauri/src/providers/continuity.rs) (launch decisions), [persistence/continuity.rs](../src-tauri/crates/argmax-store/src/continuity.rs) (rows, v65), [fork.rs](../src-tauri/src/workspaces/orchestration/fork.rs) (fork orchestration), [fork_merge.rs](../src-tauri/src/providers/fork_merge.rs) (bringing findings back).
 
 **Bindings.** `sessions.provider_conversation_id` stays the pointer to the live conversation. `provider_bindings` keeps one row per native conversation a session holds with a provider, with its working directory, a hash of the provider config it was created under (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, gateway URL, `HOME`), and its state: `active`, `parked` or `invalid`. Every write of the pointer goes through `update_session_provider_conversation_id`, which binds, so a launch, a Cursor inference, a fork or a move cannot skip the ledger. Rows for chats that already held an id are backfilled by the migration with an empty (accept-any) config.
 
@@ -451,7 +451,7 @@ or a URL flow such as connector reauthentication. Argmax returns the protocol's
 result remains visible with its actionable failure, while the redundant
 app-server diagnostic is suppressed in current and historical transcripts.
 
-**Grok ACP has no `assistant` envelope of its own, so the bridge writes one per answer burst.** Its answers arrive as `agent_message_chunk` updates, which [grok_acp.rs](../src-tauri/src/providers/grok_acp.rs) forwards as `text_delta`. When a thought, a tool call, or the end of the turn closes a burst, `close_answer` sends the burst's text verbatim as the whole-message `assistant` envelope Claude sends after each text block, and that becomes the burst's `message.completed`. The completion is required. The cursorless session backfill keeps every durable row but only the newest page of deltas ([events.rs](../src-tauri/src/persistence/events.rs)), so an answer stored only as deltas disappeared from every turn except the last few when the chat was reopened, and the turn showed only its steps. Chats recorded before this change still hold delta-only answers. An answer delta, never a `thinking_delta`, also arms the same turn-answer guard Claude's `message.completed` arms ([normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs)). The trailing `result` speaks only when no answer streamed. Otherwise it stays silent instead of repeating every burst as one concatenated bubble at the end of the turn.
+**Grok ACP has no `assistant` envelope of its own, so the bridge writes one per answer burst.** Its answers arrive as `agent_message_chunk` updates, which [grok_acp.rs](../src-tauri/src/providers/grok_acp.rs) forwards as `text_delta`. When a thought, a tool call, or the end of the turn closes a burst, `close_answer` sends the burst's text verbatim as the whole-message `assistant` envelope Claude sends after each text block, and that becomes the burst's `message.completed`. The completion is required. The cursorless session backfill keeps every durable row but only the newest page of deltas ([events.rs](../src-tauri/crates/argmax-store/src/events.rs)), so an answer stored only as deltas disappeared from every turn except the last few when the chat was reopened, and the turn showed only its steps. Chats recorded before this change still hold delta-only answers. An answer delta, never a `thinking_delta`, also arms the same turn-answer guard Claude's `message.completed` arms ([normalizer/mod.rs](../src-tauri/src/providers/normalizer/mod.rs)). The trailing `result` speaks only when no answer streamed. Otherwise it stays silent instead of repeating every burst as one concatenated bubble at the end of the turn.
 
 **Grok's `ask_user_question` is not exposed over ACP.** The binary carries the
 tool and documents it, and `features.ask_user_question` defaults to true, but
@@ -745,7 +745,7 @@ type `ModelId`, and ESLint rejects a raw `session.modelId` or `routine.modelId`.
 ## Adding a provider
 
 Add the variant to `ProviderId` in
-[validation.rs](../src-tauri/src/application/validation.rs). The compiler then
+[validation.rs](../src-tauri/crates/argmax-contracts/src/validation.rs). The compiler then
 lists every provider dispatch, and `Record<ProviderId, ...>` lists every TypeScript
 table. Add the provider to `PROVIDER_MODELS` and run `npm run export:provider-models`.
 Parse stored strings with `ProviderId::parse` and match without a wildcard.

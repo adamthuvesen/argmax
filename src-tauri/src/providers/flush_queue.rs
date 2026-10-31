@@ -16,7 +16,6 @@ use super::{
 use crate::sessions::state::SessionState;
 use crate::{
     error::ArgmaxResult,
-    ipc::inputs::{AgentReference, ComposerAttachmentInput},
     persistence::{
         approvals::{
             find_approval_by_provider_request, find_pending_approval, persist_approval,
@@ -96,51 +95,7 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-pub struct PendingMessage {
-    pub id: String,
-    pub session_id: String,
-    pub content: String,
-    pub agent_mode: String,
-    /// The provider this follow-up runs under once it drains. `None` is the
-    /// chat's provider at that moment, which is what every row queued before
-    /// this field existed means. Set only when the sender picked another
-    /// provider than the one the chat will be on; it then carries its own
-    /// `model_label` and `model_id`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<ProviderId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_label: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
-    // Carried through the queue so a drained follow-up re-persists its image
-    // thumbnails on the user.message event — otherwise queuing a message with
-    // an attachment loses the image in the chat UI once the turn sends.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub attachments: Vec<ComposerAttachmentInput>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub agent_references: Vec<AgentReference>,
-    // A message another session sent while this one was mid-turn. Carried
-    // through the queue so the drained turn still renders as "From <label>"
-    // rather than as something the user typed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub origin: Option<super::session_service::MessageOrigin>,
-    /// Present only after startup recovery. Recovered messages stay visible
-    /// but are excluded from automatic queue draining until the user chooses
-    /// Send explicitly.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub recovery_status: Option<String>,
-    pub queued_at: String,
-    /// Who wrote the text. Never serialized: the queue carries it so every
-    /// action on the row (drain, Send now, steer, multitask, restore) reuses
-    /// what the sender was, and no client can set it.
-    #[serde(skip)]
-    pub author: crate::persistence::authorship::PromptAuthor,
-}
+pub use crate::persistence::pending_messages::PendingMessage;
 
 #[derive(Debug)]
 pub struct ProviderEventFlushQueue {

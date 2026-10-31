@@ -12,13 +12,12 @@ pub(crate) mod continuity_tests;
 pub mod cursor_acp;
 pub mod cursor_cloud;
 pub mod discovery;
-pub mod environment;
+pub use argmax_process::environment;
 pub mod flush_queue;
 pub(crate) mod follow_up;
 pub mod fork_merge;
 pub mod grok_acp;
 pub mod grok_trust;
-mod heredoc_activity;
 pub mod inputs;
 pub mod mcp_injection;
 pub mod measured_diffs;
@@ -33,13 +32,12 @@ pub mod pricing;
 pub mod runtime;
 pub mod session_service;
 pub mod subagent_trace;
-pub mod tool_activity;
+pub use argmax_store::tool_activity;
 pub mod unified_diff;
 pub mod verification;
 
 use std::path::PathBuf;
 
-use serde::de::IntoDeserializer;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -107,47 +105,6 @@ impl ProviderLaunchInput {
             .as_ref()
             .and_then(|continuity| continuity.fresh_native_id.as_deref())
             .unwrap_or(&self.session_id)
-    }
-}
-
-impl ProviderId {
-    /// The provider a stored or wire string names, spelled as the wire spells
-    /// it. A string that names no provider is `None`.
-    pub fn parse(value: &str) -> Option<Self> {
-        let value: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
-            value.into_deserializer();
-        Self::deserialize(value).ok()
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ProviderId::Claude => "claude",
-            ProviderId::Codex => "codex",
-            ProviderId::Cursor => "cursor",
-            ProviderId::Opencode => "opencode",
-            ProviderId::Grok => "grok",
-        }
-    }
-}
-
-impl ReasoningEffort {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ReasoningEffort::Low => "low",
-            ReasoningEffort::Medium => "medium",
-            ReasoningEffort::High => "high",
-            ReasoningEffort::Xhigh => "xhigh",
-            ReasoningEffort::Max => "max",
-            ReasoningEffort::Ultra => "ultra",
-        }
-    }
-}
-
-impl AgentMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            AgentMode::Auto => "auto",
-        }
     }
 }
 

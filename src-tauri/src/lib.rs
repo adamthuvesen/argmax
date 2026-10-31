@@ -19,7 +19,7 @@ pub mod checks;
 pub mod connections;
 pub mod default_agent;
 pub mod dock;
-pub mod error;
+pub use argmax_contracts::error;
 pub mod files;
 pub mod gh;
 pub mod git;
@@ -31,7 +31,7 @@ pub mod mcp;
 pub mod menu;
 pub mod multitask;
 pub mod notifications;
-pub mod persistence;
+pub use argmax_store as persistence;
 pub mod providers;
 pub mod questions;
 pub mod remote;
@@ -39,7 +39,7 @@ pub mod review;
 pub mod routines;
 pub mod routing;
 pub mod session_control;
-pub mod sessions;
+pub use argmax_contracts::sessions;
 pub mod skills;
 pub mod state;
 pub mod sync;
@@ -57,6 +57,14 @@ pub mod workspaces;
 use serde_json::json;
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use util::startup_timer::StartupTimer;
+
+/// `tauri::async_runtime` rather than `tokio::spawn`: the setup hook that opens
+/// the database runs on the main thread with no current runtime handle, so a
+/// `tokio` spawn there would panic.
+pub(crate) fn start_raw_output_prune(database: &persistence::Database) {
+    let task = tauri::async_runtime::spawn(database.raw_output_prune_loop());
+    database.track_prune_task(task.inner().abort_handle());
+}
 
 /// If one emit cycle has to conflate at least this many queued `dashboard:delta`
 /// messages, the main-thread event loop is lagging behind producers — log it so
@@ -599,6 +607,7 @@ pub fn run() {
                         Ok(database) => {
                             timer.mark("db.open");
                             let database = Arc::new(database);
+                            start_raw_output_prune(&database);
                             let state = tauri::Manager::state::<state::AppState>(app);
                             let _ = state.db.set(Arc::clone(&database));
                             providers::opencode_gateway::load(&database.read_connection());

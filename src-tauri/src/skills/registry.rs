@@ -10,7 +10,7 @@ use std::{
 use serde::Serialize;
 use specta::Type;
 
-use crate::ipc::validation::ProviderId;
+use crate::application::validation::ProviderId;
 
 pub const SKILL_FILE_SIZE_CAP_BYTES: u64 = 262_144;
 

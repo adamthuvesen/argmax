@@ -264,7 +264,7 @@ step("static checks", "node", ["scripts/static-checks.mjs"]);
 // One second, and the likeliest check to fail on a push: run it before the
 // minutes-long suites so a formatting slip does not cost a whole cycle.
 if (scope.rust) {
-  step("cargo fmt", "cargo", ["fmt", "--manifest-path", CARGO_MANIFEST, "--check"]);
+  step("cargo fmt", "cargo", ["fmt", "--all", "--manifest-path", CARGO_MANIFEST, "--check"]);
 }
 
 if (scope.js) {
@@ -282,11 +282,12 @@ if (scope.js) {
 }
 
 if (scope.rust) {
-  step("cargo test", "cargo", ["test", "--manifest-path", CARGO_MANIFEST]);
+  step("cargo test", "cargo", ["test", "--manifest-path", CARGO_MANIFEST, "--workspace"]);
   step("cargo clippy", "cargo", [
     "clippy",
     "--manifest-path",
     CARGO_MANIFEST,
+    "--workspace",
     "--all-targets",
     "--",
     "-D",

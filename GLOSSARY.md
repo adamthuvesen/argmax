@@ -99,6 +99,9 @@ _Avoid_: Conversation, chat, run, thread, agent
 
 The display name for a session is **chat**: the sidebar, menus, and mobile say chat; code and docs say session.
 
+**Available provider**:
+A provider the availability probe reported as installed and not logged out. Only discovery builds one, and every route function requires it. An empty list means the probe learned nothing, so the route stays as it is.
+
 **Provider conversation id**:
 The provider CLI's own identifier for the underlying conversation, kept so a session can be resumed. Distinct from the Argmax session id.
 _Avoid_: Session id
@@ -126,7 +129,7 @@ _Avoid_: Side task, background task, parallel turn, subagent
 Where a session is in its lifecycle: `created`, `running`, `waiting`, `blocked`, `complete`, `failed`, `cancelled`.
 
 **Attention**:
-Whether a session needs a human, derived from session state, pending approvals, and whether the agent left a question unanswered: `normal`, `approval-needed`, `question-asked`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
+Whether a session needs a human, derived from session state, pending approvals, and whether the agent left a question unanswered: `normal`, `approval-needed`, `question-asked`, `blocked`, `failed`, `review-ready`. Never set directly — it is computed. State says what the agent is doing; attention says whether you have to care. Both are enums in `src-tauri/crates/argmax-contracts/src/sessions/` (`SessionState`, `AttentionState`), exported to the renderer through the generated bindings; a state write goes through `SessionStateInput::transition`, which derives the attention.
 _Avoid_: Status, state, urgency
 
 **Priority**:

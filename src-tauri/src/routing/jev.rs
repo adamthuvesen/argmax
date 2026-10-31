@@ -558,12 +558,12 @@ mod tests {
             downgrade_safe: true,
             routes: vec![super::super::context::ContextRoute {
                 id: "R0".to_string(),
-                provider: crate::ipc::validation::ProviderId::Codex,
+                provider: crate::application::validation::ProviderId::Codex,
                 model_id: crate::providers::model_catalogue::ModelId::resolve(
-                    crate::ipc::validation::ProviderId::Codex,
+                    crate::application::validation::ProviderId::Codex,
                     "gpt-6-astra",
                 ),
-                effort: Some(crate::ipc::validation::ReasoningEffort::Xhigh),
+                effort: Some(crate::application::validation::ReasoningEffort::Xhigh),
                 user_task: Some("Investigate the hard bug".to_string()),
             }],
         };

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// Layer rules for src-tauri/src. Existing violations live in
+// Layer rules the compiler cannot state. The compiler already rejects an import
+// from argmax-store or argmax-contracts into the app crate. These rules cover
+// what stays inside one crate. Existing violations live in
 // scripts/rust-boundaries-baseline.json: a new one fails, and a fixed one must
 // be removed from the baseline, so the count can only fall.
 //
@@ -9,21 +11,26 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 
-const SOURCE_ROOT = "src-tauri/src";
+const APP_ROOT = "src-tauri/src";
+const CRATES_ROOT = "src-tauri/crates";
 const BASELINE_PATH = "scripts/rust-boundaries-baseline.json";
+
+const APP_ONLY = (path) => !path.startsWith("crates/");
 
 const RULES = [
   {
-    id: "sql-outside-persistence",
-    pattern: /\brusqlite\b/g,
-    allowed: (path) => path.startsWith("persistence/"),
-    fix: "Add a query function in src-tauri/src/persistence/ and call it from here."
+    id: "sql-outside-store",
+    // SQL text, or a rusqlite call that runs it. Naming a Connection or a
+    // Transaction to pass it through to the store does not count.
+    pattern: /"\s*(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|PRAGMA|CREATE|DROP|ALTER|VACUUM|WITH)\s|\.(?:prepare|prepare_cached|execute_batch|query_row|pragma_update|pragma_query_value)\(/g,
+    allowed: (path) => !APP_ONLY(path),
+    fix: "Add a query function in src-tauri/crates/argmax-store/src/ and call it from here."
   },
   {
     id: "git-outside-exec",
     pattern: /Command::new\(\s*"git"\s*\)/g,
-    allowed: (path) => path.startsWith("git/"),
-    fix: "Run git through src-tauri/src/git/exec.rs, which sets GIT_LITERAL_PATHSPECS and the environment."
+    allowed: (path) => path.startsWith("git/") || path.startsWith("crates/argmax-process/"),
+    fix: "Run git through src-tauri/crates/argmax-process/src/git_exec.rs, which sets GIT_LITERAL_PATHSPECS and the environment."
   },
   {
     id: "turn-end-outside-owner",
@@ -32,16 +39,17 @@ const RULES = [
     fix: "End a turn through commit_turn_end in src-tauri/src/providers/session_service_turn_end.rs."
   },
   {
-    id: "persistence-imports-upward",
-    pattern: /crate::(?:ipc|providers|sessions|workspaces|gh)\b/g,
-    allowed: (path) => !path.startsWith("persistence/"),
-    fix: "persistence is the bottom layer. Move the shared type down into persistence or a contract module."
+    id: "lower-layer-imports-ipc",
+    pattern: /crate::ipc\b|^\s+ipc::/gm,
+    // The remote bridge is a second transport over the same catalogue.
+    allowed: (path) => !APP_ONLY(path) || path.startsWith("ipc/") || path.startsWith("remote/") || path === "lib.rs",
+    fix: "ipc is the transport edge. Move the shared type or function out of ipc so both sides import it from below."
   },
   {
-    id: "lower-layer-imports-ipc",
-    pattern: /crate::ipc\b/g,
-    allowed: (path) => path.startsWith("ipc/") || path.startsWith("persistence/") || path === "lib.rs",
-    fix: "ipc is the transport edge. Move the shared type out of ipc so both sides import it from below."
+    id: "person-attestation-outside-ipc",
+    pattern: /\bminted_by_ipc\s*\(|\battest_person\s*\(/g,
+    allowed: (path) => path.startsWith("ipc/") || path === "crates/argmax-store/src/authorship.rs",
+    fix: "Only the person IPC handlers mint a PersonAttestation. A chat reference is a read grant only when a person wrote it."
   }
 ];
 
@@ -55,14 +63,18 @@ function rustFiles(dir) {
 
 // Test code may reach across layers to build fixtures.
 function productionSource(path, source) {
-  if (/(^|[_/])tests?(\.rs|\/)/.test(path)) return "";
+  if (/(^|[_/])tests?(\.rs|\/)/.test(path) || /(^|\/)test_support\.rs$/.test(path)) return "";
   const testModule = source.search(/^#\[cfg\(test\)\]\s*\n\s*(?:pub(?:\(crate\))?\s+)?mod\s/m);
   return testModule < 0 ? source : source.slice(0, testModule);
 }
 
+const sources = [
+  ...rustFiles(APP_ROOT).map((file) => [relative(APP_ROOT, file), file]),
+  ...rustFiles(CRATES_ROOT).map((file) => [join("crates", relative(CRATES_ROOT, file)), file])
+];
+
 const found = Object.fromEntries(RULES.map((rule) => [rule.id, {}]));
-for (const file of rustFiles(SOURCE_ROOT)) {
-  const path = relative(SOURCE_ROOT, file);
+for (const [path, file] of sources) {
   const source = productionSource(path, readFileSync(file, "utf8"));
   for (const rule of RULES) {
     if (rule.allowed(path)) continue;
@@ -81,16 +93,17 @@ if (process.argv.includes("--update")) {
 
 const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
 const problems = [];
+const display = (path) => (path.startsWith("crates/") ? `src-tauri/${path}` : `${APP_ROOT}/${path}`);
 for (const rule of RULES) {
   const known = baseline[rule.id] ?? {};
   for (const [path, count] of Object.entries(found[rule.id])) {
     if (count > (known[path] ?? 0)) {
-      problems.push(`${SOURCE_ROOT}/${path}: ${rule.id}, ${count} use(s), ${known[path] ?? 0} allowed. ${rule.fix}`);
+      problems.push(`${display(path)}: ${rule.id}, ${count} use(s), ${known[path] ?? 0} allowed. ${rule.fix}`);
     }
   }
   for (const [path, count] of Object.entries(known)) {
     if ((found[rule.id][path] ?? 0) < count) {
-      problems.push(`${SOURCE_ROOT}/${path}: ${rule.id} fell below the baseline. Run node scripts/check-rust-boundaries.mjs --update and commit the result.`);
+      problems.push(`${display(path)}: ${rule.id} fell below the baseline. Run node scripts/check-rust-boundaries.mjs --update and commit the result.`);
     }
   }
 }

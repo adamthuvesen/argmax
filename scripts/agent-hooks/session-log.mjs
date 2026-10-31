@@ -1,7 +1,7 @@
 // Per-session notes for the hooks. Stop checks only the files this session
 // edited, so a peer session's work in a shared checkout cannot fail this turn.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,6 +19,10 @@ export function readEditedFiles(sessionId) {
   const log = editedFilesLog(sessionId);
   if (!existsSync(log)) return [];
   return [...new Set(readFileSync(log, "utf8").split("\n").filter(Boolean))];
+}
+
+export function clearEditedFiles(sessionId) {
+  rmSync(editedFilesLog(sessionId), { force: true });
 }
 
 export function seenGuidance(sessionId, text) {

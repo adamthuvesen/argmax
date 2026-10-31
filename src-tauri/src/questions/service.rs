@@ -19,7 +19,9 @@ use uuid::Uuid;
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::persistence::approvals::list_approvals_for_session;
 use crate::persistence::database::Database;
-use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
+use crate::persistence::events::{
+    has_durable_request, list_durable_pending, persist_timeline_event, PersistTimelineEventInput,
+};
 use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::runtime::DeltaPublisher;
@@ -639,62 +641,11 @@ fn question_completed_payload(request: &PendingQuestion, status: &str) -> Value 
     })
 }
 
-fn has_durable_request(
-    connection: &rusqlite::Connection,
-    session_id: &str,
-    invocation_id: &str,
-    request_id: &str,
-) -> ArgmaxResult<bool> {
-    let count = connection
-        .query_row(
-            "SELECT COUNT(*) FROM events WHERE session_id = ?1 AND type = 'command.started' AND json_extract(payload_json, '$.providerInvocationId') = ?2 AND json_extract(payload_json, '$.providerRequestId') = ?3",
-            (session_id, invocation_id, request_id),
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-    Ok(count > 0)
-}
-
 pub(crate) fn has_durable_pending(
     connection: &rusqlite::Connection,
     session_id: &str,
 ) -> ArgmaxResult<bool> {
     Ok(!list_durable_pending(connection, session_id)?.is_empty())
-}
-
-fn list_durable_pending(
-    connection: &rusqlite::Connection,
-    session_id: &str,
-) -> ArgmaxResult<Vec<Value>> {
-    let mut statement = connection
-        .prepare_cached(
-            r#"
-            SELECT requested.payload_json
-            FROM events requested
-            WHERE requested.session_id = ?1
-              AND requested.type = 'command.started'
-              AND json_extract(requested.payload_json, '$.input.delivery') = 'blocking'
-              AND NOT EXISTS (
-                SELECT 1
-                FROM events completed
-                WHERE completed.session_id = requested.session_id
-                  AND completed.type = 'command.completed'
-                  AND json_extract(completed.payload_json, '$.id') = json_extract(requested.payload_json, '$.id')
-                  AND json_extract(completed.payload_json, '$.providerInvocationId') = json_extract(requested.payload_json, '$.providerInvocationId')
-                  AND json_extract(completed.payload_json, '$.providerRequestId') = json_extract(requested.payload_json, '$.providerRequestId')
-              )
-            "#,
-        )
-        .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-    let rows = statement
-        .query_map((session_id,), |row| row.get::<_, String>(0))
-        .map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-    rows.map(|row| {
-        let raw = row.map_err(|error| ArgmaxError::service("SQLITE", error.to_string()))?;
-        serde_json::from_str(&raw)
-            .map_err(|error| ArgmaxError::service("TIMELINE_PAYLOAD", error.to_string()))
-    })
-    .collect()
 }
 
 fn invalid_request(message: impl Into<String>) -> ArgmaxError {

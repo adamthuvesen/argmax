@@ -52,8 +52,8 @@ use super::{
     PROTOCOL_VERSION,
 };
 use crate::{
+    application::validation::{TerminalCols, TerminalRows},
     git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
-    ipc::inputs::{TerminalCols, TerminalRows},
     persistence::{
         database::Database,
         projects::{list_projects, ProjectSummary},
@@ -358,9 +358,12 @@ Pass project: \"{destination}\" with path: \"{selector}\"."
     // registering the same repository twice.
     match registered {
         Some(project) => Ok(project),
-        None => crate::ipc::projects::register_repo_path(database, PathBuf::from(main_checkout))
-            .await
-            .map_err(argmax_protocol_error),
+        None => crate::application::project_registration::register_repo_path(
+            database,
+            PathBuf::from(main_checkout),
+        )
+        .await
+        .map_err(argmax_protocol_error),
     }
 }
 
@@ -506,7 +509,7 @@ async fn clear_goal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ipc::validation::TaskLabel;
+    use crate::application::validation::TaskLabel;
     use crate::persistence::projects::{ProjectCounts, ProjectSettings};
 
     fn project(id: &str, name: &str, repo_path: &str) -> ProjectSummary {

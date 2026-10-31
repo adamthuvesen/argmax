@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::table::{self, AutoTier, Difficulty, RouteModel, RoutedModel, TaskKind};
-use crate::ipc::validation::ReasoningEffort;
+use crate::application::validation::ReasoningEffort;
 
 const KINDS: [TaskKind; 5] = [
     TaskKind::Coding,

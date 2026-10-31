@@ -2,8 +2,8 @@ use super::runtime::sqlite_error;
 use super::ProviderId;
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
-    ipc::inputs::AgentReference,
     persistence::events::has_current_native_agent_identity,
+    providers::inputs::AgentReference,
 };
 use rusqlite::OptionalExtension;
 

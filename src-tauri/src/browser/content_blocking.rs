@@ -11,7 +11,7 @@ use tauri::Url;
 use tauri::{AppHandle, Manager};
 
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::read_off_main;
+use crate::state::read_off_main;
 
 const SETTINGS_FILE: &str = "browser-content-blocking.json";
 

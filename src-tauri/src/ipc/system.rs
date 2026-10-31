@@ -16,6 +16,7 @@ use super::{live_database, read_off_main};
 use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::persistence::database::{vacuum_database, ReaderPoolStats};
+use crate::persistence::diagnostics::{count_rows, pragma_i64, pragma_string, sqlite_version};
 use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
 use crate::util::performance::{PerformanceCapture, PerformanceStatus};
@@ -192,9 +193,7 @@ pub async fn system_diagnostics(
 
     read_off_main(move || {
         let connection = database.read_connection();
-        let sqlite_version = connection
-            .query_row("SELECT sqlite_version()", [], |row| row.get::<_, String>(0))
-            .unwrap_or_else(|_| "unknown".to_string());
+        let sqlite_version = sqlite_version(&connection);
         let database_stats =
             collect_database_stats(&connection, &database_path, database.reader_pool_stats());
         let sqlite_pragmas = collect_sqlite_pragmas(&connection);
@@ -594,27 +593,6 @@ fn collect_sqlite_pragmas(connection: &rusqlite::Connection) -> SqlitePragmas {
         busy_timeout: pragma_i64(connection, "busy_timeout"),
         wal_autocheckpoint: pragma_i64(connection, "wal_autocheckpoint"),
     }
-}
-
-fn count_rows(connection: &rusqlite::Connection, table: &str) -> i64 {
-    let sql = format!("SELECT COUNT(*) FROM {table}");
-    connection
-        .query_row(&sql, [], |row| row.get::<_, i64>(0))
-        .unwrap_or(0)
-}
-
-fn pragma_i64(connection: &rusqlite::Connection, name: &str) -> i64 {
-    let sql = format!("PRAGMA {name}");
-    connection
-        .query_row(&sql, [], |row| row.get::<_, i64>(0))
-        .unwrap_or(0)
-}
-
-fn pragma_string(connection: &rusqlite::Connection, name: &str) -> String {
-    let sql = format!("PRAGMA {name}");
-    connection
-        .query_row(&sql, [], |row| row.get::<_, String>(0))
-        .unwrap_or_else(|_| "unknown".to_string())
 }
 
 fn startup_phases(state: &State<'_, AppState>) -> Vec<StartupPhaseRecord> {

@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::{parse_tier, table::AutoTier};
+use crate::application::validation::ProviderId;
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::ipc::validation::ProviderId;
 use crate::persistence::sqlite_error;
 use crate::providers::pricing::{cost_of, list_price, UsageCounts};
 use crate::providers::runtime::parse_provider;

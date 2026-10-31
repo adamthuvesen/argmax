@@ -19,10 +19,7 @@ use super::super::{
 };
 use super::resolve_project;
 use crate::{
-    ipc::{
-        inputs::{ProvidersSendInput, ProvidersTerminateInput},
-        validation::{Prompt, SessionId},
-    },
+    application::validation::{Prompt, SessionId},
     persistence::{
         dashboard::DASHBOARD_ROW_LIMIT,
         database::Database,
@@ -40,6 +37,7 @@ use crate::{
         sessions::{find_session_by_id, list_sessions_for_dashboard, session_launch_lineage},
         workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
     },
+    providers::inputs::{ProvidersSendInput, ProvidersTerminateInput},
     providers::session_service::{MessageOrigin, ProviderSessionService},
 };
 

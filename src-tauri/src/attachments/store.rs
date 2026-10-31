@@ -7,7 +7,9 @@ use serde::Serialize;
 use specta::Type;
 use uuid::Uuid;
 
-use crate::ipc::validation::{AttachmentMimeType, Base64ImageData, SessionId, ATTACHMENT_BYTE_CAP};
+use crate::application::validation::{
+    AttachmentMimeType, Base64ImageData, SessionId, ATTACHMENT_BYTE_CAP,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

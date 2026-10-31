@@ -123,7 +123,7 @@ Relationships distinguish work, a reference, and an unverified discovery:
 
 A dismissal survives repair and later polling. Pinning an unverified PR confirms it as a reference, not as work eligible for automatic editing.
 
-`shows_on_chat` in `persistence/workspaces.rs` applies one filter for the card, the git menu, the sidebar marker, and the phone row, so those surfaces cannot disagree. A PR only viewed keeps its link for polling but does not show.
+`shows_on_chat` in `argmax-store/src/workspaces.rs` applies one filter for the card, the git menu, the sidebar marker, and the phone row, so those surfaces cannot disagree. A PR only viewed keeps its link for polling but does not show.
 
 Primary selection takes a user pin first, then open worked PRs, then other worked PRs, by the latest meaningful session activity. Refresh timestamps never select a PR. Priority placement uses the aggregate instead, because an open PR is outstanding work even when the primary has merged.
 

@@ -10,11 +10,48 @@ import { editedPaths, ROOT } from "./hook-input.mjs";
 
 const GENERATED = JSON.parse(readFileSync(resolve(ROOT, "scripts/generated-files.json"), "utf8"));
 
-const SHARED_CHECKOUT_COMMANDS = [
-  [/\bgit\s+add\s+(?:-A\b|--all\b|\.(?:\s|$))/, "Stage explicit paths. A blanket add takes a peer session's edits."],
-  [/\bgit\s+stash\b/, "Do not stash in a shared checkout. It moves a peer session's edits. Use a detached worktree."],
-  [/\bgit\s+(?:checkout\s+--|restore\s+(?!--staged))/, "Do not restore files in a shared checkout. It destroys a peer session's edits."]
-];
+const STAGE_ALL = "Stage explicit paths. A blanket add takes a peer session's edits.";
+const STASH = "Do not stash in a shared checkout. It moves a peer session's edits. Use a detached worktree.";
+const RESTORE = "Do not restore files in a shared checkout. It destroys a peer session's edits.";
+
+/** Removes quoted text and heredocs, so a commit message cannot look like a command. */
+function shellSegments(command) {
+  return command
+    .replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\s*\1\b/g, " ")
+    .replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, " QUOTED ")
+    .split(/&&|\|\||[;|\n]/);
+}
+
+function gitArguments(segment) {
+  const words = segment.trim().split(/\s+/);
+  const git = words.indexOf("git");
+  if (git < 0) return null;
+  const rest = words.slice(git + 1);
+  while (rest[0]?.startsWith("-")) {
+    const option = rest.shift();
+    if (option === "-C" || option === "-c" || option === "--git-dir" || option === "--work-tree") rest.shift();
+  }
+  return rest;
+}
+
+function gitRefusal(args) {
+  const [subcommand, ...rest] = args;
+  const has = (...options) => rest.some((word) => options.includes(word));
+  if (subcommand === "add" && has("-A", "--all", "-u", "--update", ".", ":/")) return STAGE_ALL;
+  if (subcommand === "stash" && !["list", "show"].includes(rest[0])) return STASH;
+  if (subcommand === "checkout" && has("--", ".")) return RESTORE;
+  if (subcommand === "restore" && (has("-W", "--worktree") || !has("-S", "--staged"))) return RESTORE;
+  return null;
+}
+
+function commandRefusal(command) {
+  for (const segment of shellSegments(command)) {
+    const args = gitArguments(segment);
+    const reason = args && gitRefusal(args);
+    if (reason) return reason;
+  }
+  return null;
+}
 
 function refusal(request) {
   for (const path of editedPaths(request)) {
@@ -22,9 +59,8 @@ function refusal(request) {
     if (generated) return `${path} is generated. Change its source, then run: ${generated.run}`;
   }
   const command = request.tool_input?.command;
-  if (typeof command === "string") {
-    return SHARED_CHECKOUT_COMMANDS.find(([pattern]) => pattern.test(command))?.[1] ?? null;
-  }
+  // Codex passes `apply_patch` text in `command`. That text is file content.
+  if (typeof command === "string" && request.tool_name !== "apply_patch") return commandRefusal(command);
   return null;
 }
 

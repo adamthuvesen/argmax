@@ -75,6 +75,9 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "argmax"
 version = "0.6.0"
 dependencies = [
+ "argmax-contracts",
+ "argmax-process",
+ "argmax-store",
  "axum",
  "base64 0.22.1",
  "block2",
@@ -129,6 +132,49 @@ dependencies = [
  "ureq",
  "uuid",
  "walkdir",
+]
+
+[[package]]
+name = "argmax-contracts"
+version = "0.6.0"
+dependencies = [
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "specta",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "argmax-process"
+version = "0.6.0"
+dependencies = [
+ "argmax-contracts",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "argmax-store"
+version = "0.6.0"
+dependencies = [
+ "argmax-contracts",
+ "argmax-process",
+ "chrono",
+ "phf 0.13.1",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "specta",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
 ]
 
 [[package]]

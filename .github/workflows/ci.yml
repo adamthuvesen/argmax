@@ -98,15 +98,15 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: rust-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-${{ github.sha }}
+          key: rust-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/crates/*/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-${{ github.sha }}
           restore-keys: |
-            rust-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-
+            rust-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.check }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/crates/*/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/ci.yml') }}-
 
       - if: ${{ matrix.check == 'unit' }}
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+        run: cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
 
       - if: ${{ matrix.check == 'unit' }}
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --workspace --lib
 
       # This also builds the desktop binaries and checks generated bindings.
       # New integration modules belong in the existing integration binary.
@@ -115,9 +115,9 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration --no-run
           cargo test --manifest-path src-tauri/Cargo.toml --locked --test integration &
           integration_pid=$!
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --doc &
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --workspace --doc &
           doc_pid=$!
-          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings &
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked --workspace --all-targets -- -D warnings &
           clippy_pid=$!
           status=0
           for pid in "$integration_pid" "$doc_pid" "$clippy_pid"; do

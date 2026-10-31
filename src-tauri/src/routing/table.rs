@@ -4,39 +4,9 @@
 // task-completion time. Rust owns this table; the renderer only displays the
 // routed result.
 
-use serde::{Deserialize, Serialize};
-use specta::Type;
-
-use crate::ipc::validation::{ProviderId, ReasoningEffort};
+use crate::application::validation::{ProviderId, ReasoningEffort};
 use crate::providers::model_catalogue::ModelId;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum AutoTier {
-    // Legacy wire value: Speed.
-    Cost,
-    Economy,
-    Balanced,
-    Intelligence,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum TaskKind {
-    Coding,
-    Mechanical,
-    Research,
-    Review,
-    Question,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
-#[serde(rename_all = "lowercase")]
-pub enum Difficulty {
-    Light,
-    Standard,
-    Heavy,
-}
+pub use argmax_contracts::routing::{AutoTier, Difficulty, TaskKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Column {
@@ -216,8 +186,8 @@ fn difficulty_effort(difficulty: Difficulty) -> ReasoningEffort {
 }
 
 /// When a cell in `cost_route` or `speed_route` changes, also update the tier
-/// blurbs in `AUTO_TIER_DESCRIPTIONS` (`src/renderer/lib/models.ts`) and the
-/// tables in `docs/routing.md`. Nothing checks them against this file.
+/// blurbs in `AUTO_TIER_DESCRIPTIONS` (`src/renderer/lib/models.ts`). Nothing
+/// checks them against this file.
 ///
 /// Cost minimizes API-equivalent completion cost. Reviews run on Sonnet, half
 /// Opus's per-token price; a reported-wrong review still climbs the Cost

@@ -14,7 +14,7 @@ The measurements behind the grid are in [plan/auto-model-routing.md](plan/auto-m
 | Prompt directive | [routing/directive.rs](../src-tauri/src/routing/directive.rs) |
 | Key storage | [routing/api_key.rs](../src-tauri/src/routing/api_key.rs) |
 | Router cost | [routing/cost.rs](../src-tauri/src/routing/cost.rs), [usage.md](usage.md#router-cost) |
-| Decision log | [turn_routes.rs](../src-tauri/src/persistence/turn_routes.rs) |
+| Decision log | [turn_routes.rs](../src-tauri/crates/argmax-store/src/turn_routes.rs) |
 | Follow-up wiring | `route_follow_up` and `apply_auto_follow_up` in [session_service.rs](../src-tauri/src/providers/session_service.rs) |
 
 When a grid cell changes, update the tier blurbs in `AUTO_TIER_DESCRIPTIONS` ([models.ts](../src/renderer/lib/models.ts)). Nothing checks them against the grid.
@@ -127,7 +127,7 @@ A follow-up's row is written only once the send is admitted, so a send that Stop
 
 Project check asks Jev a second question: before a new chat starts, does the prompt belong in the project the launcher is aimed at?
 
-Code: [project_check.rs](../src-tauri/src/routing/project_check.rs), [project_checks.rs](../src-tauri/src/persistence/project_checks.rs), [useProjectCheck.ts](../src/renderer/hooks/useProjectCheck.ts), and [ProjectCheckDialog.tsx](../src/renderer/components/ProjectCheckDialog.tsx).
+Code: [project_check.rs](../src-tauri/src/routing/project_check.rs), [project_checks.rs](../src-tauri/crates/argmax-store/src/project_checks.rs), [useProjectCheck.ts](../src/renderer/hooks/useProjectCheck.ts), and [ProjectCheckDialog.tsx](../src/renderer/components/ProjectCheckDialog.tsx).
 
 It runs for a local launcher launch and an agent `session_launch`, with a Jev key, Project check not Off, and at least two projects. Side chats, cloud tasks, follow-ups, multitask, routines, and the Arc coordinator's launch are not checked.
 

@@ -4,7 +4,7 @@
 
 use serde_json::Value;
 
-use crate::ipc::validation::ProviderId;
+use crate::application::validation::ProviderId;
 use crate::providers::opencode_gateway::OpencodeGateway;
 
 use super::{RemainingSource, UsageLimitWindow, UsageProviderRemaining};

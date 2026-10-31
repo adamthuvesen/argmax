@@ -272,24 +272,5 @@ pub fn adoptable_children(
     connection: &rusqlite::Connection,
     session_id: &str,
 ) -> ArgmaxResult<Vec<(String, String, String)>> {
-    connection
-        .prepare_cached(
-            r#"
-            SELECT sessions.id, workspaces.project_id, workspaces.task_label
-            FROM sessions
-            JOIN workspaces ON workspaces.id = sessions.workspace_id
-            WHERE sessions.launched_by_session_id = ?1
-              AND sessions.arc_id IS NULL
-              AND workspaces.state NOT IN ('archiving', 'archive-failed', 'archived')
-            ORDER BY sessions.started_at DESC, sessions.id DESC
-            LIMIT ?2
-            "#,
-        )
-        .map_err(crate::persistence::sqlite_error)?
-        .query_map((session_id, MAX_ADOPTED_MEMBERS), |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })
-        .map_err(crate::persistence::sqlite_error)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(crate::persistence::sqlite_error)
+    crate::persistence::arcs::adoptable_children(connection, session_id, MAX_ADOPTED_MEMBERS)
 }

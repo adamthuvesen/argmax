@@ -61,7 +61,15 @@ export function AdvancedSettings({
   });
   useEffect(() => {
     if (!performanceOpen) return undefined;
-    const timer = window.setInterval(() => void refetchPerformanceStatus(), 1_000);
+    // A read slower than the tick must still land, so a tick never replaces one.
+    let reading = false;
+    const timer = window.setInterval(() => {
+      if (reading) return;
+      reading = true;
+      void refetchPerformanceStatus().finally(() => {
+        reading = false;
+      });
+    }, 1_000);
     return () => window.clearInterval(timer);
   }, [performanceOpen, refetchPerformanceStatus]);
 

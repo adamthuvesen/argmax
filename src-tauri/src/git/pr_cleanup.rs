@@ -391,20 +391,7 @@ fn same_checkout(left: &Path, right: &Path) -> bool {
 /// only skips the step.
 fn checkout_is_busy(database: &Database, checkout: &Path) -> bool {
     let connection = database.read_connection();
-    let paths: ArgmaxResult<Vec<String>> = (|| {
-        let mut statement = connection
-            .prepare(
-                "SELECT DISTINCT w.path FROM sessions s JOIN workspaces w ON w.id = s.workspace_id
-                 WHERE s.state IN ('running', 'waiting', 'blocked') AND w.path != ''",
-            )
-            .map_err(crate::persistence::sqlite_error)?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(crate::persistence::sqlite_error)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(crate::persistence::sqlite_error)?;
-        Ok(rows)
-    })();
+    let paths = crate::persistence::workspaces::checkouts_with_live_turn(&connection);
     match paths {
         Ok(paths) => paths
             .iter()

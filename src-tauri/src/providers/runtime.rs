@@ -42,8 +42,8 @@ use super::{
 };
 use crate::{
     error::{ArgmaxError, ArgmaxResult},
-    ipc::inputs::ComposerAttachmentInput,
     persistence::time::now_iso,
+    providers::inputs::ComposerAttachmentInput,
 };
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -798,11 +798,7 @@ pub(super) fn composer_payload(
 
 // Wire coercions for rows read straight out of SQLite. They are lossy; the
 // typed surface in `ipc::inputs` is the entry point everywhere else.
-pub(crate) fn parse_provider(value: &str) -> ArgmaxResult<ProviderId> {
-    ProviderId::parse(value).ok_or_else(|| {
-        ArgmaxError::service("PROVIDER_UNKNOWN", format!("unknown provider {value}"))
-    })
-}
+pub(crate) use crate::application::validation::parse_provider;
 
 pub(super) fn parse_permission_mode(value: &str) -> ArgmaxResult<PermissionMode> {
     match value {
@@ -882,16 +878,6 @@ pub(super) fn signal_process(_pid: u32, _signal: SignalKind) {}
 
 pub(super) fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
     ArgmaxError::service("SQLITE", error.to_string())
-}
-
-impl PermissionMode {
-    pub(super) fn as_wire(self) -> &'static str {
-        match self {
-            PermissionMode::AutoApprove => "auto-approve",
-            PermissionMode::AskEachTime => "ask-each-time",
-            PermissionMode::ProviderDefaults => "provider-defaults",
-        }
-    }
 }
 
 #[cfg(all(test, unix))]

@@ -14,14 +14,13 @@
 
 use std::sync::RwLock;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use specta::Type;
 
 use super::model_catalogue::{ModelId, VERCEL_SLUGS};
 use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::{sqlite_error, time::now_iso};
 use crate::util::keychain::KeychainSecret;
 
 const GATEWAY_KEY: &str = "opencode.gateway";
@@ -170,16 +169,7 @@ pub fn launch_config() -> ArgmaxResult<(OpencodeGateway, Value)> {
 /// Reads the saved choice into the mirror. Called once the database opens; an
 /// unreadable row reads as OpenRouter, the gateway every launch used before.
 pub fn load(connection: &Connection) {
-    let stored: Option<String> = connection
-        .prepare_cached("SELECT value_json FROM ui_state WHERE key = ?")
-        .and_then(|mut statement| {
-            statement
-                .query_row(params![GATEWAY_KEY], |row| row.get(0))
-                .optional()
-        })
-        .unwrap_or(None);
-    let gateway = stored
-        .and_then(|value| serde_json::from_str(&value).ok())
+    let gateway = crate::persistence::app_settings::read_ui_value(connection, GATEWAY_KEY)
         .unwrap_or_default();
     *SELECTED
         .write()
@@ -189,15 +179,7 @@ pub fn load(connection: &Connection) {
 /// Saves the choice. It applies from the next launch; a running turn keeps the
 /// gateway its OpenCode server started with.
 pub fn select(connection: &Connection, gateway: OpencodeGateway) -> ArgmaxResult<()> {
-    let value = serde_json::to_string(&gateway).map_err(crate::persistence::json_error)?;
-    connection
-        .prepare_cached(
-            "INSERT INTO ui_state (key, value_json, updated_at) VALUES (?, ?, ?)
-             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
-        )
-        .map_err(sqlite_error)?
-        .execute(params![GATEWAY_KEY, value, now_iso()])
-        .map_err(sqlite_error)?;
+    crate::persistence::app_settings::write_ui_value(connection, GATEWAY_KEY, &gateway)?;
     *SELECTED
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = gateway;

@@ -79,6 +79,23 @@ pub struct ProviderCapabilityReport {
     pub goal_support: ProviderGoalSupport,
 }
 
+/// A provider the availability probe reported as installed and not logged out.
+/// The field is private and only [`ProviderDiscovery`] builds one, so a route
+/// function cannot be handed a provider that nothing probed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AvailableProvider(ProviderId);
+
+impl AvailableProvider {
+    pub fn id(self) -> ProviderId {
+        self.0
+    }
+
+    #[cfg(test)]
+    pub(crate) fn assumed_for_test(provider: ProviderId) -> Self {
+        Self(provider)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ProviderDiscovery {
     cache: Arc<Mutex<HashMap<ProviderId, ProviderCapabilityReport>>>,
@@ -106,12 +123,12 @@ impl ProviderDiscovery {
 
     /// Providers whose CLI is installed and not known to be logged out: the
     /// ones a route may land on. Empty means discovery learned nothing.
-    pub async fn available_providers(&self) -> Vec<ProviderId> {
+    pub async fn available_providers(&self) -> Vec<AvailableProvider> {
         self.discover_all()
             .await
             .into_iter()
             .filter(|report| report.installed && report.authenticated != Some(false))
-            .map(|report| report.provider)
+            .map(|report| AvailableProvider(report.provider))
             .collect()
     }
 

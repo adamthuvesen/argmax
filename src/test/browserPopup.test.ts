@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { expect, it, vi } from "vitest";
 
-const rust = readFileSync("src-tauri/src/ipc/browser.rs", "utf8");
+const rust = readFileSync("src-tauri/src/browser/tabs.rs", "utf8");
 const script = rust.match(/const BROWSER_INIT_SCRIPT: &str = r#"([\s\S]*?)"#;/)?.[1];
 
 it.each([

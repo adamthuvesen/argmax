@@ -244,6 +244,7 @@ async fn generate(
         return Err(ArgmaxError::service("PROJECT_OVERVIEW_UNAVAILABLE", "No supported project documents were found. Add an overview manually or add a README, then refresh."));
     }
     for provider in discovery.available_providers().await {
+        let provider = provider.id();
         match crate::providers::one_shot::generate_project_overview(
             provider,
             crate::providers::one_shot::helper_model(provider),

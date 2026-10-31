@@ -8,15 +8,10 @@ use std::path::PathBuf;
 
 use super::ProviderId;
 
-pub const MODE_ENV: &str = "ARGMAX_VERIFICATION";
-pub const HOME_ENV: &str = "ARGMAX_VERIFICATION_HOME";
-
-/// Whether the process asked for verification mode, including malformed
-/// values. Callers use this broader predicate for fail-closed isolation: a
-/// typo must never fall through to real provider discovery.
-pub fn requested() -> bool {
-    std::env::var_os(MODE_ENV).is_some()
-}
+pub use argmax_process::environment::{
+    verification_requested as requested, VERIFICATION_HOME_ENV as HOME_ENV,
+    VERIFICATION_MODE_ENV as MODE_ENV,
+};
 
 /// Validates the process-wide contract before app services start. The app boot
 /// path calls this so a malformed verification launch exits with one actionable

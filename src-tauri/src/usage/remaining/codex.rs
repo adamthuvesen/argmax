@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::ipc::validation::ProviderId;
+use crate::application::validation::ProviderId;
 use crate::providers::environment::build_provider_environment;
 
 use super::{

@@ -68,7 +68,7 @@ An Arc's coordinator and members are ordinary sessions, and every tool works on 
 
 **Moves and forks.** `session_move` carries `arc_id` across, and repoints `coordinatorSessionId` in the same transaction if needed. `fork_session` carries neither, so a fork cannot silently duplicate a coordinator.
 
-**Caps** are `ARC_MAX_ACTIVE_MEMBERS` and `ARC_MAX_LAUNCHES_PER_DAY` in [arcs.rs](../src-tauri/src/persistence/arcs.rs), refused as `ARC_CAPACITY_REACHED` and `ARC_LAUNCH_BUDGET_REACHED`. A done Arc refuses with `ARC_DONE`. The current coordinator is exempt from the per-session launch cap, because it delegates for the whole Arc. A relaunched coordinator's old session keeps its own count.
+**Caps** are `ARC_MAX_ACTIVE_MEMBERS` and `ARC_MAX_LAUNCHES_PER_DAY` in [arcs.rs](../src-tauri/crates/argmax-store/src/arcs.rs), refused as `ARC_CAPACITY_REACHED` and `ARC_LAUNCH_BUDGET_REACHED`. A done Arc refuses with `ARC_DONE`. The current coordinator is exempt from the per-session launch cap, because it delegates for the whole Arc. A relaunched coordinator's old session keeps its own count.
 
 A coordinator's prompt is [preamble.rs](../src-tauri/src/arcs/preamble.rs). "Plans and delegates, never codes" is that prompt's contract, not a permission. The coordinator is an ordinary, disposable session.
 
@@ -138,7 +138,7 @@ The unit is bytes everywhere. A slice never ends inside a character, and an offs
 - its launch lineage, up, down, and across projects.
 - a chat a person attached to one of its prompts. The composer writes `[title](argmax://chat/<session id>?v=1)` into the prompt, and a person's prompt in the caller's transcript that holds such a link is the grant. The transcript is the durable authority, so there is no grant table to keep in step.
 
-What counts as the person's prompt is narrow, because an agent can put any text in a prompt it writes. A `user.message` grants only with the positive mark `events.prompt_author = 'person'` ([authorship.rs](../src-tauri/src/persistence/authorship.rs)).
+What counts as the person's prompt is narrow, because an agent can put any text in a prompt it writes. A `user.message` grants only with the positive mark `events.prompt_author = 'person'` ([authorship.rs](../src-tauri/crates/argmax-store/src/authorship.rs)).
 
 - Only `providers:launch`, `providers:send-input`, `providers:steer-input`, and a typed Multitask can build the `PersonAttestation` token, and a test lists the call sites.
 - The marker is a column, and no input type carries it, so a client, a tool argument, a transcript file, or a synced event cannot supply it.

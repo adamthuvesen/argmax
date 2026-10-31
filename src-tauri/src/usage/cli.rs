@@ -139,6 +139,7 @@ fn sweep_in_place(path: &std::path::Path) -> crate::error::ArgmaxResult<()> {
         })?;
     }
     let database = std::sync::Arc::new(crate::persistence::Database::open(path)?);
+    crate::start_raw_output_prune(&database);
     let scanner = crate::usage::scanner::UsageScanner::new(database, crate::sync::home_dir());
     let started = std::time::Instant::now();
     let ran = scanner.sweep()?;

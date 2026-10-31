@@ -51,7 +51,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: rust-release-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/release.yml') }}
+          key: rust-release-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'src-tauri/Cargo.toml', 'src-tauri/crates/*/Cargo.toml', 'rust-toolchain.toml', '.github/workflows/release.yml') }}
           restore-keys: |
             rust-release-${{ runner.os }}-
 

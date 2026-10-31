@@ -15,7 +15,7 @@ the result and treat dialog errors as failed actions. The plugin's injected
 | [src-tauri/src/ipc](../src-tauri/src/ipc) | Command handlers with `#[tauri::command(rename = "...")]` |
 | [src-tauri/src/ipc/catalogue.rs](../src-tauri/src/ipc/catalogue.rs) | Command registration, remote dispatch, and exposure policy |
 | [src-tauri/src/ipc/inputs.rs](../src-tauri/src/ipc/inputs.rs) | Transport inputs and application input re-exports |
-| [src-tauri/src/application/validation.rs](../src-tauri/src/application/validation.rs) | Validated application scalar types |
+| [src-tauri/crates/argmax-contracts/src/validation.rs](../src-tauri/crates/argmax-contracts/src/validation.rs) | Validated application scalar types |
 | [src-tauri/tests/fixtures/channels.txt](../src-tauri/tests/fixtures/channels.txt) | Generated request/response channel list |
 | [src/shared/bindings.d.ts](../src/shared/bindings.d.ts) | Generated TypeScript types |
 | [src/shared/ipcSchemas.ts](../src/shared/ipcSchemas.ts) | Generated channel names and request/result associations |
@@ -186,7 +186,7 @@ See [memory.md](memory.md).
 `arc:create`, `arc:list`, `arc:get`, `arc:update`, `arc:set-state`,
 `arc:set-archived`, and
 `arc:launch-coordinator` manage Arcs through `ipc/arcs.rs`, backed by
-`persistence/arcs.rs` and, for the launch, `arcs::launch_coordinator`.
+`argmax-store/src/arcs.rs` and, for the launch, `arcs::launch_coordinator`.
 `arc:create` takes `{ name, brief, homeProjectId, dir? }`; an absolute `dir`
 must already exist and its `BRIEF.md`/`NOTES.md` are never overwritten, while
 an omitted `dir` gets a fresh one under the app data dir. `arc:update` takes

@@ -24,8 +24,8 @@ The **Show arcs** toggle in **Settings → Appearance** controls New arc and the
 | Piece | Where |
 |---|---|
 | `arcs` table, `sessions.arc_id` (v51); `routines.arc_id` + `arc_coordinator` target (v52) | [data.md](data.md#arcs) |
-| Persistence, caps, member summaries | [persistence/arcs.rs](../src-tauri/src/persistence/arcs.rs) |
-| Timeline (`arc_events`, v53) and `arc:timeline` | [persistence/arc_events.rs](../src-tauri/src/persistence/arc_events.rs), [ArcTimeline.tsx](../src/renderer/components/arcs/ArcTimeline.tsx) |
+| Persistence, caps, member summaries | [persistence/arcs.rs](../src-tauri/crates/argmax-store/src/arcs.rs) |
+| Timeline (`arc_events`, v53) and `arc:timeline` | [persistence/arc_events.rs](../src-tauri/crates/argmax-store/src/arc_events.rs), [ArcTimeline.tsx](../src/renderer/components/arcs/ArcTimeline.tsx) |
 | Starting from a chat (`arc:draft-from-session`, `arc:promote`) | [arcs/mod.rs](../src-tauri/src/arcs/mod.rs) `promote_session`, [one_shot.rs](../src-tauri/src/providers/one_shot.rs) `draft_arc` |
 | Coordinator launch and preambles | [arcs/mod.rs](../src-tauri/src/arcs/mod.rs), [arcs/preamble.rs](../src-tauri/src/arcs/preamble.rs) |
 | `arc:*` IPC channels | [ipc/arcs.rs](../src-tauri/src/ipc/arcs.rs), [ipc.md](ipc.md#arcs) |

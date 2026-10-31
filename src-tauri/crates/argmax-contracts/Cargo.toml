@@ -1,0 +1,15 @@
+[package]
+name = "argmax-contracts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Argmax errors, ids, enums, and the wire types every layer shares. Depends on nothing else in Argmax."
+publish = false
+
+[dependencies]
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

@@ -396,14 +396,9 @@ async fn read_linked_file(
     })?;
     let repo = {
         let connection = database.read_connection();
-        let workspace_id: String = connection
-            .query_row(
-                "SELECT workspace_id FROM sessions WHERE id = ?",
-                [session_id],
-                |row| row.get(0),
-            )
-            .map_err(sqlite_error)
-            .map_err(argmax_protocol_error)?;
+        let workspace_id =
+            crate::persistence::sessions::session_workspace_id(&connection, session_id)
+                .map_err(argmax_protocol_error)?;
         find_workspace_linked_repo_by_name(&connection, &workspace_id, name.trim())
             .map_err(argmax_protocol_error)?
     };

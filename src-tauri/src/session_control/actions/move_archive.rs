@@ -15,11 +15,8 @@ use super::super::{
 };
 use super::resolve_or_register_project;
 use crate::{
+    application::validation::{Prompt, SessionId, WorkspaceId},
     error::ArgmaxError,
-    ipc::{
-        inputs::{ProvidersSendInput, WorkspacesArchiveInput},
-        validation::{Prompt, SessionId, WorkspaceId},
-    },
     persistence::{
         after_turn::{
             AfterTurnAction, ArchiveRequest, MergedPrRequest, MoveDestinationRecord, MoveRequest,
@@ -29,7 +26,9 @@ use crate::{
         sessions::find_session_by_id,
         workspaces::find_workspace_by_id,
     },
+    providers::inputs::ProvidersSendInput,
     providers::session_service::ProviderSessionService,
+    workspaces::inputs::WorkspacesArchiveInput,
     workspaces::{orchestration::MoveDestination, WorkspaceService},
 };
 

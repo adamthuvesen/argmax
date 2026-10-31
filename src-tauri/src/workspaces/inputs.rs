@@ -209,3 +209,10 @@ impl<'de> Deserialize<'de> for SessionIconToken {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum ForkWorkspaceMode {
+    Shared,
+    Isolated,
+}

@@ -33,15 +33,43 @@ describe("agent hooks", () => {
     expect(result.stderr).toContain("npm run generate:bindings");
   });
 
-  it.each(["git add -A", "git add .", "git stash", "git checkout -- src/a.ts", "git restore src/a.ts"])(
+  it.each([
+    "git add -A",
+    "git add .",
+    "git add -- .",
+    "git add -u",
+    "git stash",
+    "git stash pop",
+    "git checkout .",
+    "git checkout -- src/a.ts",
+    "git checkout HEAD -- src/a.ts",
+    "git restore src/a.ts",
+    "git -C . restore .",
+    "git restore --staged --worktree .",
+    "cd src && git add -A"
+  ])(
     "refuses %s",
     (command) => {
       expect(runHook("pre-tool-use", { tool_name: "Bash", tool_input: { command } }).status).toBe(2);
     }
   );
 
-  it.each(["git add src/a.ts", "git restore --staged src/a.ts", "git status"])("allows %s", (command) => {
+  it.each([
+    "git add src/a.ts",
+    "git restore --staged src/a.ts",
+    "git restore -S src/a.ts",
+    "git status",
+    "git stash list",
+    "git checkout main",
+    "git checkout -b feature",
+    'git commit -m "docs: never run git add -A"'
+  ])("allows %s", (command) => {
     expect(runHook("pre-tool-use", { tool_name: "Bash", tool_input: { command } }).status).toBe(0);
+  });
+
+  it("does not read a patch's text as a command", () => {
+    const command = "*** Begin Patch\n*** Update File: docs/testing.md\n+Do not run git stash.\n";
+    expect(runHook("pre-tool-use", { tool_name: "apply_patch", cwd: ROOT, tool_input: { command } }).status).toBe(0);
   });
 
   it("gives the subsystem rule once per session after an edit", () => {
@@ -57,6 +85,20 @@ describe("agent hooks", () => {
     expect(runHook("post-tool-use", input).stdout).toBe("");
   });
 
+  it("reports a lint failure at turn end", () => {
+    const sourceName = `zzAgentHookLint${process.pid}.ts`;
+    const source = path.join(ROOT, "src/renderer/lib", sourceName);
+    const stopSession = `${sessionId}-lint`;
+    writeFileSync(source, "export const id = crypto.randomUUID();\n");
+    try {
+      runHook("post-tool-use", { session_id: stopSession, tool_name: "Write", tool_input: { file_path: source } });
+      const blocked = JSON.parse(runHook("stop", { session_id: stopSession }).stdout) as { reason: string };
+      expect(blocked.reason).toContain("no-restricted-properties");
+    } finally {
+      if (existsSync(source)) rmSync(source);
+    }
+  }, 120_000);
+
   it("sends the agent back when a file it edited fails, and lets a second stop pass", () => {
     const sourceName = `zzAgentHookFixture${process.pid}.ts`;
     const source = path.join(ROOT, "src/renderer/lib", sourceName);
@@ -68,6 +110,7 @@ describe("agent hooks", () => {
       expect(blocked.decision).toBe("block");
       expect(blocked.reason).toContain(sourceName);
       expect(runHook("stop", { session_id: stopSession, stop_hook_active: true }).stdout).toBe("");
+      expect(runHook("stop", { session_id: stopSession }).stdout).toBe("");
     } finally {
       if (existsSync(source)) rmSync(source);
     }

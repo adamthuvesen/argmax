@@ -12,14 +12,32 @@ you are changing.
 
 [src-tauri/src/lib.rs](../src-tauri/src/lib.rs) initializes app state, SQLite, services, menus, and event channels. The desktop composition root stores services in [state.rs](../src-tauri/src/state.rs). Transport adapters resolve them through `tauri::State`. The scheduler receives explicit service dependencies.
 
-Key directories:
+## Layers
+
+The Rust code is a Cargo workspace rooted at `src-tauri/Cargo.toml`. Imports point down, and the compiler rejects an import that points up.
+
+| Crate | Holds | May import |
+|---|---|---|
+| `crates/argmax-contracts` | Errors, validated ids, enums, and wire types with specta derives. | Nothing else in Argmax. |
+| `crates/argmax-process` | The login-shell environment, provider environments, and the one git runner. | Contracts. |
+| `crates/argmax-store` | SQLite: migrations, every query, and the event normalization that reads depend on. | Contracts and process. |
+| `argmax` (`src-tauri/src`) | Services, providers, IPC, the remote bridge, and the Tauri shell. | All of the above. |
+
+Inside the `argmax` crate, `ipc/` and `remote/` are the transport edges. Nothing else imports them. `check:rust-boundaries` enforces that rule and the rules below, because one crate cannot state them to the compiler:
+
+- SQL text and `prepare` or `query_row` calls stay in `argmax-store`. Naming a `Connection` or a `Transaction` to pass it through is fine.
+- Only a person IPC handler mints a `PersonAttestation`. The type lives in the store, so this is a source check, and Rust visibility cannot do it across crates.
+
+The old paths `crate::persistence`, `crate::error`, `crate::sessions`, and `crate::application::validation` are re-exports, so a service reads the same as before.
+
+## Key directories
+
 
 - `application/`: Validated command values and transport-independent session launch.
 - `ipc/`: Request/response adapters and the typed command catalogue.
-- `persistence/`: SQLite connection, migrations, and repository queries.
+- `persistence`: the `argmax-store` crate under its old path. See [Layers](#layers).
 - `providers/`: Adapter CLIs (Claude, Codex, Cursor, OpenCode, Grok Build), PTY runtime, normalizers, and the event flush queue.
 - `session_control/`: Private socket transport for agent-initiated session launch, move, list, and message commands.
-- `sessions/`: Orchestration between IPC and providers.
 - `workspaces/`, `review/`, `files/`, `git/`: Worktree lifecycle, diffs, file operations, and git commands.
 - `approvals/`, `checks/`, `gh/`, `terminal/`, `attachments/`, `ide/`, `skills/`, `routines/`: Subsystem services.
 
@@ -73,7 +91,7 @@ Clicks inside a browser pane use that tab's web history instead.
 
 Dashboard React state contains metadata and approvals. Transcript events, raw output, and read cursors live together in [SessionTimelines](../src/renderer/lib/sessionTimelines.ts). Each conversation subscribes to its session through `useSessionTimeline`, so a token does not update unrelated panes or the dashboard shell. Agent traces use their parent session's history, while multitasks subscribe to their own session. Subscribed histories stay resident, and the store retains at most 12 inactive histories. Eviction drops the history and its cursors together so reopening a session fetches a complete tail.
 
-Rust owns timeline meaning in [timeline_semantics.rs](../src-tauri/src/persistence/timeline_semantics.rs).
+Rust owns timeline meaning in [timeline_semantics.rs](../src-tauri/crates/argmax-store/src/timeline_semantics.rs).
 Every event read carries a versioned semantic contract, including historical rows.
 Generated types serve both desktop and phone projections.
 The renderer's [canonicalTimeline.ts](../src/renderer/lib/canonicalTimeline.ts) adds presentation models and caches them.

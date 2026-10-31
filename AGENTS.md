@@ -67,42 +67,35 @@ Before you edit a subsystem, read its doc. Start at [architecture.md](docs/archi
 ## Enforced Rules
 
 
-| Rule | Enforced by | Added |
-|---|---|---|
-| Do not hand-edit generated files | `scripts/agent-hooks/pre-tool-use.mjs`, list in `scripts/generated-files.json` | 2026-11-04 |
-| Do not use blanket staging, stash, or restore in a shared checkout | `scripts/agent-hooks/pre-tool-use.mjs` | 2026-11-04 |
-| No AI attribution in commit messages | `.githooks/commit-msg`, test `gitHooks.test.ts` | 2026-11-04 |
-| Renderer tests query by role, label, or title | `scripts/oxlint-plugin.mjs::no-node-access`, `no-container` | 2026-11-04 |
-| Decode timeline semantics with `decodeTimelineEvent()` | `scripts/oxlint-plugin.mjs::no-timeline-payload-access` | 2026-11-04 |
-| The store, process, and contracts crates cannot import upward | Crate graph in `src-tauri/Cargo.toml::members`, compile errors E0432 and E0433; `scripts/check-rust-boundaries.mjs` | 2026-11-04 |
-| SQL lives in `argmax-store` | `check:rust-boundaries` rule `sql-outside-store`, with a ratchet | 2026-11-04 |
-| Run git through `argmax_process::git_exec` | `check:rust-boundaries` rule `git-outside-exec` | 2026-11-04 |
-| Only `ipc/` and `remote/` import `crate::ipc` | `check:rust-boundaries` rule `lower-layer-imports-ipc` | 2026-11-04 |
-| Only a person IPC handler mints a `PersonAttestation` | `check:rust-boundaries` rule `person-attestation-outside-ipc`, and a test in `ipc/mod.rs` | 2026-11-04 |
-| A route lands only on a provider the availability probe reported | Rust type `AvailableProvider`, built only in `providers/discovery.rs` | 2026-11-04 |
-| A turn ends only through `commit_turn_end` | `check:rust-boundaries` rule `turn-end-outside-owner` | 2026-11-04 |
-| Renderer imports point down: shared, lib and state, hooks, components | `dependency-cruiser` in `check:static`, with a ratchet | 2026-11-04 |
-| No secrets in staged files | `gitleaks` in `.githooks/pre-commit` | 2026-11-04 |
-| Components read with `useBridgeQuery` and write through `data/bridgeActions.ts`, never `window.argmax` | `.oxlintrc.json::no-restricted-properties` | 2026-11-04 |
-| An action on a project folder carries a required `ProjectTarget` | TypeScript, `tsconfig.json::strict` | 2026-11-04 |
-| Do not hand-edit the appearance script in `index.html` or `mobile.html` | `check:static`, `scripts/build-appearance-bootstrap.mjs --check` | 2026-11-04 |
-| Exports and dependencies stay in use | `knip` in `check:static` | 2026-11-04 |
-| Model facts live in `src/shared/providerModels.ts`; Rust and the phone read generated copies | `check:provider-models`, list in `scripts/generated-files.json` | 2026-11-04 |
-| Production code does not name a retired model id | `check:provider-models` | 2026-11-04 |
-| Every catalogue model has a price and a routing answer | `cargo test catalogue` (`pricing.rs`, `routing/table.rs`) | 2026-11-04 |
-| A stored model id reaches a launch or a route only as a resolved id | `model_catalogue.rs::ModelId`, `providerModels.ts::ResolvedModelId`, `scripts/oxlint-plugin.mjs::no-raw-model-id` | 2026-11-04 |
-| A dispatch on a provider names every provider | Exhaustive `ProviderId` match, parsed with `ProviderId::parse` | 2026-11-04 |
-| Chat-detail levels, inline-math pairing, and the workspace's chat agree on desktop and phone | One table in `fixtures/parity/`, run by `parityTables.test.ts` and `ParityTableTests.swift` | 2026-11-04 |
-| The phone's chat-list and transcript responses come from the Rust bindings | `export-swift-contracts.mjs --check` in `check:static` | 2026-11-04 |
-| A change the phone's suite can see runs that suite | `npm run test:ios` in the pre-push gate and in the CI `ios` job | 2026-11-04 |
-| Transcript scroll decisions live in `TranscriptScrollModel`, not the view | Recorded sequences in `TranscriptScrollModelTests` | 2026-11-04 |
-| Relative imports end in `.js`, even for a `.ts` file | `.oxlintrc.json::no-restricted-imports` | 2026-11-06 |
-| IPC channels match between Rust and the bridge | `scripts/check-tauri-bridge.mjs` in `check:static`, list in `src-tauri/tests/fixtures/channels.txt` | 2026-11-06 |
-| iPhone type goes through the roles in `Typography.swift` | `check:ios-fonts` | 2026-11-06 |
-| Never edit an applied migration | `verify_applied_checksum` in `migrations.rs`, test `checksum_drift_is_reported_for_applied_migration` | 2026-11-06 |
-| A mascot expression changes only its face | Overlay files composed by `withExpression` in `Mascot.tsx` | 2026-11-06 |
-| Every enforcer this table cites exists | `check:docs` | 2026-11-06 |
-| `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify.mjs::CONTROL`, run by `npm run verify` in CI | 2026-11-06 |
-| No file turns off type checking or lint with `@ts-nocheck`, a bare `oxlint-disable` or `eslint-disable` comment, or a Rust `#![allow(...)]` | `scripts/check-file-wide-disables.mjs` | 2026-11-07 |
-| `@ts-expect-error` carries a reason, and `@ts-ignore` is not used | `.oxlintrc.json::typescript/ban-ts-comment` | 2026-11-09 |
-| A new module cannot start a process or open a socket outside a named owner | `scripts/check-process-imports.mjs`, `scripts/check-rust-boundaries.mjs` | 2026-11-07 |
+| Rule | Enforced by |
+|---|---|
+| Do not hand-edit generated files | `scripts/agent-hooks/pre-tool-use.mjs`, list in `scripts/generated-files.json` |
+| Do not use blanket staging, stash, or restore in a shared checkout | `scripts/agent-hooks/pre-tool-use.mjs` |
+| No AI attribution in commit messages | `.githooks/commit-msg`, test `gitHooks.test.ts` |
+| Decode timeline semantics with `decodeTimelineEvent()` | `scripts/oxlint-plugin.mjs::no-timeline-payload-access` |
+| The store, process, and contracts crates cannot import upward | Crate graph in `src-tauri/Cargo.toml::members`, compile errors E0432 and E0433; `scripts/check-rust-boundaries.mjs` |
+| SQL lives in `argmax-store` | `check:rust-boundaries` rule `sql-outside-store`, with a ratchet |
+| Run git through `argmax_process::git_exec` | `check:rust-boundaries` rule `git-outside-exec` |
+| Only `ipc/` and `remote/` import `crate::ipc` | `check:rust-boundaries` rule `lower-layer-imports-ipc` |
+| Only a person IPC handler mints a `PersonAttestation` | `check:rust-boundaries` rule `person-attestation-outside-ipc`, and a test in `ipc/mod.rs` |
+| A route lands only on a provider the availability probe reported | Rust type `AvailableProvider`, built only in `providers/discovery.rs` |
+| A turn ends only through `commit_turn_end` | `check:rust-boundaries` rule `turn-end-outside-owner` |
+| Renderer imports point down: shared, lib and state, hooks, components | `dependency-cruiser` in `check:static`, with a ratchet |
+| No secrets in staged files | `gitleaks` in `.githooks/pre-commit` |
+| Components read with `useBridgeQuery` and write through `data/bridgeActions.ts`, never `window.argmax` | `.oxlintrc.json::no-restricted-properties` |
+| Do not hand-edit the appearance script in `index.html` or `mobile.html` | `check:static`, `scripts/build-appearance-bootstrap.mjs --check` |
+| Model facts live in `src/shared/providerModels.ts`; Rust and the phone read generated copies | `check:provider-models`, list in `scripts/generated-files.json` |
+| Production code does not name a retired model id | `check:provider-models` |
+| Every catalogue model has a price and a routing answer | `cargo test catalogue` (`pricing.rs`, `routing/table.rs`) |
+| A stored model id reaches a launch or a route only as a resolved id | `model_catalogue.rs::ModelId`, `providerModels.ts::ResolvedModelId`, `scripts/oxlint-plugin.mjs::no-raw-model-id` |
+| A dispatch on a provider names every provider | Exhaustive `ProviderId` match, parsed with `ProviderId::parse` |
+| Chat-detail levels, inline-math pairing, and the workspace's chat agree on desktop and phone | One table in `fixtures/parity/`, run by `parityTables.test.ts` and `ParityTableTests.swift` |
+| The phone's chat-list and transcript responses come from the Rust bindings | `export-swift-contracts.mjs --check` in `check:static` |
+| A change the phone's suite can see runs that suite | `npm run test:ios` in the pre-push gate and in the CI `ios` job |
+| Transcript scroll decisions live in `TranscriptScrollModel`, not the view | Recorded sequences in `TranscriptScrollModelTests` |
+| IPC channels match between Rust and the bridge | `scripts/check-tauri-bridge.mjs` in `check:static`, list in `src-tauri/tests/fixtures/channels.txt` |
+| iPhone type goes through the roles in `Typography.swift` | `check:ios-fonts` |
+| Never edit an applied migration | `verify_applied_checksum` in `migrations.rs`, tests `checksum_drift_is_reported_for_applied_migration` and `a_released_migration_body_is_never_edited` |
+| A mascot expression changes only its face | Overlay files composed by `withExpression` in `Mascot.tsx` |
+| `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify.mjs::CONTROL`, run by `npm run verify` in CI |
+| A new module cannot start a process or open a socket outside a named owner | `scripts/check-process-imports.mjs`, `scripts/check-rust-boundaries.mjs` |

@@ -106,7 +106,6 @@ fn plan(
     .expect("plan")
 }
 
-/// Claude -> Codex -> Claude.
 fn claude_codex_claude(connection: &Connection) {
     seed_session(connection, "claude");
     event(connection, "s1", "u1", "user.message", "build the exporter");

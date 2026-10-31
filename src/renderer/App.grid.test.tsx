@@ -197,7 +197,6 @@ describe("App grid", () => {
 
     render(<App />);
 
-    // Open first session
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("region", { name: "Conversation" });
 

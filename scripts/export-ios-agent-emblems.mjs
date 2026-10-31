@@ -26,8 +26,6 @@ import { createServer } from "vite";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outPath = path.join(repoRoot, "ios/Argmax/Sources/Design/AgentEmblemArt.swift");
 
-// ---------------------------------------------------------------- path maths
-
 /** The `d` attribute as a flat command list, absolute coordinates only. */
 function parsePath(d) {
   const tokens = d.match(/[MLCZA]|-?\d*\.?\d+(?:e-?\d+)?/gi) ?? [];
@@ -190,8 +188,6 @@ function flatten(d) {
   return out;
 }
 
-// ------------------------------------------------------------------- sources
-
 async function loadEmblems() {
   const server = await createServer({
     configFile: false,
@@ -219,8 +215,6 @@ for (const codename of Object.keys(EMBLEM_BY_CODENAME)) {
 for (const codename of codenames) {
   if (!EMBLEM_BY_CODENAME[codename]) throw new Error(`No emblem assigned to ${codename}`);
 }
-
-// ------------------------------------------------------------------- emitter
 
 const round = (value) => `${Number(value.toFixed(3))}`;
 const point = (x, y) => `CGPoint(x: ${round(x)}, y: ${round(y)})`;

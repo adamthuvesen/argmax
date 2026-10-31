@@ -3069,8 +3069,6 @@ mod tests {
         assert_eq!(recorded[0].session_id, "s1");
     }
 
-    // --- PR watch -----------------------------------------------------
-
     const PR_URL: &str = "https://github.com/acme/widgets/pull/42";
     const OLD: &str = "2020-01-01T00:00:00Z";
     const NEW: &str = "2999-01-01T00:00:00Z";

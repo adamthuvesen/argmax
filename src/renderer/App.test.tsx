@@ -397,11 +397,9 @@ describe("App", () => {
 
     render(<App />);
 
-    // Open the chat
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     expect(await screen.findByRole("button", { name: "Close pane" })).toBeInTheDocument();
 
-    // Archive the active chat
     fireEvent.click(screen.getByRole("button", { name: "Archive chat" }));
 
     await waitFor(() =>

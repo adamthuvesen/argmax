@@ -45,6 +45,8 @@ describe("agent hooks", () => {
     "git add .",
     "git add -- .",
     "git add -u",
+    "git commit -am wip",
+    "git commit --all -m wip",
     "git stash",
     "git stash pop",
     "git checkout .",

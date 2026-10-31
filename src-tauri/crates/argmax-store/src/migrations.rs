@@ -3917,6 +3917,30 @@ mod tests {
     }
 
     #[test]
+    fn a_released_migration_body_is_never_edited() {
+        // One `version checksum` line per migration that shipped. A body edited after release
+        // drifts on every user's database at launch. Fix the schema with a new migration.
+        let pinned = include_str!("../tests/fixtures/migration_checksums.txt");
+        let mut drifted = Vec::new();
+        for line in pinned.lines().filter(|line| !line.trim().is_empty()) {
+            let (version, checksum) = line.split_once(' ').expect("version and checksum");
+            let version: u32 = version.parse().expect("migration version");
+            let migration = MIGRATIONS
+                .iter()
+                .find(|migration| migration.version == version)
+                .unwrap_or_else(|| panic!("migration v{version} was removed after release"));
+            if compute_migration_checksum(migration.up) != checksum {
+                drifted.push(format!("v{version} ({})", migration.name));
+            }
+        }
+        assert!(
+            drifted.is_empty(),
+            "released migration bodies changed: {}. Add a new migration instead. If one never shipped, update its line in crates/argmax-store/tests/fixtures/migration_checksums.txt.",
+            drifted.join(", ")
+        );
+    }
+
+    #[test]
     fn checksum_drift_is_reported_for_applied_migration() {
         static EXPECTED: phf::Map<&'static str, &'static [&'static str]> = phf_map! {};
         let first = [Migration {

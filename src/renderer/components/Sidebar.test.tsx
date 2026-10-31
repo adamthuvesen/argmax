@@ -296,7 +296,6 @@ describe("Sidebar — project sort menu", () => {
     expect(sortWrites).toHaveLength(1);
     expect(sortWrites[0]?.[1]).toBe(JSON.stringify("alphabetical"));
 
-    // Menu closes on selection.
     expect(screen.queryByRole("menu", { name: "Sidebar view options" })).toBeNull();
   });
 
@@ -509,7 +508,6 @@ describe("Sidebar — workspaces without sessions", () => {
 
     // The session-backed workspace is visible.
     expect(screen.getByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
-    // The orphan is hidden.
     expect(screen.queryByRole("button", { name: /What is this project about/ })).toBeNull();
   });
 
@@ -812,7 +810,6 @@ describe("Sidebar — date (sessions) view mode", () => {
     // The chevron collapses the whole bucket.
     fireEvent.click(screen.getByRole("button", { name: "Hide Today chats" }));
     expect(screen.queryByRole("button", { name: /Today task/ })).toBeNull();
-    // Collapse state is persisted.
     expect(window.localStorage.getItem(collapsedDateGroupsStorageKey)).toBe(
       JSON.stringify(["today"]),
     );

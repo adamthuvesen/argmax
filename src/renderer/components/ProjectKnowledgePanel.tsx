@@ -71,7 +71,6 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       setLearnings((current) => current.map((item) => (item.id === learning.id ? updated : item)));
     } catch (error) {
       if (!query.isCurrent()) return;
-      // Roll back on failure.
       setLearnings((current) =>
         current.map((item) =>
           item.id === learning.id ? { ...item, verified: learning.verified } : item,
@@ -90,7 +89,6 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
       await actions.delete(learning.id);
     } catch (error) {
       if (!query.isCurrent()) return;
-      // Restore on failure.
       setLearnings((current) => [...current, learning]);
       showErrorToast(error instanceof Error ? error.message : "Could not delete learning.");
     }

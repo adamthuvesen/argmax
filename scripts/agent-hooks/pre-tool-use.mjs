@@ -40,6 +40,8 @@ function gitRefusal(args) {
   const [subcommand, ...rest] = args;
   const has = (...options) => rest.some((word) => options.includes(word));
   if (subcommand === "add" && has("-A", "--all", "-u", "--update", ".", ":/")) return STAGE_ALL;
+  if (subcommand === "commit" && rest.some((word) => /^-[a-zA-Z]*a[a-zA-Z]*$|^--all$/.test(word)))
+    return STAGE_ALL;
   if (subcommand === "stash" && !["list", "show"].includes(rest[0])) return STASH;
   if (subcommand === "checkout" && has("--", ".")) return RESTORE;
   if (subcommand === "restore" && (has("-W", "--worktree") || !has("-S", "--staged")))

@@ -133,7 +133,6 @@ describe("useGlobalKeybindings", () => {
     fireEvent.keyDown(document, { key: "&", code: "Digit1", metaKey: true });
     expect(onSelectWorkspace).toHaveBeenCalledWith("workspace-1");
 
-    // Numpad key
     fireEvent.keyDown(document, { key: "Unidentified", code: "Numpad3", metaKey: true });
     expect(onSelectWorkspace).toHaveBeenCalledWith("workspace-3");
   });

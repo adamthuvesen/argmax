@@ -30,9 +30,10 @@ use specta::Type;
 use super::{
     follow_up::{is_visible_event, newest_visible_event, visible_messages_after},
     inputs::ProvidersSendInput,
-    session_service::{MessageOrigin, ProviderSessionService, SendInputResult},
+    session_service::{ProviderSessionService, SendInputResult},
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::messages::MessageOrigin;
 use argmax_contracts::validation::{Prompt, SessionId};
 use argmax_store::{
     continuity::{

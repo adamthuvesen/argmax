@@ -13,9 +13,10 @@
 
 use super::*;
 use crate::application::session_launch::MAX_TASK_LABEL_BYTES;
-use crate::providers::continuity::{latest_turn_starter, recorded_codex_turn};
+use crate::providers::continuity::recorded_codex_turn;
 use crate::workspaces::inputs::ForkWorkspaceMode;
 use argmax_store::continuity::{insert_fork, ForkRecord, NativeMode};
+use argmax_store::events::latest_turn_starter;
 use argmax_store::events::persist_copied_event;
 
 const FORK_SUFFIX: &str = " (fork)";

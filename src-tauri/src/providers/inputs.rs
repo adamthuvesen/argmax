@@ -1,8 +1,6 @@
 //! Validated provider session commands shared across transports.
 
-pub use argmax_contracts::messages::{
-    AgentReference, AttachmentSizeBytes, ComposerAttachmentInput,
-};
+use argmax_contracts::messages::{AgentReference, ComposerAttachmentInput};
 use argmax_contracts::validation::{
     AgentMode, NonEmptyString, PermissionMode, Prompt, ProviderId, ReasoningEffort, SessionId,
     TerminalCols, TerminalRows, WorkspaceId,

@@ -16,7 +16,7 @@ use argmax_lib::{
         dispatch, dispatch_queued, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND,
     },
     providers::{
-        flush_queue::{DashboardDelta, PendingMessage},
+        flush_queue::DashboardDelta,
         normalizer::ProviderOutputStream,
         runtime::{
             BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
@@ -27,6 +27,7 @@ use argmax_lib::{
     },
     workspaces::WorkspaceService,
 };
+use argmax_store::pending_messages::PendingMessage;
 use argmax_store::{
     authorship::PromptAuthor,
     database::Database,
@@ -694,7 +695,7 @@ async fn launch_queued_row(
     fixture: &Fixture,
     content: &str,
     author: PromptAuthor,
-    origin: Option<argmax_lib::providers::session_service::MessageOrigin>,
+    origin: Option<argmax_contracts::messages::MessageOrigin>,
     RowSettings {
         provider,
         model,
@@ -894,7 +895,7 @@ async fn a_multitask_child_opens_with_the_author_its_prompt_had() {
     }
 
     // A queued row keeps its author when it is promoted.
-    let origin = argmax_lib::providers::session_service::MessageOrigin {
+    let origin = argmax_contracts::messages::MessageOrigin {
         session_id: "session-sender".to_string(),
         label: "Sender".to_string(),
         kind: "message".to_string(),

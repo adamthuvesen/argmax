@@ -33,7 +33,7 @@ use specta::Type;
 use uuid::Uuid;
 
 use crate::arcs::member_preamble;
-use crate::providers::flush_queue::{DashboardDelta, PendingMessage};
+use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
 use crate::workspaces::orchestration::WorkspaceService;
@@ -46,6 +46,7 @@ use argmax_store::events::{
     latest_agent_message, persist_timeline_event, without_chat_link_brackets,
     PersistTimelineEventInput, TimelineEvent,
 };
+use argmax_store::pending_messages::PendingMessage;
 use argmax_store::session_messages::{
     insert_session_message, list_undelivered_messages_of_kind, mark_message_delivered,
     NewSessionMessage,

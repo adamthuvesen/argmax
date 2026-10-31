@@ -20,8 +20,9 @@ use super::super::{
 use super::resolve_project;
 use crate::{
     providers::inputs::{ProvidersSendInput, ProvidersTerminateInput},
-    providers::session_service::{MessageOrigin, ProviderSessionService},
+    providers::session_service::ProviderSessionService,
 };
+use argmax_contracts::messages::MessageOrigin;
 use argmax_contracts::validation::{Prompt, SessionId};
 use argmax_store::{
     dashboard::DASHBOARD_ROW_LIMIT,

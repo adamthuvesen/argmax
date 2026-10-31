@@ -31,7 +31,7 @@ use super::{
     adapters::get_provider_definition,
     completion_notices::{CompletionNotice, CompletionNoticePolicy, COMPLETION_BATCH_WINDOW},
     continuity,
-    flush_queue::{DashboardDelta, PendingMessage, ProviderEventFlushQueue},
+    flush_queue::{DashboardDelta, ProviderEventFlushQueue},
     follow_up::{
         agent_reference_prompt, compose_follow_up_prompt, compose_follow_up_prompt_since,
         ensure_agent_references_supported,
@@ -58,18 +58,20 @@ use crate::{
     git::ops::checkout_write_lock,
     goals::service::GoalService,
     providers::inputs::{
-        ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
-        ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
-        ProvidersTerminateInput, QueuedMessageDelivery, SessionClearInput,
+        ProvidersCancelQueuedMessageInput, ProvidersLaunchInput, ProvidersResizeInput,
+        ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
+        QueuedMessageDelivery, SessionClearInput,
     },
     session_control::{AfterTurn, SessionLaunchRegistry},
     workspaces::lifecycle::{WorkspaceAdmission, WorkspaceLifecycle},
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::messages::ComposerAttachmentInput;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
 use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
 use argmax_store::authorship::PersonAttestation;
+use argmax_store::pending_messages::PendingMessage;
 use argmax_store::{
     arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
     arcs,
@@ -235,7 +237,7 @@ fn ensure_goal_turn_admitted(
     }
 }
 
-pub use argmax_contracts::messages::MessageOrigin;
+use argmax_contracts::messages::MessageOrigin;
 
 /// Who started a turn that carries no [`MessageOrigin`]: the person at the
 /// composer, a Goal's evaluator, the scheduler, or a session move. The

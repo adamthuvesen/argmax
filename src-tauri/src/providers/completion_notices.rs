@@ -7,8 +7,9 @@
 //! siblings that finish together cost the launcher one turn rather than one
 //! each. Holding the wake never holds the result.
 
-use super::{runtime::sqlite_error, session_service::MessageOrigin};
+use super::runtime::sqlite_error;
 use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::messages::MessageOrigin;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_store::sync::LockOrRecover;
 use argmax_store::{

@@ -12,7 +12,7 @@
 //!   before admitting the turn, the launch runs once more as a fresh
 //!   conversation. An ambiguous failure is never retried.
 
-pub use argmax_store::events::latest_turn_starter;
+use argmax_store::events::latest_turn_starter;
 use std::path::Path;
 
 use rusqlite::Connection;

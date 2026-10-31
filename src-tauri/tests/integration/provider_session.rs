@@ -18,22 +18,23 @@ use std::sync::{
 use std::{path::PathBuf, process::Command, time::Duration};
 
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::messages::ComposerAttachmentInput;
+use argmax_contracts::messages::MessageOrigin;
 use argmax_contracts::sessions::attention::AttentionState;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_contracts::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::approvals::service::ApprovalService;
 use argmax_lib::goals::service::{GoalService, GoalSetInput};
 use argmax_lib::ipc::inputs::{
-    ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput,
-    ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput, SessionClearInput, TerminalCols,
-    TerminalRows,
+    ProvidersLaunchInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
+    ProvidersTerminateInput, SessionClearInput, TerminalCols, TerminalRows,
 };
 use argmax_lib::providers::runtime::{
     BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
     ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
 use argmax_lib::providers::session_service::{
-    GoalTurnIdentity, MessageOrigin, ProviderSessionService, TURN_IN_FLIGHT,
+    GoalTurnIdentity, ProviderSessionService, TURN_IN_FLIGHT,
 };
 use argmax_lib::providers::{
     flush_queue::DashboardDelta, normalizer::ProviderOutputStream, ProviderLaunchInput,

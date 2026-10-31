@@ -36,8 +36,8 @@ use super::{
     adapters::get_provider_definition, discovery::ProviderDiscovery, flush_queue::DashboardDelta,
     normalizer::ProviderOutputStream, ProviderLaunchInput,
 };
-use crate::providers::inputs::ComposerAttachmentInput;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::messages::ComposerAttachmentInput;
 use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 use argmax_process::environment::build_provider_environment;
 use argmax_store::time::now_iso;

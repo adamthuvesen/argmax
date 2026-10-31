@@ -91,7 +91,7 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
-pub use argmax_store::pending_messages::PendingMessage;
+use argmax_store::pending_messages::PendingMessage;
 
 #[derive(Debug)]
 pub struct ProviderEventFlushQueue {

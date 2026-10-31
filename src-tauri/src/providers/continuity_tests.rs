@@ -8,14 +8,15 @@ use serde_json::{json, Value};
 use super::model_catalogue::ModelId;
 use super::{
     continuity::{
-        fresh_retry_input, is_definite_rejection, latest_turn_starter, observe_provider_line,
-        plan_launch, record_resume_rejected, RESUME_REJECTED,
+        fresh_retry_input, is_definite_rejection, observe_provider_line, plan_launch,
+        record_resume_rejected, RESUME_REJECTED,
     },
     follow_up::{compose_follow_up_prompt, compose_follow_up_prompt_since},
     LaunchContinuity, ProviderLaunchInput,
 };
 use argmax_contracts::error::ArgmaxError;
 use argmax_contracts::validation::{PermissionMode, ProviderId};
+use argmax_store::events::latest_turn_starter;
 use argmax_store::{
     continuity::{find_binding, list_bindings, BindingState},
     database::Database,

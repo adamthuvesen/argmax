@@ -13,6 +13,7 @@ const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const CHECKS = [
   ["IPC channel parity", "scripts/check-tauri-bridge.mjs"],
   ["docs integrity", "scripts/check-docs.mjs"],
+  ["file-wide disables", "scripts/check-file-wide-disables.mjs"],
   ["architecture boundaries", "scripts/check-architecture.mjs"],
   ["dead code", "node_modules/knip/bin/knip.js", "--no-progress"],
   ["Rust boundaries", "scripts/check-rust-boundaries.mjs"],

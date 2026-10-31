@@ -367,7 +367,8 @@ describe("SessionConversation — streaming & composer", () => {
 
     expect(streamingBubbles().length).toBeGreaterThan(0);
     // No blinking-caret DOM element — token-by-token text is the streaming indicator.
-    expect(document.body.innerHTML).not.toContain("streaming-caret");
+    // oxlint-disable-next-line argmax/no-node-access -- the caret is a bare decorative element with no role or text, so only a class query can prove it is absent
+    expect(document.querySelectorAll(".streaming-caret")).toHaveLength(0);
   });
 
   it("does not replay stored delta-only answers when a cancelled session is reopened", () => {
@@ -1123,6 +1124,8 @@ describe("SessionConversation — streaming & composer", () => {
     expect(
       attachmentStrip.compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
+    // oxlint-disable-next-line argmax/no-node-access -- the strip must sit directly before the bubble; same group and earlier in order would also pass a stray node between them
+    expect(attachmentStrip.nextElementSibling).toBe(bubble);
     expect(screen.queryByText("screenshot 1.png")).toBeNull();
     expect(bubble.textContent).not.toContain(`@${imagePath}`);
   });
@@ -1145,6 +1148,8 @@ describe("SessionConversation — streaming & composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "View image: screenshot 1.png" }));
     const dialog = screen.getByRole("dialog", { name: "Attached image" });
     expect(screen.getByRole("region", { name: "Conversation" })).toContainElement(dialog);
+    // oxlint-disable-next-line argmax/no-node-access -- the preview must be portaled directly onto the pane surface so the transcript scroller cannot clip it
+    expect(dialog.parentElement).toHaveClass("conversation-surface");
   });
 
   it("synthesizes a user bubble from session.prompt before the user.message event arrives", () => {

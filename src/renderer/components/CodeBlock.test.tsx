@@ -27,6 +27,8 @@ describe("CodeBlock", () => {
     expect(header).toContainElement(wrapButton);
     expect(header).not.toContainElement(code);
     expect(header.compareDocumentPosition(code) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // oxlint-disable-next-line argmax/no-node-access -- the wrap control is in flow only if the header is immediately followed by the <pre>
+    expect(header.nextElementSibling?.tagName).toBe("PRE");
 
     fireEvent.click(wrapButton);
 

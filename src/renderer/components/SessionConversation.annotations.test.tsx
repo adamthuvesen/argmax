@@ -232,7 +232,8 @@ describe("SessionConversation selection annotations", () => {
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "draft text" } });
     const range = document.createRange();
-    range.selectNode(prompt);
+    // oxlint-disable-next-line argmax/no-node-access -- the selection must span the prompt's whole container, which is outside the transcript
+    range.selectNodeContents(prompt.parentElement as HTMLElement);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);

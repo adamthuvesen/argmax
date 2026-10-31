@@ -33,7 +33,8 @@ describe("ReviewTabsBar", () => {
     const callbacks = props();
     const { rerender } = render(<ReviewTabsBar {...callbacks} />);
     expect(screen.getByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "true");
-    const active = screen.getByTestId("review-tab-changes");
+    // oxlint-disable-next-line argmax/no-node-access -- scrollIntoView belongs on the tab's wrapper, which is the tab's direct parent and has no role
+    const active = screen.getByRole("tab", { name: "Changes" }).parentElement!;
     const scrollIntoView = vi.fn();
     active.scrollIntoView = scrollIntoView;
     rerender(<ReviewTabsBar {...callbacks} items={callbacks.items.map((item) => ({ ...item }))} />);

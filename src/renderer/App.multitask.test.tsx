@@ -123,10 +123,8 @@ describe("multitask in the chat that dispatched it", () => {
     }
     const metaCards = screen.getByTestId("session-meta-cards");
     expect(metaCards).toContainElement(group);
-    const composer = screen.getByRole("form", { name: "Session composer" });
-    expect(
-      metaCards.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // oxlint-disable-next-line argmax/no-node-access -- the cards must sit directly before the composer stack, not merely earlier in the document
+    expect(metaCards.nextElementSibling).toHaveClass("session-composer-stack");
     const toggle = within(group).getByRole("button", { name: /^Multitasks/ });
     expect(
       within(group).getByRole("button", { name: "Open multitask: Fix the changelog date" }),

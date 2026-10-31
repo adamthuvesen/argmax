@@ -49,7 +49,8 @@ describe("ImageLightbox", () => {
 
     // The content box fills the overlay, so clicks in the letterboxing beside
     // the image land on it rather than on the backdrop.
-    fireEvent.mouseDown(screen.getByTestId("image-lightbox-content"));
+    // oxlint-disable-next-line argmax/no-node-access -- the content box has no role or name; it is the image's direct parent
+    fireEvent.mouseDown(image.parentElement as HTMLElement);
     expect(onClose).toHaveBeenCalledTimes(1);
 
     fireEvent.mouseDown(screen.getByRole("dialog", { name: "Attached image" }));
@@ -67,6 +68,8 @@ describe("ImageLightbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open preview" }));
 
     const dialog = screen.getByRole("dialog", { name: "Attached image" });
+    // oxlint-disable-next-line argmax/no-node-access -- the portal must land directly on the surface, not deeper in the transcript
+    expect(dialog.parentElement).toHaveClass("conversation-surface");
     expect(screen.getByTestId("conversation-surface")).toContainElement(dialog);
     expect(screen.getByTestId("transcript-scroller")).not.toContainElement(dialog);
   });

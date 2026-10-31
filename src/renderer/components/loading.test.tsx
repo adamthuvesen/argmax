@@ -50,9 +50,10 @@ describe("loading shapes", () => {
     expect(within(usage).getAllByTestId("loading-block").length).toBeGreaterThan(0);
     // Every span in the usage skeleton is a block: a span with its own fill is
     // the drift this test exists to catch, and it would carry no test id.
-    const usageSpanTags = usage.innerHTML.match(/<span\b[^>]*>/g) ?? [];
-    expect(usageSpanTags.length).toBeGreaterThan(0);
-    for (const tag of usageSpanTags) expect(tag).toMatch(/class="[^"]*\bloading-block\b/);
+    // oxlint-disable-next-line argmax/no-node-access -- spans have no role; a span without a test id is exactly what this must catch
+    const usageSpans = usage.querySelectorAll("span");
+    expect(usageSpans.length).toBeGreaterThan(0);
+    for (const span of usageSpans) expect(span).toHaveClass("loading-block");
   });
 
   it("shows only the working nest, naming the wait for assistive tech", () => {

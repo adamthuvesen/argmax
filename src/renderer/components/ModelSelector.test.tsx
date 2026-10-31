@@ -342,7 +342,8 @@ describe("LaunchModelSelector — all providers", () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
     });
     const flyout = screen.getByTestId("model-picker-flyout");
-    expect(flyout).toContainElement(screen.getByRole("listbox", { name: "Launch model" }));
+    // oxlint-disable-next-line argmax/no-node-access -- the height cap belongs on the flyout, which must be the listbox's direct parent
+    expect(screen.getByRole("listbox", { name: "Launch model" }).parentElement).toBe(flyout);
     expect(flyout).toHaveStyle({ position: "absolute" });
     // Without `openBelow` the menu may flip upward (session composer). The
     // launcher is what pins the height; this path must not write that cap.

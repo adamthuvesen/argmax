@@ -1170,22 +1170,13 @@ describe("SessionConversation — single-line activity mode", () => {
       // it, and a headline is *meant* to change: Compact buckets a lone call
       // as "Ran a command" where Steps names it. What must never go missing is
       // the substance — prose, reasoning, and the calls themselves.
-      // Escaped text never holds "<", so markup in innerHTML means a child element.
-      const groupHeaders = screen.queryAllByTestId("tool-call-group-header");
+      // oxlint-disable-next-line argmax/no-node-access -- the test is about DOM leaf structure: it walks every leaf under the turn body, which no role or text query can enumerate
+      const leaves = Array.from(document.querySelectorAll(".turn-block-body *")).filter(
+        // oxlint-disable-next-line argmax/no-node-access -- leaf means no child elements; closest() excludes group headlines
+        (node) => node.children.length === 0 && !node.closest(".tool-call-group-header"),
+      );
       return new Set(
-        screen
-          .getAllByTestId("turn-block-body")
-          .flatMap((body) =>
-            within(body).queryAllByText(
-              (_, node) =>
-                node !== null &&
-                !node.innerHTML.includes("<") &&
-                !groupHeaders.some((header) => header.contains(node)),
-              { ignore: false },
-            ),
-          )
-          .map((node) => node.textContent?.trim() ?? "")
-          .filter((text) => text.length > 0),
+        leaves.map((node) => node.textContent?.trim() ?? "").filter((text) => text.length > 0),
       );
     });
 

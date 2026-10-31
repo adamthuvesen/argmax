@@ -442,10 +442,11 @@ describe("ArcPage", () => {
     expect(screen.getByRole("region", { name: "Chats" })).toHaveTextContent(
       "1 working · 2 PRs open · 0 merged",
     );
-    expect(screen.getByText("Limits")).toBeInTheDocument();
-    expect(
-      screen.getByText("Up to 8 members working at once. 3 of 40 launches used today."),
-    ).toBeInTheDocument();
+    // The label and its hint must share one parent; the text alone cannot show that.
+    // oxlint-disable-next-line argmax/no-node-access -- asserts the same-container structure of the Limits row
+    expect(screen.getByText("Limits").parentElement).toHaveTextContent(
+      "Up to 8 members working at once. 3 of 40 launches used today.",
+    );
   });
 
   it("renders the timeline by day and filters it to pull requests", async () => {

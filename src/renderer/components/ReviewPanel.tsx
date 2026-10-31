@@ -1574,7 +1574,6 @@ export function ReviewPanel({
       {onResizePanelMouseDown ? (
         <div
           className="panel-col-resize-handle"
-          data-testid="panel-col-resize-handle"
           aria-hidden="true"
           onMouseDown={onResizePanelMouseDown}
         />

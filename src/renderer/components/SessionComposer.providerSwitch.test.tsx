@@ -51,7 +51,8 @@ describe("SessionComposer provider switch confirmation", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Switch this chat to Claude" });
     expect(screen.getByTestId("session-input")).not.toContainElement(dialog);
-    expect(screen.getByRole("region", { name: "Conversation" })).toContainElement(dialog);
+    // oxlint-disable-next-line argmax/no-node-access -- the dialog must be a direct child of the surface so it covers the pane, not the composer
+    expect(dialog.parentElement).toHaveClass("conversation-surface");
   });
 
   it("applies the pick when the user switches anyway", () => {

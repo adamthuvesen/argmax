@@ -44,8 +44,11 @@ const editEvents: TimelineEvent[] = [
 function changesCard(): HTMLElement {
   const collapsed = screen.queryByRole("button", { name: "Show 1 file changed" });
   if (collapsed) fireEvent.click(collapsed);
-  expect(screen.getByRole("button", { name: "Hide 1 file changed" })).toBeInTheDocument();
-  return screen.getByTestId("turn-changes");
+  const header = screen.getByRole("button", { name: "Hide 1 file changed" });
+  // oxlint-disable-next-line argmax/no-node-access -- the card is the section enclosing the header; the label alone also matches the activity rows
+  const card = header.closest("section");
+  if (!card) throw new Error("turn changes card is not a section");
+  return card;
 }
 
 describe("SessionConversation — a host with its own review surface", () => {

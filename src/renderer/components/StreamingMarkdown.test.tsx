@@ -11,11 +11,9 @@ import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
 const FRAME_MS = 16;
 
-function freshRuns(): HTMLElement[] {
-  return screen.queryAllByText(
-    (_content, element) => element?.classList.contains("stream-fresh") ?? false,
-    { ignore: false },
-  );
+function freshRuns(): Element[] {
+  // oxlint-disable-next-line argmax/no-node-access -- fresh runs are bare fading spans with no role, label, or text of their own
+  return [...document.querySelectorAll(".stream-fresh")];
 }
 
 function displayEquations(): HTMLElement[] {
@@ -620,7 +618,10 @@ describe("<StreamingMarkdown />", () => {
 
     const scroller = screen.getByTestId("markdown-table-scroll");
     expect(screen.getByTestId("streaming-markdown")).toContainElement(scroller);
-    expect(scroller).toContainElement(screen.getByRole("table"));
+    // oxlint-disable-next-line argmax/no-node-access -- a wrapper that is not the direct child of .markdown, or whose first child is not the table, lets a wide table widen the transcript
+    expect(scroller.parentElement).toHaveClass("markdown");
+    // oxlint-disable-next-line argmax/no-node-access -- same structural contract: the table must be the scroller's first child
+    expect(scroller.firstElementChild?.tagName).toBe("TABLE");
     expect(screen.getByRole("table")).toBeInTheDocument();
   });
 

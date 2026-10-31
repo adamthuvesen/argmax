@@ -84,6 +84,7 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 | A mascot expression changes only its face | Overlay files composed by `withExpression` in `Mascot.tsx` | 2026-11-06 |
 | Every enforcer this table cites exists | `check:docs` | 2026-11-06 |
 | `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify::CONTROL`, run by `npm run verify` in CI | 2026-11-06 |
+| No file turns off type checking or lint with `@ts-nocheck` or a bare `oxlint-disable` or `eslint-disable` comment | `scripts/check-file-wide-disables.mjs` | 2026-11-07 |
 
 ## Agent Feedback
 

@@ -8,7 +8,9 @@ describe("AgentEmblem", () => {
     // Ids are the reason: the same emblem shows in four places on one page, and
     // duplicated <defs> ids would leave those copies fighting over one gradient.
     render(<AgentEmblem shape="quad" hue="amber" />);
-    const paths = screen.getAllByTestId("agent-emblem-pass");
+    const emblem = screen.getByTestId("agent-emblem");
+    // oxlint-disable-next-line argmax/no-node-access -- SVG paths have no role; every path in the emblem must be counted, including any added without a test id
+    const paths = [...emblem.querySelectorAll("path")];
     expect(paths.map((path) => path.getAttribute("class"))).toEqual([
       "agent-emblem-rim",
       "agent-emblem-face",
@@ -17,10 +19,12 @@ describe("AgentEmblem", () => {
     for (const path of paths) expect(path.getAttribute("d")).toBe(EMBLEM_PATHS.quad.d);
     expect(paths[0].getAttribute("transform")).toBe("translate(0 0.75)");
     expect(paths[2].getAttribute("transform")).toBe("translate(1.85 1.85) scale(0.7)");
-    const markup = screen.getByTestId("agent-emblem").outerHTML;
-    expect(markup).not.toMatch(/<(defs|linearGradient|radialGradient|clipPath)\b/);
-    expect(markup).not.toMatch(/\sid=/);
-    expect(markup).not.toMatch(/\sstyle=/);
+    // oxlint-disable-next-line argmax/no-node-access -- proving the SVG holds no defs, ids, or inline styles needs a descendant query; none of these has a role
+    expect(emblem.querySelector("defs, linearGradient, radialGradient, clipPath")).toBeNull();
+    // oxlint-disable-next-line argmax/no-node-access -- see above: any descendant with an id would collide across the page's copies
+    expect(emblem.querySelector("[id]")).toBeNull();
+    // oxlint-disable-next-line argmax/no-node-access -- see above: inline styles would bypass the stylesheet
+    expect(emblem.querySelector("[style]")).toBeNull();
   });
 
   it("carries the fill rule onto all three passes of a shape with a hole", () => {

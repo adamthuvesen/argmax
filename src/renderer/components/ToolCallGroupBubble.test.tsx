@@ -138,6 +138,8 @@ describe("ToolCallGroupBubble", () => {
     const singletonRow = screen.getByRole("button", { name: "Read first.ts" });
     const mountedGroup = screen.getByTestId("tool-call-group");
     expect(mountedGroup).toContainElement(singletonRow);
+    // oxlint-disable-next-line argmax/no-node-access -- the group node has no role; the test identifies it as the row's grandparent
+    expect(singletonRow.parentElement?.parentElement).toBe(mountedGroup);
     fireEvent.click(singletonRow);
     expect(screen.getByText("Contents of first")).toBeInTheDocument();
 
@@ -145,6 +147,8 @@ describe("ToolCallGroupBubble", () => {
     const groupHeader = screen.getByRole("button", { name: "Read 2 files" });
     expect(screen.getByTestId("tool-call-group")).toBe(mountedGroup);
     expect(mountedGroup).toContainElement(groupHeader);
+    // oxlint-disable-next-line argmax/no-node-access -- the header must stay a direct child of the same mounted group node
+    expect(groupHeader.parentElement).toBe(mountedGroup);
     expect(groupHeader).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Read first.ts" })).toHaveAttribute(
       "aria-expanded",
@@ -387,7 +391,8 @@ describe("ToolCallGroupBubble", () => {
 
     const header = screen.getByRole("button", { name: "Read files: Read second.ts" });
     expect(screen.getByTestId("tool-call-group")).toContainElement(header);
-    expect(screen.getByTestId("tool-call-group")).toHaveAttribute("data-status", "running");
+    // oxlint-disable-next-line argmax/no-node-access -- data-status lives on the header's direct parent; a descendant match would miss a misplaced attribute
+    expect(header.parentElement).toHaveAttribute("data-status", "running");
     await act(() => vi.advanceTimersByTime(200));
 
     rerender(
@@ -399,7 +404,8 @@ describe("ToolCallGroupBubble", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "Read 2 files: Read second.ts" })).toBe(header);
-    expect(screen.getByTestId("tool-call-group")).toHaveAttribute("data-status", "done");
+    // oxlint-disable-next-line argmax/no-node-access -- data-status lives on the header's direct parent
+    expect(header.parentElement).toHaveAttribute("data-status", "done");
     expect(screen.queryByRole("button", { busy: true })).toBeNull();
 
     await act(() => vi.advanceTimersByTime(399));
@@ -496,7 +502,8 @@ describe("ToolCallGroupBubble", () => {
     );
     const header = screen.getByRole("button", { name: "Read 2 files: Read second.ts" });
     expect(screen.getByTestId("tool-call-group")).toContainElement(header);
-    expect(screen.getByTestId("tool-call-group")).toHaveAttribute("data-status", "done");
+    // oxlint-disable-next-line argmax/no-node-access -- data-status lives on the header's direct parent
+    expect(header.parentElement).toHaveAttribute("data-status", "done");
     expect(screen.queryByRole("button", { busy: true })).toBeNull();
     fireEvent.click(header);
     fireEvent.click(screen.getByRole("button", { name: "Read second.ts" }));

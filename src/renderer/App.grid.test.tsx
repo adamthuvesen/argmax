@@ -1899,7 +1899,11 @@ describe("App grid", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     fireEvent.click(await screen.findByRole("button", { name: "Files" }));
     const panel = await screen.findByRole("complementary", { name: "Review panel" });
-    const handle = within(panel).getByTestId("panel-col-resize-handle");
+    // oxlint-disable-next-line argmax/no-node-access -- the resize handle is aria-hidden and unnamed; its only handle is sitting just before the Review panes group
+    const handle = within(panel).getByRole("group", {
+      name: "Review panes",
+    }).previousElementSibling;
+    if (!(handle instanceof HTMLElement)) throw new Error("Expected the sidebar resize handle");
     vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(new DOMRect(600, 0, 500, 700));
     fireEvent.mouseDown(handle, { clientX: 600 });
     expect(screen.getByTestId("session-panel-resize-shield")).toBeInTheDocument();
@@ -1931,7 +1935,10 @@ describe("App grid", () => {
     fireEvent.click(screen.getByRole("button", { name: "Resize target" }), { metaKey: true });
 
     const handle = await screen.findByRole("separator", { name: /Resize Build dashboard/ });
-    const row = screen.getAllByRole("group", { name: /^Pane row \d+$/ })[0];
+    const grid = screen.getByRole("group", { name: "Chat panes" });
+    // oxlint-disable-next-line argmax/no-node-access -- the test sizes the grid's first row element, which is the structural child of the grid
+    const row = grid.firstElementChild;
+    if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
     Object.defineProperty(row, "getBoundingClientRect", {
       configurable: true,
       value: () => ({

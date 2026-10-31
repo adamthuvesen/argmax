@@ -518,12 +518,14 @@ async function main() {
     const started = Date.now();
     let result = "PASS";
     let detail;
+    runningDrive = name;
     try {
       detail = await DRIVES[name].run.call(DRIVES[name], ctx);
     } catch (error) {
       result = "FAIL";
       detail = error instanceof Error ? error.message : String(error);
     }
+    runningDrive = undefined;
     const seconds = Number(((Date.now() - started) / 1000).toFixed(1));
     results.push({ drive: name, result, seconds, detail });
     console.log(`${result} ${name} ${seconds}s ${detail}`);
@@ -578,7 +580,18 @@ async function main() {
   return control ? (controlObserved ? 0 : 1) : failed.length ? 1 : 0;
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => process.exit(130));
+// A drive that calls process.exit(0) would end the run green before it asserts anything.
+let runningDrive;
+process.on("exit", () => {
+  if (runningDrive === undefined) return;
+  console.log(`FAIL ${runningDrive} the drive exited the process before it finished`);
+  process.exitCode = 1;
+});
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.once(signal, () => {
+    runningDrive = undefined;
+    process.exit(130);
+  });
 main().then(
   (code) => process.exit(code),
   (error) => {

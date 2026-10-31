@@ -103,5 +103,6 @@ Before you edit a subsystem, read its doc. Start at [architecture.md](docs/archi
 | A mascot expression changes only its face | Overlay files composed by `withExpression` in `Mascot.tsx` | 2026-11-06 |
 | Every enforcer this table cites exists | `check:docs` | 2026-11-06 |
 | `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify.mjs::CONTROL`, run by `npm run verify` in CI | 2026-11-06 |
-| No file turns off type checking or lint with `@ts-nocheck` or a bare `oxlint-disable` or `eslint-disable` comment | `scripts/check-file-wide-disables.mjs` | 2026-11-07 |
+| No file turns off type checking or lint with `@ts-nocheck`, a bare `oxlint-disable` or `eslint-disable` comment, or a Rust `#![allow(...)]` | `scripts/check-file-wide-disables.mjs` | 2026-11-07 |
+| `@ts-expect-error` carries a reason, and `@ts-ignore` is not used | `.oxlintrc.json::typescript/ban-ts-comment` | 2026-11-09 |
 | A new module cannot start a process or open a socket outside a named owner | `scripts/check-process-imports.mjs`, `scripts/check-rust-boundaries.mjs` | 2026-11-07 |

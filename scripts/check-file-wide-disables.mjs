@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// A file-wide `@ts-nocheck`, `/* oxlint-disable */`, or `/* eslint-disable */` turns type
-// checking or lint off for the whole file, and no config setting overrides it. Disable a
+// A file-wide `@ts-nocheck`, `/* oxlint-disable */`, `/* eslint-disable */`, or a Rust inner
+// `#![allow(...)]` turns type checking or lint off for the whole file, and no config setting
+// overrides it. Disable a
 // named rule on one line instead, with a reason.
 //
 //   node scripts/check-file-wide-disables.mjs
@@ -11,7 +12,9 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx|rs)$/;
+// An inner `#![allow(...)]` silences a lint for a whole Rust crate or module, past the `-D warnings` run.
+const RUST_INNER_ALLOW = /^\s*#!\[\s*allow\s*\(/;
 // A disable with no rule list is file-wide, with or without a `-- reason` suffix.
 const FILE_WIDE =
   /^\s*(?:(?:\/\/|\/\*)\s*@ts-nocheck\b|(?:\/\/|\/\*)\s*(?:oxlint|eslint)-disable(?![-\w])\s*(?:--.*?)?(?:\*\/)?\s*$)/;
@@ -36,13 +39,14 @@ for (const name of sources) {
     continue;
   }
   text.split("\n").forEach((line, index) => {
-    if (FILE_WIDE.test(line)) hits.push(`${name}:${index + 1}`);
+    if (FILE_WIDE.test(line) || (name.endsWith(".rs") && RUST_INNER_ALLOW.test(line)))
+      hits.push(`${name}:${index + 1}`);
   });
 }
 
 if (hits.length) {
   console.error(
-    `error: file-wide ts-nocheck or lint disable turns checking off for the whole file:\n  ${hits.join("\n  ")}\nFix: remove it, and disable one named rule on one line with a reason.`,
+    `error: file-wide ts-nocheck, lint disable, or Rust #![allow(...)] turns checking off for the whole file:\n  ${hits.join("\n  ")}\nFix: remove it, and disable one named rule on one line (#[allow(...)] in Rust) with a reason.`,
   );
   process.exit(1);
 }

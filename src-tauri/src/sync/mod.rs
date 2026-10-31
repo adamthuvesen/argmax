@@ -105,12 +105,12 @@ impl Default for SyncConfig {
 
 impl SyncConfig {
     pub fn enabled_for(&self, provider: &str) -> bool {
-        match crate::providers::ProviderId::parse(provider) {
-            Some(crate::providers::ProviderId::Claude) => self.claude,
-            Some(crate::providers::ProviderId::Codex) => self.codex,
-            Some(crate::providers::ProviderId::Cursor) => self.cursor,
-            Some(crate::providers::ProviderId::Opencode) => self.opencode,
-            Some(crate::providers::ProviderId::Grok) => self.grok,
+        match argmax_contracts::validation::ProviderId::parse(provider) {
+            Some(argmax_contracts::validation::ProviderId::Claude) => self.claude,
+            Some(argmax_contracts::validation::ProviderId::Codex) => self.codex,
+            Some(argmax_contracts::validation::ProviderId::Cursor) => self.cursor,
+            Some(argmax_contracts::validation::ProviderId::Opencode) => self.opencode,
+            Some(argmax_contracts::validation::ProviderId::Grok) => self.grok,
             None => false,
         }
     }

@@ -689,8 +689,8 @@ fn source_kind(kind: ProjectSourceKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::{AgentMode, PermissionMode, ProviderId};
     use argmax_contracts::sessions::state::SessionState;
+    use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
     use argmax_store::{
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         sessions::{persist_session, PersistSessionInput},

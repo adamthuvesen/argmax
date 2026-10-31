@@ -19,8 +19,9 @@ use rusqlite::Connection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{LaunchContinuity, ProviderId, ProviderLaunchInput};
+use super::{LaunchContinuity, ProviderLaunchInput};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
 use argmax_store::{
     continuity::{
         binding_turn, clear_fork_native_plan, clear_pending_since, config_identity, event_rowid,

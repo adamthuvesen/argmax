@@ -210,7 +210,7 @@ pub fn key_hint(api_key: &str) -> String {
 /// live. This is fail-closed like the usage and provider fences: any
 /// `ARGMAX_VERIFICATION` value counts, a typo included.
 fn keychain_fenced() -> bool {
-    crate::providers::verification::requested()
+    argmax_process::environment::verification_requested()
 }
 
 fn keychain_account() -> String {

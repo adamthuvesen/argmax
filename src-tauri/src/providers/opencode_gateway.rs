@@ -126,7 +126,7 @@ pub fn check_key(gateway: OpencodeGateway, api_key: &str) -> ArgmaxResult<()> {
         ),
     };
     // The Keychain is fenced too, so the save fails there with its own words.
-    if super::verification::requested() {
+    if argmax_process::environment::verification_requested() {
         return Ok(());
     }
     let agent = ureq::AgentBuilder::new()
@@ -189,7 +189,7 @@ pub fn select(connection: &Connection, gateway: OpencodeGateway) -> ArgmaxResult
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
 
     #[test]
     fn openrouter_keeps_catalog_ids() {

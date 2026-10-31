@@ -835,7 +835,7 @@ mod tests {
         normalize_provider_event, tests::output_event, CodexCumulativeUsage, Dispatcher,
         NormalizerSessionContext,
     };
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
 
     #[test]
     fn codex_async_questions_become_question_cards() {

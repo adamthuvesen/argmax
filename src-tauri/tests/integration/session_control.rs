@@ -10,12 +10,13 @@ use std::{
 use crate::support::git_repo::{run_git, seed_git_repo};
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 use argmax_lib::{
     providers::{
         flush_queue::DashboardDelta,
         runtime::{BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle},
         session_service::ProviderSessionService,
-        AgentMode, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort,
+        ProviderLaunchInput,
     },
     session_control::{
         SessionLaunchRegistry, SessionLaunchServer, SESSION_LAUNCH_SOCKET_ENV,

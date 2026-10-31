@@ -869,16 +869,18 @@ fn check_arc_launch_budget(
 /// The effort to carry onto an explicitly named model: the caller's own when
 /// it stays on its provider, that provider's default otherwise.
 fn provider_effort(
-    provider: crate::providers::ProviderId,
+    provider: argmax_contracts::validation::ProviderId,
     parent: &ParentLaunchSettings,
-) -> Option<crate::providers::ReasoningEffort> {
+) -> Option<argmax_contracts::validation::ReasoningEffort> {
     if provider == parent.provider {
         return parent.reasoning_effort;
     }
     parse_reasoning_effort(crate::provider_defaults(provider).reasoning_effort)
 }
 
-fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
+fn parse_reasoning_effort(
+    value: Option<&str>,
+) -> Option<argmax_contracts::validation::ReasoningEffort> {
     serde_json::from_value(serde_json::json!(value?)).ok()
 }
 

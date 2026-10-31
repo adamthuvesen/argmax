@@ -6,34 +6,35 @@
 
 use std::path::PathBuf;
 
-use super::ProviderId;
+use argmax_contracts::validation::ProviderId;
 
-pub use argmax_process::environment::{
-    verification_requested as requested, VERIFICATION_HOME_ENV as HOME_ENV,
-    VERIFICATION_MODE_ENV as MODE_ENV,
-};
+use argmax_process::environment::{VERIFICATION_HOME_ENV, VERIFICATION_MODE_ENV};
 
 /// Validates the process-wide contract before app services start. The app boot
 /// path calls this so a malformed verification launch exits with one actionable
 /// message rather than presenting a misleading provider picker.
 pub fn validate_configuration() -> Result<(), String> {
-    let Some(mode) = std::env::var_os(MODE_ENV) else {
+    let Some(mode) = std::env::var_os(VERIFICATION_MODE_ENV) else {
         return Ok(());
     };
     if mode != "1" {
-        return Err(format!("{MODE_ENV} must be exactly 1 when it is set"));
+        return Err(format!(
+            "{VERIFICATION_MODE_ENV} must be exactly 1 when it is set"
+        ));
     }
     if !cfg!(feature = "verification") {
         return Err(format!(
-            "{MODE_ENV}=1 requires an Argmax binary built with the verification Cargo feature"
+            "{VERIFICATION_MODE_ENV}=1 requires an Argmax binary built with the verification Cargo feature"
         ));
     }
-    let home = std::env::var_os(HOME_ENV)
+    let home = std::env::var_os(VERIFICATION_HOME_ENV)
         .map(PathBuf::from)
-        .ok_or_else(|| format!("{HOME_ENV} must name an isolated profile directory"))?;
+        .ok_or_else(|| {
+            format!("{VERIFICATION_HOME_ENV} must name an isolated profile directory")
+        })?;
     if !home.is_absolute() || !home.is_dir() {
         return Err(format!(
-            "{HOME_ENV} must name an existing absolute directory; received {}",
+            "{VERIFICATION_HOME_ENV} must name an existing absolute directory; received {}",
             home.display()
         ));
     }

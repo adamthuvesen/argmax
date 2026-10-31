@@ -23,13 +23,14 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-#[cfg(test)]
-use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
+use super::{mcp_injection, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::session_control::SessionLaunchProcessConfig;
 use crate::usage::grok::billed_models;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId, ReasoningEffort};
 use argmax_process::environment::build_provider_environment;
 use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;

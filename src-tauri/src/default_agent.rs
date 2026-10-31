@@ -23,21 +23,26 @@ pub struct DefaultAgent {
     pub model_id: String,
     pub reasoning_effort: Option<String>,
     #[serde(default)]
-    pub permission_mode: crate::providers::PermissionMode,
+    pub permission_mode: argmax_contracts::validation::PermissionMode,
     #[serde(default)]
-    pub permission_modes: HashMap<crate::providers::ProviderId, crate::providers::PermissionMode>,
+    pub permission_modes: HashMap<
+        argmax_contracts::validation::ProviderId,
+        argmax_contracts::validation::PermissionMode,
+    >,
 }
 
 impl DefaultAgent {
     /// What the launcher shows on a fresh install, before anything is chosen.
     pub fn factory() -> Self {
-        let defaults = crate::provider_defaults(crate::providers::ProviderId::Claude);
+        let defaults = crate::provider_defaults(argmax_contracts::validation::ProviderId::Claude);
         Self {
-            provider: crate::providers::ProviderId::Claude.as_str().to_string(),
+            provider: argmax_contracts::validation::ProviderId::Claude
+                .as_str()
+                .to_string(),
             model_label: defaults.model_label.to_string(),
             model_id: defaults.model_id.to_string(),
             reasoning_effort: defaults.reasoning_effort.map(str::to_string),
-            permission_mode: crate::providers::PermissionMode::ProviderDefaults,
+            permission_mode: argmax_contracts::validation::PermissionMode::ProviderDefaults,
             permission_modes: HashMap::new(),
         }
     }
@@ -46,8 +51,8 @@ impl DefaultAgent {
     /// preference for settings saved before per-provider permissions existed.
     pub fn permission_mode_for(
         &self,
-        provider: crate::providers::ProviderId,
-    ) -> crate::providers::PermissionMode {
+        provider: argmax_contracts::validation::ProviderId,
+    ) -> argmax_contracts::validation::PermissionMode {
         self.permission_modes
             .get(&provider)
             .copied()
@@ -90,7 +95,7 @@ mod tests {
         assert_eq!(agent.model_id, "custom-model");
         assert_eq!(
             agent.permission_mode,
-            crate::providers::PermissionMode::ProviderDefaults
+            argmax_contracts::validation::PermissionMode::ProviderDefaults
         );
         assert!(agent.permission_modes.is_empty());
     }
@@ -107,33 +112,33 @@ mod tests {
         let agent = read_default_agent(dir.path());
         assert!(agent.permission_modes.is_empty());
         assert_eq!(
-            agent.permission_mode_for(crate::providers::ProviderId::Claude),
-            crate::providers::PermissionMode::AskEachTime
+            agent.permission_mode_for(argmax_contracts::validation::ProviderId::Claude),
+            argmax_contracts::validation::PermissionMode::AskEachTime
         );
         assert_eq!(
-            agent.permission_mode_for(crate::providers::ProviderId::Codex),
-            crate::providers::PermissionMode::AskEachTime
+            agent.permission_mode_for(argmax_contracts::validation::ProviderId::Codex),
+            argmax_contracts::validation::PermissionMode::AskEachTime
         );
     }
 
     #[test]
     fn provider_permission_overrides_the_legacy_fallback() {
         let agent = DefaultAgent {
-            permission_mode: crate::providers::PermissionMode::AskEachTime,
+            permission_mode: argmax_contracts::validation::PermissionMode::AskEachTime,
             permission_modes: HashMap::from([(
-                crate::providers::ProviderId::Codex,
-                crate::providers::PermissionMode::ProviderDefaults,
+                argmax_contracts::validation::ProviderId::Codex,
+                argmax_contracts::validation::PermissionMode::ProviderDefaults,
             )]),
             ..DefaultAgent::factory()
         };
 
         assert_eq!(
-            agent.permission_mode_for(crate::providers::ProviderId::Codex),
-            crate::providers::PermissionMode::ProviderDefaults
+            agent.permission_mode_for(argmax_contracts::validation::ProviderId::Codex),
+            argmax_contracts::validation::PermissionMode::ProviderDefaults
         );
         assert_eq!(
-            agent.permission_mode_for(crate::providers::ProviderId::Claude),
-            crate::providers::PermissionMode::AskEachTime
+            agent.permission_mode_for(argmax_contracts::validation::ProviderId::Claude),
+            argmax_contracts::validation::PermissionMode::AskEachTime
         );
     }
 

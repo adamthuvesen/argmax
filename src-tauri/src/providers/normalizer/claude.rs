@@ -724,7 +724,7 @@ mod tests {
     use crate::providers::normalizer::{
         normalize_provider_event, tests::output_event, Dispatcher, NormalizerSessionContext,
     };
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
 
     #[test]
     fn claude_stream_event_unwraps_inner_text_delta() {

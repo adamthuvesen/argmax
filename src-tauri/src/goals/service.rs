@@ -23,12 +23,12 @@ use crate::{
         one_shot,
         runtime::parse_provider,
         session_service::{self, GoalTurnIdentity, ProviderSessionService, SessionStateChange},
-        AgentMode,
     },
     routing::RouteDecision,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::AgentMode;
 use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
 use argmax_store::sync::LockOrRecover;
 use argmax_store::{
@@ -43,7 +43,8 @@ use argmax_store::{
     workspaces::find_workspace_by_id,
 };
 
-use super::{Goal, GoalState, GoalVerdict, DEFAULT_MAX_TURNS};
+use super::{GoalVerdict, DEFAULT_MAX_TURNS};
+use argmax_contracts::goals::{Goal, GoalState};
 
 const MAX_CONDITION_BYTES: usize = 8 * 1024;
 /// Hard ceiling on the caller's ceiling. Twenty is the default; a hundred turns

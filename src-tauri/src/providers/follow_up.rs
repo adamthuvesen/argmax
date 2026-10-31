@@ -1,7 +1,7 @@
 use super::runtime::sqlite_error;
-use super::ProviderId;
 use crate::providers::inputs::AgentReference;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
 use argmax_store::events::has_current_native_agent_identity;
 use rusqlite::OptionalExtension;
 

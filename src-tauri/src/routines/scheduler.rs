@@ -18,9 +18,9 @@ use std::time::Duration;
 use crate::application::session_launch::{self, LaunchSpec};
 use crate::providers::inputs::ProvidersSendInput;
 use crate::providers::session_service::{self, ProviderSessionService};
-use crate::providers::{AgentMode, ProviderId, ReasoningEffort};
 use crate::workspaces::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{AgentMode, ProviderId, ReasoningEffort};
 use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
 use argmax_store::database::Database;
 use argmax_store::routines::{self, RoutineAuthor, RoutineLaunchFields, RoutineRunTarget};
@@ -449,7 +449,7 @@ enum FollowUpOutcome {
 async fn send_routine_follow_up(
     providers: &Arc<ProviderSessionService>,
     fields: &RoutineLaunchFields,
-    provider: crate::providers::ProviderId,
+    provider: argmax_contracts::validation::ProviderId,
     session_id: &str,
     carry_model: bool,
 ) -> FollowUpOutcome {
@@ -623,7 +623,7 @@ impl StaysScheduled {
 fn resolve_routine_permissions(
     provider: &str,
     default_agent: &crate::default_agent::DefaultAgent,
-) -> Option<(ProviderId, crate::providers::PermissionMode)> {
+) -> Option<(ProviderId, argmax_contracts::validation::PermissionMode)> {
     let provider = crate::providers::runtime::parse_provider(provider).ok()?;
     Some((provider, default_agent.permission_mode_for(provider)))
 }
@@ -703,8 +703,9 @@ mod tests {
     use crate::providers::runtime::{
         BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle,
     };
-    use crate::providers::{PermissionMode, ProviderLaunchInput};
+    use crate::providers::ProviderLaunchInput;
     use argmax_contracts::sessions::state::SessionState;
+    use argmax_contracts::validation::PermissionMode;
     use argmax_store::sessions::{persist_session, PersistSessionInput};
     use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::collections::HashMap;

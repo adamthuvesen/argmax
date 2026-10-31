@@ -383,7 +383,7 @@ mod tests {
     use crate::providers::normalizer::{
         normalize_provider_event, tests::output_event, NormalizerSessionContext,
     };
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
 
     // Captured from a live Cursor ACP session: a subagent launch arrives under
     // the generic `other` wrapper with its real name inside the args.

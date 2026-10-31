@@ -11,8 +11,6 @@ use std::path::PathBuf;
 
 use tauri::{Manager, Runtime};
 
-pub use argmax_store::worktree_root;
-
 pub fn app_data_dir<R: Runtime>(app: &impl Manager<R>) -> tauri::Result<PathBuf> {
     match std::env::var("ARGMAX_DATA_DIR") {
         Ok(raw) if !raw.trim().is_empty() => {

@@ -34,11 +34,11 @@ use serde_json::json;
 
 use super::{
     adapters::get_provider_definition, discovery::ProviderDiscovery, flush_queue::DashboardDelta,
-    normalizer::ProviderOutputStream, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
-    ReasoningEffort,
+    normalizer::ProviderOutputStream, ProviderLaunchInput,
 };
 use crate::providers::inputs::ComposerAttachmentInput;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 use argmax_process::environment::build_provider_environment;
 use argmax_store::time::now_iso;
 
@@ -1004,8 +1004,8 @@ mod verification_tests {
                 "--nocapture",
             ])
             .env(CHILD_ENV, "1")
-            .env(super::super::verification::MODE_ENV, "1")
-            .env(super::super::verification::HOME_ENV, &profile)
+            .env(argmax_process::environment::VERIFICATION_MODE_ENV, "1")
+            .env(argmax_process::environment::VERIFICATION_HOME_ENV, &profile)
             .env("ARGMAX_VERIFICATION_LOG", profile.join("invocations.jsonl"))
             .env("ARGMAX_VERIFICATION_CLAUDE_BINARY", fixture)
             .output()
@@ -1079,7 +1079,8 @@ mod verification_tests {
             provider: ProviderId::Claude,
             session_id: uuid::Uuid::new_v4().to_string(),
             workspace_path: PathBuf::from(
-                std::env::var(super::super::verification::HOME_ENV).expect("verification profile"),
+                std::env::var(argmax_process::environment::VERIFICATION_HOME_ENV)
+                    .expect("verification profile"),
             ),
             prompt: prompt.to_string(),
             model_label: "Sonnet 5.5".to_string(),

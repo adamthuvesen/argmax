@@ -50,7 +50,7 @@ use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
 
-use super::ProviderId;
+use argmax_contracts::validation::ProviderId;
 
 /// The MCP server name; tools reach the model as `mcp__argmax__<tool>`
 /// (Claude, Codex, Cursor) or `argmax__<tool>` (Grok, OpenCode).

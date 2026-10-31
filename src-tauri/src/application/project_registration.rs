@@ -221,7 +221,7 @@ pub(crate) async fn assert_valid_ref_name(repo_path: &Path, reference: &str) -> 
 
 pub(crate) fn default_settings(project_id: &str) -> ArgmaxResult<ProjectSettings> {
     Ok(ProjectSettings {
-        worktree_location: crate::util::data_dir::worktree_root()?
+        worktree_location: argmax_store::worktree_root()?
             .join(project_id)
             .to_string_lossy()
             .to_string(),

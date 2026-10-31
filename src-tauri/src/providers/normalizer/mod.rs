@@ -57,7 +57,7 @@ use self::{
         normalize_event as normalize_opencode_event,
     },
 };
-use super::ProviderId;
+use argmax_contracts::validation::ProviderId;
 use argmax_store::events::PersistTimelineEventInput;
 
 /// Providers whose headless output is Claude Code's stream-json: a
@@ -116,7 +116,7 @@ pub struct UsageCounts {
     pub cache_write: u64,
 }
 
-impl From<UsageCounts> for crate::providers::pricing::UsageCounts {
+impl From<UsageCounts> for argmax_contracts::usage::UsageCounts {
     fn from(value: UsageCounts) -> Self {
         Self {
             input: value.input,

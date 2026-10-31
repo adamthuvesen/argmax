@@ -1,7 +1,7 @@
 use std::{process::Command, time::Duration};
 
 use super::runtime::{signal_process, SignalKind};
-use super::ProviderId;
+use argmax_contracts::validation::ProviderId;
 
 #[derive(Debug, Clone)]
 pub(super) struct RecoveredProviderSession {

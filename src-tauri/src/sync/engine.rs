@@ -16,9 +16,9 @@ use super::{claude, DiscoveredSession, SyncConfig};
 use crate::providers::normalizer::{
     normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
 };
-use crate::providers::ProviderId;
 use crate::workspaces::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
 use argmax_store::events::{
     persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
 };

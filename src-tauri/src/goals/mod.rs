@@ -15,8 +15,6 @@ use serde::{Deserialize, Serialize};
 /// in twenty turns is not one more turn away from landing.
 pub const DEFAULT_MAX_TURNS: u32 = 20;
 
-pub use argmax_contracts::goals::{Goal, GoalState};
-
 /// What the evaluator decided about one turn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

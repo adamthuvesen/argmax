@@ -1,12 +1,10 @@
 use super::model_catalogue::{catalogue_model, clamp_effort, ModelId, CATALOGUE_MODELS};
 use super::opencode_gateway::OpencodeGateway;
-#[cfg(test)]
-use super::AgentMode;
-use super::{
-    mcp_injection, ApprovalSupport, PermissionMode, ProviderId, ProviderLaunchInput,
-    ReasoningEffort,
-};
+use super::{mcp_injection, ApprovalSupport, ProviderLaunchInput};
 use crate::session_control::SessionLaunchProcessConfig;
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId, ReasoningEffort};
 
 const CLAUDE_BYPASS_PERMISSION_ARGS: &[&str] = &["--permission-mode", "bypassPermissions"];
 const CODEX_BYPASS_PERMISSION_ARGS: &[&str] = &["--dangerously-bypass-approvals-and-sandbox"];

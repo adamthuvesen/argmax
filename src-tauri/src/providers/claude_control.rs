@@ -7,10 +7,11 @@ use super::{
         BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle,
     },
-    PermissionMode, ProviderId, ProviderLaunchInput,
+    ProviderLaunchInput,
 };
 use crate::{approvals::service::ApprovalService, session_control::SessionLaunchProcessConfig};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{PermissionMode, ProviderId};
 use argmax_process::environment::build_provider_environment;
 use argmax_store::time::now_iso;
 use serde_json::{json, Value};
@@ -769,7 +770,7 @@ mod tests {
 
     #[test]
     fn card_tools_and_full_access_answer_themselves() {
-        use super::super::AgentMode;
+        use argmax_contracts::validation::AgentMode;
         let ask = launch_input(PermissionMode::AskEachTime, AgentMode::Auto);
         assert!(answers_itself(&ask, Some("AskUserQuestion")));
         assert!(!answers_itself(&ask, Some("ExitPlanMode")));

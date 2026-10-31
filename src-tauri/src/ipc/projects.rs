@@ -295,7 +295,7 @@ async fn validate_project_folders(
             .transpose()?
             .unwrap_or(default_settings(&Uuid::new_v4().to_string())?);
         if previous.is_none() {
-            settings.worktree_location = crate::util::data_dir::worktree_root()?
+            settings.worktree_location = argmax_store::worktree_root()?
                 .join(project_id)
                 .join(Uuid::new_v4().to_string())
                 .to_string_lossy()
@@ -757,9 +757,7 @@ mod tests {
         let project = register_repo_path(&database, repo.clone()).await.unwrap();
         assert_eq!(
             PathBuf::from(&project.settings.worktree_location),
-            crate::util::data_dir::worktree_root()
-                .unwrap()
-                .join(&project.id)
+            argmax_store::worktree_root().unwrap().join(&project.id)
         );
         assert!(state.db.set(database).is_ok());
 

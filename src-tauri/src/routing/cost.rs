@@ -13,11 +13,12 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use super::{parse_tier, table::AutoTier};
-use crate::providers::pricing::{cost_of, list_price, UsageCounts};
+use crate::providers::pricing::{cost_of, list_price};
 use crate::providers::runtime::parse_provider;
 use crate::usage::cursor::{cursor_rates, estimate_calls};
 use crate::usage::{summary::bucket_starts, UsageWindow};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::usage::UsageCounts;
 use argmax_contracts::validation::ProviderId;
 use argmax_store::sqlite_error;
 

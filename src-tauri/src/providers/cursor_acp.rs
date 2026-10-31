@@ -48,15 +48,16 @@ use super::runtime::{
 };
 use super::subagent_trace::cursor_project_slug;
 use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
-#[cfg(test)]
-use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
+use super::{mcp_injection, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::questions::service::{typed_answer_text, QuestionService};
 use crate::session_control::SessionLaunchProcessConfig;
 #[cfg(test)]
 use crate::session_control::SESSION_LAUNCH_TOKEN_ENV;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId, ReasoningEffort};
 use argmax_process::environment::build_provider_environment;
 use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;

@@ -12,10 +12,9 @@ use std::{
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde_json::json;
 
-use crate::{
-    providers::ProviderId, util::process_control::signal_pty_session_term_and_kill_blocking,
-};
+use crate::util::process_control::signal_pty_session_term_and_kill_blocking;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
 use argmax_process::environment::build_provider_environment;
 
 const CLOUD_LAUNCH_TIMEOUT: Duration = Duration::from_secs(60);

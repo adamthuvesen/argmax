@@ -26,9 +26,9 @@ use super::{
     opencode_gateway::{self, OpencodeGateway},
     opencode_isolation::IsolatedOpenCodeData,
     opencode_server::merge_launch_environment,
-    ProviderId, ReasoningEffort,
 };
 use crate::goals::GoalVerdict;
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 use argmax_process::environment::build_provider_environment;
 
 /// Generous upper bound — a cold CLI start (auth refresh, model spin-up) can
@@ -674,7 +674,7 @@ async fn run_capture(
     provider: ProviderId,
     command: OneShotCommand,
 ) -> Option<String> {
-    let binary = if super::verification::requested() {
+    let binary = if argmax_process::environment::verification_requested() {
         super::verification::binary_path(provider)?
     } else {
         get_provider_definition(provider).binary_name.to_string()

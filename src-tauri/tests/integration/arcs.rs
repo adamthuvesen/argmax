@@ -14,6 +14,7 @@ use std::{
 use crate::support::git_repo::{seed_git_repo, SeededGitRepo};
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
 use argmax_contracts::validation::{NonEmptyString, Prompt, WorkspaceId};
 use argmax_lib::{
     arcs::{launch_coordinator, LaunchCoordinatorRequest},
@@ -21,7 +22,7 @@ use argmax_lib::{
     providers::{
         runtime::{BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle},
         session_service::ProviderSessionService,
-        AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
+        ProviderLaunchInput,
     },
     session_control::{
         SessionLaunchRegistry, SessionLaunchServer, SESSION_LAUNCH_SOCKET_ENV,

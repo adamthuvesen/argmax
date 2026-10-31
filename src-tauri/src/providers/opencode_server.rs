@@ -7,8 +7,6 @@
 //! The `question` tool blocks the same way: `question.asked` becomes a
 //! question card, and the card's answer goes back to `/question/{id}/reply`.
 
-#[cfg(test)]
-use super::AgentMode;
 use super::{
     adapters::opencode_variant_args_on,
     mcp_injection,
@@ -18,7 +16,7 @@ use super::{
         BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType,
         ProviderRuntimeHandle,
     },
-    PermissionMode, ProviderId, ProviderLaunchInput,
+    ProviderLaunchInput,
 };
 use crate::{
     approvals::service::ApprovalService,
@@ -26,6 +24,9 @@ use crate::{
     session_control::SessionLaunchProcessConfig,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId};
 use argmax_process::environment::build_provider_environment;
 use argmax_store::time::now_iso;
 use serde_json::{json, Map, Value};

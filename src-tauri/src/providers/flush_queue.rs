@@ -5,16 +5,14 @@ use serde::Serialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{
-    normalizer::{
-        normalize_provider_event, synthesize_message_completed_from_exit,
-        NormalizedApprovalRequest, NormalizedProviderResult, NormalizedUsage,
-        NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream, JSON_PARSE_LINE_CAP,
-    },
-    ProviderId,
+use super::normalizer::{
+    normalize_provider_event, synthesize_message_completed_from_exit, NormalizedApprovalRequest,
+    NormalizedProviderResult, NormalizedUsage, NormalizerSessionContext, ProviderOutputEvent,
+    ProviderOutputStream, JSON_PARSE_LINE_CAP,
 };
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::ProviderId;
 use argmax_store::{
     approvals::{
         find_approval_by_provider_request, find_pending_approval, persist_approval,

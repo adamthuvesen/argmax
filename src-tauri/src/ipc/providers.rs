@@ -195,7 +195,7 @@ fn live_providers(state: &AppState) -> ArgmaxResult<Arc<ProviderSessionService>>
 mod tests {
     use super::*;
     use crate::default_agent::DefaultAgent;
-    use crate::providers::{PermissionMode, ProviderId};
+    use argmax_contracts::validation::{PermissionMode, ProviderId};
     use std::collections::HashMap;
 
     fn launch_input(

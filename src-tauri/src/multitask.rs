@@ -35,11 +35,11 @@ use uuid::Uuid;
 use crate::arcs::member_preamble;
 use crate::providers::flush_queue::{DashboardDelta, PendingMessage};
 use crate::providers::session_service::ProviderSessionService;
-use crate::providers::ProviderId;
 use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
 use crate::workspaces::orchestration::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::ProviderId;
 use argmax_store::arcs;
 use argmax_store::authorship::PromptAuthor;
 use argmax_store::events::{
@@ -225,9 +225,9 @@ pub async fn dispatch(
             // keeps the choice it was queued with.
             fast_mode: queued.is_some_and(|settings| settings.fast_mode),
             permission_mode: parse_json_enum(Some(parent.permission_mode.as_str()))
-                .unwrap_or(crate::providers::PermissionMode::ProviderDefaults),
+                .unwrap_or(argmax_contracts::validation::PermissionMode::ProviderDefaults),
             agent_mode: parse_json_enum(parent.agent_mode.as_deref())
-                .unwrap_or(crate::providers::AgentMode::Auto),
+                .unwrap_or(argmax_contracts::validation::AgentMode::Auto),
             task_label: Some(label.clone()),
             arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
             arc_is_coordinator_launch: false,

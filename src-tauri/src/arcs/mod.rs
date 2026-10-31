@@ -30,14 +30,14 @@ use argmax_store::Database;
 
 pub struct LaunchCoordinatorRequest {
     pub arc_id: String,
-    pub provider: crate::providers::ProviderId,
+    pub provider: argmax_contracts::validation::ProviderId,
     pub model_label: Option<String>,
     pub model_id: Option<String>,
-    pub reasoning_effort: Option<crate::providers::ReasoningEffort>,
+    pub reasoning_effort: Option<argmax_contracts::validation::ReasoningEffort>,
     /// Resolved by the caller the same way every other launch path resolves
     /// it — the user's default-agent permission choice for this provider —
     /// since this module has no app data dir of its own to read it from.
-    pub permission_mode: crate::providers::PermissionMode,
+    pub permission_mode: argmax_contracts::validation::PermissionMode,
 }
 
 /// Launch (or relaunch) this Arc's coordinator and point the Arc at it.
@@ -92,7 +92,7 @@ pub async fn launch_coordinator(
             reasoning_effort,
             fast_mode: false,
             permission_mode: request.permission_mode,
-            agent_mode: crate::providers::AgentMode::Auto,
+            agent_mode: argmax_contracts::validation::AgentMode::Auto,
             task_label: Some(format!("{} · coordinator", arc.name)),
             // Checked and attached inside the launch's own write transaction
             // (see `ProviderSessionService::launch`): `ARC_DONE` still
@@ -139,7 +139,9 @@ pub async fn launch_coordinator(
     Ok(updated)
 }
 
-fn parse_reasoning_effort(value: Option<&str>) -> Option<crate::providers::ReasoningEffort> {
+fn parse_reasoning_effort(
+    value: Option<&str>,
+) -> Option<argmax_contracts::validation::ReasoningEffort> {
     serde_json::from_value(serde_json::json!(value?)).ok()
 }
 

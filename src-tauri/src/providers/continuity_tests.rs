@@ -12,9 +12,10 @@ use super::{
         plan_launch, record_resume_rejected, RESUME_REJECTED,
     },
     follow_up::{compose_follow_up_prompt, compose_follow_up_prompt_since},
-    LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
+    LaunchContinuity, ProviderLaunchInput,
 };
 use argmax_contracts::error::ArgmaxError;
+use argmax_contracts::validation::{PermissionMode, ProviderId};
 use argmax_store::{
     continuity::{find_binding, list_bindings, BindingState},
     database::Database,

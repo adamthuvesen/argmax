@@ -21,11 +21,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
 use argmax_lib::providers::runtime::{
     EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent, ProviderRuntimeEventType,
     RealProviderProcessLauncher,
 };
-use argmax_lib::providers::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+use argmax_lib::providers::ProviderLaunchInput;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

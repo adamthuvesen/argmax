@@ -551,7 +551,7 @@ async fn unsupported_not_running_and_settings_mismatch_skip_steer() {
     // A row that names another provider cannot join the running turn.
     let (service, handle, launcher) = steer_service(true, None);
     let mut message = pending("provider", "switch");
-    message.provider = Some(crate::providers::ProviderId::Codex);
+    message.provider = Some(argmax_contracts::validation::ProviderId::Codex);
     message.model_label = Some("GPT".to_string());
     message.model_id = Some("gpt-5.6-sol".to_string());
     let id = seed_queue(&service, message);

@@ -6,8 +6,8 @@ use tokio::{process::Command, sync::Mutex};
 
 use super::{
     adapters::get_provider_definition, opencode_isolation::IsolatedOpenCodeData, ApprovalSupport,
-    ProviderId,
 };
+use argmax_contracts::validation::ProviderId;
 use argmax_process::environment::build_provider_environment;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -182,7 +182,7 @@ async fn discover_uncached(provider_id: ProviderId) -> ProviderCapabilityReport 
     };
 
     let setup_guidance = match (binary_path.is_some(), authenticated) {
-        (false, _) if super::verification::requested() => Some(
+        (false, _) if argmax_process::environment::verification_requested() => Some(
             super::verification::validate_configuration()
                 .err()
                 .unwrap_or_else(|| {
@@ -261,7 +261,7 @@ fn env_from_isolation(isolation: Option<&IsolatedOpenCodeData>) -> Vec<(String, 
 }
 
 async fn resolve_binary(provider_id: ProviderId, binary_name: &str) -> Option<String> {
-    if super::verification::requested() {
+    if argmax_process::environment::verification_requested() {
         return super::verification::binary_path(provider_id);
     }
     command_output("which", &[binary_name], Vec::new()).await

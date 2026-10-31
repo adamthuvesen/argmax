@@ -91,7 +91,7 @@ mod tests {
                 ])
                 .env_clear()
                 .env(VERIFICATION_CHILD_ENV, "1")
-                .env(crate::providers::verification::MODE_ENV, mode)
+                .env(argmax_process::environment::VERIFICATION_MODE_ENV, mode)
                 .env("HOME", profile.path())
                 .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
                 .env(

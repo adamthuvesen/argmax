@@ -394,7 +394,7 @@ mod tests {
     use crate::providers::normalizer::{
         normalize_provider_event, tests::output_event, NormalizerSessionContext,
     };
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
 
     #[test]
     fn opencode_reasoning_part_becomes_thinking_delta() {

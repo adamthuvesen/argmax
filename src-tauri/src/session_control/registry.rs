@@ -120,13 +120,13 @@ pub(super) struct CredentialState {
 #[derive(Clone)]
 pub(super) struct ParentLaunchSettings {
     pub(super) session_id: String,
-    pub(super) provider: crate::providers::ProviderId,
+    pub(super) provider: argmax_contracts::validation::ProviderId,
     pub(super) model_label: String,
     pub(super) model_id: String,
-    pub(super) reasoning_effort: Option<crate::providers::ReasoningEffort>,
+    pub(super) reasoning_effort: Option<argmax_contracts::validation::ReasoningEffort>,
     pub(super) fast_mode: bool,
-    pub(super) permission_mode: crate::providers::PermissionMode,
-    pub(super) agent_mode: crate::providers::AgentMode,
+    pub(super) permission_mode: argmax_contracts::validation::PermissionMode,
+    pub(super) agent_mode: argmax_contracts::validation::AgentMode,
 }
 
 /// A linked repository this launch's project allows, resolved at launch time.
@@ -542,9 +542,9 @@ fn random_bearer_token() -> String {
 mod tests {
     use super::*;
     use crate::providers::model_catalogue::ModelId;
-    use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
     use crate::session_control::server::SessionLaunchServer;
     use argmax_contracts::sessions::state::SessionState;
+    use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
     use argmax_store::{
         after_turn::{list_after_turn, ArchiveRequest, MoveDestinationRecord, MoveRequest},
         projects::{persist_project, PersistProjectInput, ProjectSettings},

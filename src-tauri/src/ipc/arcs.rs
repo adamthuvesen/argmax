@@ -3,12 +3,10 @@ use specta::Type;
 use tauri::State;
 
 use super::{live_database, publish_dashboard_changed, read_off_main};
-use crate::{
-    providers::{ProviderId, ReasoningEffort},
-    state::AppState,
-};
+use crate::state::AppState;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::validation::NonEmptyString;
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 use argmax_store::{
     arc_events::{list_arc_timeline, ArcTimelineCursor, ArcTimelinePage},
     arcs::{self, ArcCreateInput, ArcDetail, ArcRecord, ArcState, ArcUpdateInput},

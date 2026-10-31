@@ -13,8 +13,8 @@ pub(crate) use cursor::cursor_project_slug;
 use rusqlite::Connection;
 use serde_json::Value;
 
-use super::ProviderId;
 use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::validation::ProviderId;
 use argmax_store::{
     database::Database,
     events::{

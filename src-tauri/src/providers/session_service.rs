@@ -49,7 +49,7 @@ use super::{
         RealProviderProcessLauncher,
     },
     subagent_trace::reconcile_session_subagent_traces,
-    AgentMode, ApprovalSupport, LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
+    ApprovalSupport, LaunchContinuity, ProviderLaunchInput,
 };
 use crate::{
     approvals::service::ApprovalService,
@@ -67,6 +67,7 @@ use crate::{
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
 use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
 use argmax_store::authorship::PersonAttestation;
 use argmax_store::{

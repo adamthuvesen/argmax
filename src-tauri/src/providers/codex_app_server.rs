@@ -29,15 +29,16 @@ use super::normalizer::ProviderOutputStream;
 use super::runtime::{
     BoxFuture, EventCallback, ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
 };
-#[cfg(test)]
-use super::AgentMode;
-use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput};
+use super::{mcp_injection, ProviderLaunchInput};
 use crate::approvals::service::ApprovalService;
 use crate::questions::service::QuestionService;
 use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+#[cfg(test)]
+use argmax_contracts::validation::AgentMode;
+use argmax_contracts::validation::{PermissionMode, ProviderId};
 use argmax_process::environment::build_provider_environment;
 use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
@@ -1767,7 +1768,7 @@ impl ProviderRuntimeHandle for CodexTurnHandle {
 mod tests {
     use super::*;
     use crate::providers::model_catalogue::ModelId;
-    use crate::providers::ReasoningEffort;
+    use argmax_contracts::validation::ReasoningEffort;
     use argmax_store::database::Database;
 
     fn input(permission_mode: PermissionMode) -> ProviderLaunchInput {

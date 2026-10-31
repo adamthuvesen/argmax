@@ -10,6 +10,7 @@ use std::{
 use crate::support::git_repo::seed_git_repo;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 use argmax_lib::{
     multitask::{
         dispatch, dispatch_queued, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND,
@@ -22,7 +23,7 @@ use argmax_lib::{
             ProviderRuntimeEventType, ProviderRuntimeHandle,
         },
         session_service::ProviderSessionService,
-        ProviderId, ProviderLaunchInput, ReasoningEffort,
+        ProviderLaunchInput,
     },
     workspaces::WorkspaceService,
 };

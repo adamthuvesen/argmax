@@ -4172,8 +4172,9 @@ async fn move_session_gives_the_destination_no_binding_it_could_wrongly_resume()
 
 #[tokio::test]
 async fn a_moved_fork_child_stays_a_fork_and_is_not_forked_natively_once_its_source_moved_on() {
+    use argmax_contracts::validation::ProviderId;
     use argmax_lib::ipc::inputs::ForkWorkspaceMode;
-    use argmax_lib::providers::{continuity::plan_launch, fork_merge, ProviderId};
+    use argmax_lib::providers::{continuity::plan_launch, fork_merge};
     use argmax_lib::workspaces::orchestration::fork::ForkRequest;
 
     let database = Arc::new(Database::open_in_memory().expect("db"));

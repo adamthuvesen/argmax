@@ -1178,7 +1178,7 @@ impl Default for ArgmaxTools {
     }
 }
 
-fn parse_provider(value: &str) -> Result<crate::providers::ProviderId, String> {
+fn parse_provider(value: &str) -> Result<argmax_contracts::validation::ProviderId, String> {
     serde_json::from_value(serde_json::json!(value)).map_err(|_| {
         format!(
             "'{value}' is not an Argmax provider. Use claude, codex, cursor, opencode, or grok."
@@ -1186,13 +1186,15 @@ fn parse_provider(value: &str) -> Result<crate::providers::ProviderId, String> {
     })
 }
 
-fn parse_reasoning(value: &str) -> Result<crate::providers::ReasoningEffort, String> {
+fn parse_reasoning(value: &str) -> Result<argmax_contracts::validation::ReasoningEffort, String> {
     serde_json::from_value(serde_json::json!(value)).map_err(|_| {
         format!("'{value}' is not a reasoning level. Use low, medium, high, xhigh, max, or ultra.")
     })
 }
 
-fn parse_permission_mode(value: &str) -> Result<crate::providers::PermissionMode, String> {
+fn parse_permission_mode(
+    value: &str,
+) -> Result<argmax_contracts::validation::PermissionMode, String> {
     serde_json::from_value(serde_json::json!(value)).map_err(|_| {
         format!(
             "'{value}' is not a permission mode. Use auto-approve, ask-each-time, or provider-defaults."

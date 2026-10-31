@@ -474,7 +474,8 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn claude_control_round_trip_waits_for_real_resolution() {
-        use crate::providers::{AgentMode, PermissionMode, ProviderId, ProviderLaunchInput};
+        use crate::providers::ProviderLaunchInput;
+        use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
         use std::os::unix::fs::PermissionsExt;
         let (database, session_id, dir) = setup();
         let svc = ApprovalService::new(database);

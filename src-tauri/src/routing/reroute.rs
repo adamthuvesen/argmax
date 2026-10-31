@@ -15,8 +15,9 @@ use super::{
 use crate::providers::discovery::AvailableProvider;
 use crate::providers::{
     model_catalogue::ModelId,
-    pricing::{cost_of, list_price, ModelPricing, UsageCounts},
+    pricing::{cost_of, list_price, ModelPricing},
 };
+use argmax_contracts::usage::UsageCounts;
 use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 
 /// Escalate only when the user is clearly unhappy with the work (failing,

@@ -186,7 +186,7 @@ impl RemainingSource for LiveRemainingSource {
         // this, the sessions Argmax starts and the card that reports on them
         // read two different credential stores. Verification stays fenced off
         // from the real one, as it is for provider launches.
-        if crate::providers::verification::requested() {
+        if argmax_process::environment::verification_requested() {
             return None;
         }
         login_shell::environment()
@@ -196,21 +196,21 @@ impl RemainingSource for LiveRemainingSource {
     }
 
     fn http_get(&self, url: &str, headers: &[(&str, &str)]) -> HttpAnswer {
-        if crate::providers::verification::requested() {
+        if argmax_process::environment::verification_requested() {
             return Err("Live remaining usage is disabled in verification mode.".into());
         }
         http::get_json(url, headers, FETCH_TIMEOUT)
     }
 
     fn keychain_password(&self, service: &str) -> Option<String> {
-        if crate::providers::verification::requested() {
+        if argmax_process::environment::verification_requested() {
             return None;
         }
         read_keychain_password(service)
     }
 
     fn codex_rate_limits(&self) -> Result<serde_json::Value, String> {
-        if crate::providers::verification::requested() {
+        if argmax_process::environment::verification_requested() {
             return Err("Live remaining usage is disabled in verification mode.".into());
         }
         codex::fetch_app_server_rate_limits(&self.home)
@@ -438,8 +438,11 @@ pub mod tests {
                 ])
                 .env_clear()
                 .env(VERIFICATION_CHILD_ENV, "1")
-                .env(crate::providers::verification::MODE_ENV, mode)
-                .env(crate::providers::verification::HOME_ENV, profile.path())
+                .env(argmax_process::environment::VERIFICATION_MODE_ENV, mode)
+                .env(
+                    argmax_process::environment::VERIFICATION_HOME_ENV,
+                    profile.path(),
+                )
                 .env("HOME", profile.path())
                 .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
                 .env(

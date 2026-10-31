@@ -2119,17 +2119,17 @@ mod tests {
             model_label: "GPT-5.6 Luna".to_string(),
             model_id: "gpt-5.6-luna".to_string(),
             reasoning_effort: Some("high".to_string()),
-            permission_mode: providers::PermissionMode::AskEachTime,
+            permission_mode: argmax_contracts::validation::PermissionMode::AskEachTime,
             permission_modes: std::collections::HashMap::from([(
-                providers::ProviderId::Codex,
-                providers::PermissionMode::ProviderDefaults,
+                argmax_contracts::validation::ProviderId::Codex,
+                argmax_contracts::validation::PermissionMode::ProviderDefaults,
             )]),
         };
         let input = build_check_failure_follow_up_input("w1", &agent, &follow_up_context())
             .expect("follow-up input");
         assert_eq!(
             input.permission_mode,
-            Some(providers::PermissionMode::ProviderDefaults)
+            Some(argmax_contracts::validation::PermissionMode::ProviderDefaults)
         );
         assert_eq!(input.model_label.as_str(), "GPT-5.6 Luna");
         assert_eq!(input.model_id.as_str(), "gpt-5.6-luna");

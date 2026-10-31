@@ -230,7 +230,7 @@ fn native_plan(
     let provider = crate::providers::runtime::parse_provider(&source.provider).ok();
     let carries = provider.is_some_and(|provider| {
         let definition = crate::providers::adapters::get_provider_definition(provider);
-        provider != crate::providers::ProviderId::Cursor
+        provider != argmax_contracts::validation::ProviderId::Cursor
             // An isolated checkout needs a provider whose resume follows the
             // new directory.
             && (workspace == ForkWorkspaceMode::Shared || definition.move_carries_conversation)
@@ -616,7 +616,7 @@ mod tests {
     use super::*;
     use crate::providers::continuity::plan_launch;
     use crate::providers::continuity_tests::{event, event_with, seed_session};
-    use crate::providers::ProviderId;
+    use argmax_contracts::validation::ProviderId;
     use argmax_store::continuity::{binding_turn, fork_for_child, record_binding_turn};
     use argmax_store::database::Database;
     use argmax_store::sessions::{session_resume_fork, SessionProviderInput};

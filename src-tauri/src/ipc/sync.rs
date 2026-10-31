@@ -5,9 +5,9 @@
 use tauri::{AppHandle, State};
 
 use super::inputs::SyncSetConfigInput;
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
 use crate::sync::{self, SyncConfig, SyncStatus};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 #[tauri::command(rename = "sync:get-status", async)]
 #[specta::specta]

@@ -19,7 +19,6 @@ pub mod checks;
 pub mod connections;
 pub mod default_agent;
 pub mod dock;
-pub use argmax_contracts::error;
 pub mod files;
 pub mod gh;
 pub mod git;
@@ -31,7 +30,6 @@ pub mod mcp;
 pub mod menu;
 pub mod multitask;
 pub mod notifications;
-pub use argmax_store as persistence;
 pub mod providers;
 pub mod questions;
 pub mod remote;
@@ -39,7 +37,6 @@ pub mod review;
 pub mod routines;
 pub mod routing;
 pub mod session_control;
-pub use argmax_contracts::sessions;
 pub mod skills;
 pub mod state;
 pub mod sync;
@@ -61,7 +58,7 @@ use util::startup_timer::StartupTimer;
 /// `tauri::async_runtime` rather than `tokio::spawn`: the setup hook that opens
 /// the database runs on the main thread with no current runtime handle, so a
 /// `tokio` spawn there would panic.
-pub(crate) fn start_raw_output_prune(database: &persistence::Database) {
+pub(crate) fn start_raw_output_prune(database: &argmax_store::Database) {
     let task = tauri::async_runtime::spawn(database.raw_output_prune_loop());
     database.track_prune_task(task.inner().abort_handle());
 }
@@ -603,7 +600,7 @@ pub fn run() {
                             tracing::warn!(?error, "could not create the instance lock; continuing unlocked");
                         }
                     }
-                    match persistence::Database::open(data_dir.join("argmax.sqlite")) {
+                    match argmax_store::Database::open(data_dir.join("argmax.sqlite")) {
                         Ok(database) => {
                             timer.mark("db.open");
                             let database = Arc::new(database);
@@ -646,7 +643,7 @@ pub fn run() {
                                 {
                                     let database = Arc::clone(&database);
                                     Arc::new(move || {
-                                        persistence::dashboard::count_attention(
+                                        argmax_store::dashboard::count_attention(
                                             &database.read_connection(),
                                         )
                                         .map(|counts| counts.total)
@@ -670,7 +667,7 @@ pub fn run() {
                             tauri::async_runtime::spawn_blocking(move || {
                                 let connection = warm_db.connection();
                                 if let Err(error) =
-                                    persistence::learnings::search_events(&connection, "warmup", 1)
+                                    argmax_store::learnings::search_events(&connection, "warmup", 1)
                                 {
                                     tracing::trace!(?error, "fts warm-up query failed");
                                 }
@@ -805,7 +802,7 @@ pub fn run() {
                                         && remote::signal::signals(session);
                                     let latest_answer = pushes
                                         .then(|| {
-                                            persistence::events::latest_agent_message(
+                                            argmax_store::events::latest_agent_message(
                                                 &push_database.read_connection(),
                                                 &session.id,
                                             )
@@ -1305,8 +1302,8 @@ async fn archive_expiry_loop(app: tauri::AppHandle) {
     use tauri::Manager;
 
     let mut interval = tokio::time::interval_at(
-        tokio::time::Instant::now() + persistence::database::PRUNE_STARTUP_DELAY,
-        persistence::database::PRUNE_INTERVAL,
+        tokio::time::Instant::now() + argmax_store::database::PRUNE_STARTUP_DELAY,
+        argmax_store::database::PRUNE_INTERVAL,
     );
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
@@ -1410,27 +1407,27 @@ async fn sync_sweep_loop(app: tauri::AppHandle) {
 }
 
 async fn handle_gh_check_failure(
-    database: Arc<persistence::Database>,
+    database: Arc<argmax_store::Database>,
     providers: Arc<providers::session_service::ProviderSessionService>,
     notifications: Arc<state::LiveNotificationService>,
     app_data_dir: std::path::PathBuf,
     context: gh::poller::CheckFailureContext,
-) -> error::ArgmaxResult<()> {
+) -> argmax_contracts::error::ArgmaxResult<()> {
     let (session, pr, input) = {
         let connection = database.connection();
-        let session = persistence::sessions::find_session_by_id(&connection, &context.session_id)?;
+        let session = argmax_store::sessions::find_session_by_id(&connection, &context.session_id)?;
         let workspace =
-            persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
-        persistence::projects::require_project(&connection, &workspace.project_id)?;
-        let pr = persistence::gh::list_gh_pr_for_session(&connection, &context.session_id)?
+            argmax_store::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
+        argmax_store::projects::require_project(&connection, &workspace.project_id)?;
+        let pr = argmax_store::gh::list_gh_pr_for_session(&connection, &context.session_id)?
             .into_iter()
             .find(|row| row.pr_number == context.pr_number && row.head_sha == context.head_sha)
-            .unwrap_or_else(|| persistence::gh::GhPrRecord {
+            .unwrap_or_else(|| argmax_store::gh::GhPrRecord {
                 session_id: context.session_id.clone(),
                 pr_number: context.pr_number,
                 head_sha: context.head_sha.clone(),
                 last_seen_check_state: "failure".to_string(),
-                updated_at: persistence::time::now_iso(),
+                updated_at: argmax_store::time::now_iso(),
                 pr_state: Some("OPEN".to_string()),
                 notified_at: None,
                 pr_created_at: None,
@@ -1450,12 +1447,12 @@ async fn handle_gh_check_failure(
     }
     providers.launch(input).await?;
     let connection = database.connection();
-    persistence::gh::mark_gh_pr_notified(
+    argmax_store::gh::mark_gh_pr_notified(
         &connection,
         &context.session_id,
         context.pr_number,
         &context.head_sha,
-        &persistence::time::now_iso(),
+        &argmax_store::time::now_iso(),
     )
 }
 
@@ -1477,16 +1474,16 @@ async fn handle_gh_check_failure(
 /// because it finds nothing to suppress on. Only a successful delivery keeps
 /// it suppressed.
 async fn handle_gh_arc_event(
-    database: Arc<persistence::Database>,
+    database: Arc<argmax_store::Database>,
     providers: Arc<providers::session_service::ProviderSessionService>,
     context: gh::poller::ArcEventContext,
-) -> error::ArgmaxResult<()> {
+) -> argmax_contracts::error::ArgmaxResult<()> {
     let (member_label, project_id, project_name, pr_title, pr_url) = {
         let connection = database.connection();
         let workspace =
-            persistence::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
-        let project = persistence::projects::require_project(&connection, &workspace.project_id)?;
-        let pr = persistence::gh::list_session_prs(&connection, &context.session_id)?
+            argmax_store::workspaces::find_workspace_by_id(&connection, &context.workspace_id)?;
+        let project = argmax_store::projects::require_project(&connection, &workspace.project_id)?;
+        let pr = argmax_store::gh::list_session_prs(&connection, &context.session_id)?
             .into_iter()
             .find(|pr| pr.pr_number == context.pr_number);
         (
@@ -1529,15 +1526,15 @@ async fn handle_gh_arc_event(
     // shows an event the coordinator was not told about.
     let kind = match context.kind {
         gh::poller::ArcEventKind::ChecksFailing => {
-            persistence::arc_events::ArcEventKind::PrChecksFailing
+            argmax_store::arc_events::ArcEventKind::PrChecksFailing
         }
         gh::poller::ArcEventKind::ChecksPassing => {
-            persistence::arc_events::ArcEventKind::PrChecksPassing
+            argmax_store::arc_events::ArcEventKind::PrChecksPassing
         }
-        gh::poller::ArcEventKind::Merged => persistence::arc_events::ArcEventKind::PrMerged,
+        gh::poller::ArcEventKind::Merged => argmax_store::arc_events::ArcEventKind::PrMerged,
     };
     let connection = database.connection();
-    let mut event = persistence::arc_events::NewArcEvent::new(
+    let mut event = argmax_store::arc_events::NewArcEvent::new(
         format!("pr:{}", context.message_id),
         &context.arc_id,
         kind,
@@ -1548,7 +1545,7 @@ async fn handle_gh_arc_event(
     event.status = (!matches!(context.kind, gh::poller::ArcEventKind::Merged)).then_some(head7);
     event.pr_number = Some(context.pr_number);
     event.pr_url = pr_url.as_deref();
-    persistence::arc_events::record_arc_event(&connection, &event)?;
+    argmax_store::arc_events::record_arc_event(&connection, &event)?;
     Ok(())
 }
 
@@ -1558,10 +1555,10 @@ async fn handle_gh_arc_event(
 /// worth keeping.
 async fn archive_merged_workspace(
     workspaces: Arc<workspaces::WorkspaceService>,
-    database: Arc<persistence::database::Database>,
+    database: Arc<argmax_store::database::Database>,
     context: gh::poller::MergedPrContext,
 ) {
-    use persistence::projects::MergeCleanup;
+    use argmax_store::projects::MergeCleanup;
     let result = match context.cleanup {
         MergeCleanup::Off => return,
         MergeCleanup::Archive => {
@@ -1639,7 +1636,7 @@ fn build_check_failure_follow_up_input(
     workspace_id: &str,
     agent: &default_agent::DefaultAgent,
     context: &gh::poller::CheckFailureContext,
-) -> error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
+) -> argmax_contracts::error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
     let provider = providers::runtime::parse_provider(&agent.provider)?;
     serde_json::from_value(json!({
         "workspaceId": workspace_id,
@@ -1657,7 +1654,7 @@ fn build_check_failure_follow_up_input(
         "cols": 120,
         "rows": 36
     }))
-    .map_err(|error| error::ArgmaxError::service("GH_FOLLOW_UP_INPUT_INVALID", error.to_string()))
+    .map_err(|error| argmax_contracts::error::ArgmaxError::service("GH_FOLLOW_UP_INPUT_INVALID", error.to_string()))
 }
 
 pub use providers::model_catalogue::{provider_defaults, ProviderDefaults};
@@ -1872,22 +1869,22 @@ mod tests {
         id: &str,
         session_id: &str,
         event_type: &str,
-    ) -> persistence::events::TimelineEvent {
+    ) -> argmax_store::events::TimelineEvent {
         let payload = serde_json::json!({ "text": "payload" });
-        persistence::events::TimelineEvent {
+        argmax_store::events::TimelineEvent {
             id: id.to_string(),
             session_id: session_id.to_string(),
             r#type: event_type.to_string(),
             message: "payload".to_string(),
-            semantic: persistence::timeline_semantics::derive(event_type, id, &payload),
+            semantic: argmax_store::timeline_semantics::derive(event_type, id, &payload),
             payload,
             created_at: "2026-01-01T00:00:00Z".to_string(),
             row_cursor: Some(1),
         }
     }
 
-    fn raw_output(id: &str, session_id: &str) -> persistence::events::RawProviderOutput {
-        persistence::events::RawProviderOutput {
+    fn raw_output(id: &str, session_id: &str) -> argmax_store::events::RawProviderOutput {
+        argmax_store::events::RawProviderOutput {
             id: id.to_string(),
             session_id: session_id.to_string(),
             stream: "stdout".to_string(),

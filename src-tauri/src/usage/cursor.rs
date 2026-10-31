@@ -10,8 +10,8 @@
 
 use rusqlite::Connection;
 
-use crate::error::ArgmaxResult;
-use crate::persistence::sqlite_error;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::sqlite_error;
 
 /// Characters per token for transcript text.
 const CHARS_PER_TOKEN: i64 = 4;

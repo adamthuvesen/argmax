@@ -2,7 +2,7 @@ use super::{
     document, VisualizationArtifact, VisualizationControlValues, VisualizationFormat,
     VisualizationMode, VisualizationRead, VisualizationWidgetState,
 };
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use regex::Regex;
 use serde_json::json;

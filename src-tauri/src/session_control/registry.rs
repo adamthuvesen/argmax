@@ -11,13 +11,11 @@ use super::{
     argmax_protocol_error, protocol::SessionControlError, protocol_error, ARGMAX_BIN_ENV,
     SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
-use crate::{
-    persistence::{
-        after_turn::{delete_after_turn, find_after_turn, insert_after_turn, AfterTurnAction},
-        app_settings::browser_tools_enabled,
-        database::Database,
-    },
-    providers::ProviderLaunchInput,
+use crate::providers::ProviderLaunchInput;
+use argmax_store::{
+    after_turn::{delete_after_turn, find_after_turn, insert_after_turn, AfterTurnAction},
+    app_settings::browser_tools_enabled,
+    database::Database,
 };
 
 #[derive(Clone)]
@@ -238,14 +236,11 @@ impl SessionLaunchProcessConfig {
 
 fn project_overview_for_session(database: &Database, session_id: &str) -> Option<String> {
     let connection = database.read_connection();
-    let result = (|| -> crate::error::ArgmaxResult<Option<String>> {
-        let session = crate::persistence::sessions::find_session_by_id(&connection, session_id)?;
-        let workspace = crate::persistence::workspaces::find_workspace_by_id(
-            &connection,
-            &session.workspace_id,
-        )?;
-        let project =
-            crate::persistence::projects::require_project(&connection, &workspace.project_id)?;
+    let result = (|| -> argmax_contracts::error::ArgmaxResult<Option<String>> {
+        let session = argmax_store::sessions::find_session_by_id(&connection, session_id)?;
+        let workspace =
+            argmax_store::workspaces::find_workspace_by_id(&connection, &session.workspace_id)?;
+        let project = argmax_store::projects::require_project(&connection, &workspace.project_id)?;
         Ok(project
             .overview
             .and_then(|overview| overview.saved)
@@ -267,12 +262,10 @@ fn project_overview_for_session(database: &Database, session_id: &str) -> Option
 fn linked_roots_for_session(database: &Database, session_id: &str) -> Vec<LinkedRoot> {
     let connection = database.read_connection();
     let repos = (|| {
-        let session = crate::persistence::sessions::find_session_by_id(&connection, session_id)?;
-        let workspace = crate::persistence::workspaces::find_workspace_by_id(
-            &connection,
-            &session.workspace_id,
-        )?;
-        crate::persistence::linked_repos::list_workspace_linked_repos(&connection, &workspace.id)
+        let session = argmax_store::sessions::find_session_by_id(&connection, session_id)?;
+        let workspace =
+            argmax_store::workspaces::find_workspace_by_id(&connection, &session.workspace_id)?;
+        argmax_store::linked_repos::list_workspace_linked_repos(&connection, &workspace.id)
     })();
     match repos {
         Ok(repos) => repos
@@ -548,16 +541,16 @@ fn random_bearer_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
+    use crate::providers::model_catalogue::ModelId;
+    use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+    use crate::session_control::server::SessionLaunchServer;
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_store::{
         after_turn::{list_after_turn, ArchiveRequest, MoveDestinationRecord, MoveRequest},
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         sessions::{persist_session, PersistSessionInput},
         workspaces::{persist_workspace, PersistWorkspaceInput},
     };
-    use crate::providers::model_catalogue::ModelId;
-    use crate::providers::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
-    use crate::session_control::server::SessionLaunchServer;
-    use crate::sessions::state::SessionState;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
 
@@ -673,7 +666,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn every_issue_reads_the_projects_enabled_linked_roots_from_the_database() {
-        use crate::persistence::linked_repos::{
+        use argmax_store::linked_repos::{
             add_linked_repo, list_linked_repos, set_linked_repo_enabled, set_linked_repo_summary,
             LinkedRepoInput,
         };
@@ -739,7 +732,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn each_launch_reads_saved_overview_and_never_an_unapplied_draft() {
-        use crate::persistence::project_overviews::{
+        use argmax_store::project_overviews::{
             begin_generation, complete_generation, edit_overview, OverviewDocument, OverviewEdit,
         };
         let database = database_with_sessions(&["session-1"]);

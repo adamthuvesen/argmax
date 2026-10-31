@@ -13,27 +13,25 @@ use super::{
     },
     ProviderId,
 };
-use crate::sessions::state::SessionState;
-use crate::{
-    error::ArgmaxResult,
-    persistence::{
-        approvals::{
-            find_approval_by_provider_request, find_pending_approval, persist_approval,
-            ApprovalRequest, FindPendingApprovalInput, PersistApprovalInput,
-        },
-        events::{
-            has_provider_permission_event, persist_raw_output, persist_timeline_event,
-            PersistRawOutputInput, PersistTimelineEventInput, RawProviderOutput, TimelineEvent,
-        },
-        projects::ProjectSummary,
-        sessions::{
-            find_session_by_id, update_session_state, SessionStateInput, SessionSummary,
-            UsageCounts as PersistedUsageCounts,
-        },
-        time::now_iso,
-        usage::{insert_usage_event, InsertUsageEventInput},
-        workspaces::{update_workspace_state, WorkspaceSummary},
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::{
+    approvals::{
+        find_approval_by_provider_request, find_pending_approval, persist_approval,
+        ApprovalRequest, FindPendingApprovalInput, PersistApprovalInput,
     },
+    events::{
+        has_provider_permission_event, persist_raw_output, persist_timeline_event,
+        PersistRawOutputInput, PersistTimelineEventInput, RawProviderOutput, TimelineEvent,
+    },
+    projects::ProjectSummary,
+    sessions::{
+        find_session_by_id, update_session_state, SessionStateInput, SessionSummary,
+        UsageCounts as PersistedUsageCounts,
+    },
+    time::now_iso,
+    usage::{insert_usage_event, InsertUsageEventInput},
+    workspaces::{update_workspace_state, WorkspaceSummary},
 };
 
 #[derive(Debug)]
@@ -95,7 +93,7 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
-pub use crate::persistence::pending_messages::PendingMessage;
+pub use argmax_store::pending_messages::PendingMessage;
 
 #[derive(Debug)]
 pub struct ProviderEventFlushQueue {
@@ -120,7 +118,7 @@ pub struct QueueOutputResult {
 }
 
 fn attach_provider_invocation_id(
-    event: &mut crate::persistence::events::PersistTimelineEventInput,
+    event: &mut argmax_store::events::PersistTimelineEventInput,
     provider_invocation_id: &str,
 ) {
     if let Value::Object(payload) = &mut event.payload {
@@ -711,8 +709,7 @@ fn transition_session_attention(
     let session = update_session_state(connection, session_id, &input)?;
     let workspace_id = session.workspace_id.clone();
     delta.sessions.push(session);
-    let workspace =
-        crate::persistence::workspaces::find_workspace_by_id(connection, &workspace_id)?;
+    let workspace = argmax_store::workspaces::find_workspace_by_id(connection, &workspace_id)?;
     if !matches!(
         workspace.state.as_str(),
         "archiving" | "archive-failed" | "archived"
@@ -726,19 +723,19 @@ fn transition_session_attention(
     Ok(())
 }
 
-fn sqlite_error(error: rusqlite::Error) -> crate::error::ArgmaxError {
-    crate::error::ArgmaxError::service("SQLITE", error.to_string())
+fn sqlite_error(error: rusqlite::Error) -> argmax_contracts::error::ArgmaxError {
+    argmax_contracts::error::ArgmaxError::service("SQLITE", error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
+    use argmax_contracts::sessions::attention::AttentionState;
+    use argmax_store::{
         approvals::{list_approvals_for_session, list_pending_approvals, resolve_approval},
         database::Database,
         events::{list_session_events_since, PersistTimelineEventInput},
     };
-    use crate::sessions::attention::AttentionState;
     use serde_json::json;
 
     #[test]
@@ -777,7 +774,7 @@ mod tests {
 
     #[test]
     fn merge_from_concatenates_events_and_overrides_pending_messages() {
-        use crate::persistence::events::TimelineEvent;
+        use argmax_store::events::TimelineEvent;
         use std::collections::BTreeMap;
 
         let event = |id: &str| TimelineEvent {
@@ -786,7 +783,7 @@ mod tests {
             r#type: "message.delta".to_string(),
             message: String::new(),
             payload: serde_json::json!({}),
-            semantic: crate::persistence::timeline_semantics::derive(
+            semantic: argmax_store::timeline_semantics::derive(
                 "message.delta",
                 id,
                 &serde_json::json!({}),
@@ -809,7 +806,7 @@ mod tests {
             origin: None,
             recovery_status: None,
             queued_at: "2026-01-01T00:00:00Z".to_string(),
-            author: crate::persistence::authorship::PromptAuthor::unattested(),
+            author: argmax_store::authorship::PromptAuthor::unattested(),
         };
 
         let mut a = DashboardDelta {

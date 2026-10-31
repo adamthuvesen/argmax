@@ -8,24 +8,9 @@ use std::{
 };
 
 use crate::support::git_repo::{run_git, seed_git_repo};
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::sessions::state::SessionState;
 use argmax_lib::{
-    error::ArgmaxResult,
-    persistence::{
-        after_turn::{insert_after_turn, list_after_turn, AfterTurnAction, ArchiveRequest},
-        database::Database,
-        events::{persist_timeline_event, PersistTimelineEventInput, SESSION_EVENT_PAGE_LIMIT},
-        projects::{persist_project, PersistProjectInput, ProjectSettings},
-        session_messages::{
-            insert_session_message, NewSessionMessage, MAX_MESSAGE_BODY_CHARS, MESSAGE_KIND,
-        },
-        sessions::{
-            find_session_by_id, persist_session, record_session_launch, update_session_state,
-            PersistSessionInput, SessionStateInput, LAUNCH_KIND_AGENT,
-        },
-        time::now_iso,
-        workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
-    },
     providers::{
         flush_queue::DashboardDelta,
         runtime::{BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle},
@@ -37,6 +22,21 @@ use argmax_lib::{
         SESSION_LAUNCH_TOKEN_ENV,
     },
     workspaces::WorkspaceService,
+};
+use argmax_store::{
+    after_turn::{insert_after_turn, list_after_turn, AfterTurnAction, ArchiveRequest},
+    database::Database,
+    events::{persist_timeline_event, PersistTimelineEventInput, SESSION_EVENT_PAGE_LIMIT},
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    session_messages::{
+        insert_session_message, NewSessionMessage, MAX_MESSAGE_BODY_CHARS, MESSAGE_KIND,
+    },
+    sessions::{
+        find_session_by_id, persist_session, record_session_launch, update_session_state,
+        PersistSessionInput, SessionStateInput, LAUNCH_KIND_AGENT,
+    },
+    time::now_iso,
+    workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
 use serde_json::json;
 
@@ -2220,7 +2220,7 @@ async fn a_retried_launch_with_a_client_request_id_replays_instead_of_spending_a
         .to_string();
     assert!(first["launched"].get("replayed").is_none());
     // The receipt named the session before the provider started.
-    let receipt = argmax_lib::persistence::launch_receipts::find_receipt(
+    let receipt = argmax_store::launch_receipts::find_receipt(
         &database.read_connection(),
         "session-agent",
         "k1",
@@ -2331,7 +2331,7 @@ async fn a_launch_that_may_have_started_is_never_repeated_but_a_refused_one_can_
     } });
     let refused = harness.ask(bad.clone()).await;
     assert!(refused["error"]["code"].is_string(), "{refused}");
-    let receipt = argmax_lib::persistence::launch_receipts::find_receipt(
+    let receipt = argmax_store::launch_receipts::find_receipt(
         &database.read_connection(),
         "session-agent",
         "k-bad",
@@ -2405,7 +2405,7 @@ async fn waiting_on_one_named_child_still_hands_over_a_coalesced_batch_whole() {
                 },
             )
             .expect("individual row");
-            argmax_lib::persistence::session_messages::mark_message_delivered(
+            argmax_store::session_messages::mark_message_delivered(
                 &connection,
                 &format!("completion:{child}:{at}"),
             )
@@ -3000,12 +3000,12 @@ async fn a_scheduled_followup_is_a_one_shot_task_aimed_at_the_caller() {
 
     let routine = {
         let connection = harness.database.read_connection();
-        argmax_lib::persistence::routines::find_routine_by_id(&connection, followup_id)
+        argmax_store::routines::find_routine_by_id(&connection, followup_id)
             .expect("the follow-up is a scheduled task the user can see")
     };
     assert_eq!(
         routine.run_target,
-        argmax_lib::persistence::routines::RoutineRunTarget::SameSession
+        argmax_store::routines::RoutineRunTarget::SameSession
     );
     assert_eq!(
         routine.last_session_id.as_deref(),
@@ -3074,16 +3074,16 @@ async fn a_launch_check_in_leaves_a_wake_keyed_on_the_launched_session() {
     let routine_id = format!("check-in:{launched_id}");
     let routine = {
         let connection = harness.database.read_connection();
-        argmax_lib::persistence::routines::find_routine_by_id(&connection, &routine_id)
+        argmax_store::routines::find_routine_by_id(&connection, &routine_id)
             .expect("the launch left a check-in under the launched session's id")
     };
     assert_eq!(
         routine.run_target,
-        argmax_lib::persistence::routines::RoutineRunTarget::SameSession
+        argmax_store::routines::RoutineRunTarget::SameSession
     );
     assert_eq!(
         routine.created_by,
-        argmax_lib::persistence::routines::RoutineAuthor::Agent,
+        argmax_store::routines::RoutineAuthor::Agent,
         "a spent wake is deleted, not left paused in the user's task list"
     );
     assert_eq!(
@@ -3120,12 +3120,11 @@ async fn a_launch_check_in_leaves_a_wake_keyed_on_the_launched_session() {
     // What the completion notice does the moment the session reports back.
     {
         let connection = harness.database.connection();
-        argmax_lib::persistence::routines::delete_routine(&connection, &routine_id)
-            .expect("drop the wake");
+        argmax_store::routines::delete_routine(&connection, &routine_id).expect("drop the wake");
     }
     let connection = harness.database.read_connection();
     assert!(
-        argmax_lib::persistence::routines::find_routine_by_id(&connection, &routine_id).is_err(),
+        argmax_store::routines::find_routine_by_id(&connection, &routine_id).is_err(),
         "a delivered completion notice leaves no wake behind"
     );
 }
@@ -3196,9 +3195,9 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
             },
         )
         .expect("a second project");
-        argmax_lib::persistence::routines::upsert_routine(
+        argmax_store::routines::upsert_routine(
             &connection,
-            &argmax_lib::persistence::routines::UpsertRoutineInput {
+            &argmax_store::routines::UpsertRoutineInput {
                 id: "routine-elsewhere".to_string(),
                 name: "Nightly sync".to_string(),
                 project_id: "project-2".to_string(),
@@ -3206,12 +3205,12 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
                 provider: "codex".to_string(),
                 model_label: "GPT".to_string(),
                 model_id: "gpt-5.6-sol".to_string(),
-                run_target: argmax_lib::persistence::routines::RoutineRunTarget::Worktree,
+                run_target: argmax_store::routines::RoutineRunTarget::Worktree,
                 arc_id: None,
                 cron_expr: Some("0 3 * * *".to_string()),
                 run_once_at: None,
                 enabled: true,
-                created_by: argmax_lib::persistence::routines::RoutineAuthor::User,
+                created_by: argmax_store::routines::RoutineAuthor::User,
             },
             Some("2030-01-01T03:00:00.000Z".to_string()),
         )
@@ -3253,9 +3252,8 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
     assert_eq!(paused["scheduleCancelled"]["deleted"], false);
     {
         let connection = harness.database.read_connection();
-        let routine =
-            argmax_lib::persistence::routines::find_routine_by_id(&connection, &schedule_id)
-                .expect("a paused task is still the user's to resume");
+        let routine = argmax_store::routines::find_routine_by_id(&connection, &schedule_id)
+            .expect("a paused task is still the user's to resume");
         assert!(!routine.enabled);
         assert!(routine.next_run_at.is_none(), "a paused task is not due");
     }
@@ -3269,9 +3267,8 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
     );
     {
         let connection = harness.database.read_connection();
-        let routine =
-            argmax_lib::persistence::routines::find_routine_by_id(&connection, &schedule_id)
-                .expect("the resumed task");
+        let routine = argmax_store::routines::find_routine_by_id(&connection, &schedule_id)
+            .expect("the resumed task");
         assert!(routine.enabled);
         assert!(routine.next_run_at.is_some(), "a resumed task is due again");
     }
@@ -3291,8 +3288,7 @@ async fn a_schedule_can_be_listed_paused_resumed_or_deleted() {
     {
         let connection = harness.database.read_connection();
         assert!(
-            argmax_lib::persistence::routines::find_routine_by_id(&connection, &schedule_id)
-                .is_err(),
+            argmax_store::routines::find_routine_by_id(&connection, &schedule_id).is_err(),
             "a deleted task is gone"
         );
     }
@@ -3333,9 +3329,9 @@ async fn checks_and_terminals_refuse_cleanly_without_a_window() {
 /// would: canonical state plus a `referenced` link, which makes it primary.
 fn seed_session_pr(database: &Database, session_id: &str, pr_number: i64, pr_state: &str) {
     let connection = database.connection();
-    argmax_lib::persistence::gh::record_gh_pr_observation(
+    argmax_store::gh::record_gh_pr_observation(
         &connection,
-        &argmax_lib::persistence::gh::GhPrRecord {
+        &argmax_store::gh::GhPrRecord {
             session_id: session_id.to_string(),
             pr_number,
             head_sha: "feedface".to_string(),
@@ -3347,11 +3343,11 @@ fn seed_session_pr(database: &Database, session_id: &str, pr_number: i64, pr_sta
             pr_merged_at: None,
             head_ref_name: Some("feature/x".to_string()),
         },
-        argmax_lib::persistence::gh::PrAttribution::Explicit,
+        argmax_store::gh::PrAttribution::Explicit,
     )
     .expect("record PR")
     .expect("link PR");
-    argmax_lib::persistence::gh::store_pr_metadata(
+    argmax_store::gh::store_pr_metadata(
         &connection,
         session_id,
         pr_number,
@@ -3388,7 +3384,7 @@ async fn pr_watch_watches_the_primary_pr_and_pr_unwatch_removes_it() {
         "{response}"
     );
     let watch = |database: &Database| {
-        argmax_lib::persistence::pr_watches::find_pr_watch(
+        argmax_store::pr_watches::find_pr_watch(
             &database.read_connection(),
             "session-agent",
             "project-1",
@@ -3398,10 +3394,10 @@ async fn pr_watch_watches_the_primary_pr_and_pr_unwatch_removes_it() {
     };
     let first = watch(&database).expect("watch stored");
     assert!(!first.cleanup_on_merge);
-    argmax_lib::persistence::pr_watches::update_pr_watch_cursors(
+    argmax_store::pr_watches::update_pr_watch_cursors(
         &database.connection(),
         &first.id,
-        &argmax_lib::persistence::pr_watches::PrWatchCursors {
+        &argmax_store::pr_watches::PrWatchCursors {
             head_sha: "feedface".to_string(),
             seen_check_failures: vec!["build@feedface".to_string()],
             seen_feedback_ids: vec!["IC_1".to_string()],
@@ -3616,7 +3612,7 @@ fn persist_message(
 /// A prompt the person typed into the composer: the one thing that carries the
 /// person mark. Real traffic gets it from the IPC handlers; a test stands in.
 fn persist_person_message(database: &Database, session_id: &str, event_id: &str, message: &str) {
-    argmax_lib::persistence::events::persist_user_prompt(
+    argmax_store::events::persist_user_prompt(
         &database.connection(),
         &PersistTimelineEventInput {
             id: event_id.to_string(),
@@ -3626,9 +3622,7 @@ fn persist_person_message(database: &Database, session_id: &str, event_id: &str,
             payload: json!({}),
             created_at: None,
         },
-        argmax_lib::persistence::authorship::PromptAuthor::person(
-            argmax_lib::ipc::attest_person_for_tests(),
-        ),
+        argmax_store::authorship::PromptAuthor::person(argmax_lib::ipc::attest_person_for_tests()),
     )
     .expect("person prompt");
 }

@@ -3,16 +3,16 @@ use std::os::unix::fs::symlink;
 use std::sync::Arc;
 
 use crate::support::git_repo::{run_git, seed_git_repo};
-use argmax_lib::persistence::{
-    database::Database,
-    projects::{persist_project, PersistProjectInput, ProjectSettings},
-    workspaces::{persist_workspace, PersistWorkspaceInput},
-};
 use argmax_lib::review::git_review::{
     list_changed_files, list_changed_files_at_path, load_diff_at_path, update_file_index,
     ReviewBaseline, ReviewComparison,
 };
 use argmax_lib::workspaces::WorkspaceTargetKind;
+use argmax_store::{
+    database::Database,
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    workspaces::{persist_workspace, PersistWorkspaceInput},
+};
 
 /// Persist a project + a workspace whose `path` is the repo itself, so the
 /// database-backed review functions can be driven against a real git tree.

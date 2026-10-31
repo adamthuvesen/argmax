@@ -10,7 +10,7 @@ use std::{
     sync::Mutex,
 };
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 /// One saved key: a Keychain service name plus the words its errors use.
 pub struct KeychainSecret {

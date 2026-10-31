@@ -58,7 +58,7 @@ use self::{
     },
 };
 use super::ProviderId;
-use crate::persistence::events::PersistTimelineEventInput;
+use argmax_store::events::PersistTimelineEventInput;
 
 /// Providers whose headless output is Claude Code's stream-json: a
 /// `system/init` line, Anthropic `stream_event` content blocks, whole
@@ -321,15 +321,6 @@ pub struct PermissionGateInfo {
 }
 
 #[cfg(test)]
-pub trait EventNormalizer {
-    fn normalize(
-        &mut self,
-        provider: ProviderId,
-        event: ProviderOutputEvent,
-    ) -> NormalizedProviderResult;
-}
-
-#[cfg(test)]
 #[derive(Debug, Default)]
 pub struct Dispatcher {
     contexts: HashMap<String, NormalizerSessionContext>,
@@ -345,11 +336,8 @@ impl Dispatcher {
     pub fn context_mut(&mut self, session_id: &str) -> &mut NormalizerSessionContext {
         self.contexts.entry(session_id.to_string()).or_default()
     }
-}
 
-#[cfg(test)]
-impl EventNormalizer for Dispatcher {
-    fn normalize(
+    pub fn normalize(
         &mut self,
         provider: ProviderId,
         event: ProviderOutputEvent,

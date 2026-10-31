@@ -11,7 +11,6 @@ use super::{
     inputs::{UsageRemainingInput, UsageRouterCostInput, UsageSummaryInput},
     live_database, read_off_main,
 };
-use crate::error::ArgmaxResult;
 use crate::routing::cost::{router_cost, RouterCostSummary};
 use crate::state::AppState;
 use crate::usage::remaining::{
@@ -19,6 +18,7 @@ use crate::usage::remaining::{
 };
 use crate::usage::scanner::{spawn_sweep, ScanProgress};
 use crate::usage::{summary, UsageScanPhase, UsageScanState, UsageSummary, PRICING_AS_OF};
+use argmax_contracts::error::ArgmaxResult;
 
 #[tauri::command(rename = "usage:summary")]
 #[specta::specta]

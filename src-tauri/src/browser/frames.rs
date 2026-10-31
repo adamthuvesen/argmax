@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Webview};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 /// The isolated world the probe runs in. A named world is shared by every
 /// webview in the process for as long as one instance is alive.

@@ -1,6 +1,6 @@
 //! Remote transport adapter. Typed operations and exposure policy live in ipc::catalogue.
-use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
@@ -53,7 +53,7 @@ pub(crate) fn encode<T: Serialize>(value: T) -> ArgmaxResult<Value> {
 mod tests {
     use super::*;
     use crate::ipc::REGISTERED_CHANNELS;
-    use crate::persistence::Database;
+    use argmax_store::Database;
     use std::sync::Arc;
 
     #[tokio::test]

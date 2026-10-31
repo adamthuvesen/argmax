@@ -17,7 +17,7 @@ use super::super::{
     ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY, ARC_STATUS_BRIEF_CHARS,
     ARC_STATUS_MEMBER_LIMIT,
 };
-use crate::persistence::{arcs, database::Database, sessions::find_session_by_id, time::hours_ago};
+use argmax_store::{arcs, database::Database, sessions::find_session_by_id, time::hours_ago};
 
 /// Past this much `NOTES.md`, `arc_status` says so. The first real Arc let its
 /// notes reach 228 KB (~57k tokens) because the plan table and a running log

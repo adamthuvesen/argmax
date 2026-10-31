@@ -10,12 +10,9 @@ use super::{
     },
     PermissionMode, ProviderId, ProviderLaunchInput,
 };
-use crate::{
-    approvals::service::ApprovalService,
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::time::now_iso,
-    session_control::SessionLaunchProcessConfig,
-};
+use crate::{approvals::service::ApprovalService, session_control::SessionLaunchProcessConfig};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::time::now_iso;
 use serde_json::{json, Value};
 use std::{
     collections::VecDeque,
@@ -745,8 +742,8 @@ impl Drop for ControlHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::database::Database;
     use crate::providers::model_catalogue::ModelId;
+    use argmax_store::database::Database;
     fn launch_input(
         permission_mode: PermissionMode,
         agent_mode: super::super::AgentMode,

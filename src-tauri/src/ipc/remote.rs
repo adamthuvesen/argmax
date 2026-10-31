@@ -16,9 +16,9 @@ use tauri::{AppHandle, State};
 
 use super::inputs::*;
 use super::system::SystemOk;
-use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use crate::remote::{self, PushDevice, RemoteConfig};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 
 const TAILSCALE_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 

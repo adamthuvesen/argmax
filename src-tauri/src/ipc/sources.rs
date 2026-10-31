@@ -6,11 +6,9 @@ use super::{
     live_database, read_off_main,
     validation::{NonEmptyString, ProjectId},
 };
-use crate::{
-    error::ArgmaxResult,
-    persistence::project_sources::{self, ProjectSource, ProjectSourceAddedBy, SourceInput},
-    state::AppState,
-};
+use crate::state::AppState;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::project_sources::{self, ProjectSource, ProjectSourceAddedBy, SourceInput};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

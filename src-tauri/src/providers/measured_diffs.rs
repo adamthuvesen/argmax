@@ -28,9 +28,9 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{
     git::tree_snapshot::{diff_path_between_trees, dirty_paths, snapshot_worktree},
-    persistence::events::TimelineEvent,
     util::sync::LockOrRecover,
 };
+use argmax_store::events::TimelineEvent;
 
 /// One path's diff ceiling. A diff this large is a file rewrite, where the
 /// stat stops being the thing a reader wants and the payload cost is real.
@@ -337,11 +337,8 @@ mod tests {
     use serde_json::json;
 
     fn completion(payload: Value) -> TimelineEvent {
-        let semantic = crate::persistence::timeline_semantics::derive(
-            "command.completed",
-            "event-1",
-            &payload,
-        );
+        let semantic =
+            argmax_store::timeline_semantics::derive("command.completed", "event-1", &payload);
         TimelineEvent {
             id: "event-1".to_string(),
             session_id: "session-1".to_string(),

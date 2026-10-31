@@ -10,13 +10,11 @@ use reqwest::{redirect::Policy, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    providers::{
-        cloud::{CheckoutSnapshot, CloudEnvironment},
-        environment::build_provider_environment,
-    },
+use crate::providers::{
+    cloud::{CheckoutSnapshot, CloudEnvironment},
+    environment::build_provider_environment,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const CURSOR_API_BASE_URL: &str = "https://api.cursor.com/v1";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);

@@ -13,16 +13,12 @@ use super::super::{
     WAIT_POLL_INTERVAL,
 };
 use super::messaging::{session_task_label, to_inbox_messages};
-use crate::{
-    persistence::{
-        database::Database,
-        session_messages::{count_undelivered_messages, take_undelivered_messages},
-        sessions::{
-            find_session_by_id, mark_wait_reported, sessions_launched_by, wait_report_is_due,
-        },
-        time::now_iso,
-    },
-    providers::session_service::ProviderSessionService,
+use crate::providers::session_service::ProviderSessionService;
+use argmax_store::{
+    database::Database,
+    session_messages::{count_undelivered_messages, take_undelivered_messages},
+    sessions::{find_session_by_id, mark_wait_reported, sessions_launched_by, wait_report_is_due},
+    time::now_iso,
 };
 
 /// Block until something the caller cares about happens.

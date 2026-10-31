@@ -5,12 +5,12 @@
 use tauri::{AppHandle, State};
 
 use super::{live_database, read_off_main};
-use crate::error::ArgmaxResult;
 use crate::state::AppState;
 use crate::window_snapshot::shortcut::{
     configure, status, Settings, WindowSnapshotConfigureInput, WindowSnapshotState,
     WindowSnapshotStatus,
 };
+use argmax_contracts::error::ArgmaxResult;
 
 const SCREEN_RECORDING_SETTINGS_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";

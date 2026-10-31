@@ -1,11 +1,11 @@
 use crate::{
-    error::ArgmaxResult,
     state::AppState,
     visualizations::{
         self, tools::VisualizationSource, VisualizationArtifact, VisualizationMode,
         VisualizationRead, VisualizationWidgetState,
     },
 };
+use argmax_contracts::error::ArgmaxResult;
 use serde::Deserialize;
 use specta::Type;
 use tauri::{AppHandle, State};
@@ -88,7 +88,7 @@ pub(crate) async fn visualization_read_impl(
     input: VisualizationReadInput,
 ) -> ArgmaxResult<VisualizationRead> {
     let db = super::live_database(state)?;
-    crate::persistence::sessions::find_session_by_id(&db.read_connection(), &input.session_id)?;
+    argmax_store::sessions::find_session_by_id(&db.read_connection(), &input.session_id)?;
     let store = visualizations::tools::store(state)?;
     super::read_off_main(move || store.read(&input.session_id, &input.artifact_id)).await
 }
@@ -105,7 +105,7 @@ pub(crate) async fn visualization_set_state_impl(
     input: VisualizationSetStateInput,
 ) -> ArgmaxResult<VisualizationWidgetState> {
     let db = super::live_database(state)?;
-    crate::persistence::sessions::find_session_by_id(&db.read_connection(), &input.session_id)?;
+    argmax_store::sessions::find_session_by_id(&db.read_connection(), &input.session_id)?;
     let store = visualizations::tools::store(state)?;
     super::read_off_main(move || {
         store.set_state(&input.session_id, &input.artifact_id, input.state)
@@ -183,7 +183,7 @@ pub(crate) async fn visualization_set_controls_impl(
     input: VisualizationSetControlsInput,
 ) -> ArgmaxResult<visualizations::VisualizationControlValues> {
     let db = super::live_database(state)?;
-    crate::persistence::sessions::find_session_by_id(&db.read_connection(), &input.session_id)?;
+    argmax_store::sessions::find_session_by_id(&db.read_connection(), &input.session_id)?;
     let store = visualizations::tools::store(state)?;
     super::read_off_main(move || {
         store.set_controls(&input.session_id, &input.artifact_id, input.control_values)

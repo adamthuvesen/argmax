@@ -17,8 +17,10 @@ use std::sync::{
 };
 use std::{path::PathBuf, process::Command, time::Duration};
 
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::attention::AttentionState;
+use argmax_contracts::sessions::state::SessionState;
 use argmax_lib::approvals::service::ApprovalService;
-use argmax_lib::error::{ArgmaxError, ArgmaxResult};
 use argmax_lib::goals::service::{GoalService, GoalSetInput};
 use argmax_lib::ipc::inputs::{
     ComposerAttachmentInput, ProvidersLaunchInput, ProvidersSendInput,
@@ -26,13 +28,24 @@ use argmax_lib::ipc::inputs::{
     TerminalRows,
 };
 use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
-use argmax_lib::persistence::goals::find_active_goal_for_session;
-use argmax_lib::persistence::session_messages::{
+use argmax_lib::providers::runtime::{
+    BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
+    ProviderRuntimeEventType, ProviderRuntimeHandle,
+};
+use argmax_lib::providers::session_service::{
+    GoalTurnIdentity, MessageOrigin, ProviderSessionService, TURN_IN_FLIGHT,
+};
+use argmax_lib::providers::{
+    flush_queue::DashboardDelta, normalizer::ProviderOutputStream, ProviderLaunchInput,
+};
+use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
+use argmax_store::goals::find_active_goal_for_session;
+use argmax_store::session_messages::{
     count_undelivered_messages, insert_session_message, take_undelivered_messages,
     NewSessionMessage, MESSAGE_KIND,
 };
-use argmax_lib::persistence::time::now_iso;
-use argmax_lib::persistence::{
+use argmax_store::time::now_iso;
+use argmax_store::{
     approvals::{list_approvals_for_session, persist_approval, PersistApprovalInput},
     database::Database,
     events::{
@@ -47,19 +60,6 @@ use argmax_lib::persistence::{
     },
     workspaces::{persist_workspace, PersistWorkspaceInput},
 };
-use argmax_lib::providers::runtime::{
-    BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
-    ProviderRuntimeEventType, ProviderRuntimeHandle,
-};
-use argmax_lib::providers::session_service::{
-    GoalTurnIdentity, MessageOrigin, ProviderSessionService, TURN_IN_FLIGHT,
-};
-use argmax_lib::providers::{
-    flush_queue::DashboardDelta, normalizer::ProviderOutputStream, ProviderLaunchInput,
-};
-use argmax_lib::sessions::attention::AttentionState;
-use argmax_lib::sessions::state::SessionState;
-use argmax_lib::workspaces::lifecycle::WorkspaceLifecycle;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -1655,12 +1655,8 @@ async fn send_queued_message_now_keeps_the_origin_of_an_agents_message() {
         .expect("the promoted user.message");
     assert_eq!(sent.payload["origin"]["sessionId"], "session-sender");
     assert!(
-        !argmax_lib::persistence::events::human_prompt_references_session(
-            &connection,
-            &session.id,
-            "other"
-        )
-        .expect("grant check"),
+        !argmax_store::events::human_prompt_references_session(&connection, &session.id, "other")
+            .expect("grant check"),
         "an agent's message promoted by Send now must not grant its chat reference"
     );
 }
@@ -1670,7 +1666,7 @@ fn chip(target: &str) -> String {
 }
 
 fn grants(database: &Database, session_id: &str, target: &str) -> bool {
-    argmax_lib::persistence::events::human_prompt_references_session(
+    argmax_store::events::human_prompt_references_session(
         &database.connection(),
         session_id,
         target,
@@ -2108,17 +2104,14 @@ async fn queued_cross_provider_switch_runs_under_the_chosen_provider_when_it_dra
     assert_eq!(launches[1].model_label, "GPT-5.5");
     assert_eq!(launches[1].model_id, "gpt-5.5");
     let connection = database.read_connection();
-    let stored = argmax_lib::persistence::sessions::find_session_by_id(&connection, &session.id)
-        .expect("session");
+    let stored =
+        argmax_store::sessions::find_session_by_id(&connection, &session.id).expect("session");
     assert_eq!(stored.provider, "codex");
     assert_eq!(stored.model_id, "gpt-5.5");
     assert!(
-        argmax_lib::persistence::pending_messages::list_session_pending_messages(
-            &connection,
-            &session.id
-        )
-        .expect("queue")
-        .is_empty(),
+        argmax_store::pending_messages::list_session_pending_messages(&connection, &session.id)
+            .expect("queue")
+            .is_empty(),
         "the drained row leaves the durable queue"
     );
 }

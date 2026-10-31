@@ -8,23 +8,23 @@ use std::sync::{Arc, LazyLock, Mutex};
 use rusqlite::OptionalExtension;
 use serde_json::Value;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
 use crate::git::ops::{
     extract_github_remote_from_url, extract_pr_number, extract_pr_url, parse_github_remote,
 };
-use crate::persistence::database::Database;
-use crate::persistence::gh::{
+use crate::util::gh_runner::{default_gh_runner, GhRunner};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::database::Database;
+use argmax_store::gh::{
     list_gh_pr_for_session, list_refreshable_pr_numbers_for_session, pr_branch_for_session,
     record_gh_pr_observation, record_pr_refresh_error, record_session_pr_evidence,
     retract_stale_inferred_branch_prs, store_gh_pr_observation, store_pr_metadata, GhPrRecord,
     PrAttribution, SESSION_PR_EVIDENCE_PARSER_VERSION,
 };
-use crate::persistence::projects::ProjectRemote;
-use crate::persistence::sessions::find_session_by_id;
-use crate::persistence::time::now_iso;
-use crate::persistence::workspaces::find_workspace_by_id;
-use crate::util::gh_runner::{default_gh_runner, GhRunner};
+use argmax_store::projects::ProjectRemote;
+use argmax_store::sessions::find_session_by_id;
+use argmax_store::time::now_iso;
+use argmax_store::workspaces::find_workspace_by_id;
 
 const PR_JSON_FIELDS: &str =
     "number,title,headRefOid,headRefName,headRepositoryOwner,state,statusCheckRollup,createdAt,mergedAt,url";
@@ -76,8 +76,7 @@ impl GhService {
     pub fn list_for_session(&self, session_id: &str) -> ArgmaxResult<Vec<GhPrRecord>> {
         let conn = self.database.read_connection();
         let session = find_session_by_id(&conn, session_id)?;
-        if !crate::persistence::project_folders::workspace_tracks_prs(&conn, &session.workspace_id)?
-        {
+        if !argmax_store::project_folders::workspace_tracks_prs(&conn, &session.workspace_id)? {
             return Ok(Vec::new());
         }
         list_gh_pr_for_session(&conn, session_id)
@@ -97,10 +96,7 @@ impl GhService {
             let conn = self.database.connection();
             let session = find_session_by_id(&conn, session_id)?;
             let workspace = find_workspace_by_id(&conn, &session.workspace_id)?;
-            crate::persistence::project_folders::assert_workspace_pr_repository(
-                &conn,
-                &workspace.id,
-            )?;
+            argmax_store::project_folders::assert_workspace_pr_repository(&conn, &workspace.id)?;
             retract_stale_inferred_branch_prs(&conn, session_id)?;
             // CLOSED is refreshable because GitHub permits reopening it.
             // Ordering by the last attempt keeps this bounded pass fair even
@@ -431,7 +427,7 @@ impl GhService {
         )?;
         if let Some(url) = parsed.url.as_deref() {
             if let Some(remote) = crate::git::ops::extract_github_remote_from_url(url) {
-                let _ = crate::persistence::projects::update_project_remote(
+                let _ = argmax_store::projects::update_project_remote(
                     &conn,
                     workspace_project_id,
                     Some(&remote),
@@ -447,14 +443,14 @@ impl GhService {
 /// watch keeps polling it, so `gh` then runs in the project's own checkout.
 pub(crate) fn gh_working_directory(
     connection: &rusqlite::Connection,
-    workspace: &crate::persistence::workspaces::WorkspaceSummary,
+    workspace: &argmax_store::workspaces::WorkspaceSummary,
 ) -> ArgmaxResult<String> {
-    crate::persistence::project_folders::assert_workspace_pr_repository(connection, &workspace.id)?;
+    argmax_store::project_folders::assert_workspace_pr_repository(connection, &workspace.id)?;
     if workspace.path.is_empty() || std::path::Path::new(&workspace.path).is_dir() {
         return Ok(workspace.path.clone());
     }
     Ok(
-        crate::persistence::project_folders::require_workspace_project(connection, &workspace.id)?
+        argmax_store::project_folders::require_workspace_project(connection, &workspace.id)?
             .repo_path,
     )
 }
@@ -475,9 +471,9 @@ fn canonical_successfully_refreshed_after(
             )
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?
+        .map_err(argmax_store::sqlite_error)?
         .query_row((project_id, pr_number, started_at), |row| row.get(0))
-        .map_err(crate::persistence::sqlite_error)
+        .map_err(argmax_store::sqlite_error)
 }
 
 /// GitHub PR numbers mentioned in a completed tool event's stdout. Used to
@@ -565,9 +561,9 @@ pub fn repair_session_pr_evidence(
             WHERE sessions.id = ?1
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?
+        .map_err(argmax_store::sqlite_error)?
         .query_row([session_id], |row| row.get::<_, String>(0))
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     scan_session_pr_evidence(connection, session_id, &project_id)
 }
 
@@ -582,10 +578,10 @@ fn scan_session_pr_evidence(
             [session_id],
             |row| row.get(0),
         )
-        .map_err(crate::persistence::sqlite_error)?;
-    crate::persistence::project_folders::assert_workspace_pr_repository(connection, &workspace_id)?;
+        .map_err(argmax_store::sqlite_error)?;
+    argmax_store::project_folders::assert_workspace_pr_repository(connection, &workspace_id)?;
     let project_remote =
-        crate::persistence::project_folders::workspace_remote(connection, &workspace_id)?;
+        argmax_store::project_folders::workspace_remote(connection, &workspace_id)?;
     let Some(project_remote) = project_remote else {
         // A successful `gh pr view` will populate the remote, then refresh
         // calls this scanner again before advancing the cursor.
@@ -600,7 +596,7 @@ fn scan_session_pr_evidence(
             WHERE session_id = ?1
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?
+        .map_err(argmax_store::sqlite_error)?
         .query_row([session_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -609,7 +605,7 @@ fn scan_session_pr_evidence(
             ))
         })
         .optional()
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     let (latest_event_rowid, latest_change_sequence, pruned_change_sequence) = connection
         .prepare_cached(
             r#"
@@ -619,7 +615,7 @@ fn scan_session_pr_evidence(
               COALESCE((SELECT pruned_through FROM session_change_watermarks WHERE session_id = ?1), 0)
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?
+        .map_err(argmax_store::sqlite_error)?
         .query_row([session_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -627,7 +623,7 @@ fn scan_session_pr_evidence(
                 row.get::<_, i64>(2)?,
             ))
         })
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     let (last_event_rowid, last_change_sequence, parser_version) = progress.unwrap_or((0, 0, 0));
     let change_history_was_pruned =
         last_change_sequence > 0 && last_change_sequence < pruned_change_sequence;
@@ -704,7 +700,7 @@ fn scan_session_pr_evidence(
                 )
                 "#,
             )
-            .map_err(crate::persistence::sqlite_error)?
+            .map_err(argmax_store::sqlite_error)?
             .query_row(
                 (
                     session_id,
@@ -714,7 +710,7 @@ fn scan_session_pr_evidence(
                 ),
                 |row| row.get::<_, bool>(0),
             )
-            .map_err(crate::persistence::sqlite_error)?
+            .map_err(argmax_store::sqlite_error)?
     };
     let full_scan = progress.is_none()
         || parser_changed
@@ -752,7 +748,7 @@ fn scan_session_pr_evidence(
             ORDER BY events.rowid ASC
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     let mut rows = statement
         .query((
             session_id,
@@ -762,18 +758,18 @@ fn scan_session_pr_evidence(
             latest_event_rowid,
             latest_change_sequence,
         ))
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     let mut events = Vec::new();
-    while let Some(row) = rows.next().map_err(crate::persistence::sqlite_error)? {
+    while let Some(row) = rows.next().map_err(argmax_store::sqlite_error)? {
         events.push((
             row.get::<_, String>(1)
-                .map_err(crate::persistence::sqlite_error)?,
+                .map_err(argmax_store::sqlite_error)?,
             row.get::<_, String>(2)
-                .map_err(crate::persistence::sqlite_error)?,
+                .map_err(argmax_store::sqlite_error)?,
             row.get::<_, String>(3)
-                .map_err(crate::persistence::sqlite_error)?,
+                .map_err(argmax_store::sqlite_error)?,
             row.get::<_, String>(4)
-                .map_err(crate::persistence::sqlite_error)?,
+                .map_err(argmax_store::sqlite_error)?,
         ));
     }
     drop(rows);
@@ -859,7 +855,7 @@ fn scan_session_pr_evidence(
               scanned_at = excluded.scanned_at
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?
+        .map_err(argmax_store::sqlite_error)?
         .execute((
             session_id,
             latest_event_rowid,
@@ -867,7 +863,7 @@ fn scan_session_pr_evidence(
             SESSION_PR_EVIDENCE_PARSER_VERSION,
             now_iso(),
         ))
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     Ok(numbers)
 }
 
@@ -885,12 +881,12 @@ fn evidence_needs_update(
             WHERE session_id = ?1 AND pr_number = ?2 AND source_id = ?3
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?
+        .map_err(argmax_store::sqlite_error)?
         .query_row((session_id, pr_number, source_id), |row| {
             row.get::<_, String>(0)
         })
         .optional()
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     Ok(existing.is_none_or(|existing| {
         relationship_strength(relationship) > relationship_strength(&existing)
     }))
@@ -1000,14 +996,14 @@ fn correlated_command_from_started_event(
             LIMIT 1
             "#,
         )
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     let payload_json = statement
         .query_row(
             (session_id, correlation_id, provider_invocation_id),
             |row| row.get::<_, String>(0),
         )
         .optional()
-        .map_err(crate::persistence::sqlite_error)?;
+        .map_err(argmax_store::sqlite_error)?;
     Ok(payload_json
         .and_then(|json| serde_json::from_str::<Value>(&json).ok())
         .and_then(|payload| command_from_payload(&payload)))
@@ -1985,11 +1981,11 @@ fn matches_checkout_owner(candidate: &PrViewResponse, checkout_owner: Option<&st
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::sessions::{persist_session, PersistSessionInput};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
-    use crate::sessions::state::SessionState;
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_store::events::{persist_timeline_event, PersistTimelineEventInput};
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::sessions::{persist_session, PersistSessionInput};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use tempfile::TempDir;
@@ -2306,10 +2302,10 @@ mod tests {
         let rows = service.refresh(&session_id).await.expect("refresh");
         assert_eq!(rows.len(), 1);
         let conn = database.connection();
-        let remote = crate::persistence::projects::get_project_remote(&conn, "p1").unwrap();
+        let remote = argmax_store::projects::get_project_remote(&conn, "p1").unwrap();
         assert_eq!(
             remote,
-            Some(crate::persistence::projects::ProjectRemote {
+            Some(argmax_store::projects::ProjectRemote {
                 owner: "my-org".to_string(),
                 name: "my-repo".to_string(),
             })
@@ -2381,8 +2377,7 @@ mod tests {
         assert_eq!(rows[0].pr_number, 210);
         assert_eq!(rows[0].pr_state.as_deref(), Some("OPEN"));
         let conn = database.connection();
-        let prs =
-            crate::persistence::gh::list_session_prs(&conn, &session_id).expect("list session PRs");
+        let prs = argmax_store::gh::list_session_prs(&conn, &session_id).expect("list session PRs");
         assert_eq!(prs.len(), 1);
         assert_eq!(prs[0].pr_number, 210);
     }
@@ -2438,7 +2433,7 @@ mod tests {
         assert!(rows.is_empty());
         assert_eq!(stub.call_count(), 2);
         let conn = database.connection();
-        assert!(crate::persistence::gh::list_session_prs(&conn, &session_id)
+        assert!(argmax_store::gh::list_session_prs(&conn, &session_id)
             .expect("list session PRs")
             .is_empty());
     }
@@ -2769,7 +2764,7 @@ mod tests {
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-from-command");
         {
             let conn = database.connection();
-            crate::persistence::projects::update_project_remote(
+            argmax_store::projects::update_project_remote(
                 &conn,
                 "p1",
                 Some(&ProjectRemote {
@@ -2829,7 +2824,7 @@ mod tests {
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-foreign-command");
         {
             let conn = database.connection();
-            crate::persistence::projects::update_project_remote(
+            argmax_store::projects::update_project_remote(
                 &conn,
                 "p1",
                 Some(&ProjectRemote {
@@ -3030,7 +3025,7 @@ printf 'saved\n'"#;
         let (_dir, database) = open_db();
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-evidence-repair");
         let conn = database.connection();
-        crate::persistence::projects::update_project_remote(
+        argmax_store::projects::update_project_remote(
             &conn,
             "p1",
             Some(&ProjectRemote {
@@ -3079,7 +3074,7 @@ printf 'saved\n'"#;
         assert!(repair_session_pr_evidence(&conn, &session_id)
             .unwrap()
             .is_empty());
-        let prs = crate::persistence::gh::list_session_prs(&conn, &session_id).unwrap();
+        let prs = argmax_store::gh::list_session_prs(&conn, &session_id).unwrap();
         assert_eq!(prs.len(), 1);
         assert_eq!(prs[0].relationship, "worked");
         let evidence_count: i64 = conn
@@ -3095,7 +3090,7 @@ printf 'saved\n'"#;
         let (_dir, database) = open_db();
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-provider-results");
         let conn = database.connection();
-        crate::persistence::projects::update_project_remote(
+        argmax_store::projects::update_project_remote(
             &conn,
             "p1",
             Some(&ProjectRemote {
@@ -3140,7 +3135,7 @@ printf 'saved\n'"#;
             repair_session_pr_evidence(&conn, &session_id).unwrap(),
             vec![762, 763]
         );
-        let prs = crate::persistence::gh::list_session_prs(&conn, &session_id).unwrap();
+        let prs = argmax_store::gh::list_session_prs(&conn, &session_id).unwrap();
         assert_eq!(prs.len(), 2);
         assert!(prs.iter().all(|pr| pr.relationship == "worked"));
         assert!(prs.iter().all(|pr| pr.pr_number != 123));
@@ -3151,7 +3146,7 @@ printf 'saved\n'"#;
         let (_dir, database) = open_db();
         let (session_id, _) = fixture(&database, "/tmp/argmax-gh-late-command");
         let conn = database.connection();
-        crate::persistence::projects::update_project_remote(
+        argmax_store::projects::update_project_remote(
             &conn,
             "p1",
             Some(&ProjectRemote {
@@ -3183,7 +3178,7 @@ printf 'saved\n'"#;
             vec![42]
         );
         assert_eq!(
-            crate::persistence::gh::list_session_prs(&conn, &session_id).unwrap()[0].relationship,
+            argmax_store::gh::list_session_prs(&conn, &session_id).unwrap()[0].relationship,
             "unverified"
         );
 
@@ -3210,7 +3205,7 @@ printf 'saved\n'"#;
             repair_session_pr_evidence(&conn, &session_id).unwrap(),
             vec![42]
         );
-        let prs = crate::persistence::gh::list_session_prs(&conn, &session_id).unwrap();
+        let prs = argmax_store::gh::list_session_prs(&conn, &session_id).unwrap();
         assert_eq!(prs[0].relationship, "worked");
         assert_eq!(
             prs[0].activity_at, "2026-05-24T10:00:00Z",
@@ -3253,7 +3248,7 @@ printf 'saved\n'"#;
             repair_session_pr_evidence(&conn, &session_id).unwrap(),
             vec![48]
         );
-        let prs = crate::persistence::gh::list_session_prs(&conn, &session_id).unwrap();
+        let prs = argmax_store::gh::list_session_prs(&conn, &session_id).unwrap();
         let viewed_pr = prs
             .iter()
             .find(|pr| pr.pr_number == 48)

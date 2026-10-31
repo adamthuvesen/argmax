@@ -14,12 +14,12 @@ use specta::Type;
 
 use super::{parse_tier, table::AutoTier};
 use crate::application::validation::ProviderId;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::sqlite_error;
 use crate::providers::pricing::{cost_of, list_price, UsageCounts};
 use crate::providers::runtime::parse_provider;
 use crate::usage::cursor::{cursor_rates, estimate_calls};
 use crate::usage::{summary::bucket_starts, UsageWindow};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sqlite_error;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -735,7 +735,7 @@ mod tests {
     use chrono::TimeZone;
 
     use super::*;
-    use crate::persistence::database::Database;
+    use argmax_store::database::Database;
 
     fn now() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 9, 27, 12, 0, 0).unwrap()

@@ -14,16 +14,14 @@ use super::{
     follow_up::{compose_follow_up_prompt, compose_follow_up_prompt_since},
     LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
 };
-use crate::{
-    error::ArgmaxError,
-    persistence::{
-        continuity::{find_binding, list_bindings, BindingState},
-        database::Database,
-        events::{persist_timeline_event, PersistTimelineEventInput},
-        sessions::{
-            clear_session_conversation, find_session_by_id, update_session_provider,
-            update_session_provider_conversation_id, SessionProviderInput,
-        },
+use argmax_contracts::error::ArgmaxError;
+use argmax_store::{
+    continuity::{find_binding, list_bindings, BindingState},
+    database::Database,
+    events::{persist_timeline_event, PersistTimelineEventInput},
+    sessions::{
+        clear_session_conversation, find_session_by_id, update_session_provider,
+        update_session_provider_conversation_id, SessionProviderInput,
     },
 };
 
@@ -436,20 +434,14 @@ fn a_steered_message_never_becomes_a_codex_turn_boundary() {
         Some("u1")
     );
     assert_eq!(
-        crate::persistence::continuity::binding_turn(&connection, "s1", "codex", "thread-1", "u1")
+        argmax_store::continuity::binding_turn(&connection, "s1", "codex", "thread-1", "u1")
             .unwrap()
             .as_deref(),
         Some("turn-1")
     );
     assert_eq!(
-        crate::persistence::continuity::binding_turn(
-            &connection,
-            "s1",
-            "codex",
-            "thread-1",
-            "steer1"
-        )
-        .unwrap(),
+        argmax_store::continuity::binding_turn(&connection, "s1", "codex", "thread-1", "steer1")
+            .unwrap(),
         None
     );
 }
@@ -549,7 +541,7 @@ fn the_migration_seed_skips_children_that_still_hold_their_sources_id() {
         .execute("DELETE FROM provider_bindings", [])
         .unwrap();
 
-    let migration = crate::persistence::continuity::MIGRATION_SQL;
+    let migration = argmax_store::continuity::MIGRATION_SQL;
     let seed = &migration[migration.find("INSERT INTO provider_bindings").unwrap()..];
     connection
         .execute_batch(&seed[..=seed.find(';').unwrap()])

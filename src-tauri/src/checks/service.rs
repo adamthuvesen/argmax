@@ -20,17 +20,17 @@ use tokio::{
 use uuid::Uuid;
 
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::ops::checkout_write_lock;
-use crate::persistence::checks::{
-    persist_check, update_check, CheckRun, PersistCheckInput, UpdateCheckInput,
-};
-use crate::persistence::database::Database;
-use crate::persistence::time::now_iso;
-use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::login_shell;
 use crate::util::process_control::terminate_process_group_with_escalation;
 use crate::workspaces::lifecycle::WorkspaceLifecycle;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::checks::{
+    persist_check, update_check, CheckRun, PersistCheckInput, UpdateCheckInput,
+};
+use argmax_store::database::Database;
+use argmax_store::time::now_iso;
+use argmax_store::workspaces::find_workspace_by_id;
 
 /// Hard wall-clock cap. Matches `CHECK_DEFAULT_TIMEOUT_MS` in the TS.
 pub const DEFAULT_TIMEOUT_MS: u64 = 5 * 60 * 1000;
@@ -438,8 +438,8 @@ fn filtered_env() -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use tempfile::TempDir;
 
     fn setup() -> (Arc<Database>, String, TempDir, TempDir) {

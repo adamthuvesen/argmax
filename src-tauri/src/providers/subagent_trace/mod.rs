@@ -14,19 +14,17 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use super::ProviderId;
-use crate::{
-    error::ArgmaxResult,
-    persistence::{
-        database::Database,
-        events::{
-            completion_id_for_payload, find_event_by_id, list_session_agent_events,
-            list_session_native_agent_events, persist_timeline_event_if_absent,
-            tool_use_id_for_payload, update_event_payload, upgrade_trace_no_output_completion,
-            PersistTimelineEventInput,
-        },
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::{
+    database::Database,
+    events::{
+        completion_id_for_payload, find_event_by_id, list_session_agent_events,
+        list_session_native_agent_events, persist_timeline_event_if_absent,
+        tool_use_id_for_payload, update_event_payload, upgrade_trace_no_output_completion,
+        PersistTimelineEventInput,
     },
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 
 use self::cache::{
@@ -423,7 +421,7 @@ fn agent_trace_context(
 mod tests {
     use super::test_support::*;
     use super::*;
-    use crate::persistence::database::Database;
+    use argmax_store::database::Database;
     use serde_json::json;
 
     #[test]

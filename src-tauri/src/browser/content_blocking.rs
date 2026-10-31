@@ -10,8 +10,8 @@ use specta::Type;
 use tauri::Url;
 use tauri::{AppHandle, Manager};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::read_off_main;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const SETTINGS_FILE: &str = "browser-content-blocking.json";
 

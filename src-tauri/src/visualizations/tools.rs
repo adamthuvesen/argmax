@@ -1,17 +1,15 @@
 use super::{store::VisualizationStore, VisualizationArtifact, VisualizationMode};
 use crate::providers::flush_queue::DashboardDelta;
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        events::{
-            event_rowid_in_session, persist_timeline_event_if_absent, turn_origin_event,
-            visualization_is_published, PersistTimelineEventInput,
-        },
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
-        Database,
+use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    events::{
+        event_rowid_in_session, persist_timeline_event_if_absent, turn_origin_event,
+        visualization_is_published, PersistTimelineEventInput,
     },
-    state::AppState,
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
+    Database,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
 use rmcp::schemars;
@@ -255,12 +253,12 @@ pub async fn publish(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_store::{
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         sessions::{persist_session, PersistSessionInput},
         workspaces::{persist_workspace, PersistWorkspaceInput},
     };
-    use crate::sessions::state::SessionState;
     fn state(root: &Path) -> AppState {
         let state = AppState::new();
         state.app_data_dir.set(root.to_path_buf()).unwrap();
@@ -343,20 +341,16 @@ mod tests {
         let db = state.db.get().unwrap();
         let count:i64=db.read_connection().query_row("SELECT COUNT(*) FROM events WHERE session_id='s' AND type='visualization.published'",[],|row|row.get(0)).unwrap();
         assert_eq!(count, 1);
-        let events = crate::persistence::events::list_session_events_since(
-            &db.read_connection(),
-            "s",
-            None,
-            None,
-        )
-        .unwrap();
+        let events =
+            argmax_store::events::list_session_events_since(&db.read_connection(), "s", None, None)
+                .unwrap();
         let event = events
             .events
             .iter()
             .find(|event| event.r#type == "visualization.published")
             .unwrap();
         assert!(
-            matches!(&event.semantic.event,crate::persistence::timeline_semantics::SemanticEvent::Visualization{artifact_id,..} if artifact_id==&preview.draft_id)
+            matches!(&event.semantic.event,argmax_store::timeline_semantics::SemanticEvent::Visualization{artifact_id,..} if artifact_id==&preview.draft_id)
         );
         assert!(publish(&state, "missing", &preview.draft_id).await.is_err());
     }
@@ -389,7 +383,7 @@ mod tests {
     }
     #[tokio::test]
     async fn legacy_identity_survives_cross_client_and_two_history_copies() {
-        use crate::persistence::events::{persist_copied_event, persist_timeline_event};
+        use argmax_store::events::{persist_copied_event, persist_timeline_event};
         let dir = tempfile::tempdir().unwrap();
         let state = state(dir.path());
         let db = state.db.get().unwrap();

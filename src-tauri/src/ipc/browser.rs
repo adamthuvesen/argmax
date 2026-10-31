@@ -30,8 +30,8 @@ use crate::browser::registry::BrowserTabsEvent;
 use crate::browser::tabs::*;
 pub use crate::browser::tabs::{BrowserNewTabEvent, BrowserPageCommandEvent, BrowserStateEvent};
 use crate::browser::{encode_base64, eval, snapshot_image, CaptureRect};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]

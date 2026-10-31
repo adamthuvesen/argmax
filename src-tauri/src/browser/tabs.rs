@@ -10,8 +10,8 @@ use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Url, Webv
 use crate::browser::registry::{self, BrowserAgentOpenEvent, BrowserTabRegistry};
 use crate::browser::user_agent;
 use crate::browser::user_scripts::{PageScript, ScriptWorld};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

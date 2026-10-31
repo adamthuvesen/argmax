@@ -6,14 +6,14 @@ use tauri::State;
 
 use super::validation::ProjectId;
 use super::{live_database, read_off_main};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::{
+use crate::providers::one_shot::ProjectOverviewAnswer;
+use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
     project_overviews as store,
     projects::{require_project, ProjectSummary},
     Database,
 };
-use crate::providers::one_shot::ProjectOverviewAnswer;
-use crate::state::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -190,7 +190,7 @@ async fn generate(
         let connection = request_database.read_connection();
         Ok((
             require_project(&connection, &id)?.name,
-            crate::persistence::project_folders::list_project_folders(&connection, &id)?,
+            argmax_store::project_folders::list_project_folders(&connection, &id)?,
         ))
     })
     .await?;
@@ -218,7 +218,7 @@ async fn generate(
                 "context"
             }
         );
-        let repo = crate::persistence::linked_repos::LinkedRepo {
+        let repo = argmax_store::linked_repos::LinkedRepo {
             id: folder.id.clone(),
             project_id: folder.project_id,
             name: folder.name,

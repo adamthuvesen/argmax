@@ -9,7 +9,10 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use argmax_lib::persistence::{
+use argmax_lib::providers::flush_queue::DashboardDelta;
+use argmax_lib::sync::{run_sync, SyncConfig, WINDOW_24H, WINDOW_7D};
+use argmax_lib::workspaces::WorkspaceService;
+use argmax_store::{
     database::Database,
     events::list_session_events_since,
     projects::{persist_project, PersistProjectInput, ProjectSettings},
@@ -17,12 +20,9 @@ use argmax_lib::persistence::{
     synced::{list_synced_sessions, mark_synced_session_adopted},
     workspaces::list_workspaces,
 };
-use argmax_lib::providers::flush_queue::DashboardDelta;
-use argmax_lib::sync::{run_sync, SyncConfig, WINDOW_24H, WINDOW_7D};
-use argmax_lib::workspaces::WorkspaceService;
 
 use crate::support::git_repo::seed_git_repo;
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::sessions::state::SessionState;
 
 const PROJECT_ID: &str = "p-sync-test";
 
@@ -137,7 +137,7 @@ impl Harness {
         .expect("sync")
     }
 
-    fn sessions(&self) -> Vec<argmax_lib::persistence::sessions::SessionSummary> {
+    fn sessions(&self) -> Vec<argmax_store::sessions::SessionSummary> {
         let connection = self.database.connection();
         list_sessions_for_dashboard(&connection, None, 100).expect("list sessions")
     }
@@ -782,9 +782,9 @@ fn a_session_argmax_launched_is_never_imported_as_a_duplicate() {
         .expect("workspace");
     {
         let connection = harness.database.connection();
-        let session = argmax_lib::persistence::sessions::persist_session(
+        let session = argmax_store::sessions::persist_session(
             &connection,
-            &argmax_lib::persistence::sessions::PersistSessionInput {
+            &argmax_store::sessions::PersistSessionInput {
                 id: "native-session".to_string(),
                 workspace_id: workspace.id.clone(),
                 provider: "claude".to_string(),
@@ -798,7 +798,7 @@ fn a_session_argmax_launched_is_never_imported_as_a_duplicate() {
             },
         )
         .expect("persist session");
-        argmax_lib::persistence::sessions::update_session_provider_conversation_id(
+        argmax_store::sessions::update_session_provider_conversation_id(
             &connection,
             &session.id,
             "sess-native",

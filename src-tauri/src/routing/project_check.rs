@@ -21,20 +21,17 @@ use specta::Type;
 use uuid::Uuid;
 
 use super::jev;
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        app_settings::{project_check_mode, ProjectCheckMode},
-        project_checks::{
-            checkout_paths, launches_since, prompts_not_history, recent_opening_prompts,
-            record_project_check, ProjectCheckRecord,
-        },
-        projects::{list_projects, ProjectSummary},
-        time::{hours_ago, now_iso},
-        Database,
+use crate::{util::sync::LockOrRecover, workspaces::SCRATCH_PROJECT_ID};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    app_settings::{project_check_mode, ProjectCheckMode},
+    project_checks::{
+        checkout_paths, launches_since, prompts_not_history, recent_opening_prompts,
+        record_project_check, ProjectCheckRecord,
     },
-    util::sync::LockOrRecover,
-    workspaces::SCRATCH_PROJECT_ID,
+    projects::{list_projects, ProjectSummary},
+    time::{hours_ago, now_iso},
+    Database,
 };
 
 // Tuned to ask freely and move carefully (2026-09-27 held-out eval, numbers in
@@ -1289,7 +1286,7 @@ mod tests {
                 repo_path: format!("/repos/{id}"),
                 current_branch: "main".to_string(),
                 default_branch: None,
-                settings: crate::persistence::projects::ProjectSettings {
+                settings: argmax_store::projects::ProjectSettings {
                     worktree_location: String::new(),
                     setup_command: String::new(),
                     check_commands: Vec::new(),
@@ -1297,7 +1294,7 @@ mod tests {
                 },
                 branch_template: None,
                 overview: None,
-                counts: crate::persistence::projects::ProjectCounts {
+                counts: argmax_store::projects::ProjectCounts {
                     active: 0,
                     blocked: 0,
                     failed: 0,

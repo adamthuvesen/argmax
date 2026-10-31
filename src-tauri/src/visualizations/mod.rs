@@ -45,12 +45,12 @@ pub(crate) fn copy_history_artifacts(
     connection: &rusqlite::Connection,
     source_session: &str,
     target_session: &str,
-) -> crate::error::ArgmaxResult<()> {
+) -> argmax_contracts::error::ArgmaxResult<()> {
     let Some(path) = connection.path().filter(|path| !path.is_empty()) else {
         return Ok(());
     };
     let data_dir = std::path::Path::new(path).parent().ok_or_else(|| {
-        crate::error::ArgmaxError::service(
+        argmax_contracts::error::ArgmaxError::service(
             "VISUALIZATION_STORAGE",
             "Database has no data directory",
         )

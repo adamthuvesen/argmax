@@ -16,17 +16,17 @@ use specta::Type;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::approvals::list_approvals_for_session;
-use crate::persistence::database::Database;
-use crate::persistence::events::{
-    has_durable_request, list_durable_pending, persist_timeline_event, PersistTimelineEventInput,
-};
-use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::runtime::DeltaPublisher;
-use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::approvals::list_approvals_for_session;
+use argmax_store::database::Database;
+use argmax_store::events::{
+    has_durable_request, list_durable_pending, persist_timeline_event, PersistTimelineEventInput,
+};
+use argmax_store::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 
 const MAX_QUESTIONS: usize = 3;
 const MAX_OPTIONS: usize = 4;
@@ -659,11 +659,11 @@ fn invalid_answer(message: impl Into<String>) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::events::{has_outstanding_card_ask, list_session_events_since};
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::sessions::{persist_session, PersistSessionInput};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
-    use crate::sessions::attention::AttentionState;
+    use argmax_contracts::sessions::attention::AttentionState;
+    use argmax_store::events::{has_outstanding_card_ask, list_session_events_since};
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::sessions::{persist_session, PersistSessionInput};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use std::time::Duration;
 
     fn setup() -> Arc<Database> {

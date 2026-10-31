@@ -3,10 +3,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{
-    persistence::routines::RoutineRunTarget, review::git_review::ReviewComparison,
-    workspaces::WorkspaceTargetKind,
-};
+use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKind};
+use argmax_store::routines::RoutineRunTarget;
 
 pub use crate::application::validation::{TerminalCols, TerminalRows};
 pub use crate::browser::tabs::{BrowserBounds, BrowserOpenInput};
@@ -88,7 +86,7 @@ pub struct ClearOpencodeGatewayKeyInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetProjectCheckInput {
-    pub mode: crate::persistence::app_settings::ProjectCheckMode,
+    pub mode: argmax_store::app_settings::ProjectCheckMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -183,7 +181,7 @@ pub struct ProjectSettingsInput {
     /// What a merged PR does to the workspace on its branch. Required rather
     /// than defaulted: a caller that omitted it would silently turn the
     /// setting off on every other save.
-    pub merge_cleanup: crate::persistence::projects::MergeCleanup,
+    pub merge_cleanup: argmax_store::projects::MergeCleanup,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

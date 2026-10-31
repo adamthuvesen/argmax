@@ -37,8 +37,8 @@ use super::dispatch::dispatch_with_default_agent;
 use super::operations::{self, OperationId};
 use super::server::RemoteBridge;
 use super::RemoteEvent;
-use crate::error::{ArgmaxError, InvalidInputIssue};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, InvalidInputIssue};
 
 /// A client that has not authenticated by then is dropped.
 pub const AUTH_TIMEOUT: Duration = Duration::from_secs(5);

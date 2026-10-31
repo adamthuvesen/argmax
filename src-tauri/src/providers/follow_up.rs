@@ -1,10 +1,8 @@
 use super::runtime::sqlite_error;
 use super::ProviderId;
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::events::has_current_native_agent_identity,
-    providers::inputs::AgentReference,
-};
+use crate::providers::inputs::AgentReference;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::events::has_current_native_agent_identity;
 use rusqlite::OptionalExtension;
 
 const FOLLOW_UP_CONTEXT_MAX_MESSAGES: usize = 12;
@@ -195,7 +193,7 @@ fn missed_context_prompt(
     since_event_id: &str,
     handoff: Option<&str>,
 ) -> ArgmaxResult<String> {
-    let since_rowid = crate::persistence::continuity::event_rowid(connection, since_event_id)?
+    let since_rowid = argmax_store::continuity::event_rowid(connection, since_event_id)?
         .ok_or_else(|| {
             ArgmaxError::service(
                 "CONTINUITY_BOUNDARY_MISSING",
@@ -482,7 +480,7 @@ fn clamp_context_text(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
+    use argmax_store::{
         database::Database,
         events::{persist_timeline_event, PersistTimelineEventInput},
     };

@@ -98,12 +98,12 @@ pub fn known_roots(app: &tauri::AppHandle) -> Vec<PathBuf> {
         return Vec::new();
     };
     let conn = db.read_connection();
-    let mut roots = root_paths(crate::persistence::projects::known_project_paths(
+    let mut roots = root_paths(argmax_store::projects::known_project_paths(
         &conn, MAX_ROOTS,
     ));
-    roots.extend(root_paths(
-        crate::persistence::workspaces::known_workspace_paths(&conn, MAX_ROOTS),
-    ));
+    roots.extend(root_paths(argmax_store::workspaces::known_workspace_paths(
+        &conn, MAX_ROOTS,
+    )));
     roots.extend(scratch_roots());
     roots
 }

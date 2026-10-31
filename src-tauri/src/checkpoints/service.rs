@@ -17,23 +17,21 @@ use specta::Type;
 use tempfile::tempdir;
 use uuid::Uuid;
 
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    git::{
-        exec::{run_git_text, run_git_text_with_options, GitExecOptions},
-        ops::checkout_write_lock,
-        tree_snapshot::{index_tree, snapshot_visible_worktree},
+use crate::git::{
+    exec::{run_git_text, run_git_text_with_options, GitExecOptions},
+    ops::checkout_write_lock,
+    tree_snapshot::{index_tree, snapshot_visible_worktree},
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    checkpoints::{
+        find_checkpoint, finish_rewind, list_checkpoints, mark_interrupted_rewinds,
+        persist_checkpoint, start_rewind, Checkpoint,
     },
-    persistence::{
-        checkpoints::{
-            find_checkpoint, finish_rewind, list_checkpoints, mark_interrupted_rewinds,
-            persist_checkpoint, start_rewind, Checkpoint,
-        },
-        sessions::find_session_by_id,
-        time::now_iso,
-        workspaces::find_workspace_by_id,
-        Database,
-    },
+    sessions::find_session_by_id,
+    time::now_iso,
+    workspaces::find_workspace_by_id,
+    Database,
 };
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -389,7 +387,7 @@ impl CheckpointService {
             )
         })?;
         let connection = self.database.read_connection();
-        let paths = crate::persistence::workspaces::checkouts_with_live_turn(&connection)?;
+        let paths = argmax_store::workspaces::checkouts_with_live_turn(&connection)?;
         if paths
             .iter()
             .any(|path| std::fs::canonicalize(path).ok().as_ref() == Some(&canonical))
@@ -605,13 +603,13 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use crate::persistence::{
+    use argmax_contracts::sessions::state::SessionState;
+    use argmax_store::{
         projects::{persist_project, PersistProjectInput, ProjectSettings},
         sessions::{persist_session, PersistSessionInput},
         workspaces::{persist_workspace, PersistWorkspaceInput},
         Database,
     };
-    use crate::sessions::state::SessionState;
 
     async fn git(path: &Path, args: &[&str]) {
         run_git_text(path, args, GIT_TIMEOUT)

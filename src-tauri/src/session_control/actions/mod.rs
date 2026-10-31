@@ -54,13 +54,13 @@ use super::{
 use crate::{
     application::validation::{TerminalCols, TerminalRows},
     git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
-    persistence::{
-        database::Database,
-        projects::{list_projects, ProjectSummary},
-        session_messages::count_undelivered_messages,
-    },
     providers::session_service::ProviderSessionService,
     workspaces::WorkspaceService,
+};
+use argmax_store::{
+    database::Database,
+    projects::{list_projects, ProjectSummary},
+    session_messages::count_undelivered_messages,
 };
 
 pub(super) async fn handle_session_control(
@@ -370,7 +370,7 @@ Pass project: \"{destination}\" with path: \"{selector}\"."
 /// The top of the checkout at `path` and the top of its main worktree, both
 /// canonical. They differ exactly when `path` sits in a linked worktree.
 async fn repository_roots(path: &str) -> Result<(String, String), SessionControlError> {
-    let not_a_repository = |error: crate::error::ArgmaxError| {
+    let not_a_repository = |error: argmax_contracts::error::ArgmaxError| {
         protocol_error(
             "PROJECT_NOT_GIT",
             format!("{path} is not a git repository Argmax can add: {error}"),
@@ -462,12 +462,10 @@ async fn set_goal(
     let goals = goal_service(app)?;
     // The caller's own workspace: a goal belongs to the chat that set it, so
     // the tool never takes a workspace argument to get wrong.
-    let workspace_id = crate::persistence::sessions::find_session_by_id(
-        &database.read_connection(),
-        &parent.session_id,
-    )
-    .map_err(|error| protocol_error("GOAL_SET_FAILED", error.to_string()))?
-    .workspace_id;
+    let workspace_id =
+        argmax_store::sessions::find_session_by_id(&database.read_connection(), &parent.session_id)
+            .map_err(|error| protocol_error("GOAL_SET_FAILED", error.to_string()))?
+            .workspace_id;
     let goal = goals
         .set(crate::goals::service::GoalSetInput {
             workspace_id,
@@ -510,7 +508,7 @@ async fn clear_goal(
 mod tests {
     use super::*;
     use crate::application::validation::TaskLabel;
-    use crate::persistence::projects::{ProjectCounts, ProjectSettings};
+    use argmax_store::projects::{ProjectCounts, ProjectSettings};
 
     fn project(id: &str, name: &str, repo_path: &str) -> ProjectSummary {
         ProjectSummary {

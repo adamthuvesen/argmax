@@ -23,18 +23,18 @@ use super::{
 use crate::{
     application::session_launch::{child_permission_mode, LaunchOutcome, LaunchReceiptTicket},
     arcs::member_preamble,
-    persistence::{
-        arcs::{self, ArcRecord},
-        database::Database,
-        launch_receipts::{self, Claim, LaunchReceipt, ReceiptStatus},
-        sessions::{
-            find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
-        },
-        workspaces::find_workspace_by_id,
-    },
     providers::session_service::ProviderSessionService,
     util::sync::LockOrRecover,
     workspaces::{orchestration::resolve_registered_checkout, WorkspaceService},
+};
+use argmax_store::{
+    arcs::{self, ArcRecord},
+    database::Database,
+    launch_receipts::{self, Claim, LaunchReceipt, ReceiptStatus},
+    sessions::{
+        find_session_by_id, record_session_launch, session_launch_lineage, LAUNCH_KIND_AGENT,
+    },
+    workspaces::find_workspace_by_id,
 };
 
 /// One lock per budget, held from the launch caps check until the launch is
@@ -189,10 +189,11 @@ fn launched_response(launched: LaunchedSession) -> SessionControlResponse {
 
 /// Digest of the request a key was first used with, minus the key itself, so a
 /// retry is recognised by what it asks for.
-fn launch_request_hash(action: &LaunchAction) -> crate::error::ArgmaxResult<String> {
+fn launch_request_hash(action: &LaunchAction) -> argmax_contracts::error::ArgmaxResult<String> {
     use sha2::{Digest, Sha256};
-    let mut canonical = serde_json::to_value(action)
-        .map_err(|error| crate::error::ArgmaxError::service("JSON", error.to_string()))?;
+    let mut canonical = serde_json::to_value(action).map_err(|error| {
+        argmax_contracts::error::ArgmaxError::service("JSON", error.to_string())
+    })?;
     if let Some(fields) = canonical.as_object_mut() {
         fields.remove("clientRequestId");
     }
@@ -217,7 +218,9 @@ fn settle_receipt(
     let connection = database.connection();
     let settled = match result {
         Ok(launched) => serde_json::to_string(launched)
-            .map_err(|error| crate::error::ArgmaxError::service("JSON", error.to_string()))
+            .map_err(|error| {
+                argmax_contracts::error::ArgmaxError::service("JSON", error.to_string())
+            })
             .and_then(|json| {
                 launch_receipts::complete_receipt(
                     &connection,
@@ -546,8 +549,8 @@ async fn launch_once(
     // `launch_with_spec` registers the repository the session actually starts in.
     let aimed_id = {
         let connection = database.read_connection();
-        let projects = crate::persistence::projects::list_projects(&connection)
-            .map_err(argmax_protocol_error)?;
+        let projects =
+            argmax_store::projects::list_projects(&connection).map_err(argmax_protocol_error)?;
         match super::resolve_project(&projects, action.project.as_deref(), &parent_project_id) {
             Ok(project) => Some(project.id),
             Err(_) => None,
@@ -598,7 +601,7 @@ async fn launch_once(
             arc_id: parent_arc.as_ref().map(|arc| arc.id.clone()),
             arc_is_coordinator_launch: false,
             // An agent wrote this prompt: a chat reference in it grants nothing.
-            author: crate::persistence::authorship::PromptAuthor::unattested(),
+            author: argmax_store::authorship::PromptAuthor::unattested(),
         },
         aimed_launch.project.as_deref(),
         Arc::clone(&database),
@@ -611,7 +614,7 @@ async fn launch_once(
     if let Some(route) = &auto_route {
         let session = {
             let connection = database.connection();
-            crate::persistence::turn_routes::record_route(&connection, &outcome.session_id, route)
+            argmax_store::turn_routes::record_route(&connection, &outcome.session_id, route)
                 .map_err(argmax_protocol_error)?;
             find_session_by_id(&connection, &outcome.session_id).map_err(argmax_protocol_error)?
         };
@@ -630,7 +633,7 @@ async fn launch_once(
     }
     if let Some(record) = aimed_launch.record {
         let connection = database.connection();
-        if let Err(error) = crate::persistence::project_checks::record_project_check(
+        if let Err(error) = argmax_store::project_checks::record_project_check(
             &connection,
             &record,
             "accepted",
@@ -672,7 +675,7 @@ struct AimedLaunch {
     path: Option<String>,
     branch: Option<String>,
     project_check: Option<LaunchProjectCheck>,
-    record: Option<crate::persistence::project_checks::ProjectCheckRecord>,
+    record: Option<argmax_store::project_checks::ProjectCheckRecord>,
 }
 
 async fn aim_at_check(

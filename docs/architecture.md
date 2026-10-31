@@ -35,7 +35,6 @@ The old paths `crate::persistence`, `crate::error`, `crate::sessions`, and `crat
 
 - `application/`: Validated command values and transport-independent session launch.
 - `ipc/`: Request/response adapters and the typed command catalogue.
-- `persistence`: the `argmax-store` crate under its old path. See [Layers](#layers).
 - `providers/`: Adapter CLIs (Claude, Codex, Cursor, OpenCode, Grok Build), PTY runtime, normalizers, and the event flush queue.
 - `session_control/`: Private socket transport for agent-initiated session launch, move, list, and message commands.
 - `workspaces/`, `review/`, `files/`, `git/`: Worktree lifecycle, diffs, file operations, and git commands.

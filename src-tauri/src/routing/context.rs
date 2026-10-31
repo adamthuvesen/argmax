@@ -7,11 +7,11 @@ use rusqlite::Connection;
 
 use crate::{
     application::validation::{ProviderId, ReasoningEffort},
-    error::ArgmaxResult,
-    persistence::{events::routing_visible_messages, turn_routes::recent_routing_decisions},
     providers::model_catalogue::ModelId,
     skills::registry::SkillRegistry,
 };
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::{events::routing_visible_messages, turn_routes::recent_routing_decisions};
 
 const MAX_STATE_CHARS: usize = 7_800;
 static SKILLS: OnceLock<SkillRegistry> = OnceLock::new();

@@ -9,7 +9,8 @@ use super::{
     CodexCumulativeUsage, NormalizedUsage, NormalizerSessionContext, PermissionGateInfo,
     ProviderOutputEvent, UsageCounts,
 };
-use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
+use crate::providers::pricing::cost_of;
+use argmax_store::events::PersistTimelineEventInput;
 
 pub fn event_type(provider_type: &str) -> Option<&'static str> {
     static EVENT_MAP: phf::Map<&'static str, &'static str> = phf_map! {
@@ -832,7 +833,7 @@ mod tests {
     use super::read_token_count_from_rollout;
     use crate::providers::normalizer::{
         normalize_provider_event, tests::output_event, CodexCumulativeUsage, Dispatcher,
-        EventNormalizer, NormalizerSessionContext,
+        NormalizerSessionContext,
     };
     use crate::providers::ProviderId;
 
@@ -1863,9 +1864,7 @@ mod tests {
         );
     }
 
-    fn stable_event_snapshot(
-        events: &[crate::persistence::events::PersistTimelineEventInput],
-    ) -> Value {
+    fn stable_event_snapshot(events: &[argmax_store::events::PersistTimelineEventInput]) -> Value {
         Value::Array(
             events
                 .iter()

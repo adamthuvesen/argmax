@@ -12,25 +12,12 @@ use std::{
 };
 
 use crate::support::git_repo::{seed_git_repo, SeededGitRepo};
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::sessions::state::SessionState;
 use argmax_lib::{
     arcs::{launch_coordinator, LaunchCoordinatorRequest},
-    error::ArgmaxResult,
     ipc::inputs::{ProvidersLaunchInput, TerminalCols, TerminalRows},
     ipc::validation::{NonEmptyString, Prompt, WorkspaceId},
-    persistence::{
-        arcs::{
-            count_active_members, create_arc, get_arc, set_arc_coordinator_session, set_arc_state,
-            ArcCreateInput, ArcState,
-        },
-        database::Database,
-        projects::{persist_project, PersistProjectInput, ProjectSettings},
-        sessions::{
-            find_session_by_id, persist_session, record_session_arc, record_session_launch,
-            session_launch_lineage, PersistSessionInput, LAUNCH_KIND_AGENT,
-        },
-        workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
-    },
     providers::{
         runtime::{BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle},
         session_service::ProviderSessionService,
@@ -41,6 +28,19 @@ use argmax_lib::{
         SESSION_LAUNCH_TOKEN_ENV,
     },
     workspaces::{orchestration::MoveDestination, WorkspaceService},
+};
+use argmax_store::{
+    arcs::{
+        count_active_members, create_arc, get_arc, set_arc_coordinator_session, set_arc_state,
+        ArcCreateInput, ArcState,
+    },
+    database::Database,
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    sessions::{
+        find_session_by_id, persist_session, record_session_arc, record_session_launch,
+        session_launch_lineage, PersistSessionInput, LAUNCH_KIND_AGENT,
+    },
+    workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
 use serde_json::json;
 
@@ -171,7 +171,7 @@ fn fixture() -> Fixture {
     }
 }
 
-fn new_arc(fixture: &Fixture, name: &str) -> argmax_lib::persistence::arcs::ArcRecord {
+fn new_arc(fixture: &Fixture, name: &str) -> argmax_store::arcs::ArcRecord {
     let connection = fixture.database.connection();
     create_arc(
         &connection,
@@ -303,7 +303,7 @@ async fn launch_coordinator_refuses_a_done_arc() {
     .expect_err("done arc refuses a coordinator");
 
     assert!(
-        matches!(&error, argmax_lib::error::ArgmaxError::ServiceError { sub_code, .. } if sub_code == "ARC_DONE"),
+        matches!(&error, argmax_contracts::error::ArgmaxError::ServiceError { sub_code, .. } if sub_code == "ARC_DONE"),
         "{error:?}"
     );
     assert!(fixture.launcher.launches.lock().unwrap().is_empty());
@@ -489,7 +489,7 @@ async fn a_member_launched_by_the_coordinator_inherits_arc_id_and_the_preamble_a
     );
     {
         let connection = fixture.database.connection();
-        argmax_lib::persistence::arcs::set_arc_coordinator_session(
+        argmax_store::arcs::set_arc_coordinator_session(
             &connection,
             &arc.id,
             Some("session-coordinator"),
@@ -578,7 +578,7 @@ async fn the_current_coordinator_is_exempt_from_the_lifetime_launch_cap_a_member
     seed_arc_session(fixture, &arc.id, "session-member", SessionState::Running);
     {
         let connection = fixture.database.connection();
-        argmax_lib::persistence::arcs::set_arc_coordinator_session(
+        argmax_store::arcs::set_arc_coordinator_session(
             &connection,
             &arc.id,
             Some("session-coordinator"),
@@ -822,7 +822,7 @@ async fn concurrent_launches_racing_the_active_member_cap_only_one_succeeds() {
     assert!(
         matches!(
             refusal,
-            argmax_lib::error::ArgmaxError::ServiceError { sub_code, .. }
+            argmax_contracts::error::ArgmaxError::ServiceError { sub_code, .. }
                 if sub_code == "ARC_CAPACITY_REACHED"
         ),
         "{refusal:?}"
@@ -899,7 +899,7 @@ async fn arc_status_answers_for_a_member_and_refuses_a_session_outside_any_arc()
     seed_arc_session(fixture, &arc.id, "session-member", SessionState::Running);
     {
         let connection = fixture.database.connection();
-        argmax_lib::persistence::arcs::set_arc_coordinator_session(
+        argmax_store::arcs::set_arc_coordinator_session(
             &connection,
             &arc.id,
             Some("session-coordinator"),

@@ -1,5 +1,5 @@
 //! Walks every provider transcript on disk and folds the billed calls into
-//! the hourly ledger (`persistence::usage_scan`). A sweep is incremental: an
+//! the hourly ledger (`argmax_store::usage_scan`). A sweep is incremental: an
 //! unchanged file is skipped on its size and mtime, a grown file is read from
 //! the byte the last sweep stopped at, and only a rewritten or unknown file is
 //! parsed in full. See `docs/usage.md`.
@@ -16,16 +16,16 @@ use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
 use crate::application::validation::ProviderId;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::{
-    time::now_iso,
-    usage_scan::{self, ScanFileRecord, UsageContribution},
-    Database,
-};
 use crate::providers::pricing::normalize_model_id;
 use crate::usage::records::{TranscriptContext, UsageRecord};
 use crate::usage::{claude, codex, grok, opencode};
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    time::now_iso,
+    usage_scan::{self, ScanFileRecord, UsageContribution},
+    Database,
+};
 
 /// Bump when a parser's output for the same bytes changes; the next sweep
 /// empties the ledger and reads everything again.
@@ -564,8 +564,8 @@ fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::usage_scan::HourlyBucketDelta;
     use crate::usage::records::UsageRecordTokens;
+    use argmax_store::usage_scan::HourlyBucketDelta;
     use chrono::{Duration, SecondsFormat, Utc};
     use std::io::Write;
 

@@ -6,11 +6,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    git::exec::{run_git_text_with_options, GitExecOptions},
-    persistence::events::PersistTimelineEventInput,
-};
+use crate::git::exec::{run_git_text_with_options, GitExecOptions};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::events::PersistTimelineEventInput;
 
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// A shallow clone of a large repository legitimately takes minutes. Nothing

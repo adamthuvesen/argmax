@@ -23,11 +23,11 @@ use super::{
 };
 use crate::{
     approvals::service::ApprovalService,
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::time::now_iso,
     questions::service::{typed_answer_text, QuestionService},
     session_control::SessionLaunchProcessConfig,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::time::now_iso;
 use serde_json::{json, Map, Value};
 use std::{
     collections::HashSet,

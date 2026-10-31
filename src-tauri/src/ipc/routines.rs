@@ -4,15 +4,15 @@ use chrono::Utc;
 use tauri::State;
 
 use super::{inputs::*, live_database};
-use crate::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
-use crate::persistence::routines::{
-    self, find_routine_by_id, list_routines, set_routine_enabled, upsert_routine, Routine,
-    RoutineAuthor, RoutineRunTarget, UpsertRoutineInput,
-};
 use crate::providers::session_service::ProviderSessionService;
 use crate::routines::{schedule, scheduler};
 use crate::state::AppState;
 use crate::workspaces::{WorkspaceService, SCRATCH_PROJECT_ID};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use argmax_store::routines::{
+    self, find_routine_by_id, list_routines, set_routine_enabled, upsert_routine, Routine,
+    RoutineAuthor, RoutineRunTarget, UpsertRoutineInput,
+};
 
 #[tauri::command(rename = "routines:list")]
 #[specta::specta]
@@ -134,7 +134,7 @@ fn resolve_arc_coordinator_target(
                 "an arc-coordinator task must name an Arc",
             ))
         })?;
-    let arc = crate::persistence::arcs::get_arc(connection, arc_id).map_err(|_| {
+    let arc = argmax_store::arcs::get_arc(connection, arc_id).map_err(|_| {
         ArgmaxError::invalid(InvalidInputIssue::at(
             vec!["arcId".into()],
             "ROUTINE_ARC_INVALID",

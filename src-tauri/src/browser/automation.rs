@@ -31,8 +31,8 @@ use tauri::{AppHandle, Manager, Webview};
 use super::frames::{self, EvalFailure};
 use super::registry::BrowserTabInfo;
 use super::{eval, snapshot_image, CaptureRect};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const AGENT_API_VERSION: u32 = 5;
 const SNAPSHOT_JS: &str = include_str!("snapshot.js");

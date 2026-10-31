@@ -27,7 +27,7 @@
 use serde_json::{json, Map, Value};
 
 use super::{array_value, object_value, string_value, timeline_event, ProviderOutputEvent};
-use crate::persistence::events::PersistTimelineEventInput;
+use argmax_store::events::PersistTimelineEventInput;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TodoStatus {

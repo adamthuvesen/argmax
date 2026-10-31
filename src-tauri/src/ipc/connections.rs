@@ -5,10 +5,10 @@ use tauri::State;
 use super::{inputs::ConnectionsListInput, live_database};
 use crate::{
     connections::{list_connections, ConnectionSummary},
-    error::ArgmaxResult,
-    persistence::workspaces::find_workspace_by_id,
     state::AppState,
 };
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::workspaces::find_workspace_by_id;
 
 #[tauri::command(rename = "connections:list")]
 #[specta::specta]

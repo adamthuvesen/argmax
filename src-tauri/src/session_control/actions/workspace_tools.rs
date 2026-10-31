@@ -27,15 +27,15 @@ use super::super::{
 };
 use super::{terminal_cols, terminal_rows};
 use crate::{
-    persistence::{
-        database::Database,
-        projects::ProjectSummary,
-        sessions::find_session_by_id,
-        workspaces::{find_workspace_by_id, WorkspaceSummary},
-    },
     review::git_review,
     terminal::service::{TerminalRecordSummary, TerminalService, TerminalSpawnInput},
     workspaces::WorkspaceTargetKind,
+};
+use argmax_store::{
+    database::Database,
+    projects::ProjectSummary,
+    sessions::find_session_by_id,
+    workspaces::{find_workspace_by_id, WorkspaceSummary},
 };
 
 /// The workspace one of these actions is about: the named session's, or the
@@ -57,7 +57,7 @@ pub(super) fn resolve_session_workspace(
     let workspace =
         find_workspace_by_id(&connection, &session.workspace_id).map_err(argmax_protocol_error)?;
     let project =
-        crate::persistence::project_folders::require_workspace_project(&connection, &workspace.id)
+        argmax_store::project_folders::require_workspace_project(&connection, &workspace.id)
             .map_err(argmax_protocol_error)?;
     Ok(SessionWorkspace {
         session_id: session.id,

@@ -2,19 +2,19 @@ use std::sync::Arc;
 
 use super::{inputs::*, live_database, read_off_main};
 use crate::{
-    error::{ArgmaxError, ArgmaxResult, InvalidInputIssue},
-    persistence::{
-        dashboard::{list_session_agent_tail, list_session_tail, list_session_tail_for_remote},
-        events::{latest_agent_message, SessionEventsSinceResult},
-        follow_up_suggestions::{cached_follow_up_suggestion, store_follow_up_suggestion},
-        learnings::{search_events, EventSearchResult},
-        sessions::SessionSummary,
-        usage::{get_session_cost_summary, SessionCostSummary},
-    },
     providers::one_shot::suggest_follow_up,
     providers::subagent_trace::{import_subagent_trace_events, reconcile_session_subagent_traces},
     state::AppState,
     workspaces::{orchestration::SessionForkResult, WorkspaceService},
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
+use argmax_store::{
+    dashboard::{list_session_agent_tail, list_session_tail, list_session_tail_for_remote},
+    events::{latest_agent_message, SessionEventsSinceResult},
+    follow_up_suggestions::{cached_follow_up_suggestion, store_follow_up_suggestion},
+    learnings::{search_events, EventSearchResult},
+    sessions::SessionSummary,
+    usage::{get_session_cost_summary, SessionCostSummary},
 };
 use tauri::State;
 
@@ -211,7 +211,7 @@ pub(crate) async fn session_agent_events_impl(
 }
 
 fn reconcile_subagent_traces_with_warning(
-    database: &crate::persistence::database::Database,
+    database: &argmax_store::database::Database,
     session_id: &str,
 ) {
     if let Err(error) = reconcile_session_subagent_traces(database, session_id) {
@@ -368,8 +368,7 @@ pub(crate) async fn session_multitask_impl(
         }
         // A prompt typed into the composer's Multitask is fresh text from the person.
         None => {
-            let author =
-                crate::persistence::authorship::PromptAuthor::person(super::attest_person());
+            let author = argmax_store::authorship::PromptAuthor::person(super::attest_person());
             crate::multitask::dispatch(request, author, database, workspaces, providers).await
         }
     }

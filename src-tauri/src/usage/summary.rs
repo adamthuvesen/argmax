@@ -14,8 +14,6 @@ use chrono::{DateTime, Duration, Local, SecondsFormat, TimeZone, Timelike, Utc};
 use rusqlite::Connection;
 
 use crate::application::validation::ProviderId;
-use crate::error::ArgmaxResult;
-use crate::persistence::usage_scan::{self, HourlyBucket};
 use crate::providers::pricing;
 use crate::usage::cursor::{calls_between, cursor_rates, CursorCall};
 use crate::usage::records::UsageRecordTokens;
@@ -25,6 +23,8 @@ use crate::usage::{
     UsageResolution, UsageScanState, UsageSeriesPoint, UsageSeriesValue, UsageSummary,
     UsageTokenTotals, UsageWindow,
 };
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::usage_scan::{self, HourlyBucket};
 
 /// Providers in the order the page lists them.
 const PROVIDER_ORDER: [ProviderId; 5] = [
@@ -460,9 +460,9 @@ fn rfc3339(instant: DateTime<Utc>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::usage_scan::HourlyBucketDelta;
-    use crate::persistence::Database;
     use crate::usage::{UsageScanPhase, PRICING_AS_OF};
+    use argmax_store::usage_scan::HourlyBucketDelta;
+    use argmax_store::Database;
 
     fn scan_state() -> UsageScanState {
         UsageScanState {

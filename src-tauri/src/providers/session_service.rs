@@ -51,47 +51,13 @@ use super::{
     subagent_trace::reconcile_session_subagent_traces,
     AgentMode, ApprovalSupport, LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
 };
-use crate::sessions::state::SessionState;
 use crate::{
     application::validation::{NonEmptyString, Prompt, SessionId},
     approvals::service::ApprovalService,
     checkpoints::service::{CheckpointService, CreateCheckpointInput},
-    error::{ArgmaxError, ArgmaxResult},
     gh::service::{pr_numbers_from_command_event, GhService},
     git::ops::checkout_write_lock,
     goals::service::GoalService,
-    persistence::authorship::PersonAttestation,
-    persistence::{
-        arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
-        arcs,
-        authorship::PromptAuthor,
-        database::Database,
-        events::{
-            find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
-            persist_timeline_event, persist_user_prompt, update_event_payload,
-            PersistRawOutputInput, PersistTimelineEventInput, TimelineEvent,
-        },
-        pending_messages::{
-            clear_session_queue, delete_message as delete_pending_message,
-            delete_messages_for_collected_origins, list_session_pending_messages,
-            mark_message_launching, recover_pending_messages, replace_session_queue,
-            restore_launching_message,
-        },
-        projects::list_projects,
-        session_messages::{
-            delete_undelivered_session_message, insert_session_message, is_message_delivered,
-            mark_message_delivered, NewSessionMessage, MESSAGE_KIND,
-        },
-        sessions::{
-            clear_session_conversation, find_session_by_id, persist_session, record_session_arc,
-            session_launch_kind, update_session_agent_mode, update_session_model,
-            update_session_provider, update_session_provider_conversation_id, update_session_state,
-            PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
-            SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
-        },
-        time::now_iso,
-        workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
-    },
     providers::inputs::{
         ComposerAttachmentInput, ProvidersCancelQueuedMessageInput, ProvidersLaunchInput,
         ProvidersResizeInput, ProvidersSendInput, ProvidersSendQueuedMessageNowInput,
@@ -99,6 +65,40 @@ use crate::{
     },
     session_control::{AfterTurn, SessionLaunchRegistry},
     workspaces::lifecycle::{WorkspaceAdmission, WorkspaceLifecycle},
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::authorship::PersonAttestation;
+use argmax_store::{
+    arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
+    arcs,
+    authorship::PromptAuthor,
+    database::Database,
+    events::{
+        find_event_by_id, latest_agent_message, list_session_events_since, persist_raw_output,
+        persist_timeline_event, persist_user_prompt, update_event_payload, PersistRawOutputInput,
+        PersistTimelineEventInput, TimelineEvent,
+    },
+    pending_messages::{
+        clear_session_queue, delete_message as delete_pending_message,
+        delete_messages_for_collected_origins, list_session_pending_messages,
+        mark_message_launching, recover_pending_messages, replace_session_queue,
+        restore_launching_message,
+    },
+    projects::list_projects,
+    session_messages::{
+        delete_undelivered_session_message, insert_session_message, is_message_delivered,
+        mark_message_delivered, NewSessionMessage, MESSAGE_KIND,
+    },
+    sessions::{
+        clear_session_conversation, find_session_by_id, persist_session, record_session_arc,
+        session_launch_kind, update_session_agent_mode, update_session_model,
+        update_session_provider, update_session_provider_conversation_id, update_session_state,
+        PersistSessionInput, SessionAgentModeInput, SessionModelInput, SessionProviderInput,
+        SessionStateInput, SessionSummary, LAUNCH_KIND_MULTITASK,
+    },
+    time::now_iso,
+    workspaces::{find_workspace_by_id, update_workspace_state, WorkspaceSummary},
 };
 
 const MAX_PENDING_QUEUE: usize = 64;
@@ -576,7 +576,7 @@ impl ProviderSessionService {
             // the time a launch reaches here, and it is what lets the turn in
             // the transcript find its own checkpoint to revert to.
             let turn_boundary =
-                crate::persistence::events::latest_user_message_id(&connection, session_id)?;
+                argmax_store::events::latest_user_message_id(&connection, session_id)?;
             (workspace.id, turn_boundary)
         };
         // A checkpoint is a safety net, never a gate: a turn that cannot be
@@ -633,11 +633,8 @@ impl ProviderSessionService {
             Value::String(reason.to_string()),
         );
         event.payload = Value::Object(payload);
-        event.semantic = crate::persistence::timeline_semantics::derive(
-            &event.r#type,
-            &event.id,
-            &event.payload,
-        );
+        event.semantic =
+            argmax_store::timeline_semantics::derive(&event.r#type, &event.id, &event.payload);
         update_event_payload(&connection, turn_boundary, &event.payload)?;
         Ok(Some(event))
     }
@@ -1512,7 +1509,7 @@ impl ProviderSessionService {
                 ));
             }
         };
-        let last_turn = crate::persistence::turn_routes::last_turn_usage(
+        let last_turn = argmax_store::turn_routes::last_turn_usage(
             &self.database.read_connection(),
             session_id,
         )?;
@@ -1624,10 +1621,7 @@ impl ProviderSessionService {
                 // Continuing an imported session is what adopts it: from here
                 // it is an ordinary session and the sync pruner leaves it
                 // alone, however the sync settings change.
-                if crate::persistence::synced::mark_synced_session_adopted(
-                    &connection,
-                    &session_id,
-                )? {
+                if argmax_store::synced::mark_synced_session_adopted(&connection, &session_id)? {
                     tracing::info!(session_id = %session_id, "imported session adopted");
                 }
             }
@@ -1923,9 +1917,9 @@ impl ProviderSessionService {
             // Recorded only now that the send is admitted, so a send Stop
             // cancelled leaves no route behind for the chip or the hysteresis.
             if let Some(route) = &auto_route {
-                crate::persistence::turn_routes::record_route(&connection, &session_id, route)?;
+                argmax_store::turn_routes::record_route(&connection, &session_id, route)?;
                 if route.decision == crate::routing::RouteDecisionKind::Pinned {
-                    crate::persistence::turn_routes::clear_auto_tier(&connection, &session_id)?;
+                    argmax_store::turn_routes::clear_auto_tier(&connection, &session_id)?;
                 }
             }
             if session.agent_mode.as_deref() != Some(agent_mode.as_str()) {
@@ -2944,7 +2938,7 @@ impl ProviderSessionService {
             payload["delivery"] = json!("steer");
             if let Some(origin) = &message.origin {
                 payload["origin"] =
-                    serde_json::to_value(origin).map_err(crate::persistence::json_error)?;
+                    serde_json::to_value(origin).map_err(argmax_store::json_error)?;
             }
             let event = persist_user_prompt(
                 &transaction,
@@ -2967,7 +2961,7 @@ impl ProviderSessionService {
             format!("The agent accepted the guidance, but it could not be saved: {error}. Check the chat before sending again."),
         ))?;
         if let (Some(id), Some(created_at)) = (inbox_id, inbox_created_at) {
-            crate::persistence::session_messages::log_handover("steer", id, &created_at);
+            argmax_store::session_messages::log_handover("steer", id, &created_at);
         }
         self.publish(DashboardDelta {
             events: vec![event],
@@ -2990,7 +2984,7 @@ impl ProviderSessionService {
         // A launch that was in flight when the app stopped started nothing if
         // its session was never written, and may have started its provider if
         // it was. Its receipt says which; the second kind is never repeated.
-        match crate::persistence::launch_receipts::recover_orphaned_receipts(
+        match argmax_store::launch_receipts::recover_orphaned_receipts(
             &mut self.database.connection(),
         ) {
             Ok(recovered) if recovered == Default::default() => {}
@@ -3352,7 +3346,7 @@ impl ProviderSessionService {
                 // their own output; a second `session.completed` from the exit would
                 // count the turn twice.
                 let already_completed = succeeded
-                    && crate::persistence::events::turn_completion_recorded(
+                    && argmax_store::events::turn_completion_recorded(
                         transaction,
                         &event.session_id,
                     )?;
@@ -3465,7 +3459,7 @@ impl ProviderSessionService {
                 // An Arc from before the timeline: start diffing from here.
                 return arcs::set_notes_snapshot(&connection, &arc.id, &notes);
             };
-            let Some(change) = crate::persistence::arc_events::notes_change(&before, &notes) else {
+            let Some(change) = argmax_store::arc_events::notes_change(&before, &notes) else {
                 return Ok(());
             };
             let mut event = NewArcEvent::new(
@@ -3481,7 +3475,7 @@ impl ProviderSessionService {
             event.session_id = Some(session_id);
             event.project_id = Some(&workspace.project_id);
             event.status = Some(format!("+{} −{}", change.added, change.removed));
-            event.detail = Some(crate::persistence::arc_events::first_paragraph(&answer));
+            event.detail = Some(argmax_store::arc_events::first_paragraph(&answer));
             record_arc_event(&connection, &event)?;
             return arcs::set_notes_snapshot(&connection, &arc.id, &notes);
         }
@@ -3501,7 +3495,7 @@ impl ProviderSessionService {
         event.session_id = Some(session_id);
         event.project_id = Some(&workspace.project_id);
         event.status = Some(state.as_str().to_string());
-        event.detail = Some(crate::persistence::arc_events::first_paragraph(&answer));
+        event.detail = Some(argmax_store::arc_events::first_paragraph(&answer));
         record_arc_event(&connection, &event)?;
         Ok(())
     }
@@ -3841,7 +3835,7 @@ impl ProviderSessionService {
         agent_mode: AgentMode,
         attachments: Option<&[ComposerAttachmentInput]>,
         authorship: TurnAuthorship<'_>,
-    ) -> ArgmaxResult<crate::persistence::events::TimelineEvent> {
+    ) -> ArgmaxResult<argmax_store::events::TimelineEvent> {
         let mut payload = composer_payload(agent_mode, attachments);
         if let Some(origin) = authorship.origin {
             payload["origin"] = serde_json::to_value(origin).unwrap_or(Value::Null);
@@ -4013,7 +4007,7 @@ impl ProviderSessionService {
              WHERE session_id = ?1 AND delivery_state = 'pending'",
                 (session_id, now_iso()),
             )
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         let mut queues = self.queues.lock_or_recover("queues");
         if let Some(queue) = queues.get_mut(session_id) {
             for message in queue {
@@ -4656,7 +4650,7 @@ impl ProviderSessionService {
                 return Ok(());
             };
             let connection = self.database.connection();
-            crate::persistence::sessions::record_session_pr_branch(&connection, session_id, &branch)
+            argmax_store::sessions::record_session_pr_branch(&connection, session_id, &branch)
         })();
         if let Err(error) = result {
             tracing::warn!(%session_id, %error, "could not capture session PR branch");
@@ -5192,7 +5186,7 @@ mod tests {
     }
 
     fn database_with_running_session() -> Arc<Database> {
-        use crate::persistence::{
+        use argmax_store::{
             projects::{persist_project, PersistProjectInput, ProjectSettings},
             workspaces::{persist_workspace, PersistWorkspaceInput},
         };
@@ -5544,7 +5538,7 @@ mod tests {
             ProviderSessionService::with_launcher(Arc::clone(&database), launcher.clone(), |_| {});
         {
             let connection = database.connection();
-            crate::persistence::sessions::persist_session(
+            argmax_store::sessions::persist_session(
                 &connection,
                 &PersistSessionInput {
                     id: "launcher-session".to_string(),
@@ -5560,7 +5554,7 @@ mod tests {
                 },
             )
             .unwrap();
-            crate::persistence::sessions::record_session_launch(
+            argmax_store::sessions::record_session_launch(
                 &connection,
                 "session-1",
                 "launcher-session",
@@ -5579,18 +5573,15 @@ mod tests {
                 },
             )
             .unwrap();
-            crate::persistence::session_messages::mark_wake_due(
-                &connection,
-                "completion:session-1:t",
-            )
-            .unwrap();
+            argmax_store::session_messages::mark_wake_due(&connection, "completion:session-1:t")
+                .unwrap();
         }
 
         assert_eq!(service.recover_completion_wakes().unwrap(), 1);
         // The wake is attempted once its window closes, whatever the send does
         // with it, and the attempt clears the durable mark.
         for _ in 0..80 {
-            if crate::persistence::session_messages::list_due_wakes(&database.connection())
+            if argmax_store::session_messages::list_due_wakes(&database.connection())
                 .unwrap()
                 .is_empty()
             {
@@ -5599,7 +5590,7 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
         assert!(
-            crate::persistence::session_messages::list_due_wakes(&database.connection())
+            argmax_store::session_messages::list_due_wakes(&database.connection())
                 .unwrap()
                 .is_empty(),
             "the recovered wake must be attempted"
@@ -5610,7 +5601,7 @@ mod tests {
         );
         // The turn it starts carries its origin, so nothing downstream can read
         // an automatic wake as something the person typed.
-        let events = crate::persistence::events::list_session_events_since(
+        let events = argmax_store::events::list_session_events_since(
             &database.connection(),
             "launcher-session",
             None,
@@ -5645,7 +5636,7 @@ mod tests {
         );
         {
             let connection = database.connection();
-            crate::persistence::sessions::persist_session(
+            argmax_store::sessions::persist_session(
                 &connection,
                 &PersistSessionInput {
                     id: "launcher-session".to_string(),
@@ -5661,7 +5652,7 @@ mod tests {
                 },
             )
             .unwrap();
-            crate::persistence::sessions::record_session_launch(
+            argmax_store::sessions::record_session_launch(
                 &connection,
                 "session-1",
                 "launcher-session",
@@ -5857,7 +5848,7 @@ mod tests {
 
     #[test]
     fn inbox_collection_before_enqueue_does_not_leave_a_pending_copy() {
-        use crate::persistence::session_messages::{
+        use argmax_store::session_messages::{
             insert_session_message, take_undelivered_messages, NewSessionMessage,
         };
 
@@ -5915,7 +5906,7 @@ mod tests {
             .get("session-1")
             .is_none_or(VecDeque::is_empty));
         assert!(
-            crate::persistence::pending_messages::list_session_pending_messages(
+            argmax_store::pending_messages::list_session_pending_messages(
                 &database.connection(),
                 "session-1"
             )
@@ -6028,7 +6019,7 @@ mod tests {
     }
 
     fn durable_providers(database: &Database) -> Vec<Option<ProviderId>> {
-        crate::persistence::pending_messages::list_session_pending_messages(
+        argmax_store::pending_messages::list_session_pending_messages(
             &database.connection(),
             "session-1",
         )
@@ -6230,13 +6221,13 @@ mod tests {
     #[test]
     fn only_agent_control_events_trigger_trace_reconciliation() {
         let mut delta = DashboardDelta {
-            events: vec![crate::persistence::events::TimelineEvent {
+            events: vec![argmax_store::events::TimelineEvent {
                 id: "wait".to_string(),
                 session_id: "session".to_string(),
                 r#type: "command.started".to_string(),
                 message: "wait".to_string(),
                 payload: json!({}),
-                semantic: crate::persistence::timeline_semantics::derive(
+                semantic: argmax_store::timeline_semantics::derive(
                     "command.started",
                     "wait",
                     &json!({}),
@@ -6341,7 +6332,7 @@ mod tests {
         assert_eq!(snapshot["session-1"][0].id, message_id);
         {
             let connection = service.database.connection();
-            let durable = crate::persistence::pending_messages::list_pending_messages(&connection)
+            let durable = argmax_store::pending_messages::list_pending_messages(&connection)
                 .expect("durable queue");
             assert_eq!(durable.len(), 1);
             assert_eq!(durable[0].id, message_id);
@@ -6367,7 +6358,7 @@ mod tests {
         {
             let connection = service.database.connection();
             let durable =
-                crate::persistence::pending_messages::list_pending_messages(&connection).unwrap();
+                argmax_store::pending_messages::list_pending_messages(&connection).unwrap();
             assert_eq!(durable[0].id, message_id);
             assert_eq!(durable[0].recovery_status.as_deref(), Some("unsent"));
         }
@@ -6385,7 +6376,7 @@ mod tests {
         {
             let connection = service.database.connection();
             assert!(
-                crate::persistence::pending_messages::list_pending_messages(&connection)
+                argmax_store::pending_messages::list_pending_messages(&connection)
                     .expect("cleared durable queue")
                     .is_empty()
             );
@@ -6506,11 +6497,9 @@ mod tests {
             message_id
         );
         let connection = service.database.connection();
-        let durable = crate::persistence::pending_messages::list_session_pending_messages(
-            &connection,
-            "session-1",
-        )
-        .expect("durable queue");
+        let durable =
+            argmax_store::pending_messages::list_session_pending_messages(&connection, "session-1")
+                .expect("durable queue");
         assert_eq!(durable.len(), 1, "the row is visible to the composer again");
         assert_eq!(durable[0].content, "stopped mid-promotion");
     }

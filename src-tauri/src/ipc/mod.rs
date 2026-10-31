@@ -1,7 +1,7 @@
 use tauri_specta::{collect_commands, Builder as SpectaBuilder};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::state::AppState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 pub mod events;
 pub mod inputs;
@@ -44,7 +44,7 @@ pub mod windows;
 pub mod workspace_files;
 pub mod workspaces;
 
-pub use crate::persistence::authorship::PersonAttestation;
+pub use argmax_store::authorship::PersonAttestation;
 
 pub(in crate::ipc) fn attest_person() -> PersonAttestation {
     PersonAttestation::minted_by_ipc()

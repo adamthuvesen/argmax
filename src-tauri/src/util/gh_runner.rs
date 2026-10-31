@@ -3,7 +3,7 @@
 
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 fn gh_command(cwd: String, args: Vec<String>) -> tokio::process::Command {
     let mut command = tokio::process::Command::new("gh");

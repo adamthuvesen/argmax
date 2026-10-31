@@ -18,7 +18,7 @@ use objc2_web_kit::{
 };
 use tauri::{AppHandle, Webview};
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const PREPARE_TIMEOUT: Duration = Duration::from_secs(30);
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);

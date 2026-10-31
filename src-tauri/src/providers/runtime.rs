@@ -40,11 +40,9 @@ use super::{
     normalizer::ProviderOutputStream, AgentMode, PermissionMode, ProviderId, ProviderLaunchInput,
     ReasoningEffort,
 };
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::time::now_iso,
-    providers::inputs::ComposerAttachmentInput,
-};
+use crate::providers::inputs::ComposerAttachmentInput;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::time::now_iso;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type EventCallback = Arc<dyn Fn(ProviderRuntimeEvent) + Send + Sync>;
@@ -1028,9 +1026,8 @@ mod verification_tests {
             .expect("verification child configuration");
         let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
         runtime.block_on(async {
-            let database = Arc::new(
-                crate::persistence::Database::open_in_memory().expect("verification database"),
-            );
+            let database =
+                Arc::new(argmax_store::Database::open_in_memory().expect("verification database"));
             let launcher = RealProviderProcessLauncher::new()
                 .with_approvals(crate::approvals::service::ApprovalService::new(database));
             let first =

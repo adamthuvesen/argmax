@@ -260,7 +260,7 @@ fn status_from(state: &RecorderState) -> PerformanceStatus {
 #[derive(Clone)]
 struct PerformanceSources {
     providers: Option<Arc<crate::providers::session_service::ProviderSessionService>>,
-    database: Option<Arc<crate::persistence::Database>>,
+    database: Option<Arc<argmax_store::Database>>,
 }
 
 impl PerformanceSources {

@@ -8,10 +8,6 @@ use crate::{
         BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, TerminalCols, TerminalRows,
         WorkspaceId,
     },
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        authorship::PromptAuthor, database::Database, launch_receipts, projects::ProjectSummary,
-    },
     providers::{inputs::ProvidersLaunchInput, session_service::ProviderSessionService},
     workspaces::{
         inputs::{
@@ -20,6 +16,10 @@ use crate::{
         orchestration::WorkspacesCreateAlongsideInput,
         WorkspaceService,
     },
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    authorship::PromptAuthor, database::Database, launch_receipts, projects::ProjectSummary,
 };
 
 pub(crate) const DEFAULT_TASK_LABEL: &str = "Local agent task";

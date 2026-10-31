@@ -33,28 +33,26 @@ use specta::Type;
 use uuid::Uuid;
 
 use crate::arcs::member_preamble;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::arcs;
-use crate::persistence::authorship::PromptAuthor;
-use crate::persistence::events::{
-    latest_agent_message, persist_timeline_event, without_chat_link_brackets,
-    PersistTimelineEventInput, TimelineEvent,
-};
-use crate::persistence::session_messages::{
-    insert_session_message, list_undelivered_messages_of_kind, mark_message_delivered,
-    NewSessionMessage,
-};
-use crate::persistence::sessions::{
-    find_session_by_id, record_session_launch, LAUNCH_KIND_MULTITASK,
-};
-use crate::persistence::workspaces::find_workspace_by_id;
-use crate::persistence::Database;
 use crate::providers::flush_queue::{DashboardDelta, PendingMessage};
 use crate::providers::session_service::ProviderSessionService;
 use crate::providers::ProviderId;
 use crate::session_control::{launch_with_spec, task_label, AlongsideCheckout, LaunchSpec};
-use crate::sessions::state::SessionState;
 use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::arcs;
+use argmax_store::authorship::PromptAuthor;
+use argmax_store::events::{
+    latest_agent_message, persist_timeline_event, without_chat_link_brackets,
+    PersistTimelineEventInput, TimelineEvent,
+};
+use argmax_store::session_messages::{
+    insert_session_message, list_undelivered_messages_of_kind, mark_message_delivered,
+    NewSessionMessage,
+};
+use argmax_store::sessions::{find_session_by_id, record_session_launch, LAUNCH_KIND_MULTITASK};
+use argmax_store::workspaces::find_workspace_by_id;
+use argmax_store::Database;
 
 /// Written into the parent's timeline the moment a multitask is dispatched.
 /// The card the chat renders hangs off this row, which is why it is persisted
@@ -538,7 +536,7 @@ mod tests {
 
     #[test]
     fn the_preamble_cannot_carry_a_chat_link_but_the_typed_prompt_keeps_its_own() {
-        use crate::persistence::events::chat_reference_ids;
+        use argmax_store::events::chat_reference_ids;
 
         let typed = "compare with [Billing](argmax://chat/chat-y?v=1)";
         let prompt = prompt_with_preamble(

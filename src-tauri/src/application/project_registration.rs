@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT};
-use crate::persistence::database::Database;
-use crate::persistence::projects::{
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::database::Database;
+use argmax_store::projects::{
     parse_github_remote, persist_project, PersistProjectInput, ProjectRemote, ProjectSettings,
     ProjectSummary,
 };
@@ -31,7 +31,7 @@ pub(crate) async fn register_repo_path(
     let canonical_path = canonicalize_repo_path(&candidate_path).await?;
     {
         let connection = database.connection();
-        if let Some(project) = crate::persistence::projects::find_project_by_repo_path(
+        if let Some(project) = argmax_store::projects::find_project_by_repo_path(
             &connection,
             &canonical_path.to_string_lossy(),
         )? {
@@ -61,10 +61,9 @@ pub(crate) async fn register_repo_path(
 
     let project = {
         let connection = database.connection();
-        if let Some(existing) = crate::persistence::projects::find_project_by_repo_path(
-            &connection,
-            &project.repo_path,
-        )? {
+        if let Some(existing) =
+            argmax_store::projects::find_project_by_repo_path(&connection, &project.repo_path)?
+        {
             return Ok(existing);
         }
         persist_project(&connection, &project)?
@@ -75,11 +74,8 @@ pub(crate) async fn register_repo_path(
     };
     if let Some(remote) = remote.as_ref() {
         let connection = database.connection();
-        let _ = crate::persistence::projects::update_project_remote(
-            &connection,
-            &project.id,
-            Some(remote),
-        );
+        let _ =
+            argmax_store::projects::update_project_remote(&connection, &project.id, Some(remote));
     }
     Ok(project)
 }

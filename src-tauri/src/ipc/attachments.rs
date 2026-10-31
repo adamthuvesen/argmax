@@ -1,8 +1,6 @@
 use super::inputs::*;
-use crate::{
-    attachments::store::{AttachmentStore, AttachmentStoreError, SaveImageResult},
-    error::{ArgmaxError, ArgmaxResult},
-};
+use crate::attachments::store::{AttachmentStore, AttachmentStoreError, SaveImageResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use std::path::PathBuf;
 use tauri::{AppHandle, Runtime};
 

@@ -8,7 +8,7 @@
 //! mechanism, the same way multitask's shared-checkout guardrails are (see
 //! `crate::multitask::prompt_with_preamble`).
 
-use crate::persistence::arcs::ArcRecord;
+use argmax_store::arcs::ArcRecord;
 
 /// How much of the brief rides inline in the coordinator's first prompt. The
 /// full text always lives in `BRIEF.md`; this is enough for the agent to
@@ -141,8 +141,8 @@ still running. Call arc_status to see members, the clock, how large NOTES.md has
 pub fn member_preamble(arc: &ArcRecord) -> String {
     // A multitask's opening prompt is stored as the person's, and the Arc's name
     // and folder are strings an agent may have set: neither may carry a chat link.
-    let name = &crate::persistence::events::without_chat_link_brackets(&arc.name);
-    let dir = &crate::persistence::events::without_chat_link_brackets(&arc.dir);
+    let name = &argmax_store::events::without_chat_link_brackets(&arc.name);
+    let dir = &argmax_store::events::without_chat_link_brackets(&arc.dir);
     format!(
         "You are working as part of Arc \"{name}\". Read `{dir}/BRIEF.md` and `{dir}/NOTES.md` \
 first for the Arc's goal and its current state. Read `{dir}/LOG.md` or any report file in that \
@@ -165,7 +165,7 @@ fn cap_chars(value: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::arcs::ArcState;
+    use argmax_store::arcs::ArcState;
 
     fn arc(brief: &str) -> ArcRecord {
         ArcRecord {
@@ -204,7 +204,7 @@ mod tests {
 
         let preamble = member_preamble(&hostile);
 
-        assert!(crate::persistence::events::chat_reference_ids(&preamble).is_empty());
+        assert!(argmax_store::events::chat_reference_ids(&preamble).is_empty());
         assert!(preamble.contains("argmax://chat/chat-x"));
     }
 

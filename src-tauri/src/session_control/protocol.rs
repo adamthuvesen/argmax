@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::PROTOCOL_VERSION;
 use crate::mcp::browser_bridge::{BrowserOutcome, BrowserRequest};
-use crate::sessions::{attention::AttentionState, state::SessionState};
+use argmax_contracts::sessions::{attention::AttentionState, state::SessionState};
 
 /// One request on the session-control socket.
 ///
@@ -818,7 +818,7 @@ pub struct ArcStatusLimits {
 pub struct ArcStatusOutcome {
     pub arc_id: String,
     pub name: String,
-    pub state: crate::persistence::arcs::ArcState,
+    pub state: argmax_store::arcs::ArcState,
     pub dir: String,
     /// The local wall clock when the call was answered, `%Y-%m-%d %H:%M %Z`.
     /// A long-running coordinator has no clock of its own and will otherwise

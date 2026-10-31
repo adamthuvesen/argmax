@@ -4,8 +4,8 @@
 // delivery of it: HTTP headers on a POST to a topic URL, with a Click header
 // deep-linking the mobile page. The APNs sink next door reads the same table.
 
-use crate::persistence::sessions::SessionSummary;
 use crate::remote::signal::{signal_for, PushSignal, SignalDedupe};
+use argmax_store::sessions::SessionSummary;
 
 const REQUEST_TIMEOUT_SECS: u64 = 5;
 
@@ -139,8 +139,8 @@ fn deep_link(mobile_url: &str, session_id: &str) -> String {
 mod tests {
     use super::*;
     use crate::remote::signal::fixtures::session;
-    use crate::sessions::attention::AttentionState;
-    use crate::sessions::state::SessionState;
+    use argmax_contracts::sessions::attention::AttentionState;
+    use argmax_contracts::sessions::state::SessionState;
     use std::sync::mpsc;
 
     const MOBILE_URL: &str = "http://mac.tail1234.ts.net:8790/mobile.html";

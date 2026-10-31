@@ -16,10 +16,8 @@ use super::shared::{
     trace_event, TraceFileLines, TraceRunModel,
 };
 use super::{AgentTraceContext, TraceImport, TraceLine};
-use crate::{
-    persistence::events::PersistTimelineEventInput, providers::normalizer::JSON_PARSE_LINE_CAP,
-    util::sync::LockOrRecover,
-};
+use crate::{providers::normalizer::JSON_PARSE_LINE_CAP, util::sync::LockOrRecover};
+use argmax_store::events::PersistTimelineEventInput;
 
 #[derive(Debug, Clone)]
 pub(super) struct CodexNativeRun {
@@ -852,7 +850,7 @@ mod tests {
     use super::super::test_support::*;
     use super::super::{import_subagent_trace_events_from_home, TraceProvider};
     use super::*;
-    use crate::persistence::{
+    use argmax_store::{
         database::Database, events::list_session_agent_events,
         sessions::update_session_provider_conversation_id,
     };

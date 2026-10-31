@@ -12,7 +12,7 @@
 //!   before admitting the turn, the launch runs once more as a fresh
 //!   conversation. An ambiguous failure is never retried.
 
-pub use crate::persistence::events::latest_turn_starter;
+pub use argmax_store::events::latest_turn_starter;
 use std::path::Path;
 
 use rusqlite::Connection;
@@ -20,19 +20,17 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use super::{LaunchContinuity, ProviderId, ProviderLaunchInput};
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        continuity::{
-            binding_turn, clear_fork_native_plan, clear_pending_since, config_identity,
-            event_rowid, find_binding, find_parked, forget_active_pointer, fork_for_child,
-            has_any_binding, invalidate_binding, record_binding_turn, set_pending_since,
-            BindingState, ForkRecord, NativeMode,
-        },
-        sessions::{
-            find_session_by_id, session_resume_fork, update_session_provider_conversation_id,
-            SessionSummary,
-        },
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    continuity::{
+        binding_turn, clear_fork_native_plan, clear_pending_since, config_identity, event_rowid,
+        find_binding, find_parked, forget_active_pointer, fork_for_child, has_any_binding,
+        invalidate_binding, record_binding_turn, set_pending_since, BindingState, ForkRecord,
+        NativeMode,
+    },
+    sessions::{
+        find_session_by_id, session_resume_fork, update_session_provider_conversation_id,
+        SessionSummary,
     },
 };
 
@@ -253,7 +251,7 @@ fn child_untouched(connection: &Connection, fork: &ForkRecord) -> ArgmaxResult<b
         Some(event_id) => event_rowid(connection, event_id)?.unwrap_or(0),
         None => 0,
     };
-    Ok(!crate::persistence::events::has_user_message_after(
+    Ok(!argmax_store::events::has_user_message_after(
         connection,
         &fork.child_session_id,
         floor,
@@ -261,7 +259,7 @@ fn child_untouched(connection: &Connection, fork: &ForkRecord) -> ArgmaxResult<b
 }
 
 fn source_is_active(connection: &Connection, source_session_id: &str) -> ArgmaxResult<bool> {
-    let state = crate::persistence::sessions::session_state_text(connection, source_session_id);
+    let state = argmax_store::sessions::session_state_text(connection, source_session_id);
     Ok(state.is_none_or(|state| matches!(state.as_str(), "running" | "waiting" | "blocked")))
 }
 
@@ -276,7 +274,7 @@ fn source_at_boundary(connection: &Connection, fork: &ForkRecord) -> ArgmaxResul
     let Some(floor) = event_rowid(connection, last)? else {
         return Ok(false);
     };
-    Ok(!crate::persistence::events::has_user_message_after(
+    Ok(!argmax_store::events::has_user_message_after(
         connection,
         source_session_id,
         floor,

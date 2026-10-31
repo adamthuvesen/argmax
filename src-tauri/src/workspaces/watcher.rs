@@ -29,10 +29,10 @@ use tauri::async_runtime::JoinHandle;
 use tokio::sync::mpsc;
 
 use super::orchestration::{WorkspaceService, WATCH_DEBOUNCE_MS, WATCH_MAX_DEBOUNCE_MS};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::workspaces::find_workspace_by_id;
 use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::workspaces::find_workspace_by_id;
 
 /// One OS-level watch over a checkout, shared by every workspace pointing at it.
 struct CheckoutWatcher {

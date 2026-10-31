@@ -20,8 +20,8 @@ use serde_json::{json, Value};
 use specta::Type;
 
 use super::model_catalogue::{ModelId, VERCEL_SLUGS};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::util::keychain::KeychainSecret;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const GATEWAY_KEY: &str = "opencode.gateway";
 
@@ -169,8 +169,8 @@ pub fn launch_config() -> ArgmaxResult<(OpencodeGateway, Value)> {
 /// Reads the saved choice into the mirror. Called once the database opens; an
 /// unreadable row reads as OpenRouter, the gateway every launch used before.
 pub fn load(connection: &Connection) {
-    let gateway = crate::persistence::app_settings::read_ui_value(connection, GATEWAY_KEY)
-        .unwrap_or_default();
+    let gateway =
+        argmax_store::app_settings::read_ui_value(connection, GATEWAY_KEY).unwrap_or_default();
     *SELECTED
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = gateway;
@@ -179,7 +179,7 @@ pub fn load(connection: &Connection) {
 /// Saves the choice. It applies from the next launch; a running turn keeps the
 /// gateway its OpenCode server started with.
 pub fn select(connection: &Connection, gateway: OpencodeGateway) -> ArgmaxResult<()> {
-    crate::persistence::app_settings::write_ui_value(connection, GATEWAY_KEY, &gateway)?;
+    argmax_store::app_settings::write_ui_value(connection, GATEWAY_KEY, &gateway)?;
     *SELECTED
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = gateway;

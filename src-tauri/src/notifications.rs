@@ -8,11 +8,11 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 #[cfg(target_os = "macos")]
 mod macos;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::gh::GhPrRecord;
-use crate::persistence::sessions::SessionSummary;
-use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::gh::GhPrRecord;
+use argmax_store::sessions::SessionSummary;
 
 const LAST_NOTIFIED_CAPACITY: usize = 2_000;
 const CHECK_FAILURE_CAPACITY: usize = 500;
@@ -538,7 +538,7 @@ mod tests {
             completed_at: Some("2026-05-01T00:01:00.000Z".to_string()),
             last_activity_at: "2026-05-01T00:01:00.000Z".to_string(),
             cost_usd: 0.0,
-            tokens: crate::persistence::sessions::UsageCounts {
+            tokens: argmax_store::sessions::UsageCounts {
                 input: 0,
                 output: 0,
                 cache_read: 0,
@@ -547,7 +547,7 @@ mod tests {
             context_tokens: 0,
             context_window: None,
             launched_by_session_id: None,
-            launch_kind: crate::persistence::sessions::LAUNCH_KIND_AGENT.to_string(),
+            launch_kind: argmax_store::sessions::LAUNCH_KIND_AGENT.to_string(),
             arc_id: None,
             auto_tier: None,
             auto_route: None,

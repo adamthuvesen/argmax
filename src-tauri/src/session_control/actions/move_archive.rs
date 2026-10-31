@@ -16,20 +16,20 @@ use super::super::{
 use super::resolve_or_register_project;
 use crate::{
     application::validation::{Prompt, SessionId, WorkspaceId},
-    error::ArgmaxError,
-    persistence::{
-        after_turn::{
-            AfterTurnAction, ArchiveRequest, MergedPrRequest, MoveDestinationRecord, MoveRequest,
-        },
-        database::Database,
-        events::{count_move_arrivals, persist_timeline_event, PersistTimelineEventInput},
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
-    },
     providers::inputs::ProvidersSendInput,
     providers::session_service::ProviderSessionService,
     workspaces::inputs::WorkspacesArchiveInput,
     workspaces::{orchestration::MoveDestination, WorkspaceService},
+};
+use argmax_contracts::error::ArgmaxError;
+use argmax_store::{
+    after_turn::{
+        AfterTurnAction, ArchiveRequest, MergedPrRequest, MoveDestinationRecord, MoveRequest,
+    },
+    database::Database,
+    events::{count_move_arrivals, persist_timeline_event, PersistTimelineEventInput},
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 
 /// Archive the caller's own workspace once its turn settles.

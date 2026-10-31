@@ -7,10 +7,10 @@ use std::{
 
 use regex::Regex;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::git::exec::run_git_text;
-use crate::persistence::projects::ProjectRemote;
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::projects::ProjectRemote;
 
 static CHECKOUT_WRITE_LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));

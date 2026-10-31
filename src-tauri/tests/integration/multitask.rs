@@ -8,25 +8,11 @@ use std::{
 };
 
 use crate::support::git_repo::seed_git_repo;
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
 use argmax_lib::{
-    error::{ArgmaxError, ArgmaxResult},
     multitask::{
         dispatch, dispatch_queued, MultitaskRequest, FINISHED_EVENT, LAUNCHED_EVENT, MULTITASK_KIND,
-    },
-    persistence::{
-        authorship::PromptAuthor,
-        database::Database,
-        events::list_session_events_since,
-        pending_messages::{list_session_pending_messages, replace_session_queue},
-        projects::{persist_project, PersistProjectInput, ProjectSettings},
-        session_messages::list_undelivered_messages_of_kind,
-        sessions::{
-            find_session_by_id, persist_session, record_session_launch, session_launch_lineage,
-            PersistSessionInput, LAUNCH_KIND_AGENT,
-        },
-        time::now_iso,
-        workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
     },
     providers::{
         flush_queue::{DashboardDelta, PendingMessage},
@@ -39,6 +25,20 @@ use argmax_lib::{
         ProviderId, ProviderLaunchInput, ReasoningEffort,
     },
     workspaces::WorkspaceService,
+};
+use argmax_store::{
+    authorship::PromptAuthor,
+    database::Database,
+    events::list_session_events_since,
+    pending_messages::{list_session_pending_messages, replace_session_queue},
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    session_messages::list_undelivered_messages_of_kind,
+    sessions::{
+        find_session_by_id, persist_session, record_session_launch, session_launch_lineage,
+        PersistSessionInput, LAUNCH_KIND_AGENT,
+    },
+    time::now_iso,
+    workspaces::{find_workspace_by_id, persist_workspace, PersistWorkspaceInput},
 };
 
 /// A launcher that never exits on its own, so a test decides when a turn ends.
@@ -263,7 +263,7 @@ async fn multitask(fixture: &Fixture, prompt: &str, worktree: bool) -> String {
             task_label: None,
             queued_settings: None,
         },
-        argmax_lib::persistence::authorship::PromptAuthor::unattested(),
+        argmax_store::authorship::PromptAuthor::unattested(),
         Arc::clone(&fixture.database),
         Arc::clone(&fixture.workspaces),
         Arc::clone(&fixture.providers),
@@ -568,7 +568,7 @@ async fn a_multitask_that_cannot_start_still_reports_back() {
             task_label: None,
             queued_settings: None,
         },
-        argmax_lib::persistence::authorship::PromptAuthor::unattested(),
+        argmax_store::authorship::PromptAuthor::unattested(),
         Arc::clone(&fixture.database),
         Arc::clone(&fixture.workspaces),
         Arc::clone(&fixture.providers),
@@ -609,7 +609,7 @@ async fn queued_multitask_uses_the_claimed_prompt_and_deletes_its_queue_row() {
         origin: None,
         recovery_status: None,
         queued_at: now_iso(),
-        author: argmax_lib::persistence::authorship::PromptAuthor::unattested(),
+        author: argmax_store::authorship::PromptAuthor::unattested(),
     };
     {
         let mut connection = fixture.database.connection();
@@ -843,7 +843,7 @@ async fn an_agent_set_label_cannot_smuggle_a_grant_into_a_typed_multitask() {
     .expect("dispatch multitask");
 
     let grants = |target: &str| {
-        argmax_lib::persistence::events::human_prompt_references_session(
+        argmax_store::events::human_prompt_references_session(
             &fixture.database.connection(),
             &launched.session_id,
             target,
@@ -862,7 +862,7 @@ async fn an_agent_set_label_cannot_smuggle_a_grant_into_a_typed_multitask() {
 async fn a_multitask_child_opens_with_the_author_its_prompt_had() {
     let referenced = |text: &str| format!("{text} [x](argmax://chat/chat-x?v=1)");
     let grants = |fixture: &Fixture, child: &str| {
-        argmax_lib::persistence::events::human_prompt_references_session(
+        argmax_store::events::human_prompt_references_session(
             &fixture.database.connection(),
             child,
             "chat-x",
@@ -934,7 +934,7 @@ async fn queued_multitask_restores_its_claim_when_dispatch_is_refused() {
         origin: None,
         recovery_status: None,
         queued_at: now_iso(),
-        author: argmax_lib::persistence::authorship::PromptAuthor::unattested(),
+        author: argmax_store::authorship::PromptAuthor::unattested(),
     };
     {
         let mut connection = fixture.database.connection();

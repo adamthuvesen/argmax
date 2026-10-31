@@ -2,8 +2,8 @@
 // for Auto routing: no key, no Auto. Stored in the macOS Keychain; see
 // `util::keychain` for how the key is kept off argv and apart per profile.
 
-use crate::error::ArgmaxResult;
 use crate::util::keychain::KeychainSecret;
+use argmax_contracts::error::ArgmaxResult;
 
 static JEV_KEY: KeychainSecret = KeychainSecret::new(
     "Argmax Jev API key",

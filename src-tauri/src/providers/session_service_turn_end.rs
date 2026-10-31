@@ -11,13 +11,13 @@ use super::{
     sqlite_error, update_workspace_state_for_session_state_within_transaction, HandleEntry,
     ProviderSessionService,
 };
-use crate::error::ArgmaxResult;
-use crate::persistence::events::{RawProviderOutput, TimelineEvent};
-use crate::persistence::projects::list_projects;
-use crate::persistence::sessions::{update_session_state, SessionStateInput};
 use crate::providers::flush_queue::DashboardDelta;
-use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::events::{RawProviderOutput, TimelineEvent};
+use argmax_store::projects::list_projects;
+use argmax_store::sessions::{update_session_state, SessionStateInput};
 
 /// How one path ends a turn. Every field is required, so a new path has to
 /// decide each effect.
@@ -70,8 +70,7 @@ impl ProviderSessionService {
         }
         let connection = self.database.connection();
         let transaction = connection.unchecked_transaction().map_err(sqlite_error)?;
-        let current =
-            crate::persistence::sessions::find_session_by_id(&transaction, end.session_id)?;
+        let current = argmax_store::sessions::find_session_by_id(&transaction, end.session_id)?;
         if !(end.may_end)(current.state) {
             return Ok(None);
         }

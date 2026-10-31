@@ -23,20 +23,18 @@ use super::super::{
 use super::{
     messaging::cap_chars, resolve_project, task_label, workspace_tools::resolve_session_workspace,
 };
-use crate::{
-    persistence::{
-        database::Database,
-        learnings::{
-            insert_learning, record_learning_hits, search_learnings, InsertLearningInput, Learning,
-        },
-        projects::list_projects,
-        routines::{
-            delete_routine, find_routine_by_id, list_routines, set_routine_enabled,
-            set_routine_last_session, upsert_routine, RoutineAuthor, RoutineRunTarget,
-            UpsertRoutineInput,
-        },
+use crate::routines::schedule;
+use argmax_store::{
+    database::Database,
+    learnings::{
+        insert_learning, record_learning_hits, search_learnings, InsertLearningInput, Learning,
     },
-    routines::schedule,
+    projects::list_projects,
+    routines::{
+        delete_routine, find_routine_by_id, list_routines, set_routine_enabled,
+        set_routine_last_session, upsert_routine, RoutineAuthor, RoutineRunTarget,
+        UpsertRoutineInput,
+    },
 };
 
 /// The three kinds the `learnings` table accepts. Rejecting a fourth here
@@ -344,7 +342,7 @@ fn own_project_routine(
     database: &Database,
     parent: &ParentLaunchSettings,
     schedule_id: &str,
-) -> Result<crate::persistence::routines::Routine, SessionControlError> {
+) -> Result<argmax_store::routines::Routine, SessionControlError> {
     let own_project = resolve_session_workspace(database, &parent.session_id, None)?
         .project
         .id;

@@ -10,16 +10,12 @@ use super::{
     live_database, read_off_main,
     validation::{NonEmptyString, ProjectId},
 };
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    files::linked_roots,
-    persistence::{
-        app_settings,
-        linked_repos::{self, LinkedRepo, LinkedRepoInput},
-        projects::{self, ProjectSummary},
-    },
-    providers::one_shot,
-    state::AppState,
+use crate::{files::linked_roots, providers::one_shot, state::AppState};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    app_settings,
+    linked_repos::{self, LinkedRepo, LinkedRepoInput},
+    projects::{self, ProjectSummary},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

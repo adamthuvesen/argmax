@@ -9,13 +9,6 @@ use specta::Type;
 use tauri::State;
 
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        events::persist_timeline_event,
-        sessions::{find_session_by_id, update_session_last_activity},
-        time::now_iso,
-        workspaces::find_workspace_by_id,
-    },
     providers::{
         claude_cloud,
         cloud::{
@@ -25,6 +18,13 @@ use crate::{
         codex_cloud, cursor_cloud,
     },
     state::AppState,
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    events::persist_timeline_event,
+    sessions::{find_session_by_id, update_session_last_activity},
+    time::now_iso,
+    workspaces::find_workspace_by_id,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
@@ -442,10 +442,10 @@ fn checkout_from_connection_in_folder(
             })
         }
         CloudSource::Project(project_id) => {
-            let (project, _) = crate::persistence::project_folders::project_for_launch(
+            let (project, _) = argmax_store::project_folders::project_for_launch(
                 connection, project_id, folder_id,
             )?;
-            if !crate::persistence::project_folders::folder_is_git(&project.repo_path)? {
+            if !argmax_store::project_folders::folder_is_git(&project.repo_path)? {
                 return Err(ArgmaxError::service(
                     "CLOUD_GIT_CHECKOUT_REQUIRED",
                     "Cloud tasks need a Git repository.",
@@ -568,7 +568,7 @@ mod tests {
 
     #[test]
     fn project_source_resolves_only_the_registered_repo_path() {
-        use crate::persistence::{
+        use argmax_store::{
             database::Database,
             projects::{persist_project, PersistProjectInput, ProjectSettings},
         };
@@ -616,12 +616,11 @@ mod tests {
         )
         .unwrap();
         let plain = tempfile::tempdir().unwrap();
-        let project =
-            crate::persistence::projects::require_project(&connection, "project-1").unwrap();
+        let project = argmax_store::projects::require_project(&connection, "project-1").unwrap();
         let folders = [root.path(), secondary.path(), plain.path()]
             .into_iter()
             .map(
-                |path| crate::persistence::project_folders::PersistProjectFolderInput {
+                |path| argmax_store::project_folders::PersistProjectFolderInput {
                     root_path: path.display().to_string(),
                     current_branch: "main".into(),
                     default_branch: Some("main".into()),
@@ -630,7 +629,7 @@ mod tests {
                 },
             )
             .collect::<Vec<_>>();
-        crate::persistence::project_folders::configure_project_folders(
+        argmax_store::project_folders::configure_project_folders(
             &connection,
             "project-1",
             "Project",
@@ -639,8 +638,7 @@ mod tests {
         )
         .unwrap();
         let configured =
-            crate::persistence::project_folders::list_project_folders(&connection, "project-1")
-                .unwrap();
+            argmax_store::project_folders::list_project_folders(&connection, "project-1").unwrap();
         let selected = configured
             .iter()
             .find(|folder| folder.root_path == secondary.path().display().to_string())
@@ -675,7 +673,7 @@ mod tests {
 
     #[test]
     fn chat_brief_closes_on_the_users_instruction_instead_of_the_default() {
-        use crate::persistence::{
+        use argmax_store::{
             database::Database,
             events::{persist_timeline_event, PersistTimelineEventInput},
         };

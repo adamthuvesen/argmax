@@ -1,20 +1,20 @@
 use super::super::{HandleEntry, PendingMessage, ProviderSessionService, SendInputResult};
 use super::{database_with_running_session, pending_message, CountingFailureLauncher};
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use crate::providers::inputs::{
     ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
     QueuedMessageDelivery,
 };
 use crate::application::validation::{NonEmptyString, SessionId};
-use crate::persistence::authorship::PromptAuthor;
-use crate::persistence::events::list_session_events_since;
-use crate::persistence::pending_messages::{list_session_pending_messages, replace_session_queue};
-use crate::persistence::session_messages::{
+use argmax_store::authorship::PromptAuthor;
+use argmax_store::events::list_session_events_since;
+use argmax_store::pending_messages::{list_session_pending_messages, replace_session_queue};
+use argmax_store::session_messages::{
     insert_session_message, take_undelivered_messages, NewSessionMessage,
 };
-use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
+use argmax_store::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 use crate::providers::runtime::{BoxFuture, ProviderRuntimeHandle};
-use crate::sessions::state::SessionState;
+use argmax_contracts::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
 use serde_json::json;
 use std::collections::VecDeque;

@@ -53,13 +53,13 @@ use super::unified_diff::{unified_diff, DEFAULT_CONTEXT};
 use super::AgentMode;
 use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, ReasoningEffort};
 use crate::approvals::service::ApprovalService;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::time::now_iso;
 use crate::questions::service::{typed_answer_text, QuestionService};
 use crate::session_control::SessionLaunchProcessConfig;
 #[cfg(test)]
 use crate::session_control::SESSION_LAUNCH_TOKEN_ENV;
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::time::now_iso;
 
 /// How long `terminate` waits for a cancelled prompt to resolve before giving
 /// up. The warm process is never killed on turn termination.
@@ -1710,11 +1710,11 @@ impl ProviderRuntimeHandle for AcpTurnHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::events::PersistTimelineEventInput;
     use crate::providers::model_catalogue::ModelId;
     use crate::providers::normalizer::{
         normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent,
     };
+    use argmax_store::events::PersistTimelineEventInput;
 
     fn update(value: Value) -> Value {
         json!({ "sessionId": "acp-1", "update": value })

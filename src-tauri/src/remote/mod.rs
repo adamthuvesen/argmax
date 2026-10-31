@@ -235,14 +235,14 @@ fn is_valid_token(token: &str) -> bool {
 pub fn update_config(
     app_data_dir: &Path,
     edit: impl FnOnce(&mut RemoteConfig),
-) -> crate::error::ArgmaxResult<RemoteConfig> {
+) -> argmax_contracts::error::ArgmaxResult<RemoteConfig> {
     let _guard = CONFIG_UPDATE_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = app_data_dir.join(CONFIG_FILE_NAME);
     let mut config = match std::fs::read_to_string(&path) {
         Ok(body) => parse_config(&body).map_err(|error| {
-            crate::error::ArgmaxError::service(
+            argmax_contracts::error::ArgmaxError::service(
                 "REMOTE_CONFIG_MALFORMED",
                 format!(
                     "{} is malformed ({error}); fix or delete it",
@@ -252,7 +252,7 @@ pub fn update_config(
         })?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => RemoteConfig::disabled(),
         Err(error) => {
-            return Err(crate::error::ArgmaxError::service(
+            return Err(argmax_contracts::error::ArgmaxError::service(
                 "REMOTE_CONFIG_READ",
                 format!("failed to read {}: {error}", path.display()),
             ))
@@ -266,16 +266,19 @@ pub fn update_config(
 /// Persist `remote.json` atomically, so a crash mid-write cannot leave a
 /// truncated file that loads as a fresh token. Failures are returned loudly so
 /// the Settings panel can tell the user the change did not stick.
-pub fn save_config(app_data_dir: &Path, config: &RemoteConfig) -> crate::error::ArgmaxResult<()> {
+pub fn save_config(
+    app_data_dir: &Path,
+    config: &RemoteConfig,
+) -> argmax_contracts::error::ArgmaxResult<()> {
     let path = app_data_dir.join(CONFIG_FILE_NAME);
     let write_error = |error: std::io::Error| {
-        crate::error::ArgmaxError::service(
+        argmax_contracts::error::ArgmaxError::service(
             "REMOTE_CONFIG_WRITE",
             format!("failed to write {}: {error}", path.display()),
         )
     };
     let body = serde_json::to_vec_pretty(config).map_err(|error| {
-        crate::error::ArgmaxError::service("REMOTE_CONFIG_ENCODE", error.to_string())
+        argmax_contracts::error::ArgmaxError::service("REMOTE_CONFIG_ENCODE", error.to_string())
     })?;
     let mut file = tempfile::NamedTempFile::new_in(app_data_dir).map_err(write_error)?;
     std::io::Write::write_all(&mut file, &body).map_err(write_error)?;

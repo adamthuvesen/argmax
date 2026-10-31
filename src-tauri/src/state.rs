@@ -15,10 +15,8 @@ use crate::attachments::store::AttachmentStore;
 use crate::browser::registry::BrowserTabRegistry;
 use crate::checks::service::CheckService;
 use crate::dock::{DockBadgeService, TauriDockBadgeSink};
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::gh::poller::GhPoller;
 use crate::notifications::{NotificationService, NotificationSink};
-use crate::persistence::Database;
 use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::discovery::ProviderDiscovery;
 use crate::providers::session_service::ProviderSessionService;
@@ -29,6 +27,8 @@ use crate::skills::registry::SkillRegistry;
 use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
 use crate::workspaces::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::Database;
 
 pub type LiveNotificationService = NotificationService<Box<dyn NotificationSink>>;
 pub type LiveDockBadgeService = DockBadgeService<TauriDockBadgeSink<tauri::Wry>>;
@@ -108,8 +108,7 @@ pub struct AppState {
     /// Most recent destructive chat-history preview. The candidate ids and
     /// cutoff are held together so confirmation applies exactly what the user
     /// reviewed, then revalidates those rows before deletion.
-    pub chat_cleanup_plan:
-        std::sync::Mutex<Option<crate::persistence::chat_cleanup::ChatCleanupPlan>>,
+    pub chat_cleanup_plan: std::sync::Mutex<Option<argmax_store::chat_cleanup::ChatCleanupPlan>>,
     pub routine_runs: Arc<crate::routines::scheduler::RoutineRuns>,
     /// Skill discovery, held here so its per-provider cache survives across
     /// calls: a fresh registry per `skills:list` re-walks every skill tree.
@@ -190,12 +189,15 @@ impl AppState {
 
     /// The app data directory, or the one error every profile-backed handler
     /// reports when setup never resolved one.
-    pub fn require_app_data_dir(&self) -> crate::error::ArgmaxResult<&Path> {
+    pub fn require_app_data_dir(&self) -> argmax_contracts::error::ArgmaxResult<&Path> {
         self.app_data_dir
             .get()
             .map(PathBuf::as_path)
             .ok_or_else(|| {
-                crate::error::ArgmaxError::service("APP_DATA_DIR", "app data dir unavailable")
+                argmax_contracts::error::ArgmaxError::service(
+                    "APP_DATA_DIR",
+                    "app data dir unavailable",
+                )
             })
     }
 

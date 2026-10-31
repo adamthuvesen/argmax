@@ -4,15 +4,15 @@ use tauri::State;
 
 use super::{live_database, publish_dashboard_changed, read_off_main, validation::NonEmptyString};
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        arc_events::{list_arc_timeline, ArcTimelineCursor, ArcTimelinePage},
-        arcs::{self, ArcCreateInput, ArcDetail, ArcRecord, ArcState, ArcUpdateInput},
-        events::goal_transcript_tail,
-        sessions::find_session_by_id,
-    },
     providers::{ProviderId, ReasoningEffort},
     state::AppState,
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    arc_events::{list_arc_timeline, ArcTimelineCursor, ArcTimelinePage},
+    arcs::{self, ArcCreateInput, ArcDetail, ArcRecord, ArcState, ArcUpdateInput},
+    events::goal_transcript_tail,
+    sessions::find_session_by_id,
 };
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]

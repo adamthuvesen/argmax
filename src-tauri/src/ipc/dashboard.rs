@@ -2,9 +2,9 @@ use tauri::State;
 
 use super::inputs::*;
 use super::{live_database, read_off_main};
-use crate::error::ArgmaxResult;
-use crate::persistence::dashboard::{list_dashboard, DashboardListSnapshot};
 use crate::state::AppState;
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::dashboard::{list_dashboard, DashboardListSnapshot};
 
 #[tauri::command(rename = "dashboard:list")]
 #[specta::specta]

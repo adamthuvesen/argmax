@@ -178,8 +178,7 @@ fn parse_repository_summary(raw: &str) -> Option<String> {
         .collect::<Vec<_>>()
         .join(" ");
     (!summary.is_empty()
-        && summary.chars().count()
-            <= crate::persistence::linked_repos::MAX_LINKED_REPO_SUMMARY_CHARS)
+        && summary.chars().count() <= argmax_store::linked_repos::MAX_LINKED_REPO_SUMMARY_CHARS)
         .then_some(summary)
 }
 
@@ -187,7 +186,7 @@ fn parse_repository_summary(raw: &str) -> Option<String> {
 /// generator means the call or its JSON failed, so another provider may try.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectOverviewAnswer {
-    Written(crate::persistence::project_overviews::OverviewDocument),
+    Written(argmax_store::project_overviews::OverviewDocument),
     PurposeNotEstablished,
 }
 
@@ -195,7 +194,7 @@ pub async fn generate_project_overview(
     provider: ProviderId,
     model_id: &str,
     context: &str,
-    allowed_sources: &[crate::persistence::project_overviews::OverviewSource],
+    allowed_sources: &[argmax_store::project_overviews::OverviewSource],
 ) -> Option<ProjectOverviewAnswer> {
     let instruction = format!(
         "PROJECT OVERVIEW GENERATION. Write a concise project orientation, at most 1500 characters. \
@@ -212,13 +211,13 @@ pub async fn generate_project_overview(
 
 fn parse_project_overview(
     raw: &str,
-    allowed_sources: &[crate::persistence::project_overviews::OverviewSource],
+    allowed_sources: &[argmax_store::project_overviews::OverviewSource],
 ) -> Option<ProjectOverviewAnswer> {
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     struct Generated {
         text: String,
-        sources: Vec<crate::persistence::project_overviews::OverviewSource>,
+        sources: Vec<argmax_store::project_overviews::OverviewSource>,
     }
     let generated: Generated = serde_json::from_value(first_json_object(raw)?).ok()?;
     let text = generated.text.trim();
@@ -241,10 +240,10 @@ fn parse_project_overview(
         return None;
     }
     Some(ProjectOverviewAnswer::Written(
-        crate::persistence::project_overviews::OverviewDocument {
+        argmax_store::project_overviews::OverviewDocument {
             text: text.to_owned(),
             sources: generated.sources,
-            generated_at: Some(crate::persistence::time::now_iso()),
+            generated_at: Some(argmax_store::time::now_iso()),
         },
     ))
 }
@@ -973,7 +972,7 @@ mod tests {
 
     #[test]
     fn project_overview_requires_real_sampled_citations_and_bounded_text() {
-        use crate::persistence::project_overviews::OverviewSource;
+        use argmax_store::project_overviews::OverviewSource;
         let allowed = vec![OverviewSource {
             folder_id: "primary:p".into(),
             path: "README.md".into(),

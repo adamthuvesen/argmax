@@ -14,19 +14,19 @@ use super::{
     },
     live_database, read_off_main,
 };
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::ipc::validation::SessionId;
-use crate::persistence::app_settings::{
-    browser_tools_enabled, project_check_mode, set_browser_tools_enabled, set_project_check_mode,
-    ProjectCheckMode,
-};
-use crate::persistence::chat_cleanup::{
-    candidate_workspace_ids, delete_old_chats, eligible_session_ids, ChatCleanupPlan,
-};
 use crate::providers::opencode_gateway::{self, OpencodeGateway};
 use crate::state::AppState;
 use crate::util::sync::LockOrRecover;
 use crate::workspaces::lifecycle::ArchiveOutcome;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::app_settings::{
+    browser_tools_enabled, project_check_mode, set_browser_tools_enabled, set_project_check_mode,
+    ProjectCheckMode,
+};
+use argmax_store::chat_cleanup::{
+    candidate_workspace_ids, delete_old_chats, eligible_session_ids, ChatCleanupPlan,
+};
 
 const CHAT_HISTORY_DAYS: i64 = 7;
 

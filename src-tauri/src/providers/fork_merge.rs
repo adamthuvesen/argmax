@@ -32,19 +32,16 @@ use super::{
     inputs::ProvidersSendInput,
     session_service::{MessageOrigin, ProviderSessionService, SendInputResult},
 };
-use crate::{
-    application::validation::{Prompt, SessionId},
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        continuity::{
-            event_rowid, fork_for_child, latest_merge, list_merges, mark_merge_sent,
-            merge_delivery_target, release_merge, reserve_merge, ForkMerge, ForkRecord,
-            MergeOutcome,
-        },
-        database::Database,
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
+use crate::application::validation::{Prompt, SessionId};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{
+    continuity::{
+        event_rowid, fork_for_child, latest_merge, list_merges, mark_merge_sent,
+        merge_delivery_target, release_merge, reserve_merge, ForkMerge, ForkRecord, MergeOutcome,
     },
+    database::Database,
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 
 const MERGE_MAX_MESSAGES: usize = 40;
@@ -175,15 +172,12 @@ fn standing(
     source_session_id: &str,
     marker: &str,
 ) -> ArgmaxResult<Standing> {
-    let delivered = crate::persistence::events::has_user_message_containing(
-        connection,
-        source_session_id,
-        marker,
-    )?;
+    let delivered =
+        argmax_store::events::has_user_message_containing(connection, source_session_id, marker)?;
     if delivered {
         return Ok(Standing::Delivered);
     }
-    let queued = crate::persistence::pending_messages::has_pending_message_containing(
+    let queued = argmax_store::pending_messages::has_pending_message_containing(
         connection,
         source_session_id,
         marker,
@@ -329,7 +323,7 @@ fn boundary_excerpt(connection: &Connection, fork: &ForkRecord) -> ArgmaxResult<
         return Ok(None);
     };
     Ok(
-        crate::persistence::events::event_message(connection, source, boundary)
+        argmax_store::events::event_message(connection, source, boundary)
             .ok()
             .map(|message| excerpt(&message)),
     )
@@ -492,7 +486,7 @@ pub fn claim_range(
             "That fork position is gone. Preview the merge again.",
         )
     })?;
-    let in_fork = crate::persistence::events::event_is_in_session(
+    let in_fork = argmax_store::events::event_is_in_session(
         &connection,
         &fork.child_session_id,
         through_event_id,
@@ -726,14 +720,14 @@ pub fn lineage(database: &Database, session_id: &str) -> ArgmaxResult<Option<For
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::{
-        continuity::{latest_merge, MergeOutcome},
-        sessions::update_session_provider_conversation_id,
-    };
     use crate::providers::continuity_tests::{event, seed_session};
     use crate::providers::session_service::SendInputResult;
     use crate::workspaces::orchestration::fork::ForkRequest;
     use crate::workspaces::WorkspaceService;
+    use argmax_store::{
+        continuity::{latest_merge, MergeOutcome},
+        sessions::update_session_provider_conversation_id,
+    };
 
     /// A source with two turns and a fork of it that did new work.
     async fn forked() -> (Arc<Database>, String) {
@@ -1123,7 +1117,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_copy_of_a_claim_whose_send_is_running_is_not_withdrawn_either() {
-        use crate::persistence::continuity::{insert_merge, ForkMerge, MergeOutcome};
+        use argmax_store::continuity::{insert_merge, ForkMerge, MergeOutcome};
         let (database, child) = forked().await;
         let first = child_work(&database, &child, "one");
         // The send of this merge is running, as `confirm` holds it.
@@ -1197,9 +1191,9 @@ mod tests {
         // A subagent trace import lands after the merge, then is rewritten away.
         {
             let connection = database.connection();
-            crate::persistence::events::persist_timeline_event(
+            argmax_store::events::persist_timeline_event(
                 &connection,
-                &crate::persistence::events::PersistTimelineEventInput {
+                &argmax_store::events::PersistTimelineEventInput {
                     id: "trace-1".to_string(),
                     session_id: child.clone(),
                     r#type: "tool.completed".to_string(),
@@ -1281,9 +1275,9 @@ mod tests {
     async fn only_a_visible_message_can_be_the_position_of_a_merge() {
         let (database, child) = forked().await;
         child_work(&database, &child, "one");
-        crate::persistence::events::persist_timeline_event(
+        argmax_store::events::persist_timeline_event(
             &database.connection(),
-            &crate::persistence::events::PersistTimelineEventInput {
+            &argmax_store::events::PersistTimelineEventInput {
                 id: "trace-in-range".to_string(),
                 session_id: child.clone(),
                 r#type: "tool.completed".to_string(),

@@ -42,7 +42,7 @@ pub use server::{SessionLaunchError, SessionLaunchServer};
 
 use std::time::Duration;
 
-use crate::error::ArgmaxError;
+use argmax_contracts::error::ArgmaxError;
 
 const PROTOCOL_VERSION: u32 = 1;
 // A 1 MB inline HTML source can use six JSON bytes per source byte.
@@ -80,11 +80,11 @@ const MAX_LAUNCH_DEPTH: i64 = 2;
 /// Sessions one session may launch over its lifetime. The tool description
 /// and docs/agent-tools.md name the number; tests read this constant.
 pub const MAX_LAUNCHES_PER_SESSION: i64 = 20;
-// Arc cap sizes live in `persistence::arcs` — the same module that checks
+// Arc cap sizes live in `argmax_store::arcs` — the same module that checks
 // them transactionally against the session insert — and are re-exported here
 // so the existing `ARC_MAX_ACTIVE_MEMBERS`/`ARC_MAX_LAUNCHES_PER_DAY`
 // references in this module's submodules keep resolving unchanged.
-pub(crate) use crate::persistence::arcs::{ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY};
+pub(crate) use argmax_store::arcs::{ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY};
 /// How many moves a chat may pick the work up after. A move starts a turn in
 /// the destination, and that turn can move again; past this the chat lands,
 /// says why it stopped, and waits for a person.
@@ -163,7 +163,7 @@ pub const SESSION_LAUNCH_SOCKET_ENV: &str = "ARGMAX_SESSION_LAUNCH_SOCKET";
 pub const SESSION_LAUNCH_TOKEN_ENV: &str = "ARGMAX_SESSION_LAUNCH_TOKEN";
 pub const ARGMAX_BIN_ENV: &str = "ARGMAX_BIN";
 
-fn invalid_input_error(error: crate::error::InvalidInputIssue) -> SessionControlError {
+fn invalid_input_error(error: argmax_contracts::error::InvalidInputIssue) -> SessionControlError {
     protocol_error(error.code, error.message)
 }
 

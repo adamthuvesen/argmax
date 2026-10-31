@@ -2,15 +2,15 @@ use tauri::State;
 
 use super::{inputs::*, live_database, read_off_main};
 use crate::{
-    error::ArgmaxResult,
     files::git_grep_parser::WorkspaceContentSearchResult,
     files::workspace_files::{
         WorkspaceFileEntry, WorkspaceFilePreview, WorkspaceFileStat, WorkspaceFileWriteResult,
         WorkspaceFilesService,
     },
-    persistence::dashboard::{list_workspace_status, WorkspaceStatusSnapshot},
     state::AppState,
 };
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::dashboard::{list_workspace_status, WorkspaceStatusSnapshot};
 
 #[tauri::command(rename = "workspace:status")]
 #[specta::specta]

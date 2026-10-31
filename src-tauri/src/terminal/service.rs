@@ -33,14 +33,14 @@ use std::os::fd::{AsFd, BorrowedFd};
 use nix::poll::{poll, PollFd, PollFlags};
 
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{database::Database, workspaces::find_workspace_by_id},
     util::process_control::{
         cleanup_pty_session_after_leader_exit, signal_pty_session_term_and_kill_blocking,
         signal_pty_session_term_then_kill,
     },
     workspaces::lifecycle::WorkspaceLifecycle,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::{database::Database, workspaces::find_workspace_by_id};
 
 /// Streams each PTY chunk to the renderer (the IPC layer turns these
 /// into `terminal:data` push events).
@@ -525,7 +525,7 @@ impl TerminalService {
             terminal_id.to_string(),
             TerminalRecord {
                 workspace_id: workspace_id.to_string(),
-                started_at: crate::persistence::time::now_iso(),
+                started_at: argmax_store::time::now_iso(),
                 command: None,
                 scrollback: Arc::clone(&scrollback),
                 exit: None,
@@ -903,8 +903,8 @@ fn default_shell_factory() -> ShellFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     #[cfg(unix)]
     use nix::unistd::{getpgid, getsid, Pid};
     use std::sync::Mutex as StdMutex;

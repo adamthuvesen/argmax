@@ -12,7 +12,8 @@ use super::{
     NormalizedUsage, NormalizerSessionContext, PermissionGateInfo, ProviderOutputEvent,
     UsageCounts,
 };
-use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
+use crate::providers::pricing::cost_of;
+use argmax_store::events::PersistTimelineEventInput;
 
 pub fn event_type(provider_type: &str) -> Option<&'static str> {
     static EVENT_MAP: phf::Map<&'static str, &'static str> = phf_map! {
@@ -721,8 +722,7 @@ mod tests {
 
     use super::*;
     use crate::providers::normalizer::{
-        normalize_provider_event, tests::output_event, Dispatcher, EventNormalizer,
-        NormalizerSessionContext,
+        normalize_provider_event, tests::output_event, Dispatcher, NormalizerSessionContext,
     };
     use crate::providers::ProviderId;
 

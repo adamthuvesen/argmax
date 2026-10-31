@@ -3,13 +3,13 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
     goals::{
         service::{GoalListInput, GoalService, GoalSessionInput, GoalSetInput},
         Goal,
     },
     state::AppState,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 pub(crate) fn live_goals(state: &AppState) -> ArgmaxResult<Arc<GoalService>> {
     state.goals.get().cloned().ok_or_else(|| {

@@ -14,7 +14,7 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 
-use crate::persistence::events::{SessionEventsSinceResult, TimelineEvent};
+use argmax_store::events::{SessionEventsSinceResult, TimelineEvent};
 
 /// Slim a `session:events-since` page for the bridge: payload weight plus the
 /// answer deltas the renderer would prune anyway.
@@ -287,7 +287,7 @@ mod tests {
 
     fn event(cursor: i64, kind: &str, message: &str, payload: Value) -> TimelineEvent {
         let id = format!("event-{cursor}");
-        let semantic = crate::persistence::timeline_semantics::derive(kind, &id, &payload);
+        let semantic = argmax_store::timeline_semantics::derive(kind, &id, &payload);
         TimelineEvent {
             id,
             session_id: "session-1".to_owned(),
@@ -366,8 +366,8 @@ mod tests {
         assert!(result.has_more);
     }
 
-    fn raw_output(cursor: i64, content: &str) -> crate::persistence::events::RawProviderOutput {
-        crate::persistence::events::RawProviderOutput {
+    fn raw_output(cursor: i64, content: &str) -> argmax_store::events::RawProviderOutput {
+        argmax_store::events::RawProviderOutput {
             id: format!("raw-{cursor}"),
             session_id: "session-1".to_owned(),
             stream: "stdout".to_owned(),
@@ -434,11 +434,11 @@ mod tests {
     /// row arrives once, in order, and the last page carries the change cursor.
     #[test]
     fn a_backfill_larger_than_the_budget_pages_without_losing_or_repeating_a_row() {
-        use crate::persistence::events::{
+        use argmax_store::events::{
             list_session_changes_since, list_session_events_since, persist_raw_output,
             persist_timeline_event, PersistRawOutputInput, PersistTimelineEventInput,
         };
-        let database = crate::persistence::Database::open_in_memory().expect("database");
+        let database = argmax_store::Database::open_in_memory().expect("database");
         seed_session(&database);
         let connection = database.connection();
         let filler = "é漢".repeat(7_000); // ~70 KB per row, multi-byte on purpose
@@ -521,10 +521,10 @@ mod tests {
         );
     }
 
-    fn seed_session(database: &crate::persistence::Database) {
-        use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-        use crate::persistence::sessions::{persist_session, PersistSessionInput};
-        use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
+    fn seed_session(database: &argmax_store::Database) {
+        use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+        use argmax_store::sessions::{persist_session, PersistSessionInput};
+        use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
         let connection = database.connection();
         persist_project(
             &connection,
@@ -572,7 +572,7 @@ mod tests {
                 permission_mode: None,
                 agent_mode: None,
                 prompt: "p".to_owned(),
-                state: crate::sessions::state::SessionState::Running,
+                state: argmax_contracts::sessions::state::SessionState::Running,
             },
         )
         .expect("session");

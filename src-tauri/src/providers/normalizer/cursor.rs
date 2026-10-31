@@ -5,7 +5,8 @@ use super::{
     number_value, object_value, string_value, timeline_event, NormalizedUsage,
     NormalizerSessionContext, ProviderOutputEvent, UsageCounts,
 };
-use crate::{persistence::events::PersistTimelineEventInput, providers::pricing::cost_of};
+use crate::providers::pricing::cost_of;
+use argmax_store::events::PersistTimelineEventInput;
 
 pub fn event_type(provider_type: &str) -> Option<&'static str> {
     (provider_type == "error").then_some("error")

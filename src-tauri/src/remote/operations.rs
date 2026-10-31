@@ -11,9 +11,9 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::database::Database;
-use crate::persistence::remote_operations::{
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::database::Database;
+use argmax_store::remote_operations::{
     admit_operation, find_operation, save_outcome, saved_outcome,
 };
 

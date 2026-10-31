@@ -12,19 +12,19 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::approvals::{
+use crate::providers::flush_queue::DashboardDelta;
+use crate::providers::runtime::DeltaPublisher;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::approvals::{
     cancel_pending_approval, cancel_pending_session_approvals, cancel_pending_workspace_approvals,
     find_approval_by_id, list_approvals_for_session, list_approvals_for_workspace,
     list_pending_approvals, persist_approval, resolve_approval, ApprovalRequest,
     PersistApprovalInput,
 };
-use crate::persistence::database::Database;
-use crate::persistence::events::{persist_timeline_event, PersistTimelineEventInput};
-use crate::persistence::sessions::{find_session_by_id, update_session_state, SessionStateInput};
-use crate::providers::flush_queue::DashboardDelta;
-use crate::providers::runtime::DeltaPublisher;
-use crate::sessions::state::SessionState;
+use argmax_store::database::Database;
+use argmax_store::events::{persist_timeline_event, PersistTimelineEventInput};
+use argmax_store::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 
 /// Soft cap on how many pending approvals we return in one IPC roundtrip.
 /// Matches the dashboard's `DASHBOARD_ROW_LIMIT` so a single user can't
@@ -116,7 +116,7 @@ impl ApprovalService {
                 "The provider turn has ended",
             ));
         }
-        if crate::persistence::approvals::find_approval_by_provider_request(
+        if argmax_store::approvals::find_approval_by_provider_request(
             &tx,
             session_id,
             provider,
@@ -405,10 +405,10 @@ fn risk_level_str(level: CommandRiskLevel) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
-    use crate::persistence::sessions::{persist_session, PersistSessionInput};
-    use crate::persistence::workspaces::{persist_workspace, PersistWorkspaceInput};
     use crate::providers::model_catalogue::ModelId;
+    use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
+    use argmax_store::sessions::{persist_session, PersistSessionInput};
+    use argmax_store::workspaces::{persist_workspace, PersistWorkspaceInput};
     use tempfile::TempDir;
 
     fn setup() -> (Arc<Database>, String, TempDir) {

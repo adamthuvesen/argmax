@@ -13,24 +13,24 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{claude, DiscoveredSession, SyncConfig};
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::events::{
-    persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
-};
-use crate::persistence::projects::list_projects;
-use crate::persistence::sessions::{
-    delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
-};
-use crate::persistence::synced::{
-    known_conversation_ids, list_synced_sessions, prunable_session_ids, upsert_synced_session,
-    SyncedSessionRecord,
-};
-use crate::persistence::Database;
 use crate::providers::normalizer::{
     normalize_provider_event, NormalizerSessionContext, ProviderOutputEvent, ProviderOutputStream,
 };
 use crate::providers::ProviderId;
 use crate::workspaces::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::events::{
+    persist_timeline_event_if_absent, PersistTimelineEventInput, TimelineEvent,
+};
+use argmax_store::projects::list_projects;
+use argmax_store::sessions::{
+    delete_session, persist_imported_session, touch_imported_session, PersistImportedSessionInput,
+};
+use argmax_store::synced::{
+    known_conversation_ids, list_synced_sessions, prunable_session_ids, upsert_synced_session,
+    SyncedSessionRecord,
+};
+use argmax_store::Database;
 
 /// Providers whose transcript format Argmax can read today.
 pub const SUPPORTED_PROVIDERS: [&str; 1] = ["claude"];
@@ -214,7 +214,7 @@ fn import(
             // out-of-transaction artifact so a retry cannot leave ghosts.
             let connection = database.connection();
             if let Err(cleanup_error) =
-                crate::persistence::workspaces::delete_workspace(&connection, &workspace.id)
+                argmax_store::workspaces::delete_workspace(&connection, &workspace.id)
             {
                 tracing::warn!(
                     workspace_id = %workspace.id,
@@ -379,8 +379,7 @@ fn delete_sessions(
     {
         let connection = database.connection();
         for session_id in session_ids {
-            if let Ok(summary) =
-                crate::persistence::sessions::find_session_by_id(&connection, session_id)
+            if let Ok(summary) = argmax_store::sessions::find_session_by_id(&connection, session_id)
             {
                 removed_workspaces.push(summary.workspace_id);
             }
@@ -389,7 +388,7 @@ fn delete_sessions(
         // The workspace exists only to host the import; deleting the session
         // first keeps the cascade from taking an adopted sibling with it.
         for workspace_id in &removed_workspaces {
-            crate::persistence::workspaces::delete_workspace(&connection, workspace_id)?;
+            argmax_store::workspaces::delete_workspace(&connection, workspace_id)?;
         }
     }
     // The workspace was created solely to host the import, so it goes too.

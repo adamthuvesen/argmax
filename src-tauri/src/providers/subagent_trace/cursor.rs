@@ -623,7 +623,7 @@ mod tests {
     use super::super::test_support::*;
     use super::super::{import_subagent_trace_events_from_home, TraceProvider};
     use super::*;
-    use crate::persistence::{
+    use argmax_store::{
         database::Database,
         events::{list_session_agent_events, persist_timeline_event, PersistTimelineEventInput},
     };

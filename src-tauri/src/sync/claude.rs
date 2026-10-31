@@ -18,8 +18,8 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use super::DiscoveredSession;
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::providers::normalizer::claude::{transcript_user_row, TranscriptUserRow};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 /// Cheap prefix read for metadata: enough lines to find `cwd` and the first
 /// prompt without parsing a 12MB transcript.

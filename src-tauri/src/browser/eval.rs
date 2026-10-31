@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use tauri::Webview;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 /// Evaluates `script` in the tab and returns WebKit's JSON encoding of the
 /// resulting value. An empty string means the script produced `undefined` —

@@ -15,9 +15,9 @@ use super::service::{
     entry_check_state, gh_working_directory, GhCheckState, GhService, PrAuthor, PrFeedbackGraph,
     PrReviewThread, PrWatchView, RollupEntry, PR_UNAVAILABLE_ERROR,
 };
-use crate::error::ArgmaxResult;
-use crate::persistence::database::Database;
-use crate::persistence::pr_watches::{
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::database::Database;
+use argmax_store::pr_watches::{
     clear_pr_watch_notice, delete_pr_watch_by_id, list_pr_watches, record_pr_watch_fetch_failure,
     set_pr_watch_not_found_count, stage_pr_watch_notice, update_pr_watch_cursors, watched_pr_state,
     ConflictState, PendingPrWatchNotice, PrWatchCursors, PrWatchRecord, WatchedPrState,
@@ -91,19 +91,16 @@ async fn run_one_watch(
     let (pr, cwd, recipient_archived, project_remote) = {
         let connection = database.read_connection();
         let pr = watched_pr_state(&connection, &watch.project_id, watch.pr_number)?;
-        let session =
-            crate::persistence::sessions::find_session_by_id(&connection, &watch.session_id)?;
-        let workspace = crate::persistence::workspaces::find_workspace_by_id(
-            &connection,
-            &session.workspace_id,
-        )?;
+        let session = argmax_store::sessions::find_session_by_id(&connection, &watch.session_id)?;
+        let workspace =
+            argmax_store::workspaces::find_workspace_by_id(&connection, &session.workspace_id)?;
         let cwd = gh_working_directory(&connection, &workspace)?;
         let recipient_archived = matches!(
             workspace.state.as_str(),
             "archiving" | "archive-failed" | "archived"
         );
         let project_remote =
-            crate::persistence::project_folders::workspace_remote(&connection, &workspace.id)?;
+            argmax_store::project_folders::workspace_remote(&connection, &workspace.id)?;
         (pr, cwd, recipient_archived, project_remote)
     };
 

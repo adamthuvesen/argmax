@@ -22,10 +22,10 @@ use ring::rand::SystemRandom;
 use ring::signature::{EcdsaKeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
 use serde_json::json;
 
-use crate::persistence::sessions::SessionSummary;
 use crate::remote::signal::{signal_for, PushSignal, SignalDedupe};
 use crate::remote::{ApnsConfig, PushDevice};
 use crate::util::sync::LockOrRecover;
+use argmax_store::sessions::SessionSummary;
 
 /// The native remote app's bundle id, which is also the `apns-topic` the auth
 /// key must be provisioned for.
@@ -542,8 +542,8 @@ mod tests {
     #[test]
     fn the_publisher_fans_out_once_per_transition() {
         use crate::remote::signal::fixtures::session;
-        use crate::sessions::attention::AttentionState;
-        use crate::sessions::state::SessionState;
+        use argmax_contracts::sessions::attention::AttentionState;
+        use argmax_contracts::sessions::state::SessionState;
         use std::sync::mpsc;
 
         let (tx, rx) = mpsc::channel();

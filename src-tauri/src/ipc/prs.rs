@@ -1,13 +1,13 @@
 use super::{inputs::*, live_database};
-use crate::{
-    error::ArgmaxResult, gh::service::GhService, persistence::gh::GhPrRecord, state::AppState,
-};
+use crate::{gh::service::GhService, state::AppState};
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::gh::GhPrRecord;
 use std::sync::Arc;
 use tauri::State;
 
 use crate::git::pr_cleanup::{cleanup_merged_pr, PrCleanupReport};
 
-use crate::persistence::gh::{
+use argmax_store::gh::{
     dismiss_session_pr, list_session_prs, set_session_pr_selection, SessionPrSummary,
 };
 

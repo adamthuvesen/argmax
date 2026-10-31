@@ -17,16 +17,16 @@ pub use preamble::{coordinator_preamble, member_preamble, promoted_coordinator_p
 
 use std::sync::Arc as StdArc;
 
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::arc_events::{record_arc_event, ArcEventKind, NewArcEvent};
-use crate::persistence::arcs::{self, ArcRecord, ArcState};
-use crate::persistence::sessions::{find_session_by_id, record_session_arc};
-use crate::persistence::workspaces::find_workspace_by_id;
-use crate::persistence::Database;
 use crate::providers::session_service::ProviderSessionService;
 use crate::session_control::{launch_with_spec, LaunchSpec};
-use crate::sessions::state::SessionState;
 use crate::workspaces::orchestration::WorkspaceService;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::arc_events::{record_arc_event, ArcEventKind, NewArcEvent};
+use argmax_store::arcs::{self, ArcRecord, ArcState};
+use argmax_store::sessions::{find_session_by_id, record_session_arc};
+use argmax_store::workspaces::find_workspace_by_id;
+use argmax_store::Database;
 
 pub struct LaunchCoordinatorRequest {
     pub arc_id: String,
@@ -102,7 +102,7 @@ pub async fn launch_coordinator(
             // delegating.
             arc_id: Some(arc.id.clone()),
             arc_is_coordinator_launch: true,
-            author: crate::persistence::authorship::PromptAuthor::unattested(),
+            author: argmax_store::authorship::PromptAuthor::unattested(),
         },
         Some(&arc.home_project_id),
         StdArc::clone(&database),
@@ -172,7 +172,7 @@ pub async fn promote_session(
         let mut connection = database.connection();
         let transaction = connection
             .transaction()
-            .map_err(crate::persistence::sqlite_error)?;
+            .map_err(argmax_store::sqlite_error)?;
         let session = find_session_by_id(&transaction, &request.session_id)?;
         if session.arc_id.is_some() {
             return Err(ArgmaxError::service(
@@ -240,9 +240,7 @@ pub async fn promote_session(
             event.status = Some("adopted".to_string());
             record_arc_event(&transaction, &event)?;
         }
-        transaction
-            .commit()
-            .map_err(crate::persistence::sqlite_error)?;
+        transaction.commit().map_err(argmax_store::sqlite_error)?;
         (arc, children.len())
     };
 
@@ -272,5 +270,5 @@ pub fn adoptable_children(
     connection: &rusqlite::Connection,
     session_id: &str,
 ) -> ArgmaxResult<Vec<(String, String, String)>> {
-    crate::persistence::arcs::adoptable_children(connection, session_id, MAX_ADOPTED_MEMBERS)
+    argmax_store::arcs::adoptable_children(connection, session_id, MAX_ADOPTED_MEMBERS)
 }

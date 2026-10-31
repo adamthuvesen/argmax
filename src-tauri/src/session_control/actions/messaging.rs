@@ -20,25 +20,24 @@ use super::super::{
 use super::resolve_project;
 use crate::{
     application::validation::{Prompt, SessionId},
-    persistence::{
-        dashboard::DASHBOARD_ROW_LIMIT,
-        database::Database,
-        events::{
-            find_event_by_id, human_referenced_session_ids, latest_agent_message,
-            latest_user_message_at, list_session_events_since, TimelineEvent,
-            SESSION_EVENT_PAGE_LIMIT,
-        },
-        learnings::search_session_conversations,
-        projects::list_projects,
-        session_messages::{
-            count_undelivered_messages, insert_session_message, take_undelivered_messages,
-            NewSessionMessage, SessionMessage, MESSAGE_KIND,
-        },
-        sessions::{find_session_by_id, list_sessions_for_dashboard, session_launch_lineage},
-        workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
-    },
     providers::inputs::{ProvidersSendInput, ProvidersTerminateInput},
     providers::session_service::{MessageOrigin, ProviderSessionService},
+};
+use argmax_store::{
+    dashboard::DASHBOARD_ROW_LIMIT,
+    database::Database,
+    events::{
+        find_event_by_id, human_referenced_session_ids, latest_agent_message,
+        latest_user_message_at, list_session_events_since, TimelineEvent, SESSION_EVENT_PAGE_LIMIT,
+    },
+    learnings::search_session_conversations,
+    projects::list_projects,
+    session_messages::{
+        count_undelivered_messages, insert_session_message, take_undelivered_messages,
+        NewSessionMessage, SessionMessage, MESSAGE_KIND,
+    },
+    sessions::{find_session_by_id, list_sessions_for_dashboard, session_launch_lineage},
+    workspaces::{find_workspace_by_id, list_workspaces, WorkspaceSummary},
 };
 
 pub(super) async fn list_sessions_action(
@@ -259,7 +258,7 @@ pub(super) async fn message_session(
     if !result.queued {
         let connection = database.connection();
         if let Err(error) =
-            crate::persistence::session_messages::mark_message_delivered(&connection, &message_id)
+            argmax_store::session_messages::mark_message_delivered(&connection, &message_id)
         {
             tracing::warn!(?error, "failed to mark a session message delivered");
         }

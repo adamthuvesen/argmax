@@ -15,18 +15,16 @@ use super::shared::{
     is_spawn_agent_payload, read_trace_lines, receiver_thread_ids, trace_event_id,
 };
 use super::{persist_trace_events, AgentTraceContext, TraceImport, TraceLine, TraceProvider};
-use crate::{
-    error::ArgmaxResult,
-    persistence::{
-        events::{
-            completion_id_for_payload, delete_event_row, delete_synthetic_launch_events,
-            list_imported_trace_events, list_session_native_agent_events, list_session_tool_events,
-            persist_timeline_event_if_absent, rewrite_trace_event,
-            supersede_synthetic_launch_events, tool_use_id_for_payload, PersistTimelineEventInput,
-        },
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::{
+    events::{
+        completion_id_for_payload, delete_event_row, delete_synthetic_launch_events,
+        list_imported_trace_events, list_session_native_agent_events, list_session_tool_events,
+        persist_timeline_event_if_absent, rewrite_trace_event, supersede_synthetic_launch_events,
+        tool_use_id_for_payload, PersistTimelineEventInput,
     },
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 
 /// Marks a launch row Argmax invented because the provider never wrote one.
@@ -160,7 +158,7 @@ pub(super) fn reconciliation_plan(
 }
 
 pub(super) fn codex_native_runs(
-    events: Vec<crate::persistence::events::TimelineEvent>,
+    events: Vec<argmax_store::events::TimelineEvent>,
     parent_thread_id: &str,
 ) -> HashMap<String, Vec<CodexNativeRun>> {
     let mut runs_by_child: HashMap<String, Vec<CodexNativeRun>> = HashMap::new();
@@ -584,7 +582,7 @@ mod tests {
         import_subagent_trace_events_from_home, reconcile_session_subagent_traces_from_home,
     };
     use super::*;
-    use crate::persistence::{
+    use argmax_store::{
         database::Database,
         events::{list_session_agent_events, list_session_events_since, persist_timeline_event},
         sessions::update_session_provider_conversation_id,
@@ -674,7 +672,7 @@ mod tests {
             .expect("reconcile running child");
         assert!(written > 0);
         assert!(!synthetic_launch_completed(&connection));
-        let changes = crate::persistence::events::list_session_changes_since(
+        let changes = argmax_store::events::list_session_changes_since(
             &connection,
             "s1",
             None,

@@ -4,19 +4,15 @@ use tokio::sync::oneshot;
 
 use super::super::registry::{AfterTurn, SessionLaunchRegistry};
 use super::move_archive::{record_after_turn_note, run_after_turn};
-use crate::{
-    error::ArgmaxResult,
-    persistence::{
-        after_turn::{
-            delete_after_turn, list_after_turn, source_move_recorded, AfterTurnAction,
-            AfterTurnRequest,
-        },
-        database::Database,
-        sessions::find_session_by_id,
-        workspaces::find_workspace_by_id,
+use crate::{providers::session_service::ProviderSessionService, workspaces::WorkspaceService};
+use argmax_contracts::error::ArgmaxResult;
+use argmax_store::{
+    after_turn::{
+        delete_after_turn, list_after_turn, source_move_recorded, AfterTurnAction, AfterTurnRequest,
     },
-    providers::session_service::ProviderSessionService,
-    workspaces::WorkspaceService,
+    database::Database,
+    sessions::find_session_by_id,
+    workspaces::find_workspace_by_id,
 };
 
 /// Keep the disposals promised by a run that ended before they could happen.

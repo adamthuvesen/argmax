@@ -104,7 +104,7 @@ settles the Goal. Four things stop it besides a verdict:
   to keep working over the person's Stop, or retrying a crash.
 
 An evaluator that fails — CLI missing, timeout, junk output — is not a verdict.
-The settled turn is simply judged again, and the agent is never told "not met
+The settled turn is judged again, and the agent is never told "not met
 yet" by a call that never happened: that costs it a turn and gives it no
 guidance, so it re-runs the checks it just ran. Three failures in a row is not a
 hiccup, and the Goal settles `stopped` saying the evaluator could not be

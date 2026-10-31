@@ -15,12 +15,12 @@ use futures_util::stream::{self, StreamExt};
 
 use crate::activity::git_log::{self, LOG_FORMAT};
 use crate::activity::LEDGER_MONTHS;
-use crate::error::{ArgmaxError, ArgmaxResult};
-use crate::persistence::activity::{self as storage, CommitRow};
-use crate::persistence::projects;
-use crate::persistence::time::now_iso;
-use crate::persistence::Database;
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::activity::{self as storage, CommitRow};
+use argmax_store::projects;
+use argmax_store::time::now_iso;
+use argmax_store::Database;
 
 /// Bumping this empties `activity_commits` and rescans, the same contract the
 /// Usage scanner's parser version has.

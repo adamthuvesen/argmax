@@ -8,27 +8,12 @@ use std::{
 };
 
 use crate::support::git_repo::seed_git_repo;
-use argmax_lib::sessions::state::SessionState;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
 use argmax_lib::{
     arcs::{launch_coordinator, promote_session, LaunchCoordinatorRequest, PromoteSessionRequest},
-    error::{ArgmaxError, ArgmaxResult},
     ipc::inputs::{ProvidersLaunchInput, TerminalCols, TerminalRows},
     ipc::validation::{NonEmptyString, Prompt, WorkspaceId},
-    persistence::{
-        arc_events::{list_arc_timeline, ArcEventKind, ArcTimelineEvent},
-        arcs::{
-            create_arc, get_arc, set_arc_state, update_arc, ArcCreateInput, ArcState,
-            ArcUpdateInput,
-        },
-        database::Database,
-        projects::{persist_project, PersistProjectInput, ProjectSettings},
-        session_messages::session_message_exists,
-        sessions::{
-            find_session_by_id, persist_session, record_session_launch, PersistSessionInput,
-        },
-        time::now_iso,
-        workspaces::{persist_workspace, PersistWorkspaceInput},
-    },
     providers::{
         normalizer::ProviderOutputStream,
         runtime::{
@@ -39,6 +24,18 @@ use argmax_lib::{
         PermissionMode, ProviderId, ProviderLaunchInput,
     },
     workspaces::WorkspaceService,
+};
+use argmax_store::{
+    arc_events::{list_arc_timeline, ArcEventKind, ArcTimelineEvent},
+    arcs::{
+        create_arc, get_arc, set_arc_state, update_arc, ArcCreateInput, ArcState, ArcUpdateInput,
+    },
+    database::Database,
+    projects::{persist_project, PersistProjectInput, ProjectSettings},
+    session_messages::session_message_exists,
+    sessions::{find_session_by_id, persist_session, record_session_launch, PersistSessionInput},
+    time::now_iso,
+    workspaces::{persist_workspace, PersistWorkspaceInput},
 };
 use serde_json::json;
 

@@ -6,10 +6,10 @@ use tokio::{
     process::Command,
 };
 
-use crate::{
-    error::{ArgmaxError, ArgmaxResult},
-    providers::{cloud::CloudEnvironment, environment::build_provider_environment, ProviderId},
+use crate::providers::{
+    cloud::CloudEnvironment, environment::build_provider_environment, ProviderId,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 const CODEX_ENVIRONMENTS_BASE_URL: &str =
     "https://chatgpt.com/backend-api/wham/environments/by-repo/github";

@@ -19,18 +19,6 @@ use uuid::Uuid;
 
 use crate::{
     application::validation::{NonEmptyString, Prompt, SessionId},
-    error::{ArgmaxError, ArgmaxResult},
-    persistence::{
-        database::Database,
-        events::goal_transcript_tail,
-        goals::{
-            find_active_goal_for_session, find_goal, insert_goal, list_goals, settle_goal,
-            stop_orphaned_goals, update_goal_progress,
-        },
-        sessions::find_session_by_id,
-        time::now_iso,
-        workspaces::find_workspace_by_id,
-    },
     providers::inputs::ProvidersSendInput,
     providers::{
         one_shot,
@@ -39,8 +27,20 @@ use crate::{
         AgentMode,
     },
     routing::RouteDecision,
-    sessions::state::SessionState,
     util::sync::LockOrRecover,
+};
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::{
+    database::Database,
+    events::goal_transcript_tail,
+    goals::{
+        find_active_goal_for_session, find_goal, insert_goal, list_goals, settle_goal,
+        stop_orphaned_goals, update_goal_progress,
+    },
+    sessions::find_session_by_id,
+    time::now_iso,
+    workspaces::find_workspace_by_id,
 };
 
 use super::{Goal, GoalState, GoalVerdict, DEFAULT_MAX_TURNS};
@@ -443,7 +443,7 @@ impl GoalService {
                 // router's hysteresis and the model chip.
                 Ok(()) => {
                     if let Some(route) = &escalation {
-                        crate::persistence::turn_routes::record_route(
+                        argmax_store::turn_routes::record_route(
                             &self.database.connection(),
                             &goal.session_id,
                             route,

@@ -12,11 +12,11 @@ use super::super::{
 use super::task_label;
 use crate::{
     application::validation::{TaskLabel, WorkspaceId},
-    persistence::{
-        database::Database, sessions::find_session_by_id, workspaces::find_workspace_by_id,
-    },
     workspaces::inputs::WorkspacesSetLabelInput,
     workspaces::WorkspaceService,
+};
+use argmax_store::{
+    database::Database, sessions::find_session_by_id, workspaces::find_workspace_by_id,
 };
 
 pub(super) fn rename_session(

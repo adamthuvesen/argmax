@@ -14,8 +14,8 @@ use tauri::{
     WindowEvent,
 };
 
-use crate::error::{ArgmaxError, ArgmaxResult};
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
 const CHAT_WINDOW_LABEL_PREFIX: &str = "chat-";

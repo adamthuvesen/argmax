@@ -1,12 +1,12 @@
 use super::inputs::*;
 use crate::providers::discovery::ProviderCapabilityReport;
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
     ipc::system::SystemOk,
-    persistence::sessions::SessionSummary,
     providers::session_service::{ProviderSessionService, SendInputResult},
     state::AppState,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sessions::SessionSummary;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 

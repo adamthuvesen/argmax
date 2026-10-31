@@ -13,10 +13,10 @@
 use std::sync::Mutex;
 
 use crate::notifications::BoundedMap;
-use crate::persistence::sessions::SessionSummary;
-use crate::sessions::attention::AttentionState;
-use crate::sessions::state::SessionState;
 use crate::util::sync::LockOrRecover;
+use argmax_contracts::sessions::attention::AttentionState;
+use argmax_contracts::sessions::state::SessionState;
+use argmax_store::sessions::SessionSummary;
 
 use pulldown_cmark::{Event, Options, Parser, TagEnd};
 
@@ -275,7 +275,7 @@ pub(crate) mod fixtures {
             completed_at: None,
             last_activity_at: "2026-01-01T00:00:00Z".to_string(),
             cost_usd: 0.0,
-            tokens: crate::persistence::sessions::UsageCounts {
+            tokens: argmax_store::sessions::UsageCounts {
                 input: 0,
                 output: 0,
                 cache_read: 0,
@@ -284,7 +284,7 @@ pub(crate) mod fixtures {
             context_tokens: 0,
             context_window: None,
             launched_by_session_id: None,
-            launch_kind: crate::persistence::sessions::LAUNCH_KIND_AGENT.to_string(),
+            launch_kind: argmax_store::sessions::LAUNCH_KIND_AGENT.to_string(),
             arc_id: None,
             auto_tier: None,
             auto_route: None,

@@ -11,7 +11,6 @@ use specta::Type;
 use tokio::{sync::Semaphore, task::JoinSet};
 
 use crate::{
-    error::{ArgmaxError, ArgmaxResult},
     git::{
         exec::{
             reject_leading_dash, run_git_text, run_git_text_with_allowed_exit_codes,
@@ -20,15 +19,16 @@ use crate::{
         ops::checkout_write_lock,
         tree_snapshot::{fingerprint_worktree, index_tree},
     },
-    persistence::database::Database,
-    persistence::project_folders::{
-        project_for_folder, require_active_project_folder, require_workspace_project,
-    },
-    persistence::projects::require_project,
-    persistence::workspaces::{find_workspace_by_id, WorkspaceSummary},
     util::workspace_paths::{resolve_inside, PathError},
     workspaces::WorkspaceTargetKind,
 };
+use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::database::Database;
+use argmax_store::project_folders::{
+    project_for_folder, require_active_project_folder, require_workspace_project,
+};
+use argmax_store::projects::require_project;
+use argmax_store::workspaces::{find_workspace_by_id, WorkspaceSummary};
 
 pub const DIFF_FANOUT_LIMIT: usize = 8;
 pub const PER_FILE_DIFF_CAP_BYTES: usize = 1_048_576;
@@ -1462,7 +1462,7 @@ mod tests {
 
     #[tokio::test]
     async fn folder_review_uses_folder_branch_base_and_skips_plain_directories() {
-        use crate::persistence::projects::{persist_project, PersistProjectInput, ProjectSettings};
+        use argmax_store::projects::{persist_project, PersistProjectInput, ProjectSettings};
         let repo = review_repo().await;
         test_git(repo.path(), &["checkout", "-b", "topic"]).await;
         std::fs::write(repo.path().join("staged.txt"), "committed change\n").unwrap();

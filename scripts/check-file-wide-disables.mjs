@@ -12,8 +12,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+// A disable with no rule list is file-wide, with or without a `-- reason` suffix.
 const FILE_WIDE =
-  /^\s*(?:(?:\/\/|\/\*)\s*@ts-nocheck\b|\/\*\s*(?:oxlint|eslint)-disable\s*\*\/|\/\/\s*(?:oxlint|eslint)-disable\s*$)/;
+  /^\s*(?:(?:\/\/|\/\*)\s*@ts-nocheck\b|(?:\/\/|\/\*)\s*(?:oxlint|eslint)-disable(?![-\w])\s*(?:--.*?)?(?:\*\/)?\s*$)/;
 
 const env = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),

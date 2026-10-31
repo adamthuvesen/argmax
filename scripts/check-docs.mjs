@@ -126,7 +126,7 @@ if (!rows.length)
   fail(
     "AGENTS.md has no ## Enforced Rules table. Restore the section and its | Rule | Enforced by | Added | rows.",
   );
-const tableLines = rulesTable.split("\n").filter((line) => line.trim() !== "");
+const tableLines = (agents.split("\n## Enforced Rules\n")[1] ?? "").split("\n").filter((line) => line.trim() !== "");
 const tableStart = tableLines.findIndex((line) => line.startsWith("|"));
 if (!/^\|\s*Rule\s*\|\s*Enforced by\s*\|/.test(tableLines[tableStart] ?? ""))
   fail("AGENTS.md Enforced Rules table header must start with | Rule | Enforced by |.");

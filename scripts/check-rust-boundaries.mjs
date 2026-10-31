@@ -34,6 +34,21 @@ const RULES = [
     fix: "Run git through src-tauri/crates/argmax-process/src/git_exec.rs, which sets GIT_LITERAL_PATHSPECS and the environment.",
   },
   {
+    id: "process-outside-owner",
+    skipComments: true,
+    pattern: /\bCommand::new\(|\bstd::process::Command\b|\btokio::process\b/g,
+    allowed: (path) => path.startsWith("crates/argmax-process/"),
+    fix: "Start processes through src-tauri/crates/argmax-process. A new call site needs an owner there, not a new Command::new.",
+  },
+  {
+    id: "network-outside-owner",
+    skipComments: true,
+    pattern:
+      /\b(?:TcpStream|TcpListener|UdpSocket|UnixStream|UnixListener)\b|\breqwest::|\bhyper::|\bureq::|\btokio::net\b/g,
+    allowed: (path) => path.startsWith("crates/argmax-process/"),
+    fix: "Open sockets and HTTP clients in an existing owner file on the baseline, not in a new module.",
+  },
+  {
     id: "turn-end-outside-owner",
     pattern: /SessionStateInput::transition\(\s*SessionState::(?:Complete|Failed|Cancelled)\b/g,
     allowed: (path) => path === "providers/session_service_turn_end.rs",
@@ -80,7 +95,8 @@ for (const [path, file] of sources) {
   const source = productionSource(path, readFileSync(file, "utf8"));
   for (const rule of RULES) {
     if (rule.allowed(path)) continue;
-    const count = source.match(rule.pattern)?.length ?? 0;
+    const text = rule.skipComments ? source.replace(/^\s*\/\/.*$/gm, "") : source;
+    const count = text.match(rule.pattern)?.length ?? 0;
     if (count) found[rule.id][path] = count;
   }
 }

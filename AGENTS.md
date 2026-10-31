@@ -104,3 +104,4 @@ Before you edit a subsystem, read its doc. Start at [architecture.md](docs/archi
 | Every enforcer this table cites exists | `check:docs` | 2026-11-06 |
 | `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify.mjs::CONTROL`, run by `npm run verify` in CI | 2026-11-06 |
 | No file turns off type checking or lint with `@ts-nocheck` or a bare `oxlint-disable` or `eslint-disable` comment | `scripts/check-file-wide-disables.mjs` | 2026-11-07 |
+| A new module cannot start a process or open a socket outside a named owner | `scripts/check-process-imports.mjs`, `scripts/check-rust-boundaries.mjs` | 2026-11-07 |

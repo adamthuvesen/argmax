@@ -6,7 +6,7 @@ pub mod tools;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-pub use argmax_contracts::visualizations::{VisualizationFormat, VisualizationMode};
+use argmax_contracts::visualizations::{VisualizationFormat, VisualizationMode};
 
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

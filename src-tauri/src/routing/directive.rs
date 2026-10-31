@@ -8,7 +8,8 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::table::{self, AutoTier, Difficulty, RouteModel, RoutedModel, TaskKind};
+use super::table::{self, RouteModel, RoutedModel};
+use argmax_contracts::routing::{AutoTier, Difficulty, TaskKind};
 use argmax_contracts::validation::ReasoningEffort;
 
 const KINDS: [TaskKind; 5] = [

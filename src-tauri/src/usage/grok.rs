@@ -8,9 +8,8 @@
 use serde_json::{Map, Value};
 
 use crate::providers::normalizer::{number_value, object_value, string_value};
-use crate::usage::records::{
-    line_may_carry_usage, TranscriptContext, UsageRecord, UsageRecordTokens,
-};
+use crate::usage::records::{line_may_carry_usage, TranscriptContext, UsageRecord};
+use argmax_contracts::usage::UsageRecordTokens;
 use argmax_contracts::validation::ProviderId;
 
 /// `costUsdTicks` is USD scaled by 1e10.

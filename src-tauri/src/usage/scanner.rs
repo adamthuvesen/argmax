@@ -564,7 +564,7 @@ fn sqlite_error(error: rusqlite::Error) -> ArgmaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::usage::records::UsageRecordTokens;
+    use argmax_contracts::usage::UsageRecordTokens;
     use argmax_store::usage_scan::HourlyBucketDelta;
     use chrono::{Duration, SecondsFormat, Utc};
     use std::io::Write;

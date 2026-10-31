@@ -1,5 +1,5 @@
-use crate::usage::records::UsageRecordTokens;
 use argmax_contracts::usage::UsageCounts;
+use argmax_contracts::usage::UsageRecordTokens;
 use argmax_store::sync::LockOrRecover;
 use std::{
     collections::HashSet,

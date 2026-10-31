@@ -1,7 +1,8 @@
-use super::{store::VisualizationStore, VisualizationArtifact, VisualizationMode};
+use super::{store::VisualizationStore, VisualizationArtifact};
 use crate::providers::flush_queue::DashboardDelta;
 use crate::state::AppState;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::visualizations::VisualizationMode;
 use argmax_store::{
     events::{
         event_rowid_in_session, persist_timeline_event_if_absent, turn_origin_event,

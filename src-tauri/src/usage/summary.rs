@@ -15,7 +15,6 @@ use rusqlite::Connection;
 
 use crate::providers::pricing;
 use crate::usage::cursor::{calls_between, cursor_rates, CursorCall};
-use crate::usage::records::UsageRecordTokens;
 use crate::usage::scanner::hour_start_secs;
 use crate::usage::{
     UsageCostSource, UsageDayRow, UsageModelRow, UsagePreviousPeriod, UsageProviderSummary,
@@ -23,6 +22,7 @@ use crate::usage::{
     UsageTokenTotals, UsageWindow,
 };
 use argmax_contracts::error::ArgmaxResult;
+use argmax_contracts::usage::UsageRecordTokens;
 use argmax_contracts::validation::ProviderId;
 use argmax_store::usage_scan::{self, HourlyBucket};
 

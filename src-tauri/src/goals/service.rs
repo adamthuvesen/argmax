@@ -24,9 +24,9 @@ use crate::{
         runtime::parse_provider,
         session_service::{self, GoalTurnIdentity, ProviderSessionService, SessionStateChange},
     },
-    routing::RouteDecision,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::routing::RouteDecision;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_contracts::validation::AgentMode;
 use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};

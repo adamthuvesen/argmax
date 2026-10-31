@@ -3,7 +3,7 @@
 
 use argmax_contracts::validation::ProviderId;
 
-pub use argmax_contracts::usage::UsageRecordTokens;
+use argmax_contracts::usage::UsageRecordTokens;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UsageRecord {

@@ -5,7 +5,7 @@
 // routed result.
 
 use crate::providers::model_catalogue::ModelId;
-pub use argmax_contracts::routing::{AutoTier, Difficulty, TaskKind};
+use argmax_contracts::routing::{AutoTier, Difficulty, TaskKind};
 use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

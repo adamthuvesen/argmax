@@ -11,16 +11,14 @@ pub mod project_check;
 pub mod reroute;
 pub mod table;
 
-pub use argmax_contracts::routing::{
+use argmax_contracts::routing::{
     difficulty_label, kind_label, tier_label, RouteDecision, RouteDecisionKind,
 };
 
-use self::{
-    jev::Classification,
-    table::{AutoTier, Difficulty, RoutedModel, TaskKind},
-};
+use self::{jev::Classification, table::RoutedModel};
 use crate::providers::{discovery::AvailableProvider, inputs::ProvidersLaunchInput};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::routing::{AutoTier, Difficulty, TaskKind};
 use argmax_contracts::validation::{NonEmptyString, ProviderId, ReasoningEffort};
 use argmax_store::{
     database::Database,

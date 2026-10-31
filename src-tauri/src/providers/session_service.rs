@@ -1419,33 +1419,35 @@ impl ProviderSessionService {
         if pinned {
             // Not a turn and not a switch: the row only closes the last
             // route's window for the Router cost card.
-            return Ok(Some(AutoFollowUp::Pinned(crate::routing::RouteDecision {
-                tier,
-                provider: input.provider.unwrap_or(current_provider),
-                model_id: input
-                    .model_id
-                    .as_ref()
-                    .map_or_else(|| session.model_id.clone(), |id| id.as_str().to_string()),
-                model_label: input.model_label.as_ref().map_or_else(
-                    || session.model_label.clone(),
-                    |label| label.as_str().to_string(),
-                ),
-                effort: input.reasoning_effort.or(current_effort),
-                kind: None,
-                difficulty: None,
-                kind_confidence: None,
-                difficulty_confidence: None,
-                decision: crate::routing::RouteDecisionKind::Pinned,
-                reason: "user picked a model".to_string(),
-                signals: None,
-            })));
+            return Ok(Some(AutoFollowUp::Pinned(
+                argmax_contracts::routing::RouteDecision {
+                    tier,
+                    provider: input.provider.unwrap_or(current_provider),
+                    model_id: input
+                        .model_id
+                        .as_ref()
+                        .map_or_else(|| session.model_id.clone(), |id| id.as_str().to_string()),
+                    model_label: input.model_label.as_ref().map_or_else(
+                        || session.model_label.clone(),
+                        |label| label.as_str().to_string(),
+                    ),
+                    effort: input.reasoning_effort.or(current_effort),
+                    kind: None,
+                    difficulty: None,
+                    kind_confidence: None,
+                    difficulty_confidence: None,
+                    decision: argmax_contracts::routing::RouteDecisionKind::Pinned,
+                    reason: "user picked a model".to_string(),
+                    signals: None,
+                },
+            )));
         }
         if !classify {
             return Ok(Some(AutoFollowUp::Routed(None, Box::new(session))));
         }
         let retained = |reason: &str| {
             Some(AutoFollowUp::Routed(
-                Some(crate::routing::RouteDecision {
+                Some(argmax_contracts::routing::RouteDecision {
                     tier,
                     provider: current_provider,
                     model_id: session.model_id.clone(),
@@ -1455,7 +1457,7 @@ impl ProviderSessionService {
                     difficulty: None,
                     kind_confidence: None,
                     difficulty_confidence: None,
-                    decision: crate::routing::RouteDecisionKind::Kept,
+                    decision: argmax_contracts::routing::RouteDecisionKind::Kept,
                     reason: reason.to_string(),
                     signals: None,
                 }),
@@ -1921,7 +1923,7 @@ impl ProviderSessionService {
             // cancelled leaves no route behind for the chip or the hysteresis.
             if let Some(route) = &auto_route {
                 argmax_store::turn_routes::record_route(&connection, &session_id, route)?;
-                if route.decision == crate::routing::RouteDecisionKind::Pinned {
+                if route.decision == argmax_contracts::routing::RouteDecisionKind::Pinned {
                     argmax_store::turn_routes::clear_auto_tier(&connection, &session_id)?;
                 }
             }
@@ -4890,10 +4892,13 @@ fn delta_has_subagent_control_event(delta: &DashboardDelta) -> bool {
 enum AutoFollowUp {
     /// The user picked another model: routing ends, and a 'pinned' row
     /// closes the last route's window.
-    Pinned(crate::routing::RouteDecision),
+    Pinned(argmax_contracts::routing::RouteDecision),
     /// The router's decision, or `None` when there was nothing to classify
     /// with (no key, a classifier failure).
-    Routed(Option<crate::routing::RouteDecision>, Box<SessionSummary>),
+    Routed(
+        Option<argmax_contracts::routing::RouteDecision>,
+        Box<SessionSummary>,
+    ),
 }
 
 /// Rewrites a routed follow-up and returns the route to record. Fast mode is
@@ -4903,7 +4908,7 @@ fn apply_auto_follow_up(
     input: &mut ProvidersSendInput,
     auto_follow_up: Option<AutoFollowUp>,
     session: &SessionSummary,
-) -> ArgmaxResult<Option<crate::routing::RouteDecision>> {
+) -> ArgmaxResult<Option<argmax_contracts::routing::RouteDecision>> {
     let route = match auto_follow_up {
         None => return Ok(None),
         Some(AutoFollowUp::Pinned(route)) => return Ok(Some(route)),
@@ -4927,7 +4932,7 @@ fn apply_auto_follow_up(
                 else {
                     return Ok(None);
                 };
-                route = Some(crate::routing::RouteDecision {
+                route = Some(argmax_contracts::routing::RouteDecision {
                     tier,
                     provider: parse_provider(&session.provider)?,
                     model_id: session.model_id.clone(),
@@ -4940,7 +4945,7 @@ fn apply_auto_follow_up(
                     difficulty: None,
                     kind_confidence: None,
                     difficulty_confidence: None,
-                    decision: crate::routing::RouteDecisionKind::Kept,
+                    decision: argmax_contracts::routing::RouteDecisionKind::Kept,
                     reason: "Session changed during classification, retaining its admitted route"
                         .to_string(),
                     signals: None,
@@ -4954,7 +4959,8 @@ fn apply_auto_follow_up(
     };
     if matches!(
         route.decision,
-        crate::routing::RouteDecisionKind::Reroute | crate::routing::RouteDecisionKind::Escalate
+        argmax_contracts::routing::RouteDecisionKind::Reroute
+            | argmax_contracts::routing::RouteDecisionKind::Escalate
     ) {
         // An escalation off the top of a cheap ladder changes provider; the
         // provider-switch path then rebuilds context from the visible
@@ -5770,8 +5776,8 @@ mod tests {
             "modelId": "gpt-6-astra", "modelLabel": "GPT-6 Astra", "reasoningEffort": "high"
         }))
         .unwrap();
-        let route = crate::routing::RouteDecision {
-            tier: crate::routing::table::AutoTier::Balanced,
+        let route = argmax_contracts::routing::RouteDecision {
+            tier: argmax_contracts::routing::AutoTier::Balanced,
             provider: ProviderId::Codex,
             model_id: "gpt-6-astra".to_string(),
             model_label: "GPT-6 Astra".to_string(),
@@ -5780,7 +5786,7 @@ mod tests {
             difficulty: None,
             kind_confidence: None,
             difficulty_confidence: None,
-            decision: crate::routing::RouteDecisionKind::Reroute,
+            decision: argmax_contracts::routing::RouteDecisionKind::Reroute,
             reason: "Simpler next task".to_string(),
             signals: None,
         };
@@ -5799,7 +5805,7 @@ mod tests {
         assert!(!input.fast_mode);
         assert_eq!(
             recorded.decision,
-            crate::routing::RouteDecisionKind::Reroute
+            argmax_contracts::routing::RouteDecisionKind::Reroute
         );
     }
 
@@ -5813,10 +5819,10 @@ mod tests {
         admitted.model_label = "Fable 5.1".to_string();
         admitted.reasoning_effort = Some("xhigh".to_string());
         let mut route = crate::routing::fallback_decision(
-            crate::routing::table::AutoTier::Balanced,
+            argmax_contracts::routing::AutoTier::Balanced,
             "test classification",
         );
-        route.decision = crate::routing::RouteDecisionKind::Reroute;
+        route.decision = argmax_contracts::routing::RouteDecisionKind::Reroute;
         for still_auto in [true, false] {
             if !still_auto {
                 admitted.auto_tier = None;
@@ -5840,7 +5846,10 @@ mod tests {
             assert!(input.reasoning_effort.is_none());
             if still_auto {
                 let recorded = recorded.unwrap();
-                assert_eq!(recorded.decision, crate::routing::RouteDecisionKind::Kept);
+                assert_eq!(
+                    recorded.decision,
+                    argmax_contracts::routing::RouteDecisionKind::Kept
+                );
                 assert_eq!(recorded.model_id, "claude-fable-5-1");
                 assert_eq!(recorded.effort, Some(ReasoningEffort::Xhigh));
             } else {

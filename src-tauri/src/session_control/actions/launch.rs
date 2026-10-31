@@ -749,12 +749,12 @@ async fn checkout_of_project(repo_path: &str, requested: &str) -> Option<String>
 
 fn auto_tier_from_model(
     model: Option<&str>,
-) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+) -> Result<Option<argmax_contracts::routing::AutoTier>, SessionControlError> {
     let Some(model) = model else {
         return Ok(None);
     };
     if model == "auto" {
-        return Ok(Some(crate::routing::table::AutoTier::Balanced));
+        return Ok(Some(argmax_contracts::routing::AutoTier::Balanced));
     }
     let Some(tier) = model.strip_prefix("auto:") else {
         return Ok(None);
@@ -774,7 +774,7 @@ fn launch_auto_tier(
     model: Option<&str>,
     provider_named: bool,
     parent_auto_tier: Option<&str>,
-) -> Result<Option<crate::routing::table::AutoTier>, SessionControlError> {
+) -> Result<Option<argmax_contracts::routing::AutoTier>, SessionControlError> {
     if model.is_some() || provider_named {
         return auto_tier_from_model(model);
     }
@@ -887,7 +887,7 @@ fn parse_reasoning_effort(
 #[cfg(test)]
 mod auto_model_tests {
     use super::{auto_tier_from_model, launch_auto_tier};
-    use crate::routing::table::AutoTier;
+    use argmax_contracts::routing::AutoTier;
 
     #[test]
     fn auto_model_names_pick_a_tier_and_reject_unknown_ones() {

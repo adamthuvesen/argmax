@@ -12,8 +12,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::context::FollowUpContext;
-use super::table::{Difficulty, TaskKind};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::routing::{Difficulty, TaskKind};
 
 const JEV_URL: &str = "https://api.typesafe.ai/v1/systemone";
 const JEV_MODEL: &str = "jev-latest";

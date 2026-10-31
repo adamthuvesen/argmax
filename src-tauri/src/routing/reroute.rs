@@ -9,14 +9,15 @@ use super::{
     decision_from,
     jev::Classification,
     settle,
-    table::{self, AutoTier, RouteModel, RoutedModel},
-    RouteDecision, RouteDecisionKind,
+    table::{self, RouteModel, RoutedModel},
 };
 use crate::providers::discovery::AvailableProvider;
 use crate::providers::{
     model_catalogue::ModelId,
     pricing::{cost_of, list_price, ModelPricing},
 };
+use argmax_contracts::routing::AutoTier;
+use argmax_contracts::routing::{RouteDecision, RouteDecisionKind};
 use argmax_contracts::usage::UsageCounts;
 use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 
@@ -363,7 +364,10 @@ fn reroute(
     state: &FollowUpState,
     target: RoutedModel,
     classification: &Classification,
-    settled: Option<(table::TaskKind, table::Difficulty)>,
+    settled: Option<(
+        argmax_contracts::routing::TaskKind,
+        argmax_contracts::routing::Difficulty,
+    )>,
     reason: String,
 ) -> RouteDecision {
     decision_from(
@@ -500,7 +504,7 @@ fn switch_pays_back(
     let (input_cap, output_cap) =
         if classification.follow_up_scope == Some(super::jev::FollowUpScope::FinishingStep) {
             (256, 256)
-        } else if classification.difficulty() == table::Difficulty::Light {
+        } else if classification.difficulty() == argmax_contracts::routing::Difficulty::Light {
             (1_000, 500)
         } else {
             (4_000, 2_000)
@@ -519,7 +523,10 @@ fn switch_pays_back(
 fn kept(
     state: &FollowUpState,
     classification: &Classification,
-    settled: Option<(table::TaskKind, table::Difficulty)>,
+    settled: Option<(
+        argmax_contracts::routing::TaskKind,
+        argmax_contracts::routing::Difficulty,
+    )>,
     reason: String,
 ) -> RouteDecision {
     RouteDecision {
@@ -544,7 +551,8 @@ fn kept(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::routing::{jev::FollowUpScope, table::TaskKind};
+    use crate::routing::jev::FollowUpScope;
+    use argmax_contracts::routing::TaskKind;
 
     const HOUR: Duration = Duration::from_secs(60 * 60);
 

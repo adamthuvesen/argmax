@@ -1,8 +1,9 @@
 use super::{
-    document, VisualizationArtifact, VisualizationControlValues, VisualizationFormat,
-    VisualizationMode, VisualizationRead, VisualizationWidgetState,
+    document, VisualizationArtifact, VisualizationControlValues, VisualizationRead,
+    VisualizationWidgetState,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::visualizations::{VisualizationFormat, VisualizationMode};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use regex::Regex;
 use serde_json::json;

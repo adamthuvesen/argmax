@@ -53,7 +53,7 @@ pub struct ProvidersLaunchInput {
     /// provider/model/effort fields above are then only the fallback the
     /// router overwrites. See docs/routing.md.
     #[serde(default)]
-    pub auto_tier: Option<crate::routing::table::AutoTier>,
+    pub auto_tier: Option<argmax_contracts::routing::AutoTier>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

@@ -43,7 +43,7 @@ pub mod windows;
 pub mod workspace_files;
 pub mod workspaces;
 
-pub use argmax_store::authorship::PersonAttestation;
+use argmax_store::authorship::PersonAttestation;
 
 pub(in crate::ipc) fn attest_person() -> PersonAttestation {
     PersonAttestation::minted_by_ipc()

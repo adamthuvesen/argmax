@@ -11,8 +11,8 @@ use chrono::{Duration, Local, TimeZone, Utc};
 use rusqlite::{Connection, OpenFlags};
 use serde::Serialize;
 
-use crate::usage::records::UsageRecordTokens;
 use crate::usage::scanner::hour_start_secs;
+use argmax_contracts::usage::UsageRecordTokens;
 use argmax_store::usage_scan;
 
 #[derive(Debug, Serialize)]

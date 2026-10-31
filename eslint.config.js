@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import testingLibrary from "eslint-plugin-testing-library";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -80,26 +81,8 @@ export default tseslint.config(
     }
   },
   {
-    files: [
-      "src/renderer/components/DetailsPopup.tsx",
-      "src/renderer/components/SessionConversation.tsx",
-      "src/renderer/hooks/useDashboardSession.ts",
-      "src/renderer/lib/agentActivity.ts",
-      "src/renderer/lib/compaction.ts",
-      "src/renderer/lib/debugTrace.ts",
-      "src/renderer/lib/foldConversation.ts",
-      "src/renderer/lib/lastTurnFiles.ts",
-      "src/renderer/lib/multitask.ts",
-      "src/renderer/lib/projectMove.ts",
-      "src/renderer/lib/providerSwitch.ts",
-      "src/renderer/lib/sessionConversationModel.ts",
-      "src/renderer/lib/sessionTimelines.ts",
-      "src/renderer/lib/sessionTurnView.ts",
-      "src/renderer/lib/sideChat.ts",
-      "src/renderer/lib/snapshot.ts",
-      "src/renderer/lib/turnBoundaries.ts",
-      "src/renderer/lib/turnInteractiveCards.ts"
-    ],
+    files: ["src/renderer/**/*.ts", "src/renderer/**/*.tsx"],
+    ignores: ["src/renderer/**/*.test.ts", "src/renderer/**/*.test.tsx", "src/renderer/lib/canonicalTimeline.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",
@@ -120,6 +103,14 @@ export default tseslint.config(
           message: "Route timeline semantics through decodeTimelineEvent(). Keep raw payload access for lossless debug bodies and large tool input or output only."
         }
       ]
+    }
+  },
+  {
+    files: ["src/renderer/**/*.test.tsx"],
+    plugins: { "testing-library": testingLibrary },
+    rules: {
+      "testing-library/no-container": "error",
+      "testing-library/no-node-access": "error"
     }
   }
 );

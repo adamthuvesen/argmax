@@ -34,6 +34,7 @@ const extra = diff(invokedChannels, fixtureChannels);
 
 if (duplicateFixtureChannels.length || missing.length || extra.length) {
   console.error("error: Tauri bridge request channels drifted from channels.txt");
+  console.error("Add or remove the method in src/renderer/lib/tauriBridge.ts. After a Rust command change, run npm run generate:bindings first.");
   if (duplicateFixtureChannels.length) {
     console.error(`duplicate fixture channels: ${uniq(duplicateFixtureChannels).join(", ")}`);
   }

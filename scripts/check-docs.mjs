@@ -99,10 +99,10 @@ for (const rel of ["docs/agent-tools.md", "docs/browser.md"]) {
   for (const match of text.matchAll(/(\d+) of the (?:server's )?(\d+)|(\d+) tools and/g)) {
     const stated = match[2] ?? match[3];
     if (Number(stated) !== total) {
-      fail(`${rel}: states ${stated} MCP tools, code registers ${total}`);
+      fail(`${rel}: states ${stated} MCP tools, code registers ${total}. Update the number in ${rel}.`);
     }
     if (match[1] && Number(match[1]) !== browser) {
-      fail(`${rel}: states ${match[1]} browser tools, code registers ${browser}`);
+      fail(`${rel}: states ${match[1]} browser tools, code registers ${browser}. Update the number in ${rel}.`);
     }
   }
 }

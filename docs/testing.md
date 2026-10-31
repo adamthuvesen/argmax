@@ -1,6 +1,6 @@
 # Testing
 
-Argmax has two test suites: Vitest for the frontend and Cargo for the Rust backend.
+Argmax has Vitest suites for the frontend, Cargo suites for the Rust backend, and XCTest suites for the iPhone app.
 
 The suites are the first rung of the verification ladder; driving the real app
 (scratch instance, bridge, screenshots) is covered in [verification.md](verification.md).
@@ -15,14 +15,28 @@ npm run test:unit       # Vitest unit and component tests
 npm run test:perf       # Vitest performance benchmarks
 npm run test:rust       # Cargo test suite for src-tauri (includes the bindings freshness test)
 npm run lint:rust       # cargo clippy over every target, warnings are errors
-npm run check:tauri-bridge # Check IPC channel inventory parity
-npm run check:main-thread  # Every synchronous IPC handler is on the allowlist
+npm run check:static    # Every static gate; precheck and CI run this same list
+npm run check:rust-boundaries # Rust layer rules, with a ratchet on existing violations
 npm run doctor          # Check the local verification environment
 npm run verify          # Build and exercise a disposable app with scripted providers
 ```
 
 `verify` is a local end-to-end loop described in [verification.md](verification.md).
 It is intentionally separate from CI and `precheck`.
+
+## Ratchets
+
+A common bad pattern fails only on new additions. ESLint records existing
+violations in `eslint-suppressions.json`, and the Rust layer rules record them
+in `scripts/rust-boundaries-baseline.json`. After you fix a violation, tighten
+the record:
+
+```bash
+npx eslint . --prune-suppressions
+node scripts/check-rust-boundaries.mjs --update
+```
+
+Do not add a new suppression. Use the fix that the error message names.
 
 ## The pre-push gate
 
@@ -34,11 +48,9 @@ touches:
 
 | Touched | Runs |
 |---|---|
-| JS, Rust, iOS, assets, or unclassified paths | `check:tauri-bridge`, `check:main-thread` |
+| any path, docs included | `check:static` ([scripts/static-checks.mjs](../scripts/static-checks.mjs)) |
 | `src/**`, `src-tauri/**`, `ios/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
 | `src-tauri/**`, browser-blocking assets, Cargo or workflow config | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
-| `ios/**` | `check:ios-fonts` |
-| `src/**` or `ios/**` | `check:provider-models` (generated iPhone catalogue is current; iOS test model ids exist) |
 | any JS lane change | `vite build` + the bundle budget |
 
 `npm run typecheck` (the tsc lane here and in CI) runs TypeScript 7, the native
@@ -54,8 +66,8 @@ so spaces and non-ASCII filenames cannot hide a change. Documentation-only
 changes skip checks. An unclassified path runs both language lanes until it is
 deliberately classified.
 
-CI runs the same lanes with the same path filter, so a push that passes the
-hook should not be failed by CI for a reason the hook could have caught.
+CI runs the same lanes with the same path filter. CI also runs `npm audit` and
+`cargo audit`, because advisories change without a code change and need network.
 Never bypass the hook with `--no-verify`; if a lane is wrong for the change,
 fix the filters in `precheck.mjs` and `.github/workflows/ci.yml`.
 

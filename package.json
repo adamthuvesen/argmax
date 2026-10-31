@@ -39,7 +39,9 @@
     "typecheck": "node node_modules/typescript-7/bin/tsc --noEmit",
     "generate:contracts": "node scripts/build-visualization-runtime.mjs && npm run generate:bindings && node scripts/export-remote-contracts.mjs && node scripts/export-swift-contracts.mjs",
     "check:contracts": "node scripts/build-visualization-runtime.mjs --check && node scripts/check-architecture.mjs && node scripts/export-remote-contracts.mjs --check && node scripts/export-swift-contracts.mjs --check",
-    "check:docs": "node scripts/check-docs.mjs"
+    "check:docs": "node scripts/check-docs.mjs",
+    "check:rust-boundaries": "node scripts/check-rust-boundaries.mjs",
+    "check:static": "node scripts/static-checks.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -104,6 +106,7 @@
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
+    "eslint-plugin-testing-library": "^7.16.2",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "typescript-7": "npm:typescript@^7.0.2",

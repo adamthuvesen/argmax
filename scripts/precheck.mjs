@@ -256,17 +256,9 @@ const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle",
 console.log(`precheck: ${lanes.length ? lanes.join(" + ") : "docs only"} (${scope.reason})`);
 const vitestBase = runEverything ? null : scope.vitestBase;
 
-// Contract checks are sub-second and cross the Rust/TS boundary, so they run
-// whenever either side changed.
-step("IPC channel parity", "node", ["scripts/check-tauri-bridge.mjs"]);
-// Sub-second, and the only gate that runs on a docs-only push: docs are
-// inert for every lane above, so without this step a broken link or a
-// stale count would pass unchecked.
-step("docs integrity", "node", ["scripts/check-docs.mjs"]);
-step("Architecture boundaries", "node", ["scripts/check-architecture.mjs"]);
-step("Remote contracts", "node", ["scripts/export-remote-contracts.mjs", "--check"]);
-step("Swift contracts", "node", ["scripts/export-swift-contracts.mjs", "--check"]);
-step("main-thread handler allowlist", "node", ["scripts/check-main-thread-handlers.mjs"]);
+// Sub-second to seconds, and they run on every push, docs-only included. CI
+// runs the same list.
+step("static checks", "node", ["scripts/static-checks.mjs"]);
 
 // One second, and the likeliest check to fail on a push: run it before the
 // minutes-long suites so a formatting slip does not cost a whole cycle.
@@ -299,18 +291,6 @@ if (scope.rust) {
     "-D",
     "warnings"
   ]);
-}
-
-// Seconds, and no Xcode: the phone app's whole build is not a pre-push gate,
-// but a font named outside the type roles is caught by reading the source.
-if (scope.ios) {
-  step("iOS typography", "node", ["scripts/check-ios-fonts.mjs"]);
-}
-
-// The phone's model catalogue is generated from src/shared/providerModels.ts,
-// so a change on either side can leave it stale.
-if (scope.ios || scope.js) {
-  step("iOS model catalogue", "node", ["scripts/export-provider-models.mjs", "--check"]);
 }
 
 if (scope.bundle) {

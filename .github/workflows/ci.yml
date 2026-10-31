@@ -166,19 +166,9 @@ jobs:
 
       - run: npm run typecheck
 
-      # Both parity checks read Rust sources, so they run for Rust-only PRs too.
-      - run: npm run check:tauri-bridge
-      - run: npm run check:contracts
-
-      # check-docs reads the MCP tool registrations in src-tauri, so it
-      # rides this lane, which already runs for Rust-only PRs.
-      - run: npm run check:docs
-
-      - run: npm run check:main-thread
-
-      - run: npm run check:ios-fonts
-
-      - run: npm run check:provider-models
+      # The same list precheck runs. These checks read Rust sources and docs, so
+      # this lane also runs for Rust-only and docs-only PRs.
+      - run: npm run check:static
 
       - if: ${{ steps.eslint-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4

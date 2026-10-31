@@ -9,6 +9,7 @@ would mislead a reader of the snapshot.
 
 ## Snapshots
 
+- [agent-excellence.md](agent-excellence.md)
 - [agent-tools.md](agent-tools.md)
 - [auto-model-routing.md](auto-model-routing.md)
 - [browser-agent-reads.md](browser-agent-reads.md)

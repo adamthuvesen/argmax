@@ -18,11 +18,11 @@ for (const [, channel, module, method] of entries) {
   if (seen.has(channel)) problems.push(`duplicate catalogue channel: ${channel}`);
   seen.add(channel);
   if (registrations.get(channel) !== `${module}::${method}`) {
-    problems.push(`${channel}: catalogue handler differs from the Tauri command`);
+    problems.push(`${channel}: catalogue handler differs from the Tauri command. Fix the entry in src-tauri/src/ipc/catalogue.rs.`);
   }
 }
 for (const channel of registrations.keys()) {
-  if (!seen.has(channel)) problems.push(`missing catalogue entry: ${channel}`);
+  if (!seen.has(channel)) problems.push(`missing catalogue entry: ${channel}. Add it to src-tauri/src/ipc/catalogue.rs.`);
 }
 
 const rendererRules = [
@@ -35,7 +35,7 @@ for (const [file, forbidden] of rendererRules) {
   const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   for (const statement of ast.statements) {
     if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && forbidden.test(statement.moduleSpecifier.text)) {
-      problems.push(`${file}: forbidden dependency ${statement.moduleSpecifier.text}`);
+      problems.push(`${file}: forbidden dependency ${statement.moduleSpecifier.text}. Pass the value in from the parent. The rule is in scripts/check-architecture.mjs.`);
     }
   }
   if (file.endsWith("SessionMultiGrid.tsx") && /window\.argmax/.test(source)) problems.push(`${file}: layout must not invoke application commands`);

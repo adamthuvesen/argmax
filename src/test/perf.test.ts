@@ -11,14 +11,16 @@ import type { DashboardSnapshot, SessionSummary, TimelineEvent } from "../shared
 
 /**
  * Bench harness. Each assertion pins a property documented in
- * `docs/performance.md`. A regression that pushes any of these past
- * the documented budget fails this suite in CI so we notice before users do.
+ * `docs/performance.md`. Budgets are milliseconds on an unloaded machine,
+ * about 5× the median measured on an M2 Air (2026-11-06), so a 10× regression
+ * fails. Re-measure before you raise one.
  *
- * The numbers themselves are slack: budgets are 2–5× larger than the
- * measured wall-clock on an M2 Air so transient CI noise doesn't flake. If
- * a measurement gets close enough to fail to be visible noise, raise the
- * budget AND open a follow-up to investigate the regression — don't just
- * tighten the slack without thinking.
+ * `medianMs` keeps them honest on a busy machine (parallel agents, a shared
+ * CI runner). Before each sample it times a fixed reference loop. Load slows
+ * that loop and the code under test by the same factor, so the result is
+ * divided by the reference loop's slowdown. A regression in the code under
+ * test does not slow the reference loop, so it still fails. The median
+ * ignores the samples a preemption lands on.
  */
 
 function makeSession(i: number): SessionSummary {
@@ -44,14 +46,42 @@ function makeSession(i: number): SessionSummary {
   };
 }
 
-function percentile(sortedDurations: number[], ratio: number): number {
-  if (sortedDurations.length === 0) return 0;
-  const index = Math.ceil(sortedDurations.length * ratio) - 1;
-  return sortedDurations[Math.max(0, Math.min(index, sortedDurations.length - 1))] ?? 0;
+// Median of referenceLoop() on an unloaded M2 Air. A faster machine clamps
+// the slowdown at 1, so budgets never tighten below their stated value.
+const REFERENCE_LOOP_MS = 1;
+
+function referenceLoop(): number {
+  const rows = Array.from({ length: 4_000 }, (_, i) => ({ id: `row-${i}`, rank: (i * 7_919) % 4_000 }));
+  rows.sort((a, b) => a.rank - b.rank);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  let total = 0;
+  for (const row of rows) total += byId.get(row.id)?.rank ?? 0;
+  return total;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? 0;
+}
+
+/** Median wall time of `run`, scaled back to an unloaded machine. */
+function medianMs(samples: number, run: (sample: number) => void): number {
+  referenceLoop();
+  const runs: number[] = [];
+  const references: number[] = [];
+  for (let sample = 0; sample < samples; sample += 1) {
+    let start = performance.now();
+    referenceLoop();
+    references.push(performance.now() - start);
+    start = performance.now();
+    run(sample);
+    runs.push(performance.now() - start);
+  }
+  return median(runs) / Math.max(1, median(references) / REFERENCE_LOOP_MS);
 }
 
 describe("perf budgets", () => {
-  it("updates one of eight session transcripts in p95 < 2 ms without notifying other panes", () => {
+  it("updates one of eight session transcripts in median < 1 ms without notifying other panes", () => {
     const timelines = new SessionTimelines();
     const notifications = Array<number>(8).fill(0);
     const subscriptions = notifications.map((_, index) => timelines.subscribe(`session-${index}`, () => {
@@ -63,38 +93,23 @@ describe("perf budgets", () => {
     }));
     timelines.merge(events, []);
     notifications.fill(0);
-    const durations: number[] = [];
-    for (let index = 0; index < 100; index += 1) {
-      const event: TimelineEvent = { ...events[0], id: `new-${index}`, rowCursor: 4001 + index };
-      const start = performance.now();
-      timelines.merge([event], []);
-      durations.push(performance.now() - start);
-    }
-    durations.sort((a, b) => a - b);
-    expect(percentile(durations, 0.95)).toBeLessThan(2);
+    const updates = Array.from({ length: 100 }, (_, index): TimelineEvent => ({ ...events[0], id: `new-${index}`, rowCursor: 4001 + index }));
+    expect(medianMs(100, (index) => timelines.merge([updates[index]], []))).toBeLessThan(1);
     expect(notifications).toEqual([100, 0, 0, 0, 0, 0, 0, 0]);
     subscriptions.forEach((unsubscribe) => unsubscribe());
   });
 
-  it("mergeDashboardDelta over a 200-session payload completes p95 < 5 ms", () => {
+  it("mergeDashboardDelta over a 200-session payload completes median < 0.2 ms", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       sessions: Array.from({ length: 200 }, (_, i) => makeSession(i))
     };
     const delta = { sessions: Array.from({ length: 200 }, (_, i) => makeSession(i + 200)) };
 
-    const durations: number[] = [];
-    for (let i = 0; i < 50; i++) {
-      const start = performance.now();
-      mergeDashboardDelta(base, delta);
-      durations.push(performance.now() - start);
-    }
-    durations.sort((a, b) => a - b);
-    const p95 = percentile(durations, 0.95);
-    expect(p95).toBeLessThan(5);
+    expect(medianMs(50, () => mergeDashboardDelta(base, delta))).toBeLessThan(0.2);
   });
 
-  it("mergeDashboardDelta with a 500-delta streamed answer + tool rows stays p95 < 5 ms", () => {
+  it("mergeDashboardDelta with a 500-delta streamed answer + tool rows stays median < 1 ms", () => {
     // Token streaming floods the event list; the eviction-protection partition
     // (snapshot.ts mergeEventsBounded) runs on the hot merge path. Guard it.
     const base: DashboardSnapshot = {
@@ -116,24 +131,15 @@ describe("perf budgets", () => {
       }))
     };
 
-    const durations: number[] = [];
-    for (let i = 0; i < 50; i++) {
-      const start = performance.now();
-      mergeDashboardDelta(base, delta);
-      durations.push(performance.now() - start);
-    }
-    durations.sort((a, b) => a - b);
-    expect(percentile(durations, 0.95)).toBeLessThan(5);
+    expect(medianMs(50, () => mergeDashboardDelta(base, delta))).toBeLessThan(1);
   });
 
-  it("a 1-event delta onto a 5 000-event snapshot stays p95 < 4 ms", () => {
+  it("a 1-event delta onto a 5 000-event snapshot stays median < 2.5 ms", () => {
     // The shape of every streamed chunk: one new row on top of a long
-    // transcript, which the renderer pays for once per delta. Measured p95 is
+    // transcript, which the renderer pays for once per delta. Measured p95 was
     // 0.23 ms with the append fast path in mergeEventsBounded and 0.47 ms
     // without it, so this budget bounds the cost rather than telling the two
-    // apart. Shared CI runners can exceed 1 ms without a regression, so this
-    // is a 2 ms regression ceiling. The fast path's behaviour is pinned in
-    // snapshot.test.ts.
+    // apart. The fast path's behaviour is pinned in snapshot.test.ts.
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       events: Array.from({ length: 5_000 }, (_, i): TimelineEvent => ({
@@ -147,9 +153,7 @@ describe("perf budgets", () => {
       }))
     };
 
-    const durations: number[] = [];
-    for (let i = 0; i < 50; i++) {
-      const delta = {
+    const deltas = Array.from({ length: 50 }, (_, i) => ({
         events: [
           {
             id: `live-${i}`,
@@ -161,16 +165,11 @@ describe("perf budgets", () => {
             rowCursor: 10_000 + i
           }
         ]
-      };
-      const start = performance.now();
-      mergeDashboardDelta(base, delta);
-      durations.push(performance.now() - start);
-    }
-    durations.sort((a, b) => a - b);
-    expect(percentile(durations, 0.95)).toBeLessThan(4);
+    }));
+    expect(medianMs(50, (i) => mergeDashboardDelta(base, deltas[i]))).toBeLessThan(2.5);
   });
 
-  it("an empty poll against a 5 000-event snapshot stays p95 < 0.1 ms", () => {
+  it("an empty poll against a 5 000-event snapshot stays median < 0.01 ms", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       events: Array.from({ length: 5_000 }, (_, i): TimelineEvent => ({
@@ -183,18 +182,10 @@ describe("perf budgets", () => {
         rowCursor: 5_000 - i
       }))
     };
-    const durations: number[] = [];
-    for (let i = 0; i < 100; i++) {
-      const start = performance.now();
-      mergeDashboardDelta(base, { events: [], rawOutputs: [] });
-      durations.push(performance.now() - start);
-    }
-    durations.sort((a, b) => a - b);
-    const p95 = percentile(durations, 0.95);
-    expect(p95).toBeLessThan(0.1);
+    expect(medianMs(100, () => mergeDashboardDelta(base, { events: [], rawOutputs: [] }))).toBeLessThan(0.01);
   });
 
-  it("buildSessionToolCalls across capped tool and progress rows stays p95 < 50 ms", () => {
+  it("buildSessionToolCalls across capped tool and progress rows stays median < 20 ms", () => {
     const createdAt = new Date(2026, 0, 1).toISOString();
     const events: TimelineEvent[] = [];
     for (let i = 0; i < 4_000; i++) {
@@ -221,26 +212,13 @@ describe("perf budgets", () => {
     }
     events.reverse();
 
-    // One untimed warm-up keeps the cold JIT pass out of the sample. With five
-    // samples p95 was the max, so one noisy runner tick failed the suite; with
-    // twenty, p95 drops the single worst run.
     expect(buildSessionToolCalls(events)).toHaveLength(2_000);
-    const durations: number[] = [];
-    for (let i = 0; i < 20; i++) {
-      const start = performance.now();
-      expect(buildSessionToolCalls(events)).toHaveLength(2_000);
-      durations.push(performance.now() - start);
-    }
-    durations.sort((a, b) => a - b);
-    const p95 = percentile(durations, 0.95);
-    // 50 ms: local p95 sits near 5 ms. Shared Ubuntu runners sat at 21–26 ms
-    // and then 40.5 ms without a code change. Keep this a regression ceiling,
-    // not a machine pin.
-    expect(p95).toBeLessThan(50);
+    // Local median sits near 4 ms.
+    expect(medianMs(20, () => buildSessionToolCalls(events))).toBeLessThan(20);
   });
 
-  it("buildFileTree over 10 000 entries completes < 75 ms", () => {
-    const entries = [];
+  it("buildFileTree over 10 000 entries completes median < 30 ms", () => {
+    const entries: Parameters<typeof buildFileTree>[0] = [];
     for (let dir = 0; dir < 100; dir++) {
       for (let file = 0; file < 100; file++) {
         entries.push({ path: `pkg-${dir}/sub-${dir}/file-${file}.ts` });
@@ -248,32 +226,20 @@ describe("perf budgets", () => {
     }
     expect(entries).toHaveLength(10_000);
 
-    const start = performance.now();
-    const root = buildFileTree(entries);
-    const elapsed = performance.now() - start;
-
-    expect(root.children).toHaveLength(100);
-    // 75 ms slack under full-suite load (see parseUnifiedDiff note above).
-    expect(elapsed).toBeLessThan(75);
+    expect(buildFileTree(entries).children).toHaveLength(100);
+    expect(medianMs(5, () => buildFileTree(entries))).toBeLessThan(30);
   });
 
-  it("searchFilePaths over 10 000 entries completes p95 < 25 ms", () => {
+  it("searchFilePaths over 10 000 entries completes median < 1 ms", () => {
     const paths = Array.from({ length: 10_000 }, (_, i) =>
       i === 9_500 ? "src/renderer/components/NeedlePanel.tsx" : `packages/pkg-${i}/src/file-${i}.ts`
     );
 
-    const durations: number[] = [];
-    for (let i = 0; i < 50; i++) {
-      const start = performance.now();
-      const hits = searchFilePaths(paths, "Needle", 8);
-      durations.push(performance.now() - start);
-      expect(hits[0]).toBe("src/renderer/components/NeedlePanel.tsx");
-    }
-    durations.sort((a, b) => a - b);
-    expect(percentile(durations, 0.95)).toBeLessThan(25);
+    expect(searchFilePaths(paths, "Needle", 8)[0]).toBe("src/renderer/components/NeedlePanel.tsx");
+    expect(medianMs(50, () => searchFilePaths(paths, "Needle", 8))).toBeLessThan(1);
   });
 
-  it("parseUnifiedDiff over a 500-hunk synthetic diff completes p95 < 20 ms", () => {
+  it("parseUnifiedDiff over a 500-hunk synthetic diff completes median < 3.5 ms", () => {
     // Build a synthetic diff that mirrors what `git diff` would emit for a
     // 50-file changeset with 10 hunks per file and 20 lines per hunk.
     // ReviewPanel parses this exact format on every "open diff" — pinning
@@ -297,16 +263,6 @@ describe("perf budgets", () => {
     }
     const diff = sections.join("\n");
 
-    const durations: number[] = [];
-    for (let i = 0; i < 20; i++) {
-      const start = performance.now();
-      parseUnifiedDiff(diff);
-      durations.push(performance.now() - start);
-    }
-    durations.sort((a, b) => a - b);
-    const p95 = percentile(durations, 0.95);
-    // 20 ms slack: p95 stays ~3-8 ms in isolation but can spike when the full
-    // suite runs hot on a shared CI runner.
-    expect(p95).toBeLessThan(20);
+    expect(medianMs(20, () => parseUnifiedDiff(diff))).toBeLessThan(3.5);
   });
 });

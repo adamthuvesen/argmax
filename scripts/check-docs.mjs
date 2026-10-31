@@ -2,9 +2,11 @@
 // Docs integrity: local links resolve, every docs/*.md is reachable from
 // the AGENTS.md index (directly or through an index page), docs/plan and
 // docs/design snapshots are listed by their index, and measurements that
-// drift silently (the MCP tool count) match the code that owns them.
+// drift silently (the MCP tool count) match the code that owns them, and
+// every enforcer the Enforced Rules table cites exists.
 
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,6 +106,24 @@ for (const rel of ["docs/agent-tools.md", "docs/browser.md"]) {
     if (match[1] && Number(match[1]) !== browser) {
       fail(`${rel}: states ${match[1]} browser tools, code registers ${browser}. Update the number in ${rel}.`);
     }
+  }
+}
+
+// 4. Every name in the AGENTS.md "Enforced by" column exists: a path is a
+//    file, `check:x` is an npm script, anything else appears in tracked code.
+const tracked = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n");
+const npmScripts = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).scripts;
+const rulesTable = agents.split("## Enforced Rules")[1]?.split("\n## ")[0] ?? "";
+if (!rulesTable) fail("AGENTS.md has no ## Enforced Rules table");
+for (const row of rulesTable.split("\n").filter((line) => /^\| (?!Rule |---)/.test(line))) {
+  for (const [, raw] of row.split("|")[2].matchAll(/`([^`]+)`/g)) {
+    const name = raw.replace(/^(npm run|cargo test) /, "").replace(/( --check|\(\))$/, "");
+    const isPath = /^\.|\/$|\.(mjs|cjs|js|ts|tsx|rs|swift|json)$/.test(name);
+    const found = isPath
+      ? existsSync(join(ROOT, name)) || tracked.some((file) => file.endsWith(`/${name}`))
+      : name in npmScripts ||
+        spawnSync("git", ["grep", "-qF", "--", name, ":!AGENTS.md"], { cwd: ROOT }).status === 0;
+    if (!found) fail(`AGENTS.md Enforced Rules cites \`${raw}\`, which no file, npm script, or code defines. Fix the citation or the enforcer.`);
   }
 }
 

@@ -130,7 +130,7 @@ immediate and drain revision pages before settling.
 
 ## Calling a Channel from a Component
 
-Components do not touch `window.argmax`. ESLint rejects it in `src/renderer/components/**`.
+Components do not touch `window.argmax`. The `no-restricted-properties` lint rule rejects it in `src/renderer/components/**`.
 
 - A read that follows state uses [useBridgeQuery](../src/renderer/data/useBridgeQuery.ts). Pass the state in `key`. A reply lands only while its key is shown and no newer read or local write replaced it. A handler checks `query.isCurrent()` after an `await`.
 - A write, or a read that one click asks for, uses an accessor in [bridgeActions.ts](../src/renderer/data/bridgeActions.ts). An accessor returns `undefined` where the host has no such domain. List only those methods there, so a state-following read does not compile through an accessor.
@@ -157,7 +157,7 @@ historical marker syntax now uses import and artifact reads.
 3. Add one entry to `ipc/catalogue.rs` with its handler and remote access policy.
 4. Implement the typed remote operation in that entry, or mark it `desktop`.
 5. Add the method to `ArgmaxApi` in `src/shared/types.ts` and `src/renderer/lib/tauriBridge.ts`.
-6. Run `npm run generate:contracts`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run precheck` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:static`, which covers bridge parity and `check:main-thread`).
+6. Run `npm run generate:contracts`. Refer to new input and result types through `Bindings.*` from `types.ts`. Never re-declare the shape by hand. Then run `npm run push-gate` (the Rust lane's `cargo test` includes the generated-file freshness test; the script also runs `check:static`, which covers bridge parity and `check:main-thread`).
 
 A synchronous handler resolves on the macOS main thread. Make the handler
 `async` (or `spawn_blocking` for genuinely blocking work) unless it does no IO,

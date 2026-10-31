@@ -1,10 +1,4 @@
-export type SettingsGroupId =
-  | "general"
-  | "appearance"
-  | "agents"
-  | "projects"
-  | "integrations"
-  | "advanced";
+export type SettingsGroupId = "general" | "appearance" | "agents" | "projects" | "integrations" | "advanced";
 
 type SettingsSectionMeta = {
   id: string;
@@ -41,10 +35,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       {
         id: "settings-notifications",
         label: "Notifications",
-        settings: [
-          "Notify when agent finishes",
-          "Test notification"
-        ]
+        settings: ["Notify when agent finishes", "Test notification"]
       },
       {
         id: "settings-window-snapshot",
@@ -76,13 +67,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       {
         id: "settings-typography",
         label: "Typography",
-        settings: [
-          "Font family",
-          "App font size",
-          "Agent window font size",
-          "Font heaviness",
-          "Ink strength"
-        ]
+        settings: ["Font family", "App font size", "Agent window font size", "Font heaviness", "Ink strength"]
       },
       {
         id: "settings-layout",
@@ -112,11 +97,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       {
         id: "settings-agent-defaults",
         label: "Defaults",
-        settings: [
-          "Default model",
-          "Default effort",
-          "Fast mode"
-        ]
+        settings: ["Default model", "Default effort", "Fast mode"]
       },
       { id: "settings-auto-routing", label: "Model router", settings: ["Jev API key"] },
       {
@@ -148,12 +129,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupMeta> = [
       {
         id: "settings-project-config",
         label: "Project settings",
-        settings: [
-          "Worktree location",
-          "Setup command",
-          "Check commands",
-          "Archive a workspace when its PR merges"
-        ]
+        settings: ["Worktree location", "Setup command", "Check commands", "Archive a workspace when its PR merges"]
       },
       { id: "settings-project-sources", label: "Project sources" }
     ]

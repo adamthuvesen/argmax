@@ -27,9 +27,7 @@ function isLaterChat(candidate: SessionSummary, held: SessionSummary): boolean {
 }
 
 /** Every workspace's chat, keyed by workspace id. */
-export function chatSessionByWorkspace(
-  sessions: readonly SessionSummary[]
-): Map<string, SessionSummary> {
+export function chatSessionByWorkspace(sessions: readonly SessionSummary[]): Map<string, SessionSummary> {
   const byWorkspace = new Map<string, SessionSummary>();
   for (const session of sessions) {
     const held = byWorkspace.get(session.workspaceId);
@@ -41,10 +39,7 @@ export function chatSessionByWorkspace(
 }
 
 /** One workspace's chat, for the callers that only need the one. */
-export function chatSessionFor(
-  sessions: readonly SessionSummary[],
-  workspaceId: string
-): SessionSummary | null {
+export function chatSessionFor(sessions: readonly SessionSummary[], workspaceId: string): SessionSummary | null {
   let chat: SessionSummary | null = null;
   for (const session of sessions) {
     if (session.workspaceId !== workspaceId) continue;

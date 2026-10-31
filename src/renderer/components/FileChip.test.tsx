@@ -1,10 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  formatFileChipLabel,
-  matchFileChip,
-  normalizeFileChipPath
-} from "../lib/fileChipPath.js";
+import { formatFileChipLabel, matchFileChip, normalizeFileChipPath } from "../lib/fileChipPath.js";
 import { CheckedFileChip, FileChip } from "./FileChip.js";
 
 describe("matchFileChip", () => {
@@ -13,11 +9,19 @@ describe("matchFileChip", () => {
   });
 
   it("matches a path with line suffix", () => {
-    expect(matchFileChip("src/foo/bar.tsx:42")).toEqual({ path: "src/foo/bar.tsx", line: 42, needsExistenceCheck: false });
+    expect(matchFileChip("src/foo/bar.tsx:42")).toEqual({
+      path: "src/foo/bar.tsx",
+      line: 42,
+      needsExistenceCheck: false
+    });
   });
 
   it("matches a path with line and column suffix", () => {
-    expect(matchFileChip("src/foo/bar.tsx:42:7")).toEqual({ path: "src/foo/bar.tsx", line: 42, needsExistenceCheck: false });
+    expect(matchFileChip("src/foo/bar.tsx:42:7")).toEqual({
+      path: "src/foo/bar.tsx",
+      line: 42,
+      needsExistenceCheck: false
+    });
   });
 
   it("rejects strings with whitespace", () => {
@@ -79,7 +83,9 @@ describe("matchFileChip outside the workspace", () => {
 
 describe("normalizeFileChipPath for sibling paths", () => {
   it("resolves ../ against the workspace", () => {
-    expect(normalizeFileChipPath("../dotfiles/README.md", "/Users/me/dev/argmax")).toBe("/Users/me/dev/dotfiles/README.md");
+    expect(normalizeFileChipPath("../dotfiles/README.md", "/Users/me/dev/argmax")).toBe(
+      "/Users/me/dev/dotfiles/README.md"
+    );
     expect(normalizeFileChipPath("../argmax/src/a.ts", "/Users/me/dev/argmax")).toBe("src/a.ts");
   });
 
@@ -151,12 +157,14 @@ describe("FileChip", () => {
   it("opens the file itself, not the whole repo, when workspaceId is provided", () => {
     render(<FileChip path="src-tauri/src.ts" line={10} workspaceId="ws-1" workspaceCwd="/repo" />);
     screen.getByRole("button", { name: "Open src-tauri/src.ts at line 10" }).click();
-    const api = (window as unknown as {
-      argmax: {
-        workspaces: { openInIde: ReturnType<typeof vi.fn> };
-        system: { openPath: ReturnType<typeof vi.fn> };
-      };
-    }).argmax;
+    const api = (
+      window as unknown as {
+        argmax: {
+          workspaces: { openInIde: ReturnType<typeof vi.fn> };
+          system: { openPath: ReturnType<typeof vi.fn> };
+        };
+      }
+    ).argmax;
     expect(api.system.openPath).toHaveBeenCalledWith({ path: "src-tauri/src.ts", cwd: "/repo" });
     expect(api.workspaces.openInIde).not.toHaveBeenCalled();
   });
@@ -179,10 +187,7 @@ describe("FileChip", () => {
 
     fireEvent.focus(screen.getByRole("button", { name: "Open package.json" }));
 
-    await waitFor(() => expect(readFile).toHaveBeenCalledWith(
-      { kind: "workspace", id: "ws-1" },
-      "docs/package.json"
-    ));
+    await waitFor(() => expect(readFile).toHaveBeenCalledWith({ kind: "workspace", id: "ws-1" }, "docs/package.json"));
     expect(await screen.findByRole("tooltip")).toHaveTextContent("{}");
   });
 });
@@ -205,7 +210,13 @@ describe("CheckedFileChip", () => {
     const statExternalFile = vi.fn().mockResolvedValue({ size: 10, mtimeMs: 1 });
     stubStat(statExternalFile);
     render(
-      <CheckedFileChip path="/etc/hosts" line={null} workspaceId="ws-1" workspaceCwd="/repo" fallback={<code>/etc/hosts</code>} />
+      <CheckedFileChip
+        path="/etc/hosts"
+        line={null}
+        workspaceId="ws-1"
+        workspaceCwd="/repo"
+        fallback={<code>/etc/hosts</code>}
+      />
     );
     expect(await screen.findByRole("button", { name: "Open /etc/hosts" })).toHaveTextContent("/etc/hosts");
     expect(statExternalFile).toHaveBeenCalledWith("/etc/hosts");
@@ -215,7 +226,13 @@ describe("CheckedFileChip", () => {
     const statExternalFile = vi.fn().mockRejectedValue(new Error("not found"));
     stubStat(statExternalFile);
     render(
-      <CheckedFileChip path="/api/users" line={null} workspaceId="ws-1" workspaceCwd="/repo" fallback={<code>/api/users</code>} />
+      <CheckedFileChip
+        path="/api/users"
+        line={null}
+        workspaceId="ws-1"
+        workspaceCwd="/repo"
+        fallback={<code>/api/users</code>}
+      />
     );
     await waitFor(() => expect(statExternalFile).toHaveBeenCalledWith("/api/users"));
     expect(screen.queryByRole("button")).toBeNull();

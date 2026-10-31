@@ -59,10 +59,7 @@ export function parseReviewLayout(stored: string | null): ReviewLayout | null {
   }
 }
 
-export function normalizeReviewLayout(
-  layout: ReviewLayout,
-  availableModes: readonly ReviewPanelMode[]
-): ReviewLayout {
+export function normalizeReviewLayout(layout: ReviewLayout, availableModes: readonly ReviewPanelMode[]): ReviewLayout {
   const available = new Set(availableModes);
   const wantedPaneCount = layout.modes.length;
   const modes: ReviewPanelMode[] = [];
@@ -95,11 +92,7 @@ export function activateReviewMode(layout: ReviewLayout, mode: ReviewPanelMode):
   return { ...layout, modes };
 }
 
-export function setReviewPaneMode(
-  layout: ReviewLayout,
-  index: 0 | 1,
-  mode: ReviewPanelMode
-): ReviewLayout {
+export function setReviewPaneMode(layout: ReviewLayout, index: 0 | 1, mode: ReviewPanelMode): ReviewLayout {
   if (index >= layout.modes.length) return layout;
   const existingIndex = layout.modes.indexOf(mode);
   const modes: ReviewLayout["modes"] = [...layout.modes];

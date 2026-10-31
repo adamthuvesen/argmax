@@ -321,9 +321,7 @@ export function useBrowserTabDrag(scopeId: string, onPick: (id: string) => void)
       const { fromIndex, toIndex, offset, shift } = carry;
       if (index === fromIndex) return { transform: `translateX(${offset}px)`, zIndex: 2 };
       const displaced =
-        toIndex > fromIndex
-          ? index > fromIndex && index <= toIndex
-          : index >= toIndex && index < fromIndex;
+        toIndex > fromIndex ? index > fromIndex && index <= toIndex : index >= toIndex && index < fromIndex;
       if (!displaced) return undefined;
       return { transform: `translateX(${toIndex > fromIndex ? -shift : shift}px)` };
     },

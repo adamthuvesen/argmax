@@ -125,7 +125,7 @@ export function ComposerEditorView({
     };
     // The view is created once; every prop it reads afterwards arrives through
     // the compartments and the value effect below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, []);
 
   // `setState` starts a new document without an update, so nothing tells the
@@ -148,7 +148,7 @@ export function ComposerEditorView({
 
   useEffect(() => {
     reconfigure();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [ariaLabel, expanded, controls, disabled, placeholder, chats, isSkill]);
 
   // A different draft is a different document: its undo history must not
@@ -168,7 +168,7 @@ export function ComposerEditorView({
     }
     reconfigure();
     reportCaret(view);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [documentKey]);
 
   // Follow `value` after every commit, not only when it changes. The editor

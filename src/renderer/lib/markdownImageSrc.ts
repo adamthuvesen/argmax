@@ -18,9 +18,7 @@ export function resolveMarkdownImageSrc(
   if (!rootPath || !markdownRelPath) return src;
 
   const docDirSegments = markdownRelPath.split("/").slice(0, -1);
-  const segments = src.startsWith("/")
-    ? src.split("/").filter(Boolean)
-    : [...docDirSegments, ...src.split("/")];
+  const segments = src.startsWith("/") ? src.split("/").filter(Boolean) : [...docDirSegments, ...src.split("/")];
 
   const stack: string[] = [];
   for (const segment of segments) {

@@ -125,13 +125,7 @@ describe("SessionComposer — running turn controls", () => {
       fireEvent.click(screen.getByRole("button", { name: "Queue follow-up" }));
 
       await waitFor(() =>
-        expect(onSendSessionInput).toHaveBeenCalledWith(
-          "session-a",
-          "MCP",
-          expect.anything(),
-          "auto",
-          undefined
-        )
+        expect(onSendSessionInput).toHaveBeenCalledWith("session-a", "MCP", expect.anything(), "auto", undefined)
       );
       expect(onTerminateSession).not.toHaveBeenCalled();
     });

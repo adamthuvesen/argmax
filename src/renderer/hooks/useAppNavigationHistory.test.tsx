@@ -1,10 +1,7 @@
 import { act, cleanup, fireEvent, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useState } from "react";
-import {
-  useAppNavigationHistory,
-  type AppNavigationDestination
-} from "./useAppNavigationHistory.js";
+import { useAppNavigationHistory, type AppNavigationDestination } from "./useAppNavigationHistory.js";
 
 const LAUNCHER: AppNavigationDestination = {
   kind: "launcher",
@@ -89,15 +86,15 @@ describe("useAppNavigationHistory", () => {
   it("does not record a semantically unchanged grid snapshot", () => {
     const { result } = renderHistory();
     act(() => result.current.setDestination(CHAT));
-    act(() => result.current.setDestination({
-      kind: "grid",
-      grid: {
-        rows: CHAT.kind === "grid"
-          ? CHAT.grid.rows.map((row) => row.map((cell) => ({ ...cell })))
-          : [],
-        focused: { row: 0, col: 0 }
-      }
-    }));
+    act(() =>
+      result.current.setDestination({
+        kind: "grid",
+        grid: {
+          rows: CHAT.kind === "grid" ? CHAT.grid.rows.map((row) => row.map((cell) => ({ ...cell }))) : [],
+          focused: { row: 0, col: 0 }
+        }
+      })
+    );
     act(() => result.current.setDestination(SETTINGS));
 
     mouseHistory(3);

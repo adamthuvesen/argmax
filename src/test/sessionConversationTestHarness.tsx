@@ -175,9 +175,15 @@ export function conversationElement(
       pendingMessages={options.pendingMessages ?? []}
       onToggleLog={vi.fn()}
       {...(options.thinkingDisplay !== undefined ? { thinkingDisplay: options.thinkingDisplay } : {})}
-      {...(options.defaultToolCallsDisplay !== undefined ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay } : {})}
-      {...(options.defaultToolCallGroupsExpanded !== undefined ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded } : {})}
-      {...(options.defaultFollowUpDelivery !== undefined ? { defaultFollowUpDelivery: options.defaultFollowUpDelivery } : {})}
+      {...(options.defaultToolCallsDisplay !== undefined
+        ? { defaultToolCallsDisplay: options.defaultToolCallsDisplay }
+        : {})}
+      {...(options.defaultToolCallGroupsExpanded !== undefined
+        ? { defaultToolCallGroupsExpanded: options.defaultToolCallGroupsExpanded }
+        : {})}
+      {...(options.defaultFollowUpDelivery !== undefined
+        ? { defaultFollowUpDelivery: options.defaultFollowUpDelivery }
+        : {})}
       {...(options.onMultitask ? { onMultitask: options.onMultitask } : {})}
       {...(options.onNewSession ? { onNewSession: options.onNewSession } : {})}
       {...(options.onOpenFile ? { onOpenFile: options.onOpenFile } : {})}
@@ -186,9 +192,7 @@ export function conversationElement(
       onOpenAgent={options.onOpenAgent ?? vi.fn()}
       {...(options.onOpenSideChat ? { onOpenSideChat: options.onOpenSideChat } : {})}
       {...(options.onOpenDetails ? { onOpenDetails: options.onOpenDetails } : {})}
-      {...(options.registerAnnotationSink
-        ? { registerAnnotationSink: options.registerAnnotationSink }
-        : {})}
+      {...(options.registerAnnotationSink ? { registerAnnotationSink: options.registerAnnotationSink } : {})}
       project={project}
       rawOutputs={[]}
       review={options.review ?? reviewStub()}

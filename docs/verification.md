@@ -11,13 +11,13 @@ How to prove a change works, beyond suites passing. The rungs are ordered by cos
 | Scenario runner | production backend and native UI with a scripted provider | minutes |
 | Dev instance next to the installed app | the change, hands-on | ~1 min |
 
-The `verify-argmax` skill at `.agents/skills/verify-argmax/SKILL.md` drives these for user-facing changes.
+`npm run verify` (the `verify-argmax` skill at `.agents/skills/verify-argmax/`) drives rung 2 in under 20 seconds. The scenario runner below is the slower proof for backend and native claims.
 
 ## Local scenario verification
 
 ```bash
 npm run doctor
-npm run verify -- --scenario <name> [--native off] [--out <dir>] [--keep]
+npm run verify:native -- --scenario <name> [--native off] [--out <dir>] [--keep]
 ```
 
 [scripts/verify.mjs](../scripts/verify.mjs) lists the scenarios and owns each one's assertions. Each run prints a JSON result with its evidence location, and per-phase PNG and JSON files show the UI and its state. These are local checks, not part of CI or the pre-push gate.
@@ -26,7 +26,7 @@ The runner builds a verification binary and renderer from the current checkout, 
 
 Rules that make the evidence mean something:
 
-- **Verification mode must never reach the host's credentials.** `routing/api_key.rs` returns no key and refuses writes. The `launch` tripwires (`security`, `defaults`, `op`, `launchctl`, `brew`, `crontab`, `systemctl`) stay in place, and a test proves they fail and log a call.
+- **Verification mode must never reach the host's credentials.** `routing/api_key.rs` returns no key and refuses writes. The runner puts tripwires (`security`, `defaults`, `op`, `launchctl`, `brew`, `crontab`, `systemctl`) first on the app's `PATH`. A call fails, lands in `tripwire.log`, and fails the run. A test proves the stubs fail and log a call.
 - **The driver exists only with the nondefault `verification` Cargo feature.** A verification request sent to an ordinary binary fails before startup instead of falling back to installed providers.
 - **Finish edits before starting a run.** The runner checks the source fingerprint before and after the build and after the scenario, and an edit fails the stability check.
 - **Native UI is the default.** `--native off` selects the remote-browser path, and its report records that narrower coverage. Use the native path for desktop UI claims.
@@ -38,7 +38,7 @@ Native `cancellation` waits past the early-stop window to verify a retained canc
 
 ## Rung 1: suites and checks
 
-`npm run precheck` runs the CI checks scoped to what the branch changed, and `git push` runs it as a hook ([testing.md](testing.md)). Run them always. Everything above this rung exists for claims these cannot make.
+`npm run push-gate` runs the CI checks scoped to what the branch changed, and `git push` runs it as a hook ([testing.md](testing.md)). Run them always. Everything above this rung exists for claims these cannot make.
 
 For the Usage page, `node scripts/check-usage-oracle.mjs --days 7` compares the ledger with external tools ([usage.md](usage.md#checking-the-numbers)).
 

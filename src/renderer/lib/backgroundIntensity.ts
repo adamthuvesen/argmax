@@ -26,13 +26,9 @@ export function backgroundIntensityHint(intensity: BackgroundIntensity): string 
   return intensity < DEFAULT_BACKGROUND_INTENSITY ? "Softer than default." : "Stronger than default.";
 }
 
-export function toBackgroundIntensity(
-  raw: string | number | null | undefined
-): BackgroundIntensity | null {
+export function toBackgroundIntensity(raw: string | number | null | undefined): BackgroundIntensity | null {
   if (typeof raw === "number") {
-    return Number.isInteger(raw) && raw >= BACKGROUND_INTENSITY_MIN && raw <= BACKGROUND_INTENSITY_MAX
-      ? raw
-      : null;
+    return Number.isInteger(raw) && raw >= BACKGROUND_INTENSITY_MIN && raw <= BACKGROUND_INTENSITY_MAX ? raw : null;
   }
   if (typeof raw !== "string" || !APPEARANCE_LEVEL_PATTERN.test(raw)) return null;
   return Number(raw);

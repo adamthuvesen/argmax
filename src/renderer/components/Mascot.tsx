@@ -188,13 +188,7 @@ export function Mascot({
         // sets instead of repointing the ones that happen to line up.
         <g className={layerClass} key={`${spriteName}-${layerClass}`}>
           {rects.map((rect) => (
-            <rect
-              key={`${rect.x}-${rect.y}`}
-              x={rect.x}
-              y={rect.y}
-              width={rect.width}
-              height={rect.height}
-            />
+            <rect key={`${rect.x}-${rect.y}`} x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
           ))}
         </g>
       ))}

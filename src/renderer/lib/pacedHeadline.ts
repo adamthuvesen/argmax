@@ -57,7 +57,7 @@ export function usePacedHeadline(
       return;
     }
 
-    if (kindKey === shownKindRef.current) return;   // same work, new count: hold
+    if (kindKey === shownKindRef.current) return; // same work, new count: hold
 
     const remaining = Math.max(0, CLAUSE_DWELL_MS - (performance.now() - shownAtRef.current));
     if (remaining === 0) {

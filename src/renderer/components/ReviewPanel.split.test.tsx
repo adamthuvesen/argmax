@@ -26,7 +26,12 @@ function reviewStub(overrides: Partial<ReviewState> = {}): ReviewState {
   return baseReviewStub({
     files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }],
     selectedFilePath: "src/a.ts",
-    diff: { workspaceId: "workspace-1", filePath: "src/a.ts", content: "@@ -1,1 +1,1 @@\n-old\n+new\n", revision: "test-revision" },
+    diff: {
+      workspaceId: "workspace-1",
+      filePath: "src/a.ts",
+      content: "@@ -1,1 +1,1 @@\n-old\n+new\n",
+      revision: "test-revision"
+    },
     diffState: "ready",
     isPanelOpen: true,
     terminalWorkspaceId: "workspace-1",

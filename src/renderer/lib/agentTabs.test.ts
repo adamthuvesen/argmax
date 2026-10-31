@@ -20,12 +20,14 @@ describe("agent dock tab ids", () => {
   });
 
   it("keeps a native continuation on the first launch tab", () => {
-    expect(agentTabId({
-      toolUseId: "send-message-2",
-      agentRootToolUseId: "task-original",
-      providerChildSessionId: "native-child",
-      providerParentConversationId: "native-parent"
-    })).toBe("native-agent:task-original:native-parent:native-child");
+    expect(
+      agentTabId({
+        toolUseId: "send-message-2",
+        agentRootToolUseId: "task-original",
+        providerChildSessionId: "native-child",
+        providerParentConversationId: "native-parent"
+      })
+    ).toBe("native-agent:task-original:native-parent:native-child");
   });
 
   it("does not claim persistence for a legacy provider launch", () => {

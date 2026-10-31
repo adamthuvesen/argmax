@@ -106,16 +106,12 @@ describe("useDashboardSession — refresh / delta race", () => {
       pendingMessages: {}
     };
 
-    statusMock = vi
-      .fn<ArgmaxApi["workspaces"]["status"]>()
-      .mockResolvedValue({
-        workspaces: baseSnapshot.workspaces,
-        sessions: baseSnapshot.sessions,
-        checks: baseSnapshot.checks
-      });
-    pendingMock = vi
-      .fn<ArgmaxApi["approvals"]["pending"]>()
-      .mockResolvedValue([]);
+    statusMock = vi.fn<ArgmaxApi["workspaces"]["status"]>().mockResolvedValue({
+      workspaces: baseSnapshot.workspaces,
+      sessions: baseSnapshot.sessions,
+      checks: baseSnapshot.checks
+    });
+    pendingMock = vi.fn<ArgmaxApi["approvals"]["pending"]>().mockResolvedValue([]);
     resolveApprovalMock = vi
       .fn<ArgmaxApi["approvals"]["resolve"]>()
       .mockResolvedValue({} as Awaited<ReturnType<ArgmaxApi["approvals"]["resolve"]>>);
@@ -182,12 +178,8 @@ describe("useDashboardSession — refresh / delta race", () => {
       await result.current.refresh();
     });
 
-    expect(result.current.snapshot.sessions.map((s) => s.id).sort()).toEqual(
-      ["session-existing", "session-fresh"]
-    );
-    expect(result.current.snapshot.workspaces.map((w) => w.id).sort()).toEqual(
-      ["ws-existing", "ws-fresh"]
-    );
+    expect(result.current.snapshot.sessions.map((s) => s.id).sort()).toEqual(["session-existing", "session-fresh"]);
+    expect(result.current.snapshot.workspaces.map((w) => w.id).sort()).toEqual(["ws-existing", "ws-fresh"]);
   });
 
   it("replaces approvals authoritatively so resolved items don't linger", async () => {
@@ -291,9 +283,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       const pending = result.current.refresh();
       // The turn ends and an approval is raised while the reads are in flight.
       deltaHandler?.({
-        sessions: [
-          makeSession({ state: "complete", lastActivityAt: "2026-05-12T15:00:06.000Z" })
-        ],
+        sessions: [makeSession({ state: "complete", lastActivityAt: "2026-05-12T15:00:06.000Z" })],
         approvals: [raisedApproval]
       });
       resolveStatus(staleStatus);
@@ -301,9 +291,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
 
     expect(result.current.snapshot.sessions[0]?.state).toBe("complete");
-    expect(result.current.snapshot.approvals.map((approval) => approval.id)).toEqual([
-      "approval-mid-refresh"
-    ]);
+    expect(result.current.snapshot.approvals.map((approval) => approval.id)).toEqual(["approval-mid-refresh"]);
   });
 
   it("preserves the last-good snapshot and toasts when a single refresh fails", async () => {
@@ -356,7 +344,7 @@ describe("useDashboardSession — refresh / delta race", () => {
     // App renders loadError verbatim in the EmptyState panel.
     const loadSnapshot = (): Promise<DashboardSnapshot> =>
       // Rejecting with a plain object is the behaviour under test: Tauri does exactly this.
-      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors
       Promise.reject({
         code: "DATABASE_NOT_READY",
         message: "Migration v18 (synced_sessions) checksum drift: stored=abc expected=def"
@@ -421,9 +409,10 @@ describe("useDashboardSession — refresh / delta race", () => {
     });
 
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
-    expect(result.current.snapshot.sessions.map((session) => session.id).sort()).toEqual(
-      ["session-delta", "session-existing"]
-    );
+    expect(result.current.snapshot.sessions.map((session) => session.id).sort()).toEqual([
+      "session-delta",
+      "session-existing"
+    ]);
   });
 
   it("does not resurrect a session the pruner removed during loadSnapshot", async () => {
@@ -496,7 +485,9 @@ describe("useDashboardSession — refresh / delta race", () => {
       expect(result.current.selectedSession?.state).toBe("running");
 
       // The event poll pulls the turn's terminal `session.completed`.
-      (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>).mockResolvedValueOnce({
+      (
+        window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>
+      ).mockResolvedValueOnce({
         events: [
           {
             id: "ev-done",
@@ -560,14 +551,13 @@ describe("useDashboardSession — refresh / delta race", () => {
       createdAt: "2026-05-12T15:00:20.000Z",
       rowCursor: 20
     };
-    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>)
-      .mockResolvedValueOnce({
-        events: [questionEvent],
-        rawOutputs: [],
-        eventCursor: 20,
-        rawOutputCursor: 0,
-        changeCursor: 20
-      });
+    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>).mockResolvedValueOnce({
+      events: [questionEvent],
+      rawOutputs: [],
+      eventCursor: 20,
+      rawOutputCursor: 0,
+      changeCursor: 20
+    });
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
@@ -623,7 +613,9 @@ describe("useDashboardSession — refresh / delta race", () => {
       expect(statusMock).not.toHaveBeenCalled();
 
       // The current turn ends: a NEW terminal event lands; the DB shows complete.
-      (window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>).mockResolvedValueOnce({
+      (
+        window.argmax!.session.eventsSince as unknown as Mock<ArgmaxApi["session"]["eventsSince"]>
+      ).mockResolvedValueOnce({
         events: [
           {
             id: "ev-this-turn",
@@ -796,9 +788,7 @@ describe("useDashboardSession — refresh / delta race", () => {
       eventCursor: 11,
       rawOutputCursor: 0
     };
-    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValue(
-      tombstoneResponse
-    );
+    (window.argmax!.session.eventsSince as ReturnType<typeof vi.fn>).mockResolvedValue(tombstoneResponse);
 
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -830,7 +820,18 @@ describe("useDashboardSession — refresh / delta race", () => {
     const notify = vi.fn();
     const unsubscribe = result.current.timelines.subscribe("session-existing", notify);
     act(() => {
-      onDelta({ events: [{ id: "token", sessionId: "session-existing", type: "message.delta", message: "Hello", payload: {}, createdAt: "2026-05-12T15:00:06.000Z" }] });
+      onDelta({
+        events: [
+          {
+            id: "token",
+            sessionId: "session-existing",
+            type: "message.delta",
+            message: "Hello",
+            payload: {},
+            createdAt: "2026-05-12T15:00:06.000Z"
+          }
+        ]
+      });
     });
     expect(result.current.snapshot).toBe(metadata);
     expect(result.current.snapshot.events).toEqual([]);
@@ -846,58 +847,142 @@ describe("useDashboardSession — refresh / delta race", () => {
       return () => {};
     };
     let resolveRead!: (value: Awaited<ReturnType<ArgmaxApi["session"]["eventsSince"]>>) => void;
-    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>).mockImplementation(() => new Promise((resolve) => { resolveRead = resolve; }));
+    (window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRead = resolve;
+        })
+    );
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
     const read = result.current.loadSessionEvents("session-existing");
     act(() => onDelta({ removedSessionIds: ["session-existing"] }));
     await act(async () => {
-      resolveRead({ events: [{ id: "late", sessionId: "session-existing", type: "message.completed", message: "late", payload: {}, createdAt: "2026-05-12T15:00:06.000Z" }], rawOutputs: [], eventCursor: 10, rawOutputCursor: 0 });
+      resolveRead({
+        events: [
+          {
+            id: "late",
+            sessionId: "session-existing",
+            type: "message.completed",
+            message: "late",
+            payload: {},
+            createdAt: "2026-05-12T15:00:06.000Z"
+          }
+        ],
+        rawOutputs: [],
+        eventCursor: 10,
+        rawOutputCursor: 0
+      });
       await read;
     });
     expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([]);
   });
 
   it("drains revision pages for an idle session and applies same-row updates and deletions", async () => {
-    const event: TimelineEvent = { id: "updated", sessionId: "session-existing", type: "message.completed", message: "old", payload: {}, createdAt: "2026-05-12T15:00:06.000Z", rowCursor: 1 };
+    const event: TimelineEvent = {
+      id: "updated",
+      sessionId: "session-existing",
+      type: "message.completed",
+      message: "old",
+      payload: {},
+      createdAt: "2026-05-12T15:00:06.000Z",
+      rowCursor: 1
+    };
     baseSnapshot = { ...baseSnapshot, events: [event, { ...event, id: "deleted" }] };
     const eventsSince = window.argmax!.session.eventsSince as Mock<ArgmaxApi["session"]["eventsSince"]>;
     eventsSince
-      .mockResolvedValueOnce({ events: [event, { ...event, id: "deleted" }], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: 10, resetRequired: true })
-      .mockResolvedValueOnce({ events: [{ ...event, message: "new" }], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: 11, hasMore: true })
-      .mockResolvedValueOnce({ events: [], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: 12, deletedEventIds: ["deleted"] });
+      .mockResolvedValueOnce({
+        events: [event, { ...event, id: "deleted" }],
+        rawOutputs: [],
+        eventCursor: 2,
+        rawOutputCursor: 0,
+        changeCursor: 10,
+        resetRequired: true
+      })
+      .mockResolvedValueOnce({
+        events: [{ ...event, message: "new" }],
+        rawOutputs: [],
+        eventCursor: 2,
+        rawOutputCursor: 0,
+        changeCursor: 11,
+        hasMore: true
+      })
+      .mockResolvedValueOnce({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 2,
+        rawOutputCursor: 0,
+        changeCursor: 12,
+        deletedEventIds: ["deleted"]
+      });
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
-    await act(async () => { await result.current.loadSessionEvents("session-existing"); });
-    await act(async () => { await result.current.loadSessionEvents("session-existing"); });
-    expect(eventsSince).toHaveBeenLastCalledWith({ sessionId: "session-existing", eventCursor: 2, rawOutputCursor: 0, changeCursor: 11 });
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+    await act(async () => {
+      await result.current.loadSessionEvents("session-existing");
+    });
+    expect(eventsSince).toHaveBeenLastCalledWith({
+      sessionId: "session-existing",
+      eventCursor: 2,
+      rawOutputCursor: 0,
+      changeCursor: 11
+    });
     expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([{ ...event, message: "new" }]);
   });
 
   it("pulls hinted visible sessions and leaves inactive histories for their next open", async () => {
     let onDelta!: (delta: DashboardDelta) => void;
-    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    window.argmax!.dashboard.onDelta = (listener) => {
+      onDelta = listener;
+      return () => {};
+    };
     const loadSnapshot = (): Promise<DashboardSnapshot> => Promise.resolve(baseSnapshot);
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
     const unsubscribe = result.current.timelines.subscribe("session-existing", () => {});
-    await act(async () => { onDelta({ changedSessionIds: ["session-existing", "inactive"] }); await Promise.resolve(); });
-    expect(window.argmax!.session.eventsSince).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-existing", eventCursor: null, rawOutputCursor: null, changeCursor: null });
+    await act(async () => {
+      onDelta({ changedSessionIds: ["session-existing", "inactive"] });
+      await Promise.resolve();
+    });
+    expect(window.argmax!.session.eventsSince).toHaveBeenCalledExactlyOnceWith({
+      sessionId: "session-existing",
+      eventCursor: null,
+      rawOutputCursor: null,
+      changeCursor: null
+    });
     unsubscribe();
   });
 
   it("recovers removed metadata, pending queues, and visible history after overflow", async () => {
     let onDelta!: (delta: DashboardDelta) => void;
-    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    window.argmax!.dashboard.onDelta = (listener) => {
+      onDelta = listener;
+      return () => {};
+    };
     const removedSession = makeSession({ id: "removed", workspaceId: "removed-workspace" });
-    const event: TimelineEvent = { id: "deleted", sessionId: "session-existing", type: "message.completed", message: "old", payload: {}, createdAt: "2026-05-12T15:00:06.000Z" };
+    const event: TimelineEvent = {
+      id: "deleted",
+      sessionId: "session-existing",
+      type: "message.completed",
+      message: "old",
+      payload: {},
+      createdAt: "2026-05-12T15:00:06.000Z"
+    };
     const initial = { ...baseSnapshot, sessions: [...baseSnapshot.sessions, removedSession], events: [event] };
     let resolveRecovery!: (snapshot: DashboardSnapshot) => void;
-    const loadSnapshot = vi.fn<() => Promise<DashboardSnapshot>>()
+    const loadSnapshot = vi
+      .fn<() => Promise<DashboardSnapshot>>()
       .mockResolvedValueOnce(initial)
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveRecovery = resolve; }));
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRecovery = resolve;
+          })
+      );
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
     await waitFor(() => expect(result.current.loadState).toBe("ready"));
     const unsubscribe = result.current.timelines.subscribe("session-existing", () => {});
@@ -905,9 +990,14 @@ describe("useDashboardSession — refresh / delta race", () => {
     const concurrent = makeSession({ id: "concurrent" });
     await waitFor(() => expect(loadSnapshot).toHaveBeenCalledTimes(2));
     act(() => onDelta({ sessions: [concurrent] }));
-    await act(async () => { resolveRecovery({ ...baseSnapshot, pendingMessages: {} }); await Promise.resolve(); });
+    await act(async () => {
+      resolveRecovery({ ...baseSnapshot, pendingMessages: {} });
+      await Promise.resolve();
+    });
     await waitFor(() => expect(window.argmax!.session.eventsSince).toHaveBeenCalledOnce());
-    expect(result.current.snapshot.sessions.map((session) => session.id)).toEqual(expect.arrayContaining(["session-existing", "concurrent"]));
+    expect(result.current.snapshot.sessions.map((session) => session.id)).toEqual(
+      expect.arrayContaining(["session-existing", "concurrent"])
+    );
     expect(result.current.snapshot.sessions.some((session) => session.id === "removed")).toBe(false);
     expect(result.current.snapshot.pendingMessages).toEqual({});
     expect(result.current.timelines.getSnapshot("session-existing").events).toEqual([]);
@@ -916,7 +1006,10 @@ describe("useDashboardSession — refresh / delta race", () => {
 
   it("treats a delayed metadata publication as a fresh read, not an older state", async () => {
     let onDelta!: (delta: DashboardDelta) => void;
-    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    window.argmax!.dashboard.onDelta = (listener) => {
+      onDelta = listener;
+      return () => {};
+    };
     const completed = makeSession({ state: "complete" });
     const committed = { ...baseSnapshot, sessions: [completed] };
     const loadSnapshot = vi.fn<() => Promise<DashboardSnapshot>>().mockResolvedValue(committed);
@@ -937,14 +1030,24 @@ describe("useDashboardSession — refresh / delta race", () => {
 
   it("preserves newer overview revisions across full metadata reads without retaining removed projects", async () => {
     let onDelta!: (delta: DashboardDelta) => void;
-    window.argmax!.dashboard.onDelta = (listener) => { onDelta = listener; return () => {}; };
+    window.argmax!.dashboard.onDelta = (listener) => {
+      onDelta = listener;
+      return () => {};
+    };
     const original = baseSnapshot.projects[0];
     const generated = {
       ...original,
-      overview: { revision: 3, saved: { text: "Project orientation", sources: [], generatedAt: null }, draft: null, status: "idle" as const, error: null }
+      overview: {
+        revision: 3,
+        saved: { text: "Project orientation", sources: [], generatedAt: null },
+        draft: null,
+        status: "idle" as const,
+        error: null
+      }
     };
     const initial = { ...baseSnapshot, projects: [generated, { ...original, id: "removed-project" }] };
-    const loadSnapshot = vi.fn<() => Promise<DashboardSnapshot>>()
+    const loadSnapshot = vi
+      .fn<() => Promise<DashboardSnapshot>>()
       .mockResolvedValueOnce(initial)
       .mockResolvedValue({ ...baseSnapshot, projects: [{ ...original, name: "Updated project" }] });
     const { result } = renderHook(() => useDashboardSession(loadSnapshot));
@@ -1035,7 +1138,11 @@ describe("useDashboardSession — refresh / delta race", () => {
       createdAt: new Date(Date.parse("2026-05-12T16:00:00.000Z") + i).toISOString(),
       rowCursor: 1_000 + i
     }));
-    baseSnapshot = { ...baseSnapshot, events: busyTail, sessions: [...baseSnapshot.sessions, makeSession({ id: "busy-session" })] };
+    baseSnapshot = {
+      ...baseSnapshot,
+      events: busyTail,
+      sessions: [...baseSnapshot.sessions, makeSession({ id: "busy-session" })]
+    };
 
     const commandRows: TimelineEvent[] = [
       {

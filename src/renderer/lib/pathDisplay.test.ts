@@ -8,9 +8,7 @@ describe("shortenPathsInText", () => {
   });
 
   it("middle-elides long paths so the tail survives", () => {
-    const out = shortenPathsInText(
-      "ls -la /Users/user/dev/example-app-repo/src/example_app_repo/commands"
-    );
+    const out = shortenPathsInText("ls -la /Users/user/dev/example-app-repo/src/example_app_repo/commands");
     expect(out).toBe("ls -la ~/…/example_app_repo/commands");
   });
 
@@ -24,15 +22,13 @@ describe("shortenPathsInText", () => {
   });
 
   it("leaves short paths and non-path tokens untouched", () => {
-    expect(shortenPathsInText("find ~/dev/example-app-repo -type f")).toBe(
-      "find ~/dev/example-app-repo -type f"
-    );
+    expect(shortenPathsInText("find ~/dev/example-app-repo -type f")).toBe("find ~/dev/example-app-repo -type f");
     expect(shortenPathsInText('rg --files -g "*.py"')).toBe('rg --files -g "*.py"');
   });
 
   it("preserves surrounding quotes on a path token", () => {
-    expect(
-      shortenPathsInText("read '/Users/user/dev/example-app-repo/src/pkg/verification'")
-    ).toBe("read '~/…/pkg/verification'");
+    expect(shortenPathsInText("read '/Users/user/dev/example-app-repo/src/pkg/verification'")).toBe(
+      "read '~/…/pkg/verification'"
+    );
   });
 });

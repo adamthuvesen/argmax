@@ -15,9 +15,7 @@ describe("splitLinkSegments", () => {
   });
 
   it("finds every URL on its own line", () => {
-    const segments = splitLinkSegments(
-      "Two PRs\n\nhttps://github.com/a/pull/1\nhttps://github.com/b/pull/2\n"
-    );
+    const segments = splitLinkSegments("Two PRs\n\nhttps://github.com/a/pull/1\nhttps://github.com/b/pull/2\n");
     expect(segments?.filter((s) => s.link).map((s) => s.text)).toEqual([
       "https://github.com/a/pull/1",
       "https://github.com/b/pull/2"
@@ -30,9 +28,7 @@ describe("splitLinkSegments", () => {
       "https://menti.com/docs",
       "https://menti.com/api"
     ]);
-    expect(splitLinkSegments("(see https://menti.com/docs)")?.at(1)?.text).toBe(
-      "https://menti.com/docs"
-    );
+    expect(splitLinkSegments("(see https://menti.com/docs)")?.at(1)?.text).toBe("https://menti.com/docs");
   });
 
   it("keeps a bracket the URL itself opened", () => {

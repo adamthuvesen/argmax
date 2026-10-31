@@ -54,9 +54,7 @@ describe("SessionComposer goal", () => {
     submit("/goal every test in test/auth passes");
 
     await waitFor(() =>
-      expect(goals.set).toHaveBeenCalledWith(
-        expect.objectContaining({ condition: "every test in test/auth passes" })
-      )
+      expect(goals.set).toHaveBeenCalledWith(expect.objectContaining({ condition: "every test in test/auth passes" }))
     );
     // Setting a goal starts its own first turn; the composer must not send one too.
     expect(onSendSessionInput).not.toHaveBeenCalled();

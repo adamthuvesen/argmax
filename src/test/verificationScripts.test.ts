@@ -17,7 +17,7 @@ import {
   matchingProcessIdentities,
   NATIVE_STOP_MINIMUM_SESSION_AGE_MS,
   parseMacosConsoleLockState,
-  pressNativeEscape,
+  pressNativeEscape
 } from "../../scripts/verification/desktop.mjs";
 import { checkoutFingerprint, runChecked, writeTripwires } from "../../scripts/verification/common.mjs";
 import { redact } from "../../scripts/verification/evidence.mjs";
@@ -28,7 +28,7 @@ const fixture = fileURLToPath(new URL("../../scripts/verification/provider-fixtu
 const fixtureEnvironment = {
   ...process.env,
   ARGMAX_VERIFICATION_LOG: "",
-  ARGMAX_VERIFICATION_CONTROL_DIR: "",
+  ARGMAX_VERIFICATION_CONTROL_DIR: ""
 };
 
 async function availablePort(): Promise<number> {
@@ -39,15 +39,19 @@ async function availablePort(): Promise<number> {
   });
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("test server did not receive a TCP port");
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   return address.port;
 }
 
 it("initializes the Claude fixture and reads its prompt without waiting for stdin EOF", async () => {
-  const child = spawn(process.execPath, [fixture, "-p", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"], {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: fixtureEnvironment,
-  });
+  const child = spawn(
+    process.execPath,
+    [fixture, "-p", "--input-format", "stream-json", "--permission-prompt-tool", "stdio"],
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: fixtureEnvironment
+    }
+  );
   const exited = new Promise<number | null>((resolve, reject) => {
     child.once("close", resolve);
     child.once("error", reject);
@@ -58,20 +62,26 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
   let initialized = false;
   let replayedUserPrompt = false;
   let emittedSystemInit = false;
-  child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+  child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+    stderr += chunk;
+  });
   try {
-    child.stdin.write(`${JSON.stringify({ type: "control_request", request_id: "argmax-initialize", request: { subtype: "initialize", hooks: null } })}\n`);
+    child.stdin.write(
+      `${JSON.stringify({ type: "control_request", request_id: "argmax-initialize", request: { subtype: "initialize", hooks: null } })}\n`
+    );
     for await (const line of lines) {
       const message = JSON.parse(line) as Record<string, unknown>;
       if (message.type === "control_response") {
         expect(message.response).toMatchObject({ subtype: "success", request_id: "argmax-initialize" });
         initialized = true;
-        child.stdin.write(`${JSON.stringify({ type: "user", message: { role: "user", content: "[argmax-verification:provider-error]" } })}\n`);
+        child.stdin.write(
+          `${JSON.stringify({ type: "user", message: { role: "user", content: "[argmax-verification:provider-error]" } })}\n`
+        );
       } else if (message.type === "system" && message.subtype === "init") {
         emittedSystemInit = true;
       } else if (
-        message.type === "user"
-        && (message.message as { content?: unknown } | undefined)?.content === "[argmax-verification:provider-error]"
+        message.type === "user" &&
+        (message.message as { content?: unknown } | undefined)?.content === "[argmax-verification:provider-error]"
       ) {
         replayedUserPrompt = true;
       }
@@ -91,7 +101,10 @@ it("initializes the Claude fixture and reads its prompt without waiting for stdi
 }, 3000);
 
 async function runFixtureTurn(args: string[]): Promise<string> {
-  const { stdout } = await promisify(execFile)(process.execPath, [fixture, ...args], { timeout: 5000, env: fixtureEnvironment });
+  const { stdout } = await promisify(execFile)(process.execPath, [fixture, ...args], {
+    timeout: 5000,
+    env: fixtureEnvironment
+  });
   return stdout;
 }
 
@@ -99,44 +112,82 @@ describe("workflow fixture turns", () => {
   // A merge message and a portable fork prompt both quote earlier turns, so
   // the fixture has to answer for the newest signature, not the first marker.
   it.each([
-    ["a merge that quotes turn one and the child", "Findings from \"[argmax-verification:fork:child]\" forked at \"[argmax-verification:fork:one]\"\n\n— Argmax fork merge abc", "Verification fork merge received."],
-    ["a portable child prompt that retells turn one", "User: [argmax-verification:fork:one]\nAssistant: Verification fork turn one complete.\n[argmax-verification:fork:child]", "Verification fork child complete."],
+    [
+      "a merge that quotes turn one and the child",
+      'Findings from "[argmax-verification:fork:child]" forked at "[argmax-verification:fork:one]"\n\n— Argmax fork merge abc',
+      "Verification fork merge received."
+    ],
+    [
+      "a portable child prompt that retells turn one",
+      "User: [argmax-verification:fork:one]\nAssistant: Verification fork turn one complete.\n[argmax-verification:fork:child]",
+      "Verification fork child complete."
+    ],
     ["a child follow-up", "[argmax-verification:fork:child-follow-up]", "Verification fork child follow-up complete."],
-    ["an occupied-branch share prompt", "[argmax-verification:occupied-share] share the checkout", "Verification occupied branch share complete."],
-    ["an occupied-branch worktree prompt", "[argmax-verification:occupied-worktree] isolate the work", "Verification occupied branch worktree complete."],
-    ["an occupied-branch follow-up", "[argmax-verification:occupied-follow-up]", "Verification occupied branch follow-up complete."],
-    ["an unoccupied-branch checkout prompt", "[argmax-verification:occupied-checkout] work in the main checkout", "Verification unoccupied branch checkout complete."],
-    ["the settings seed prompt", "[argmax-verification:workspace-settings]", "Verification workspace settings seed complete."],
-    ["the New chat background prompt with a chat link", "[argmax-verification:composer-background] compare with [Reference source alpha](argmax://chat/s1?v=1) and summarize", "Verification background launch complete."],
+    [
+      "an occupied-branch share prompt",
+      "[argmax-verification:occupied-share] share the checkout",
+      "Verification occupied branch share complete."
+    ],
+    [
+      "an occupied-branch worktree prompt",
+      "[argmax-verification:occupied-worktree] isolate the work",
+      "Verification occupied branch worktree complete."
+    ],
+    [
+      "an occupied-branch follow-up",
+      "[argmax-verification:occupied-follow-up]",
+      "Verification occupied branch follow-up complete."
+    ],
+    [
+      "an unoccupied-branch checkout prompt",
+      "[argmax-verification:occupied-checkout] work in the main checkout",
+      "Verification unoccupied branch checkout complete."
+    ],
+    [
+      "the settings seed prompt",
+      "[argmax-verification:workspace-settings]",
+      "Verification workspace settings seed complete."
+    ],
+    [
+      "the New chat background prompt with a chat link",
+      "[argmax-verification:composer-background] compare with [Reference source alpha](argmax://chat/s1?v=1) and summarize",
+      "Verification background launch complete."
+    ]
   ])("answers %s", async (_name, prompt, expected) => {
     expect(await runFixtureTurn(["-p", "--output-format", "stream-json", "--", prompt])).toContain(expected);
   });
 
   it("answers a title request about a workflow prompt with a title, not a turn", async () => {
-    const stdout = await runFixtureTurn(["-p", "--output-format", "text", "--", "[argmax-verification:fork:child] name this chat"]);
+    const stdout = await runFixtureTurn([
+      "-p",
+      "--output-format",
+      "text",
+      "--",
+      "[argmax-verification:fork:child] name this chat"
+    ]);
     expect(stdout).toBe("Argmax Verification Chat\n");
   });
 });
 
 it("rejects the session-move fixture before calling the CLI when controls are missing", async () => {
-  const child = spawn(
-    process.execPath,
-    [fixture, "-p", "--", "[argmax-verification:session-move:first]"],
-    {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...fixtureEnvironment,
-        ARGMAX_BIN: "",
-        ARGMAX_SESSION_LAUNCH_SOCKET: "",
-        ARGMAX_SESSION_LAUNCH_TOKEN: "",
-        ARGMAX_VERIFICATION_MOVE_PATH: "",
-      },
-    },
-  );
+  const child = spawn(process.execPath, [fixture, "-p", "--", "[argmax-verification:session-move:first]"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...fixtureEnvironment,
+      ARGMAX_BIN: "",
+      ARGMAX_SESSION_LAUNCH_SOCKET: "",
+      ARGMAX_SESSION_LAUNCH_TOKEN: "",
+      ARGMAX_VERIFICATION_MOVE_PATH: ""
+    }
+  });
   let stdout = "";
   let stderr = "";
-  child.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
-  child.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+    stderr += chunk;
+  });
   const code = await new Promise<number | null>((resolve, reject) => {
     child.once("close", resolve);
     child.once("error", reject);
@@ -146,72 +197,89 @@ it("rejects the session-move fixture before calling the CLI when controls are mi
   expect(stderr).toContain("session-move fixture requires ARGMAX_BIN");
 });
 
-it.each(["persistent-codex-subagent:first", "codex-user-input"])("serves Codex %s while stdin remains open", async (scenario) => {
-  const child = spawn(process.execPath, [fixture, "app-server", "--stdio", "-c", "tools.experimental_request_user_input.enabled=true"], {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: fixtureEnvironment,
-  });
-  const exited = new Promise<number | null>((resolve, reject) => {
-    child.once("close", resolve);
-    child.once("error", reject);
-  });
-  const timeout = setTimeout(() => child.kill(), 3000);
-  const lines = createInterface({ input: child.stdout });
-  const messages: Array<Record<string, unknown>> = [];
-  try {
-    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })}\n`);
-    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "thread/start", params: {} })}\n`);
-    child.stdin.write(`${JSON.stringify({
-      jsonrpc: "2.0",
-      id: 3,
-      method: "turn/start",
-      params: {
-        threadId: "argmax-verification-conversation",
-        input: [{ type: "text", text: `[argmax-verification:${scenario}]` }],
-      },
-    })}\n`);
-    for await (const line of lines) {
-      const message = JSON.parse(line) as Record<string, unknown>;
-      messages.push(message);
-      if (message.method === "item/tool/requestUserInput") {
-        expect(messages.some((entry) => entry.method === "turn/completed")).toBe(false);
-        child.stdin.write(`${JSON.stringify({
-          jsonrpc: "2.0", id: message.id,
-          result: { answers: { "verification-route": { answers: ["API route"] } } },
-        })}\n`);
+it.each(["persistent-codex-subagent:first", "codex-user-input"])(
+  "serves Codex %s while stdin remains open",
+  async (scenario) => {
+    const child = spawn(
+      process.execPath,
+      [fixture, "app-server", "--stdio", "-c", "tools.experimental_request_user_input.enabled=true"],
+      {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: fixtureEnvironment
       }
-      if (message.method === "turn/completed") break;
+    );
+    const exited = new Promise<number | null>((resolve, reject) => {
+      child.once("close", resolve);
+      child.once("error", reject);
+    });
+    const timeout = setTimeout(() => child.kill(), 3000);
+    const lines = createInterface({ input: child.stdout });
+    const messages: Array<Record<string, unknown>> = [];
+    try {
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })}\n`);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "thread/start", params: {} })}\n`);
+      child.stdin.write(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: 3,
+          method: "turn/start",
+          params: {
+            threadId: "argmax-verification-conversation",
+            input: [{ type: "text", text: `[argmax-verification:${scenario}]` }]
+          }
+        })}\n`
+      );
+      for await (const line of lines) {
+        const message = JSON.parse(line) as Record<string, unknown>;
+        messages.push(message);
+        if (message.method === "item/tool/requestUserInput") {
+          expect(messages.some((entry) => entry.method === "turn/completed")).toBe(false);
+          child.stdin.write(
+            `${JSON.stringify({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { answers: { "verification-route": { answers: ["API route"] } } }
+            })}\n`
+          );
+        }
+        if (message.method === "turn/completed") break;
+      }
+      expect(child.exitCode).toBeNull();
+      const payload = JSON.stringify(messages);
+      expect(payload).toContain('"id":1,"result"');
+      if (scenario === "codex-user-input") {
+        expect(payload).toContain('"method":"item/tool/requestUserInput"');
+        expect(payload).toContain("Verification Codex received API route in the same turn.");
+      } else {
+        expect(payload).toContain('"tool":"spawnAgent"');
+        expect(payload).toContain('"tool":"wait"');
+        expect(payload).toContain('"status":"pendingInit"');
+        expect(payload).toContain('"019f2214-c736-7f60-bb78-75b6ecff57a3":{"status":"completed"');
+        expect(payload).toContain("Verification persistent Codex child first response.");
+      }
+    } finally {
+      clearTimeout(timeout);
+      lines.close();
+      child.kill();
+      await exited;
     }
-    expect(child.exitCode).toBeNull();
-    const payload = JSON.stringify(messages);
-    expect(payload).toContain('"id":1,"result"');
-    if (scenario === "codex-user-input") {
-      expect(payload).toContain('"method":"item/tool/requestUserInput"');
-      expect(payload).toContain("Verification Codex received API route in the same turn.");
-    } else {
-      expect(payload).toContain('"tool":"spawnAgent"');
-      expect(payload).toContain('"tool":"wait"');
-      expect(payload).toContain('"status":"pendingInit"');
-      expect(payload).toContain('"019f2214-c736-7f60-bb78-75b6ecff57a3":{"status":"completed"');
-      expect(payload).toContain("Verification persistent Codex child first response.");
-    }
-  } finally {
-    clearTimeout(timeout);
-    lines.close();
-    child.kill();
-    await exited;
-  }
-}, 4000);
+  },
+  4000
+);
 
 it("serves OpenCode task events over authenticated HTTP and SSE", async () => {
   const port = await availablePort();
   const username = "verification-user";
   const password = "verification-password";
   const authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-  const child = spawn(process.execPath, [fixture, "serve", "--hostname", "127.0.0.1", "--port", String(port), "--log-level", "ERROR"], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...fixtureEnvironment, OPENCODE_SERVER_USERNAME: username, OPENCODE_SERVER_PASSWORD: password },
-  });
+  const child = spawn(
+    process.execPath,
+    [fixture, "serve", "--hostname", "127.0.0.1", "--port", String(port), "--log-level", "ERROR"],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...fixtureEnvironment, OPENCODE_SERVER_USERNAME: username, OPENCODE_SERVER_PASSWORD: password }
+    }
+  );
   const exited = new Promise<number | null>((resolve, reject) => {
     child.once("close", resolve);
     child.once("error", reject);
@@ -234,13 +302,15 @@ it("serves OpenCode task events over authenticated HTTP and SSE", async () => {
     const session = await fetch(`http://127.0.0.1:${port}/session`, {
       method: "POST",
       headers,
-      body: "{}",
+      body: "{}"
     });
     expect(await session.json()).toEqual({ id: "argmax-verification-conversation" });
     const prompt = await fetch(`http://127.0.0.1:${port}/session/argmax-verification-conversation/prompt_async`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ parts: [{ type: "text", text: "[argmax-verification:persistent-opencode-subagent:first]" }] }),
+      body: JSON.stringify({
+        parts: [{ type: "text", text: "[argmax-verification:persistent-opencode-subagent:first]" }]
+      })
     });
     expect(await prompt.json()).toBe(true);
 
@@ -269,7 +339,7 @@ it("serves OpenCode task events over authenticated HTTP and SSE", async () => {
 it("serves Cursor task lifecycle events through ACP", async () => {
   const child = spawn(process.execPath, [fixture, "--force", "acp"], {
     stdio: ["pipe", "pipe", "pipe"],
-    env: fixtureEnvironment,
+    env: fixtureEnvironment
   });
   const exited = new Promise<number | null>((resolve, reject) => {
     child.once("close", resolve);
@@ -288,10 +358,11 @@ it("serves Cursor task lifecycle events through ACP", async () => {
         method: "session/prompt",
         params: {
           sessionId: "argmax-verification-conversation",
-          prompt: [{ type: "text", text: "[argmax-verification:persistent-cursor-subagent:first]" }],
-        },
-      },
-    ]) child.stdin.write(`${JSON.stringify(request)}\n`);
+          prompt: [{ type: "text", text: "[argmax-verification:persistent-cursor-subagent:first]" }]
+        }
+      }
+    ])
+      child.stdin.write(`${JSON.stringify(request)}\n`);
 
     for await (const line of lines) {
       const message = JSON.parse(line) as Record<string, unknown>;
@@ -324,7 +395,7 @@ describe("verification script arguments", () => {
     const activationRequest = {
       activated: true,
       before: { active: false, frontmost: { pid: 418, localizedName: "loginwindow" } },
-      after: { active: false, frontmost: { pid: 418, localizedName: "loginwindow" } },
+      after: { active: false, frontmost: { pid: 418, localizedName: "loginwindow" } }
     };
     const failureState = {
       activated: null,
@@ -338,8 +409,8 @@ describe("verification script arguments", () => {
         hidden: false,
         windowCount: 1,
         onScreenWindowCount: 1,
-        frontmost: { pid: 418, localizedName: "loginwindow", bundleIdentifier: "com.apple.loginwindow" },
-      },
+        frontmost: { pid: 418, localizedName: "loginwindow", bundleIdentifier: "com.apple.loginwindow" }
+      }
     };
 
     const details = foregroundActivationTimeoutDetails({
@@ -347,7 +418,7 @@ describe("verification script arguments", () => {
       visibilityError: new Error("document stayed hidden"),
       activationRequest,
       failureState,
-      consoleLock: { ioConsoleLocked: true, screenIsLocked: true },
+      consoleLock: { ioConsoleLocked: true, screenIsLocked: true }
     });
 
     expect(details.classification).toBe("foreground-activation-timeout");
@@ -368,11 +439,11 @@ describe("verification script arguments", () => {
   it("parses explicit macOS console lock states without guessing an absent session key", () => {
     expect(parseMacosConsoleLockState('"IOConsoleLocked" = No')).toEqual({
       ioConsoleLocked: false,
-      screenIsLocked: null,
+      screenIsLocked: null
     });
     expect(parseMacosConsoleLockState('"IOConsoleLocked" = Yes, "CGSSessionScreenIsLocked" = Yes')).toEqual({
       ioConsoleLocked: true,
-      screenIsLocked: true,
+      screenIsLocked: true
     });
   });
 
@@ -384,7 +455,7 @@ describe("verification script arguments", () => {
     expect(parseVerifyArgs([])).toMatchObject({
       scenario: "chat-resume",
       native: "required",
-      keep: false,
+      keep: false
     });
   });
 
@@ -392,41 +463,50 @@ describe("verification script arguments", () => {
     expect(() => parseVerifyArgs(["--scenario", "live-provider"])).toThrow(/scenario/);
     expect(parseVerifyArgs(["--scenario", "persistent-subagent", "--native", "off"])).toMatchObject({
       scenario: "persistent-subagent",
-      native: "off",
+      native: "off"
     });
     expect(parseVerifyArgs(["--scenario", "persistent-codex-subagent", "--native", "off"])).toMatchObject({
       scenario: "persistent-codex-subagent",
-      native: "off",
+      native: "off"
     });
     expect(parseVerifyArgs(["--scenario", "persistent-opencode-subagent", "--native", "off"])).toMatchObject({
       scenario: "persistent-opencode-subagent",
-      native: "off",
+      native: "off"
     });
     expect(parseVerifyArgs(["--scenario", "persistent-cursor-subagent", "--native", "off"])).toMatchObject({
       scenario: "persistent-cursor-subagent",
-      native: "off",
+      native: "off"
     });
     expect(parseVerifyArgs(["--scenario", "queued-restart"])).toMatchObject({
       scenario: "queued-restart",
-      native: "required",
+      native: "required"
     });
     expect(parseVerifyArgs(["--scenario", "session-move"])).toMatchObject({
       scenario: "session-move",
-      native: "required",
+      native: "required"
     });
     expect(() => parseVerifyArgs(["--scenario", "session-move", "--native", "off"])).toThrow(
-      /requires native verification/,
+      /requires native verification/
     );
     expect(parseVerifyArgs(["--scenario", "staged-revert"])).toMatchObject({
       scenario: "staged-revert",
-      native: "required",
+      native: "required"
     });
     expect(() => parseVerifyArgs(["--scenario", "staged-revert", "--native", "off"])).toThrow(
-      /requires native verification/,
+      /requires native verification/
     );
-    for (const scenario of ["composer-reference", "composer-editor", "browser-focus", "browser-frames", "fork-merge", "workspace-settings"]) {
+    for (const scenario of [
+      "composer-reference",
+      "composer-editor",
+      "browser-focus",
+      "browser-frames",
+      "fork-merge",
+      "workspace-settings"
+    ]) {
       expect(parseVerifyArgs(["--scenario", scenario])).toMatchObject({ scenario, native: "required" });
-      expect(() => parseVerifyArgs(["--scenario", scenario, "--native", "off"])).toThrow(/requires native verification/);
+      expect(() => parseVerifyArgs(["--scenario", scenario, "--native", "off"])).toThrow(
+        /requires native verification/
+      );
     }
     expect(() => parseVerifyArgs(["--out"])).toThrow(/requires a value/);
     expect(() => parseScratchArgs(["--port", "70000"])).toThrow(/between 1 and 65535/);
@@ -443,17 +523,24 @@ describe("machine-command tripwires", () => {
     temporaryDirectories.push(root);
     const log = path.join(root, "it's a log.txt");
     await writeTripwires(path.join(root, "bin"), log, ["security", "defaults", "op"]);
-    const run = (command: string) => new Promise<number | null>((resolve, reject) => {
-      const child = spawn("/bin/sh", ["-c", command], { env: { PATH: path.join(root, "bin") }, stdio: "ignore" });
-      child.once("close", resolve);
-      child.once("error", reject);
-    });
+    const run = (command: string) =>
+      new Promise<number | null>((resolve, reject) => {
+        const child = spawn("/bin/sh", ["-c", command], { env: { PATH: path.join(root, "bin") }, stdio: "ignore" });
+        child.once("close", resolve);
+        child.once("error", reject);
+      });
     expect(await run("security find-generic-password -s Argmax -w")).toBe(97);
     expect(await run("defaults read com.apple.finder")).toBe(97);
-    expect((await readFile(log, "utf8")).trim().split("\n")).toEqual(["security find-generic-password", "defaults read"]);
+    expect((await readFile(log, "utf8")).trim().split("\n")).toEqual([
+      "security find-generic-password",
+      "defaults read"
+    ]);
     // A command that is not guarded is not on PATH here, so the shell cannot find it.
     expect(await run("launchctl list")).toBe(127);
-    expect((await readFile(log, "utf8")).trim().split("\n")).toEqual(["security find-generic-password", "defaults read"]);
+    expect((await readFile(log, "utf8")).trim().split("\n")).toEqual([
+      "security find-generic-password",
+      "defaults read"
+    ]);
   });
 });
 
@@ -474,12 +561,14 @@ describe("verification evidence", () => {
       redact({
         token: "pairing-token",
         nested: { apiKey: "provider-key" },
-        message: 'Authorization: Bearer abc.def and http://localhost/#token=secret {"ARGMAX_SESSION_CONTROL_TOKEN":"control-secret"} {\\"ARGMAX_SESSION_LAUNCH_TOKEN\\":\\"escaped-secret\\"}',
-      }),
+        message:
+          'Authorization: Bearer abc.def and http://localhost/#token=secret {"ARGMAX_SESSION_CONTROL_TOKEN":"control-secret"} {\\"ARGMAX_SESSION_LAUNCH_TOKEN\\":\\"escaped-secret\\"}'
+      })
     ).toEqual({
       token: "[redacted]",
       nested: { apiKey: "[redacted]" },
-      message: 'Authorization: Bearer [redacted] and http://localhost/#token=[redacted] {"ARGMAX_SESSION_CONTROL_TOKEN":"[redacted]"} {\\"ARGMAX_SESSION_LAUNCH_TOKEN\\":\\"[redacted]\\"}',
+      message:
+        'Authorization: Bearer [redacted] and http://localhost/#token=[redacted] {"ARGMAX_SESSION_CONTROL_TOKEN":"[redacted]"} {\\"ARGMAX_SESSION_LAUNCH_TOKEN\\":\\"[redacted]\\"}'
     });
   });
 
@@ -491,9 +580,13 @@ describe("verification evidence", () => {
     await runChecked("git", ["config", "core.fsmonitor", "false"], { cwd: repository });
     await writeFile(path.join(repository, "tracked.txt"), "one\n");
     await runChecked("git", ["add", "tracked.txt"], { cwd: repository });
-    await runChecked("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "fixture"], {
-      cwd: repository,
-    });
+    await runChecked(
+      "git",
+      ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-q", "-m", "fixture"],
+      {
+        cwd: repository
+      }
+    );
     const first = await checkoutFingerprint(repository);
 
     await writeFile(path.join(repository, "untracked.txt"), "two\n");

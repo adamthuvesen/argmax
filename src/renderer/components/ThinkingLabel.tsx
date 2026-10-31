@@ -59,7 +59,7 @@ function chooseThinkingWord(seed: string | undefined): (typeof THINKING_WORDS)[n
 export function ThinkingLabel({
   phaseKey,
   startedAtMs,
-  leaving = false,
+  leaving = false
 }: {
   phaseKey?: string | undefined;
   /** When this silent stretch began (epoch ms), so a remount mid-gap keeps
@@ -90,15 +90,8 @@ export function ThinkingLabel({
   useLayoutEffect(() => {
     const node = elapsedRef.current;
     if (!node) return;
-    const getMs =
-      startedAtMs === undefined
-        ? () => performance.now() - mountAnchor
-        : () => Date.now() - startedAtMs;
-    return registerLiveTimer(
-      node,
-      getMs,
-      (ms) => (ms < ELAPSED_VISIBLE_AFTER_MS ? "" : formatElapsedSeconds(ms))
-    );
+    const getMs = startedAtMs === undefined ? () => performance.now() - mountAnchor : () => Date.now() - startedAtMs;
+    return registerLiveTimer(node, getMs, (ms) => (ms < ELAPSED_VISIBLE_AFTER_MS ? "" : formatElapsedSeconds(ms)));
   }, [startedAtMs, mountAnchor]);
 
   return (
@@ -108,11 +101,7 @@ export function ThinkingLabel({
         ? { "data-leaving": "true", "aria-hidden": true }
         : { "aria-live": "polite" as const, "aria-label": "Thinking" })}
     >
-      <div
-        className="thinking-label-stream"
-        data-testid="thinking-label"
-        aria-hidden="true"
-      >
+      <div className="thinking-label-stream" data-testid="thinking-label" aria-hidden="true">
         <span className="thinking-mark-slot">
           <WorkingNest active size={16} phaseKey={phaseKey} />
         </span>

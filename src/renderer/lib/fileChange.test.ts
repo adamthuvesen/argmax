@@ -104,9 +104,7 @@ describe("interpretFileChange — Claude Edit", () => {
   });
 
   it("returns null when both old and new strings are empty", () => {
-    expect(
-      interpretFileChange("Edit", { file_path: "/tmp/a.ts", old_string: "", new_string: "" })
-    ).toBeNull();
+    expect(interpretFileChange("Edit", { file_path: "/tmp/a.ts", old_string: "", new_string: "" })).toBeNull();
   });
 });
 
@@ -266,9 +264,7 @@ describe("interpretFileChange — Codex file_change", () => {
 
   it("prefers the content Codex did send over a measured diff", () => {
     const { change } = firstChange("file_change", {
-      changes: [
-        { path: "/repo/new.yml", kind: "add", content: "alpha\n", unified_diff: "@@ -0,0 +1,9 @@" }
-      ]
+      changes: [{ path: "/repo/new.yml", kind: "add", content: "alpha\n", unified_diff: "@@ -0,0 +1,9 @@" }]
     });
     if (change.kind !== "create") throw new Error("bad kind");
     expect(change.addCount).toBe(1);

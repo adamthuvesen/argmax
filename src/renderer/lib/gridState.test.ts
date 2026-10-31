@@ -68,12 +68,7 @@ describe("openWorkspaceInGrid", () => {
       rows: [[cell(1)]],
       focused: { row: 0, col: 0 }
     };
-    const next = openWorkspaceInGrid(
-      start,
-      cell(2),
-      { ctrlOrMeta: true, alt: false },
-      { maxColumns: 1 }
-    );
+    const next = openWorkspaceInGrid(start, cell(2), { ctrlOrMeta: true, alt: false }, { maxColumns: 1 });
     expect(next.rows).toEqual([[cell(1)], [cell(2)]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
@@ -84,7 +79,10 @@ describe("openWorkspaceInGrid", () => {
       focused: { row: 1, col: 1 }
     };
     const next = openWorkspaceInGrid(start, cell(4), { ctrlOrMeta: false, alt: true });
-    expect(next.rows).toEqual([[cell(1), cell(4)], [cell(2), cell(3)]]);
+    expect(next.rows).toEqual([
+      [cell(1), cell(4)],
+      [cell(2), cell(3)]
+    ]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 
@@ -110,11 +108,17 @@ describe("openWorkspaceInGrid", () => {
 
   it("replaces the focused cell only after all four slots are occupied", () => {
     const start: GridState = {
-      rows: [[cell(1), cell(2)], [cell(3), cell(4)]],
+      rows: [
+        [cell(1), cell(2)],
+        [cell(3), cell(4)]
+      ],
       focused: { row: 1, col: 0 }
     };
     const next = openWorkspaceInGrid(start, cell(5), { ctrlOrMeta: true, alt: false });
-    expect(next.rows).toEqual([[cell(1), cell(2)], [cell(5), cell(4)]]);
+    expect(next.rows).toEqual([
+      [cell(1), cell(2)],
+      [cell(5), cell(4)]
+    ]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
   });
 });
@@ -182,13 +186,19 @@ describe("openLauncherInGrid", () => {
       focused: { row: 1, col: 1 }
     };
     const next = openLauncherInGrid(start, launcher());
-    expect(next.rows).toEqual([[cell(1), launcher()], [cell(2), cell(3)]]);
+    expect(next.rows).toEqual([
+      [cell(1), launcher()],
+      [cell(2), cell(3)]
+    ]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 
   it("does nothing when all four slots are occupied", () => {
     const start: GridState = {
-      rows: [[cell(1), cell(2)], [cell(3), cell(4)]],
+      rows: [
+        [cell(1), cell(2)],
+        [cell(3), cell(4)]
+      ],
       focused: { row: 0, col: 0 }
     };
     expect(openLauncherInGrid(start, launcher())).toBe(start);
@@ -255,9 +265,7 @@ describe("dropWorkspaceInGrid", () => {
     const next = dropWorkspaceInGrid(start, cell(2), { row: 1, col: 0, position: "right" });
     expect(next.rows).toEqual([[cell(1), cell(2)], [cell(3)]]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
-    expect(
-      next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w2")
-    ).toHaveLength(1);
+    expect(next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w2")).toHaveLength(1);
   });
 
   it("swaps existing workspaces dropped onto another occupied cell", () => {
@@ -268,12 +276,8 @@ describe("dropWorkspaceInGrid", () => {
     });
     expect(next.rows).toEqual([[cell(3), cell(2)], [cell(1)]]);
     expect(next.focused).toEqual({ row: 1, col: 0 });
-    expect(
-      next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w1")
-    ).toHaveLength(1);
-    expect(
-      next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w3")
-    ).toHaveLength(1);
+    expect(next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w1")).toHaveLength(1);
+    expect(next.rows.flat().filter((item) => item.kind !== "launcher" && item.workspaceId === "w3")).toHaveLength(1);
   });
 
   it("does nothing when an existing workspace is dropped onto itself", () => {
@@ -287,11 +291,17 @@ describe("dropWorkspaceInGrid", () => {
 
   it("falls back to replace when split-right would exceed the two-column cap", () => {
     const full2x2: GridState = {
-      rows: [[cell(1), cell(2)], [cell(3), cell(4)]],
+      rows: [
+        [cell(1), cell(2)],
+        [cell(3), cell(4)]
+      ],
       focused: { row: 1, col: 1 }
     };
     const next = dropWorkspaceInGrid(full2x2, cell(99), { row: 0, col: 1, position: "left" });
-    expect(next.rows).toEqual([[cell(1), cell(99)], [cell(3), cell(4)]]);
+    expect(next.rows).toEqual([
+      [cell(1), cell(99)],
+      [cell(3), cell(4)]
+    ]);
     expect(next.focused).toEqual({ row: 0, col: 1 });
   });
 
@@ -310,12 +320,7 @@ describe("dropWorkspaceInGrid", () => {
   });
 
   it("falls back to replace when a drop would exceed the measured layout cap", () => {
-    const next = dropWorkspaceInGrid(
-      start,
-      cell(9),
-      { row: 0, col: 0, position: "right" },
-      { maxColumns: 2 }
-    );
+    const next = dropWorkspaceInGrid(start, cell(9), { row: 0, col: 0, position: "right" }, { maxColumns: 2 });
     expect(next.rows).toEqual([[cell(9), cell(2)], [cell(3)]]);
     expect(next.focused).toEqual({ row: 0, col: 0 });
   });

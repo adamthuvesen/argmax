@@ -2,11 +2,31 @@ import { isPlainObject } from "../../shared/typeGuards.js";
 import type { ToolCall } from "./toolCalls.js";
 
 const ACTIVITY_KINDS = [
-  "read", "edit", "image", "search", "list", "web-search", "web-fetch",
-  "discovery", "command", "tool", "agent", "skill", "image-capture", "image-generate", "computer",
-  "agent-message", "agent-wait", "agent-stop", "memory-recall", "memory-save", "git", "browser", "plan"
+  "read",
+  "edit",
+  "image",
+  "search",
+  "list",
+  "web-search",
+  "web-fetch",
+  "discovery",
+  "command",
+  "tool",
+  "agent",
+  "skill",
+  "image-capture",
+  "image-generate",
+  "computer",
+  "agent-message",
+  "agent-wait",
+  "agent-stop",
+  "memory-recall",
+  "memory-save",
+  "git",
+  "browser",
+  "plan"
 ] as const;
-export type ToolActivityKind = typeof ACTIVITY_KINDS[number];
+export type ToolActivityKind = (typeof ACTIVITY_KINDS)[number];
 export type ToolActivity = {
   version: 1;
   kind: ToolActivityKind;
@@ -18,21 +38,36 @@ export type ToolActivity = {
 
 /** Unknown versions stay readable through the ordinary tool presentation. */
 export function decodeToolActivity(value: unknown): ToolActivity | null {
-  if (!isPlainObject(value) || value.version !== 1 ||
+  if (
+    !isPlainObject(value) ||
+    value.version !== 1 ||
     !ACTIVITY_KINDS.some((kind) => kind === value.kind) ||
-    typeof value.evidence !== "string" || !["native", "tool", "command"].includes(value.evidence) ||
-    !Array.isArray(value.targets) || !value.targets.every((path) => typeof path === "string" && path.length > 0)) return null;
-  if (value.operation !== undefined && (typeof value.operation !== "string" || !["create", "edit", "delete", "move"].includes(value.operation))) return null;
-  if (value.toolCount !== undefined && (typeof value.toolCount !== "number" || !Number.isSafeInteger(value.toolCount) || value.toolCount < 0)) return null;
+    typeof value.evidence !== "string" ||
+    !["native", "tool", "command"].includes(value.evidence) ||
+    !Array.isArray(value.targets) ||
+    !value.targets.every((path) => typeof path === "string" && path.length > 0)
+  )
+    return null;
+  if (
+    value.operation !== undefined &&
+    (typeof value.operation !== "string" || !["create", "edit", "delete", "move"].includes(value.operation))
+  )
+    return null;
+  if (
+    value.toolCount !== undefined &&
+    (typeof value.toolCount !== "number" || !Number.isSafeInteger(value.toolCount) || value.toolCount < 0)
+  )
+    return null;
   return value as ToolActivity;
 }
 
 export function mergeToolActivity(start: ToolActivity | null, end: ToolActivity | null): ToolActivity | undefined {
   if (!end) return start ?? undefined;
-  if (start && end.kind === "tool") return start.kind === "discovery" && end.toolCount !== undefined
-    ? { ...start, toolCount: end.toolCount } : start;
-  if (start && end.kind === "image" && ["image-capture", "image-generate", "computer", "browser"].includes(start.kind)) return start;
-  return { ...start, ...end, targets: end.targets.length ? end.targets : start?.targets ?? [] };
+  if (start && end.kind === "tool")
+    return start.kind === "discovery" && end.toolCount !== undefined ? { ...start, toolCount: end.toolCount } : start;
+  if (start && end.kind === "image" && ["image-capture", "image-generate", "computer", "browser"].includes(start.kind))
+    return start;
+  return { ...start, ...end, targets: end.targets.length ? end.targets : (start?.targets ?? []) };
 }
 
 type ActivityState = "running" | "succeeded" | "failed" | "cancelled" | "unconfirmed";
@@ -55,47 +90,112 @@ function activityLabel(
   target?: string,
   count = 0
 ): string {
-  const counted = (noun: string): string =>
-    state === "succeeded" && count > 1 ? `${count} ${noun}` : noun;
+  const counted = (noun: string): string => (state === "succeeded" && count > 1 ? `${count} ${noun}` : noun);
   const file = target || (plural ? counted("files") : "a file");
   const image = target || (plural ? counted("images") : "an image");
   const operation = activity.operation;
   let verbs: [string, string, string];
   switch (activity.kind) {
-    case "read": verbs = [`Reading ${file}`, `Read ${file}`, "File read"]; break;
+    case "read":
+      verbs = [`Reading ${file}`, `Read ${file}`, "File read"];
+      break;
     case "edit": {
-      const verb = operation === "create" ? ["Creating", "Created"] : operation === "delete" ? ["Deleting", "Deleted"] : operation === "move" ? ["Moving", "Moved"] : ["Editing", "Edited"];
-      verbs = [`${verb[0]} ${file}`, `${verb[1]} ${file}`, "File change"]; break;
+      const verb =
+        operation === "create"
+          ? ["Creating", "Created"]
+          : operation === "delete"
+            ? ["Deleting", "Deleted"]
+            : operation === "move"
+              ? ["Moving", "Moved"]
+              : ["Editing", "Edited"];
+      verbs = [`${verb[0]} ${file}`, `${verb[1]} ${file}`, "File change"];
+      break;
     }
-    case "image": verbs = [`Viewing ${image}`, `Viewed ${image}`, "Image view"]; break;
-    case "image-capture": verbs = ["Capturing a screenshot", "Captured a screenshot", "Screenshot capture"]; break;
-    case "image-generate": verbs = [`Generating ${image}`, `Generated ${image}`, "Image generation"]; break;
-    case "search": verbs = ["Searching files", "Searched files", "File search"]; break;
-    case "list": verbs = ["Listing files", "Listed files", "File listing"]; break;
-    case "web-search": verbs = ["Searching the web", "Searched the web", "Web search"]; break;
-    case "web-fetch": verbs = ["Fetching a URL", "Fetched a URL", "Web request"]; break;
+    case "image":
+      verbs = [`Viewing ${image}`, `Viewed ${image}`, "Image view"];
+      break;
+    case "image-capture":
+      verbs = ["Capturing a screenshot", "Captured a screenshot", "Screenshot capture"];
+      break;
+    case "image-generate":
+      verbs = [`Generating ${image}`, `Generated ${image}`, "Image generation"];
+      break;
+    case "search":
+      verbs = ["Searching files", "Searched files", "File search"];
+      break;
+    case "list":
+      verbs = ["Listing files", "Listed files", "File listing"];
+      break;
+    case "web-search":
+      verbs = ["Searching the web", "Searched the web", "Web search"];
+      break;
+    case "web-fetch":
+      verbs = ["Fetching a URL", "Fetched a URL", "Web request"];
+      break;
     // Discovery stays uncounted: the count here is calls, and two searches that
     // loaded five tools each are not "Loaded 2 tools".
-    case "discovery": verbs = ["Searching for tools", activity.toolCount ? `Loaded ${activity.toolCount === 1 && !plural ? "a tool" : "tools"}` : "Searched tools", "Tool discovery"]; break;
-    case "command": verbs = [plural ? "Running commands" : "Running a command", plural ? `Ran ${counted("commands")}` : "Ran a command", "Command"]; break;
-    case "computer": verbs = ["Using a computer", "Used a computer", "Computer use"]; break;
-    case "agent": verbs = ["Starting an agent", plural ? `Started ${counted("agents")}` : "Started an agent", "Agent launch"]; break;
-    case "agent-message": verbs = ["Messaging an agent", plural ? `Messaged ${counted("agents")}` : "Messaged an agent", "Agent message"]; break;
-    case "agent-wait": verbs = ["Waiting for an agent", plural ? `Waited for ${counted("agents")}` : "Waited for an agent", "Agent wait"]; break;
-    case "agent-stop": verbs = ["Stopping an agent", plural ? `Stopped ${counted("agents")}` : "Stopped an agent", "Agent stop"]; break;
-    case "memory-recall": verbs = ["Recalling memory", "Recalled memory", "Memory recall"]; break;
-    case "memory-save": verbs = ["Saving a memory", plural ? `Saved ${counted("memories")}` : "Saved a memory", "Memory save"]; break;
+    case "discovery":
+      verbs = [
+        "Searching for tools",
+        activity.toolCount ? `Loaded ${activity.toolCount === 1 && !plural ? "a tool" : "tools"}` : "Searched tools",
+        "Tool discovery"
+      ];
+      break;
+    case "command":
+      verbs = [
+        plural ? "Running commands" : "Running a command",
+        plural ? `Ran ${counted("commands")}` : "Ran a command",
+        "Command"
+      ];
+      break;
+    case "computer":
+      verbs = ["Using a computer", "Used a computer", "Computer use"];
+      break;
+    case "agent":
+      verbs = ["Starting an agent", plural ? `Started ${counted("agents")}` : "Started an agent", "Agent launch"];
+      break;
+    case "agent-message":
+      verbs = ["Messaging an agent", plural ? `Messaged ${counted("agents")}` : "Messaged an agent", "Agent message"];
+      break;
+    case "agent-wait":
+      verbs = [
+        "Waiting for an agent",
+        plural ? `Waited for ${counted("agents")}` : "Waited for an agent",
+        "Agent wait"
+      ];
+      break;
+    case "agent-stop":
+      verbs = ["Stopping an agent", plural ? `Stopped ${counted("agents")}` : "Stopped an agent", "Agent stop"];
+      break;
+    case "memory-recall":
+      verbs = ["Recalling memory", "Recalled memory", "Memory recall"];
+      break;
+    case "memory-save":
+      verbs = ["Saving a memory", plural ? `Saved ${counted("memories")}` : "Saved a memory", "Memory save"];
+      break;
     case "git": {
       const subcommand = target ? `git ${target}` : "git commands";
-      verbs = [`Running ${subcommand}`, `Ran ${subcommand}`, "Git command"]; break;
+      verbs = [`Running ${subcommand}`, `Ran ${subcommand}`, "Git command"];
+      break;
     }
-    case "browser": verbs = ["Using the browser", "Used the browser", "Browser action"]; break;
-    case "plan": verbs = ["Updating the plan", "Updated the plan", "Plan update"]; break;
+    case "browser":
+      verbs = ["Using the browser", "Used the browser", "Browser action"];
+      break;
+    case "plan":
+      verbs = ["Updating the plan", "Updated the plan", "Plan update"];
+      break;
     case "skill": {
       const named = plural ? "skills" : target ? `${target} skill` : "a skill";
-      verbs = [`Activating ${named}`, `Activated ${named}`, "Skill activation"]; break;
+      verbs = [`Activating ${named}`, `Activated ${named}`, "Skill activation"];
+      break;
     }
-    case "tool": verbs = [plural ? "Using tools" : "Using a tool", plural ? `Used ${counted("tools")}` : "Used a tool", "Tool call"]; break;
+    case "tool":
+      verbs = [
+        plural ? "Using tools" : "Using a tool",
+        plural ? `Used ${counted("tools")}` : "Used a tool",
+        "Tool call"
+      ];
+      break;
   }
   if (state === "running") return verbs[0];
   if (state === "succeeded") return verbs[1];
@@ -106,10 +206,15 @@ export function describeActivity(tool: ToolCall): string | null {
   const activity = tool.activity;
   if (!activity) return null;
   const raw = activity.targets.length === 1 ? activity.targets[0] : undefined;
-  const target = raw === undefined
-    ? undefined
-    : activity.kind === "skill" ? skillTargetName(raw) : raw.split(/[\\/]/).pop();
-  const label = activityLabel(activity, toolActivityState(tool), activity.targets.length > 1, target, activity.targets.length);
+  const target =
+    raw === undefined ? undefined : activity.kind === "skill" ? skillTargetName(raw) : raw.split(/[\\/]/).pop();
+  const label = activityLabel(
+    activity,
+    toolActivityState(tool),
+    activity.targets.length > 1,
+    target,
+    activity.targets.length
+  );
   // Rust prefixes the repository to the target; the basename alone would read
   // as a file in this checkout.
   const repo = activity.kind === "read" || activity.kind === "list" ? linkedRepoName(tool.inputFull) : null;
@@ -140,7 +245,10 @@ export function summarizeActivities(
   tools: ToolCall[],
   counting = true
 ): { headline: string; iconKind: ToolActivityKind } {
-  const groups = new Map<string, { activity: ToolActivity; state: ActivityState; count: number; targets: Set<string> }>();
+  const groups = new Map<
+    string,
+    { activity: ToolActivity; state: ActivityState; count: number; targets: Set<string> }
+  >();
   const seen = new Set<string>();
   for (const tool of tools) {
     if (seen.has(tool.id)) continue;
@@ -178,7 +286,7 @@ const MAX_NAMED_CLAUSES = 4;
 export function joinClauses(labels: string[]): string {
   const clauses = labels
     .slice(0, MAX_NAMED_CLAUSES)
-    .map((label, index) => index ? label[0]?.toLowerCase() + label.slice(1) : label);
+    .map((label, index) => (index ? label[0]?.toLowerCase() + label.slice(1) : label));
   const rest = labels.length - clauses.length;
   if (rest > 0) clauses.push(`and ${rest} more`);
   return clauses.join(", ");

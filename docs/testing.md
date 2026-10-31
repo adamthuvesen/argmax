@@ -8,33 +8,38 @@ The suites are the first rung of the verification ladder; driving the real app
 ## Commands
 
 ```bash
-npm run precheck        # The pre-push gate: CI's checks, scoped to the branch's diff
-npm run precheck -- --all  # Every lane regardless of what changed
+npm run push-gate       # The pre-push gate: CI's checks, scoped to the branch's diff
+npm run push-gate -- --all  # Every lane regardless of what changed
 npm test                # Run unit, perf, and Rust test suites
 npm run test:unit       # Vitest unit and component tests
 npm run test:perf       # Vitest performance benchmarks
 npm run test:rust       # Cargo test suite for every crate in the src-tauri workspace (includes the bindings freshness test)
 npm run test:ios        # XCTest suite on a simulator (see "iPhone Tests" below)
 npm run lint:rust       # cargo clippy over every target, warnings are errors
-npm run check:fast      # eslint, tsc, and check:static in parallel; CI js-static runs this
-npm run check:static    # Every static gate; precheck runs this same list
+npm run check          # The fast lane: oxlint with type check, oxfmt --check, and check:static in parallel; CI js-static runs this
+npm run fix            # oxlint --fix, then oxfmt
+npm run lint           # oxlint with type check and the ratchet (part of check)
+npm run fmt:check      # oxfmt --check (part of check)
+npm run check:static   # Every static gate; push-gate runs this same list
+npm run slow           # The perf budgets and the Cargo tests
 npm run check:rust-boundaries # Rust layer rules, with a ratchet on existing violations
 npm run doctor          # Check the local verification environment
-npm run verify          # Build and exercise a disposable app with scripted providers
+npm run verify          # Drive the renderer in headless Chrome: launcher, chat, settings, editor
+npm run verify:native   # Extra, slower lane: build and exercise a disposable app with scripted providers
 ```
 
-`verify` is a local end-to-end loop described in [verification.md](verification.md).
-It is intentionally separate from CI and `precheck`.
+`verify` and `verify:native` are local end-to-end loops described in [verification.md](verification.md).
+`verify` runs in CI. `verify:native` stays separate from CI and `push-gate`.
 
 ## Ratchets
 
-A common bad pattern fails only on new additions. ESLint records existing
-violations in `eslint-suppressions.json`, and the Rust layer rules record them
-in `scripts/rust-boundaries-baseline.json`. After you fix a violation, tighten
-the record:
+A common bad pattern fails only on new additions. The `argmax` oxlint rules in
+`scripts/oxlint-plugin.mjs` record existing violations in `lint-baseline.json`,
+and the Rust layer rules record them in `scripts/rust-boundaries-baseline.json`.
+After you fix a violation, tighten the record:
 
 ```bash
-npx eslint . --prune-suppressions
+npm run lint -- --write-baseline
 node scripts/check-rust-boundaries.mjs --update
 ```
 
@@ -51,16 +56,15 @@ touches:
 | Touched | Runs |
 |---|---|
 | any path, docs included | `check:static` ([scripts/static-checks.mjs](../scripts/static-checks.mjs)) |
-| `src/**`, `src-tauri/**`, `ios/**`, `fixtures/parity/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | eslint, tsc, `vitest run --changed <merge-base>`, perf budgets |
+| `src/**`, `src-tauri/**`, `ios/**`, `fixtures/parity/**`, assets, HTML entrypoints, package or tool config, `scripts/**` | oxlint with type check, oxfmt --check, `vitest run --changed <merge-base>`, perf budgets |
 | `src-tauri/**`, browser-blocking assets, Cargo or workflow config | `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings` |
 | any JS lane change | `vite build` + the bundle budget |
 | `ios/**`, `fixtures/parity/**`, `scripts/ios-tests.mjs` | `npm run test:ios` |
 
-`npm run typecheck` (the tsc lane here and in CI) runs TypeScript 7, the native
-compiler, installed as the `typescript-7` alias: it checks the renderer in about
-1 s against 4.5–4.9 s for TypeScript 5.9, and reports the same diagnostics. The
-`typescript` 5.9 package stays because typescript-eslint's type-aware rules
-support only `<6.1`, and editors load their language service from it.
+`oxlint --type-aware --type-check` (run by `npm run lint`) type-checks the
+renderer with `oxlint-tsgolint` and TypeScript 7 (`typescript`, pinned exactly),
+so `check` runs no separate `tsc` step. `npm run typecheck` still runs
+`tsc --noEmit` for `check:changed`, which filters its diagnostics by file.
 
 `cargo fmt --check` runs first in the Rust lane, because it takes about a second and is the likeliest push-time failure. `git push` re-runs the whole script through the pre-push hook, so a tool call that pushes needs a 600 s timeout.
 
@@ -77,11 +81,8 @@ fix the filters in `precheck.mjs` and `.github/workflows/ci.yml`.
 ### CI execution
 
 CI distributes the complete Vitest suite across eight shards. The first shard
-also runs the performance budgets. ESLint reuses cached results only when all
-TypeScript sources and configuration match. Its type-aware rules can report an
-error in an unchanged file when an imported type changes, so a per-file content
-cache alone is insufficient. Fresh checkout timestamps do not invalidate a
-matching cache.
+also runs the performance budgets. The js-static job runs `npm run check`
+with no lint cache.
 
 Two macOS Rust lanes run library tests and integration checks. The integration
 lane builds its test binary first, then runs tests, doctests, and Clippy in
@@ -117,7 +118,7 @@ it lands.
 
 `npm run test:ios` ([scripts/ios-tests.mjs](../scripts/ios-tests.mjs)) regenerates
 the Xcode project, builds the `ArgmaxTests` target, and runs it on a simulator
-named "Argmax Test Lane", which it creates when it is missing. Precheck runs it
+named "Argmax Test Lane", which it creates when it is missing. The pre-push gate runs it
 when the diff touches the paths in the table above. CI runs the same command in
 a path-filtered macOS job, and on every push to `main`. The log goes to
 `node_modules/.cache/ios-tests/last-run.log`. `--only ParityTableTests` narrows a

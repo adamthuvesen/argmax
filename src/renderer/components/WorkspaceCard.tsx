@@ -93,7 +93,9 @@ export function WorkspaceCard({
   const [isPrHistoryOpen, setIsPrHistoryOpen] = useState(false);
   const [branchCopyFlash, copyBranch] = useCopyToClipboard();
   const hasChanges = changeSummary !== null && changeSummary.fileCount > 0;
-  const changedFolders = projectFolderChanges.filter((group) => group.folder.enabled && !group.error && group.files.length > 0);
+  const changedFolders = projectFolderChanges.filter(
+    (group) => group.folder.enabled && !group.error && group.files.length > 0
+  );
   const changesLabel = changesState === "error" ? "unavailable" : changesState === "ready" ? null : "…";
   const prs = workspaceSessionPrs(workspace);
   const primaryPr = primaryWorkspacePr(workspace);
@@ -206,7 +208,9 @@ export function WorkspaceCard({
       </div>
 
       <div className="workspace-card-rows">
-        {workingFolderName || changedFolders.length > 0 ? <div className="workspace-card-section-label">Changes</div> : null}
+        {workingFolderName || changedFolders.length > 0 ? (
+          <div className="workspace-card-section-label">Changes</div>
+        ) : null}
         <WorkspaceCardRow
           icon={<FileDiff size={13} aria-hidden="true" />}
           label={workingFolderName ?? "Changes"}
@@ -245,7 +249,9 @@ export function WorkspaceCard({
                 title={`Review ${files.length} changed ${files.length === 1 ? "file" : "files"} in ${folder.rootPath}. This shared checkout can include changes from other chats.`}
                 meta={<ChangeCount additions={totals.additions} deletions={totals.deletions} />}
                 disabled={!onOpenFolderChanges}
-                onClick={() => { if (files[0]) onOpenFolderChanges?.(folder.id, files[0].path); }}
+                onClick={() => {
+                  if (files[0]) onOpenFolderChanges?.(folder.id, files[0].path);
+                }}
               />
             </div>
           );
@@ -288,9 +294,7 @@ export function WorkspaceCard({
                 <ChevronDown size={12} aria-hidden="true" />
                 {hiddenPrs.length} more
               </button>
-              {isPrHistoryOpen ? <div className="workspace-card-pr-more-list">
-                {hiddenPrs.map(prRow)}
-              </div> : null}
+              {isPrHistoryOpen ? <div className="workspace-card-pr-more-list">{hiddenPrs.map(prRow)}</div> : null}
             </div>
           ) : null}
         </section>
@@ -336,8 +340,7 @@ function WorkspacePrRow({
   useDismissOnOutsideOrEscape(actionsRef, actionsOpen, () => setActionsOpen(false));
   const state = pr.prState?.toLowerCase() ?? "unknown";
   const stateLabel = `${state.charAt(0).toUpperCase()}${state.slice(1)}`;
-  const details = [pr.relationship === "referenced" ? "Referenced" : null, pr.headRefName]
-    .filter(Boolean).join(" · ");
+  const details = [pr.relationship === "referenced" ? "Referenced" : null, pr.headRefName].filter(Boolean).join(" · ");
   const rowTitle = pr.url
     ? `Open pull request #${pr.prNumber} on GitHub (${state})`
     : `Pull request #${pr.prNumber} (${state}) has no URL. Refresh its GitHub state to open it.`;
@@ -388,59 +391,61 @@ function WorkspacePrRow({
         >
           <MoreHorizontal size={13} aria-hidden="true" />
         </button>
-        {actionsOpen ? <div className="workspace-card-pr-actions-menu" role="menu" aria-label={`PR #${pr.prNumber} actions`}>
-          {!pr.isPinned ? (
+        {actionsOpen ? (
+          <div className="workspace-card-pr-actions-menu" role="menu" aria-label={`PR #${pr.prNumber} actions`}>
+            {!pr.isPinned ? (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                onClick={() => {
+                  setActionsOpen(false);
+                  onSetPrimary();
+                }}
+              >
+                {pr.relationship === "unverified" ? "Confirm and make primary" : "Make primary"}
+              </button>
+            ) : null}
+            {pr.isPinned ? (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                onClick={() => {
+                  setActionsOpen(false);
+                  onUseAutomatic();
+                }}
+              >
+                Automatic selection
+              </button>
+            ) : null}
+            {pr.prState === "MERGED" ? (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={busy}
+                title="Delete the merged branch and update the base. Keeps this chat and its checkout."
+                onClick={() => {
+                  setActionsOpen(false);
+                  onCleanup();
+                }}
+              >
+                Clean up
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitem"
               disabled={busy}
               onClick={() => {
                 setActionsOpen(false);
-                onSetPrimary();
+                onDismiss();
               }}
             >
-              {pr.relationship === "unverified" ? "Confirm and make primary" : "Make primary"}
+              Remove from this chat
             </button>
-          ) : null}
-          {pr.isPinned ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              onClick={() => {
-                setActionsOpen(false);
-                onUseAutomatic();
-              }}
-            >
-              Automatic selection
-            </button>
-          ) : null}
-          {pr.prState === "MERGED" ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={busy}
-              title="Delete the merged branch and update the base. Keeps this chat and its checkout."
-              onClick={() => {
-                setActionsOpen(false);
-                onCleanup();
-              }}
-            >
-              Clean up
-            </button>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={busy}
-            onClick={() => {
-              setActionsOpen(false);
-              onDismiss();
-            }}
-          >
-            Remove from this chat
-          </button>
-        </div> : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -456,12 +461,16 @@ function WorkspacePrRow({
  * the multitasks dispatched from it. The label follows — "Alongside" once a
  * multitask is in there, since they are not subagents.
  */
-function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster; onOpenAgents?: () => void }): JSX.Element {
+function SubagentsSection({
+  cluster,
+  onOpenAgents
+}: {
+  cluster: SubagentCluster;
+  onOpenAgents?: () => void;
+}): JSX.Element {
   const visible = cluster.entries.slice(0, SUBAGENT_AVATAR_LIMIT);
   const overflow = cluster.entries.length - visible.length;
-  const roster = cluster.entries
-    .map((entry) => `${entry.codename} — ${agentStatusLabel(entry.status)}`)
-    .join(", ");
+  const roster = cluster.entries.map((entry) => `${entry.codename} — ${agentStatusLabel(entry.status)}`).join(", ");
   const noun = cluster.hasMultitask ? "running alongside" : cluster.entries.length === 1 ? "subagent" : "subagents";
   const title = `${cluster.entries.length} ${noun}: ${roster}`;
   const firstRunning = cluster.entries.find((entry) => entry.status === "running");
@@ -506,11 +515,7 @@ function SubagentsSection({ cluster, onOpenAgents }: { cluster: SubagentCluster;
           {content}
         </button>
       ) : (
-        <div
-          className="workspace-card-subagents agent-emblem-tint"
-          data-hue={firstRunning?.emblem?.hue}
-          title={title}
-        >
+        <div className="workspace-card-subagents agent-emblem-tint" data-hue={firstRunning?.emblem?.hue} title={title}>
           {content}
         </div>
       )}

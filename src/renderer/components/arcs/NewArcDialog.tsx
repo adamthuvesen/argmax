@@ -72,7 +72,7 @@ export function NewArcDialog({
     briefTouched.current = false;
     setDraftState(null);
     // Only the open edge should reset the draft — projects can refresh mid-edit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [open]);
 
   useBridgeQuery({
@@ -215,164 +215,163 @@ export function NewArcDialog({
         </header>
 
         <div className="new-arc-dialog-body">
-        {promote ? (
-          <div className="new-arc-promote-intro">
-            <p>
-              This chat becomes the arc&rsquo;s coordinator. It keeps its history and model, and from here on it plans
-              and delegates instead of doing the work itself.
-            </p>
-            <ul className="new-arc-promote-facts">
-              <li>
-                <Folder size={13} aria-hidden="true" />
-                <span>
-                  Home project <strong>{promote.projectName}</strong>
-                </span>
-              </li>
-              {promote.adoptableCount > 0 ? (
+          {promote ? (
+            <div className="new-arc-promote-intro">
+              <p>
+                This chat becomes the arc&rsquo;s coordinator. It keeps its history and model, and from here on it plans
+                and delegates instead of doing the work itself.
+              </p>
+              <ul className="new-arc-promote-facts">
                 <li>
-                  <Bot size={13} aria-hidden="true" />
+                  <Folder size={13} aria-hidden="true" />
                   <span>
-                    {promote.adoptableCount === 1
-                      ? "The chat it launched joins the arc"
-                      : `The ${promote.adoptableCount} chats it launched join the arc`}
+                    Home project <strong>{promote.projectName}</strong>
                   </span>
                 </li>
-              ) : null}
-              {promote.isolated ? (
-                <li data-tone="warning">
-                  <TriangleAlert size={13} aria-hidden="true" />
-                  <span>
-                    It runs in its own worktree, so archiving that worktree ends the coordinator. You can start a new
-                    one from the arc page.
-                  </span>
-                </li>
-              ) : null}
-            </ul>
-          </div>
-        ) : null}
-
-        <div className="sched-field">
-          <label className="sched-label" htmlFor="new-arc-name">
-            Name
-          </label>
-          <input
-            id="new-arc-name"
-            className="sched-input"
-            value={name}
-            autoFocus
-            autoComplete="off"
-            placeholder={draftState === "drafting" ? "Drafting…" : "Q3 pricing rollout"}
-            onChange={(event) => {
-              nameTouched.current = true;
-              setName(event.target.value);
-            }}
-          />
-        </div>
-
-        <div className="sched-field">
-          <div className="new-arc-label-row">
-            <label className="sched-label" htmlFor="new-arc-brief">
-              Brief
-            </label>
-            {draftState === "drafting" ? (
-              <span className="new-arc-draft-status" role="status">
-                <WorkingNest active size={11} /> Drafting from this chat…
-              </span>
-            ) : draftState === "drafted" ? (
-              <span className="new-arc-draft-status" role="status">
-                Drafted from this chat
-              </span>
-            ) : draftState === "failed" ? (
-              <span className="new-arc-draft-status" role="status">
-                Couldn&rsquo;t draft one, so write it yourself
-              </span>
-            ) : null}
-          </div>
-          <textarea
-            id="new-arc-brief"
-            className="sched-input sched-textarea"
-            rows={promote ? 8 : 4}
-            value={brief}
-            placeholder={
-              draftState === "drafting" ? "Reading the conversation…" : "What this arc is for, and what done looks like."
-            }
-            onChange={(event) => {
-              briefTouched.current = true;
-              setBrief(event.target.value);
-            }}
-          />
-          {brief.trim().length === 0 && draftState !== "drafting" ? (
-            <p className="sched-help" id="new-arc-brief-help">
-              Required unless the folder below already has a BRIEF.md.
-            </p>
+                {promote.adoptableCount > 0 ? (
+                  <li>
+                    <Bot size={13} aria-hidden="true" />
+                    <span>
+                      {promote.adoptableCount === 1
+                        ? "The chat it launched joins the arc"
+                        : `The ${promote.adoptableCount} chats it launched join the arc`}
+                    </span>
+                  </li>
+                ) : null}
+                {promote.isolated ? (
+                  <li data-tone="warning">
+                    <TriangleAlert size={13} aria-hidden="true" />
+                    <span>
+                      It runs in its own worktree, so archiving that worktree ends the coordinator. You can start a new
+                      one from the arc page.
+                    </span>
+                  </li>
+                ) : null}
+              </ul>
+            </div>
           ) : null}
-        </div>
 
-        {promote ? null : (
-          <>
-        <div className="sched-field sched-field-inline">
-          <span className="sched-label">Home project</span>
-          <div className="sched-picker">
-            <SettingsListPicker
-              ariaLabel="Home project"
-              icon={<Folder size={14} aria-hidden="true" />}
-              portaled
-              value={homeProjectId}
-              onChange={setHomeProjectId}
-              options={
-                projectOptions.length > 0
-                  ? projectOptions
-                  : [{ value: "", label: "No projects registered" }]
-              }
-              disabled={projectOptions.length === 0}
-            />
-          </div>
-        </div>
-
-        <div className="sched-field sched-field-inline">
-          <span className="sched-label">Coordinator model</span>
-          <div className="sched-picker">
-            <LaunchModelSelector
-              ariaLabel="Coordinator model"
-              open={modelPickerOpen}
-              onOpenChange={setModelPickerOpen}
-              portaled
-              withEffortSlider
-              effortOpen={effortPickerOpen}
-              onEffortOpenChange={setEffortPickerOpen}
-              value={model}
-              onChange={setModel}
-            />
-          </div>
-        </div>
-          </>
-        )}
-
-        <details
-          className="new-arc-folder-details"
-          open={folderOpen}
-          onToggle={(event) => setFolderOpen(event.currentTarget.open)}
-        >
-          <summary>Advanced: use an existing folder</summary>
           <div className="sched-field">
-            <label className="sched-label" htmlFor="new-arc-folder">
-              Folder
+            <label className="sched-label" htmlFor="new-arc-name">
+              Name
             </label>
             <input
-              id="new-arc-folder"
-              className="sched-input sched-input-mono"
-              value={folder}
+              id="new-arc-name"
+              className="sched-input"
+              value={name}
+              autoFocus
               autoComplete="off"
-              placeholder="/absolute/path/to/existing/folder"
-              onChange={(event) => setFolder(event.target.value)}
+              placeholder={draftState === "drafting" ? "Drafting…" : "Q3 pricing rollout"}
+              onChange={(event) => {
+                nameTouched.current = true;
+                setName(event.target.value);
+              }}
             />
-            <p className="sched-help">
-              Must already exist. If it has a BRIEF.md, leave the brief above empty to use it. Left blank,
-              Argmax creates and owns a new folder for this arc.
-            </p>
           </div>
-        </details>
 
+          <div className="sched-field">
+            <div className="new-arc-label-row">
+              <label className="sched-label" htmlFor="new-arc-brief">
+                Brief
+              </label>
+              {draftState === "drafting" ? (
+                <span className="new-arc-draft-status" role="status">
+                  <WorkingNest active size={11} /> Drafting from this chat…
+                </span>
+              ) : draftState === "drafted" ? (
+                <span className="new-arc-draft-status" role="status">
+                  Drafted from this chat
+                </span>
+              ) : draftState === "failed" ? (
+                <span className="new-arc-draft-status" role="status">
+                  Couldn&rsquo;t draft one, so write it yourself
+                </span>
+              ) : null}
+            </div>
+            <textarea
+              id="new-arc-brief"
+              className="sched-input sched-textarea"
+              rows={promote ? 8 : 4}
+              value={brief}
+              placeholder={
+                draftState === "drafting"
+                  ? "Reading the conversation…"
+                  : "What this arc is for, and what done looks like."
+              }
+              onChange={(event) => {
+                briefTouched.current = true;
+                setBrief(event.target.value);
+              }}
+            />
+            {brief.trim().length === 0 && draftState !== "drafting" ? (
+              <p className="sched-help" id="new-arc-brief-help">
+                Required unless the folder below already has a BRIEF.md.
+              </p>
+            ) : null}
+          </div>
+
+          {promote ? null : (
+            <>
+              <div className="sched-field sched-field-inline">
+                <span className="sched-label">Home project</span>
+                <div className="sched-picker">
+                  <SettingsListPicker
+                    ariaLabel="Home project"
+                    icon={<Folder size={14} aria-hidden="true" />}
+                    portaled
+                    value={homeProjectId}
+                    onChange={setHomeProjectId}
+                    options={
+                      projectOptions.length > 0 ? projectOptions : [{ value: "", label: "No projects registered" }]
+                    }
+                    disabled={projectOptions.length === 0}
+                  />
+                </div>
+              </div>
+
+              <div className="sched-field sched-field-inline">
+                <span className="sched-label">Coordinator model</span>
+                <div className="sched-picker">
+                  <LaunchModelSelector
+                    ariaLabel="Coordinator model"
+                    open={modelPickerOpen}
+                    onOpenChange={setModelPickerOpen}
+                    portaled
+                    withEffortSlider
+                    effortOpen={effortPickerOpen}
+                    onEffortOpenChange={setEffortPickerOpen}
+                    value={model}
+                    onChange={setModel}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          <details
+            className="new-arc-folder-details"
+            open={folderOpen}
+            onToggle={(event) => setFolderOpen(event.currentTarget.open)}
+          >
+            <summary>Advanced: use an existing folder</summary>
+            <div className="sched-field">
+              <label className="sched-label" htmlFor="new-arc-folder">
+                Folder
+              </label>
+              <input
+                id="new-arc-folder"
+                className="sched-input sched-input-mono"
+                value={folder}
+                autoComplete="off"
+                placeholder="/absolute/path/to/existing/folder"
+                onChange={(event) => setFolder(event.target.value)}
+              />
+              <p className="sched-help">
+                Must already exist. If it has a BRIEF.md, leave the brief above empty to use it. Left blank, Argmax
+                creates and owns a new folder for this arc.
+              </p>
+            </div>
+          </details>
         </div>
 
         <footer className="new-arc-dialog-actions">

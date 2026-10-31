@@ -30,12 +30,7 @@ export function hasSteeringContextHeadroom(
 export function canSteerQueuedMessage(
   session: Pick<
     SessionSummary,
-    | "state"
-    | "provider"
-    | "modelId"
-    | "reasoningEffort"
-    | "contextTokens"
-    | "contextWindow"
+    "state" | "provider" | "modelId" | "reasoningEffort" | "contextTokens" | "contextWindow"
   >,
   entry: Pick<PendingMessage, "modelId" | "reasoningEffort" | "provider">
 ): boolean {
@@ -43,9 +38,7 @@ export function canSteerQueuedMessage(
     session.state === "running" &&
     // A row bound for another provider cannot be handed to this turn.
     (entry.provider == null || entry.provider === session.provider) &&
-    (session.provider === "codex" ||
-      session.provider === "claude" ||
-      session.provider === "opencode") &&
+    (session.provider === "codex" || session.provider === "claude" || session.provider === "opencode") &&
     hasSteeringContextHeadroom(session) &&
     (entry.modelId === undefined || entry.modelId === resolveModelId(session.provider, session.modelId)) &&
     (entry.reasoningEffort === undefined || entry.reasoningEffort === session.reasoningEffort)

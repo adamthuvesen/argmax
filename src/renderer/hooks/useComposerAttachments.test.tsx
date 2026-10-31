@@ -8,7 +8,11 @@ function pngBlob(): Blob {
   return new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
 }
 
-function installObjectUrl(urls: string[]): { create: ReturnType<typeof vi.fn>; revoke: ReturnType<typeof vi.fn>; restore: () => void } {
+function installObjectUrl(urls: string[]): {
+  create: ReturnType<typeof vi.fn>;
+  revoke: ReturnType<typeof vi.fn>;
+  restore: () => void;
+} {
   const createDescriptor = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
   const revokeDescriptor = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
   const create = vi.fn(() => urls.shift() ?? "blob:unused");
@@ -128,7 +132,7 @@ describe("useComposerAttachments — text paste stays native", () => {
     const paste = {
       clipboardData: {
         items: [{ kind: "string", type: "text/html" }],
-        getData: vi.fn(() => "<span style=\"font-weight: 390\">just a line</span>")
+        getData: vi.fn(() => '<span style="font-weight: 390">just a line</span>')
       },
       preventDefault: vi.fn()
     };
@@ -353,9 +357,11 @@ describe("useComposerAttachments — screenshot drag", () => {
       result.current.onComposerDrop(event as never);
     });
     expect(event.preventDefault).toHaveBeenCalled();
-    await waitFor(() => expect(result.current.pendingAttachments).toEqual([
-      { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 }
-    ]));
+    await waitFor(() =>
+      expect(result.current.pendingAttachments).toEqual([
+        { filePath: "/attachments/launch-a/shot.png", mimeType: "image/png", sizeBytes: 3 }
+      ])
+    );
   });
 
   it("attaches a typeless screenshot named .png", async () => {
@@ -374,11 +380,7 @@ describe("useComposerAttachments — screenshot drag", () => {
         setInput: () => undefined
       })
     );
-    const file = new File(
-      [new Uint8Array([1, 2, 3])],
-      "Screenshot 2026-09-05 at 10.30.00.png",
-      { type: "" }
-    );
+    const file = new File([new Uint8Array([1, 2, 3])], "Screenshot 2026-09-05 at 10.30.00.png", { type: "" });
     const event = dragEvent({ types: ["Files"], files: [file] });
     act(() => {
       result.current.onComposerDrop(event as never);
@@ -465,14 +467,9 @@ describe("useComposerAttachments — screenshot drag", () => {
         setInput
       })
     );
-    const file = new File(
-      [new Uint8Array([1, 2, 3])],
-      "Screenshot 2026-09-06 at 10.30.00.png",
-      { type: "" }
-    );
+    const file = new File([new Uint8Array([1, 2, 3])], "Screenshot 2026-09-06 at 10.30.00.png", { type: "" });
     Object.defineProperty(file, "path", {
-      value:
-        "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot 2026-09-06 at 10.30.00.png"
+      value: "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot 2026-09-06 at 10.30.00.png"
     });
     act(() => {
       result.current.onComposerDrop(dragEvent({ types: ["Files"], files: [file] }) as never);
@@ -510,9 +507,11 @@ describe("useComposerAttachments — transient previews", () => {
 
     try {
       act(() => result.current.onComposerPaste(paste() as never));
-      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
-        "/attachments/launch-a/shot.png": "blob:removed"
-      }));
+      await waitFor(() =>
+        expect(result.current.pendingAttachmentPreviews).toEqual({
+          "/attachments/launch-a/shot.png": "blob:removed"
+        })
+      );
       expect(result.current.pendingAttachments).toHaveLength(1);
 
       act(() => result.current.removePendingAttachment("/attachments/launch-a/shot.png"));
@@ -520,16 +519,20 @@ describe("useComposerAttachments — transient previews", () => {
       expect(objectUrl.revoke).toHaveBeenCalledWith("blob:removed");
 
       act(() => result.current.onComposerPaste(paste() as never));
-      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
-        "/attachments/launch-a/shot.png": "blob:cleared"
-      }));
+      await waitFor(() =>
+        expect(result.current.pendingAttachmentPreviews).toEqual({
+          "/attachments/launch-a/shot.png": "blob:cleared"
+        })
+      );
       act(() => result.current.clearAttachments());
       expect(objectUrl.revoke).toHaveBeenCalledWith("blob:cleared");
 
       act(() => result.current.onComposerPaste(paste() as never));
-      await waitFor(() => expect(result.current.pendingAttachmentPreviews).toEqual({
-        "/attachments/launch-a/shot.png": "blob:unmounted"
-      }));
+      await waitFor(() =>
+        expect(result.current.pendingAttachmentPreviews).toEqual({
+          "/attachments/launch-a/shot.png": "blob:unmounted"
+        })
+      );
       unmount();
       expect(objectUrl.revoke).toHaveBeenCalledWith("blob:unmounted");
     } finally {

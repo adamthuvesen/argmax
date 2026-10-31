@@ -78,9 +78,7 @@ export function findLauncherCell(grid: GridState): GridCoord | null {
 }
 
 function replaceCell(rows: GridCell[][], coord: GridCoord, cell: GridCell): GridCell[][] {
-  return rows.map((row, r) =>
-    r === coord.row ? row.map((c, j) => (j === coord.col ? cell : c)) : row
-  );
+  return rows.map((row, r) => (r === coord.row ? row.map((c, j) => (j === coord.col ? cell : c)) : row));
 }
 
 function compactRows(rows: GridCell[][]): GridCell[][] {
@@ -110,11 +108,7 @@ export function findSessionCell(grid: GridState, sessionId: string): GridCoord |
   return null;
 }
 
-function replaceWorkspaceContext(
-  grid: GridState,
-  target: GridCoord,
-  cell: SessionGridCell
-): GridState {
+function replaceWorkspaceContext(grid: GridState, target: GridCoord, cell: SessionGridCell): GridState {
   const targetCell = grid.rows[target.row]?.[target.col];
   if (!targetCell) return grid;
 
@@ -125,27 +119,15 @@ function replaceWorkspaceContext(
   return focusNear(rows, replaceCoord);
 }
 
-function insertCellInRow(
-  rows: GridCell[][],
-  rowIndex: number,
-  colIndex: number,
-  cell: GridCell
-): GridCell[][] {
-  return rows.map((row, r) =>
-    r === rowIndex ? [...row.slice(0, colIndex), cell, ...row.slice(colIndex)] : row
-  );
+function insertCellInRow(rows: GridCell[][], rowIndex: number, colIndex: number, cell: GridCell): GridCell[][] {
+  return rows.map((row, r) => (r === rowIndex ? [...row.slice(0, colIndex), cell, ...row.slice(colIndex)] : row));
 }
 
 function insertRow(rows: GridCell[][], at: number, cell: GridCell): GridCell[][] {
   return [...rows.slice(0, at), [cell], ...rows.slice(at)];
 }
 
-function insertInAvailableRow(
-  grid: GridState,
-  cell: GridCell,
-  preferred: GridCoord,
-  rowCap: number
-): GridState | null {
+function insertInAvailableRow(grid: GridState, cell: GridCell, preferred: GridCoord, rowCap: number): GridState | null {
   const rowIndexes = [
     preferred.row,
     ...grid.rows.map((_, rowIndex) => rowIndex).filter((rowIndex) => rowIndex !== preferred.row)
@@ -350,11 +332,7 @@ export function setLauncherProject(grid: GridState, projectId: string): GridStat
  * the new-session composer. The workspace is archived separately after the
  * provider actually stops.
  */
-export function revertSessionToLauncher(
-  grid: GridState,
-  sessionId: string,
-  projectId: string
-): GridState {
+export function revertSessionToLauncher(grid: GridState, sessionId: string, projectId: string): GridState {
   const coord = findSessionCell(grid, sessionId);
   if (!coord) {
     if (grid.rows.length === 0) return EMPTY_GRID;
@@ -379,10 +357,7 @@ export function focusedCell(grid: GridState): GridCell | null {
   return row[grid.focused.col] ?? null;
 }
 
-export function terminalWorkspaceId(
-  grid: GridState,
-  fallbacks: readonly (string | null | undefined)[]
-): string | null {
+export function terminalWorkspaceId(grid: GridState, fallbacks: readonly (string | null | undefined)[]): string | null {
   const focused = focusedCell(grid);
   if (focused && isSessionCell(focused)) return focused.workspaceId;
 

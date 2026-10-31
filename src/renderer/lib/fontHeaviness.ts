@@ -28,9 +28,7 @@ export function toFontHeaviness(raw: string | number | null | undefined): FontHe
 
 export function readStoredFontHeaviness(): FontHeaviness {
   if (typeof window === "undefined") return DEFAULT_FONT_HEAVINESS;
-  return (
-    toFontHeaviness(window.localStorage.getItem(FONT_HEAVINESS_STORAGE_KEY)) ?? DEFAULT_FONT_HEAVINESS
-  );
+  return toFontHeaviness(window.localStorage.getItem(FONT_HEAVINESS_STORAGE_KEY)) ?? DEFAULT_FONT_HEAVINESS;
 }
 
 /** Shift every designed weight together, preserving hierarchy and theme differences. */

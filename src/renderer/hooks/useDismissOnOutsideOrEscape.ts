@@ -105,9 +105,9 @@ export function useDismissOnOutsideOrEscape(
       const containers = [container, extraRef?.current].filter(
         (candidate): candidate is HTMLElement => candidate !== null && candidate !== undefined
       );
-      const focusable = containers.flatMap((candidate) =>
-        Array.from(candidate.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      ).filter((el) => !el.hasAttribute("inert"));
+      const focusable = containers
+        .flatMap((candidate) => Array.from(candidate.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)))
+        .filter((el) => !el.hasAttribute("inert"));
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];

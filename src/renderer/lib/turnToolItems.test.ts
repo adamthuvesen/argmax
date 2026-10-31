@@ -75,10 +75,7 @@ describe("turnToolItems", () => {
               question: "Pick one",
               header: "Choice",
               multiSelect: true,
-              options: [
-                { label: "A", description: "Alpha" },
-                { label: "B" }
-              ]
+              options: [{ label: "A", description: "Alpha" }, { label: "B" }]
             }
           ]
         }

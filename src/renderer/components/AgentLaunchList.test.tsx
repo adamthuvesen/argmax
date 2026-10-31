@@ -29,9 +29,7 @@ describe("AgentLaunchList", () => {
     const { container } = render(
       <AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} onOpenAgent={vi.fn()} />
     );
-    expect(
-      screen.getByRole("button", { name: startedAgentName("Map the renderer") })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: startedAgentName("Map the renderer") })).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
     expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).not.toBeNull();
     expect(container.querySelector(".agent-launch-title.reading-wave-text")).not.toBeNull();
@@ -97,28 +95,26 @@ describe("AgentLaunchList", () => {
       <AgentLaunchList tools={[tool({ status: "running", completedAt: null })]} />
     );
     rerender(<AgentLaunchList tools={[tool({ status: "done" })]} />);
-    expect(container.querySelector(".agent-launch-status[data-arriving='true']")?.textContent)
-      .toBe("Completed");
+    expect(container.querySelector(".agent-launch-status[data-arriving='true']")?.textContent).toBe("Completed");
     expect(container.querySelector(".agent-launch-title[data-arriving='true']")).toBeNull();
     // And the band is gone with the work it was marking.
     expect(container.querySelector(".agent-launch-headline[data-reading-wave='true']")).toBeNull();
   });
 
   it("shows the codename instead of the launch prompt", () => {
-    const prompt =
-      "Inspect the repository at /Users/adamthuvesen/dev/menti/revops-backoffice. Summarize what it does.";
+    const prompt = "Inspect the repository at /Users/adamthuvesen/dev/menti/revops-backoffice. Summarize what it does.";
     render(
       <AgentLaunchList
-        tools={[tool({
-          inputPreview: prompt.slice(0, 72),
-          inputFull: { prompt }
-        })]}
+        tools={[
+          tool({
+            inputPreview: prompt.slice(0, 72),
+            inputFull: { prompt }
+          })
+        ]}
         onOpenAgent={vi.fn()}
       />
     );
-    expect(
-      screen.getByRole("button", { name: startedAgentName(prompt.slice(0, 72)) })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: startedAgentName(prompt.slice(0, 72)) })).toBeInTheDocument();
     expect(screen.getByText(/^Launched /)).toBeInTheDocument();
     expect(screen.queryByText(/revops-backoffice/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Inspect the repository/)).not.toBeInTheDocument();

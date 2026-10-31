@@ -84,9 +84,7 @@ export function SheetOption({
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <span className="mobile-sheet-option-check">
-        {selected ? <Check size={16} aria-hidden="true" /> : null}
-      </span>
+      <span className="mobile-sheet-option-check">{selected ? <Check size={16} aria-hidden="true" /> : null}</span>
       <span className="mobile-sheet-option-text">
         <span className="mobile-sheet-option-label">{label}</span>
         {detail ? <span className="mobile-sheet-option-detail">{detail}</span> : null}

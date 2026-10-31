@@ -36,4 +36,3 @@ export function languageLabelFor(path: string | null): string {
   const ext = name.slice(dot + 1).toLowerCase();
   return LANGUAGE_LABELS[ext] ?? ext.toUpperCase();
 }
-

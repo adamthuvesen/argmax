@@ -15,9 +15,7 @@ const MAIN_WINDOW_LABEL = "main";
  */
 export function windowLabelFromRuntime(): string | null {
   if (typeof window === "undefined") return null;
-  const internals = window.__TAURI_INTERNALS__ as
-    | { metadata?: { currentWindow?: { label?: unknown } } }
-    | undefined;
+  const internals = window.__TAURI_INTERNALS__ as { metadata?: { currentWindow?: { label?: unknown } } } | undefined;
   const label = internals?.metadata?.currentWindow?.label;
   return typeof label === "string" && label.length > 0 ? label : null;
 }

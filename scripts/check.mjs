@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// The fast lane: lint, typecheck, and the static gates, in parallel. CI's
-// js-static job runs this command verbatim. Not named `check`: npm would
-// run the `precheck` script (the pre-push gate) before it.
+// The fast lane: type-aware lint with type check, format check, and the
+// static gates, in parallel. CI's js-static job runs this command verbatim.
+// The pre-push gate is `push-gate`, not `precheck`: npm would run a script
+// named `precheck` before `check`.
 //
-//   npm run check:fast
+//   npm run check
 
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
@@ -12,8 +13,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 const CHECKS = [
-  ["eslint", ["node_modules/eslint/bin/eslint.js", ".", "--cache", "--cache-strategy", "content", "--cache-location", "node_modules/.cache/eslint/"]],
-  ["tsc", ["node_modules/typescript-7/bin/tsc", "--noEmit"]],
+  ["oxlint + types", ["scripts/lint.mjs"]],
+  ["oxfmt", ["node_modules/oxfmt/bin/oxfmt", "--check"]],
   ["static checks", ["scripts/static-checks.mjs"]]
 ];
 
@@ -37,6 +38,6 @@ const results = await Promise.all(
 
 const failed = results.filter(({ status }) => status !== 0).map(({ label }) => label);
 if (failed.length) {
-  console.error(`\nerror: ${failed.join(", ")} failed. Fix the errors above, then rerun npm run check:fast.`);
+  console.error(`\nerror: ${failed.join(", ")} failed. Fix the errors above, then rerun npm run check.`);
   process.exit(1);
 }

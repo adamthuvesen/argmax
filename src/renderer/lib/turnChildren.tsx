@@ -10,9 +10,7 @@ type ActivityThought = {
 };
 
 /** One ordered member of a Compact activity run. */
-export type ActivityMember =
-  | ActivityThought
-  | { kind: "tools"; id: string; tools: ToolCall[] };
+export type ActivityMember = ActivityThought | { kind: "tools"; id: string; tools: ToolCall[] };
 
 export type ActivityRun = {
   tools: ToolCall[];

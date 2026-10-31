@@ -42,7 +42,7 @@ function makeSession(i: number): SessionSummary {
     tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextTokens: 0,
     imported: false,
-    launchKind: "agent",
+    launchKind: "agent"
   };
 }
 
@@ -84,16 +84,27 @@ describe("perf budgets", () => {
   it("updates one of eight session transcripts in median < 1 ms without notifying other panes", () => {
     const timelines = new SessionTimelines();
     const notifications = Array<number>(8).fill(0);
-    const subscriptions = notifications.map((_, index) => timelines.subscribe(`session-${index}`, () => {
-      notifications[index] += 1;
-    }));
+    const subscriptions = notifications.map((_, index) =>
+      timelines.subscribe(`session-${index}`, () => {
+        notifications[index] += 1;
+      })
+    );
     const events: TimelineEvent[] = Array.from({ length: 4000 }, (_, index) => ({
-      id: `retained-${index}`, sessionId: `session-${Math.floor(index / 500)}`, type: "message.delta",
-      message: "token", payload: {}, createdAt: "2026-09-05T00:00:00.000Z", rowCursor: index + 1
+      id: `retained-${index}`,
+      sessionId: `session-${Math.floor(index / 500)}`,
+      type: "message.delta",
+      message: "token",
+      payload: {},
+      createdAt: "2026-09-05T00:00:00.000Z",
+      rowCursor: index + 1
     }));
     timelines.merge(events, []);
     notifications.fill(0);
-    const updates = Array.from({ length: 100 }, (_, index): TimelineEvent => ({ ...events[0], id: `new-${index}`, rowCursor: 4001 + index }));
+    const updates = Array.from({ length: 100 }, (_, index): TimelineEvent => ({
+      ...events[0],
+      id: `new-${index}`,
+      rowCursor: 4001 + index
+    }));
     expect(medianMs(100, (index) => timelines.merge([updates[index]], []))).toBeLessThan(1);
     expect(notifications).toEqual([100, 0, 0, 0, 0, 0, 0, 0]);
     subscriptions.forEach((unsubscribe) => unsubscribe());
@@ -115,8 +126,24 @@ describe("perf budgets", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       events: [
-        { id: "u1", sessionId: "s", type: "user.message", message: "", payload: {}, createdAt: new Date(2026, 0, 1).toISOString(), rowCursor: 1 },
-        { id: "c1", sessionId: "s", type: "command.started", message: "", payload: {}, createdAt: new Date(2026, 0, 1, 0, 0, 1).toISOString(), rowCursor: 2 }
+        {
+          id: "u1",
+          sessionId: "s",
+          type: "user.message",
+          message: "",
+          payload: {},
+          createdAt: new Date(2026, 0, 1).toISOString(),
+          rowCursor: 1
+        },
+        {
+          id: "c1",
+          sessionId: "s",
+          type: "command.started",
+          message: "",
+          payload: {},
+          createdAt: new Date(2026, 0, 1, 0, 0, 1).toISOString(),
+          rowCursor: 2
+        }
       ]
     };
     const delta = {
@@ -154,17 +181,17 @@ describe("perf budgets", () => {
     };
 
     const deltas = Array.from({ length: 50 }, (_, i) => ({
-        events: [
-          {
-            id: `live-${i}`,
-            sessionId: "s",
-            type: "message.delta" as const,
-            message: "tok",
-            payload: {},
-            createdAt: new Date(2026, 0, 1, 1, 0, i).toISOString(),
-            rowCursor: 10_000 + i
-          }
-        ]
+      events: [
+        {
+          id: `live-${i}`,
+          sessionId: "s",
+          type: "message.delta" as const,
+          message: "tok",
+          payload: {},
+          createdAt: new Date(2026, 0, 1, 1, 0, i).toISOString(),
+          rowCursor: 10_000 + i
+        }
+      ]
     }));
     expect(medianMs(50, (i) => mergeDashboardDelta(base, deltas[i]))).toBeLessThan(2.5);
   });

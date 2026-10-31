@@ -13,10 +13,8 @@ const FIRST =
   '2026-09-01T07:21:37.004170Z ERROR rmcp::transport::streamable_http_client: fail to delete session: Auth error: OAuth token refresh failed: Server returned error response: invalid_refresh_token session_id="8DgJvqwOzrU_xrEYFWWrF8OwkaGftJqTqtkp8qZDnCOmrdVtqa5WT6-lMVZpOrGhVflCWkC3VpaXaCvjyT4nDA"';
 const SECOND =
   '2026-09-01T07:21:37.017965Z ERROR rmcp::transport::streamable_http_client: fail to delete session: Auth error: OAuth token refresh failed: Server returned error response: invalid_refresh_token session_id="other-id"';
-const CORE =
-  '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
-const CORE_SECOND =
-  '2026-09-01T07:21:37.017965Z ERROR codex_core::session: stream disconnected session_id="def"';
+const CORE = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+const CORE_SECOND = '2026-09-01T07:21:37.017965Z ERROR codex_core::session: stream disconnected session_id="def"';
 const MISSING_OUTPUT =
   "2026-09-01T08:17:32.875356Z ERROR codex_core::util: Custom tool call output is missing for call id: call_BGd71K6CkePKfLZku6sYyP7q";
 const APPLY_PATCH =
@@ -101,9 +99,7 @@ describe("splitLogSegments", () => {
 
   it("strips Codex apply_patch router tracing out of a surrounding sentence", () => {
     const text = `The preregistration is written.\n${APPLY_PATCH}`;
-    expect(splitLogSegments(text)).toEqual([
-      { kind: "markdown", text: "The preregistration is written." }
-    ]);
+    expect(splitLogSegments(text)).toEqual([{ kind: "markdown", text: "The preregistration is written." }]);
   });
 
   it("does not treat a date in prose as a log", () => {
@@ -123,9 +119,7 @@ describe("splitLogSegments", () => {
 
 describe("logBlockLabel", () => {
   it("names an error-toned block Error even for a plain sentence", () => {
-    expect(logBlockLabel([{ timestamp: null, level: null, target: null, message: "boom" }], "error")).toBe(
-      "Error"
-    );
+    expect(logBlockLabel([{ timestamp: null, level: null, target: null, message: "boom" }], "error")).toBe("Error");
   });
 
   it("names a dump from its highest level", () => {

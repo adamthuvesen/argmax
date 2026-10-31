@@ -2,10 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import { SIDE_CHAT_TITLE } from "./lib/launcherTitle.js";
-import {
-  GOAL_ENABLED_KEY,
-  GOAL_MAX_TURNS_KEY
-} from "./lib/uiPreferences.js";
+import { GOAL_ENABLED_KEY, GOAL_MAX_TURNS_KEY } from "./lib/uiPreferences.js";
 import { launchProvider, setupAppTestMocks } from "../test/appTestHarness.js";
 
 describe("App goal launcher", () => {

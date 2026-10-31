@@ -1,11 +1,6 @@
 import { cleanup, fireEvent, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  overlaysSnapshot,
-  resetOverlaysForTests,
-  showSettings,
-  useOverlayEscape
-} from "./overlays.js";
+import { overlaysSnapshot, resetOverlaysForTests, showSettings, useOverlayEscape } from "./overlays.js";
 
 describe("useOverlayEscape", () => {
   afterEach(() => {

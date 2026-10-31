@@ -201,9 +201,7 @@ describe("App settings", () => {
     expect(verbosity).toHaveAttribute("max", "4");
     fireEvent.change(verbosity, { target: { value: "1" } });
 
-    await waitFor(() =>
-      expect(window.localStorage.getItem(CHAT_VERBOSITY_KEY)).toBe("1")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(CHAT_VERBOSITY_KEY)).toBe("1"));
   });
 
   it("defaults working follow-ups to Queue and persists Steer when selected", async () => {
@@ -215,9 +213,7 @@ describe("App settings", () => {
     expect(within(setting).getByRole("radio", { name: "Queue" })).toBeChecked();
     fireEvent.click(within(setting).getByRole("radio", { name: "Steer" }));
 
-    await waitFor(() =>
-      expect(window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY)).toBe("steer")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(FOLLOW_UP_DELIVERY_KEY)).toBe("steer"));
   });
 
   // Toggles whose whole contract is "off until you turn it on, and it sticks".
@@ -251,9 +247,7 @@ describe("App settings", () => {
     expect(toggle).not.toBeChecked();
 
     fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(window.localStorage.getItem(COMPOSER_CONTEXT_INDICATOR_KEY)).toBe("true")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(COMPOSER_CONTEXT_INDICATOR_KEY)).toBe("true"));
 
     await closeSettings();
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -322,9 +316,7 @@ describe("App settings", () => {
     expect(toggle).toBeChecked();
 
     fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.mascot.visible")).toBe("false")
-    );
+    await waitFor(() => expect(window.localStorage.getItem("argmax.mascot.visible")).toBe("false"));
     expect(screen.queryByRole("img", { name: /^Fox mascot/ })).toBeNull();
   });
 
@@ -402,9 +394,7 @@ describe("App settings", () => {
     expect(toggle).toBeChecked();
 
     fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(window.localStorage.getItem(DESKTOP_NOTIFICATIONS_KEY)).toBe("false")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(DESKTOP_NOTIFICATIONS_KEY)).toBe("false"));
     expect(setNotificationsEnabledStub).toHaveBeenCalledWith(false);
   });
 
@@ -486,9 +476,11 @@ describe("App settings", () => {
     await waitFor(() => expect(window.localStorage.getItem("argmax.defaultIde")).toBe("cursor"));
 
     fireEvent.click(trigger);
-    fireEvent.click(within(await screen.findByRole("listbox", { name: "Default IDE" })).getByRole("button", {
-      name: "Ask each time"
-    }));
+    fireEvent.click(
+      within(await screen.findByRole("listbox", { name: "Default IDE" })).getByRole("button", {
+        name: "Ask each time"
+      })
+    );
 
     // "Ask each time" persists the explicit "none" sentinel — a missing key now
     // means the factory default (Cursor), so removal would silently re-pin it.
@@ -524,7 +516,9 @@ describe("App settings", () => {
       })
     );
     await waitFor(() =>
-      expect(JSON.parse(window.localStorage.getItem("argmax.providerPermissionModes")!)).toEqual(expect.objectContaining({ claude: "ask-each-time", codex: "provider-defaults" }))
+      expect(JSON.parse(window.localStorage.getItem("argmax.providerPermissionModes")!)).toEqual(
+        expect.objectContaining({ claude: "ask-each-time", codex: "provider-defaults" })
+      )
     );
 
     // Toggle Settings closed to get back to the launcher.
@@ -536,47 +530,69 @@ describe("App settings", () => {
     fireEvent.click(screen.getByTitle("Start agent"));
 
     await waitFor(() =>
-      expect(launchProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ permissionMode: "ask-each-time" })
-      )
+      expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "ask-each-time" }))
     );
   });
 
   it.each([
     ["claude", "claude-opus-5-5", "auto-approve"],
     ["codex", "gpt-6.1-sol", "provider-defaults"]
-  ] as const)("keeps provider choices independent after reload and launches %s with its own policy", async (provider, modelId, permissionMode) => {
-    window.localStorage.setItem("argmax.permissionMode", "auto-approve");
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider, modelId }));
-    render(<App />);
-    await screen.findByRole("button", { name: "Build dashboard" });
-    await openSettings("Agents");
-    expect(screen.getByRole("button", { name: "Claude tool permissions" })).toHaveTextContent("Full access");
-    fireEvent.click(screen.getByRole("button", { name: "Codex tool permissions" }));
-    fireEvent.click(within(await screen.findByRole("listbox", { name: "Codex tool permissions" })).getByRole("button", { name: "Provider defaults" }));
-    await waitFor(() => expect(window.argmax!.system.setDefaultAgent).toHaveBeenLastCalledWith(
-      expect.objectContaining({ permissionModes: { claude: "auto-approve", codex: "provider-defaults", cursor: "auto-approve", opencode: "auto-approve", grok: "auto-approve" } })
-    ));
-    cleanup();
-    render(<App />);
-    await screen.findByRole("button", { name: "Codex tool permissions" });
-    expect(screen.getByRole("button", { name: "Claude tool permissions" })).toHaveTextContent("Full access");
-    expect(screen.getByRole("button", { name: "Codex tool permissions" })).toHaveTextContent("Provider defaults");
-    fireEvent.keyDown(document, { key: ",", metaKey: true });
-    fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Use this provider policy" } });
-    fireEvent.click(screen.getByTitle("Start agent"));
-    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ provider, permissionMode })));
-  });
+  ] as const)(
+    "keeps provider choices independent after reload and launches %s with its own policy",
+    async (provider, modelId, permissionMode) => {
+      window.localStorage.setItem("argmax.permissionMode", "auto-approve");
+      window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider, modelId }));
+      render(<App />);
+      await screen.findByRole("button", { name: "Build dashboard" });
+      await openSettings("Agents");
+      expect(screen.getByRole("button", { name: "Claude tool permissions" })).toHaveTextContent("Full access");
+      fireEvent.click(screen.getByRole("button", { name: "Codex tool permissions" }));
+      fireEvent.click(
+        within(await screen.findByRole("listbox", { name: "Codex tool permissions" })).getByRole("button", {
+          name: "Provider defaults"
+        })
+      );
+      await waitFor(() =>
+        expect(window.argmax!.system.setDefaultAgent).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            permissionModes: {
+              claude: "auto-approve",
+              codex: "provider-defaults",
+              cursor: "auto-approve",
+              opencode: "auto-approve",
+              grok: "auto-approve"
+            }
+          })
+        )
+      );
+      cleanup();
+      render(<App />);
+      await screen.findByRole("button", { name: "Codex tool permissions" });
+      expect(screen.getByRole("button", { name: "Claude tool permissions" })).toHaveTextContent("Full access");
+      expect(screen.getByRole("button", { name: "Codex tool permissions" })).toHaveTextContent("Provider defaults");
+      fireEvent.keyDown(document, { key: ",", metaKey: true });
+      fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Use this provider policy" } });
+      fireEvent.click(screen.getByTitle("Start agent"));
+      await waitFor(() =>
+        expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ provider, permissionMode }))
+      );
+    }
+  );
 
   it("launches a Router pick without a permission mode, so the routed provider's applies", async () => {
     window.argmax!.settings.routing = () => Promise.resolve({ enabled: true, keyHint: "abcd", projectCheck: "switch" });
-    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5", autoTier: "balanced" }));
+    window.localStorage.setItem(
+      LAUNCH_MODEL_KEY,
+      JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5", autoTier: "balanced" })
+    );
     render(<App />);
     fireEvent.change(await screen.findByLabelText("Task prompt"), { target: { value: "Route this run" } });
     fireEvent.click(screen.getByTitle("Start agent"));
 
     await waitFor(() =>
-      expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ autoTier: "balanced", permissionMode: null }))
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ autoTier: "balanced", permissionMode: null })
+      )
     );
   });
 
@@ -585,14 +601,22 @@ describe("App settings", () => {
     window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-sonnet-5-5" }));
     const save = vi.mocked(window.argmax!.system.setDefaultAgent);
     render(<App />);
-    await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: "claude-sonnet-5-5" })));
+    await waitFor(() =>
+      expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelId: "claude-sonnet-5-5" }))
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Switch model" }));
-    fireEvent.click(within(await screen.findByRole("listbox", { name: "Switch model" })).getByRole("button", { name: "Router Balance" }));
+    fireEvent.click(
+      within(await screen.findByRole("listbox", { name: "Switch model" })).getByRole("button", {
+        name: "Router Balance"
+      })
+    );
 
     await waitFor(() => expect(window.localStorage.getItem(LAUNCH_MODEL_KEY)).toContain("balanced"));
     for (const [input] of save.mock.calls) expect(input.modelLabel).not.toBe("Router Balance");
-    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" }));
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5" })
+    );
   });
 
   it("keeps browser preferences local instead of trying to save desktop defaults", async () => {
@@ -619,14 +643,29 @@ describe("App settings", () => {
     expect(screen.getByText("Default settings are not saved.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry saving defaults" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Retry saving defaults" })).toBeNull());
-    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionModes: { claude: "provider-defaults", codex: "provider-defaults", cursor: "provider-defaults", opencode: "provider-defaults", grok: "provider-defaults" } }));
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        permissionModes: {
+          claude: "provider-defaults",
+          codex: "provider-defaults",
+          cursor: "provider-defaults",
+          opencode: "provider-defaults",
+          grok: "provider-defaults"
+        }
+      })
+    );
     expect(save).toHaveBeenCalledTimes(2);
   });
 
   it("serializes host defaults writes so an older preference cannot win", async () => {
     const save = vi.mocked(window.argmax!.system.setDefaultAgent);
     let finishFirst!: (result: { ok: true }) => void;
-    save.mockImplementationOnce(() => new Promise((resolve) => { finishFirst = resolve; }));
+    save.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        })
+    );
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
     await openSettings("Agents");
@@ -639,7 +678,17 @@ describe("App settings", () => {
     expect(save).toHaveBeenCalledTimes(1);
     finishFirst({ ok: true });
     await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
-    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ permissionModes: { claude: "auto-approve", codex: "provider-defaults", cursor: "provider-defaults", opencode: "provider-defaults", grok: "provider-defaults" } }));
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        permissionModes: {
+          claude: "auto-approve",
+          codex: "provider-defaults",
+          cursor: "provider-defaults",
+          opencode: "provider-defaults",
+          grok: "provider-defaults"
+        }
+      })
+    );
   });
 
   it.each([
@@ -684,9 +733,7 @@ describe("App settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "Font family" }));
     fireEvent.click(screen.getByRole("button", { name: label }));
 
-    await waitFor(() =>
-      expect(window.localStorage.getItem("argmax.font.family")).toBe(id)
-    );
+    await waitFor(() => expect(window.localStorage.getItem("argmax.font.family")).toBe(id));
     expect(document.documentElement.getAttribute("data-font")).toBe(id);
     expect(window.localStorage.getItem("argmax.font.scale")).toBe("6");
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
@@ -781,10 +828,7 @@ describe("App settings", () => {
 
     const grid = await screen.findByRole("group", { name: "Chat panes" });
     expect(grid).toHaveAttribute("data-font-size", "5");
-    expect((await screen.findByLabelText("Chat prompt")).closest("form")).toHaveAttribute(
-      "data-font-size",
-      "5"
-    );
+    expect((await screen.findByLabelText("Chat prompt")).closest("form")).toHaveAttribute("data-font-size", "5");
     expect(document.documentElement.getAttribute("data-font-size")).toBe("6");
   });
 
@@ -817,9 +861,7 @@ describe("App settings", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
 
-    await waitFor(() =>
-      expect(document.documentElement.getAttribute("data-font-size")).toBe("7")
-    );
+    await waitFor(() => expect(document.documentElement.getAttribute("data-font-size")).toBe("7"));
     expect(screen.getByRole("main")).toHaveAttribute("data-chat-width", "4");
     // The level is written back under the new key, so the legacy value
     // converts on first run.
@@ -842,7 +884,6 @@ describe("App settings", () => {
     expect((settingsScroller as HTMLElement).scrollTop).toBe(0);
   });
 
-
   it("migrates a stored 1–5 level onto the 1–10 scale", async () => {
     window.localStorage.setItem("argmax.font.size", "4");
     render(<App />);
@@ -853,7 +894,6 @@ describe("App settings", () => {
     await waitFor(() => expect(window.localStorage.getItem("argmax.font.scale")).toBe("7"));
   });
 
-
   it("settings Appearance page renders the Accent picker and persists accent changes", async () => {
     render(<App />);
     await screen.findByRole("button", { name: "Build dashboard" });
@@ -862,25 +902,17 @@ describe("App settings", () => {
     await screen.findByRole("heading", { name: "Theme" });
 
     const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
-    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
+    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute("aria-checked", "true");
     expect(within(accentPicker).getByRole("radio", { name: "Black" })).toBeTruthy();
 
     fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("orange"));
     expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
 
     fireEvent.click(within(accentPicker).getByRole("radio", { name: "Blue" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(ACCENT_STORAGE_KEY)).toBe("blue"));
     expect(document.documentElement.getAttribute("data-accent")).toBe("blue");
   });
-
 
   it("settings Appearance page takes user bubbles off the accent and back", async () => {
     window.localStorage.setItem(USER_BUBBLE_TINT_STORAGE_KEY, "accent");
@@ -895,15 +927,11 @@ describe("App settings", () => {
     expect(document.documentElement.getAttribute("data-user-bubble")).toBe("accent");
 
     fireEvent.click(within(tintPicker).getByRole("radio", { name: "Neutral" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe("neutral")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe("neutral"));
     expect(document.documentElement.getAttribute("data-user-bubble")).toBe("neutral");
 
     fireEvent.click(within(tintPicker).getByRole("radio", { name: "Accent" }));
-    await waitFor(() =>
-      expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe("accent")
-    );
+    await waitFor(() => expect(window.localStorage.getItem(USER_BUBBLE_TINT_STORAGE_KEY)).toBe("accent"));
     expect(document.documentElement.getAttribute("data-user-bubble")).toBe("accent");
   });
 });

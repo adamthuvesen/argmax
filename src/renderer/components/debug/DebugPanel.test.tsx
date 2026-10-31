@@ -149,13 +149,7 @@ function renderPanel({
   rawOutputs?: RawProviderOutput[];
 }): void {
   render(
-    <DebugPanel
-      events={events}
-      rawOutputs={rawOutputs}
-      session={session()}
-      workspace={workspace()}
-      onClose={vi.fn()}
-    />
+    <DebugPanel events={events} rawOutputs={rawOutputs} session={session()} workspace={workspace()} onClose={vi.fn()} />
   );
 }
 

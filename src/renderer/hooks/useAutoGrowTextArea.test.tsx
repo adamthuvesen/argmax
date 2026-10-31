@@ -21,13 +21,7 @@ function ComposerTextarea({
   useAutoGrowTextArea(ref, value, maxHeight);
   return (
     <div>
-      <textarea
-        aria-label="Prompt"
-        ref={ref}
-        readOnly
-        style={{ minHeight: `${minHeight}px` }}
-        value={value}
-      />
+      <textarea aria-label="Prompt" ref={ref} readOnly style={{ minHeight: `${minHeight}px` }} value={value} />
     </div>
   );
 }

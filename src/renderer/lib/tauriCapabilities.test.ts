@@ -8,10 +8,7 @@ interface TauriCapability {
 
 function readMainCapability(): TauriCapability {
   return JSON.parse(
-    readFileSync(
-      new URL("../../../src-tauri/capabilities/default.json", import.meta.url),
-      "utf8"
-    )
+    readFileSync(new URL("../../../src-tauri/capabilities/default.json", import.meta.url), "utf8")
   ) as TauriCapability;
 }
 

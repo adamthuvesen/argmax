@@ -48,16 +48,12 @@ describe("<StreamingMarkdown />", () => {
 
   it("preserves code scroll elements across workspace and callback updates", () => {
     const text = "```\nlong output\n```";
-    const { rerender } = render(
-      <StreamingMarkdown text={text} streaming={false} workspace={workspace} />
-    );
+    const { rerender } = render(<StreamingMarkdown text={text} streaming={false} workspace={workspace} />);
     const code = screen.getByText("long output");
     const pre = code.closest("pre")!;
     pre.scrollLeft = 120;
 
-    rerender(
-      <StreamingMarkdown text={text} streaming={false} workspace={{ ...workspace! }} onOpenFile={vi.fn()} />
-    );
+    rerender(<StreamingMarkdown text={text} streaming={false} workspace={{ ...workspace! }} onOpenFile={vi.fn()} />);
 
     expect(screen.getByText("long output").closest("pre")).toBe(pre);
     expect(pre.scrollLeft).toBe(120);
@@ -66,7 +62,9 @@ describe("<StreamingMarkdown />", () => {
   it("promotes a bold-only line to a heading and leaves bold lead-ins alone", () => {
     render(
       <StreamingMarkdown
-        text={"**On both lists**\n\n**Trends:** horror is the story.\n\n**Trends:**\n\n**Empire's #1**\nNolan's follow-up."}
+        text={
+          "**On both lists**\n\n**Trends:** horror is the story.\n\n**Trends:**\n\n**Empire's #1**\nNolan's follow-up."
+        }
         streaming={false}
         workspace={workspace}
       />
@@ -84,9 +82,7 @@ describe("<StreamingMarkdown />", () => {
       <StreamingMarkdown text={text} streaming={false} workspace={workspace} onOpenFile={previous} />
     );
     const link = screen.getByRole("button", { name: "Open src/renderer/App.tsx" });
-    rerender(
-      <StreamingMarkdown text={text} streaming={false} workspace={workspace} onOpenFile={current} />
-    );
+    rerender(<StreamingMarkdown text={text} streaming={false} workspace={workspace} onOpenFile={current} />);
     expect(screen.getByRole("button", { name: "Open src/renderer/App.tsx" })).toBe(link);
     fireEvent.click(link);
     expect(previous).not.toHaveBeenCalled();
@@ -94,7 +90,11 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it.each([
-    ["/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa", "/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa", undefined],
+    [
+      "/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa",
+      "/Users/adamthuvesen/dev/menti/dbt-transform-remove-pqa",
+      undefined
+    ],
     ["docs/", "docs/", "/Users/me/repo"],
     ["LICENSE", "LICENSE", "/Users/me/repo"],
     ["/tmp/my%20worktree", "/tmp/my worktree", undefined]
@@ -157,13 +157,7 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it("falls back to a file chip when a local image cannot load", () => {
-    render(
-      <StreamingMarkdown
-        text="![lane](/tmp/lane.png)"
-        streaming={false}
-        workspace={workspace}
-      />
-    );
+    render(<StreamingMarkdown text="![lane](/tmp/lane.png)" streaming={false} workspace={workspace} />);
 
     fireEvent.error(screen.getByRole("img", { name: "lane" }));
     expect(screen.getByRole("button", { name: "Open /tmp/lane.png" })).toBeInTheDocument();
@@ -309,9 +303,7 @@ describe("<StreamingMarkdown />", () => {
 
   it("leaves an unpaced block — a live thought — unmarked", () => {
     vi.useFakeTimers();
-    const { container, rerender } = render(
-      <StreamingMarkdown text={"A".repeat(120)} streaming paced={false} />
-    );
+    const { container, rerender } = render(<StreamingMarkdown text={"A".repeat(120)} streaming paced={false} />);
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming paced={false} />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 4);
@@ -321,9 +313,7 @@ describe("<StreamingMarkdown />", () => {
 
   it("does not mark a block that is being restored into the pane", () => {
     vi.useFakeTimers();
-    const { container, rerender } = render(
-      <StreamingMarkdown text={"A".repeat(120)} streaming restoring />
-    );
+    const { container, rerender } = render(<StreamingMarkdown text={"A".repeat(120)} streaming restoring />);
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming restoring />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 4);
@@ -503,9 +493,7 @@ describe("<StreamingMarkdown />", () => {
   it("shows already-arrived text in full when the pane is restoring", () => {
     const text = "R".repeat(120);
 
-    const { container } = render(
-      <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g0" />
-    );
+    const { container } = render(<StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g0" />);
 
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
   });
@@ -519,9 +507,7 @@ describe("<StreamingMarkdown />", () => {
     );
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
 
-    rerender(
-      <StreamingMarkdown text={text} streaming restoring={false} revealKey="session-restore:g1" />
-    );
+    rerender(<StreamingMarkdown text={text} streaming restoring={false} revealKey="session-restore:g1" />);
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 16);
@@ -534,9 +520,7 @@ describe("<StreamingMarkdown />", () => {
     const text = "H".repeat(120);
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
 
-    const { container } = render(
-      <StreamingMarkdown text={text} streaming revealKey="session-hidden:g0" />
-    );
+    const { container } = render(<StreamingMarkdown text={text} streaming revealKey="session-hidden:g0" />);
 
     expect(container.querySelector(".markdown")?.textContent).toBe(text);
 
@@ -550,9 +534,7 @@ describe("<StreamingMarkdown />", () => {
   it("catches up a live block that grew while the document was hidden", () => {
     vi.useFakeTimers();
     const first = "hidden ".repeat(20).trim();
-    const { container, rerender } = render(
-      <StreamingMarkdown text={first} streaming revealKey="session-hidden:g1" />
-    );
+    const { container, rerender } = render(<StreamingMarkdown text={first} streaming revealKey="session-hidden:g1" />);
     expect(container.querySelector(".markdown")?.textContent).toBe("");
 
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
@@ -594,23 +576,13 @@ describe("<StreamingMarkdown />", () => {
       />
     );
 
-    expect(screen.getByRole("link", { name: "the documentation" })).toHaveAttribute(
-      "href",
-      "https://example.com/docs"
-    );
+    expect(screen.getByRole("link", { name: "the documentation" })).toHaveAttribute("href", "https://example.com/docs");
   });
 
   it("preserves loose and nested list structure while streaming", () => {
     render(
       <StreamingMarkdown
-        text={[
-          "- outer item",
-          "",
-          "  continuation paragraph",
-          "  - nested item",
-          "",
-          "    > nested quote"
-        ].join("\n")}
+        text={["- outer item", "", "  continuation paragraph", "  - nested item", "", "    > nested quote"].join("\n")}
         streaming
         paced={false}
       />
@@ -623,9 +595,7 @@ describe("<StreamingMarkdown />", () => {
 
   it("keeps the code node stable when a stream becomes completed", () => {
     const text = ["```ts", "const answer = 42;", "```"].join("\n");
-    const { container, rerender } = render(
-      <StreamingMarkdown text={text} streaming paced={false} />
-    );
+    const { container, rerender } = render(<StreamingMarkdown text={text} streaming paced={false} />);
     const code = container.querySelector("code");
     expect(code).toBeInTheDocument();
 
@@ -776,12 +746,7 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it("preserves code blocks containing dollar signs and LaTeX slashes", () => {
-    const text = [
-      "```bash",
-      "PRICE=$50",
-      "echo \"\\[ preserved \\]\"",
-      "```"
-    ].join("\n");
+    const text = ["```bash", "PRICE=$50", 'echo "\\[ preserved \\]"', "```"].join("\n");
 
     const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
 

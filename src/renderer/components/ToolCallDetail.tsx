@@ -1,11 +1,7 @@
 import { Fragment, useMemo, useState, type JSX, type ReactNode } from "react";
 import { systemActions } from "../data/bridgeActions.js";
 import { interpretFileChange } from "../lib/fileChange.js";
-import {
-  argumentsFitFooter,
-  toolArguments,
-  type ToolArgument
-} from "../lib/toolArguments.js";
+import { argumentsFitFooter, toolArguments, type ToolArgument } from "../lib/toolArguments.js";
 import {
   extractOpenablePath,
   formatToolOutput,
@@ -67,13 +63,10 @@ export function ToolCallDetail({
     );
   };
   const [showFullOutput, setShowFullOutput] = useState(false);
-  const changes = useMemo(
-    () => interpretFileChange(tool.name, tool.inputFull),
-    [tool.name, tool.inputFull]
-  );
+  const changes = useMemo(() => interpretFileChange(tool.name, tool.inputFull), [tool.name, tool.inputFull]);
   const visibleInput = visibleInputForTool(tool);
   const bashCommand = isBashLikeTool(tool.name)
-    ? pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview
+    ? (pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview)
     : null;
   const fullCommand = bashCommand ? displayCommandFull(bashCommand, workspaceCwd) : null;
   // The row *is* the command: an expanded bash row unwraps its target to the
@@ -82,17 +75,15 @@ export function ToolCallDetail({
   // still earns a block — a row cannot carry newlines.
   const showCommandBlock = fullCommand !== null && fullCommand.includes("\n");
   const openable = tool.status !== "error" ? extractOpenablePath(tool.name, tool.inputFull) : null;
-  const filePath = openable ?? pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
+  const filePath =
+    openable ?? pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
   const streamContent = pickString(tool.inputFull, ["streamContent", "content", "text"]);
   const canShowFilePreview = !changes && filePath && streamContent;
   // Output that IS a file or a command's stdout keeps byte fidelity — a read of
   // package.json should look like package.json, not our reformatting of it.
   const verbatimOutput = isBashLikeTool(tool.name) || filePath !== null;
   const output = useMemo(
-    () =>
-      tool.output && !verbatimOutput
-        ? formatToolOutput(tool.output)
-        : { body: tool.output ?? "", title: null },
+    () => (tool.output && !verbatimOutput ? formatToolOutput(tool.output) : { body: tool.output ?? "", title: null }),
     [tool.output, verbatimOutput]
   );
   // The envelope's title is the one identifying fact worth keeping when the
@@ -120,10 +111,7 @@ export function ToolCallDetail({
     Object.keys(leftoverInput).length > 0 &&
     hasNonRedundantInput(visibleInput, redundantKeys) &&
     (!isAgent || isCodexAgentTool(tool));
-  const args = useMemo(
-    () => (showArguments ? toolArguments(leftoverInput) : []),
-    [showArguments, leftoverInput]
-  );
+  const args = useMemo(() => (showArguments ? toolArguments(leftoverInput) : []), [showArguments, leftoverInput]);
   // Short scalars read as a sentence on the footer line; anything longer needs
   // the full list above the payload.
   const footerArgs = argumentsFitFooter(args) ? args : [];
@@ -148,9 +136,7 @@ export function ToolCallDetail({
           <ToolCallBlock
             parts={[
               argumentList,
-              tool.error ? (
-                <pre className="tool-call-code tool-call-code--error">{tool.error}</pre>
-              ) : null
+              tool.error ? <pre className="tool-call-code tool-call-code--error">{tool.error}</pre> : null
             ]}
             footer={footerArgs.length > 0 ? <ToolCallFoot args={footerArgs} /> : null}
           />
@@ -174,9 +160,7 @@ export function ToolCallDetail({
   }
 
   const outputBody = output.body;
-  const showOutput =
-    hasVisibleToolOutput(tool, outputBody) &&
-    (!tool.error || outputBody.trim() !== tool.error.trim());
+  const showOutput = hasVisibleToolOutput(tool, outputBody) && (!tool.error || outputBody.trim() !== tool.error.trim());
   // A trailing newline is not an eleventh line, and CRLF must not leave a
   // stray \r on every kept line — either one put "Show all" on output that was
   // already whole.
@@ -191,10 +175,7 @@ export function ToolCallDetail({
     showCommandBlock && fullCommand ? (
       // No "Command" label: the row already says Ran, and the block is
       // terminal chrome.
-      <pre
-        className="tool-call-code"
-        title={displayCommandPreview(bashCommand ?? fullCommand, workspaceCwd)}
-      >
+      <pre className="tool-call-code" title={displayCommandPreview(bashCommand ?? fullCommand, workspaceCwd)}>
         {fullCommand}
       </pre>
     ) : null,
@@ -218,16 +199,12 @@ export function ToolCallDetail({
     ) : null,
     // No "Output" label: it sat alone over a box as the only thing it could
     // possibly be labelling. Position and type say it instead.
-    showOutput ? (
-      <pre className="tool-call-code">{shownOutput}</pre>
-    ) : null
+    showOutput ? <pre className="tool-call-code">{shownOutput}</pre> : null
   ];
 
   // A read that printed nothing still has somewhere to go: the footer offers
   // Open. The row above already names the file, so nothing repeats it.
-  const showOpenAction = Boolean(
-    !canShowFilePreview && openable && !hasVisibleToolOutput(tool, tool.output)
-  );
+  const showOpenAction = Boolean(!canShowFilePreview && openable && !hasVisibleToolOutput(tool, tool.output));
 
   const footer = (
     <ToolCallFoot
@@ -309,10 +286,7 @@ function ToolCallFoot({
   onOpen?: () => void;
   openTitle?: string | null;
 }): JSX.Element | null {
-  const facts: string[] = [
-    ...args.map((arg) => `${arg.key} ${arg.value}`),
-    ...notes
-  ];
+  const facts: string[] = [...args.map((arg) => `${arg.key} ${arg.value}`), ...notes];
   if (output !== null && output.length > 0) {
     // A line count of one is filler: the payload is right there. Size only
     // shows once it passes a kilobyte, for the same reason.

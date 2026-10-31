@@ -6,14 +6,24 @@ import { ProjectFolderChangesList } from "./ProjectFolderChanges.js";
 function stateStub(): ProjectFolderChangesState {
   return {
     workingFolder: null,
-    groups: [{
-      folder: { id: "context", projectId: "project", name: "primary", rootPath: "/repos/context", isPrimary: true, enabled: true, summary: null },
-      files: [
-        { path: "src/search/index.ts", status: "modified", additions: 1, deletions: 2, staged: false },
-        { path: "src/api/index.ts", status: "modified", additions: 3, deletions: 4, staged: false }
-      ],
-      error: null
-    }],
+    groups: [
+      {
+        folder: {
+          id: "context",
+          projectId: "project",
+          name: "primary",
+          rootPath: "/repos/context",
+          isPrimary: true,
+          enabled: true,
+          summary: null
+        },
+        files: [
+          { path: "src/search/index.ts", status: "modified", additions: 1, deletions: 2, staged: false },
+          { path: "src/api/index.ts", status: "modified", additions: 3, deletions: 4, staged: false }
+        ],
+        error: null
+      }
+    ],
     error: null,
     selection: null,
     selectedFolder: null,

@@ -1,11 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  commitChatCycle,
-  jumpToAdjacentChat,
-  noteChatVisited,
-  resetChatCycle,
-  stepChatCycle
-} from "./chatCycle.js";
+import { commitChatCycle, jumpToAdjacentChat, noteChatVisited, resetChatCycle, stepChatCycle } from "./chatCycle.js";
 
 const VISIBLE = ["workspace-1", "workspace-2", "workspace-3", "workspace-4"];
 

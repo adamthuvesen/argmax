@@ -30,9 +30,7 @@ export function ConnectionDialog({
   useRestoreFocus(true);
 
   useEffect(() => {
-    setSurface(
-      probeRef.current?.closest<HTMLElement>(".conversation-surface, .launcher-surface") ?? null
-    );
+    setSurface(probeRef.current?.closest<HTMLElement>(".conversation-surface, .launcher-surface") ?? null);
   }, []);
   useEffect(() => {
     if (surface !== undefined) closeRef.current?.focus();

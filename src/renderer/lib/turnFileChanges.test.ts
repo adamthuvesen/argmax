@@ -75,12 +75,20 @@ describe("collectTurnFileChanges", () => {
     const hunk = (line: string) => `@@ -2,1 +2,2 @@\n one\n-two\n+${line}\n`;
     const changes = collectTurnFileChanges(
       turnOf([
-        tool("file_change", {
-          changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two CHANGED") }]
-        }, "t1"),
-        tool("file_change", {
-          changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two AGAIN") }]
-        }, "t2")
+        tool(
+          "file_change",
+          {
+            changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two CHANGED") }]
+          },
+          "t1"
+        ),
+        tool(
+          "file_change",
+          {
+            changes: [{ kind: "update", path: "/repo/model.sql", unified_diff: hunk("two AGAIN") }]
+          },
+          "t2"
+        )
       ])
     );
     expect(changes).toHaveLength(1);
@@ -101,18 +109,28 @@ describe("collectTurnFileChanges", () => {
   it("includes current Grok and Codex write shapes in changed files", () => {
     const changes = collectTurnFileChanges(
       turnOf([
-        tool("search_replace", {
-          file_path: "/repo/grok.ts",
-          old_string: "old",
-          new_string: "new"
-        }, "grok"),
-        tool("file_change", {
-          changes: [{
-            path: "/repo/codex.ts",
-            kind: { type: "add", move_path: null },
-            diff: "export const codex = true;\n"
-          }]
-        }, "codex")
+        tool(
+          "search_replace",
+          {
+            file_path: "/repo/grok.ts",
+            old_string: "old",
+            new_string: "new"
+          },
+          "grok"
+        ),
+        tool(
+          "file_change",
+          {
+            changes: [
+              {
+                path: "/repo/codex.ts",
+                kind: { type: "add", move_path: null },
+                diff: "export const codex = true;\n"
+              }
+            ]
+          },
+          "codex"
+        )
       ])
     );
 

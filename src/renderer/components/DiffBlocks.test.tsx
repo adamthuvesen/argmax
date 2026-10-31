@@ -44,18 +44,14 @@ const TS_HUNK: ParsedDiffBlock = {
   id: "hunk-1",
   kind: "hunk",
   header: "@@ -1,2 +1,2 @@",
-  lines: [
-    { kind: "addition", content: "const x = 42;", oldLineNumber: null, newLineNumber: 1 }
-  ]
+  lines: [{ kind: "addition", content: "const x = 42;", oldLineNumber: null, newLineNumber: 1 }]
 };
 
 const UNKNOWN_HUNK: ParsedDiffBlock = {
   id: "hunk-2",
   kind: "hunk",
   header: "@@ -1 +1 @@",
-  lines: [
-    { kind: "addition", content: "weird format", oldLineNumber: null, newLineNumber: 1 }
-  ]
+  lines: [{ kind: "addition", content: "weird format", oldLineNumber: null, newLineNumber: 1 }]
 };
 
 const OMITTED: Extract<ParsedDiffBlock, { kind: "omitted" }> = {
@@ -205,7 +201,10 @@ describe("DiffBlocks", () => {
     expect(onAddComment).not.toHaveBeenCalled();
   });
 
-  it.each([[21, 23], [23, 21]])("submits a range dragged from %i to %i", (from, to) => {
+  it.each([
+    [21, 23],
+    [23, 21]
+  ])("submits a range dragged from %i to %i", (from, to) => {
     const onAddComment = vi.fn();
     render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
     tokenizeLinesMock.mockClear();
@@ -221,8 +220,13 @@ describe("DiffBlocks", () => {
     fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "range note" } });
     fireEvent.click(screen.getByRole("button", { name: "Comment" }));
     expect(onAddComment).toHaveBeenCalledWith({
-      filePath: "src/x.ts", line: 21, endLine: 23, side: "addition", endSide: "context",
-      lineText: "+first\n+second\n after", comment: "range note"
+      filePath: "src/x.ts",
+      line: 21,
+      endLine: 23,
+      side: "addition",
+      endSide: "context",
+      lineText: "+first\n+second\n after",
+      comment: "range note"
     });
     expect(screen.queryByRole("form")).toBeNull();
     expect(screen.queryByRole("button", { pressed: true })).toBeNull();
@@ -238,8 +242,13 @@ describe("DiffBlocks", () => {
     fireEvent.change(screen.getByLabelText("Comment text"), { target: { value: "mixed range" } });
     fireEvent.keyDown(screen.getByLabelText("Comment text"), { key: "Enter" });
     expect(onAddComment).toHaveBeenCalledWith({
-      filePath: "src/x.ts", line: 11, endLine: 22, side: "deletion", endSide: "addition",
-      lineText: "-old\n+first\n+second", comment: "mixed range"
+      filePath: "src/x.ts",
+      line: 11,
+      endLine: 22,
+      side: "deletion",
+      endSide: "addition",
+      lineText: "-old\n+first\n+second",
+      comment: "mixed range"
     });
   });
 
@@ -270,11 +279,13 @@ describe("DiffBlocks", () => {
     const { rerender } = render(<DiffBlocks blocks={[RANGE_HUNK]} filePath="src/x.ts" onAddComment={onAddComment} />);
     fireEvent.click(lineCommentButton(21));
     expect(screen.getByRole("form")).toBeInTheDocument();
-    rerender(<DiffBlocks
-      blocks={change === "diff" ? [{ ...RANGE_HUNK, lines: [] }] : [RANGE_HUNK]}
-      filePath={change === "file" ? "src/y.ts" : "src/x.ts"}
-      onAddComment={onAddComment}
-    />);
+    rerender(
+      <DiffBlocks
+        blocks={change === "diff" ? [{ ...RANGE_HUNK, lines: [] }] : [RANGE_HUNK]}
+        filePath={change === "file" ? "src/y.ts" : "src/x.ts"}
+        onAddComment={onAddComment}
+      />
+    );
     expect(screen.queryByRole("form")).toBeNull();
     expect(screen.queryByRole("button", { pressed: true })).toBeNull();
   });
@@ -293,11 +304,7 @@ describe("DiffBlocks", () => {
   it("turns a between-hunk gap into an expand control", () => {
     const onExpandContext = vi.fn();
     render(
-      <DiffBlocks
-        blocks={[TS_HUNK, OMITTED, UNKNOWN_HUNK]}
-        filePath="src/x.ts"
-        onExpandContext={onExpandContext}
-      />
+      <DiffBlocks blocks={[TS_HUNK, OMITTED, UNKNOWN_HUNK]} filePath="src/x.ts" onExpandContext={onExpandContext} />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Expand 16 unmodified lines" }));
@@ -330,13 +337,7 @@ describe("DiffBlocks", () => {
 
   it("announces a truncated diff and stops advertising expansion", () => {
     const onExpandContext = vi.fn();
-    render(
-      <DiffBlocks
-        blocks={[TS_HUNK, OMITTED, TRUNCATED]}
-        filePath="src/x.ts"
-        onExpandContext={onExpandContext}
-      />
-    );
+    render(<DiffBlocks blocks={[TS_HUNK, OMITTED, TRUNCATED]} filePath="src/x.ts" onExpandContext={onExpandContext} />);
 
     // Asking git for more context would only drop more content.
     expect(screen.queryByRole("button", { name: /unmodified/ })).toBeNull();

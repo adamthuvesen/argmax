@@ -103,9 +103,10 @@ export function buildSchedule(
 /** Recovers the friendly kind + controls from a stored schedule, so editing
  *  a routine prefills the same controls that built it. `custom` is the
  *  fallback for cron expressions the friendly kinds cannot express. */
-export function parseSchedule(
-  routine: Pick<Routine, "cronExpr" | "runOnceAt">
-): { kind: ScheduleKind; controls: ScheduleControls } {
+export function parseSchedule(routine: Pick<Routine, "cronExpr" | "runOnceAt">): {
+  kind: ScheduleKind;
+  controls: ScheduleControls;
+} {
   const controls: ScheduleControls = { ...DEFAULT_SCHEDULE_CONTROLS };
   if (routine.runOnceAt) {
     controls.onceAt = toLocalInputValue(routine.runOnceAt);
@@ -191,11 +192,12 @@ const WEEKDAY_FULL_NAME = new Map([
 /** Full weekday names in the Monday-first display order of
  *  {@link WEEKDAY_OPTIONS}, keyed by the cron dow number as a string — the
  *  editor's day picker speaks strings. */
-export const WEEKDAY_PICKER_OPTIONS: ReadonlyArray<{ value: string; label: string }> =
-  WEEKDAY_OPTIONS.map((option) => ({
+export const WEEKDAY_PICKER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = WEEKDAY_OPTIONS.map(
+  (option) => ({
     value: String(option.value),
     label: WEEKDAY_FULL_NAME.get(option.value) ?? option.label
-  }));
+  })
+);
 
 /** The cadence as a sentence fragment — "every day at 09:00". The editor reads
  *  it back to the user while they build the schedule, so the six cron fields

@@ -1,10 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  baseSession,
-  renderConversation,
-  rerenderConversation
-} from "../../test/sessionConversationTestHarness.js";
+import { baseSession, renderConversation, rerenderConversation } from "../../test/sessionConversationTestHarness.js";
 
 const routedSession = baseSession({
   provider: "claude",
@@ -42,7 +38,12 @@ describe("SessionComposer Auto chip", () => {
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
     const { rerender } = renderConversation(routedSession, [], { onSendSessionInput });
 
-    const escalated = { ...routedSession, modelLabel: "Fable 5.1", modelId: "claude-fable-5-1", reasoningEffort: "high" as const };
+    const escalated = {
+      ...routedSession,
+      modelLabel: "Fable 5.1",
+      modelId: "claude-fable-5-1",
+      reasoningEffort: "high" as const
+    };
     rerenderConversation(rerender, escalated, [], { onSendSessionInput });
 
     expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Balance → Fable 5.1");
@@ -51,7 +52,12 @@ describe("SessionComposer Auto chip", () => {
     fireEvent.keyDown(promptInput, { key: "Enter" });
 
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalled());
-    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({ provider: "claude", modelId: "claude-fable-5-1", reasoningEffort: "high", autoTier: "balanced" });
+    expect(onSendSessionInput.mock.calls[0]?.[2]).toMatchObject({
+      provider: "claude",
+      modelId: "claude-fable-5-1",
+      reasoningEffort: "high",
+      autoTier: "balanced"
+    });
   });
 
   it("keeps a chat stored on a retired model in Auto and sends it unpinned", async () => {
@@ -100,7 +106,13 @@ describe("SessionComposer Auto chip", () => {
 
   it("says nothing for the route a chat opened with, or for a pin", () => {
     const { rerender } = renderConversation(routedSession);
-    const pinned = { ...routedSession, modelLabel: "Sonnet 5.5", modelId: "claude-sonnet-5-5", autoTier: null, autoRoute: null };
+    const pinned = {
+      ...routedSession,
+      modelLabel: "Sonnet 5.5",
+      modelId: "claude-sonnet-5-5",
+      autoTier: null,
+      autoRoute: null
+    };
     rerenderConversation(rerender, pinned);
 
     expect(screen.queryByRole("status")).toBeNull();
@@ -114,7 +126,12 @@ describe("SessionComposer Auto chip", () => {
       within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" })
     );
 
-    const escalated = { ...routedSession, modelLabel: "Fable 5.1", modelId: "claude-fable-5-1", reasoningEffort: "high" as const };
+    const escalated = {
+      ...routedSession,
+      modelLabel: "Fable 5.1",
+      modelId: "claude-fable-5-1",
+      reasoningEffort: "high" as const
+    };
     rerenderConversation(rerender, escalated, [], { onSendSessionInput });
 
     expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe("Sonnet 5.5");

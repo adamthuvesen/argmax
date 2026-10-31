@@ -122,9 +122,7 @@ export function useSidebarResize(workspaceMinWidth = DEFAULT_WORKSPACE_MIN_WIDTH
       document.body.style.userSelect = "none";
 
       const onMouseMove = (e: MouseEvent): void => {
-        setSavedSidebarWidth(
-          clampSidebarWidth(startWidth + (e.clientX - startX), workspaceMin, viewportWidth)
-        );
+        setSavedSidebarWidth(clampSidebarWidth(startWidth + (e.clientX - startX), workspaceMin, viewportWidth));
       };
       const cleanup = (): void => {
         setIsResizing(false);

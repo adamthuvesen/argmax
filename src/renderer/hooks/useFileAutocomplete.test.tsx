@@ -142,10 +142,7 @@ describe("useFileAutocomplete", () => {
   });
 
   it("opens the popover with files and derived folders when the user types `@`", async () => {
-    const entries: WorkspaceFileEntry[] = [
-      { path: "src-tauri/main.ts" },
-      { path: "src/renderer/App.tsx" }
-    ];
+    const entries: WorkspaceFileEntry[] = [{ path: "src-tauri/main.ts" }, { path: "src/renderer/App.tsx" }];
     listFiles.mockResolvedValue(entries);
 
     render(<Harness initialInput="@" />);
@@ -247,8 +244,7 @@ describe("useFileAutocomplete", () => {
     const indexOfDir = (): number => {
       const items = screen.queryAllByTestId(/^entry-/);
       return items.findIndex(
-        (node) =>
-          node.getAttribute("data-testid") === "entry-dir" && node.textContent === "src-tauri"
+        (node) => node.getAttribute("data-testid") === "entry-dir" && node.textContent === "src-tauri"
       );
     };
     let target = indexOfDir();
@@ -293,9 +289,7 @@ describe("useFileAutocomplete", () => {
 
   it("bounds cached source trees and re-fetches an evicted project", async () => {
     listFiles.mockImplementation((source) => Promise.resolve([{ path: `${source.id}/index.ts` }]));
-    const { rerender } = render(
-      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />
-    );
+    const { rerender } = render(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
     const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
     act(() => {
       setCaret(probe, 1);
@@ -320,9 +314,7 @@ describe("useFileAutocomplete", () => {
           })
         : Promise.resolve([{ path: `${id}/index.ts` }])
     );
-    const { rerender } = render(
-      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />
-    );
+    const { rerender } = render(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
     const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
     act(() => {
       setCaret(probe, 1);
@@ -348,9 +340,7 @@ describe("useFileAutocomplete", () => {
           resolvers.set(id, resolve);
         })
     );
-    const { rerender } = render(
-      <Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />
-    );
+    const { rerender } = render(<Harness initialInput="@" source={{ kind: "project", id: "project-0" }} />);
     const probe = screen.getByLabelText<HTMLTextAreaElement>("probe");
     act(() => {
       setCaret(probe, 1);

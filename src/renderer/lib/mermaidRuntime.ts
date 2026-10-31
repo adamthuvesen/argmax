@@ -51,13 +51,9 @@ export function cssColorToHex(color: string): string | null {
     const [r, g, b] = three[1];
     return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
   }
-  const comma = trimmed.match(
-    /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i
-  );
+  const comma = trimmed.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i);
   if (comma) return rgbToHex(Number(comma[1]), Number(comma[2]), Number(comma[3]));
-  const space = trimmed.match(
-    /^rgba?\(\s*(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)/i
-  );
+  const space = trimmed.match(/^rgba?\(\s*(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)/i);
   if (space) return rgbToHex(Number(space[1]), Number(space[2]), Number(space[3]));
   return null;
 }
@@ -68,7 +64,8 @@ function tokenHex(style: CSSStyleDeclaration, name: string): string | null {
   if (literal || !value.trim()) return literal;
   // Only background intensity introduces these surface mixes. Preserve the
   // existing Mermaid defaults for ink and accent tokens it cannot parse.
-  if (!["--tool-block-surface", "--panel", "--panel-soft", "--panel-sunken", "--line-strong", "--line"].includes(name)) return null;
+  if (!["--tool-block-surface", "--panel", "--panel-soft", "--panel-sunken", "--line-strong", "--line"].includes(name))
+    return null;
   const { r, g, b } = readColorToken(name, document.documentElement);
   return rgbToHex(r, g, b);
 }
@@ -314,9 +311,7 @@ export function nativeSvgWidth(svg: SVGSVGElement): number {
 export const MERMAID_LAYOUT_SLACK_PX = 8;
 
 export function mermaidProseWidth(column: HTMLElement): number {
-  const configured = Number.parseFloat(
-    window.getComputedStyle(column).getPropertyValue("--markdown-prose-width")
-  );
+  const configured = Number.parseFloat(window.getComputedStyle(column).getPropertyValue("--markdown-prose-width"));
   return Number.isFinite(configured) ? Math.min(column.clientWidth, configured) : column.clientWidth;
 }
 
@@ -327,14 +322,7 @@ export function mermaidBreakoutWidth(
   safeLeft: number,
   safeRight: number
 ): number {
-  return Math.max(
-    0,
-    Math.min(
-      proseWidth * 0.2,
-      proseLeft - safeLeft,
-      safeRight - (proseLeft + proseWidth)
-    )
-  );
+  return Math.max(0, Math.min(proseWidth * 0.2, proseLeft - safeLeft, safeRight - (proseLeft + proseWidth)));
 }
 
 /**

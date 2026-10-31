@@ -130,7 +130,11 @@ export function ProjectKnowledgePanel({ projects }: { projects: ProjectSummary[]
             const draft = draftSummaries[learning.id];
             const draftActive = draft !== undefined;
             return (
-              <li key={learning.id} className="project-knowledge-row" data-verified={learning.verified ? "true" : "false"}>
+              <li
+                key={learning.id}
+                className="project-knowledge-row"
+                data-verified={learning.verified ? "true" : "false"}
+              >
                 <span className="project-knowledge-kind">{learning.kind}</span>
                 <textarea
                   className="project-knowledge-summary"

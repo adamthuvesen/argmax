@@ -73,10 +73,7 @@ export function dropWorkspacePane(
  * A full grid otherwise swallows the request silently, which reads as a dead
  * button rather than as a limit — so say which happened.
  */
-export function openLauncherPane(
-  cell: LauncherGridCell,
-  layout: { maxColumns: number }
-): "opened" | "grid-full" {
+export function openLauncherPane(cell: LauncherGridCell, layout: { maxColumns: number }): "opened" | "grid-full" {
   if (grid.rows.length === 0) {
     publish(EMPTY_GRID);
     return "opened";

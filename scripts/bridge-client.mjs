@@ -110,13 +110,14 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
               return new Promise((resolveCall, rejectCall) => {
                 const id = nextId++;
                 const abort = new AbortController();
-                const timer = callTimeoutMs === null
-                  ? null
-                  : setTimeout(() => {
-                      pending.delete(id);
-                      abort.abort();
-                      rejectCall(new Error(`bridge call ${channel} timed out after ${callTimeoutMs}ms`));
-                    }, callTimeoutMs);
+                const timer =
+                  callTimeoutMs === null
+                    ? null
+                    : setTimeout(() => {
+                        pending.delete(id);
+                        abort.abort();
+                        rejectCall(new Error(`bridge call ${channel} timed out after ${callTimeoutMs}ms`));
+                      }, callTimeoutMs);
                 pending.set(id, {
                   channel,
                   input: JSON.stringify({ channel, input }),
@@ -133,10 +134,15 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
                     rejectCall(error);
                   }
                 });
-                socket.send(JSON.stringify({
-                  type: "request", id, channel, input,
-                  operation: { clientId, operationId: randomUUID() }
-                }));
+                socket.send(
+                  JSON.stringify({
+                    type: "request",
+                    id,
+                    channel,
+                    input,
+                    operation: { clientId, operationId: randomUUID() }
+                  })
+                );
               });
             },
             onEvent(listener) {
@@ -161,24 +167,30 @@ export function connectBridge({ port, token, timeoutMs = 5000, callTimeoutMs = n
           const entry = pending.get(frame.id);
           if (!entry) return;
           if (entry.fetchingTranscript) return;
-          if (frame.error?.sub_code === "REMOTE_RESPONSE_TOO_LARGE"
-            && ["session:events-since", "session:agent-events", "visualization:read", "visualization:export"].includes(entry.channel)) {
+          if (
+            frame.error?.sub_code === "REMOTE_RESPONSE_TOO_LARGE" &&
+            ["session:events-since", "session:agent-events", "visualization:read", "visualization:export"].includes(
+              entry.channel
+            )
+          ) {
             entry.fetchingTranscript = true;
             fetch(`http://127.0.0.1:${port}/api/transcript`, {
               method: "POST",
               headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
               body: entry.input,
               signal: entry.abort.signal
-            }).then(async (response) => {
-              if (!response.ok) throw new Error(`Transcript read failed (HTTP ${response.status})`);
-              const reply = await response.json();
-              if (!reply || typeof reply !== "object" || Array.isArray(reply)) {
-                throw new Error("Malformed transcript response");
-              }
-              finishResponse(frame.id, reply);
-            }).catch((error) => {
-              if (pending.delete(frame.id)) entry.reject(error);
-            });
+            })
+              .then(async (response) => {
+                if (!response.ok) throw new Error(`Transcript read failed (HTTP ${response.status})`);
+                const reply = await response.json();
+                if (!reply || typeof reply !== "object" || Array.isArray(reply)) {
+                  throw new Error("Malformed transcript response");
+                }
+                finishResponse(frame.id, reply);
+              })
+              .catch((error) => {
+                if (pending.delete(frame.id)) entry.reject(error);
+              });
             return;
           }
           finishResponse(frame.id, frame);

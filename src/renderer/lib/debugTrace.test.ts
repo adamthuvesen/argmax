@@ -13,7 +13,12 @@ function event(id: string, type: string, createdAt: string, message = ""): Timel
   return { id, sessionId: "s1", type, message, payload: {}, createdAt };
 }
 
-function raw(id: string, content: string, createdAt: string, stream: RawProviderOutput["stream"] = "stdout"): RawProviderOutput {
+function raw(
+  id: string,
+  content: string,
+  createdAt: string,
+  stream: RawProviderOutput["stream"] = "stdout"
+): RawProviderOutput {
   return { id, sessionId: "s1", stream, content, createdAt };
 }
 
@@ -28,7 +33,10 @@ describe("buildTraceRows", () => {
   });
 
   it("splits a multi-line chunk into one row per line and skips blanks", () => {
-    const rows = buildTraceRows([], [raw("r1", '{"type":"system"}\n\n{"type":"result"}\n', "2026-09-01T10:00:00.000Z")]);
+    const rows = buildTraceRows(
+      [],
+      [raw("r1", '{"type":"system"}\n\n{"type":"result"}\n', "2026-09-01T10:00:00.000Z")]
+    );
 
     expect(rows.map((row) => row.summary)).toEqual(["system", "result"]);
   });
@@ -66,11 +74,17 @@ describe("buildTraceRows", () => {
       reason: "unsupported-type"
     });
     expect(row?.detail).not.toContain("large prompt");
-    expect(row?.raw).toBe(JSON.stringify({
-      type: source.type,
-      message: source.message,
-      payload: source.payload
-    }, null, 2));
+    expect(row?.raw).toBe(
+      JSON.stringify(
+        {
+          type: source.type,
+          message: source.message,
+          payload: source.payload
+        },
+        null,
+        2
+      )
+    );
   });
 
   it("keeps malformed persisted events inspectable", () => {
@@ -84,11 +98,17 @@ describe("buildTraceRows", () => {
       kind: "unknown",
       reason: "invalid-payload"
     });
-    expect(row?.raw).toBe(JSON.stringify({
-      type: source.type,
-      message: source.message,
-      payload: null
-    }, null, 2));
+    expect(row?.raw).toBe(
+      JSON.stringify(
+        {
+          type: source.type,
+          message: source.message,
+          payload: null
+        },
+        null,
+        2
+      )
+    );
   });
 });
 

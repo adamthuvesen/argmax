@@ -1,12 +1,4 @@
-export type AccentId =
-  | "green"
-  | "teal"
-  | "purple"
-  | "neutral"
-  | "black"
-  | "orange"
-  | "blue"
-  | "coral";
+export type AccentId = "green" | "teal" | "purple" | "neutral" | "black" | "orange" | "blue" | "coral";
 
 type AccentOption = {
   id: AccentId;

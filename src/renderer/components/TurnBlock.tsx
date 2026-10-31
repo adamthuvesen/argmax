@@ -139,10 +139,7 @@ export function TurnBlock({
   /** "Revert to here", when this turn has a before-turn checkpoint. */
   revert?: JSX.Element;
 }): JSX.Element {
-  const toolRunning = useMemo(
-    () => toolItems.some((item) => item.tool.status === "running"),
-    [toolItems]
-  );
+  const toolRunning = useMemo(() => toolItems.some((item) => item.tool.status === "running"), [toolItems]);
   // The parent's active flag is authoritative, including resumable pauses.
   // Only a finished turn may settle its activity and expose its footer.
   // Fall back to tool status for isolated component tests and narrow callers.
@@ -173,9 +170,8 @@ export function TurnBlock({
   // Claude keeps a background agent's launch row open until the agent reports,
   // and the launching turn can finish first. Fall back to the last event seen
   // rather than read the open row as zero elapsed.
-  const endedAtMs = running ? bounds.endedAt : bounds.endedAt ?? bounds.lastSeenAt;
-  const elapsedMs =
-    endedAtMs !== null && startedAtMs > 0 ? Math.max(0, endedAtMs - startedAtMs) : 0;
+  const endedAtMs = running ? bounds.endedAt : (bounds.endedAt ?? bounds.lastSeenAt);
+  const elapsedMs = endedAtMs !== null && startedAtMs > 0 ? Math.max(0, endedAtMs - startedAtMs) : 0;
 
   // Tool-group expansion is owned by the parent (it builds the tool nodes), so
   // the chip and the per-group chevrons stay in sync. The chip just reflects it
@@ -211,7 +207,9 @@ export function TurnBlock({
       ? ` · ${toolItems.length} ${toolItems.length === 1 ? "step" : "steps"}`
       : "";
   const staticChipLabel = running
-    ? paused ? "Waiting" : "Working"
+    ? paused
+      ? "Waiting"
+      : "Working"
     : `${elapsedLabel ? `Worked for ${elapsedLabel}` : "Worked"}${stepCount}`;
   const headerTimestampLabel = useMemo(() => {
     if (!headerTimestampIso) return "";
@@ -220,9 +218,7 @@ export function TurnBlock({
     const d = new Date(ms);
     const now = new Date();
     const sameDay =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
+      d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     if (sameDay) {
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     }
@@ -292,9 +288,13 @@ export function TurnBlock({
             aria-label={staticChipLabel}
             title={staticChipLabel}
             {...(hasDisclosure ? { "aria-expanded": toolsAreExpanded } : {})}
-            {...(hasDisclosure && onToggleTools ? { onClick: () => {
-              onToggleTools();
-            } } : {})}
+            {...(hasDisclosure && onToggleTools
+              ? {
+                  onClick: () => {
+                    onToggleTools();
+                  }
+                }
+              : {})}
           >
             {liveStartMs !== null ? (
               <span>
@@ -317,16 +317,9 @@ export function TurnBlock({
       </div>
       {brief?.quote ?? null}
       {renderedBody.length > 0 ? (
-        <div
-          className="turn-block-body"
-          data-just-revealed={justRevealed ? "true" : undefined}
-        >
+        <div className="turn-block-body" data-just-revealed={justRevealed ? "true" : undefined}>
           {hiddenEarlierBodyCount > 0 ? (
-            <ShowEarlier
-              noun="activity"
-              count={hiddenEarlierBodyCount}
-              onClick={showEarlierBody}
-            />
+            <ShowEarlier noun="activity" count={hiddenEarlierBodyCount} onClick={showEarlierBody} />
           ) : null}
           {/* Each row keeps its parent as neighboring activity arrives or
               moves. Regrouping runs here remounts open disclosures. */}
@@ -341,7 +334,7 @@ export function TurnBlock({
           ))}
         </div>
       ) : null}
-      {!running ? changes ?? null : null}
+      {!running ? (changes ?? null) : null}
       {!running && (turnMarkdown || onFork || revert) ? (
         <TurnFooter
           {...(turnMarkdown ? { turnMarkdown } : {})}
@@ -375,9 +368,7 @@ function TurnFooter({
           type="button"
           className="turn-block-footer-action"
           aria-label="Copy reply"
-          title={
-            copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"
-          }
+          title={copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy reply"}
           onClick={() => void copy(turnMarkdown)}
         >
           {/* The outcome has to be visible on the button: a tooltip nobody

@@ -36,11 +36,7 @@ function usePreview(sourceId: string, dispatch: ReviewIpcDispatch, storageKey: s
   });
 }
 
-function usePreviewWithSourceReset(
-  sourceId: string,
-  dispatch: ReviewIpcDispatch,
-  storageKey: string | null
-) {
+function usePreviewWithSourceReset(sourceId: string, dispatch: ReviewIpcDispatch, storageKey: string | null) {
   const preview = usePreview(sourceId, dispatch, storageKey);
   const resetForSourceChange = preview.resetForSourceChange;
   const previousSourceId = useRef(sourceId);
@@ -70,14 +66,18 @@ describe("useFilePreview dirty buffers", () => {
 
   it("keeps a failed save retryable and reports it in the toast", async () => {
     const readFile = vi.fn<(path: string) => Promise<WorkspaceFilePreview>>().mockResolvedValue({
-      kind: "text", content: "on disk\n", size: 8, mtimeMs: 10
+      kind: "text",
+      content: "on disk\n",
+      size: 8,
+      mtimeMs: 10
     });
-    const writeFile = vi.fn<ReviewIpcDispatch["writeFile"]>()
+    const writeFile = vi
+      .fn<ReviewIpcDispatch["writeFile"]>()
       .mockRejectedValueOnce(new Error("disk full"))
       .mockResolvedValueOnce({ ok: "true", mtimeMs: 11, size: 6 });
-    const { result } = renderHook(() => usePreview(
-      "workspace-retry", { ...makeDispatch(readFile), writeFile }, "files.session-retry"
-    ));
+    const { result } = renderHook(() =>
+      usePreview("workspace-retry", { ...makeDispatch(readFile), writeFile }, "files.session-retry")
+    );
 
     act(() => result.current.openFile("src/file.ts"));
     await waitFor(() => expect(result.current.previewState).toBe("ready"));
@@ -118,9 +118,7 @@ describe("useFilePreview dirty buffers", () => {
     expect(first.result.current.isDirty).toBe(true);
     first.unmount();
 
-    const restored = renderHook(() =>
-      usePreview("workspace-1", dispatch, "argmax.reviewPanel.files.session-1")
-    );
+    const restored = renderHook(() => usePreview("workspace-1", dispatch, "argmax.reviewPanel.files.session-1"));
 
     await waitFor(() => expect(restored.result.current.previewState).toBe("ready"));
     expect(restored.result.current.activeTabPath).toBe("src/file.ts");

@@ -31,8 +31,17 @@ function selectAssistantText(): void {
 describe("SessionConversation selection annotations", () => {
   beforeEach(() => {
     // jsdom implements Range selection/toString but not layout measurement.
-    Range.prototype.getBoundingClientRect = () =>
-      ({ left: 40, top: 200, right: 240, bottom: 216, width: 200, height: 16, x: 40, y: 200, toJSON: () => ({}) });
+    Range.prototype.getBoundingClientRect = () => ({
+      left: 40,
+      top: 200,
+      right: 240,
+      bottom: 216,
+      width: 200,
+      height: 16,
+      x: 40,
+      y: 200,
+      toJSON: () => ({})
+    });
     window.localStorage.clear();
     window.argmax = {
       prs: { listForSession: vi.fn(() => new Promise(() => {})) }
@@ -50,9 +59,7 @@ describe("SessionConversation selection annotations", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Add to Chat" }));
 
-    expect(
-      screen.getByLabelText("Annotation: Day two looks reassuringly boring.")
-    ).toBeTruthy();
+    expect(screen.getByLabelText("Annotation: Day two looks reassuringly boring.")).toBeTruthy();
     expect(screen.queryByRole("menu", { name: "Selection actions" })).toBeNull();
     expect(window.getSelection()?.isCollapsed ?? true).toBe(true);
   });
@@ -73,9 +80,7 @@ describe("SessionConversation selection annotations", () => {
         "> Day two looks reassuringly boring.\n\n" +
         "why is that good?"
     );
-    await waitFor(() =>
-      expect(screen.queryByLabelText("Annotation: Day two looks reassuringly boring.")).toBeNull()
-    );
+    await waitFor(() => expect(screen.queryByLabelText("Annotation: Day two looks reassuringly boring.")).toBeNull());
   });
 
   it.each(["click", "Enter"])("sends only a conversation excerpt via %s", async (method) => {

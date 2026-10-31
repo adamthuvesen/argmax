@@ -6,10 +6,8 @@ afterEach(() => {
   cleanup();
 });
 
-const FIRST =
-  '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
-const SECOND =
-  '2026-09-01T07:21:37.017965Z ERROR codex_core::session: stream disconnected session_id="def"';
+const FIRST = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+const SECOND = '2026-09-01T07:21:37.017965Z ERROR codex_core::session: stream disconnected session_id="def"';
 const MCP =
   '2026-09-01T07:21:37.004170Z ERROR rmcp::transport::streamable_http_client: fail to delete session: Auth error: OAuth token refresh failed: Server returned error response: invalid_refresh_token session_id="abc"';
 

@@ -36,18 +36,8 @@ import {
   readStoredSidebarIntensity,
   type SidebarIntensity
 } from "../lib/sidebarIntensity.js";
-import {
-  applyContrastToDocument,
-  CONTRAST_STORAGE_KEY,
-  readStoredContrast,
-  type Contrast
-} from "../lib/contrast.js";
-import {
-  applyAccentToDocument,
-  readStoredAccent,
-  writeStoredAccent,
-  type AccentId
-} from "../lib/accent.js";
+import { applyContrastToDocument, CONTRAST_STORAGE_KEY, readStoredContrast, type Contrast } from "../lib/contrast.js";
+import { applyAccentToDocument, readStoredAccent, writeStoredAccent, type AccentId } from "../lib/accent.js";
 import {
   applyUserBubbleTintToDocument,
   readStoredUserBubbleTint,
@@ -102,13 +92,9 @@ export function useLauncherAppearance(): {
   detectedIdes: DetectedIde[];
 } {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredTheme());
-  const [browserThemeMode, setBrowserThemeMode] = useState<ThemeMode>(() =>
-    readStoredBrowserTheme()
-  );
+  const [browserThemeMode, setBrowserThemeMode] = useState<ThemeMode>(() => readStoredBrowserTheme());
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
-  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
-    readStoredUserBubbleTint()
-  );
+  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() => readStoredUserBubbleTint());
   const [fontFamily, setFontFamily] = useState<FontFamilyId>(() => readStoredFont());
   const [fontSize, setFontSize] = useState<FontSize>(() => readStoredFontSize());
   const [chatFontSize, setChatFontSize] = useState<FontSize>(() => readStoredChatFontSize());
@@ -117,9 +103,7 @@ export function useLauncherAppearance(): {
   const [backgroundIntensity, setBackgroundIntensity] = useState<BackgroundIntensity>(() =>
     readStoredBackgroundIntensity()
   );
-  const [sidebarIntensity, setSidebarIntensity] = useState<SidebarIntensity>(() =>
-    readStoredSidebarIntensity()
-  );
+  const [sidebarIntensity, setSidebarIntensity] = useState<SidebarIntensity>(() => readStoredSidebarIntensity());
   const [contrast, setContrast] = useState<Contrast>(() => readStoredContrast());
   const [defaultIde, setDefaultIde] = useState<IdeId | null>(() => readStoredDefaultIde());
   const [detectedIdes, setDetectedIdes] = useState<DetectedIde[]>([]);

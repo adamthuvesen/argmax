@@ -62,9 +62,7 @@ describe("RouterCostCard", () => {
           outputTokensPerSecond: 41.6,
           medianTurnOutputTokens: 12_000,
           pricedOutputTokens: 16_000,
-          models: [
-            { provider: "claude", modelId: "claude-opus-5-5", turns: 4, costUsd: 8, estimated: false }
-          ]
+          models: [{ provider: "claude", modelId: "claude-opus-5-5", turns: 4, costUsd: 8, estimated: false }]
         }),
         tier({ tier: "balanced", turns: 2, measuredCostUsd: 1 }),
         tier({
@@ -129,22 +127,37 @@ describe("RouterCostCard", () => {
   });
 
   it("expands grouped decisions with effort, classification, and the recorded reason", async () => {
-    stubRouterCost({ tiers: [tier({
-      turns: 4,
-      decisions: [
-        {
-          provider: "claude", modelId: "claude-opus-5-5", reasoningEffort: "medium",
-          kind: "coding", difficulty: "standard", decision: "kept",
-          reason: "coding · standard; routes to Composer 2.5 on another provider, staying",
-          count: 2, turns: 3
-        },
-        {
-          provider: "claude", modelId: "claude-opus-5-5", reasoningEffort: "high",
-          kind: null, difficulty: null, decision: "fallback",
-          reason: "unrouted: classifier timeout", count: 1, turns: 1
-        }
+    stubRouterCost({
+      tiers: [
+        tier({
+          turns: 4,
+          decisions: [
+            {
+              provider: "claude",
+              modelId: "claude-opus-5-5",
+              reasoningEffort: "medium",
+              kind: "coding",
+              difficulty: "standard",
+              decision: "kept",
+              reason: "coding · standard; routes to Composer 2.5 on another provider, staying",
+              count: 2,
+              turns: 3
+            },
+            {
+              provider: "claude",
+              modelId: "claude-opus-5-5",
+              reasoningEffort: "high",
+              kind: null,
+              difficulty: null,
+              decision: "fallback",
+              reason: "unrouted: classifier timeout",
+              count: 1,
+              turns: 1
+            }
+          ]
+        })
       ]
-    })] });
+    });
     render(<RouterCostCard usageWindow="7d" visible />);
     const toggle = await screen.findByRole("button", { name: "Balance routing decisions" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");

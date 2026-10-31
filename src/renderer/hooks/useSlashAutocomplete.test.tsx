@@ -35,7 +35,9 @@ function Harness({
       <button type="button" onClick={state.dismiss}>
         dismiss
       </button>
-      <span data-testid="labels">{state.items.map((item) => (item.kind === "command" ? item.command.label : item.skill.name)).join(",")}</span>
+      <span data-testid="labels">
+        {state.items.map((item) => (item.kind === "command" ? item.command.label : item.skill.name)).join(",")}
+      </span>
       <span data-testid="filtered-count">{state.items.length}</span>
     </div>
   );
@@ -95,9 +97,7 @@ describe("useSlashAutocomplete — stale-state + failure-latch guards", () => {
     render(<Harness initialInput="/review" />);
 
     await waitFor(() =>
-      expect(screen.getByTestId("labels").textContent).toBe(
-        "review,review-notes,plan-review,code-review"
-      )
+      expect(screen.getByTestId("labels").textContent).toBe("review,review-notes,plan-review,code-review")
     );
   });
 
@@ -183,9 +183,9 @@ describe("useSlashAutocomplete — composer commands", () => {
   let commands: ComposerCommand[];
 
   beforeEach(() => {
-    skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([
-      { name: "plan-review", description: "Review a plan", source: "user" }
-    ]);
+    skillsList = vi
+      .fn<ArgmaxApi["skills"]["list"]>()
+      .mockResolvedValue([{ name: "plan-review", description: "Review a plan", source: "user" }]);
     Object.defineProperty(window, "argmax", {
       configurable: true,
       writable: true,
@@ -206,9 +206,7 @@ describe("useSlashAutocomplete — composer commands", () => {
   it("lists commands above the skills and runs the picked one", async () => {
     render(<Harness commands={commands} initialInput="tidy this up /pl" />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("labels").textContent).toBe("Plan,plan-review")
-    );
+    await waitFor(() => expect(screen.getByTestId("labels").textContent).toBe("Plan,plan-review"));
 
     const probe = screen.getByLabelText<HTMLInputElement>("probe");
     fireEvent.keyDown(probe, { key: "Enter" });
@@ -254,9 +252,9 @@ describe("useSlashAutocomplete — dismissal", () => {
   let skillsList: ReturnType<typeof vi.fn<ArgmaxApi["skills"]["list"]>>;
 
   beforeEach(() => {
-    skillsList = vi.fn<ArgmaxApi["skills"]["list"]>().mockResolvedValue([
-      { name: "review", description: "review code", source: "user" }
-    ]);
+    skillsList = vi
+      .fn<ArgmaxApi["skills"]["list"]>()
+      .mockResolvedValue([{ name: "review", description: "review code", source: "user" }]);
     Object.defineProperty(window, "argmax", {
       configurable: true,
       writable: true,

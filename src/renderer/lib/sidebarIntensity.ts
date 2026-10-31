@@ -18,9 +18,7 @@ export function sidebarIntensityHint(intensity: SidebarIntensity): string {
 
 export function toSidebarIntensity(raw: string | number | null | undefined): SidebarIntensity | null {
   if (typeof raw === "number") {
-    return Number.isInteger(raw) && raw >= SIDEBAR_INTENSITY_MIN && raw <= SIDEBAR_INTENSITY_MAX
-      ? raw
-      : null;
+    return Number.isInteger(raw) && raw >= SIDEBAR_INTENSITY_MIN && raw <= SIDEBAR_INTENSITY_MAX ? raw : null;
   }
   if (typeof raw !== "string" || !APPEARANCE_LEVEL_PATTERN.test(raw)) return null;
   return Number(raw);
@@ -28,8 +26,7 @@ export function toSidebarIntensity(raw: string | number | null | undefined): Sid
 
 export function readStoredSidebarIntensity(): SidebarIntensity {
   if (typeof window === "undefined") return DEFAULT_SIDEBAR_INTENSITY;
-  return toSidebarIntensity(window.localStorage.getItem(SIDEBAR_INTENSITY_STORAGE_KEY))
-    ?? DEFAULT_SIDEBAR_INTENSITY;
+  return toSidebarIntensity(window.localStorage.getItem(SIDEBAR_INTENSITY_STORAGE_KEY)) ?? DEFAULT_SIDEBAR_INTENSITY;
 }
 
 export function applySidebarIntensityToDocument(intensity: SidebarIntensity): void {

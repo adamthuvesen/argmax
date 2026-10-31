@@ -33,9 +33,7 @@ export function fontSizeBasePx(size: FontSize): number {
 export function toFontSize(raw: string | null | undefined): FontSize | null {
   if (!raw) return null;
   const parsed = Number.parseInt(raw, 10);
-  return Number.isInteger(parsed) && parsed >= FONT_SIZE_MIN && parsed <= FONT_SIZE_MAX
-    ? (parsed as FontSize)
-    : null;
+  return Number.isInteger(parsed) && parsed >= FONT_SIZE_MIN && parsed <= FONT_SIZE_MAX ? (parsed as FontSize) : null;
 }
 
 const SYSTEM_MONO_FALLBACK = 'ui-monospace, "SFMono-Regular", Consolas, monospace';
@@ -184,9 +182,7 @@ export function resolveMonoFontStack(): string {
   if (typeof document === "undefined") {
     return SYSTEM_MONO_FALLBACK;
   }
-  const computed = getComputedStyle(document.documentElement)
-    .getPropertyValue("--font-mono")
-    .trim();
+  const computed = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim();
   return computed || SYSTEM_MONO_FALLBACK;
 }
 
@@ -232,10 +228,7 @@ const FONT_CSS_LOADERS: Partial<Record<FontFamilyId, () => Promise<unknown>>> = 
     ]),
   inter: () => import("@fontsource-variable/inter/wght.css"),
   "geist-sans": () =>
-    Promise.all([
-      import("@fontsource-variable/geist/wght.css"),
-      import("@fontsource-variable/geist-mono/wght.css")
-    ]),
+    Promise.all([import("@fontsource-variable/geist/wght.css"), import("@fontsource-variable/geist-mono/wght.css")]),
   "ibm-plex-sans": () => import("@fontsource-variable/ibm-plex-sans/wght.css")
 };
 

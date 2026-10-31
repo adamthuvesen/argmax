@@ -6,7 +6,7 @@ from the main actor.
 
 ## Run the checks
 
-The functional suite is `npm run test:ios`. Precheck and CI run it. See
+The functional suite is `npm run test:ios`. The pre-push gate and CI run it. See
 [testing.md](testing.md#iphone-tests).
 
 Two suites stay out of that lane, and neither runs in CI. `NativePerformanceTests`

@@ -29,9 +29,7 @@ import type { ComposerField } from "../components/composerEditor/composerField.j
 import { showErrorToast } from "../state/toast.js";
 
 function createAttachmentPreviewUrl(blob: Blob): string | null {
-  return typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
-    ? URL.createObjectURL(blob)
-    : null;
+  return typeof URL !== "undefined" && typeof URL.createObjectURL === "function" ? URL.createObjectURL(blob) : null;
 }
 
 function revokeAttachmentPreviewUrl(url: string): void {
@@ -265,10 +263,13 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
     [draftKey, rememberPreviewUrl]
   );
 
-  const removePendingAttachment = useCallback((filePath: string): void => {
-    removePreviewUrl(filePath);
-    setPendingAttachments((prev) => prev.filter((a) => a.filePath !== filePath));
-  }, [removePreviewUrl]);
+  const removePendingAttachment = useCallback(
+    (filePath: string): void => {
+      removePreviewUrl(filePath);
+      setPendingAttachments((prev) => prev.filter((a) => a.filePath !== filePath));
+    },
+    [removePreviewUrl]
+  );
 
   const onComposerDragEnter = useCallback((event: ReactDragEvent<HTMLFormElement>): void => {
     if (!isAttachableDrag(event.dataTransfer)) return;
@@ -303,8 +304,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
           withPath.push(file);
           continue;
         }
-        const mime =
-          isSupportedImageMime(file.type) ? file.type : imageMimeFromFileName(file.name);
+        const mime = isSupportedImageMime(file.type) ? file.type : imageMimeFromFileName(file.name);
         if (!mime) continue;
         imageBlobs.push(file.type === mime ? file : new File([file], file.name || "image", { type: mime }));
       }
@@ -364,7 +364,8 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
       const html = clipboard.getData("text/html");
       // A copy from this composer carries its own typed entry; the field takes
       // it whole, chips and all, and the HTML flavor has nothing to add.
-      if (!html || !shouldPreferHtmlFlavor(html) || Array.from(clipboard.types ?? []).includes(COMPOSER_CLIPBOARD_MIME)) return;
+      if (!html || !shouldPreferHtmlFlavor(html) || Array.from(clipboard.types ?? []).includes(COMPOSER_CLIPBOARD_MIME))
+        return;
       event.preventDefault();
       const field = fieldRef?.current ?? null;
       const start = field?.selectionStart ?? null;
@@ -422,9 +423,7 @@ export function useComposerAttachments(deps: ComposerAttachmentsDeps): ComposerA
   const attachSavedAttachment = useCallback((attachment: ComposerAttachment, label?: string): void => {
     if (label) setAttachmentLabels((prev) => ({ ...prev, [attachment.filePath]: label }));
     setPendingAttachments((prev) =>
-      prev.some((existing) => existing.filePath === attachment.filePath)
-        ? prev
-        : [...prev, attachment]
+      prev.some((existing) => existing.filePath === attachment.filePath) ? prev : [...prev, attachment]
     );
   }, []);
 

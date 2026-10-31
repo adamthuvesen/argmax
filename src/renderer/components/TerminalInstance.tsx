@@ -62,12 +62,5 @@ export function TerminalInstance({
     runtime.term.focus();
   }, [visible]);
 
-  return (
-    <div
-      ref={containerRef}
-      className="terminal-surface"
-      role="region"
-      aria-label="Integrated terminal"
-    />
-  );
+  return <div ref={containerRef} className="terminal-surface" role="region" aria-label="Integrated terminal" />;
 }

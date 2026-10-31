@@ -6,13 +6,7 @@ import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscap
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { useMotionPresence } from "../hooks/useMotionPresence.js";
 
-export function KeyboardCheatSheet({
-  open,
-  onClose
-}: {
-  open: boolean;
-  onClose: () => void;
-}): JSX.Element | null {
+export function KeyboardCheatSheet({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element | null {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const motion = useMotionPresence(open);

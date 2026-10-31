@@ -1,12 +1,5 @@
 import { X } from "lucide-react";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type JSX,
-  type MouseEvent as ReactMouseEvent
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";

@@ -27,7 +27,8 @@ export const PROVIDER_SETUP: Record<ProviderId, ProviderSetup> = {
     installCommand: "curl -fsSL https://claude.ai/install.sh | bash",
     loginCommand: "claude auth login",
     mcpCommand: "claude mcp add <name> -- <command>",
-    mcpHint: "Servers are managed with the Claude CLI or ~/.claude.json. Authentication is opened with /mcp inside Claude."
+    mcpHint:
+      "Servers are managed with the Claude CLI or ~/.claude.json. Authentication is opened with /mcp inside Claude."
   },
   codex: {
     displayName: "Codex",

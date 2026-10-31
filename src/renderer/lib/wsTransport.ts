@@ -26,7 +26,15 @@ import type { EventSubscription } from "../../shared/types.js";
 import type { BridgeTransport } from "./tauriBridge.js";
 import { errorMessage } from "../../shared/error.js";
 import { logger } from "../../shared/logger.js";
-import { createRemoteOperationOwner, markRemoteOperationSent, markRemoteOperationUncertain, prepareRemoteOperation, remoteOperationWasSent, settleRemoteOperation, type RemoteOperation } from "./remoteOperations.js";
+import {
+  createRemoteOperationOwner,
+  markRemoteOperationSent,
+  markRemoteOperationUncertain,
+  prepareRemoteOperation,
+  remoteOperationWasSent,
+  settleRemoteOperation,
+  type RemoteOperation
+} from "./remoteOperations.js";
 
 const TOKEN_KEY = "argmax.remote.token";
 const MIN_RECONNECT_MS = 500;
@@ -57,7 +65,8 @@ const PING_FRAME = JSON.stringify({ type: "ping" });
  * it, and the transport reconnects on its own.
  */
 export const REMOTE_CONNECTION_LOST_MESSAGE = "Argmax remote connection lost";
-const REMOTE_OUTCOME_UNKNOWN_MESSAGE = "The connection was lost before this action's outcome was confirmed. Check the chat or workspace. Retrying the same action will recover its outcome without running it twice.";
+const REMOTE_OUTCOME_UNKNOWN_MESSAGE =
+  "The connection was lost before this action's outcome was confirmed. Check the chat or workspace. Retrying the same action will recover its outcome without running it twice.";
 
 /** The socket handle the transport drives; the browser `WebSocket` is wrapped. */
 export interface RemoteSocket {
@@ -107,9 +116,7 @@ let connectionState: RemoteConnectionState = { status: "connected", resync: fals
 const connectionListeners = new Set<(state: RemoteConnectionState) => void>();
 
 /** Current state is replayed on subscribe, so late subscribers are not blind. */
-export function subscribeRemoteConnection(
-  listener: (state: RemoteConnectionState) => void
-): () => void {
+export function subscribeRemoteConnection(listener: (state: RemoteConnectionState) => void): () => void {
   connectionListeners.add(listener);
   listener(connectionState);
   return () => {
@@ -167,7 +174,12 @@ function transcriptUrl(socketUrl: string): string {
 }
 
 function canFetchTranscript(channel: IpcChannel): boolean {
-  return channel === "session:events-since" || channel === "session:agent-events" || channel === "visualization:read" || channel === "visualization:export";
+  return (
+    channel === "session:events-since" ||
+    channel === "session:agent-events" ||
+    channel === "visualization:read" ||
+    channel === "visualization:export"
+  );
 }
 
 function asFrame(value: unknown): Record<string, unknown> | null {
@@ -278,7 +290,9 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     if (request.retryTimer !== null) clearTimeout(request.retryTimer);
     if (request.operation && !request.sent) settleRemoteOperation(request.operation);
     if (request.operation && request.sent) markRemoteOperationUncertain(request.operation);
-    request.reject(new Error(request.operation && request.sent ? REMOTE_OUTCOME_UNKNOWN_MESSAGE : REMOTE_CONNECTION_LOST_MESSAGE));
+    request.reject(
+      new Error(request.operation && request.sent ? REMOTE_OUTCOME_UNKNOWN_MESSAGE : REMOTE_CONNECTION_LOST_MESSAGE)
+    );
   }
 
   function expireQueued(request: PendingRequest): void {
@@ -347,9 +361,12 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
       }, 500);
       return;
     }
-    if (failure?.code === "SERVICE_ERROR" &&
-        failure.sub_code === "REMOTE_RESPONSE_TOO_LARGE" &&
-        canFetchTranscript(request.channel) && !request.fallbackAttempted) {
+    if (
+      failure?.code === "SERVICE_ERROR" &&
+      failure.sub_code === "REMOTE_RESPONSE_TOO_LARGE" &&
+      canFetchTranscript(request.channel) &&
+      !request.fallbackAttempted
+    ) {
       request.fallbackAttempted = true;
       request.fallbackController = new AbortController();
       void fetchTranscript(request, generation);
@@ -382,7 +399,7 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
       const response = await fetchRequest(transcriptUrl(url), {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${token ?? ""}`,
+          Authorization: `Bearer ${token ?? ""}`,
           "Content-Type": "application/json"
         },
         body: request.transcriptBody,
@@ -416,15 +433,15 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
       inFlight.delete(request.id);
       request.fallbackController = null;
       if (timedOut) {
-        request.reject(remoteFailure({
-          code: "SERVICE_ERROR",
-          sub_code: "REMOTE_RESPONSE_TIMEOUT",
-          message: "The Mac did not confirm this request in time."
-        }));
+        request.reject(
+          remoteFailure({
+            code: "SERVICE_ERROR",
+            sub_code: "REMOTE_RESPONSE_TIMEOUT",
+            message: "The Mac did not confirm this request in time."
+          })
+        );
       } else {
-        request.reject(controller.signal.aborted
-          ? new Error(REMOTE_CONNECTION_LOST_MESSAGE)
-          : error);
+        request.reject(controller.signal.aborted ? new Error(REMOTE_CONNECTION_LOST_MESSAGE) : error);
       }
     } finally {
       clearTimeout(timeout);
@@ -654,7 +671,10 @@ export function createWsTransport(options: WsTransportOptions = {}): BridgeTrans
     });
   }
 
-  function subscribe<C extends keyof PushPayloads>(channel: C, listener: (payload: PushPayloads[C]) => void): EventSubscription {
+  function subscribe<C extends keyof PushPayloads>(
+    channel: C,
+    listener: (payload: PushPayloads[C]) => void
+  ): EventSubscription {
     // Payloads are host-typed per channel exactly as with Tauri's `listen`.
     const erased = listener as (payload: unknown) => void;
     let channelListeners = listeners.get(channel);

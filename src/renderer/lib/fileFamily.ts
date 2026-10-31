@@ -53,11 +53,7 @@ const EXTENSION_FAMILIES: Record<string, FileFamily> = {
  *  (`accentTokens.test.ts`) and the Python/Rust affixes (`test_serving.py`,
  *  `serving_test.go`). */
 function isTestPath(fileName: string): boolean {
-  return (
-    /\.(test|spec)\./.test(fileName) ||
-    /^(test|spec)_/.test(fileName) ||
-    /_(test|spec)\.[^.]+$/.test(fileName)
-  );
+  return /\.(test|spec)\./.test(fileName) || /^(test|spec)_/.test(fileName) || /_(test|spec)\.[^.]+$/.test(fileName);
 }
 
 export function fileFamily(path: string): FileFamily {

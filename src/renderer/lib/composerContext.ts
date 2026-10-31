@@ -75,11 +75,7 @@ function titleForLink(title: string): string {
 }
 
 /** The text that stands for a chat reference in a prompt. */
-export function chatReferenceLink(reference: {
-  sessionId: string;
-  eventId?: string;
-  title: string;
-}): string {
+export function chatReferenceLink(reference: { sessionId: string; eventId?: string; title: string }): string {
   if (!new RegExp(`^${ID_CHARS}$`).test(reference.sessionId)) {
     throw new Error(`Not a chat id: ${reference.sessionId}`);
   }
@@ -190,9 +186,7 @@ export function decodeClipboardPayload(raw: string): ComposerClipboardPayload | 
   const consistent =
     listed.length === inText.length &&
     listed.every(
-      (entry, index) =>
-        entry?.sessionId === inText[index]?.sessionId && entry?.eventId === inText[index]?.eventId
+      (entry, index) => entry?.sessionId === inText[index]?.sessionId && entry?.eventId === inText[index]?.eventId
     );
   return consistent ? { v: CHAT_REFERENCE_VERSION, text, references: inText } : null;
 }
-

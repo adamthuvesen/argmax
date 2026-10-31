@@ -181,7 +181,7 @@ export const demoSnapshot: DashboardSnapshot = {
       launchKind: "agent",
       // A member of the demo arc below — one board chat pulled in under the
       // review-studio coordinator's arc for the Arc page screenshot.
-      arcId: "arc-review-studio",
+      arcId: "arc-review-studio"
     },
     {
       id: "session-multitask-changelog",
@@ -202,7 +202,7 @@ export const demoSnapshot: DashboardSnapshot = {
       costUsd: 0,
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextTokens: 0,
-      imported: false,
+      imported: false
     },
     {
       id: "session-review-studio",
@@ -227,7 +227,7 @@ export const demoSnapshot: DashboardSnapshot = {
       imported: false,
       launchKind: "agent",
       // The demo arc's coordinator chat.
-      arcId: "arc-review-studio",
+      arcId: "arc-review-studio"
     },
     {
       id: "session-approval-gate",
@@ -249,7 +249,7 @@ export const demoSnapshot: DashboardSnapshot = {
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextTokens: 0,
       imported: false,
-      launchKind: "agent",
+      launchKind: "agent"
     },
     {
       id: "session-onboarding-copy",
@@ -269,7 +269,7 @@ export const demoSnapshot: DashboardSnapshot = {
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextTokens: 0,
       imported: false,
-      launchKind: "agent",
+      launchKind: "agent"
     }
   ],
   events: [
@@ -318,7 +318,10 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       type: "command.completed",
       message: "tool_result",
-      payload: { tool_use_id: "tu_board_2", content: "src/renderer/board/layout.ts\nsrc/renderer/board/density.ts\nsrc/renderer/board/markers.ts" },
+      payload: {
+        tool_use_id: "tu_board_2",
+        content: "src/renderer/board/layout.ts\nsrc/renderer/board/density.ts\nsrc/renderer/board/markers.ts"
+      },
       createdAt: "2026-05-08T15:53:48.000Z"
     },
     {
@@ -350,7 +353,11 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       type: "command.completed",
       message: "tool_result",
-      payload: { tool_use_id: "tu_board_4", content: " 142 src/renderer/board/layout.ts\n  88 src/renderer/board/density.ts\n  56 src/renderer/board/markers.ts\n 286 total" },
+      payload: {
+        tool_use_id: "tu_board_4",
+        content:
+          " 142 src/renderer/board/layout.ts\n  88 src/renderer/board/density.ts\n  56 src/renderer/board/markers.ts\n 286 total"
+      },
       createdAt: "2026-05-08T15:53:53.000Z"
     },
     {
@@ -374,7 +381,8 @@ export const demoSnapshot: DashboardSnapshot = {
       id: "ev-sub-think",
       sessionId: "session-ui-board",
       type: "message.delta",
-      message: "The mapping lives in density.ts. I should read it first, then check the three edge cases the prompt names.",
+      message:
+        "The mapping lives in density.ts. I should read it first, then check the three edge cases the prompt names.",
       payload: { parent_tool_use_id: "tu_board_5", thinking: true },
       createdAt: "2026-05-08T15:53:54.200Z"
     },
@@ -391,7 +399,12 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Read",
-      payload: { id: "tu_sub_1", name: "Read", parent_tool_use_id: "tu_board_5", input: { file_path: "src/renderer/board/density.ts" } },
+      payload: {
+        id: "tu_sub_1",
+        name: "Read",
+        parent_tool_use_id: "tu_board_5",
+        input: { file_path: "src/renderer/board/density.ts" }
+      },
       createdAt: "2026-05-08T15:53:54.500Z"
     },
     {
@@ -407,7 +420,12 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Grep",
-      payload: { id: "tu_sub_2", name: "Grep", parent_tool_use_id: "tu_board_5", input: { pattern: "rowHeight", path: "src/renderer" } },
+      payload: {
+        id: "tu_sub_2",
+        name: "Grep",
+        parent_tool_use_id: "tu_board_5",
+        input: { pattern: "rowHeight", path: "src/renderer" }
+      },
       createdAt: "2026-05-08T15:53:55.000Z"
     },
     {
@@ -431,7 +449,12 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Bash",
-      payload: { id: "tu_sub_3", name: "Bash", parent_tool_use_id: "tu_board_5", input: { command: "rg -n 'MAX_ROWS' src/renderer/board" } },
+      payload: {
+        id: "tu_sub_3",
+        name: "Bash",
+        parent_tool_use_id: "tu_board_5",
+        input: { command: "rg -n 'MAX_ROWS' src/renderer/board" }
+      },
       createdAt: "2026-05-08T15:53:55.600Z"
     },
     {
@@ -447,7 +470,12 @@ export const demoSnapshot: DashboardSnapshot = {
       sessionId: "session-ui-board",
       type: "command.started",
       message: "Bash",
-      payload: { id: "tu_sub_4", name: "Bash", parent_tool_use_id: "tu_board_5", input: { command: "npx vitest run src/renderer/board" } },
+      payload: {
+        id: "tu_sub_4",
+        name: "Bash",
+        parent_tool_use_id: "tu_board_5",
+        input: { command: "npx vitest run src/renderer/board" }
+      },
       createdAt: "2026-05-08T15:53:56.100Z"
     },
     {
@@ -497,7 +525,8 @@ export const demoSnapshot: DashboardSnapshot = {
       id: "event-board-message",
       sessionId: "session-ui-board",
       type: "message.completed",
-      message: "Agent board skeleton is rendering; tuning density and attention markers.\n\n- **layout.ts** owns the column grid (12-col, snap to 8px).\n- **density.ts** maps attention level → row height.\n- **markers.ts** paints the gutter indicators.",
+      message:
+        "Agent board skeleton is rendering; tuning density and attention markers.\n\n- **layout.ts** owns the column grid (12-col, snap to 8px).\n- **density.ts** maps attention level → row height.\n- **markers.ts** paints the gutter indicators.",
       payload: { surface: "agent-board" },
       createdAt: "2026-05-08T15:54:00.000Z"
     },

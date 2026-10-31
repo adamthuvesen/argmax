@@ -5,7 +5,8 @@ import { VISUALIZATION_START } from "../lib/visualizationReference.js";
 
 import { VisualizationSessionContext } from "../lib/visualizationSession.js";
 import type { ReactElement } from "react";
-const render = (node: ReactElement) => originalRender(<VisualizationSessionContext.Provider value="session-1">{node}</VisualizationSessionContext.Provider>);
+const render = (node: ReactElement) =>
+  originalRender(<VisualizationSessionContext.Provider value="session-1">{node}</VisualizationSessionContext.Provider>);
 
 const viewer = vi.hoisted(() => vi.fn());
 vi.mock("./HtmlVisualization.js", () => ({
@@ -17,13 +18,22 @@ vi.mock("./HtmlVisualization.js", () => ({
 
 const workspace = { id: "workspace-1", path: "/tmp/project" } as Parameters<typeof StreamingMarkdown>[0]["workspace"];
 const marker = `${VISUALIZATION_START}{"path":"/tmp/my_[chart].html","mode":"wide","title":"Trends"}\uE201`;
-afterEach(() => { cleanup(); viewer.mockClear(); });
+afterEach(() => {
+  cleanup();
+  viewer.mockClear();
+});
 
 describe("visualizations in Markdown", () => {
   it("renders an inline viewer between ordinary prose", async () => {
     render(<StreamingMarkdown text={`Before.\n\n${marker}\n\nAfter.`} streaming={false} workspace={workspace} />);
     await screen.findByRole("figure", { name: "Visualization" });
-    expect(viewer).toHaveBeenCalledWith({ sessionId: "session-1", path: "/tmp/my_[chart].html", mode: "wide", title: "Trends", sourceEventId: undefined });
+    expect(viewer).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      path: "/tmp/my_[chart].html",
+      mode: "wide",
+      title: "Trends",
+      sourceEventId: undefined
+    });
     expect(screen.getByText("Before.")).toBeInTheDocument();
     expect(screen.getByText("After.")).toBeInTheDocument();
   });
@@ -37,7 +47,9 @@ describe("visualizations in Markdown", () => {
   it("renders complete streamed references without healing punctuation in the path", async () => {
     // Warm the splitter as a previous answer does, then start a live block.
     const first = render(<StreamingMarkdown text="Previous answer." streaming={false} />);
-    await act(async () => { await import("../lib/markdownBlocks.js"); });
+    await act(async () => {
+      await import("../lib/markdownBlocks.js");
+    });
     first.unmount();
     render(<StreamingMarkdown text={marker} streaming paced={false} workspace={workspace} />);
     await screen.findByRole("figure", { name: "Visualization" });
@@ -55,7 +67,13 @@ describe("visualizations in Markdown", () => {
   });
 
   it("rejects invalid references without loading a file", () => {
-    render(<StreamingMarkdown text={`${VISUALIZATION_START}{"path":"/tmp/secrets.txt"}\uE201`} streaming={false} workspace={workspace} />);
+    render(
+      <StreamingMarkdown
+        text={`${VISUALIZATION_START}{"path":"/tmp/secrets.txt"}\uE201`}
+        streaming={false}
+        workspace={workspace}
+      />
+    );
     expect(screen.getByRole("alert")).toHaveTextContent("absolute HTML file");
     expect(viewer).not.toHaveBeenCalled();
   });

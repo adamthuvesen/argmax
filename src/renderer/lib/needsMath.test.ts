@@ -27,7 +27,7 @@ describe("needsMath", () => {
     // costs a lazy chunk fetch.
     const samples = [
       "Prices are $10 for standard and $20 for pro tier.",
-      "```bash\nPRICE=$50\necho \"\\[ preserved \\]\"\n```",
+      '```bash\nPRICE=$50\necho "\\[ preserved \\]"\n```',
       "C:\\Users\\name\\repo",
       "plain text",
       "$x + y = z$ and \\(\\tau\\)"

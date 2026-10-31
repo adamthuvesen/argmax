@@ -1,9 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX } from "react";
-import {
-  ACTIVITY_MARK_PART_COUNT,
-  useActivityMark,
-  type ActivityMarkId
-} from "../lib/activityMark.js";
+import { ACTIVITY_MARK_PART_COUNT, useActivityMark, type ActivityMarkId } from "../lib/activityMark.js";
 import { stableHash32 } from "../lib/stableHash.js";
 
 /** How long the landing runs — gather, pulse, open back out. Exported because a
@@ -105,14 +101,16 @@ export function WorkingNest({
       data-settling={isSettling ? "true" : undefined}
       data-working={active ? "true" : undefined}
       data-phase={phase}
-      style={{
-        // Not `width`/`height`: a stylesheet has to be able to resize the mark
-        // (see `--working-nest-size-override` in styles/working-nest.css), and
-        // an inline dimension would outrank every rule that tried.
-        "--working-nest-size": `${size}px`,
-        "--working-nest-phase": phase,
-        "--working-nest-settle-duration": `${WORKING_NEST_SETTLE_MS}ms`
-      } as CSSProperties}
+      style={
+        {
+          // Not `width`/`height`: a stylesheet has to be able to resize the mark
+          // (see `--working-nest-size-override` in styles/working-nest.css), and
+          // an inline dimension would outrank every rule that tried.
+          "--working-nest-size": `${size}px`,
+          "--working-nest-phase": phase,
+          "--working-nest-settle-duration": `${WORKING_NEST_SETTLE_MS}ms`
+        } as CSSProperties
+      }
       aria-hidden="true"
     >
       {markParts(markId)}

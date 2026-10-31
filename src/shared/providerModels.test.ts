@@ -57,13 +57,7 @@ describe("PROVIDER_MODEL_DEFAULTS", () => {
 
 describe("reasoningEffortsForModel", () => {
   it("offers Max for Cursor GPT-5.6 and Opus 5 Thinking", () => {
-    expect(reasoningEffortsForModel("cursor", "gpt-5.6-sol-medium")).toEqual([
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ]);
+    expect(reasoningEffortsForModel("cursor", "gpt-5.6-sol-medium")).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(reasoningEffortsForModel("cursor", "claude-opus-5-thinking-medium")).toEqual([
       "low",
       "medium",
@@ -91,40 +85,18 @@ describe("reasoningEffortsForModel", () => {
   // "unknown effort level 'max'; use one of: xhigh, high, medium, low".
   it("caps Grok Build at xhigh for every model", () => {
     for (const model of PROVIDER_MODELS.grok) {
-      expect(reasoningEffortsForModel("grok", model.modelId)).toEqual([
-        "low",
-        "medium",
-        "high",
-        "xhigh"
-      ]);
+      expect(reasoningEffortsForModel("grok", model.modelId)).toEqual(["low", "medium", "high", "xhigh"]);
     }
   });
 
   it("offers Extra High for Cursor Grok 4.7", () => {
-    expect(reasoningEffortsForModel("cursor", "grok-4.7-medium")).toEqual([
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ]);
+    expect(reasoningEffortsForModel("cursor", "grok-4.7-medium")).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
   it("caps Cursor Grok 4.6/4.5 and Gemini 3.8 at High", () => {
-    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual([
-      "low",
-      "medium",
-      "high"
-    ]);
-    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.5-medium")).toEqual([
-      "low",
-      "medium",
-      "high"
-    ]);
-    expect(reasoningEffortsForModel("cursor", "gemini-3.8-flash-medium")).toEqual([
-      "low",
-      "medium",
-      "high"
-    ]);
+    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.6-medium")).toEqual(["low", "medium", "high"]);
+    expect(reasoningEffortsForModel("cursor", "cursor-grok-4.5-medium")).toEqual(["low", "medium", "high"]);
+    expect(reasoningEffortsForModel("cursor", "gemini-3.8-flash-medium")).toEqual(["low", "medium", "high"]);
   });
 
   it("offers Max and Ultra for Codex Astra/Sol/Terra, Max only for Luna", () => {
@@ -152,13 +124,7 @@ describe("reasoningEffortsForModel", () => {
       "max",
       "ultra"
     ]);
-    expect(reasoningEffortsForModel("codex", "gpt-6-luna")).toEqual([
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ]);
+    expect(reasoningEffortsForModel("codex", "gpt-6-luna")).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 });
 
@@ -238,10 +204,7 @@ describe("costOf — golden fixtures", () => {
 
   it("prices GPT-6 Astra at its current list rates", () => {
     expect(
-      costOf(
-        { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 },
-        "gpt-6-astra"
-      )
+      costOf({ input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 }, "gpt-6-astra")
     ).toBeCloseTo(73.5, 9);
   });
 

@@ -6,7 +6,7 @@ import {
   mergeMultitaskNotice,
   multitaskCommandPrompt,
   multitaskNoticeFor,
-  multitasksByParentSession,
+  multitasksByParentSession
 } from "./multitask.js";
 
 function event(type: string, payload: Record<string, unknown>, message = "row"): TimelineEvent {
@@ -97,11 +97,7 @@ describe("multitaskCommandPrompt", () => {
   });
 });
 
-function session(
-  id: string,
-  workspaceId: string,
-  overrides: Partial<SessionSummary> = {}
-): SessionSummary {
+function session(id: string, workspaceId: string, overrides: Partial<SessionSummary> = {}): SessionSummary {
   return {
     id,
     workspaceId,

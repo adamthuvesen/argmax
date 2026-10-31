@@ -25,8 +25,7 @@ export function parseDoctorArgs(argv) {
       const value = argv[++index];
       if (value === undefined || value.startsWith("--")) throw new Error("--out requires a value");
       options.output = value;
-    }
-    else throw new Error(`unknown argument: ${argv[index]}`);
+    } else throw new Error(`unknown argument: ${argv[index]}`);
   }
   return options;
 }
@@ -57,9 +56,16 @@ async function localhostCapability() {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("server had no TCP address");
     const response = await withTimeout(fetch(`http://127.0.0.1:${address.port}/`), 5000, "loopback fetch");
-    return { ok: response.ok && (await response.text()) === "argmax-doctor", detail: `bound 127.0.0.1:${address.port}` };
+    return {
+      ok: response.ok && (await response.text()) === "argmax-doctor",
+      detail: `bound 127.0.0.1:${address.port}`
+    };
   } catch (error) {
-    return { ok: false, detail: error.message, remediation: "Allow the agent host to bind and fetch loopback HTTP ports." };
+    return {
+      ok: false,
+      detail: error.message,
+      remediation: "Allow the agent host to bind and fetch loopback HTTP ports."
+    };
   } finally {
     if (server.listening) await new Promise((resolve) => server.close(resolve));
   }
@@ -83,7 +89,14 @@ async function browserCapability() {
       const result = await runCommand(
         browser,
         // Disposable profiles must not prompt for the user's macOS keychain.
-        ["--headless=new", "--no-first-run", "--use-mock-keychain", `--user-data-dir=${profile}`, "--dump-dom", "data:text/html,argmax-doctor"],
+        [
+          "--headless=new",
+          "--no-first-run",
+          "--use-mock-keychain",
+          `--user-data-dir=${profile}`,
+          "--dump-dom",
+          "data:text/html,argmax-doctor"
+        ],
         { timeoutMs: 20_000 }
       );
       return {
@@ -110,7 +123,11 @@ async function repositoryWriteCapability() {
     await writeFile(path.join(directory, "probe"), "ok\n");
     return { ok: true, detail: "scratch/ is writable" };
   } catch (error) {
-    return { ok: false, detail: error.message, remediation: `Grant write access to ${path.join(repoRoot, "scratch")}.` };
+    return {
+      ok: false,
+      detail: error.message,
+      remediation: `Grant write access to ${path.join(repoRoot, "scratch")}.`
+    };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -126,8 +143,8 @@ async function macosPermissions() {
   const source = [
     "import ApplicationServices",
     "import CoreGraphics",
-    "print(\"screen=\\(CGPreflightScreenCaptureAccess())\")",
-    "print(\"accessibility=\\(AXIsProcessTrusted())\")"
+    'print("screen=\\(CGPreflightScreenCaptureAccess())")',
+    'print("accessibility=\\(AXIsProcessTrusted())")'
   ].join("\n");
   let result;
   try {
@@ -144,15 +161,22 @@ async function macosPermissions() {
       accessibility: { status: "unverified", detail: result.stderr.trim() }
     };
   }
-  const values = Object.fromEntries(result.stdout.trim().split("\n").map((line) => line.split("=")));
+  const values = Object.fromEntries(
+    result.stdout
+      .trim()
+      .split("\n")
+      .map((line) => line.split("="))
+  );
   return {
     screenRecording: {
       status: values.screen === "true" ? "granted" : "missing",
-      remediation: values.screen === "true" ? null : "Grant Screen Recording to the app that hosts the agent, then restart it."
+      remediation:
+        values.screen === "true" ? null : "Grant Screen Recording to the app that hosts the agent, then restart it."
     },
     accessibility: {
       status: values.accessibility === "true" ? "granted" : "missing",
-      remediation: values.accessibility === "true" ? null : "Grant Accessibility to the app that hosts the agent, then restart it."
+      remediation:
+        values.accessibility === "true" ? null : "Grant Accessibility to the app that hosts the agent, then restart it."
     }
   };
 }
@@ -160,8 +184,12 @@ async function macosPermissions() {
 async function nativeCapability() {
   try {
     const desktop = await import("./verification/desktop.mjs");
-    const hasApi = [desktop.connectDesktop, desktop.verifyDesktopSession, desktop.sendDesktopMessage, desktop.stopDesktopSession]
-      .every((entry) => typeof entry === "function");
+    const hasApi = [
+      desktop.connectDesktop,
+      desktop.verifyDesktopSession,
+      desktop.sendDesktopMessage,
+      desktop.stopDesktopSession
+    ].every((entry) => typeof entry === "function");
     const requiredTools = {};
     for (const toolPath of ["/usr/sbin/lsof", "/usr/bin/swift"]) {
       try {
@@ -176,8 +204,10 @@ async function nativeCapability() {
       .map(([toolPath]) => toolPath);
     const available = process.platform === "darwin" && hasApi && missingTools.length === 0;
     const remediation = [];
-    if (process.platform !== "darwin" || !hasApi) remediation.push("Install the native verification dependencies on macOS.");
-    if (missingTools.includes("/usr/bin/swift")) remediation.push("Install Xcode Command Line Tools so /usr/bin/swift is available.");
+    if (process.platform !== "darwin" || !hasApi)
+      remediation.push("Install the native verification dependencies on macOS.");
+    if (missingTools.includes("/usr/bin/swift"))
+      remediation.push("Install Xcode Command Line Tools so /usr/bin/swift is available.");
     if (missingTools.includes("/usr/sbin/lsof")) remediation.push("Restore the macOS lsof utility at /usr/sbin/lsof.");
     return {
       ok: available,
@@ -186,7 +216,7 @@ async function nativeCapability() {
         toolingLoaded: hasApi,
         requiredTools,
         runtimeVerified: false,
-        runtimeProof: "npm run verify"
+        runtimeProof: "npm run verify:native"
       },
       remediation: remediation.length ? remediation.join(" ") : null
     };
@@ -208,10 +238,15 @@ function versionAtLeast(actual, minimum) {
 async function runtimeRequirements(node, rustc) {
   const nodeMinimum = process.versions.node.split(".")[0] === "20" ? "20.19.0" : "22.12.0";
   node.requirement = `Node 20.19+ or 22.12+ (Vite 8); detected ${process.versions.node}`;
-  node.ok = node.ok && (versionAtLeast(process.versions.node, "22.12.0") || versionAtLeast(process.versions.node, "20.19.0") && !versionAtLeast(process.versions.node, "21.0.0"));
+  node.ok =
+    node.ok &&
+    (versionAtLeast(process.versions.node, "22.12.0") ||
+      (versionAtLeast(process.versions.node, "20.19.0") && !versionAtLeast(process.versions.node, "21.0.0")));
   if (!node.ok) node.remediation = `Install Node ${nodeMinimum} or newer in a supported major line.`;
 
-  const manifest = await import("node:fs/promises").then(({ readFile }) => readFile(path.join(repoRoot, "src-tauri", "Cargo.toml"), "utf8"));
+  const manifest = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(path.join(repoRoot, "src-tauri", "Cargo.toml"), "utf8")
+  );
   const minimumRust = manifest.match(/^rust-version\s*=\s*"([^"]+)"/m)?.[1];
   const actualRust = rustc.detail?.match(/rustc\s+(\d+\.\d+\.\d+)/)?.[1];
   rustc.requirement = minimumRust ? `Rust ${minimumRust}+ from src-tauri/Cargo.toml` : "unresolved from manifest";
@@ -222,23 +257,26 @@ async function runtimeRequirements(node, rustc) {
 }
 
 export async function runDoctor() {
-  const [node, npm, git, cargo, rustc, sqlite, subprocess, loopback, browser, repositoryWrite, permissions, native] = await Promise.all([
-    executable(process.execPath),
-    executable("npm"),
-    executable("git"),
-    executable("cargo"),
-    executable("rustc"),
-    executable("sqlite3", ["--version"]),
-    executable(process.execPath, ["-e", "process.stdout.write('child-ok')"]),
-    localhostCapability(),
-    browserCapability(),
-    repositoryWriteCapability(),
-    macosPermissions(),
-    nativeCapability()
-  ]);
+  const [node, npm, git, cargo, rustc, sqlite, subprocess, loopback, browser, repositoryWrite, permissions, native] =
+    await Promise.all([
+      executable(process.execPath),
+      executable("npm"),
+      executable("git"),
+      executable("cargo"),
+      executable("rustc"),
+      executable("sqlite3", ["--version"]),
+      executable(process.execPath, ["-e", "process.stdout.write('child-ok')"]),
+      localhostCapability(),
+      browserCapability(),
+      repositoryWriteCapability(),
+      macosPermissions(),
+      nativeCapability()
+    ]);
   const capabilities = { node, npm, git, cargo, rustc, sqlite, subprocess, loopback, browser, repositoryWrite, native };
   await runtimeRequirements(node, rustc);
-  const requiredFailures = Object.entries(capabilities).filter(([, result]) => !result.ok).map(([name]) => name);
+  const requiredFailures = Object.entries(capabilities)
+    .filter(([, result]) => !result.ok)
+    .map(([name]) => name);
   return {
     schemaVersion: 1,
     ok: requiredFailures.length === 0,

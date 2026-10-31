@@ -32,13 +32,7 @@ export type TodoList = {
   active: TodoItem | null;
 };
 
-const STATUSES: ReadonlySet<string> = new Set([
-  "pending",
-  "active",
-  "done",
-  "cancelled",
-  "removed"
-]);
+const STATUSES: ReadonlySet<string> = new Set(["pending", "active", "done", "cancelled", "removed"]);
 
 function readItem(raw: unknown): TodoItem | null {
   if (!isPlainObject(raw)) return null;

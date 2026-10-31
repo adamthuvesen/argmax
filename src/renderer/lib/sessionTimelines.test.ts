@@ -1,10 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import type {
-  RawProviderOutput,
-  SessionEventsSinceResult,
-  TimelineEvent
-} from "../../shared/types.js";
+import type { RawProviderOutput, SessionEventsSinceResult, TimelineEvent } from "../../shared/types.js";
 import { SessionTimelines } from "./sessionTimelines.js";
 
 function event(
@@ -60,23 +56,29 @@ function visit(store: SessionTimelines, sessionId: string): void {
 describe("SessionTimelines", () => {
   it("continues a byte-paged reset by row cursor instead of replaying the stale change cursor", () => {
     const store = new SessionTimelines();
-    store.finishRead("session", store.beginRead("session"),
-      result([event("session", "old", 1)], [], 1, 0, { changeCursor: 999 }));
+    store.finishRead(
+      "session",
+      store.beginRead("session"),
+      result([event("session", "old", 1)], [], 1, 0, { changeCursor: 999 })
+    );
     const staleRead = store.beginRead("session");
     expect(staleRead.changeCursor).toBe(999);
 
-    store.finishRead("session", staleRead,
+    store.finishRead(
+      "session",
+      staleRead,
       result([event("session", "first", 2)], [], 2, 0, {
-        resetRequired: true, hasMore: true, changeCursor: null
-      }));
+        resetRequired: true,
+        hasMore: true,
+        changeCursor: null
+      })
+    );
     const continuation = store.beginRead("session");
     expect(continuation.changeCursor).toBeNull();
     expect(continuation.eventCursor).toBe(2);
 
-    store.finishRead("session", continuation,
-      result([event("session", "second", 3)], [], 3, 0, { changeCursor: 10 }));
-    expect(new Set(store.getSnapshot("session").events.map((row) => row.id)))
-      .toEqual(new Set(["first", "second"]));
+    store.finishRead("session", continuation, result([event("session", "second", 3)], [], 3, 0, { changeCursor: 10 }));
+    expect(new Set(store.getSnapshot("session").events.map((row) => row.id))).toEqual(new Set(["first", "second"]));
     expect(store.beginRead("session").changeCursor).toBe(10);
   });
 
@@ -113,18 +115,12 @@ describe("SessionTimelines", () => {
 
   it("applies event and raw-output caps independently per session", () => {
     const store = new SessionTimelines();
-    const firstEvents = Array.from({ length: 2_100 }, (_, index) =>
-      event("first", `first-event-${index}`, index + 1)
-    );
+    const firstEvents = Array.from({ length: 2_100 }, (_, index) => event("first", `first-event-${index}`, index + 1));
     const secondEvents = Array.from({ length: 2_100 }, (_, index) =>
       event("second", `second-event-${index}`, index + 1)
     );
-    const firstRaw = Array.from({ length: 120 }, (_, index) =>
-      rawOutput("first", `first-raw-${index}`, index + 1)
-    );
-    const secondRaw = Array.from({ length: 120 }, (_, index) =>
-      rawOutput("second", `second-raw-${index}`, index + 1)
-    );
+    const firstRaw = Array.from({ length: 120 }, (_, index) => rawOutput("first", `first-raw-${index}`, index + 1));
+    const secondRaw = Array.from({ length: 120 }, (_, index) => rawOutput("second", `second-raw-${index}`, index + 1));
 
     store.merge([...firstEvents, ...secondEvents], [...firstRaw, ...secondRaw]);
 
@@ -154,9 +150,7 @@ describe("SessionTimelines", () => {
     }
 
     expect(store.sessionCount).toBe(13);
-    expect(store.getSnapshot("active").events.map((item) => item.id)).toEqual([
-      "active-event"
-    ]);
+    expect(store.getSnapshot("active").events.map((item) => item.id)).toEqual(["active-event"]);
     unsubscribe();
   });
 
@@ -167,9 +161,7 @@ describe("SessionTimelines", () => {
       visit(store, `other-${index}`);
     }
 
-    expect(
-      store.finishRead("evicted", ticket, result([event("evicted", "late", 1)], [], 1))
-    ).toBe(false);
+    expect(store.finishRead("evicted", ticket, result([event("evicted", "late", 1)], [], 1))).toBe(false);
     expect(store.getSnapshot("evicted").events).toEqual([]);
   });
 
@@ -177,23 +169,13 @@ describe("SessionTimelines", () => {
     const store = new SessionTimelines();
     const removedTicket = store.beginRead("removed");
     store.remove(["removed"]);
-    expect(
-      store.finishRead(
-        "removed",
-        removedTicket,
-        result([event("removed", "removed-late", 1)], [], 1)
-      )
-    ).toBe(false);
+    expect(store.finishRead("removed", removedTicket, result([event("removed", "removed-late", 1)], [], 1))).toBe(
+      false
+    );
 
     const resetTicket = store.beginRead("reset");
     store.reset(["reset"]);
-    expect(
-      store.finishRead(
-        "reset",
-        resetTicket,
-        result([event("reset", "reset-late", 1)], [], 1)
-      )
-    ).toBe(false);
+    expect(store.finishRead("reset", resetTicket, result([event("reset", "reset-late", 1)], [], 1))).toBe(false);
     expect(store.getSnapshot("removed").events).toEqual([]);
     expect(store.getSnapshot("reset").events).toEqual([]);
   });
@@ -202,10 +184,7 @@ describe("SessionTimelines", () => {
     const store = new SessionTimelines();
     const listener = vi.fn();
     store.subscribe("kept", listener);
-    store.merge(
-      [event("kept", "kept-event", 1), event("removed", "removed-event", 2)],
-      []
-    );
+    store.merge([event("kept", "kept-event", 1), event("removed", "removed-event", 2)], []);
 
     store.retainSessions(["kept"]);
     expect(store.getSnapshot("kept").events).toHaveLength(1);
@@ -226,11 +205,7 @@ describe("SessionTimelines", () => {
     store.merge([pushed], []);
 
     expect(
-      store.finishRead(
-        "session",
-        ticket,
-        result([event("session", "same-id", 1, { message: "stale read" })], [], 10)
-      )
+      store.finishRead("session", ticket, result([event("session", "same-id", 1, { message: "stale read" })], [], 10))
     ).toBe(true);
     expect(store.getSnapshot("session").events[0]?.message).toBe("pushed");
     expect(store.beginRead("session").eventCursor).toBe(10);
@@ -238,10 +213,7 @@ describe("SessionTimelines", () => {
 
   it("applies revision-feed deletions and advances the consumed change cursor", () => {
     const store = new SessionTimelines();
-    store.merge(
-      [event("session", "event-to-delete", 1)],
-      [rawOutput("session", "raw-to-delete", 1)]
-    );
+    store.merge([event("session", "event-to-delete", 1)], [rawOutput("session", "raw-to-delete", 1)]);
     const ticket = store.beginRead("session");
 
     expect(
@@ -285,10 +257,7 @@ describe("SessionTimelines", () => {
       })
     );
 
-    expect(store.getSnapshot("session").events.map((item) => item.id)).toEqual([
-      "pushed",
-      "fetched"
-    ]);
+    expect(store.getSnapshot("session").events.map((item) => item.id)).toEqual(["pushed", "fetched"]);
     expect(store.getSnapshot("session").rawOutputs).toEqual([]);
     expect(store.beginRead("session")).toMatchObject({
       eventCursor: 2,
@@ -305,9 +274,7 @@ describe("SessionTimelines", () => {
 
     store.finishRead("session", ticket, result([event("session", "current", 2)], [], 2));
 
-    expect(store.getSnapshot("session").events.map((item) => item.id)).toEqual([
-      "current"
-    ]);
+    expect(store.getSnapshot("session").events.map((item) => item.id)).toEqual(["current"]);
   });
 
   it("does not let an older overlapping revision resurrect a deletion", () => {
@@ -325,24 +292,14 @@ describe("SessionTimelines", () => {
         deletedEventIds: [existing.id]
       })
     );
-    expect(
-      store.finishRead(
-        "session",
-        older,
-        result([existing], [], 1, 0, { changeCursor: 10 })
-      )
-    ).toBe(false);
+    expect(store.finishRead("session", older, result([existing], [], 1, 0, { changeCursor: 10 }))).toBe(false);
     expect(store.getSnapshot("session").events).toEqual([]);
   });
 
   it("accepts an authoritative gap reset that moves a future cursor backward", () => {
     const store = new SessionTimelines();
     const initial = store.beginRead("session");
-    store.finishRead(
-      "session",
-      initial,
-      result([], [], 0, 0, { changeCursor: 30, resetRequired: true })
-    );
+    store.finishRead("session", initial, result([], [], 0, 0, { changeCursor: 30, resetRequired: true }));
     const gapRead = store.beginRead("session");
 
     expect(
@@ -366,20 +323,10 @@ describe("SessionTimelines", () => {
     const current = store.beginRead("session");
     const replacement = event("session", "replacement", 2);
 
-    store.finishRead(
-      "session",
-      current,
-      result([replacement], [], 2, 0, { resetRequired: true })
-    );
-    store.finishRead(
-      "session",
-      stale,
-      result([old], [], 1, 0, { resetRequired: true })
-    );
+    store.finishRead("session", current, result([replacement], [], 2, 0, { resetRequired: true }));
+    store.finishRead("session", stale, result([old], [], 1, 0, { resetRequired: true }));
 
-    expect(store.getSnapshot("session").events.map((item) => item.id)).toEqual([
-      "replacement"
-    ]);
+    expect(store.getSnapshot("session").events.map((item) => item.id)).toEqual(["replacement"]);
   });
 
   it("cancels a failed read without changing its transcript or cursors", () => {
@@ -405,9 +352,7 @@ describe("SessionTimelines", () => {
   it("invalidates a stalled read before its update journal can grow without bound", () => {
     const store = new SessionTimelines();
     const stalled = store.beginRead("session");
-    const outputs = Array.from({ length: 10_001 }, (_, index) =>
-      rawOutput("session", `output-${index}`, index + 1)
-    );
+    const outputs = Array.from({ length: 10_001 }, (_, index) => rawOutput("session", `output-${index}`, index + 1));
 
     store.merge([], outputs);
 
@@ -463,9 +408,7 @@ describe("SessionTimelines", () => {
     const ticket = store.beginRead("parent");
     const childRow = event("child", "child-event", 20);
 
-    expect(store.mergeAgentTail("parent", result([childRow], [], 20), ticket)).toBe(
-      true
-    );
+    expect(store.mergeAgentTail("parent", result([childRow], [], 20), ticket)).toBe(true);
     expect(store.getSnapshot("parent").events).toEqual([childRow]);
     expect(store.getSnapshot("child").events).toEqual([]);
     expect(store.beginRead("parent").eventCursor).toBeNull();
@@ -479,11 +422,7 @@ describe("SessionTimelines", () => {
     store.merge([event("parent", "same-id", 1, { message: "pushed" })], []);
 
     expect(
-      store.mergeAgentTail(
-        "parent",
-        result([event("child", "same-id", 1, { message: "stale agent read" })]),
-        ticket
-      )
+      store.mergeAgentTail("parent", result([event("child", "same-id", 1, { message: "stale agent read" })]), ticket)
     ).toBe(true);
     expect(store.getSnapshot("parent").events[0]?.message).toBe("pushed");
   });
@@ -493,13 +432,7 @@ describe("SessionTimelines", () => {
     const ticket = store.beginRead("parent");
     store.reset(["parent"]);
 
-    expect(
-      store.mergeAgentTail(
-        "parent",
-        result([event("parent", "agent-late", 1)], [], 1),
-        ticket
-      )
-    ).toBe(false);
+    expect(store.mergeAgentTail("parent", result([event("parent", "agent-late", 1)], [], 1), ticket)).toBe(false);
     expect(store.getSnapshot("parent").events).toEqual([]);
   });
 

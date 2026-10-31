@@ -69,13 +69,12 @@ function Harness({
         <section aria-label="Conversation turn">
           <div data-turn-anchor="true">Latest prompt</div>
           <p>Reading block</p>
-          <div
-            aria-label="Nested scroll area"
-            style={{ overflowY: "auto" }}
-          >
+          <div aria-label="Nested scroll area" style={{ overflowY: "auto" }}>
             Nested content
           </div>
-          {items.map((item) => <span key={item}>{item}</span>)}
+          {items.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
         </section>
       </div>
     </div>
@@ -249,15 +248,21 @@ describe("useConversationScroll", () => {
     // folds. WebKit reports the resulting layout movement as a scroll event,
     // even though the reader did not wheel, press a scroll key, touch, or drag.
     geometry.top = 700;
-    act(() => { scroll.dispatchEvent(new Event("scroll")); });
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll"));
+    });
 
     expect(geometry.top).toBe(800);
     expect(controller.follow.isDetached()).toBe(false);
   });
 
   it.each([
-    ["commit", 12], ["observer", 12], ["scroll", 12],
-    ["commit", 0.5], ["observer", 0.5], ["scroll", 0.5]
+    ["commit", 12],
+    ["observer", 12],
+    ["scroll", 12],
+    ["commit", 0.5],
+    ["observer", 0.5],
+    ["scroll", 0.5]
   ] as const)(
     "resumes after returning to bottom when growth precedes the %s callback (%s px movement)",
     (firstCallback, movement) => {
@@ -275,7 +280,9 @@ describe("useConversationScroll", () => {
       act(() => view.rerender(<Harness {...props} />));
       act(() => wheel(scroll, -12));
       geometry.top = 800 - movement;
-      act(() => { scroll.dispatchEvent(new Event("scroll")); });
+      act(() => {
+        scroll.dispatchEvent(new Event("scroll"));
+      });
 
       geometry.top = 800;
       geometry.naturalHeight = 1600;
@@ -284,7 +291,9 @@ describe("useConversationScroll", () => {
         else if (firstCallback === "observer") flushResize();
         else scroll.dispatchEvent(new Event("scroll"));
       });
-      act(() => { scroll.dispatchEvent(new Event("scroll")); });
+      act(() => {
+        scroll.dispatchEvent(new Event("scroll"));
+      });
       geometry.naturalHeight = 1800;
       act(() => flushResize());
 
@@ -368,9 +377,13 @@ describe("useConversationScroll", () => {
     // WebKit reports elastic positions beyond the normal scroll range. The
     // snap back is layout motion, not an upward gesture from the reader.
     geometry.top = 840;
-    act(() => { scroll.dispatchEvent(new Event("scroll")); });
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll"));
+    });
     geometry.top = 800;
-    act(() => { scroll.dispatchEvent(new Event("scroll")); });
+    act(() => {
+      scroll.dispatchEvent(new Event("scroll"));
+    });
 
     expect(controller.follow.isDetached()).toBe(false);
     geometry.naturalHeight = 1500;
@@ -442,27 +455,34 @@ describe("useConversationScroll", () => {
   it.each([
     { naturalHeight: 700, expectedTop: 380, expectedFloor: "880px" },
     { naturalHeight: 1300, expectedTop: 788, expectedFloor: "1288px" }
-  ])("keeps a removed anchor's position within the remaining $naturalHeight px of content", ({ naturalHeight, expectedTop, expectedFloor }) => {
-    const props: HarnessProps = { items: ["one"] };
-    const view = render(<Harness {...props} />);
-    const geometry: Geometry = {
-      viewportHeight: 500, naturalHeight: 1300, top: 0,
-      promptTop: 400, blockTop: 850, turnTop: 0
-    };
-    const { scroll, content, block } = installGeometry(geometry);
-    act(() => view.rerender(<Harness {...props} />));
-    act(() => wheel(scroll, -12));
-    geometry.top = 788;
-    scroll.dispatchEvent(new Event("scroll"));
+  ])(
+    "keeps a removed anchor's position within the remaining $naturalHeight px of content",
+    ({ naturalHeight, expectedTop, expectedFloor }) => {
+      const props: HarnessProps = { items: ["one"] };
+      const view = render(<Harness {...props} />);
+      const geometry: Geometry = {
+        viewportHeight: 500,
+        naturalHeight: 1300,
+        top: 0,
+        promptTop: 400,
+        blockTop: 850,
+        turnTop: 0
+      };
+      const { scroll, content, block } = installGeometry(geometry);
+      act(() => view.rerender(<Harness {...props} />));
+      act(() => wheel(scroll, -12));
+      geometry.top = 788;
+      scroll.dispatchEvent(new Event("scroll"));
 
-    block.remove();
-    geometry.naturalHeight = naturalHeight;
-    act(() => flushResize());
+      block.remove();
+      geometry.naturalHeight = naturalHeight;
+      act(() => flushResize());
 
-    expect(content.style.minHeight).toBe(expectedFloor);
-    expect(geometry.top).toBe(expectedTop);
-    expect(controller.follow.isDetached()).toBe(true);
-  });
+      expect(content.style.minHeight).toBe(expectedFloor);
+      expect(geometry.top).toBe(expectedTop);
+      expect(controller.follow.isDetached()).toBe(true);
+    }
+  );
 
   it("preserves a fine-grained anchor when content changes above it inside one turn", () => {
     const props: HarnessProps = { items: ["one"] };
@@ -549,9 +569,7 @@ describe("useConversationScroll", () => {
 
     act(() => wheel(scroll, -10));
     expect(controller.follow.isDetached()).toBe(true);
-    act(() => view.rerender(
-      <Harness sessionId="session-b" resetKey="prompt-b" items={["one", "two"]} />
-    ));
+    act(() => view.rerender(<Harness sessionId="session-b" resetKey="prompt-b" items={["one", "two"]} />));
     expect(controller.follow.isDetached()).toBe(false);
   });
 

@@ -72,11 +72,7 @@ import {
 } from "./hooks/useLazyOverlayPrefetch.js";
 import { useLedgerPrefetch } from "./hooks/useLedgerPrefetch.js";
 import { useGlobalKeybindings } from "./hooks/useGlobalKeybindings.js";
-import {
-  DEFAULT_WORKSPACE_MIN_WIDTH_PX,
-  SIDEBAR_MIN_WIDTH_PX,
-  useSidebarResize
-} from "./hooks/useSidebarResize.js";
+import { DEFAULT_WORKSPACE_MIN_WIDTH_PX, SIDEBAR_MIN_WIDTH_PX, useSidebarResize } from "./hooks/useSidebarResize.js";
 import { NewArcDialog, type ArcPromoteSource } from "./components/arcs/NewArcDialog.js";
 import {
   hideCommandPalette,
@@ -142,21 +138,9 @@ import {
   readStoredProviderPermissionModes,
   type ProviderPermissionModes
 } from "./lib/permissionMode.js";
-import {
-  NEW_SESSION_MODE_KEY,
-  readStoredNewSessionMode,
-  type NewSessionMode
-} from "./lib/newSessionMode.js";
-import {
-  CHAT_WIDTH_KEY,
-  readStoredChatWidth,
-  type ChatWidth
-} from "./lib/chatWidth.js";
-import {
-  REVIEW_PANEL_SIDE_KEY,
-  readStoredReviewPanelSide,
-  type ReviewPanelSide
-} from "./lib/reviewPanelSide.js";
+import { NEW_SESSION_MODE_KEY, readStoredNewSessionMode, type NewSessionMode } from "./lib/newSessionMode.js";
+import { CHAT_WIDTH_KEY, readStoredChatWidth, type ChatWidth } from "./lib/chatWidth.js";
+import { REVIEW_PANEL_SIDE_KEY, readStoredReviewPanelSide, type ReviewPanelSide } from "./lib/reviewPanelSide.js";
 import {
   BROWSER_PAGE_OPEN_KEY,
   TURN_REVERT_ENABLED_KEY,
@@ -199,26 +183,19 @@ import { randomSessionIcon } from "./lib/sessionIcons.js";
 import { isMultitaskSession, multitasksByParentSession } from "./lib/multitask.js";
 import { loadDashboardSnapshot } from "./lib/loadDashboardSnapshot.js";
 import { buildPaletteCommands, buildSessionLabelById } from "./lib/buildPaletteCommands.js";
-import {
-  chatDirectoryFromSnapshot,
-  publishChatDirectory,
-  registerChatOpener
-} from "./state/chatDirectory.js";
+import { chatDirectoryFromSnapshot, publishChatDirectory, registerChatOpener } from "./state/chatDirectory.js";
 import { useLauncherAppearance } from "./hooks/useLauncherAppearance.js";
 import { useStandaloneBrowserLinks } from "./hooks/useStandaloneBrowserLinks.js";
-import {
-  useAppNavigationHistory,
-  type AppNavigationDestination
-} from "./hooks/useAppNavigationHistory.js";
+import { useAppNavigationHistory, type AppNavigationDestination } from "./hooks/useAppNavigationHistory.js";
 import { markFirstContent, markFirstPaint } from "./lib/paintTimings.js";
 import { mergeDashboardDelta, mergeProjectSummary } from "./lib/snapshot.js";
 import { isRemoteBridge, isTauriRuntime } from "./lib/tauriBridge.js";
 
-
 const APP_MIN_HEIGHT_PX = 640;
 const STATIC_APP_MIN_WIDTH_PX = 600;
 
-const DEFAULT_AGENT_SAVE_ERROR = "Default settings could not be saved. Scheduled and automatic chats still use the previous settings. Retry in Settings → Agents.";
+const DEFAULT_AGENT_SAVE_ERROR =
+  "Default settings could not be saved. Scheduled and automatic chats still use the previous settings. Retry in Settings → Agents.";
 
 export function App(): JSX.Element {
   const [defaultEffort, setDefaultEffort] = useState<ReasoningEffort>(() => readStoredDefaultEffort());
@@ -249,9 +226,7 @@ export function App(): JSX.Element {
   // launcher falls back to the normal default until a key is back.
   const launchModel = useMemo(
     () =>
-      storedLaunchModel.autoTier && routing?.enabled === false
-        ? factoryLaunchModel(defaultEffort)
-        : storedLaunchModel,
+      storedLaunchModel.autoTier && routing?.enabled === false ? factoryLaunchModel(defaultEffort) : storedLaunchModel,
     [defaultEffort, routing, storedLaunchModel]
   );
   const {
@@ -293,19 +268,19 @@ export function App(): JSX.Element {
     () => resolveChatVerbosity(chatVerbosity),
     [chatVerbosity]
   );
-  const [sidebarClaudeArtifactsVisible, setSidebarClaudeArtifactsVisible] = useBooleanUiPreference(SIDEBAR_CLAUDE_ARTIFACTS_KEY, false);
+  const [sidebarClaudeArtifactsVisible, setSidebarClaudeArtifactsVisible] = useBooleanUiPreference(
+    SIDEBAR_CLAUDE_ARTIFACTS_KEY,
+    false
+  );
   const [sidebarArcsVisible, setSidebarArcsVisible] = useBooleanUiPreference(SIDEBAR_ARCS_KEY, false);
   const [sidebarArchivedVisible, setSidebarArchivedVisible] = useBooleanUiPreference(SIDEBAR_ARCHIVED_KEY, true);
   const [sidebarPriorityVisible, setSidebarPriorityVisible] = useBooleanUiPreference(SIDEBAR_PRIORITY_KEY, true);
   const [windowTranslucent, setWindowTranslucent] = useBooleanUiPreference(WINDOW_TRANSLUCENT_KEY, false);
-  const [windowTranslucency, setWindowTranslucency] = useBoundedNumberPreference(
-    WINDOW_TRANSLUCENCY_KEY,
-    {
-      min: WINDOW_TRANSLUCENCY_MIN,
-      max: WINDOW_TRANSLUCENCY_MAX,
-      fallback: WINDOW_TRANSLUCENCY_DEFAULT
-    }
-  );
+  const [windowTranslucency, setWindowTranslucency] = useBoundedNumberPreference(WINDOW_TRANSLUCENCY_KEY, {
+    min: WINDOW_TRANSLUCENCY_MIN,
+    max: WINDOW_TRANSLUCENCY_MAX,
+    fallback: WINDOW_TRANSLUCENCY_DEFAULT
+  });
   useEffect(() => {
     applyWindowTranslucencyToDocument(windowTranslucent, windowTranslucency);
   }, [windowTranslucent, windowTranslucency]);
@@ -330,10 +305,7 @@ export function App(): JSX.Element {
     import.meta.env.DEV
   );
   const [fastModeEnabled, setFastModeEnabled] = useBooleanUiPreference(FAST_MODE_KEY, false);
-  const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(
-    TURN_CHANGES_EXPANDED_KEY,
-    false
-  );
+  const [turnChangesExpanded, setTurnChangesExpanded] = useBooleanUiPreference(TURN_CHANGES_EXPANDED_KEY, false);
   const [goalEnabled, setGoalEnabled] = useBooleanUiPreference(GOAL_ENABLED_KEY, true);
   const [revertEnabled, setRevertEnabled] = useBooleanUiPreference(TURN_REVERT_ENABLED_KEY, true);
   const [goalMaxTurns, setGoalMaxTurns] = useBoundedNumberPreference(GOAL_MAX_TURNS_KEY, {
@@ -372,14 +344,11 @@ export function App(): JSX.Element {
     if (!window.argmax?.system?.setKeepAwake) return;
     void window.argmax.system.setKeepAwake(keepAwakeEnabled);
   }, [keepAwakeEnabled]);
-  const handleLaunchModelChange = useCallback(
-    (model: ModelPickerSelection): void => {
-      setLaunchModel(model);
-      persistLaunchModel(model);
-      setDefaultEffort(readStoredDefaultEffort());
-    },
-    []
-  );
+  const handleLaunchModelChange = useCallback((model: ModelPickerSelection): void => {
+    setLaunchModel(model);
+    persistLaunchModel(model);
+    setDefaultEffort(readStoredDefaultEffort());
+  }, []);
   // Changing the app-wide default effort re-resolves the launcher model: the
   // level rides along when the model offers it, and falls back when it doesn't.
   const handleDefaultEffortChange = useCallback((effort: ReasoningEffort): void => {
@@ -486,7 +455,9 @@ export function App(): JSX.Element {
         if (!cancelled) setIsSavingDefaultAgent(false);
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [launchModel, permissionModes, defaultAgentSaveAttempt]);
   const [newSessionMode, setNewSessionMode] = useState<NewSessionMode>(() => readStoredNewSessionMode());
   const [chatWidth, setChatWidth] = useState<ChatWidth>(() => readStoredChatWidth());
@@ -621,9 +592,8 @@ export function App(): JSX.Element {
   }, [openWorkspaceChat, selectedSession, sessionMoves, sessionsById, workspacesById]);
   const requiredGridColumns = useMemo(() => grid.rows.reduce((max, row) => Math.max(max, row.length), 0), [grid.rows]);
   const requiredWorkspaceMinWidth = useMemo(() => {
-    const gridColumnWidth = requiredGridColumns > 0
-      ? requiredGridColumns * MIN_RESIZABLE_CELL_WIDTH_PX
-      : DEFAULT_WORKSPACE_MIN_WIDTH_PX;
+    const gridColumnWidth =
+      requiredGridColumns > 0 ? requiredGridColumns * MIN_RESIZABLE_CELL_WIDTH_PX : DEFAULT_WORKSPACE_MIN_WIDTH_PX;
     return Math.max(DEFAULT_WORKSPACE_MIN_WIDTH_PX, gridColumnWidth, sessionGridRequiredWorkspaceMinWidth);
   }, [requiredGridColumns, sessionGridRequiredWorkspaceMinWidth]);
   const {
@@ -653,16 +623,15 @@ export function App(): JSX.Element {
       const scaleFactor = await appWindow.scaleFactor();
       const logicalSize = (await appWindow.innerSize()).toLogical(scaleFactor);
       if (cancelled || logicalSize.width >= requiredWindowMinWidth) return;
-      await appWindow.setSize(
-        new LogicalSize(requiredWindowMinWidth, Math.max(logicalSize.height, APP_MIN_HEIGHT_PX))
-      );
+      await appWindow.setSize(new LogicalSize(requiredWindowMinWidth, Math.max(logicalSize.height, APP_MIN_HEIGHT_PX)));
     })().catch(() => undefined);
 
     return () => {
       cancelled = true;
     };
   }, [requiredWindowMinWidth]);
-  const showWorkspaceDropTarget = draggingWorkspaceId !== null && !standalonePageOpen && (grid.rows.length === 0 || isFullLauncherOpen);
+  const showWorkspaceDropTarget =
+    draggingWorkspaceId !== null && !standalonePageOpen && (grid.rows.length === 0 || isFullLauncherOpen);
 
   useEffect(() => {
     if (!showWorkspaceDropTarget) setIsWorkspaceDropPreviewVisible(false);
@@ -822,7 +791,8 @@ export function App(): JSX.Element {
         event.ctrlKey ||
         event.altKey ||
         event.shiftKey
-      ) return;
+      )
+        return;
       hideFullLauncher();
       event.preventDefault();
     };
@@ -906,7 +876,11 @@ export function App(): JSX.Element {
     [handleArchiveWorkspace]
   );
   const onOpenInIdeRow = useCallback(
-    (workspaceId: string, ide: Parameters<typeof handleOpenInIde>[1], options: Parameters<typeof handleOpenInIde>[2]): void => {
+    (
+      workspaceId: string,
+      ide: Parameters<typeof handleOpenInIde>[1],
+      options: Parameters<typeof handleOpenInIde>[2]
+    ): void => {
       void handleOpenInIde(workspaceId, ide, options);
     },
     [handleOpenInIde]
@@ -1001,8 +975,7 @@ export function App(): JSX.Element {
 
   const handleEarlyStop = useCallback(
     (sessionId: string): string | undefined => {
-      const session =
-        sessionsById.get(sessionId) ?? snapshot.sessions.find((s) => s.id === sessionId);
+      const session = sessionsById.get(sessionId) ?? snapshot.sessions.find((s) => s.id === sessionId);
       if (!session || !isEarlySessionStop(session)) return undefined;
       // Restoring the launcher is a pane behaviour, and a multitask normally
       // has no pane: it was dispatched from inside another chat and runs in
@@ -1013,18 +986,14 @@ export function App(): JSX.Element {
       if (isMultitaskSession(session) && !findSessionCell(grid, sessionId)) return undefined;
 
       const workspace =
-        workspacesById.get(session.workspaceId) ??
-        snapshot.workspaces.find((w) => w.id === session.workspaceId);
+        workspacesById.get(session.workspaceId) ?? snapshot.workspaces.find((w) => w.id === session.workspaceId);
       // Popups have their own close-to-discard lifecycle; stopping one must
       // not hand the main pane back to the launcher or archive out from under
       // the still-open explainer.
       if (workspace?.kind === "popup") return undefined;
-      const isSideChat =
-        !workspace || workspace.kind === "scratch" || workspace.projectId === SCRATCH_PROJECT_ID;
+      const isSideChat = !workspace || workspace.kind === "scratch" || workspace.projectId === SCRATCH_PROJECT_ID;
       const projectId = isSideChat ? SCRATCH_PROJECT_ID : workspace.projectId;
-      const draftKey = isSideChat
-        ? launcherDraftKey(SCRATCH_PROJECT_ID)
-        : launcherDraftKey(projectId);
+      const draftKey = isSideChat ? launcherDraftKey(SCRATCH_PROJECT_ID) : launcherDraftKey(projectId);
 
       if (session.prompt.trim() !== "") {
         writeDraftText(draftKey, session.prompt);
@@ -1037,9 +1006,7 @@ export function App(): JSX.Element {
       // A routed chat hands back the Router tier it was launched on, not the
       // model the router picked for it.
       handleLaunchModelChange(
-        isAutoTier(session.autoTier)
-          ? autoTierSelection(session.autoTier)
-          : modelPickerSelectionFromSession(session)
+        isAutoTier(session.autoTier) ? autoTierSelection(session.autoTier) : modelPickerSelectionFromSession(session)
       );
       requestLauncherReset();
 
@@ -1070,12 +1037,12 @@ export function App(): JSX.Element {
     terminateSession,
     clearSession
   } = useSessionCommands({
-      refreshDashboardStatus,
-      loadSessionEvents,
-      setToast: showToast,
-      fastMode: fastModeEnabled,
-      onEarlyStop: handleEarlyStop
-    });
+    refreshDashboardStatus,
+    loadSessionEvents,
+    setToast: showToast,
+    fastMode: fastModeEnabled,
+    onEarlyStop: handleEarlyStop
+  });
 
   // The hidden "Side chats" project owns scratch workspaces; it is not a
   // repository, so every repo-picking surface (launcher, settings) sees only
@@ -1106,9 +1073,7 @@ export function App(): JSX.Element {
     };
   }, [promoteArcSessionId, snapshot.sessions, snapshot.workspaces, snapshot.projects]);
   const launcherProject =
-    (storedLaunchProjectId
-      ? realProjects.find((project) => project.id === storedLaunchProjectId)
-      : undefined) ??
+    (storedLaunchProjectId ? realProjects.find((project) => project.id === storedLaunchProjectId) : undefined) ??
     (selectedProject && selectedProject.id !== SCRATCH_PROJECT_ID ? selectedProject : null) ??
     realProjects[0] ??
     null;
@@ -1121,7 +1086,7 @@ export function App(): JSX.Element {
       return {
         kind: "launcher",
         sideChatMode: launcherSideChatMode,
-        projectId: launcherSideChatMode ? null : launcherProject?.id ?? null
+        projectId: launcherSideChatMode ? null : (launcherProject?.id ?? null)
       };
     }
     return { kind: "grid", grid };
@@ -1143,16 +1108,16 @@ export function App(): JSX.Element {
       }
       if (destination.kind === "launcher") {
         if (destination.sideChatMode) return true;
-        return destination.projectId === null
-          ? realProjects.length === 0
-          : projectsById.has(destination.projectId);
+        return destination.projectId === null ? realProjects.length === 0 : projectsById.has(destination.projectId);
       }
       if (destination.kind !== "grid") return true;
-      return destination.grid.rows.every((row) => row.every((cell) => {
-        if (cell.kind === "launcher") return projectsById.has(cell.projectId);
-        const workspace = workspacesById.get(cell.workspaceId);
-        return sessionsById.has(cell.sessionId) && workspace !== undefined;
-      }));
+      return destination.grid.rows.every((row) =>
+        row.every((cell) => {
+          if (cell.kind === "launcher") return projectsById.has(cell.projectId);
+          const workspace = workspacesById.get(cell.workspaceId);
+          return sessionsById.has(cell.sessionId) && workspace !== undefined;
+        })
+      );
     },
     [projectsById, realProjects.length, sessionsById, snapshot.arcs, workspacesById]
   );
@@ -1202,9 +1167,12 @@ export function App(): JSX.Element {
     canRestore: canRestoreAppDestination,
     restore: restoreAppDestination
   });
-  const sidebarProject = !isBrowserPageOpen && !isArcPageOpen && (isFullLauncherOpen || grid.rows.length === 0)
-    ? (launcherSideChatMode ? null : launcherProject)
-    : selectedProject;
+  const sidebarProject =
+    !isBrowserPageOpen && !isArcPageOpen && (isFullLauncherOpen || grid.rows.length === 0)
+      ? launcherSideChatMode
+        ? null
+        : launcherProject
+      : selectedProject;
 
   // "New session here" from a pane menu skips openLauncherSurface, so it
   // resets chat mode itself before opening the in-grid launcher cell.
@@ -1219,7 +1187,7 @@ export function App(): JSX.Element {
       setLauncherSideChatMode(sideChat);
       if (seed) {
         handleLaunchModelChange(seed.model);
-        const draftProjectId = sideChat ? SCRATCH_PROJECT_ID : launcherProject?.id ?? null;
+        const draftProjectId = sideChat ? SCRATCH_PROJECT_ID : (launcherProject?.id ?? null);
         if (draftProjectId && (seed.prompt.trim() !== "" || seed.attachments.length > 0)) {
           const draftKey = launcherDraftKey(draftProjectId);
           clearDraft(draftKey);
@@ -1235,12 +1203,9 @@ export function App(): JSX.Element {
   );
 
   const launchFolderRef = useRef<ProjectTarget | null>(null);
-  const handleLaunchFolderChange = useCallback(
-    (folder: ProjectTarget | null): void => {
-      launchFolderRef.current = folder;
-    },
-    []
-  );
+  const handleLaunchFolderChange = useCallback((folder: ProjectTarget | null): void => {
+    launchFolderRef.current = folder;
+  }, []);
 
   const toggleIntegratedTerminal = useCallback((): void => {
     hideCommandPalette();
@@ -1249,23 +1214,18 @@ export function App(): JSX.Element {
     closeWorkspacePages();
 
     const toggleForProject = async (project: ProjectSummary): Promise<void> => {
-      const target: ProjectTarget = launchFolderRef.current?.project.id === project.id
-        ? launchFolderRef.current
-        : { project, projectFolderId: null };
-      let checkout: WorkspaceSummary | null = findSharedCheckoutWorkspace(
-        target.project,
-        snapshot.workspaces
-      );
+      const target: ProjectTarget =
+        launchFolderRef.current?.project.id === project.id
+          ? launchFolderRef.current
+          : { project, projectFolderId: null };
+      let checkout: WorkspaceSummary | null = findSharedCheckoutWorkspace(target.project, snapshot.workspaces);
       if (!checkout) {
         const created = await createProjectCheckout(target);
         if (!created) return;
         checkout = created;
         setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [created] }));
       }
-      requestTerminalVisible(
-        checkout.id,
-        !getWorkspaceTerminalState(checkout.id).showing
-      );
+      requestTerminalVisible(checkout.id, !getWorkspaceTerminalState(checkout.id).showing);
     };
 
     const focused = focusedCell(grid);
@@ -1384,14 +1344,12 @@ export function App(): JSX.Element {
           ...(options.goalCondition ? { goalCondition: options.goalCondition, goalMaxTurns } : {})
         });
       } catch (error) {
-        void api.workspaces
-          .archive({ workspaceId: workspace.id, force: true })
-          .catch((archiveError: unknown) => {
-            logger.warn("renderer.launcher", "failed-launch worktree cleanup failed", {
-              workspaceId: workspace.id,
-              error: errorMessage(archiveError)
-            });
+        void api.workspaces.archive({ workspaceId: workspace.id, force: true }).catch((archiveError: unknown) => {
+          logger.warn("renderer.launcher", "failed-launch worktree cleanup failed", {
+            workspaceId: workspace.id,
+            error: errorMessage(archiveError)
           });
+        });
         throw error;
       }
       registerLaunchedSession(workspace, launchedSession);
@@ -1482,22 +1440,24 @@ export function App(): JSX.Element {
       const folderContext = projectFolderId
         ? await api.projects.getFolderContext({ projectId, projectFolderId })
         : null;
-      const launchingProject = folderContext?.project ??
-        snapshot.projects.find((p) => p.id === projectId) ?? selectedProject ?? null;
+      const launchingProject =
+        folderContext?.project ?? snapshot.projects.find((p) => p.id === projectId) ?? selectedProject ?? null;
       const launchMode = folderContext && !folderContext.isGit ? "current" : workspaceMode;
       // Worktree creation blocks on the project's setup command (installed
       // once per fresh worktree, before the agent starts). Say so, or a slow
       // `npm install` reads as a hung launch.
       if (launchMode === "worktree" && launchingProject?.settings.setupCommand.trim()) {
-        showInfoToast(
-          `Running setup command in the new worktree: ${launchingProject.settings.setupCommand}`
-        );
+        showInfoToast(`Running setup command in the new worktree: ${launchingProject.settings.setupCommand}`);
       }
       // A branch picked in the launcher belongs to the project it was picked
       // in. Project check can move the launch to another project, and a pick
       // made there means nothing in this one.
-      const checkout = pickedCheckout?.projectId === projectId &&
-        pickedCheckout.projectFolderId === projectFolderId && folderContext?.isGit !== false ? pickedCheckout : null;
+      const checkout =
+        pickedCheckout?.projectId === projectId &&
+        pickedCheckout.projectFolderId === projectFolderId &&
+        folderContext?.isGit !== false
+          ? pickedCheckout
+          : null;
       const base = { projectId, taskLabel, ...(projectFolderId ? { projectFolderId } : {}) };
       // No checkout has the picked branch: the project root takes it now, at
       // launch, unless a worktree is being made from it. Git decides: the branch
@@ -1593,20 +1553,17 @@ export function App(): JSX.Element {
     sessionId: string;
     attachToChat?: () => void;
   } | null>(null);
-  const disposeDetailsSession = useCallback(
-    (popup: { workspaceId: string; sessionId: string }): void => {
-      const api = window.argmax;
-      if (!api) return;
-      // Direct provider terminate (not the toast-wrapped command): tearing
-      // down an already-finished session is expected, not an error.
-      void api.providers
-        .terminate(popup.sessionId)
-        .catch(() => undefined)
-        .then(() => api.workspaces.archive({ workspaceId: popup.workspaceId, force: true }))
-        .catch(() => undefined);
-    },
-    []
-  );
+  const disposeDetailsSession = useCallback((popup: { workspaceId: string; sessionId: string }): void => {
+    const api = window.argmax;
+    if (!api) return;
+    // Direct provider terminate (not the toast-wrapped command): tearing
+    // down an already-finished session is expected, not an error.
+    void api.providers
+      .terminate(popup.sessionId)
+      .catch(() => undefined)
+      .then(() => api.workspaces.archive({ workspaceId: popup.workspaceId, force: true }))
+      .catch(() => undefined);
+  }, []);
   // Dispose outside the setState updater: updaters must stay pure (StrictMode
   // double-invokes them in dev, which would tear the session down twice).
   const closeDetailsPopup = useCallback((): void => {
@@ -1668,9 +1625,7 @@ export function App(): JSX.Element {
         .catch((error: unknown) => {
           // The claimed id is now exempt from the sweep for this app run, so
           // clean up the never-launched workspace here instead of stranding it.
-          void api.workspaces
-            .archive({ workspaceId: workspace.id, force: true })
-            .catch(() => undefined);
+          void api.workspaces.archive({ workspaceId: workspace.id, force: true }).catch(() => undefined);
           throw error;
         });
       const previous = detailsPopupRef.current;
@@ -1703,9 +1658,7 @@ export function App(): JSX.Element {
         !sweptPopupWorkspaceIds.current.has(workspace.id)
       ) {
         sweptPopupWorkspaceIds.current.add(workspace.id);
-        void api.workspaces
-          .archive({ workspaceId: workspace.id, force: true })
-          .catch(() => undefined);
+        void api.workspaces.archive({ workspaceId: workspace.id, force: true }).catch(() => undefined);
       }
     }
   }, [loadState, popupSweepEpoch, snapshot.workspaces]);
@@ -1754,98 +1707,100 @@ export function App(): JSX.Element {
   // scans every chat's attention, which a closed palette need not pay per delta.
   const paletteCommands = useMemo(
     () =>
-      !paletteMotion.present ? [] : buildPaletteCommands({
-        snapshot: paletteSnapshot,
-        selectedSession,
-        onNewSession: () => handleMenuCommand("new-session"),
-        onOpenSettings: () => showSettings(),
-        onOpenScheduledTasks: showSchedulePage,
-        onOpenBrowser:
-          typeof window !== "undefined" && window.argmax?.browser && !secondaryWindow
-            ? onOpenBrowserRow
-            : undefined,
-        onOpenUsage: showUsagePage,
-        onOpenActivity: showActivityPage,
-        onOpenSettingsSection: (group, sectionId) => showSettings(group, sectionId),
-        onOpenSearch: openMessagePalette,
-        preferences: {
-          themeMode,
-          onThemeModeChange: handleThemeModeChange,
-          accentId,
-          onAccentChange: handleAccentChange,
-          fontSize,
-          onFontSizeChange: setFontSize,
-          chatFontSize,
-          onChatFontSizeChange: setChatFontSize,
-          fontHeaviness,
-          onFontHeavinessChange: setFontHeaviness,
-          inkStrength,
-          onInkStrengthChange: setInkStrength,
-          backgroundIntensity,
-          onBackgroundIntensityChange: setBackgroundIntensity,
-          sidebarIntensity,
-          onSidebarIntensityChange: setSidebarIntensity,
-          contrast,
-          onContrastChange: setContrast,
-          chatVerbosity,
-          onChatVerbosityChange: setChatVerbosity,
-          chatWidth,
-          onChatWidthChange: setChatWidth,
-          reviewPanelSide,
-          onReviewPanelSideChange: setReviewPanelSide,
-          fontFamily,
-          onFontFamilyChange: setFontFamily,
-          desktopNotificationsEnabled,
-          onDesktopNotificationsEnabledChange: setDesktopNotificationsEnabled,
-          keepAwakeEnabled,
-          onKeepAwakeEnabledChange: setKeepAwakeEnabled,
-          fastModeEnabled,
-          onFastModeEnabledChange: setFastModeEnabled,
-          turnChangesExpanded,
-          onTurnChangesExpandedChange: setTurnChangesExpanded,
-          contextIndicatorEnabled,
-          onContextIndicatorEnabledChange: setContextIndicatorEnabled,
-          windowTranslucent,
-          onWindowTranslucentChange: setWindowTranslucent
-        },
-        onStopSession: (sessionId) => void terminateSession(sessionId),
-        onNewSideChat: () => {
-          hideCommandPalette();
-          hideStandalonePage();
-          closeWorkspacePages();
-          openLauncherSurface(true);
-        },
-        onGoToFile: openFilePalette,
-        onSearchContents: openContentPalette,
-        onToggleTerminal: toggleIntegratedTerminal,
-        onToggleRightSidebar: () => handleMenuCommand("toggle-sidebar"),
-        onToggleLeftSidebar: () => handleMenuCommand("toggle-left-sidebar"),
-        onSwitchToLastChat: () => handleMenuCommand("next-chat"),
-        onShowShortcuts: () => handleMenuCommand("open-cheat-sheet"),
-        onToggleDebugLog: () => handleMenuCommand("toggle-debug-log"),
-        onForkSession: (sessionId) => void forkSession(sessionId),
-        onArchiveWorkspace: onArchiveWorkspaceRow,
-        openInIde: defaultIde
-          ? {
-              label: detectedIdes.find((entry) => entry.id === defaultIde)?.label ?? defaultIde,
-              run: (workspaceId) => onOpenWorkspaceInIdePane(workspaceId, defaultIde)
+      !paletteMotion.present
+        ? []
+        : buildPaletteCommands({
+            snapshot: paletteSnapshot,
+            selectedSession,
+            onNewSession: () => handleMenuCommand("new-session"),
+            onOpenSettings: () => showSettings(),
+            onOpenScheduledTasks: showSchedulePage,
+            onOpenBrowser:
+              typeof window !== "undefined" && window.argmax?.browser && !secondaryWindow
+                ? onOpenBrowserRow
+                : undefined,
+            onOpenUsage: showUsagePage,
+            onOpenActivity: showActivityPage,
+            onOpenSettingsSection: (group, sectionId) => showSettings(group, sectionId),
+            onOpenSearch: openMessagePalette,
+            preferences: {
+              themeMode,
+              onThemeModeChange: handleThemeModeChange,
+              accentId,
+              onAccentChange: handleAccentChange,
+              fontSize,
+              onFontSizeChange: setFontSize,
+              chatFontSize,
+              onChatFontSizeChange: setChatFontSize,
+              fontHeaviness,
+              onFontHeavinessChange: setFontHeaviness,
+              inkStrength,
+              onInkStrengthChange: setInkStrength,
+              backgroundIntensity,
+              onBackgroundIntensityChange: setBackgroundIntensity,
+              sidebarIntensity,
+              onSidebarIntensityChange: setSidebarIntensity,
+              contrast,
+              onContrastChange: setContrast,
+              chatVerbosity,
+              onChatVerbosityChange: setChatVerbosity,
+              chatWidth,
+              onChatWidthChange: setChatWidth,
+              reviewPanelSide,
+              onReviewPanelSideChange: setReviewPanelSide,
+              fontFamily,
+              onFontFamilyChange: setFontFamily,
+              desktopNotificationsEnabled,
+              onDesktopNotificationsEnabledChange: setDesktopNotificationsEnabled,
+              keepAwakeEnabled,
+              onKeepAwakeEnabledChange: setKeepAwakeEnabled,
+              fastModeEnabled,
+              onFastModeEnabledChange: setFastModeEnabled,
+              turnChangesExpanded,
+              onTurnChangesExpandedChange: setTurnChangesExpanded,
+              contextIndicatorEnabled,
+              onContextIndicatorEnabledChange: setContextIndicatorEnabled,
+              windowTranslucent,
+              onWindowTranslucentChange: setWindowTranslucent
+            },
+            onStopSession: (sessionId) => void terminateSession(sessionId),
+            onNewSideChat: () => {
+              hideCommandPalette();
+              hideStandalonePage();
+              closeWorkspacePages();
+              openLauncherSurface(true);
+            },
+            onGoToFile: openFilePalette,
+            onSearchContents: openContentPalette,
+            onToggleTerminal: toggleIntegratedTerminal,
+            onToggleRightSidebar: () => handleMenuCommand("toggle-sidebar"),
+            onToggleLeftSidebar: () => handleMenuCommand("toggle-left-sidebar"),
+            onSwitchToLastChat: () => handleMenuCommand("next-chat"),
+            onShowShortcuts: () => handleMenuCommand("open-cheat-sheet"),
+            onToggleDebugLog: () => handleMenuCommand("toggle-debug-log"),
+            onForkSession: (sessionId) => void forkSession(sessionId),
+            onArchiveWorkspace: onArchiveWorkspaceRow,
+            openInIde: defaultIde
+              ? {
+                  label: detectedIdes.find((entry) => entry.id === defaultIde)?.label ?? defaultIde,
+                  run: (workspaceId) => onOpenWorkspaceInIdePane(workspaceId, defaultIde)
+                }
+              : undefined,
+            onOpenInNewWindow: window.argmax?.windows && !secondaryWindow ? onOpenInWindowRow : undefined,
+            paneActions: paletteLive?.actions,
+            nowMs: Date.now(),
+            onOpenWorkspace: openWorkspaceChat,
+            onSelectProject: (projectId) => {
+              persistLaunchProjectId(projectId);
+              setLauncherSideChatMode(false);
+              setSelectedProjectId(projectId);
+            },
+            onClearGrid: () => clearPaneGrid(),
+            onCloseOverlays: () => {
+              hideStandalonePage();
+              closeWorkspacePages();
             }
-          : undefined,
-        onOpenInNewWindow: window.argmax?.windows && !secondaryWindow ? onOpenInWindowRow : undefined,
-        paneActions: paletteLive?.actions,
-        nowMs: Date.now(),
-        onOpenWorkspace: openWorkspaceChat,
-        onSelectProject: (projectId) => {
-          persistLaunchProjectId(projectId);
-          setLauncherSideChatMode(false);
-          setSelectedProjectId(projectId);
-        },
-        onClearGrid: () => clearPaneGrid(),
-        onCloseOverlays: () => {
-          hideStandalonePage();
-          closeWorkspacePages();
-        }
-      }),
+          }),
     [
       paletteMotion.present,
       paletteSnapshot,
@@ -1909,10 +1864,7 @@ export function App(): JSX.Element {
     ]
   );
 
-  const sessionLabelById = useMemo(
-    () => buildSessionLabelById(paletteSnapshot),
-    [paletteSnapshot]
-  );
+  const sessionLabelById = useMemo(() => buildSessionLabelById(paletteSnapshot), [paletteSnapshot]);
 
   // The chats a prompt can name, and how a chip opens one. Published for the
   // composers, which sit far below this component (see state/chatDirectory.ts).
@@ -2011,10 +1963,34 @@ export function App(): JSX.Element {
         onBranchSwitch={handleProjectUpdated}
         onFastModeEnabledChange={setFastModeEnabled}
         goalEnabled={goalEnabled}
-        onLaunchTask={(prompt, model, agentMode, workspaceMode, attachments, goalCondition, projectId, background, checkout, projectFolderId) =>
-          launchTask(prompt, model, agentMode, projectId ?? project?.id, workspaceMode, attachments, goalCondition, background, checkout, projectFolderId)}
+        onLaunchTask={(
+          prompt,
+          model,
+          agentMode,
+          workspaceMode,
+          attachments,
+          goalCondition,
+          projectId,
+          background,
+          checkout,
+          projectFolderId
+        ) =>
+          launchTask(
+            prompt,
+            model,
+            agentMode,
+            projectId ?? project?.id,
+            workspaceMode,
+            attachments,
+            goalCondition,
+            background,
+            checkout,
+            projectFolderId
+          )
+        }
         onLaunchSideChat={(prompt, model, agentMode, attachments, goalCondition, background) =>
-          launchSideChat(prompt, { model, agentMode, attachments, goalCondition, background })}
+          launchSideChat(prompt, { model, agentMode, attachments, goalCondition, background })
+        }
         model={launchModel}
         autoRouting={autoRoutingEnabled}
         onModelChange={handleLaunchModelChange}
@@ -2064,21 +2040,23 @@ export function App(): JSX.Element {
   );
 
   const renderEmbeddedLaunchSurface = useCallback(
-    (project: ProjectSummary | null, isFocused: boolean): JSX.Element => renderLaunchSurface(project, { embedded: true, isFocused }),
+    (project: ProjectSummary | null, isFocused: boolean): JSX.Element =>
+      renderLaunchSurface(project, { embedded: true, isFocused }),
     [renderLaunchSurface]
   );
 
-  const detailsPopupWorkspace = detailsPopup
-    ? workspacesById.get(detailsPopup.workspaceId) ?? null
-    : null;
-  const detailsPopupSession = detailsPopup ? sessionsById.get(detailsPopup.sessionId) ?? null : null;
+  const detailsPopupWorkspace = detailsPopup ? (workspacesById.get(detailsPopup.workspaceId) ?? null) : null;
+  const detailsPopupSession = detailsPopup ? (sessionsById.get(detailsPopup.sessionId) ?? null) : null;
 
-  const handleWorkspaceSurfaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-    if (!showWorkspaceDropTarget) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    setIsWorkspaceDropPreviewVisible(true);
-  }, [showWorkspaceDropTarget]);
+  const handleWorkspaceSurfaceDragOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>): void => {
+      if (!showWorkspaceDropTarget) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setIsWorkspaceDropPreviewVisible(true);
+    },
+    [showWorkspaceDropTarget]
+  );
 
   const handleWorkspaceSurfaceDragLeave = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
     const related = event.relatedTarget;
@@ -2086,13 +2064,16 @@ export function App(): JSX.Element {
     setIsWorkspaceDropPreviewVisible(false);
   }, []);
 
-  const handleWorkspaceSurfaceDrop = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-    if (!draggingWorkspaceId || !showWorkspaceDropTarget) return;
-    event.preventDefault();
-    setIsWorkspaceDropPreviewVisible(false);
-    hideFullLauncher();
-    handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
-  }, [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]);
+  const handleWorkspaceSurfaceDrop = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>): void => {
+      if (!draggingWorkspaceId || !showWorkspaceDropTarget) return;
+      event.preventDefault();
+      setIsWorkspaceDropPreviewVisible(false);
+      hideFullLauncher();
+      handleDropWorkspace(draggingWorkspaceId, { row: 0, col: 0, position: "replace" });
+    },
+    [draggingWorkspaceId, handleDropWorkspace, showWorkspaceDropTarget]
+  );
 
   useEffect(() => {
     if (!showWorkspaceDropTarget || !draggingWorkspaceId) return undefined;
@@ -2100,8 +2081,7 @@ export function App(): JSX.Element {
       const overlay = workspaceDropOverlayRef.current;
       if (!overlay) return false;
       const rect = overlay.getBoundingClientRect();
-      return clientX >= rect.left && clientX <= rect.right &&
-        clientY >= rect.top && clientY <= rect.bottom;
+      return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
     };
     return subscribeWorkspacePointerDrag({
       move: ({ clientX, clientY }) => {
@@ -2119,457 +2099,462 @@ export function App(): JSX.Element {
 
   return (
     <PrMilestoneCelebrationContext.Provider value={prMilestoneCelebrationEnabled}>
-    <DeveloperToolsContext.Provider value={developerToolsEnabled}>
-    <ClaudeArtifactsContext.Provider value={sidebarClaudeArtifactsVisible}>
-    <SessionTimelineProvider store={timelines}>
-    <main
-      className="app-shell"
-      tabIndex={-1}
-      style={{
-        gridTemplateColumns:
-          effectiveSidebarCollapsed && !settingsRailOpen
-            ? "minmax(0, 1fr)"
-            : `${sidebarWidth}px minmax(0, 1fr)`,
-        ["--sidebar-width" as string]: `${sidebarWidth}px`
-      }}
-      data-resizing={isResizing ? "true" : undefined}
-      data-chat-width={String(chatWidth)}
-      data-review-panel-side={reviewPanelSide}
-      data-settings-open={isSettingsOpen ? "true" : undefined}
-      data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
-      data-usage-open={isUsageOpen ? "true" : undefined}
-      data-activity-open={isActivityOpen ? "true" : undefined}
-      data-arc-page-open={isArcPageOpen && !standalonePageOpen ? "true" : undefined}
-      data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
-      data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
-      data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
-    >
-      {settingsRailOpen ? null : (
-        <button
-          type="button"
-          className="sidebar-toggle"
-          title={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-          aria-label={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
-          onClick={() => {
-            // An automatic fold is governed by window width. The existing
-            // toggle remains the manual preference and is intentionally not
-            // allowed to persist a responsive fold. A click at that width
-            // toggles the existing hover-peek overlay instead.
-            if (sidebarResponsiveCollapsed && !sidebarCollapsed) {
-              setSidebarPeek(!sidebarPeek);
-              return;
-            }
-            toggleSidebarCollapsed();
-          }}
-        >
-          <PanelLeft size={16} strokeWidth={1.75} />
-        </button>
-      )}
-      {effectiveSidebarCollapsed ? (
-        <div
-          className="sidebar-peek-zone"
-          aria-hidden="true"
-          onMouseEnter={() => setSidebarPeek(true)}
-        />
-      ) : null}
-      {bridgeMissing && !isBrowserPreview() ? (
-        <div className="bridge-banner" role="alert">
-          Preview mode — showing sample data. Open Argmax on your Mac for your own chats.
-        </div>
-      ) : null}
-      {/*
+      <DeveloperToolsContext.Provider value={developerToolsEnabled}>
+        <ClaudeArtifactsContext.Provider value={sidebarClaudeArtifactsVisible}>
+          <SessionTimelineProvider store={timelines}>
+            <main
+              className="app-shell"
+              tabIndex={-1}
+              style={{
+                gridTemplateColumns:
+                  effectiveSidebarCollapsed && !settingsRailOpen
+                    ? "minmax(0, 1fr)"
+                    : `${sidebarWidth}px minmax(0, 1fr)`,
+                ["--sidebar-width" as string]: `${sidebarWidth}px`
+              }}
+              data-resizing={isResizing ? "true" : undefined}
+              data-chat-width={String(chatWidth)}
+              data-review-panel-side={reviewPanelSide}
+              data-settings-open={isSettingsOpen ? "true" : undefined}
+              data-schedule-open={isScheduledTasksOpen ? "true" : undefined}
+              data-usage-open={isUsageOpen ? "true" : undefined}
+              data-activity-open={isActivityOpen ? "true" : undefined}
+              data-arc-page-open={isArcPageOpen && !standalonePageOpen ? "true" : undefined}
+              data-browser-page-open={isBrowserPageOpen && !standalonePageOpen ? "true" : undefined}
+              data-sidebar-collapsed={effectiveSidebarCollapsed ? "true" : undefined}
+              data-sidebar-peek={effectiveSidebarCollapsed && sidebarPeek ? "true" : undefined}
+            >
+              {settingsRailOpen ? null : (
+                <button
+                  type="button"
+                  className="sidebar-toggle"
+                  title={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+                  aria-label={effectiveSidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+                  onClick={() => {
+                    // An automatic fold is governed by window width. The existing
+                    // toggle remains the manual preference and is intentionally not
+                    // allowed to persist a responsive fold. A click at that width
+                    // toggles the existing hover-peek overlay instead.
+                    if (sidebarResponsiveCollapsed && !sidebarCollapsed) {
+                      setSidebarPeek(!sidebarPeek);
+                      return;
+                    }
+                    toggleSidebarCollapsed();
+                  }}
+                >
+                  <PanelLeft size={16} strokeWidth={1.75} />
+                </button>
+              )}
+              {effectiveSidebarCollapsed ? (
+                <div className="sidebar-peek-zone" aria-hidden="true" onMouseEnter={() => setSidebarPeek(true)} />
+              ) : null}
+              {bridgeMissing && !isBrowserPreview() ? (
+                <div className="bridge-banner" role="alert">
+                  Preview mode — showing sample data. Open Argmax on your Mac for your own chats.
+                </div>
+              ) : null}
+              {/*
         Lazy overlays — only mount when the user actually opens them. The
         first ⌘K / ⌘P / ⌘F press triggers the dynamic import; subsequent opens
         re-use the already-loaded chunk. Fallback is `null` because these
         are full-screen modals and a loading spinner would flash worse
         than a 1-frame delay on the cold-open path.
       */}
-      {newProjectOpen ? <NewProjectDialog onClose={closeNewProject} onCreate={createProject} /> : null}
-      <NewArcDialog
-        open={promoteSource !== null}
-        onClose={hidePromoteArcDialog}
-        projects={realProjects}
-        promote={promoteSource}
-      />
-      {paletteMotion.present ? (
-        <Suspense fallback={null}>
-          <CommandPalette
-            open={paletteOpen}
-            motionState={paletteMotion.motionState}
-            onMotionEnd={paletteMotion.onMotionEnd}
-            commands={paletteCommands}
-            initialScope={paletteScope}
-            onClose={() => hideCommandPalette()}
-            searchMessages={searchMessages}
-            fileSource={paletteFileContext?.source ?? null}
-            filesVisible={paletteLive?.filesVisible ?? false}
-            changedPaths={paletteChangedPaths}
-            loadFiles={loadPaletteFiles}
-            onFilePick={paletteFileContext?.onPick}
-            searchContents={searchWorkspaceContents}
-          />
-        </Suspense>
-      ) : null}
-      <KeyboardCheatSheet open={cheatSheetOpen} onClose={() => hideKeyboardCheatSheet()} />
-      {toastMotion.present && paintedToast ? (
-        <div
-          className={`toast toast-${paintedToast.kind}`}
-          data-motion-state={toastMotion.motionState}
-          role="status"
-          aria-hidden={toast === null ? true : undefined}
-          onAnimationEnd={toastMotion.onMotionEnd}
-        >
-          <span className="toast-text">
-            {paintedToast.message}
-            {paintedToast.detail ? <span className="toast-detail">{paintedToast.detail}</span> : null}
-          </span>
-          {paintedToast.action ? (
-            <button
-              type="button"
-              className="toast-action"
-              onClick={() => {
-                dismissToast();
-                paintedToast.action?.run();
-              }}
-            >
-              {paintedToast.action.label}
-            </button>
-          ) : null}
-          <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
-            ×
-          </button>
-        </div>
-      ) : null}
-      <PerfOverlay />
-      {detailsPopupWorkspace && detailsPopupSession ? (
-        <DetailsPopup
-          approvals={snapshot.approvals}
-          chatFontSize={chatFontSize}
-          defaultToolCallsDisplay={toolCallsDisplay}
-          defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
-          thinkingDisplay={thinkingDisplay}
-          onResolveApproval={resolveApproval}
-          onAttachToChat={detailsPopup?.attachToChat}
-          onCancelQueuedMessage={cancelQueuedMessage}
-          onClose={closeDetailsPopup}
-          onLoadSessionEvents={loadSessionEvents}
-          onSendQueuedMessageNow={sendQueuedMessageNow}
-          onMultitask={multitask}
-          onOpenSession={openSessionById}
-          onSendSessionInput={sendSessionInput}
-          onTerminateSession={terminateSession}
-          onClearSession={clearSession}
-          pendingMessages={snapshot.pendingMessages}
-          project={null}
-          session={detailsPopupSession}
-          workspace={detailsPopupWorkspace}
-        />
-      ) : null}
-      {isSettingsOpen ? (
-        <SettingsRail
-          active={settingsGroup}
-          onChange={(group) => showSettings(group)}
-          onOpenSection={(group, sectionId) => showSettings(group, sectionId)}
-          onBack={() => hideStandalonePage()}
-        />
-      ) : (
-        <Sidebar
-          loadState={loadState}
-          onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
-          onRenameWorkspace={onRenameWorkspaceRow}
-          onForkWorkspace={onForkWorkspaceRow}
-          onRemoveFromPriority={onRemoveFromPriorityRow}
-          onAddToPriority={onAddToPriorityRow}
-          onSnoozeWorkspace={onSnoozeRow}
-          onUnsnoozeWorkspace={onUnsnoozeRow}
-          onClearPriority={onClearPrioritySection}
-          onSetWorkspaceIcon={onSetWorkspaceIconRow}
-          onSyncNowWorkspace={onSyncNowWorkspaceRow}
-          showArcs={sidebarArcsVisible}
-          showArchived={sidebarArchivedVisible}
-          showPriority={sidebarPriorityVisible}
-          onOpenLauncher={onOpenLauncherRow}
-          onAddProject={onAddProjectRow}
-          onNewSideChat={openSideChatLauncher}
-          onRemoveProject={onRemoveProjectRow}
-          onArchiveWorkspace={onArchiveWorkspaceRow}
-          onOpenInIde={onOpenInIdeRow}
-          onOpenInWindow={secondaryWindow ? undefined : onOpenInWindowRow}
-          onOpenProject={onOpenProjectRow}
-          onOpenWorkspaceChat={onOpenWorkspaceChatRow}
-          onOpenArc={onOpenArcRow}
-          onResizeMouseDown={onResizeMouseDown}
-          selectedProjectId={sidebarProject?.id ?? null}
-          selectedWorkspaceId={
-            isFullLauncherOpen || isBrowserPageOpen || isArcPageOpen || standalonePageOpen
-              ? null
-              : (selectedWorkspace?.id ?? null)
-          }
-          selectedArcId={isArcPageOpen && !standalonePageOpen ? selectedArcId : null}
-          browserSelected={isBrowserPageOpen && !standalonePageOpen}
-          scheduleSelected={isScheduledTasksOpen}
-          hackingSelected={isLedgerOpen}
-          onOpenBrowser={secondaryWindow ? undefined : onOpenBrowserRow}
-          onOpenClaudeArtifacts={!secondaryWindow && sidebarClaudeArtifactsVisible ? onOpenClaudeArtifacts : undefined}
-          snapshot={snapshot}
-          detectedIdes={detectedIdes}
-          defaultIde={defaultIde}
-        />
-      )}
+              {newProjectOpen ? <NewProjectDialog onClose={closeNewProject} onCreate={createProject} /> : null}
+              <NewArcDialog
+                open={promoteSource !== null}
+                onClose={hidePromoteArcDialog}
+                projects={realProjects}
+                promote={promoteSource}
+              />
+              {paletteMotion.present ? (
+                <Suspense fallback={null}>
+                  <CommandPalette
+                    open={paletteOpen}
+                    motionState={paletteMotion.motionState}
+                    onMotionEnd={paletteMotion.onMotionEnd}
+                    commands={paletteCommands}
+                    initialScope={paletteScope}
+                    onClose={() => hideCommandPalette()}
+                    searchMessages={searchMessages}
+                    fileSource={paletteFileContext?.source ?? null}
+                    filesVisible={paletteLive?.filesVisible ?? false}
+                    changedPaths={paletteChangedPaths}
+                    loadFiles={loadPaletteFiles}
+                    onFilePick={paletteFileContext?.onPick}
+                    searchContents={searchWorkspaceContents}
+                  />
+                </Suspense>
+              ) : null}
+              <KeyboardCheatSheet open={cheatSheetOpen} onClose={() => hideKeyboardCheatSheet()} />
+              {toastMotion.present && paintedToast ? (
+                <div
+                  className={`toast toast-${paintedToast.kind}`}
+                  data-motion-state={toastMotion.motionState}
+                  role="status"
+                  aria-hidden={toast === null ? true : undefined}
+                  onAnimationEnd={toastMotion.onMotionEnd}
+                >
+                  <span className="toast-text">
+                    {paintedToast.message}
+                    {paintedToast.detail ? <span className="toast-detail">{paintedToast.detail}</span> : null}
+                  </span>
+                  {paintedToast.action ? (
+                    <button
+                      type="button"
+                      className="toast-action"
+                      onClick={() => {
+                        dismissToast();
+                        paintedToast.action?.run();
+                      }}
+                    >
+                      {paintedToast.action.label}
+                    </button>
+                  ) : null}
+                  <button type="button" onClick={() => dismissToast()} aria-label="Dismiss">
+                    ×
+                  </button>
+                </div>
+              ) : null}
+              <PerfOverlay />
+              {detailsPopupWorkspace && detailsPopupSession ? (
+                <DetailsPopup
+                  approvals={snapshot.approvals}
+                  chatFontSize={chatFontSize}
+                  defaultToolCallsDisplay={toolCallsDisplay}
+                  defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
+                  thinkingDisplay={thinkingDisplay}
+                  onResolveApproval={resolveApproval}
+                  onAttachToChat={detailsPopup?.attachToChat}
+                  onCancelQueuedMessage={cancelQueuedMessage}
+                  onClose={closeDetailsPopup}
+                  onLoadSessionEvents={loadSessionEvents}
+                  onSendQueuedMessageNow={sendQueuedMessageNow}
+                  onMultitask={multitask}
+                  onOpenSession={openSessionById}
+                  onSendSessionInput={sendSessionInput}
+                  onTerminateSession={terminateSession}
+                  onClearSession={clearSession}
+                  pendingMessages={snapshot.pendingMessages}
+                  project={null}
+                  session={detailsPopupSession}
+                  workspace={detailsPopupWorkspace}
+                />
+              ) : null}
+              {isSettingsOpen ? (
+                <SettingsRail
+                  active={settingsGroup}
+                  onChange={(group) => showSettings(group)}
+                  onOpenSection={(group, sectionId) => showSettings(group, sectionId)}
+                  onBack={() => hideStandalonePage()}
+                />
+              ) : (
+                <Sidebar
+                  loadState={loadState}
+                  onToggleWorkspacePinned={onToggleWorkspacePinnedRow}
+                  onRenameWorkspace={onRenameWorkspaceRow}
+                  onForkWorkspace={onForkWorkspaceRow}
+                  onRemoveFromPriority={onRemoveFromPriorityRow}
+                  onAddToPriority={onAddToPriorityRow}
+                  onSnoozeWorkspace={onSnoozeRow}
+                  onUnsnoozeWorkspace={onUnsnoozeRow}
+                  onClearPriority={onClearPrioritySection}
+                  onSetWorkspaceIcon={onSetWorkspaceIconRow}
+                  onSyncNowWorkspace={onSyncNowWorkspaceRow}
+                  showArcs={sidebarArcsVisible}
+                  showArchived={sidebarArchivedVisible}
+                  showPriority={sidebarPriorityVisible}
+                  onOpenLauncher={onOpenLauncherRow}
+                  onAddProject={onAddProjectRow}
+                  onNewSideChat={openSideChatLauncher}
+                  onRemoveProject={onRemoveProjectRow}
+                  onArchiveWorkspace={onArchiveWorkspaceRow}
+                  onOpenInIde={onOpenInIdeRow}
+                  onOpenInWindow={secondaryWindow ? undefined : onOpenInWindowRow}
+                  onOpenProject={onOpenProjectRow}
+                  onOpenWorkspaceChat={onOpenWorkspaceChatRow}
+                  onOpenArc={onOpenArcRow}
+                  onResizeMouseDown={onResizeMouseDown}
+                  selectedProjectId={sidebarProject?.id ?? null}
+                  selectedWorkspaceId={
+                    isFullLauncherOpen || isBrowserPageOpen || isArcPageOpen || standalonePageOpen
+                      ? null
+                      : (selectedWorkspace?.id ?? null)
+                  }
+                  selectedArcId={isArcPageOpen && !standalonePageOpen ? selectedArcId : null}
+                  browserSelected={isBrowserPageOpen && !standalonePageOpen}
+                  scheduleSelected={isScheduledTasksOpen}
+                  hackingSelected={isLedgerOpen}
+                  onOpenBrowser={secondaryWindow ? undefined : onOpenBrowserRow}
+                  onOpenClaudeArtifacts={
+                    !secondaryWindow && sidebarClaudeArtifactsVisible ? onOpenClaudeArtifacts : undefined
+                  }
+                  snapshot={snapshot}
+                  detectedIdes={detectedIdes}
+                  defaultIde={defaultIde}
+                />
+              )}
 
-      <section className="workspace" ref={workspaceRef}>
-        {standalonePageOpen || isArcPageOpen ? (
-          <div className="standalone-page-fade scroll-fade" aria-hidden="true" />
-        ) : null}
-        <div className={
-          standalonePageOpen
-            ? "work-scroll settings-scroll"
-            : isBrowserPageOpen
-              ? "work-scroll browser-scroll"
-              : isArcPageOpen
-                ? "work-scroll arc-scroll"
-                : isFullLauncherOpen || grid.rows.length === 0
-                ? "work-scroll launcher-scroll"
-                : "work-scroll session-scroll"
-        }>
-          {loadState === "error" ? (
-            <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
-          ) : loadState === "loading" && grid.rows.length === 0 && !standalonePageOpen && !isBrowserPageOpen && !isArcPageOpen ? (
-            <SkeletonPane label="Loading workspace" />
-          ) : isSettingsOpen ? (
-            <Suspense fallback={<SkeletonPane label="Loading settings" />}>
-              <SettingsPanel
-                activeGroup={settingsGroup}
-                onGroupChange={(group) => showSettings(group)}
-                defaultModel={launchModel}
-                onDefaultModelChange={handleLaunchModelChange}
-                routing={routing}
-                onRoutingChange={setRouting}
-                defaultEffort={defaultEffort}
-                onDefaultEffortChange={handleDefaultEffortChange}
-                chatVerbosity={chatVerbosity}
-                onChatVerbosityChange={setChatVerbosity}
-                sidebarClaudeArtifactsVisible={sidebarClaudeArtifactsVisible}
-                onSidebarClaudeArtifactsVisibleChange={setSidebarClaudeArtifactsVisible}
-                sidebarArcsVisible={sidebarArcsVisible}
-                onSidebarArcsVisibleChange={setSidebarArcsVisible}
-                sidebarArchivedVisible={sidebarArchivedVisible}
-                onSidebarArchivedVisibleChange={setSidebarArchivedVisible}
-                sidebarPriorityVisible={sidebarPriorityVisible}
-                onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
-                windowTranslucent={windowTranslucent}
-                onWindowTranslucentChange={setWindowTranslucent}
-                windowTranslucency={windowTranslucency}
-                onWindowTranslucencyChange={setWindowTranslucency}
-                workspaceCardVisible={workspaceCardVisible}
-                onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
-                developerToolsEnabled={developerToolsEnabled}
-                onDeveloperToolsEnabledChange={setDeveloperToolsEnabled}
-                contextIndicatorEnabled={contextIndicatorEnabled}
-                onContextIndicatorEnabledChange={setContextIndicatorEnabled}
-                prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
-                onPrMilestoneCelebrationEnabledChange={setPrMilestoneCelebrationEnabled}
-                chatWidth={chatWidth}
-                onChatWidthChange={setChatWidth}
-                reviewPanelSide={reviewPanelSide}
-                onReviewPanelSideChange={setReviewPanelSide}
-                fastModeEnabled={fastModeEnabled}
-                onFastModeEnabledChange={setFastModeEnabled}
-                turnChangesExpanded={turnChangesExpanded}
-                onTurnChangesExpandedChange={setTurnChangesExpanded}
-                goalEnabled={goalEnabled}
-                onGoalEnabledChange={setGoalEnabled}
-                goalMaxTurns={goalMaxTurns}
-                onGoalMaxTurnsChange={setGoalMaxTurns}
-                revertEnabled={revertEnabled}
-                onRevertEnabledChange={setRevertEnabled}
-                fontFamily={fontFamily}
-                onFontFamilyChange={setFontFamily}
-                fontSize={fontSize}
-                onFontSizeChange={setFontSize}
-                chatFontSize={chatFontSize}
-                onChatFontSizeChange={setChatFontSize}
-                fontHeaviness={fontHeaviness}
-                onFontHeavinessChange={setFontHeaviness}
-                inkStrength={inkStrength}
-                onInkStrengthChange={setInkStrength}
-                backgroundIntensity={backgroundIntensity}
-                onBackgroundIntensityChange={setBackgroundIntensity}
-                sidebarIntensity={sidebarIntensity}
-                onSidebarIntensityChange={setSidebarIntensity}
-                contrast={contrast}
-                onContrastChange={setContrast}
-                themeMode={themeMode}
-                onThemeModeChange={handleThemeModeChange}
-                browserThemeMode={browserThemeMode}
-                onBrowserThemeModeChange={setBrowserThemeMode}
-                accentId={accentId}
-                onAccentChange={handleAccentChange}
-                userBubbleTint={userBubbleTint}
-                onUserBubbleTintChange={(tint) => {
-                  animateThemeChange();
-                  setUserBubbleTint(tint);
-                }}
-                detectedIdes={detectedIdes}
-                defaultIde={defaultIde}
-                onDefaultIdeChange={setDefaultIde}
-                defaultAgentSaveError={defaultAgentSaveError}
-                isSavingDefaultAgent={isSavingDefaultAgent}
-                onRetryDefaultAgentSave={() => setDefaultAgentSaveAttempt((attempt) => attempt + 1)}
-                permissionModes={permissionModes}
-                onPermissionModeChange={(provider, mode) => setPermissionModes((current) => ({ ...current, [provider]: mode }))}
-                newSessionMode={newSessionMode}
-                onNewSessionModeChange={setNewSessionMode}
-                followUpDelivery={followUpDelivery}
-                onFollowUpDeliveryChange={setFollowUpDelivery}
-                randomSessionIconEnabled={randomSessionIconEnabled}
-                onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
-                desktopNotificationsEnabled={desktopNotificationsEnabled}
-                onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}
-                keepAwakeEnabled={keepAwakeEnabled}
-                onKeepAwakeEnabledChange={setKeepAwakeEnabled}
-                projects={realProjects}
-                onProjectUpdated={handleProjectUpdated}
-                navigationTarget={settingsNavigation}
-                onOpenUsage={showUsagePage}
-              />
-            </Suspense>
-          ) : isScheduledTasksOpen ? (
-            <Suspense fallback={<SkeletonPane label="Loading scheduled tasks" />}>
-              <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
-            </Suspense>
-          ) : isLedgerOpen ? (
-            <>
-              <div className={isUsageOpen ? undefined : "ledger-page-parked"} aria-hidden={!isUsageOpen}>
-                <Suspense fallback={isUsageOpen ? <SkeletonPane label="Loading usage" /> : null}>
-                  <UsagePanel visible={isUsageOpen} />
-                </Suspense>
-              </div>
-              <div className={isActivityOpen ? undefined : "ledger-page-parked"} aria-hidden={!isActivityOpen}>
-                <Suspense fallback={isActivityOpen ? <SkeletonPane label="Loading activity" /> : null}>
-                  <ActivityPanel visible={isActivityOpen} />
-                </Suspense>
-              </div>
-            </>
-          ) : isBrowserPageOpen ? (
-            <Suspense fallback={<SkeletonPane label="Loading browser" />}>
-              <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
-            </Suspense>
-          ) : isArcPageOpen && selectedArcId ? (
-            <Suspense fallback={<SkeletonPane label="Loading arc" />}>
-              <ArcPage
-                arcId={selectedArcId}
-                snapshot={snapshot}
-                projects={realProjects}
-                onOpenSession={openSessionById}
-                onClose={hideArcPage}
-              />
-            </Suspense>
-          ) : isFullLauncherOpen ? (
-            renderLaunchSurface(launcherProject)
-          ) : grid.rows.length > 0 ? (
-            <SessionMultiGrid
-              chatFontSize={chatFontSize}
-              grid={grid}
-              approvals={snapshot.approvals}
-              checks={snapshot.checks}
-              projectsById={projectsById}
-              workspacesById={workspacesById}
-              sessionsById={sessionsById}
-              multitasksByParent={multitasksByParent}
-              defaultToolCallsDisplay={toolCallsDisplay}
-              defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
-              thinkingDisplay={thinkingDisplay}
-              defaultTurnChangesExpanded={turnChangesExpanded}
-              defaultFollowUpDelivery={followUpDelivery}
-              goalEnabled={goalEnabled}
-              goalMaxTurns={goalMaxTurns}
-              revertEnabled={revertEnabled}
-              fastModeEnabled={fastModeEnabled}
-              workspaceCardVisible={workspaceCardVisible}
-              onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
-              contextIndicatorEnabled={contextIndicatorEnabled}
-              rightPanelToggleSignal={rightPanelToggleSignal}
-              debugLogToggleSignal={debugLogToggleSignal}
-              maxColumnsPerRow={maxGridColumnsPerRow}
-              renderLauncher={renderEmbeddedLaunchSurface}
-              dragSourceWorkspaceId={draggingWorkspaceId}
-              onFocusPane={focusPane}
-              onClosePane={closePane}
-              onDropWorkspace={handleDropWorkspace}
-              onFastModeEnabledChange={setFastModeEnabled}
-              onLoadSessionEvents={loadSessionEvents}
-              onLoadAgentEvents={loadAgentEvents}
-              onNewSession={openNewSessionPaneInGrid}
-              sideChat={{
-                launch: (prompt, options) => launchSideChat(prompt, { ...options, background: true }),
-                selectedModel: launchModel,
-                onModelChange: handleLaunchModelChange,
-                autoRouting: autoRoutingEnabled,
-                fastModeEnabled,
-                onFastModeEnabledChange: setFastModeEnabled,
-                sessionsById,
-                workspacesById,
-                pendingMessages: snapshot.pendingMessages,
-                chatFontSize,
-                defaultToolCallsDisplay: toolCallsDisplay,
-                defaultToolCallGroupsExpanded: toolCallGroupsExpanded,
-                thinkingDisplay,
-                onLoadSessionEvents: loadSessionEvents,
-                onCancelQueuedMessage: cancelQueuedMessage,
-                onClearSession: clearSession,
-                onOpenFullChat: openSessionById,
-                onSendQueuedMessageNow: sendQueuedMessageNow,
-                onSendSessionInput: sendSessionInput,
-                onTerminateSession: (sessionId, options) => terminateSession(sessionId, {
-                  ...options,
-                  restoreLauncherOnEarlyStop: false
-                })
-              }}
-              onOpenSideChat={async (seedPrompt) => {
-                await launchSideChat(seedPrompt);
-              }}
-              onOpenSession={openSessionById}
-              onOpenDetails={launchDetailsPopup}
-              defaultIde={defaultIde}
-              detectedIdes={detectedIdes}
-              onOpenWorkspaceInIde={onOpenWorkspaceInIdePane}
-              onWorkspaceMinWidthChange={setSessionGridRequiredWorkspaceMinWidth}
-              onResolveApproval={resolveApproval}
-              onSendSessionInput={sendSessionInput}
-              onCancelQueuedMessage={cancelQueuedMessage}
-              onSendQueuedMessageNow={sendQueuedMessageNow}
-              onMultitask={multitask}
-              pendingMessages={snapshot.pendingMessages}
-              onTerminateSession={terminateSession}
-              onClearSession={clearSession}
-              onForkSession={forkSession}
-              onRunCheck={runCheck}
-              registerPaletteFileContext={setPaletteFileContext}
-            />
-          ) : (
-            renderLaunchSurface(launcherProject)
-          )}
-        </div>
-        {showWorkspaceDropTarget ? (
-          <div
-            ref={workspaceDropOverlayRef}
-            className="workspace-drop-overlay"
-            aria-hidden="true"
-            onDragOver={handleWorkspaceSurfaceDragOver}
-            onDragLeave={handleWorkspaceSurfaceDragLeave}
-            onDrop={handleWorkspaceSurfaceDrop}
-          >
-            {isWorkspaceDropPreviewVisible ? (
-              <div className="workspace-drop-zone" data-hovered="true" />
-            ) : null}
-          </div>
-        ) : null}
-      </section>
-    </main>
-    </SessionTimelineProvider>
-    </ClaudeArtifactsContext.Provider>
-    </DeveloperToolsContext.Provider>
+              <section className="workspace" ref={workspaceRef}>
+                {standalonePageOpen || isArcPageOpen ? (
+                  <div className="standalone-page-fade scroll-fade" aria-hidden="true" />
+                ) : null}
+                <div
+                  className={
+                    standalonePageOpen
+                      ? "work-scroll settings-scroll"
+                      : isBrowserPageOpen
+                        ? "work-scroll browser-scroll"
+                        : isArcPageOpen
+                          ? "work-scroll arc-scroll"
+                          : isFullLauncherOpen || grid.rows.length === 0
+                            ? "work-scroll launcher-scroll"
+                            : "work-scroll session-scroll"
+                  }
+                >
+                  {loadState === "error" ? (
+                    <EmptyState message={loadError} onRetry={() => void loadDashboard()} />
+                  ) : loadState === "loading" &&
+                    grid.rows.length === 0 &&
+                    !standalonePageOpen &&
+                    !isBrowserPageOpen &&
+                    !isArcPageOpen ? (
+                    <SkeletonPane label="Loading workspace" />
+                  ) : isSettingsOpen ? (
+                    <Suspense fallback={<SkeletonPane label="Loading settings" />}>
+                      <SettingsPanel
+                        activeGroup={settingsGroup}
+                        onGroupChange={(group) => showSettings(group)}
+                        defaultModel={launchModel}
+                        onDefaultModelChange={handleLaunchModelChange}
+                        routing={routing}
+                        onRoutingChange={setRouting}
+                        defaultEffort={defaultEffort}
+                        onDefaultEffortChange={handleDefaultEffortChange}
+                        chatVerbosity={chatVerbosity}
+                        onChatVerbosityChange={setChatVerbosity}
+                        sidebarClaudeArtifactsVisible={sidebarClaudeArtifactsVisible}
+                        onSidebarClaudeArtifactsVisibleChange={setSidebarClaudeArtifactsVisible}
+                        sidebarArcsVisible={sidebarArcsVisible}
+                        onSidebarArcsVisibleChange={setSidebarArcsVisible}
+                        sidebarArchivedVisible={sidebarArchivedVisible}
+                        onSidebarArchivedVisibleChange={setSidebarArchivedVisible}
+                        sidebarPriorityVisible={sidebarPriorityVisible}
+                        onSidebarPriorityVisibleChange={setSidebarPriorityVisible}
+                        windowTranslucent={windowTranslucent}
+                        onWindowTranslucentChange={setWindowTranslucent}
+                        windowTranslucency={windowTranslucency}
+                        onWindowTranslucencyChange={setWindowTranslucency}
+                        workspaceCardVisible={workspaceCardVisible}
+                        onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
+                        developerToolsEnabled={developerToolsEnabled}
+                        onDeveloperToolsEnabledChange={setDeveloperToolsEnabled}
+                        contextIndicatorEnabled={contextIndicatorEnabled}
+                        onContextIndicatorEnabledChange={setContextIndicatorEnabled}
+                        prMilestoneCelebrationEnabled={prMilestoneCelebrationEnabled}
+                        onPrMilestoneCelebrationEnabledChange={setPrMilestoneCelebrationEnabled}
+                        chatWidth={chatWidth}
+                        onChatWidthChange={setChatWidth}
+                        reviewPanelSide={reviewPanelSide}
+                        onReviewPanelSideChange={setReviewPanelSide}
+                        fastModeEnabled={fastModeEnabled}
+                        onFastModeEnabledChange={setFastModeEnabled}
+                        turnChangesExpanded={turnChangesExpanded}
+                        onTurnChangesExpandedChange={setTurnChangesExpanded}
+                        goalEnabled={goalEnabled}
+                        onGoalEnabledChange={setGoalEnabled}
+                        goalMaxTurns={goalMaxTurns}
+                        onGoalMaxTurnsChange={setGoalMaxTurns}
+                        revertEnabled={revertEnabled}
+                        onRevertEnabledChange={setRevertEnabled}
+                        fontFamily={fontFamily}
+                        onFontFamilyChange={setFontFamily}
+                        fontSize={fontSize}
+                        onFontSizeChange={setFontSize}
+                        chatFontSize={chatFontSize}
+                        onChatFontSizeChange={setChatFontSize}
+                        fontHeaviness={fontHeaviness}
+                        onFontHeavinessChange={setFontHeaviness}
+                        inkStrength={inkStrength}
+                        onInkStrengthChange={setInkStrength}
+                        backgroundIntensity={backgroundIntensity}
+                        onBackgroundIntensityChange={setBackgroundIntensity}
+                        sidebarIntensity={sidebarIntensity}
+                        onSidebarIntensityChange={setSidebarIntensity}
+                        contrast={contrast}
+                        onContrastChange={setContrast}
+                        themeMode={themeMode}
+                        onThemeModeChange={handleThemeModeChange}
+                        browserThemeMode={browserThemeMode}
+                        onBrowserThemeModeChange={setBrowserThemeMode}
+                        accentId={accentId}
+                        onAccentChange={handleAccentChange}
+                        userBubbleTint={userBubbleTint}
+                        onUserBubbleTintChange={(tint) => {
+                          animateThemeChange();
+                          setUserBubbleTint(tint);
+                        }}
+                        detectedIdes={detectedIdes}
+                        defaultIde={defaultIde}
+                        onDefaultIdeChange={setDefaultIde}
+                        defaultAgentSaveError={defaultAgentSaveError}
+                        isSavingDefaultAgent={isSavingDefaultAgent}
+                        onRetryDefaultAgentSave={() => setDefaultAgentSaveAttempt((attempt) => attempt + 1)}
+                        permissionModes={permissionModes}
+                        onPermissionModeChange={(provider, mode) =>
+                          setPermissionModes((current) => ({ ...current, [provider]: mode }))
+                        }
+                        newSessionMode={newSessionMode}
+                        onNewSessionModeChange={setNewSessionMode}
+                        followUpDelivery={followUpDelivery}
+                        onFollowUpDeliveryChange={setFollowUpDelivery}
+                        randomSessionIconEnabled={randomSessionIconEnabled}
+                        onRandomSessionIconEnabledChange={setRandomSessionIconEnabled}
+                        desktopNotificationsEnabled={desktopNotificationsEnabled}
+                        onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}
+                        keepAwakeEnabled={keepAwakeEnabled}
+                        onKeepAwakeEnabledChange={setKeepAwakeEnabled}
+                        projects={realProjects}
+                        onProjectUpdated={handleProjectUpdated}
+                        navigationTarget={settingsNavigation}
+                        onOpenUsage={showUsagePage}
+                      />
+                    </Suspense>
+                  ) : isScheduledTasksOpen ? (
+                    <Suspense fallback={<SkeletonPane label="Loading scheduled tasks" />}>
+                      <ScheduledTasksPanel projects={realProjects} onOpenSession={openSessionById} />
+                    </Suspense>
+                  ) : isLedgerOpen ? (
+                    <>
+                      <div className={isUsageOpen ? undefined : "ledger-page-parked"} aria-hidden={!isUsageOpen}>
+                        <Suspense fallback={isUsageOpen ? <SkeletonPane label="Loading usage" /> : null}>
+                          <UsagePanel visible={isUsageOpen} />
+                        </Suspense>
+                      </div>
+                      <div className={isActivityOpen ? undefined : "ledger-page-parked"} aria-hidden={!isActivityOpen}>
+                        <Suspense fallback={isActivityOpen ? <SkeletonPane label="Loading activity" /> : null}>
+                          <ActivityPanel visible={isActivityOpen} />
+                        </Suspense>
+                      </div>
+                    </>
+                  ) : isBrowserPageOpen ? (
+                    <Suspense fallback={<SkeletonPane label="Loading browser" />}>
+                      <BrowserPage onClose={() => setIsBrowserPageOpen(false)} />
+                    </Suspense>
+                  ) : isArcPageOpen && selectedArcId ? (
+                    <Suspense fallback={<SkeletonPane label="Loading arc" />}>
+                      <ArcPage
+                        arcId={selectedArcId}
+                        snapshot={snapshot}
+                        projects={realProjects}
+                        onOpenSession={openSessionById}
+                        onClose={hideArcPage}
+                      />
+                    </Suspense>
+                  ) : isFullLauncherOpen ? (
+                    renderLaunchSurface(launcherProject)
+                  ) : grid.rows.length > 0 ? (
+                    <SessionMultiGrid
+                      chatFontSize={chatFontSize}
+                      grid={grid}
+                      approvals={snapshot.approvals}
+                      checks={snapshot.checks}
+                      projectsById={projectsById}
+                      workspacesById={workspacesById}
+                      sessionsById={sessionsById}
+                      multitasksByParent={multitasksByParent}
+                      defaultToolCallsDisplay={toolCallsDisplay}
+                      defaultToolCallGroupsExpanded={toolCallGroupsExpanded}
+                      thinkingDisplay={thinkingDisplay}
+                      defaultTurnChangesExpanded={turnChangesExpanded}
+                      defaultFollowUpDelivery={followUpDelivery}
+                      goalEnabled={goalEnabled}
+                      goalMaxTurns={goalMaxTurns}
+                      revertEnabled={revertEnabled}
+                      fastModeEnabled={fastModeEnabled}
+                      workspaceCardVisible={workspaceCardVisible}
+                      onWorkspaceCardVisibleChange={setWorkspaceCardVisible}
+                      contextIndicatorEnabled={contextIndicatorEnabled}
+                      rightPanelToggleSignal={rightPanelToggleSignal}
+                      debugLogToggleSignal={debugLogToggleSignal}
+                      maxColumnsPerRow={maxGridColumnsPerRow}
+                      renderLauncher={renderEmbeddedLaunchSurface}
+                      dragSourceWorkspaceId={draggingWorkspaceId}
+                      onFocusPane={focusPane}
+                      onClosePane={closePane}
+                      onDropWorkspace={handleDropWorkspace}
+                      onFastModeEnabledChange={setFastModeEnabled}
+                      onLoadSessionEvents={loadSessionEvents}
+                      onLoadAgentEvents={loadAgentEvents}
+                      onNewSession={openNewSessionPaneInGrid}
+                      sideChat={{
+                        launch: (prompt, options) => launchSideChat(prompt, { ...options, background: true }),
+                        selectedModel: launchModel,
+                        onModelChange: handleLaunchModelChange,
+                        autoRouting: autoRoutingEnabled,
+                        fastModeEnabled,
+                        onFastModeEnabledChange: setFastModeEnabled,
+                        sessionsById,
+                        workspacesById,
+                        pendingMessages: snapshot.pendingMessages,
+                        chatFontSize,
+                        defaultToolCallsDisplay: toolCallsDisplay,
+                        defaultToolCallGroupsExpanded: toolCallGroupsExpanded,
+                        thinkingDisplay,
+                        onLoadSessionEvents: loadSessionEvents,
+                        onCancelQueuedMessage: cancelQueuedMessage,
+                        onClearSession: clearSession,
+                        onOpenFullChat: openSessionById,
+                        onSendQueuedMessageNow: sendQueuedMessageNow,
+                        onSendSessionInput: sendSessionInput,
+                        onTerminateSession: (sessionId, options) =>
+                          terminateSession(sessionId, {
+                            ...options,
+                            restoreLauncherOnEarlyStop: false
+                          })
+                      }}
+                      onOpenSideChat={async (seedPrompt) => {
+                        await launchSideChat(seedPrompt);
+                      }}
+                      onOpenSession={openSessionById}
+                      onOpenDetails={launchDetailsPopup}
+                      defaultIde={defaultIde}
+                      detectedIdes={detectedIdes}
+                      onOpenWorkspaceInIde={onOpenWorkspaceInIdePane}
+                      onWorkspaceMinWidthChange={setSessionGridRequiredWorkspaceMinWidth}
+                      onResolveApproval={resolveApproval}
+                      onSendSessionInput={sendSessionInput}
+                      onCancelQueuedMessage={cancelQueuedMessage}
+                      onSendQueuedMessageNow={sendQueuedMessageNow}
+                      onMultitask={multitask}
+                      pendingMessages={snapshot.pendingMessages}
+                      onTerminateSession={terminateSession}
+                      onClearSession={clearSession}
+                      onForkSession={forkSession}
+                      onRunCheck={runCheck}
+                      registerPaletteFileContext={setPaletteFileContext}
+                    />
+                  ) : (
+                    renderLaunchSurface(launcherProject)
+                  )}
+                </div>
+                {showWorkspaceDropTarget ? (
+                  <div
+                    ref={workspaceDropOverlayRef}
+                    className="workspace-drop-overlay"
+                    aria-hidden="true"
+                    onDragOver={handleWorkspaceSurfaceDragOver}
+                    onDragLeave={handleWorkspaceSurfaceDragLeave}
+                    onDrop={handleWorkspaceSurfaceDrop}
+                  >
+                    {isWorkspaceDropPreviewVisible ? <div className="workspace-drop-zone" data-hovered="true" /> : null}
+                  </div>
+                ) : null}
+              </section>
+            </main>
+          </SessionTimelineProvider>
+        </ClaudeArtifactsContext.Provider>
+      </DeveloperToolsContext.Provider>
     </PrMilestoneCelebrationContext.Provider>
   );
 }

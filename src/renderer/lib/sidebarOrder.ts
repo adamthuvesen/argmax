@@ -11,9 +11,7 @@
 export function listVisibleSidebarWorkspaceIds(): string[] {
   if (typeof document === "undefined") return [];
   const rows = document.querySelectorAll<HTMLElement>(".project-list .session-row[data-workspace-id]");
-  return Array.from(rows, (row) => row.dataset.workspaceId).filter(
-    (id): id is string => Boolean(id)
-  );
+  return Array.from(rows, (row) => row.dataset.workspaceId).filter((id): id is string => Boolean(id));
 }
 
 /** The row the sidebar marks as current, or null on the launcher and standalone pages. */

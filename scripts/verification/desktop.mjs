@@ -1,11 +1,7 @@
 import { access, mkdir, realpath, stat, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
-import {
-  cleanupWdioSession,
-  createTauriCapabilities,
-  startWdioSession
-} from "@wdio/tauri-service";
+import { cleanupWdioSession, createTauriCapabilities, startWdioSession } from "@wdio/tauri-service";
 import { delay, runChecked } from "./common.mjs";
 
 const DEFAULT_START_TIMEOUT_MS = 60_000;
@@ -43,7 +39,7 @@ async function freeLoopbackPort() {
 }
 
 function errorMessage(error) {
-  return error instanceof Error ? error.stack ?? error.message : String(error);
+  return error instanceof Error ? (error.stack ?? error.message) : String(error);
 }
 
 async function processSnapshot() {
@@ -153,7 +149,9 @@ async function closeDesktopProcessTree(browser) {
         remaining = await waitForProcessExit(remaining, DESKTOP_DESCENDANT_EXIT_TIMEOUT_MS);
       }
       if (remaining.length > 0) {
-        throw new Error(`Owned verification descendants remained alive: ${remaining.map((entry) => entry.pid).join(", ")}`);
+        throw new Error(
+          `Owned verification descendants remained alive: ${remaining.map((entry) => entry.pid).join(", ")}`
+        );
       }
     } catch (error) {
       errors.push(error);
@@ -204,15 +202,15 @@ async function macosDesktopState(pid, activate) {
     "}",
     "func identity(_ runningApplication: NSRunningApplication?) -> Any {",
     "  guard let runningApplication else { return NSNull() }",
-    "  return [\"pid\": runningApplication.processIdentifier, \"localizedName\": stringOrNull(runningApplication.localizedName), \"bundleIdentifier\": stringOrNull(runningApplication.bundleIdentifier), \"launchDate\": dateOrNull(runningApplication.launchDate)]",
+    '  return ["pid": runningApplication.processIdentifier, "localizedName": stringOrNull(runningApplication.localizedName), "bundleIdentifier": stringOrNull(runningApplication.bundleIdentifier), "launchDate": dateOrNull(runningApplication.launchDate)]',
     "}",
     "func state() -> [String: Any] {",
     "  let windows = (CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]] ?? []).filter { ($0[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier }",
-    "  return [\"pid\": app.processIdentifier, \"localizedName\": stringOrNull(app.localizedName), \"bundleIdentifier\": stringOrNull(app.bundleIdentifier), \"launchDate\": dateOrNull(app.launchDate), \"policy\": app.activationPolicy.rawValue, \"active\": app.isActive, \"hidden\": app.isHidden, \"finishedLaunching\": app.isFinishedLaunching, \"frontmost\": identity(NSWorkspace.shared.frontmostApplication), \"frontmostPid\": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1, \"windowCount\": windows.count, \"onScreenWindowCount\": windows.filter { $0[kCGWindowIsOnscreen as String] as? Bool == true }.count]",
+    '  return ["pid": app.processIdentifier, "localizedName": stringOrNull(app.localizedName), "bundleIdentifier": stringOrNull(app.bundleIdentifier), "launchDate": dateOrNull(app.launchDate), "policy": app.activationPolicy.rawValue, "active": app.isActive, "hidden": app.isHidden, "finishedLaunching": app.isFinishedLaunching, "frontmost": identity(NSWorkspace.shared.frontmostApplication), "frontmostPid": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1, "windowCount": windows.count, "onScreenWindowCount": windows.filter { $0[kCGWindowIsOnscreen as String] as? Bool == true }.count]',
     "}",
     "let before = state()",
     `let activated: Any = ${activate ? "app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])" : "NSNull()"}`,
-    "let data = try! JSONSerialization.data(withJSONObject: [\"before\": before, \"activated\": activated, \"after\": state()])",
+    'let data = try! JSONSerialization.data(withJSONObject: ["before": before, "activated": activated, "after": state()])',
     "print(String(data: data, encoding: .utf8)!)"
   ].join("\n");
   const result = await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
@@ -281,12 +279,14 @@ export async function ensureDesktopForeground(browser) {
       macosDesktopState(processInfo.pid, false),
       macosConsoleLockState()
     ]);
-    const failureState = failureStateResult.status === "fulfilled"
-      ? failureStateResult.value
-      : { diagnosticError: errorMessage(failureStateResult.reason) };
-    const consoleLock = consoleLockResult.status === "fulfilled"
-      ? consoleLockResult.value
-      : { diagnosticError: errorMessage(consoleLockResult.reason) };
+    const failureState =
+      failureStateResult.status === "fulfilled"
+        ? failureStateResult.value
+        : { diagnosticError: errorMessage(failureStateResult.reason) };
+    const consoleLock =
+      consoleLockResult.status === "fulfilled"
+        ? consoleLockResult.value
+        : { diagnosticError: errorMessage(consoleLockResult.reason) };
     const details = foregroundActivationTimeoutDetails({
       pid: processInfo.pid,
       visibilityError,
@@ -310,7 +310,7 @@ export async function pressNativeEscape(browser) {
   const source = [
     "import AppKit",
     "import CoreGraphics",
-    "func refuse(_ message: String) -> Never { fputs(message + \"\\n\", stderr); exit(2) }",
+    'func refuse(_ message: String) -> Never { fputs(message + "\\n", stderr); exit(2) }',
     `let pid = pid_t(${processInfo.pid})`,
     "guard let app = NSRunningApplication(processIdentifier: pid),",
     '  app.bundleIdentifier == "com.argmax.verification",',
@@ -327,18 +327,16 @@ export async function pressNativeEscape(browser) {
     "guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid, !app.isTerminated",
     'else { refuse("Native Escape target is not foreground") }',
     "down.postToPid(pid); up.postToPid(pid)",
-    'print("{\\"pid\\":\\(pid),\\"method\\":\\"CGEventPostToPid\\"}")',
+    'print("{\\"pid\\":\\(pid),\\"method\\":\\"CGEventPostToPid\\"}")'
   ].join("\n");
   const result = await runChecked("/usr/bin/swift", ["-e", source], { timeoutMs: 10_000 });
   return JSON.parse(result.stdout);
 }
 
 async function desktopProcessForPort(port, expectedBinary) {
-  const listener = await runChecked(
-    "/usr/sbin/lsof",
-    ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
-    { timeoutMs: 5_000 }
-  );
+  const listener = await runChecked("/usr/sbin/lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
+    timeoutMs: 5_000
+  });
   const pids = [...new Set(listener.stdout.split(/\s+/).filter(Boolean))];
   if (pids.length !== 1 || !/^\d+$/.test(pids[0])) {
     throw new Error(`Expected one verification app on WebDriver port ${port}, found: ${pids.join(", ") || "none"}`);
@@ -349,11 +347,9 @@ async function desktopProcessForPort(port, expectedBinary) {
   if (!identity) {
     throw new Error(`Verification app process ${pid} exited before its executable could be checked`);
   }
-  const processFiles = await runChecked(
-    "/usr/sbin/lsof",
-    ["-a", "-p", String(pid), "-d", "txt", "-Fn"],
-    { timeoutMs: 5_000 }
-  );
+  const processFiles = await runChecked("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "txt", "-Fn"], {
+    timeoutMs: 5_000
+  });
   const executable = processFiles.stdout
     .split("\n")
     .find((line) => line.startsWith("n"))
@@ -406,8 +402,7 @@ async function renderedTextEvidence(browser, expectedText) {
           const iterations = timing?.iterations;
           const endTime = computedTiming?.endTime;
           animations.push({
-            targetClassName:
-              animation.effect?.target instanceof HTMLElement ? animation.effect.target.className : "",
+            targetClassName: animation.effect?.target instanceof HTMLElement ? animation.effect.target.className : "",
             playState: animation.playState,
             iterations: typeof iterations === "number" ? iterations : null,
             endTime: typeof endTime === "number" ? endTime : null,
@@ -426,19 +421,14 @@ async function renderedTextEvidence(browser, expectedText) {
         effectiveOpacity,
         ancestors,
         animations,
-        rendered:
-          rect.width > 0 &&
-          rect.height > 0 &&
-          treeVisible &&
-          effectiveOpacity > 0,
+        rendered: rect.width > 0 && rect.height > 0 && treeVisible && effectiveOpacity > 0,
         paintReady:
           rect.width > 0 &&
           rect.height > 0 &&
           treeVisible &&
           effectiveOpacity >= 0.98 &&
           animations.every(
-            (animation) =>
-              !animation.finite || animation.playState === "finished" || animation.playState === "idle"
+            (animation) => !animation.finite || animation.playState === "finished" || animation.playState === "idle"
           )
       };
     });
@@ -643,13 +633,7 @@ async function desktopSmoke(browser, outputDir) {
   };
 }
 
-export async function runDesktopVerification({
-  appBinaryPath,
-  outputDir,
-  env = {},
-  port,
-  scenario = "smoke"
-}) {
+export async function runDesktopVerification({ appBinaryPath, outputDir, env = {}, port, scenario = "smoke" }) {
   const evidenceDir = path.resolve(outputDir);
   const result = {
     ok: false,
@@ -729,7 +713,7 @@ export async function verifyDesktopSession({
     let sessionRow = null;
     await browser.waitUntil(
       async () => {
-        const titled = await browser.$$('[title]');
+        const titled = await browser.$$("[title]");
         for (const element of titled) {
           const title = await element.getAttribute("title");
           if (title?.includes(titleIncludes)) {
@@ -748,10 +732,11 @@ export async function verifyDesktopSession({
     assertions.push({ name: "native WebDriver opens the backend-created session", ok: true });
 
     for (const expectedText of expectedTexts) {
-      await browser.waitUntil(
-        async () => (await browser.$("body").getText()).includes(expectedText),
-        { timeout: timeoutMs, interval: 200, timeoutMsg: `Visible session text did not include: ${expectedText}` }
-      );
+      await browser.waitUntil(async () => (await browser.$("body").getText()).includes(expectedText), {
+        timeout: timeoutMs,
+        interval: 200,
+        timeoutMsg: `Visible session text did not include: ${expectedText}`
+      });
       assertions.push({ name: `visible session includes ${expectedText}`, ok: true });
       if ((await ensureDesktopForeground(browser)).changed) visibilityRecoveries += 1;
       let rendered = [];
@@ -861,7 +846,9 @@ export function composerEditorCommand(element, action) {
   const view = content?.cmTile?.root?.view ?? null;
   if (!view) {
     const keys = Object.getOwnPropertyNames(content ?? {}).filter((key) => /cm|tile|view/i.test(key));
-    throw new Error(`CodeMirror view is not reachable from the composer field (cmTile: ${typeof content?.cmTile}; related properties: ${keys.join(", ") || "none"})`);
+    throw new Error(
+      `CodeMirror view is not reachable from the composer field (cmTile: ${typeof content?.cmTile}; related properties: ${keys.join(", ") || "none"})`
+    );
   }
   if (action === "text") return view.state.doc.toString();
   view.focus();
@@ -891,9 +878,13 @@ export async function waitForCodeMirror(browser, label, timeoutMs = 20_000) {
     async () =>
       browser.execute(function editorIsCodeMirror(ariaLabel) {
         const field = document.querySelector(`[aria-label="${ariaLabel}"]`);
-        return field !== null && field.closest(".cm-editor") !== null && document.querySelector(`textarea[aria-label="${ariaLabel}"]`) === null;
+        return (
+          field !== null &&
+          field.closest(".cm-editor") !== null &&
+          document.querySelector(`textarea[aria-label="${ariaLabel}"]`) === null
+        );
       }, label),
-    { timeout: timeoutMs, interval: 150, timeoutMsg: `The "${label}" field never became a CodeMirror editor` },
+    { timeout: timeoutMs, interval: 150, timeoutMsg: `The "${label}" field never became a CodeMirror editor` }
   );
   return await browser.$(`[aria-label="${label}"]`);
 }
@@ -926,18 +917,23 @@ export async function setInputValue(browser, field, text) {
   // The page call takes the element as a WebDriver handle without checking it is
   // still attached; a remounted input would answer from the detached node, which
   // keeps the typed text, so `connected` makes a remount fail here.
-  const read = () => browser.execute(function readValue(element) {
-    return { value: element.value, connected: element.isConnected };
-  }, field);
+  const read = () =>
+    browser.execute(function readValue(element) {
+      return { value: element.value, connected: element.isConnected };
+    }, field);
   const immediately = await read();
   // A controlled input can be re-rendered from state a moment after the event.
   await browser.pause(300);
   const settled = await read();
   if (!immediately.connected || !settled.connected) {
-    throw new Error(`Input was detached after typing ${JSON.stringify(text)} (attached: ${immediately.connected} then ${settled.connected})`);
+    throw new Error(
+      `Input was detached after typing ${JSON.stringify(text)} (attached: ${immediately.connected} then ${settled.connected})`
+    );
   }
   if (immediately.value !== text || settled.value !== text) {
-    throw new Error(`Input holds ${JSON.stringify(immediately.value)} then ${JSON.stringify(settled.value)} after typing ${JSON.stringify(text)}`);
+    throw new Error(
+      `Input holds ${JSON.stringify(immediately.value)} then ${JSON.stringify(settled.value)} after typing ${JSON.stringify(text)}`
+    );
   }
 }
 
@@ -951,13 +947,15 @@ export async function setInputValue(browser, field, text) {
 export async function pressMouseDown(browser, element) {
   await browser.execute(function mouseDown(target) {
     const box = target.getBoundingClientRect();
-    target.dispatchEvent(new MouseEvent("mousedown", {
-      bubbles: true,
-      cancelable: true,
-      button: 0,
-      clientX: box.left + box.width / 2,
-      clientY: box.top + box.height / 2,
-    }));
+    target.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: box.left + box.width / 2,
+        clientY: box.top + box.height / 2
+      })
+    );
   }, element);
 }
 
@@ -982,7 +980,7 @@ export async function openContextMenu(browser, selector) {
       button: 2,
       buttons: 2,
       clientX: box.left + box.width / 2,
-      clientY: box.top + box.height / 2,
+      clientY: box.top + box.height / 2
     });
     target.dispatchEvent(event);
     return {
@@ -992,11 +990,12 @@ export async function openContextMenu(browser, selector) {
       tag: target.tagName,
       title: target.getAttribute("title"),
       workspaceId: target.closest("[data-workspace-id]")?.getAttribute("data-workspace-id") ?? null,
-      rect: [Math.round(box.left), Math.round(box.top), Math.round(box.width), Math.round(box.height)],
+      rect: [Math.round(box.left), Math.round(box.top), Math.round(box.width), Math.round(box.height)]
     };
   }, selector);
   if (!hit.found) throw new Error(`openContextMenu: nothing matches ${selector}`);
-  if (!hit.defaultPrevented) throw new Error(`openContextMenu: the page did not handle contextmenu on ${JSON.stringify(hit)}`);
+  if (!hit.defaultPrevented)
+    throw new Error(`openContextMenu: the page did not handle contextmenu on ${JSON.stringify(hit)}`);
   return hit;
 }
 
@@ -1008,12 +1007,24 @@ export async function openContextMenu(browser, selector) {
  * called `preventDefault`, which the composers do for a chord they act on.
  */
 export async function pressChord(browser, { key, altKey = false, ctrlKey = false, metaKey = false, shiftKey = false }) {
-  return browser.execute(function dispatchChord(init) {
-    const target = document.activeElement ?? document.body;
-    const event = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
-    target.dispatchEvent(event);
-    return event.defaultPrevented;
-  }, { key, code: key === "Enter" ? "Enter" : key, keyCode: key === "Enter" ? 13 : 0, which: key === "Enter" ? 13 : 0, altKey, ctrlKey, metaKey, shiftKey });
+  return browser.execute(
+    function dispatchChord(init) {
+      const target = document.activeElement ?? document.body;
+      const event = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    },
+    {
+      key,
+      code: key === "Enter" ? "Enter" : key,
+      keyCode: key === "Enter" ? 13 : 0,
+      which: key === "Enter" ? 13 : 0,
+      altKey,
+      ctrlKey,
+      metaKey,
+      shiftKey
+    }
+  );
 }
 
 /** Send a follow-up through the native composer in the attached app. */
@@ -1032,7 +1043,8 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
   // Positive control for the clear check below: a reader that cannot see the
   // text would also see it "cleared".
   const typed = await readComposerText(browser, composer);
-  if (typed !== input) throw new Error(`Native composer holds ${JSON.stringify(typed)} after typing, not the follow-up`);
+  if (typed !== input)
+    throw new Error(`Native composer holds ${JSON.stringify(typed)} after typing, not the follow-up`);
   if (expectQueued) {
     await browser.keys("Enter");
   } else {
@@ -1050,11 +1062,15 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
   if (expectQueued) {
     await browser.waitUntil(
       async () => {
-        const dashboard = await browser.execute(async function pendingMessage(id, content) {
-          const snapshot = await window.argmax.dashboard.list();
-          const entries = snapshot.pendingMessages[id] ?? [];
-          return entries.length === 1 && entries[0].content === content ? entries[0] : null;
-        }, sessionId, input);
+        const dashboard = await browser.execute(
+          async function pendingMessage(id, content) {
+            const snapshot = await window.argmax.dashboard.list();
+            const entries = snapshot.pendingMessages[id] ?? [];
+            return entries.length === 1 && entries[0].content === content ? entries[0] : null;
+          },
+          sessionId,
+          input
+        );
         queuedMessage = dashboard;
         return queuedMessage !== null;
       },
@@ -1067,8 +1083,15 @@ export async function sendDesktopMessage({ browser, input, sessionId = null, exp
     ok: rendererErrors(uiState).length === 0,
     assertions: [
       { name: "native composer accepts follow-up text", ok: true },
-      { name: expectQueued ? "native composer queues follow-up with Enter" : "native composer sends follow-up through the UI", ok: true },
-      ...(queuedMessage ? [{ name: "native follow-up appears once in the pending queue", ok: true, detail: queuedMessage.id }] : [])
+      {
+        name: expectQueued
+          ? "native composer queues follow-up with Enter"
+          : "native composer sends follow-up through the UI",
+        ok: true
+      },
+      ...(queuedMessage
+        ? [{ name: "native follow-up appears once in the pending queue", ok: true, detail: queuedMessage.id }]
+        : [])
     ],
     queuedMessage,
     uiState,
@@ -1089,11 +1112,7 @@ export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, 
     const snapshot = await window.argmax.dashboard.list();
     return snapshot.pendingMessages[id] ?? [];
   }, sessionId);
-  if (
-    queuedMessages.length !== 1
-    || queuedMessages[0].id !== messageId
-    || queuedMessages[0].content !== input
-  ) {
+  if (queuedMessages.length !== 1 || queuedMessages[0].id !== messageId || queuedMessages[0].content !== input) {
     throw new Error(`Expected exactly one recovered queued follow-up ${messageId} before explicit Send`);
   }
   let send = null;
@@ -1102,13 +1121,18 @@ export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, 
       const candidates = await browser.$$('button[aria-label^="Send queued follow-up: "]');
       const matchingActions = [];
       for (const candidate of candidates) {
-        if ((await candidate.getAttribute("aria-label")) === `Send queued follow-up: ${input}`) matchingActions.push(candidate);
+        if ((await candidate.getAttribute("aria-label")) === `Send queued follow-up: ${input}`)
+          matchingActions.push(candidate);
       }
       if (matchingActions.length !== 1) return false;
       [send] = matchingActions;
       return true;
     },
-    { timeout: 10_000, interval: 100, timeoutMsg: "Recovered follow-up did not expose exactly one matching Send action" }
+    {
+      timeout: 10_000,
+      interval: 100,
+      timeoutMsg: "Recovered follow-up did not expose exactly one matching Send action"
+    }
   );
   await send.waitForEnabled({ timeout: 10_000 });
   await send.click();
@@ -1134,10 +1158,7 @@ export async function sendDesktopQueuedMessage({ browser, sessionId, messageId, 
 }
 
 /** Stop the running provider through the native session control. */
-export async function stopDesktopSession({
-  browser,
-  sessionId
-}) {
+export async function stopDesktopSession({ browser, sessionId }) {
   if (!browser) throw new Error("stopDesktopSession requires browser");
   if (!sessionId) throw new Error("stopDesktopSession requires sessionId");
 
@@ -1157,14 +1178,11 @@ export async function stopDesktopSession({
   }
   const remainingEarlyStopMs = startedAtMs + NATIVE_STOP_MINIMUM_SESSION_AGE_MS - Date.now();
   if (remainingEarlyStopMs > 0) {
-    await browser.waitUntil(
-      () => Date.now() - startedAtMs >= NATIVE_STOP_MINIMUM_SESSION_AGE_MS,
-      {
-        timeout: remainingEarlyStopMs + 1_000,
-        interval: 25,
-        timeoutMsg: `Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`
-      }
-    );
+    await browser.waitUntil(() => Date.now() - startedAtMs >= NATIVE_STOP_MINIMUM_SESSION_AGE_MS, {
+      timeout: remainingEarlyStopMs + 1_000,
+      interval: 25,
+      timeoutMsg: `Native stop did not reach the ${NATIVE_STOP_MINIMUM_SESSION_AGE_MS}ms minimum session age`
+    });
   }
   const sessionAgeMs = Date.now() - startedAtMs;
   if (sessionAgeMs < NATIVE_STOP_MINIMUM_SESSION_AGE_MS) {

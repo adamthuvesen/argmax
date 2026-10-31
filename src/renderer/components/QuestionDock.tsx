@@ -87,18 +87,13 @@ function QuestionDockInner({
       if (!q) return false;
       const row = selected[index] ?? [];
       const typedOk =
-        !hasOtherOption(q) ||
-        !row.includes(otherOptionIndex(q)) ||
-        (otherText[index] ?? "").trim().length > 0;
+        !hasOtherOption(q) || !row.includes(otherOptionIndex(q)) || (otherText[index] ?? "").trim().length > 0;
       return typedOk && (q.multiSelect ? row.length > 0 : row.length === 1);
     },
     [otherText, questions, selected]
   );
 
-  const answered = useMemo(
-    () => questions.every((_, index) => questionAnswered(index)),
-    [questionAnswered, questions]
-  );
+  const answered = useMemo(() => questions.every((_, index) => questionAnswered(index)), [questionAnswered, questions]);
 
   const goToPage = useCallback((next: number): void => {
     setPage(next);
@@ -116,10 +111,7 @@ function QuestionDockInner({
     // send has to hand the question back rather than leave a dead slab.
     try {
       void Promise.resolve(
-        onAnswer(
-          formatAnswer(questions, selected, otherText),
-          structuredAnswers(questions, selected, otherText)
-        )
+        onAnswer(formatAnswer(questions, selected, otherText), structuredAnswers(questions, selected, otherText))
       ).then((ok) => {
         if (ok === false) failed();
       }, failed);
@@ -357,9 +349,7 @@ function QuestionDockInner({
               ) : (
                 <span className="question-dock-option-text">
                   <span className="question-dock-option-label">{option.label}</span>
-                  {option.description ? (
-                    <span className="question-dock-option-desc">{option.description}</span>
-                  ) : null}
+                  {option.description ? <span className="question-dock-option-desc">{option.description}</span> : null}
                 </span>
               )}
               {picksAdvance && !isOther ? (

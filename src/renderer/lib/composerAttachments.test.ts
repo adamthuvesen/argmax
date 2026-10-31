@@ -26,10 +26,7 @@ describe("buildAttachmentReferences", () => {
   });
 
   it("emits absolute @paths for files outside the workspace", () => {
-    const refs = buildAttachmentReferences(
-      [{ path: "/tmp/some/external/file.txt" }],
-      "/Users/me/repo"
-    );
+    const refs = buildAttachmentReferences([{ path: "/tmp/some/external/file.txt" }], "/Users/me/repo");
     expect(refs).toEqual(["@/tmp/some/external/file.txt"]);
   });
 
@@ -139,9 +136,7 @@ describe("isAttachableDrag", () => {
   });
 
   it("accepts a file-promise drag", () => {
-    expect(
-      isAttachableDrag({ types: ["com.apple.pasteboard.promised-file-url"] })
-    ).toBe(true);
+    expect(isAttachableDrag({ types: ["com.apple.pasteboard.promised-file-url"] })).toBe(true);
   });
 
   it("accepts empty types even when string items are listed", () => {
@@ -237,8 +232,7 @@ describe("droppedFileHasUsablePath", () => {
   it("rejects the screenshot-thumbnail temp path so bytes are persisted instead", () => {
     const file = new File([new Uint8Array([1])], "Screenshot.png", { type: "" });
     Object.defineProperty(file, "path", {
-      value:
-        "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot.png"
+      value: "/var/folders/xx/T/TemporaryItems/NSIRD_screencaptureui_abc/Screenshot.png"
     });
     expect(droppedFileHasUsablePath(file)).toBe(false);
   });
@@ -258,9 +252,7 @@ describe("downscaleImageBlob", () => {
   it("returns the original when the runtime cannot decode images", async () => {
     // jsdom has no createImageBitmap: pastes must still attach.
     const png = new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
-    expect(typeof (globalThis as { createImageBitmap?: unknown }).createImageBitmap).toBe(
-      "undefined"
-    );
+    expect(typeof (globalThis as { createImageBitmap?: unknown }).createImageBitmap).toBe("undefined");
     await expect(downscaleImageBlob(png)).resolves.toBe(png);
   });
 });

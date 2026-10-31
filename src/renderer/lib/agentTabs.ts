@@ -47,15 +47,20 @@ export function readAgentTab(tabId: string): AgentTab {
 
 /** Native continuations reopen the first launch's tab. Legacy runs keep their
  * invocation id, preserving the existing one-tab-per-launch behavior. */
-export function agentTabId(tool: { toolUseId: string; parentToolUseId?: string | null; providerChildSessionId?: string | null; providerParentConversationId?: string | null; agentRootToolUseId?: string | null }): string {
-  const rootToolUseId = typeof tool.agentRootToolUseId === "string"
-    ? tool.agentRootToolUseId
-    : tool.providerChildSessionId && tool.parentToolUseId
-    ? tool.parentToolUseId
-    : tool.toolUseId;
-  const parent = typeof tool.providerParentConversationId === "string"
-    ? tool.providerParentConversationId
-    : null;
+export function agentTabId(tool: {
+  toolUseId: string;
+  parentToolUseId?: string | null;
+  providerChildSessionId?: string | null;
+  providerParentConversationId?: string | null;
+  agentRootToolUseId?: string | null;
+}): string {
+  const rootToolUseId =
+    typeof tool.agentRootToolUseId === "string"
+      ? tool.agentRootToolUseId
+      : tool.providerChildSessionId && tool.parentToolUseId
+        ? tool.parentToolUseId
+        : tool.toolUseId;
+  const parent = typeof tool.providerParentConversationId === "string" ? tool.providerParentConversationId : null;
   return tool.providerChildSessionId && parent
     ? `${NATIVE_AGENT_TAB_PREFIX}${[rootToolUseId, parent, tool.providerChildSessionId].map(encodeURIComponent).join(":")}`
     : rootToolUseId;

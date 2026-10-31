@@ -93,11 +93,7 @@ export function TurnChangesCard({
           aria-label={expanded ? `Hide ${fileLabel}` : `Show ${fileLabel}`}
           onClick={() => setExpanded((open) => !open)}
         >
-          <ChevronRight
-            size={12}
-            className={`turn-changes-chevron${expanded ? " expanded" : ""}`}
-            aria-hidden="true"
-          />
+          <ChevronRight size={12} className={`turn-changes-chevron${expanded ? " expanded" : ""}`} aria-hidden="true" />
           <span className="turn-changes-title">{fileLabel}</span>
           <TurnChangesStat adds={totals.adds} dels={totals.dels} />
         </button>

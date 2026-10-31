@@ -41,19 +41,12 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useMinuteClock } from "../hooks/useMinuteClock.js";
 import type { PriorityReasonKind } from "../lib/priority.js";
-import {
-  verifiedWorkspacePrs,
-  workspacePrCountLabel,
-  workspacePrimaryPrState
-} from "../lib/sessionPrs.js";
+import { verifiedWorkspacePrs, workspacePrCountLabel, workspacePrimaryPrState } from "../lib/sessionPrs.js";
 import { resolveSessionIcon, resolveSessionIconColor } from "../lib/sessionIcons.js";
 import { snoozeChoices } from "../lib/snooze.js";
 import { formatRowAge } from "../lib/rowAge.js";
 import { stableHash32 } from "../lib/stableHash.js";
-import {
-  beginWorkspacePointerDrag,
-  consumeWorkspaceDragClick
-} from "../state/workspaceDrag.js";
+import { beginWorkspacePointerDrag, consumeWorkspaceDragClick } from "../state/workspaceDrag.js";
 import { MenuSections } from "./MenuSections.js";
 import { SessionIconPicker } from "./SessionIconPicker.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -146,7 +139,6 @@ export type SidebarSessionRowProps = {
   onSyncNow?: () => void;
 };
 
-
 // Leading glyph for a session row, rendered only when the row carries a live
 // signal (see statusOverlayFor). A turn in flight takes precedence over
 // everything: the marker becomes a nest of four dots cycling out of phase so
@@ -238,15 +230,9 @@ function CustomIconMarker({
   const Glyph = resolveSessionIcon(icon);
   if (!Glyph) return null;
   return (
-    <span
-      className="session-custom-icon"
-      data-icon-color={resolveSessionIconColor(iconColor)}
-      aria-hidden="true"
-    >
+    <span className="session-custom-icon" data-icon-color={resolveSessionIconColor(iconColor)} aria-hidden="true">
       <Glyph size={14} />
-      {overlay ? (
-        <span className="session-custom-icon-overlay" data-overlay={overlay} />
-      ) : null}
+      {overlay ? <span className="session-custom-icon-overlay" data-overlay={overlay} /> : null}
     </span>
   );
 }
@@ -343,17 +329,18 @@ function SidebarSessionRowInner({
 
   const ideDisabled = workspace.state === "archived" || !hasPath || !hasIdes || effectiveDefault === null;
   // Surfaced on the (disabled) menu item so the user learns why it's inert.
-  const disabledReason = workspace.state === "archived"
-    ? workspace.checkoutRemovedAt
-      ? "This chat's PR merged and its worktree was removed"
-      : "This chat is archived"
-    : !hasPath
-      ? "Worktree not ready yet"
-      : !hasIdes
-        ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
-        : effectiveDefault === null
-          ? "Set a default IDE in Settings → Handoff"
-          : null;
+  const disabledReason =
+    workspace.state === "archived"
+      ? workspace.checkoutRemovedAt
+        ? "This chat's PR merged and its worktree was removed"
+        : "This chat is archived"
+      : !hasPath
+        ? "Worktree not ready yet"
+        : !hasIdes
+          ? "No supported IDEs found. Install VS Code, Cursor, Windsurf, or Zed."
+          : effectiveDefault === null
+            ? "Set a default IDE in Settings → Handoff"
+            : null;
   const defaultIdeLabel =
     effectiveDefault != null
       ? (detectedIdes.find((entry) => entry.id === effectiveDefault)?.label ?? effectiveDefault)
@@ -456,9 +443,7 @@ function SidebarSessionRowInner({
     // parent. ".session-link" is the per-row button across every project
     // group; ordering follows visual order. Hidden (collapsed-project) rows
     // are not in the DOM so they're naturally skipped.
-    const allLinks = Array.from(
-      document.querySelectorAll<HTMLButtonElement>(".session-link")
-    );
+    const allLinks = Array.from(document.querySelectorAll<HTMLButtonElement>(".session-link"));
     const currentIndex = allLinks.indexOf(event.currentTarget);
     if (currentIndex === -1 || allLinks.length === 0) return;
     let nextIndex = currentIndex;
@@ -489,23 +474,13 @@ function SidebarSessionRowInner({
     priorityReason
   });
   const hasCustomIcon = workspace.icon ? resolveSessionIcon(workspace.icon) !== null : false;
-  const leadingGlyph =
-    unread ? (
-      <span className="session-unread-marker" aria-hidden="true" />
-    ) : workspace.icon && hasCustomIcon && statusOverlay !== "working" ? (
-      <CustomIconMarker
-        icon={workspace.icon}
-        iconColor={workspace.iconColor}
-        overlay={statusOverlay}
-      />
-    ) : statusOverlay ? (
-      <StatusMarker
-        working={working}
-        prState={primaryPrState}
-        priorityReason={priorityReason}
-        phaseKey={workspace.id}
-      />
-    ) : null;
+  const leadingGlyph = unread ? (
+    <span className="session-unread-marker" aria-hidden="true" />
+  ) : workspace.icon && hasCustomIcon && statusOverlay !== "working" ? (
+    <CustomIconMarker icon={workspace.icon} iconColor={workspace.iconColor} overlay={statusOverlay} />
+  ) : statusOverlay ? (
+    <StatusMarker working={working} prState={primaryPrState} priorityReason={priorityReason} phaseKey={workspace.id} />
+  ) : null;
 
   return (
     // The workspace id is on the row so ⌘1..9 can read the on-screen order
@@ -948,11 +923,8 @@ function SidebarSessionRowInner({
 // useCallback so === holds across renders unless the dep list shifts.
 // `detectedIdes` and `defaultIde` are state values in App that only
 // change when discovery runs, so === also holds during normal use.
-// eslint-disable-next-line react-refresh/only-export-components
-export function sidebarSessionRowEqual(
-  prev: SidebarSessionRowProps,
-  next: SidebarSessionRowProps
-): boolean {
+// oxlint-disable-next-line react/only-export-components
+export function sidebarSessionRowEqual(prev: SidebarSessionRowProps, next: SidebarSessionRowProps): boolean {
   if (prev.childrenExpanded !== next.childrenExpanded) return false;
   if (prev.childCount !== next.childCount) return false;
   if (prev.childActivity !== next.childActivity) return false;
@@ -1018,10 +990,10 @@ function sidebarPrsEqual(
     const candidate = next[index];
     return Boolean(
       candidate &&
-        pr.prNumber === candidate.prNumber &&
-        pr.prState === candidate.prState &&
-        pr.relationship === candidate.relationship &&
-        pr.isPrimary === candidate.isPrimary
+      pr.prNumber === candidate.prNumber &&
+      pr.prState === candidate.prState &&
+      pr.relationship === candidate.relationship &&
+      pr.isPrimary === candidate.isPrimary
     );
   });
 }

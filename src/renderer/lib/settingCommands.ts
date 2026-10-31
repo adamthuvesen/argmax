@@ -1,9 +1,4 @@
-import {
-  FONT_HEAVINESS_HINTS,
-  FONT_HEAVINESS_MIN,
-  FONT_HEAVINESS_MAX,
-  type FontHeaviness
-} from "./fontHeaviness.js";
+import { FONT_HEAVINESS_HINTS, FONT_HEAVINESS_MIN, FONT_HEAVINESS_MAX, type FontHeaviness } from "./fontHeaviness.js";
 import {
   AArrowDown,
   AArrowUp,
@@ -37,12 +32,7 @@ import {
   type FontFamilyId,
   type FontSize
 } from "./fonts.js";
-import {
-  INK_STRENGTH_HINTS,
-  INK_STRENGTH_MAX,
-  INK_STRENGTH_MIN,
-  type InkStrength
-} from "./inkStrength.js";
+import { INK_STRENGTH_HINTS, INK_STRENGTH_MAX, INK_STRENGTH_MIN, type InkStrength } from "./inkStrength.js";
 import {
   BACKGROUND_INTENSITY_MAX,
   BACKGROUND_INTENSITY_MIN,
@@ -190,10 +180,7 @@ function fontSizeCommands(
  * that keeps the palette open, then every level. Ink is tuned by eye against
  * whatever is on screen, so the steps matter more here than the level rows.
  */
-function inkStrengthCommands(
-  current: InkStrength,
-  onChange: (strength: InkStrength) => void
-): PaletteItem[] {
+function inkStrengthCommands(current: InkStrength, onChange: (strength: InkStrength) => void): PaletteItem[] {
   const stepRow = (direction: "stronger" | "softer"): PaletteItem => {
     const next = direction === "stronger" ? current + 1 : current - 1;
     const inRange = next >= INK_STRENGTH_MIN && next <= INK_STRENGTH_MAX;
@@ -222,10 +209,7 @@ function inkStrengthCommands(
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
-function fontHeavinessCommands(
-  current: FontHeaviness,
-  onChange: (strength: FontHeaviness) => void
-): PaletteItem[] {
+function fontHeavinessCommands(current: FontHeaviness, onChange: (strength: FontHeaviness) => void): PaletteItem[] {
   const stepRow = (direction: "heavier" | "lighter"): PaletteItem => {
     const next = direction === "heavier" ? current + 1 : current - 1;
     const inRange = next >= FONT_HEAVINESS_MIN && next <= FONT_HEAVINESS_MAX;
@@ -320,10 +304,7 @@ function sidebarIntensityCommands(
   return [stepRow("stronger"), stepRow("softer"), ...levels];
 }
 
-function contrastCommands(
-  current: ContrastLevel,
-  onChange: (contrast: ContrastLevel) => void
-): PaletteItem[] {
+function contrastCommands(current: ContrastLevel, onChange: (contrast: ContrastLevel) => void): PaletteItem[] {
   const stepRow = (direction: "firmer" | "softer"): PaletteItem => {
     const target = direction === "firmer" ? current + CONTRAST_STEP : current - CONTRAST_STEP;
     const next = Math.min(CONTRAST_MAX, Math.max(CONTRAST_MIN, target));
@@ -395,9 +376,10 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
   const reviewPanelSides: PaletteItem[] = (["left", "right"] as const).map((side) => ({
     id: `setting:files-panel-side:${side}`,
     label: `Files panel: ${side}`,
-    subtitle: side === "left"
-      ? "Changes and files dock to the left of the conversation"
-      : "Changes and files dock to the right of the conversation",
+    subtitle:
+      side === "left"
+        ? "Changes and files dock to the left of the conversation"
+        : "Changes and files dock to the right of the conversation",
     group: "Actions",
     icon: side === input.reviewPanelSide ? Check : side === "left" ? PanelLeft : PanelRight,
     run: () => input.onReviewPanelSideChange(side)
@@ -486,10 +468,7 @@ export function buildSettingCommands(input: SettingCommandsInput): PaletteItem[]
     ),
     ...fontHeavinessCommands(input.fontHeaviness, input.onFontHeavinessChange),
     ...inkStrengthCommands(input.inkStrength, input.onInkStrengthChange),
-    ...backgroundIntensityCommands(
-      input.backgroundIntensity,
-      input.onBackgroundIntensityChange
-    ),
+    ...backgroundIntensityCommands(input.backgroundIntensity, input.onBackgroundIntensityChange),
     ...sidebarIntensityCommands(input.sidebarIntensity, input.onSidebarIntensityChange),
     ...contrastCommands(input.contrast, input.onContrastChange),
     ...toggleCommands

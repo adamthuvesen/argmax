@@ -29,10 +29,7 @@ function deferred<T>(): {
   return { promise, resolve, reject };
 }
 
-function installCloudApi(
-  prepare: ReturnType<typeof vi.fn>,
-  launch: ReturnType<typeof vi.fn>
-): void {
+function installCloudApi(prepare: ReturnType<typeof vi.fn>, launch: ReturnType<typeof vi.fn>): void {
   Object.defineProperty(window, "argmax", {
     configurable: true,
     writable: true,
@@ -121,13 +118,19 @@ describe("CloudTaskDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
 
     expect(await screen.findByRole("link", { name: "Open in Cursor Cloud" })).toBeInTheDocument();
-    expect(prepare).toHaveBeenCalledWith({ projectId: "project-1", projectFolderId: "folder-secondary", provider: "cursor" });
-    expect(launch).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prepare).toHaveBeenCalledWith({
       projectId: "project-1",
       projectFolderId: "folder-secondary",
-      provider: "cursor",
-      environmentId: "env-work"
-    }));
+      provider: "cursor"
+    });
+    expect(launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-1",
+        projectFolderId: "folder-secondary",
+        provider: "cursor",
+        environmentId: "env-work"
+      })
+    );
   });
 
   it("keeps the task after a launch error and can retry", async () => {
@@ -225,16 +228,20 @@ describe("CloudTaskDialog", () => {
   });
 
   it("keeps the successful link and warns if saving the chat note failed", async () => {
-    installCloudApi(vi.fn().mockResolvedValue(preview), vi.fn().mockResolvedValue({
-      url: "https://claude.ai/code/session_created",
-      warning: "The task was launched, but its link could not be saved in this chat."
-    }));
+    installCloudApi(
+      vi.fn().mockResolvedValue(preview),
+      vi.fn().mockResolvedValue({
+        url: "https://claude.ai/code/session_created",
+        warning: "The task was launched, but its link could not be saved in this chat."
+      })
+    );
     render(<CloudTaskDialog open provider="claude" sessionId="session-1" onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "Send task" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("its link could not be saved");
     expect(screen.getByRole("link", { name: "Open in Claude Cloud" })).toHaveAttribute(
-      "href", "https://claude.ai/code/session_created"
+      "href",
+      "https://claude.ai/code/session_created"
     );
     expect(screen.queryByRole("button", { name: "Send task" })).not.toBeInTheDocument();
   });
@@ -267,14 +274,7 @@ describe("CloudTaskDialog", () => {
     );
     Object.assign(window.argmax!.system, { openPath });
 
-    render(
-      <CloudTaskDialog
-        open
-        provider="cursor"
-        sessionId="session-1"
-        onClose={onClose}
-      />
-    );
+    render(<CloudTaskDialog open provider="cursor" sessionId="session-1" onClose={onClose} />);
     fireEvent.click(await screen.findByRole("button", { name: "Send task" }));
     fireEvent.click(await screen.findByRole("link", { name: "Open in Cursor Cloud" }));
 
@@ -286,20 +286,15 @@ describe("CloudTaskDialog", () => {
     const codexPreview: CloudHandoffPreview = {
       ...preview,
       provider: "codex",
-      brief: "Conversation so far:\nThe previous turn established the failing parser behavior.\n\nNew user message:\nFix the parser"
+      brief:
+        "Conversation so far:\nThe previous turn established the failing parser behavior.\n\nNew user message:\nFix the parser"
     };
     const prepare = vi.fn().mockResolvedValue(codexPreview);
     const launch = vi.fn().mockResolvedValue({ url: "https://chatgpt.com/codex/tasks/task-1" });
     installCloudApi(prepare, launch);
 
     render(
-      <CloudTaskDialog
-        open
-        provider="codex"
-        sessionId="session-1"
-        initialBrief="Fix the parser"
-        onClose={vi.fn()}
-      />
+      <CloudTaskDialog open provider="codex" sessionId="session-1" initialBrief="Fix the parser" onClose={vi.fn()} />
     );
 
     expect(await screen.findByText("Fix the parser")).toBeInTheDocument();
@@ -310,10 +305,11 @@ describe("CloudTaskDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
 
     await screen.findByRole("link", { name: "Open in Codex Cloud" });
-    expect(launch).toHaveBeenCalledWith(expect.objectContaining({
-      provider: "codex",
-      brief: codexPreview.brief
-    }));
+    expect(launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        brief: codexPreview.brief
+      })
+    );
   });
-
 });

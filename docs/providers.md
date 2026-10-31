@@ -110,7 +110,7 @@ session may already exist.
 
 ## Verification profiles
 
-`npm run verify` starts a disposable profile with a scripted Claude executable.
+`npm run verify:native` starts a disposable profile with a scripted Claude executable.
 The fixture follows the production discovery, adapter, PTY, normalizer, and
 persistence paths. It validates the resume argument and exposes file barriers
 so the runner can inspect streaming text and a running tool before allowing
@@ -713,7 +713,7 @@ The `argmax session …` CLI still speaks the same socket from a terminal. See
 ## Adding or retiring a model
 
 [providerModels.ts](../src/shared/providerModels.ts) is the source. Edit it, then
-run `npm run export:provider-models` and `npm run precheck`. The export writes
+run `npm run export:provider-models` and `npm run push-gate`. The export writes
 `ios/Argmax/Resources/providerModels.json` and
 `src-tauri/src/providers/model_catalogue.generated.rs`, and every other copy of an
 id, ladder, default, or Vercel slug reads those files.
@@ -737,7 +737,7 @@ id, ladder, default, or Vercel slug reads those files.
 A stored id reaches a launch or a routing decision only as a resolved id:
 `ModelId::resolve` in Rust and `resolveModelId` in the renderer. The stored row
 keeps its id. `ProviderLaunchInput.model_id` and `FollowUpState.model_id` have the
-type `ModelId`, and ESLint rejects a raw `session.modelId` or `routine.modelId`.
+type `ModelId`, and the `argmax/no-raw-model-id` lint rule rejects a raw `session.modelId` or `routine.modelId`.
 
 ## Adding a provider
 

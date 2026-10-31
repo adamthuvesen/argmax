@@ -11,11 +11,13 @@ import {
   type ChatDirectoryEntry
 } from "./chatDirectory.js";
 
-const entry = (
-  sessionId: string,
-  title: string,
-  lastActivityAt = "2026-10-01T00:00:00Z"
-): ChatDirectoryEntry => ({ sessionId, workspaceId: `w-${sessionId}`, title, projectName: "Argmax", lastActivityAt });
+const entry = (sessionId: string, title: string, lastActivityAt = "2026-10-01T00:00:00Z"): ChatDirectoryEntry => ({
+  sessionId,
+  workspaceId: `w-${sessionId}`,
+  title,
+  projectName: "Argmax",
+  lastActivityAt
+});
 
 afterEach(resetChatDirectoryForTests);
 
@@ -32,14 +34,32 @@ describe("chatDirectoryFromSnapshot", () => {
       ],
       sessions: [
         { id: "s1", workspaceId: "w1", prompt: "x", modelLabel: "M", lastActivityAt: "2026-10-01T00:00:00Z" },
-        { id: "s2", workspaceId: "w2", prompt: "Explain rebases", modelLabel: "M", lastActivityAt: "2026-10-02T00:00:00Z" },
+        {
+          id: "s2",
+          workspaceId: "w2",
+          prompt: "Explain rebases",
+          modelLabel: "M",
+          lastActivityAt: "2026-10-02T00:00:00Z"
+        },
         { id: "orphan", workspaceId: "gone", prompt: "x", modelLabel: "M", lastActivityAt: "2026-10-03T00:00:00Z" }
       ]
     } as unknown as DashboardSnapshot;
 
     expect(chatDirectoryFromSnapshot(snapshot)).toEqual([
-      { sessionId: "s2", workspaceId: "w2", title: "Explain rebases", projectName: "", lastActivityAt: "2026-10-02T00:00:00Z" },
-      { sessionId: "s1", workspaceId: "w1", title: "Fix login", projectName: "Argmax", lastActivityAt: "2026-10-01T00:00:00Z" }
+      {
+        sessionId: "s2",
+        workspaceId: "w2",
+        title: "Explain rebases",
+        projectName: "",
+        lastActivityAt: "2026-10-02T00:00:00Z"
+      },
+      {
+        sessionId: "s1",
+        workspaceId: "w1",
+        title: "Fix login",
+        projectName: "Argmax",
+        lastActivityAt: "2026-10-01T00:00:00Z"
+      }
     ]);
   });
 });

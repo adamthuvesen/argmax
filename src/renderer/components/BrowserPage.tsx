@@ -42,9 +42,9 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
   }, [request.sourceSeq]);
 
   const handleRequest = useCallback((seq: number): void => {
-    setRequest((current) => current.seq === seq
-      ? { ...current, url: "", seq, tabId: undefined, newTab: undefined }
-      : current);
+    setRequest((current) =>
+      current.seq === seq ? { ...current, url: "", seq, tabId: undefined, newTab: undefined } : current
+    );
   }, []);
 
   useEffect(() => {
@@ -58,7 +58,8 @@ export function BrowserPage({ onClose }: { onClose: () => void }): JSX.Element {
         event.ctrlKey ||
         event.altKey ||
         event.shiftKey
-      ) return;
+      )
+        return;
       if (document.querySelector('[role="dialog"]')) return;
       event.preventDefault();
       onClose();

@@ -64,11 +64,7 @@ export function MultitaskPanel({
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   onOpenReview?: () => void;
   onOpenFullChat?: (sessionId: string) => void;
-  onSendQueuedMessageNow: (
-    sessionId: string,
-    messageId: string,
-    delivery?: QueuedMessageDelivery
-  ) => Promise<void>;
+  onSendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
   onSendSessionInput: (
     sessionId: string,
     input: string,
@@ -91,10 +87,7 @@ export function MultitaskPanel({
   const { events: sessionEvents, rawOutputs: sessionRawOutputs } = useSessionTimeline(session.id);
 
   return (
-    <div
-      className="multitask-panel"
-      data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
-    >
+    <div className="multitask-panel" data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}>
       <SessionConversation
         chatFontSize={chatFontSize}
         isFocused={isFocused}

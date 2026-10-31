@@ -45,12 +45,7 @@ export function DebugLogsTab({
   }, [scope, scopes]);
 
   return (
-    <div
-      className="debug-tab"
-      role="tabpanel"
-      id="debug-panel-logs"
-      aria-labelledby="debug-tab-logs"
-    >
+    <div className="debug-tab" role="tabpanel" id="debug-panel-logs" aria-labelledby="debug-tab-logs">
       <div className="debug-filters">
         <select
           className="debug-select"
@@ -107,8 +102,8 @@ export function DebugLogsTab({
       <div className="debug-rows">
         {visible.length === 0 ? (
           <p className="debug-empty">
-            No log lines yet. The backend emits at <code>info</code>, and <code>argmax_lib</code> at{" "}
-            <code>debug</code>, unless <code>RUST_LOG</code> says otherwise.
+            No log lines yet. The backend emits at <code>info</code>, and <code>argmax_lib</code> at <code>debug</code>,
+            unless <code>RUST_LOG</code> says otherwise.
           </p>
         ) : (
           visible.map((entry) => <LogRow key={entry.seq} entry={entry} />)

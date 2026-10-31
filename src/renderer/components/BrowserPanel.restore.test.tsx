@@ -36,8 +36,14 @@ beforeEach(() => {
   resetBrowserSurfaceForTests();
   resetBrowserTabsForTests();
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-    x: 0, y: 0, width: 800, height: 600,
-    top: 0, left: 0, right: 800, bottom: 600,
+    x: 0,
+    y: 0,
+    width: 800,
+    height: 600,
+    top: 0,
+    left: 0,
+    right: 800,
+    bottom: 600,
     toJSON: () => ({})
   });
   const ok = () => vi.fn().mockResolvedValue({ ok: true });
@@ -70,14 +76,18 @@ it.each(["agent", "link"])("restores the selected tab after leaving a chat with 
   act(() => openInBrowserPanel("https://first.example", { newTab: true }));
   const first = getActiveBrowserTabId("session-a");
   if (kind === "agent") {
-    act(() => applyBrowserTabs([{
-      tabId: "agent-last",
-      ownerSessionId: "session-a",
-      url: "https://last.example",
-      title: "Last",
-      loading: false,
-      group: null
-    }]));
+    act(() =>
+      applyBrowserTabs([
+        {
+          tabId: "agent-last",
+          ownerSessionId: "session-a",
+          url: "https://last.example",
+          title: "Last",
+          loading: false,
+          group: null
+        }
+      ])
+    );
     act(() => requestAgentBrowserOpen("session-a", "agent-last", "https://last.example"));
   } else {
     act(() => openInBrowserPanel("https://last.example", { newTab: true }));

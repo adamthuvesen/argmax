@@ -113,7 +113,6 @@ describe("SessionActionsMenu", () => {
     delete (window as { argmax?: unknown }).argmax;
   });
 
-
   it("hides actions until opened and routes main menu clicks", async () => {
     const onBrowseFiles = vi.fn();
     const onToggleLog = vi.fn();
@@ -212,10 +211,6 @@ describe("SessionActionsMenu", () => {
     await openMenu();
     expect(screen.queryByRole("menuitem", { name: /Cloud/ })).not.toBeInTheDocument();
   });
-
-
-
-
 });
 
 describe("SessionActionsMenu — Open in IDE", () => {

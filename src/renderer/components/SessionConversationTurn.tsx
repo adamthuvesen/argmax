@@ -18,11 +18,7 @@ import {
   liveThoughtOwnsProgress,
   preToolNarrationGroupIds
 } from "../lib/sessionTurnView.js";
-import {
-  foldActivityRunsToSummaries,
-  foldToolRunsToSummaries,
-  type ActivityRun
-} from "../lib/turnChildren.js";
+import { foldActivityRunsToSummaries, foldToolRunsToSummaries, type ActivityRun } from "../lib/turnChildren.js";
 import { buildToolCallGroup, isAgentToolName, type ToolCall, type TurnToolItem } from "../lib/toolCalls.js";
 import type { TodoList } from "../lib/todoList.js";
 import type { ThinkingDisplay, ToolCallsDisplay } from "../lib/uiPreferences.js";
@@ -42,14 +38,13 @@ import { TurnBlock, type TurnBodyChild } from "./TurnBlock.js";
 import { TurnRevert } from "./TurnRevert.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";
 import { WebLink } from "./WebLink.js";
-import {
-  parseUserMessageAttachments,
-  type UserMessageAttachment
-} from "./sessionConversationHelpers.js";
+import { parseUserMessageAttachments, type UserMessageAttachment } from "./sessionConversationHelpers.js";
 import type { FileChipOpenOptions } from "./FileChip.js";
 import { ALWAYS_FOLLOWING, type TranscriptFollow } from "../hooks/useConversationScroll.js";
 
-const HtmlVisualization = lazy(() => importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization })));
+const HtmlVisualization = lazy(() =>
+  importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }))
+);
 
 type TurnRenderItem = Extract<RenderItem, { kind: "turn" }>;
 
@@ -118,8 +113,7 @@ function SessionConversationTurnInner({
   // card. Comparing against the row's own clock keeps the row authoritative
   // whenever it is the newer of the two, so a run that died without a closing
   // marker cannot tick forever.
-  const transcriptIsAheadOfRow =
-    isLatestTurn && openRunAt !== null && openRunAt > (session?.lastActivityAt ?? "");
+  const transcriptIsAheadOfRow = isLatestTurn && openRunAt !== null && openRunAt > (session?.lastActivityAt ?? "");
   const sessionIsLive = session?.state === "running" || session?.state === "waiting" || transcriptIsAheadOfRow;
   const isStreamingTurn = isLatestTurn && sessionIsLive;
   // Memoized because the state it returns is the input to everything below:
@@ -138,14 +132,7 @@ function SessionConversationTurnInner({
         assistantTimestamps: item.assistantTimestamps,
         isStreamingTurn
       }),
-    [
-      item.assistantEvents,
-      item.steerEvents,
-      item.toolItems,
-      priorItem,
-      item.assistantTimestamps,
-      isStreamingTurn
-    ]
+    [item.assistantEvents, item.steerEvents, item.toolItems, priorItem, item.assistantTimestamps, isStreamingTurn]
   );
   const { visibleAssistantGroups, hiddenToolIds, turnStartedAtMs, isPausedOnUserInput } = turnView;
   const isTurnPaused = isPausedOnUserInput || session?.state === "waiting";
@@ -186,9 +173,7 @@ function SessionConversationTurnInner({
   // those working rows behind the chip so only the answer remains.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
   const compactThinkingDisplay = thinkingDisplay ?? "collapsed";
-  const compactToolSummaries =
-    defaultToolCallsDisplay === "collapsed" &&
-    defaultToolCallGroupsExpanded !== true;
+  const compactToolSummaries = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
   const compactActivity = compactToolSummaries && compactThinkingDisplay === "collapsed";
   const toolsExpandedDefault =
     isLatestTurn && !minimalActivity
@@ -200,15 +185,10 @@ function SessionConversationTurnInner({
   // and a chip closed at Steps left Detailed folded below Compact. Same
   // invalidation `ToolCallGroupBubble` already applies to its own toggle.
   const verbosityKey = `${defaultToolCallsDisplay}:${defaultToolCallGroupsExpanded ?? "auto"}`;
-  const [toolsExpandChoice, setToolsExpandChoice] = useState<
-    { value: boolean; verbosity: string } | null
-  >(null);
+  const [toolsExpandChoice, setToolsExpandChoice] = useState<{ value: boolean; verbosity: string } | null>(null);
   const toolsExpandOverride =
-    toolsExpandChoice && toolsExpandChoice.verbosity === verbosityKey
-      ? toolsExpandChoice.value
-      : null;
-  const setToolsExpandOverride = (value: boolean): void =>
-    setToolsExpandChoice({ value, verbosity: verbosityKey });
+    toolsExpandChoice && toolsExpandChoice.verbosity === verbosityKey ? toolsExpandChoice.value : null;
+  const setToolsExpandOverride = (value: boolean): void => setToolsExpandChoice({ value, verbosity: verbosityKey });
   const toolsExpanded = toolsExpandOverride ?? toolsExpandedDefault;
   // Detailed opens individual rows as well as groups. An agent
   // launch row follows that rather than the group level, because what its
@@ -255,14 +235,27 @@ function SessionConversationTurnInner({
   const hasHiddenWork =
     hiddenNarrationIds.size > 0 ||
     (hidesSettledThoughts &&
-      visibleAssistantGroups.some(
-        (group) => group.thinking && !(thinkingLive && group.id === liveThoughtGroupId)
-      ));
+      visibleAssistantGroups.some((group) => group.thinking && !(thinkingLive && group.id === liveThoughtGroupId)));
   const assistantChildren: AnnotatedChild[] = visibleAssistantGroups
     .map((group): AnnotatedChild | null => {
       if (group.visualization) {
         const visualization = group.visualization;
-        return { kind: "assistant", id: group.id, node: <Suspense fallback={<p role="status">Loading visualization</p>}><HtmlVisualization sessionId={visualization.sessionId} artifactId={visualization.artifactId} title={visualization.title} mode={visualization.mode ?? undefined} /></Suspense>, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+        return {
+          kind: "assistant",
+          id: group.id,
+          node: (
+            <Suspense fallback={<p role="status">Loading visualization</p>}>
+              <HtmlVisualization
+                sessionId={visualization.sessionId}
+                artifactId={visualization.artifactId}
+                title={visualization.title}
+                mode={visualization.mode ?? undefined}
+              />
+            </Suspense>
+          ),
+          createdAt: group.createdAt,
+          sortAt: group.lastActivityAt
+        };
       }
       const groupLive = thinkingLive && group.id === liveThoughtGroupId;
       // Single-line mode folds completed Thought blocks away entirely — only
@@ -270,7 +263,13 @@ function SessionConversationTurnInner({
       // the chip is opened to inspect what the level hid.
       if (hidesSettledThoughts && group.thinking && !groupLive) return null;
       if (hiddenNarrationIds.has(group.id)) {
-        return { kind: "assistant", id: group.id, node: null, createdAt: group.createdAt, sortAt: group.lastActivityAt };
+        return {
+          kind: "assistant",
+          id: group.id,
+          node: null,
+          createdAt: group.createdAt,
+          sortAt: group.lastActivityAt
+        };
       }
       if (group.thinking) {
         const node = (
@@ -283,9 +282,7 @@ function SessionConversationTurnInner({
             // block leaves the turn as soon as the next step lands.
             autoExpandWhileLive={!compactActivity && !minimalActivity}
             live={groupLive}
-            holdOpen={
-              isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId
-            }
+            holdOpen={isLatestTurn && toolsExpandOverride !== false && group.id === liveThoughtGroupId}
             durationMs={thoughtDurationMs(group.createdAt, group.lastActivityAt)}
           >
             {/* `streaming` while the thought is live is what splits the
@@ -335,11 +332,7 @@ function SessionConversationTurnInner({
       }
       if (!assistantGroupHasVisibleChat(group)) return null;
       const node = (
-        <ChatBubble
-          key={group.id}
-          kind="assistant"
-          rawMarkdown={group.text}
-        >
+        <ChatBubble key={group.id} kind="assistant" rawMarkdown={group.text}>
           <StreamingMarkdown
             text={group.text}
             sourceEventId={group.sourceEventId}
@@ -371,37 +364,36 @@ function SessionConversationTurnInner({
         .filter((tItem): tItem is TurnToolItem => tItem !== null),
     [item.toolItems, hiddenToolIds]
   );
-  const toolChildren: AnnotatedChild[] = visibleToolItems
-    .map((tItem) => {
-        if (isAgentToolName(tItem.tool.name)) {
-          return {
-            kind: "tool" as const,
-            id: tItem.tool.id,
-            createdAt: tItem.tool.createdAt,
-            sortAt: tItem.tool.createdAt,
-            agentTools: [tItem.tool],
-            node: null
-          };
-        }
-        return {
-          kind: "tool" as const,
-          id: tItem.tool.id,
-          createdAt: tItem.tool.createdAt,
-          sortAt: tItem.tool.createdAt,
-          runTools: [tItem.tool, ...(tItem.children ?? [])],
-          node: (
-            <ToolCallRow
-              tool={tItem.tool}
-              childTools={tItem.children}
-              defaultExpanded={toolsExpanded}
-              workspaceCwd={workspace?.path ?? null}
-              agentCodename={codenameForTool(tItem.tool, agentCodenames)}
-              onOpenFile={onOpenFile}
-              onOpenAgent={onOpenAgent}
-            />
-          )
-        };
-    });
+  const toolChildren: AnnotatedChild[] = visibleToolItems.map((tItem) => {
+    if (isAgentToolName(tItem.tool.name)) {
+      return {
+        kind: "tool" as const,
+        id: tItem.tool.id,
+        createdAt: tItem.tool.createdAt,
+        sortAt: tItem.tool.createdAt,
+        agentTools: [tItem.tool],
+        node: null
+      };
+    }
+    return {
+      kind: "tool" as const,
+      id: tItem.tool.id,
+      createdAt: tItem.tool.createdAt,
+      sortAt: tItem.tool.createdAt,
+      runTools: [tItem.tool, ...(tItem.children ?? [])],
+      node: (
+        <ToolCallRow
+          tool={tItem.tool}
+          childTools={tItem.children}
+          defaultExpanded={toolsExpanded}
+          workspaceCwd={workspace?.path ?? null}
+          agentCodename={codenameForTool(tItem.tool, agentCodenames)}
+          onOpenFile={onOpenFile}
+          onOpenAgent={onOpenAgent}
+        />
+      )
+    };
+  });
   const steerChildren: AnnotatedChild[] = item.steerEvents.map((event) => ({
     kind: "assistant",
     id: `steer-${event.id}`,
@@ -416,18 +408,16 @@ function SessionConversationTurnInner({
       />
     )
   }));
-  const sortedChildren = [...assistantChildren, ...toolChildren, ...steerChildren]
-    .sort((a, b) => {
-      const cmp = a.sortAt.localeCompare(b.sortAt);
-      if (cmp !== 0) return cmp;
-      // A steer precedes the response it influenced when both share a
-      // timestamp. Otherwise assistant narration precedes a tool that starts
-      // in the same millisecond.
-      const priorityCmp =
-        (a.sortPriority ?? (a.kind === "assistant" ? 0 : 1)) -
-        (b.sortPriority ?? (b.kind === "assistant" ? 0 : 1));
-      return priorityCmp;
-    });
+  const sortedChildren = [...assistantChildren, ...toolChildren, ...steerChildren].sort((a, b) => {
+    const cmp = a.sortAt.localeCompare(b.sortAt);
+    if (cmp !== 0) return cmp;
+    // A steer precedes the response it influenced when both share a
+    // timestamp. Otherwise assistant narration precedes a tool that starts
+    // in the same millisecond.
+    const priorityCmp =
+      (a.sortPriority ?? (a.kind === "assistant" ? 0 : 1)) - (b.sortPriority ?? (b.kind === "assistant" ? 0 : 1));
+    return priorityCmp;
+  });
   const coalescedChildren: AnnotatedChild[] = [];
   for (const child of sortedChildren) {
     // A launch keeps its own row at every verbosity, Compact included. Folding
@@ -440,9 +430,7 @@ function SessionConversationTurnInner({
       last.agentTools.push(...child.agentTools);
       continue;
     }
-    coalescedChildren.push(
-      child.agentTools ? { ...child, agentTools: [...child.agentTools] } : child
-    );
+    coalescedChildren.push(child.agentTools ? { ...child, agentTools: [...child.agentTools] } : child);
   }
   const renderActivityGroup = ({ tools, members }: ActivityRun): ReactNode => (
     <ToolCallGroupBubble
@@ -463,11 +451,10 @@ function SessionConversationTurnInner({
       onOpenAgent={onOpenAgent}
     />
   );
-  const bodySource = (compactActivity
-    ? foldActivityRunsToSummaries(coalescedChildren, renderActivityGroup)
-    : foldToolRunsToSummaries(coalescedChildren, (tools) =>
-        renderActivityGroup({ tools, members: [] })
-      )
+  const bodySource = (
+    compactActivity
+      ? foldActivityRunsToSummaries(coalescedChildren, renderActivityGroup)
+      : foldToolRunsToSummaries(coalescedChildren, (tools) => renderActivityGroup({ tools, members: [] }))
   ).filter((child) => child.agentTools || child.node !== null);
   const bodyChildren: TurnBodyChild[] = bodySource.map((child) => {
     if (child.agentTools) {
@@ -512,10 +499,7 @@ function SessionConversationTurnInner({
   // action is a finished one.
   // Files this turn wrote, folded one row per path. Derived from the same tool
   // input the activity rows read, so the card cannot disagree with them.
-  const turnChanges = useMemo(
-    () => collectTurnFileChanges(visibleToolItems),
-    [visibleToolItems]
-  );
+  const turnChanges = useMemo(() => collectTurnFileChanges(visibleToolItems), [visibleToolItems]);
   const changesCard =
     turnChanges.length > 0 ? (
       <TurnChangesCard
@@ -527,8 +511,7 @@ function SessionConversationTurnInner({
         {...(onOpenReview ? { onOpenReview } : {})}
       />
     ) : null;
-  const forkBoundaryId =
-    priorItem?.kind === "user-message" ? priorItem.event.id : undefined;
+  const forkBoundaryId = priorItem?.kind === "user-message" ? priorItem.event.id : undefined;
   const forkable =
     session !== null &&
     FORK_CAPABLE_PROVIDERS.has(session.provider) &&
@@ -537,20 +520,12 @@ function SessionConversationTurnInner({
     onForkSession !== undefined;
   // The turn's own id is synthetic; the checkpoint was anchored to the user
   // message this turn answers, which is the render item just above it.
-  const revertUserMessageId =
-    priorItem?.kind === "user-message" ? priorItem.event.id : undefined;
-  const revertCheckpointId = revertUserMessageId
-    ? revertCheckpointIds?.get(revertUserMessageId)
-    : undefined;
+  const revertUserMessageId = priorItem?.kind === "user-message" ? priorItem.event.id : undefined;
+  const revertCheckpointId = revertUserMessageId ? revertCheckpointIds?.get(revertUserMessageId) : undefined;
   const revertUnavailableReason =
-    revertUserMessageId && !revertCheckpointId
-      ? revertCheckpointUnavailable?.get(revertUserMessageId)
-      : undefined;
+    revertUserMessageId && !revertCheckpointId ? revertCheckpointUnavailable?.get(revertUserMessageId) : undefined;
   const revert =
-    (revertCheckpointId || revertUnavailableReason) &&
-    workspace &&
-    onReverted &&
-    !isStreamingTurn ? (
+    (revertCheckpointId || revertUnavailableReason) && workspace && onReverted && !isStreamingTurn ? (
       <TurnRevert
         workspaceId={workspace.id}
         {...(revertCheckpointId ? { checkpointId: revertCheckpointId } : {})}
@@ -614,11 +589,7 @@ function markUserMessage(text: string): ReactNode {
       nodes.push(<Fragment key={`t${cursor}`}>{markLinksAndSkills(text.slice(cursor, match.from))}</Fragment>);
     }
     nodes.push(
-      <ChatSourceChip
-        key={`c${match.from}`}
-        sessionId={match.reference.sessionId}
-        title={match.reference.title}
-      />
+      <ChatSourceChip key={`c${match.from}`} sessionId={match.reference.sessionId} title={match.reference.title} />
     );
     cursor = match.to;
   }
@@ -726,10 +697,7 @@ export function SessionConversationUserMessage({
     // The agent reads the whole notice. The chat only needs to show that the
     // watch woke it, so the text stays one line until opened.
     return (
-      <div
-        className="user-message-group"
-        {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}
-      >
+      <div className="user-message-group" {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}>
         <details className="watch-notice">
           <summary className="watch-notice-summary">
             <Eye size={12} aria-hidden="true" />
@@ -789,32 +757,20 @@ export function SessionConversationUserMessage({
             if (isSupportedImageMime(a.mimeType)) {
               const url = attachmentProtocolUrl(a.filePath);
               return (
-                <figure
-                  key={a.filePath}
-                  className="user-message-attachment-preview"
-                  title={a.filePath}
-                >
+                <figure key={a.filePath} className="user-message-attachment-preview" title={a.filePath}>
                   <button
                     type="button"
                     className="attachment-open-button"
                     aria-label={`View image: ${filename}`}
                     onClick={() => setLightboxSrc(url)}
                   >
-                    <img
-                      className="user-message-attachment-image"
-                      src={url}
-                      alt={`Attached image: ${filename}`}
-                    />
+                    <img className="user-message-attachment-image" src={url} alt={`Attached image: ${filename}`} />
                   </button>
                 </figure>
               );
             }
             return (
-              <span
-                key={a.filePath}
-                className="user-message-attachment-chip"
-                title={a.filePath}
-              >
+              <span key={a.filePath} className="user-message-attachment-chip" title={a.filePath}>
                 {filename}
               </span>
             );
@@ -822,11 +778,7 @@ export function SessionConversationUserMessage({
         </div>
       ) : null}
       {displayMessage ? (
-        <ChatBubble
-          key={event.id}
-          kind="user"
-          rawMarkdown={displayMessage}
-        >
+        <ChatBubble key={event.id} kind="user" rawMarkdown={displayMessage}>
           {/* The raw text (with the slashes) stays in rawMarkdown so copy
               keeps the real message. */}
           <p>{markUserMessage(displayMessage)}</p>

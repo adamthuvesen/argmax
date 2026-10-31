@@ -27,7 +27,12 @@ export function multitaskDisplayStatus(
 ): MultitaskDisplayStatus {
   if (state === "failed") return "failed";
   if (state === "cancelled") return "stopped";
-  if (state === "blocked" || attention === "approval-needed" || attention === "question-asked" || attention === "blocked") {
+  if (
+    state === "blocked" ||
+    attention === "approval-needed" ||
+    attention === "question-asked" ||
+    attention === "blocked"
+  ) {
     return "needs-you";
   }
   if (state === "complete") return "done";
@@ -72,10 +77,7 @@ export function multitaskNoticeFor(event: TimelineEvent): MultitaskNotice {
  * marker. Later rows carry only what they know, so a null must not erase what
  * the launch row already said.
  */
-export function mergeMultitaskNotice(
-  existing: MultitaskNotice,
-  incoming: MultitaskNotice
-): MultitaskNotice {
+export function mergeMultitaskNotice(existing: MultitaskNotice, incoming: MultitaskNotice): MultitaskNotice {
   return {
     childSessionId: incoming.childSessionId ?? existing.childSessionId,
     taskLabel: incoming.taskLabel || existing.taskLabel,
@@ -84,10 +86,7 @@ export function mergeMultitaskNotice(
     state: incoming.state ?? existing.state,
     answer: incoming.answer ?? existing.answer,
     // The dispatch is where the row belongs, and it is the earlier of the two.
-    createdAt:
-      incoming.createdAt && incoming.createdAt < existing.createdAt
-        ? incoming.createdAt
-        : existing.createdAt
+    createdAt: incoming.createdAt && incoming.createdAt < existing.createdAt ? incoming.createdAt : existing.createdAt
   };
 }
 
@@ -117,9 +116,7 @@ export function isMultitaskSession(session: SessionSummary): boolean {
  * there is nowhere left to reach it from, so it comes back to the sidebar
  * rather than disappearing with its uncommitted work.
  */
-export function hiddenMultitaskWorkspaceIds(
-  sessions: readonly SessionSummary[]
-): Set<string> {
+export function hiddenMultitaskWorkspaceIds(sessions: readonly SessionSummary[]): Set<string> {
   const sessionIds = new Set(sessions.map((session) => session.id));
   const hidden = new Set<string>();
   for (const session of sessions) {
@@ -141,9 +138,7 @@ export function hiddenMultitaskWorkspaceIds(
  * An orphan is left out for the same reason it gets its row back: with its
  * launcher gone from the snapshot it speaks for itself.
  */
-export function workspacesWithRunningMultitask(
-  sessions: readonly SessionSummary[]
-): Set<string> {
+export function workspacesWithRunningMultitask(sessions: readonly SessionSummary[]): Set<string> {
   const workspaceBySession = new Map(sessions.map((session) => [session.id, session.workspaceId]));
   const working = new Set<string>();
   for (const session of sessions) {

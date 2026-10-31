@@ -3,12 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
 import type { WorkspaceSummary } from "../shared/types.js";
 import { RANDOM_SESSION_ICON_KEY } from "./lib/uiPreferences.js";
-import {
-  dashboardDeltaListener,
-  setWorkspaceIcon,
-  setupAppTestMocks,
-  snapshot
-} from "../test/appTestHarness.js";
+import { dashboardDeltaListener, setWorkspaceIcon, setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
 
 function externalWorkspace(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
   return {

@@ -36,9 +36,13 @@ describe("NewProjectDialog", () => {
     expect(within(screen.getByRole("list", { name: "Project folders" })).getAllByRole("listitem")).toHaveLength(2);
     fireEvent.click(screen.getByRole("radio", { name: "Make dbt primary" }));
     fireEvent.click(submit);
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({
-      name: "AI Analytics", folders: ["/repos/app", "/repos/dbt"], primaryPath: "/repos/dbt"
-    }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({
+        name: "AI Analytics",
+        folders: ["/repos/app", "/repos/dbt"],
+        primaryPath: "/repos/dbt"
+      })
+    );
   });
 
   it("cancels the draft without creating a project or retaining a cancelled directory selection", async () => {
@@ -101,7 +105,11 @@ describe("NewProjectDialog", () => {
   it("keeps the draft after a backend failure and prevents dismissal during creation", async () => {
     install(["/repos/app"]);
     let reject!: (reason: Error) => void;
-    const onCreate = vi.fn().mockReturnValue(new Promise<void>((_, fail) => { reject = fail; }));
+    const onCreate = vi.fn().mockReturnValue(
+      new Promise<void>((_, fail) => {
+        reject = fail;
+      })
+    );
     const onClose = vi.fn();
     render(<NewProjectDialog onCreate={onCreate} onClose={onClose} />);
     fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "AI" } });
@@ -111,7 +119,9 @@ describe("NewProjectDialog", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    act(() => { reject(new Error("Primary folder must be a Git repository.")); });
+    act(() => {
+      reject(new Error("Primary folder must be a Git repository."));
+    });
     await waitFor(() => expect(toastSnapshot()?.message).toContain("Git repository"));
     expect(screen.getByLabelText("Project name")).toHaveValue("AI");
     expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled();

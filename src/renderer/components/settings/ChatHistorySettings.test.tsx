@@ -65,9 +65,7 @@ describe("ChatHistorySettings", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete 3 chats" }));
 
-    await waitFor(() =>
-      expect(settingsStub.deleteOldChats).toHaveBeenCalledWith({ cleanupId: "cleanup-1" })
-    );
+    await waitFor(() => expect(settingsStub.deleteOldChats).toHaveBeenCalledWith({ cleanupId: "cleanup-1" }));
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Deleted 2 chats.");
     expect(status).toHaveTextContent("Kept 1 chat that is active or recently updated.");

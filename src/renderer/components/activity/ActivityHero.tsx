@@ -9,11 +9,7 @@ import {
   formatHeroCount,
   formatRemoved
 } from "./activityFormat.js";
-import {
-  metricValue,
-  type ActivityDelta,
-  type ActivityMetric
-} from "./activityPresentation.js";
+import { metricValue, type ActivityDelta, type ActivityMetric } from "./activityPresentation.js";
 import { ActivityHeatmap } from "./ActivityHeatmap.js";
 
 /**
@@ -84,11 +80,7 @@ export function ActivityHero({
           </p>
           {/* The exact count stays reachable on hover for the windows where
               the figure is shown rounded. */}
-          <p
-            className="activity-hero-figure"
-            aria-labelledby={eyebrowId}
-            title={formatCount(figure)}
-          >
+          <p className="activity-hero-figure" aria-labelledby={eyebrowId} title={formatCount(figure)}>
             {formatHeroCount(figure)}
           </p>
           <p className="activity-hero-figure-label">
@@ -116,11 +108,7 @@ export function ActivityHero({
                 window, so the fourth slot spends itself on the one figure
                 nothing else on the page states in the open. */}
             <dt>Median cycle</dt>
-            <dd>
-              {summary.medianCycleSeconds !== null
-                ? formatDuration(summary.medianCycleSeconds)
-                : "—"}
-            </dd>
+            <dd>{summary.medianCycleSeconds !== null ? formatDuration(summary.medianCycleSeconds) : "—"}</dd>
           </div>
         </dl>
       </div>
@@ -148,8 +136,7 @@ export function ActivityHero({
                 ·
               </span>
               <span>
-                busiest {formatCalendarDate(streaks.busiestDay.date)},{" "}
-                {formatCount(streaks.busiestDay.commits)} commits
+                busiest {formatCalendarDate(streaks.busiestDay.date)}, {formatCount(streaks.busiestDay.commits)} commits
               </span>
             </>
           ) : null}

@@ -133,9 +133,7 @@ describe("multitask in the chat that dispatched it", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Dismiss multitask: Fix the changelog date" })
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss multitask: Fix the changelog date" }));
 
     await waitFor(() => expect(screen.queryByRole("region", { name: "Multitasks" })).toBeNull());
   });
@@ -145,14 +143,14 @@ describe("multitask in the chat that dispatched it", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }));
 
     const tablist = await screen.findByRole("tablist", { name: "Subagents and multitasks" });
-    expect(within(tablist).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Fix the changelog date"
-    ]);
+    expect(
+      within(tablist)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent)
+    ).toEqual(["Fix the changelog date"]);
     // Its own transcript, in the dock — the parent chat is still the one on the
     // left, and nothing navigated away from it.
     expect(await screen.findByText("Corrected the 0.4 heading to 2026.")).toBeInTheDocument();
@@ -191,14 +189,10 @@ describe("multitask in the chat that dispatched it", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Stop multitask: Fix the changelog date" })
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Stop multitask: Fix the changelog date" }));
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-multitask"));
-    expect(
-      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })).toBeInTheDocument();
     expect(readDraft(launcherDraftKey("project-1")).text).toBe("");
     expect(archiveWorkspace).not.toHaveBeenCalled();
   });

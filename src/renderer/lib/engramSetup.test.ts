@@ -16,9 +16,7 @@ describe("engramDirectoryError", () => {
     "rejects control characters in %j",
     (directory) => {
       expect(engramDirectoryError(directory)).toBe("The Engram directory cannot contain control characters.");
-      expect(() => engramSetup("codex", directory)).toThrow(
-        "The Engram directory cannot contain control characters."
-      );
+      expect(() => engramSetup("codex", directory)).toThrow("The Engram directory cannot contain control characters.");
     }
   );
 });
@@ -43,9 +41,7 @@ describe("engramSetup", () => {
     const suffix = " engram";
     const quotedDirectory = content.slice(prefix.length, -suffix.length);
 
-    expect(execFileSync("/bin/sh", ["-c", `printf '%s' ${quotedDirectory}`], { encoding: "utf8" })).toBe(
-      directory
-    );
+    expect(execFileSync("/bin/sh", ["-c", `printf '%s' ${quotedDirectory}`], { encoding: "utf8" })).toBe(directory);
   });
 
   it("builds the Cursor MCP JSON entry", () => {

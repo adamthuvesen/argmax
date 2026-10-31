@@ -51,9 +51,7 @@ export function metricValue(row: ActivityAmounts, metric: ActivityMetric): numbe
  * own option would be a second source of truth for "now", and the fixture
  * runs on a pinned date.
  */
-export function activityWindowOptions(
-  year: number
-): ReadonlyArray<{ value: ActivityWindow; label: string }> {
+export function activityWindowOptions(year: number): ReadonlyArray<{ value: ActivityWindow; label: string }> {
   return [
     { value: "24h", label: "Last 24 hours" },
     { value: "7d", label: "Last 7 days" },
@@ -107,15 +105,10 @@ export function windowDelta(summary: ActivitySummary, metric: ActivityMetric): A
  * can get to the Usage page's rule that colour names the series, not its
  * position (docs/styling.md).
  */
-export function repositorySlots(
-  repositories: readonly ActivityRepository[]
-): Map<string, ActivitySlot> {
+export function repositorySlots(repositories: readonly ActivityRepository[]): Map<string, ActivitySlot> {
   const slots = new Map<string, ActivitySlot>();
   repositories.forEach((repo, index) => {
-    slots.set(
-      repo.projectId,
-      index < ACTIVITY_SERIES_SLOTS ? (String(index + 1) as ActivitySlot) : "tail"
-    );
+    slots.set(repo.projectId, index < ACTIVITY_SERIES_SLOTS ? (String(index + 1) as ActivitySlot) : "tail");
   });
   return slots;
 }
@@ -135,10 +128,7 @@ export interface ActivityChartSeries {
  * about which is which, and a flat zero line for a repository that did nothing
  * in the window is noise the reader has to look past.
  */
-export function chartSeries(
-  summary: ActivitySummary,
-  metric: ActivityMetric
-): ActivityChartSeries[] {
+export function chartSeries(summary: ActivitySummary, metric: ActivityMetric): ActivityChartSeries[] {
   const slots = repositorySlots(summary.repositories);
   const named = summary.repositories.slice(0, ACTIVITY_SERIES_SLOTS);
   const buckets = summary.series.length;
@@ -181,15 +171,7 @@ export function chartSeries(
 
 /** Monday first, so a week reads left to right the way the cadence chart draws it. */
 export const ACTIVITY_WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const WEEKDAY_NAMES = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday"
-];
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export interface ActivityPeak {
   index: number;

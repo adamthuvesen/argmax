@@ -47,17 +47,15 @@ describe("ProjectKnowledgePanel", () => {
     listSpy = vi
       .fn<ArgmaxApi["learnings"]["list"]>()
       .mockResolvedValue([makeLearning({ id: "L1", summary: "Always run prettier before commit" })]);
-    updateSpy = vi
-      .fn<ArgmaxApi["learnings"]["update"]>()
-      .mockImplementation((input) =>
-        Promise.resolve(
-          makeLearning({
-            id: input.id,
-            summary: input.summary ?? "Always run prettier before commit",
-            verified: input.verified ?? false
-          })
-        )
-      );
+    updateSpy = vi.fn<ArgmaxApi["learnings"]["update"]>().mockImplementation((input) =>
+      Promise.resolve(
+        makeLearning({
+          id: input.id,
+          summary: input.summary ?? "Always run prettier before commit",
+          verified: input.verified ?? false
+        })
+      )
+    );
     deleteSpy = vi.fn<ArgmaxApi["learnings"]["delete"]>().mockResolvedValue(null);
     window.argmax = {
       ...originalArgmax,
@@ -131,9 +129,7 @@ describe("ProjectKnowledgePanel", () => {
       return Promise.resolve([]);
     });
 
-    render(
-      <ProjectKnowledgePanel projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]} />
-    );
+    render(<ProjectKnowledgePanel projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]} />);
     fireEvent.click(screen.getByRole("button", { name: "Project knowledge — project picker" }));
     fireEvent.click(screen.getByRole("button", { name: "Other" }));
     await screen.findByLabelText("Edit summary for learning L2");
@@ -164,9 +160,7 @@ describe("ProjectKnowledgePanel", () => {
       return Promise.resolve([]);
     });
 
-    render(
-      <ProjectKnowledgePanel projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]} />
-    );
+    render(<ProjectKnowledgePanel projects={[PROJECT, { ...PROJECT, id: "project-2", name: "Other" }]} />);
     await screen.findByLabelText("Edit summary for learning L1");
     fireEvent.click(screen.getByRole("button", { name: "Delete learning L1" }));
     fireEvent.click(screen.getByRole("button", { name: "Project knowledge — project picker" }));

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs the iPhone app's XCTest suite on a simulator. Precheck and CI call this
+// Runs the iPhone app's XCTest suite on a simulator. The pre-push gate and CI call this
 // same script, so a test cannot pass in one lane and go unrun in the other.
 //
 //   npm run test:ios
@@ -62,8 +62,9 @@ function testSimulator() {
   }
   // Not a fixed model: a runtime supports only some device types, and the
   // list changes with every Xcode.
-  const runtimes = JSON.parse(simctl("list", "-j", "runtimes")).runtimes
-    .filter((runtime) => runtime.platform === "iOS" && runtime.isAvailable);
+  const runtimes = JSON.parse(simctl("list", "-j", "runtimes")).runtimes.filter(
+    (runtime) => runtime.platform === "iOS" && runtime.isAvailable
+  );
   const runtime = runtimes.at(-1);
   if (!runtime) fail("no iOS simulator runtime is installed. Install one in Xcode > Settings > Components");
   const iPhones = runtime.supportedDeviceTypes.filter((type) => /iPhone/.test(type.name));
@@ -107,13 +108,17 @@ function runThroughXcodebuild(udid) {
     : [`-only-testing:${TEST_TARGET}`, `-skip-testing:${TEST_TARGET}/${SKIPPED_CLASS}`];
   const xctestrun = readdirSync(PRODUCTS).find((file) => file.endsWith(".xctestrun"));
   if (!xctestrun) reportFailure("the build wrote no .xctestrun");
-  const attempt = () => runLogged("xcodebuild", [
-    "test-without-building",
-    "-xctestrun", resolve(PRODUCTS, xctestrun),
-    "-destination", `platform=iOS Simulator,id=${udid}`,
-    "-parallel-testing-enabled", "NO",
-    ...filter
-  ]);
+  const attempt = () =>
+    runLogged("xcodebuild", [
+      "test-without-building",
+      "-xctestrun",
+      resolve(PRODUCTS, xctestrun),
+      "-destination",
+      `platform=iOS Simulator,id=${udid}`,
+      "-parallel-testing-enabled",
+      "NO",
+      ...filter
+    ]);
   let status = attempt();
   // A launch flake of the simulator, not a test result. Seen on this suite.
   if (status !== 0 && readFileSync(LOG_PATH, "utf8").includes("failed preflight checks")) status = attempt();
@@ -125,7 +130,9 @@ function runThroughXcodebuild(udid) {
 // still gives a machine in that state a real result, so a push from it is not
 // stuck or untested. CI never takes this path.
 function runThroughInjection(device) {
-  console.warn("warning: CoreSimulator is out of date, so xcodebuild sees no simulator. Fix: sudo xcodebuild -runFirstLaunch");
+  console.warn(
+    "warning: CoreSimulator is out of date, so xcodebuild sees no simulator. Fix: sudo xcodebuild -runFirstLaunch"
+  );
   console.warn("warning: running the suite by injecting the test bundle into the app");
   const bootedHere = device.state !== "Booted";
   if (bootedHere) {
@@ -148,14 +155,25 @@ function runThroughInjection(device) {
     };
     const selection = (only ? [only] : testClasses()).map((name) => `${TEST_TARGET}.${name}`).join(",");
     const [command, prefix] = existsSync(CORE_SIMCTL) ? [CORE_SIMCTL, []] : ["xcrun", ["simctl"]];
-    const status = runLogged(command, [
-      ...prefix, "launch", "--console-pty", "--terminate-running-process", device.udid, BUNDLE_ID,
-      "-XCTest", selection
-    ], { env: environment, timeout: 600_000 });
+    const status = runLogged(
+      command,
+      [
+        ...prefix,
+        "launch",
+        "--console-pty",
+        "--terminate-running-process",
+        device.udid,
+        BUNDLE_ID,
+        "-XCTest",
+        selection
+      ],
+      { env: environment, timeout: 600_000 }
+    );
     if (status !== 0) return status;
     const log = readFileSync(LOG_PATH, "utf8");
     // The launch exits 0 whatever the tests did, and a crash prints no verdict.
-    const verdict = /Test Suite '[^']+' (passed|failed) at [^\n]*\n\s*Executed \d+ tests?, with \d+ failures?[^\n]*\n[^\n]*$/m;
+    const verdict =
+      /Test Suite '[^']+' (passed|failed) at [^\n]*\n\s*Executed \d+ tests?, with \d+ failures?[^\n]*\n[^\n]*$/m;
     if (!verdict.test(log.trimEnd().split("\n").slice(-6).join("\n"))) return 1;
     return /^Test Case .* failed \(/m.test(log) ? 1 : 0;
   } finally {
@@ -178,15 +196,23 @@ if (capture("which", ["xcodegen"]).status !== 0) fail("xcodegen is not installed
 if (runLogged("xcodegen", [], { cwd: PROJECT_DIR }) !== 0) reportFailure("xcodegen failed");
 
 const device = testSimulator();
-const buildStatus = runLogged("xcodebuild", [
-  "build-for-testing",
-  "-project", "Argmax.xcodeproj",
-  "-scheme", "Argmax",
-  "-destination", "generic/platform=iOS Simulator",
-  "-derivedDataPath", DERIVED_DATA,
-  // A simulator needs no signature, and CI has no team to sign with.
-  "CODE_SIGNING_ALLOWED=NO"
-], { cwd: PROJECT_DIR });
+const buildStatus = runLogged(
+  "xcodebuild",
+  [
+    "build-for-testing",
+    "-project",
+    "Argmax.xcodeproj",
+    "-scheme",
+    "Argmax",
+    "-destination",
+    "generic/platform=iOS Simulator",
+    "-derivedDataPath",
+    DERIVED_DATA,
+    // A simulator needs no signature, and CI has no team to sign with.
+    "CODE_SIGNING_ALLOWED=NO"
+  ],
+  { cwd: PROJECT_DIR }
+);
 if (buildStatus !== 0) reportFailure("the test build failed");
 const builtAt = Date.now();
 

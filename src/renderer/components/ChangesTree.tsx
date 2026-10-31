@@ -1,14 +1,6 @@
 import { FileIcon, FolderIcon } from "@react-symbols/icons/utils";
 import { ChevronRight, ChevronsDownUp, FolderOpen, RotateCw } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-  type JSX,
-  type MouseEvent
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type JSX, type MouseEvent } from "react";
 import { buildFileTree, type TreeNode } from "../lib/fileTree.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import type { ChangedFileSummary } from "../../shared/types.js";
@@ -297,10 +289,12 @@ function FileRow({
   const title = statusTitle(file, status);
   // Actions sit beside the row button, not inside it: a button cannot nest, and
   // this keeps the status glyph on screen when they appear on hover.
-  const act = (run: () => void) => (event: MouseEvent): void => {
-    event.stopPropagation();
-    run();
-  };
+  const act =
+    (run: () => void) =>
+    (event: MouseEvent): void => {
+      event.stopPropagation();
+      run();
+    };
   return (
     <div className="changes-tree-row-shell">
       <button
@@ -316,13 +310,7 @@ function FileRow({
       >
         <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
         <span className="workspace-tree-icon" title={`File icon for ${node.label}`} aria-hidden="true">
-          <FileIcon
-            fileName={node.label}
-            autoAssign
-            editFileNameData={SPECIAL_FILE_ICONS}
-            width={14}
-            height={14}
-          />
+          <FileIcon fileName={node.label} autoAssign editFileNameData={SPECIAL_FILE_ICONS} width={14} height={14} />
         </span>
         <span className="workspace-tree-label changes-tree-label" data-status={status}>
           {node.label}
@@ -330,15 +318,17 @@ function FileRow({
       </button>
       <span className="changes-tree-row-end">
         <span className="changes-tree-actions">
-          {onOpenInFiles ? <button
-            type="button"
-            className="small-icon"
-            title={`Open ${file.path} in Files view`}
-            aria-label={`Open ${file.path} in Files view`}
-            onClick={act(() => onOpenInFiles?.(file.path))}
-          >
-            <FolderOpen size={13} aria-hidden="true" />
-          </button> : null}
+          {onOpenInFiles ? (
+            <button
+              type="button"
+              className="small-icon"
+              title={`Open ${file.path} in Files view`}
+              aria-label={`Open ${file.path} in Files view`}
+              onClick={act(() => onOpenInFiles?.(file.path))}
+            >
+              <FolderOpen size={13} aria-hidden="true" />
+            </button>
+          ) : null}
         </span>
         <span className="changes-tree-status" data-status={status} role="img" aria-label={title} title={title}>
           {STATUS_GLYPH[status]}

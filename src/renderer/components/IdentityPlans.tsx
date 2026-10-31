@@ -1,10 +1,6 @@
 import { useEffect, useState, type JSX } from "react";
 import type { UsageLimitWindow, UsageProviderRemaining, UsageRemaining } from "../../shared/types.js";
-import {
-  getCachedUsageRemaining,
-  requestUsageRemaining,
-  recordUsageRemainingFailure
-} from "../lib/ledgerPageState.js";
+import { getCachedUsageRemaining, requestUsageRemaining, recordUsageRemainingFailure } from "../lib/ledgerPageState.js";
 import { fetchUsageRemaining, isUsageRemainingStale } from "../lib/usageRemainingLookup.js";
 import { LoadingLine } from "./LoadingLine.js";
 import { RemainingBar } from "./usage/RemainingBar.js";
@@ -24,9 +20,7 @@ function PlanWindow({ window }: { window: UsageLimitWindow }): JSX.Element {
         {window.label}
         {reset ? <span className="identity-plans-window-reset"> · {reset}</span> : null}
       </span>
-      <span className="identity-plans-window-left">
-        {formatRemainingPercent(window.remainingPercent)}
-      </span>
+      <span className="identity-plans-window-left">{formatRemainingPercent(window.remainingPercent)}</span>
       <RemainingBar remaining={window.remainingPercent} />
     </div>
   );
@@ -43,9 +37,7 @@ function PlanWindow({ window }: { window: UsageLimitWindow }): JSX.Element {
  * a menu open normally paints figures the boot prefetch already has.
  */
 export function IdentityPlans({ onOpenUsage }: { onOpenUsage: () => void }): JSX.Element | null {
-  const [remaining, setRemaining] = useState<UsageRemaining | null>(() =>
-    getCachedUsageRemaining()
-  );
+  const [remaining, setRemaining] = useState<UsageRemaining | null>(() => getCachedUsageRemaining());
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -91,17 +83,11 @@ export function IdentityPlans({ onOpenUsage }: { onOpenUsage: () => void }): JSX
         </div>
         <ul className="identity-plans-list" aria-label="Remaining on your plans">
           {rows.map((row) => (
-            <li
-              key={row.provider}
-              className="identity-plans-row usage-series"
-              data-provider={row.provider}
-            >
+            <li key={row.provider} className="identity-plans-row usage-series" data-provider={row.provider}>
               <div className="identity-plans-provider">
                 <span className="usage-series-dot" aria-hidden="true" />
                 <span className="identity-plans-name">{providerLabel(row.provider)}</span>
-                {row.planLabel ? (
-                  <span className="identity-plans-plan">{row.planLabel}</span>
-                ) : null}
+                {row.planLabel ? <span className="identity-plans-plan">{row.planLabel}</span> : null}
               </div>
               {row.windows.map((window) => (
                 <PlanWindow key={window.id} window={window} />

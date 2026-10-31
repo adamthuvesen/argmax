@@ -49,7 +49,9 @@ export const indexedDbBrowserHistoryStorage: BrowserHistoryStorage = {
         const transaction = database.transaction(STORE_NAME, "readonly");
         const request = transaction.objectStore(STORE_NAME).get(ENTRIES_KEY);
         let value: unknown;
-        request.onsuccess = () => { value = request.result; };
+        request.onsuccess = () => {
+          value = request.result;
+        };
         transaction.oncomplete = () => resolve(value);
         transaction.onerror = () => reject(transaction.error ?? new Error("Could not read browser history."));
         transaction.onabort = () => reject(transaction.error ?? new Error("Could not read browser history."));

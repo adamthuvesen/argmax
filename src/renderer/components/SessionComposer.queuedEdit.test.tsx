@@ -23,7 +23,10 @@ const editButton = (): HTMLElement =>
 
 describe("SessionComposer queued follow-up editing", () => {
   beforeEach(() => window.localStorage.clear());
-  afterEach(() => { cleanup(); resetToastForTests(); });
+  afterEach(() => {
+    cleanup();
+    resetToastForTests();
+  });
 
   it("takes the queued message out of the queue and back into the prompt", async () => {
     const onCancelQueuedMessage = vi.fn().mockResolvedValue(undefined);
@@ -41,7 +44,7 @@ describe("SessionComposer queued follow-up editing", () => {
     expect(onCancelQueuedMessage).toHaveBeenCalledWith("session-a", "pending-1");
     // Reworking it never cuts the turn short the way "Send now" does.
     expect(onSendQueuedMessageNow).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(prompt());
+    expect(prompt()).toHaveFocus();
   });
 
   it("keeps a half-written draft, putting the queued text above it", async () => {
@@ -53,9 +56,7 @@ describe("SessionComposer queued follow-up editing", () => {
     fireEvent.change(prompt(), { target: { value: "and check the links" } });
     fireEvent.click(editButton());
 
-    await waitFor(() =>
-      expect(prompt().value).toBe("Fix the README typo\n\nand check the links")
-    );
+    await waitFor(() => expect(prompt().value).toBe("Fix the README typo\n\nand check the links"));
     // The caret sits at the end of the restored text, which is what is being
     // reworded — not at the end of the draft that followed it.
     expect(prompt().selectionStart).toBe("Fix the README typo".length);
@@ -64,18 +65,33 @@ describe("SessionComposer queued follow-up editing", () => {
   it("restores queued screenshots alongside an existing draft and sends each reference once", async () => {
     const existing = { filePath: "/attachments/existing.png", mimeType: "image/png" as const, sizeBytes: 4 };
     const queuedImage = { filePath: "/attachments/queued.png", mimeType: "image/png" as const, sizeBytes: 4 };
-    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
-      "session-a": { text: "and check this", attachments: [existing] }
-    }));
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "session-a": { text: "and check this", attachments: [existing] }
+      })
+    );
     const onSendSessionInput = vi.fn().mockResolvedValue(undefined);
     renderConversation(baseSession({ state: "complete" }), [], {
-      pendingMessages: [{ ...queued[0], content: "Review the first shot @/attachments/queued.png\n\nOpen files: README.md", attachments: [queuedImage] }],
+      pendingMessages: [
+        {
+          ...queued[0],
+          content: "Review the first shot @/attachments/queued.png\n\nOpen files: README.md",
+          attachments: [queuedImage]
+        }
+      ],
       onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined),
       onSendSessionInput
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit queued follow-up: Review the first shot @/attachments/queued.png Open files: README.md" }));
-    await waitFor(() => expect(prompt()).toHaveValue("Review the first shot\n\nOpen files: README.md\n\nand check this"));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Edit queued follow-up: Review the first shot @/attachments/queued.png Open files: README.md"
+      })
+    );
+    await waitFor(() =>
+      expect(prompt()).toHaveValue("Review the first shot\n\nOpen files: README.md\n\nand check this")
+    );
     expect(screen.getAllByRole("button", { name: "View attachment" })).toHaveLength(2);
 
     fireEvent.keyDown(prompt(), { key: "Enter" });
@@ -116,9 +132,7 @@ describe("SessionComposer queued follow-up editing", () => {
     });
 
     expect(screen.getByText("Paused • not sent")).toBeInTheDocument();
-    expect(
-      screen.getByText("Delivery uncertain • check the chat before sending again")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Delivery uncertain • check the chat before sending again")).toBeInTheDocument();
     expect(onSendQueuedMessageNow).not.toHaveBeenCalled();
   });
 
@@ -139,10 +153,7 @@ describe("SessionComposer queued follow-up editing", () => {
 
   it("shows no provider tag on a legacy row, or one for the chat's own provider", () => {
     renderConversation(baseSession({ state: "running", provider: "codex" }), [], {
-      pendingMessages: [
-        queued[0],
-        { ...queued[0], id: "pending-2", content: "Same provider", provider: "codex" }
-      ],
+      pendingMessages: [queued[0], { ...queued[0], id: "pending-2", content: "Same provider", provider: "codex" }],
       onCancelQueuedMessage: vi.fn().mockResolvedValue(undefined)
     });
 
@@ -199,9 +210,7 @@ describe("SessionComposer queued follow-up editing", () => {
     });
 
     // The lane reads the chat by its title; edit hands the link itself back.
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued follow-up: compare with Billing please" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit queued follow-up: compare with Billing please" }));
 
     await waitFor(() => expect(prompt().value).toBe(content));
   });

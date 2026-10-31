@@ -1,12 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
-import {
-  dashboardDeltaListener,
-  mockDashboardSnapshot,
-  setupAppTestMocks,
-  snapshot
-} from "../test/appTestHarness.js";
+import { dashboardDeltaListener, mockDashboardSnapshot, setupAppTestMocks, snapshot } from "../test/appTestHarness.js";
 
 describe("App fork navigation", () => {
   beforeEach(() => setupAppTestMocks());
@@ -45,13 +40,26 @@ describe("App fork navigation", () => {
     // The fork exists in the backend, but no dashboard read or push has carried
     // its rows yet: only the fork response knows about it.
     const workspace = { ...snapshot.workspaces[0], id: "workspace-fork", taskLabel: "Build dashboard (fork)" };
-    const session = { ...snapshot.sessions[0], id: "session-fork", workspaceId: workspace.id, provider: "claude" as const };
+    const session = {
+      ...snapshot.sessions[0],
+      id: "session-fork",
+      workspaceId: workspace.id,
+      provider: "claude" as const
+    };
     const fork = vi.fn().mockResolvedValue({ workspace, session, fork: { id: "fork-1" } });
     window.argmax!.session.fork = fork;
     window.argmax!.session.forkLineage = vi.fn((input: { sessionId: string }) =>
       Promise.resolve(
         input.sessionId === session.id
-          ? { forkId: "fork-1", sourceSessionId: "session-1", sourceWorkspaceId: "workspace-1", sourceLabel: "Build dashboard", boundaryEventId: null, workspace: "shared", lastMergedThroughEventId: null }
+          ? {
+              forkId: "fork-1",
+              sourceSessionId: "session-1",
+              sourceWorkspaceId: "workspace-1",
+              sourceLabel: "Build dashboard",
+              boundaryEventId: null,
+              workspace: "shared",
+              lastMergedThroughEventId: null
+            }
           : null
       )
     );

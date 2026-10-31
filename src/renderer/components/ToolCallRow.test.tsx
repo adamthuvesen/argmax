@@ -8,9 +8,8 @@ vi.mock("../lib/commandIcons.js", async (importOriginal) => {
   const actual = await importOriginal<typeof CommandIcons>();
   return {
     ...actual,
-    commandIconServer: (call: ToolCall) => actual.commandIconServer(call, [
-      { commandPattern: "^run_only_sql(?:\\s|$)", server: "snowflake" }
-    ])
+    commandIconServer: (call: ToolCall) =>
+      actual.commandIconServer(call, [{ commandPattern: "^run_only_sql(?:\\s|$)", server: "snowflake" }])
   };
 });
 
@@ -36,11 +35,15 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
 
 describe("ToolCallRow", () => {
   it.each(["js", "js_reset"])("renders Codex computer use (%s) with a monitor and readable label", (action) => {
-    render(<ToolCallRow tool={tool({
-      name: `mcp__cua_repl__${action}`,
-      inputPreview: "",
-      inputFull: { code: "await cua.getState()" }
-    })} />);
+    render(
+      <ToolCallRow
+        tool={tool({
+          name: `mcp__cua_repl__${action}`,
+          inputPreview: "",
+          inputFull: { code: "await cua.getState()" }
+        })}
+      />
+    );
 
     expect(screen.getByRole("img", { name: "Computer use" })).toBeInTheDocument();
     const row = screen.getByRole("button", { name: "Computer use" });
@@ -69,10 +72,14 @@ describe("ToolCallRow", () => {
   });
 
   it("gives skill activation its own semantic icon kind", () => {
-    const { container } = render(<ToolCallRow tool={tool({
-      name: "Skill",
-      activity: { version: 1, kind: "skill", evidence: "native", targets: [] }
-    })} />);
+    const { container } = render(
+      <ToolCallRow
+        tool={tool({
+          name: "Skill",
+          activity: { version: 1, kind: "skill", evidence: "native", targets: [] }
+        })}
+      />
+    );
 
     const icon = container.querySelector(".tool-activity-icon");
     expect(icon).toHaveAttribute("data-activity", "skill");
@@ -80,23 +87,31 @@ describe("ToolCallRow", () => {
   });
 
   it("marks failed activity as danger and leaves a delete a file change", () => {
-    const { container, rerender } = render(<ToolCallRow tool={tool({
-      status: "error",
-      activity: { version: 1, kind: "command", evidence: "native", targets: [] }
-    })} />);
+    const { container, rerender } = render(
+      <ToolCallRow
+        tool={tool({
+          status: "error",
+          activity: { version: 1, kind: "command", evidence: "native", targets: [] }
+        })}
+      />
+    );
 
     expect(container.querySelector(".tool-activity-icon")).toHaveAttribute("data-tone", "danger");
 
     // Red marks work that did not finish. A delete finished.
-    rerender(<ToolCallRow tool={tool({
-      activity: {
-        version: 1,
-        kind: "edit",
-        evidence: "native",
-        targets: ["old.ts"],
-        operation: "delete"
-      }
-    })} />);
+    rerender(
+      <ToolCallRow
+        tool={tool({
+          activity: {
+            version: 1,
+            kind: "edit",
+            evidence: "native",
+            targets: ["old.ts"],
+            operation: "delete"
+          }
+        })}
+      />
+    );
 
     expect(container.querySelector(".tool-activity-icon")).not.toHaveAttribute("data-tone");
   });
@@ -140,10 +155,7 @@ describe("ToolCallRow", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Read README.md" })).toHaveAttribute(
-      "aria-expanded",
-      "false"
-    );
+    expect(screen.getByRole("button", { name: "Read README.md" })).toHaveAttribute("aria-expanded", "false");
   });
 });
 
@@ -166,7 +178,9 @@ describe("ToolCallRow server marks", () => {
     const parent = tool({ id: "parent", name: "Task", inputPreview: "Query data" });
     const { rerender } = render(<ToolCallRow tool={parent} childTools={[tool()]} defaultExpanded />);
     expect(screen.queryByRole("img", { name: "Snowflake" })).toBeNull();
-    rerender(<ToolCallRow tool={parent} childTools={[tool({ inputFull: { command: "run_only_sql" } })]} defaultExpanded />);
+    rerender(
+      <ToolCallRow tool={parent} childTools={[tool({ inputFull: { command: "run_only_sql" } })]} defaultExpanded />
+    );
     expect(screen.getByRole("img", { name: "Snowflake" })).toBeInTheDocument();
   });
 

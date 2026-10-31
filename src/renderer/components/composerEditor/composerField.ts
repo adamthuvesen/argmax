@@ -17,4 +17,3 @@ export interface ComposerField {
   contains(other: Node | null): boolean;
   closest(selector: string): Element | null;
 }
-

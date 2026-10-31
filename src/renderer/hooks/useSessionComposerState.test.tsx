@@ -16,15 +16,28 @@ describe("useSessionComposerState", () => {
         activeTabPath: "src/main.ts"
       }
     };
-    let annotationSink: ((input: {
-      filePath: string; line: number | null; side: "addition"; lineText: string; comment: string; base: string;
-    }) => void) | null = null;
-    const { result, rerender } = renderHook(({ session }) => useSessionComposerState({
-      session,
-      isFocused: false,
-      review,
-      registerAnnotationSink: (sink) => { annotationSink = sink; }
-    }), { initialProps: { session: firstSession } });
+    let annotationSink:
+      | ((input: {
+          filePath: string;
+          line: number | null;
+          side: "addition";
+          lineText: string;
+          comment: string;
+          base: string;
+        }) => void)
+      | null = null;
+    const { result, rerender } = renderHook(
+      ({ session }) =>
+        useSessionComposerState({
+          session,
+          isFocused: false,
+          review,
+          registerAnnotationSink: (sink) => {
+            annotationSink = sink;
+          }
+        }),
+      { initialProps: { session: firstSession } }
+    );
 
     act(() => {
       result.current.addAnnotation({ text: "selected answer" });

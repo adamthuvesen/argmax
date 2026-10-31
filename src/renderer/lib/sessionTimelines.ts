@@ -1,8 +1,4 @@
-import type {
-  RawProviderOutput,
-  SessionEventsSinceResult,
-  TimelineEvent
-} from "../../shared/types.js";
+import type { RawProviderOutput, SessionEventsSinceResult, TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { emptySnapshot, mergeDashboardDelta } from "./snapshot.js";
 
@@ -76,9 +72,7 @@ export class SessionTimelines {
   }
 
   subscribedSessionIds(): string[] {
-    return [...this.listeners.entries()]
-      .filter(([, listeners]) => listeners.size > 0)
-      .map(([sessionId]) => sessionId);
+    return [...this.listeners.entries()].filter(([, listeners]) => listeners.size > 0).map(([sessionId]) => sessionId);
   }
 
   subscribe(sessionId: string, listener: SessionTimelineListener): () => void {
@@ -104,13 +98,8 @@ export class SessionTimelines {
   }
 
   merge(events: TimelineEvent[], rawOutputs: RawProviderOutput[]): void {
-    const updates = new Map<
-      string,
-      { events: TimelineEvent[]; rawOutputs: RawProviderOutput[] }
-    >();
-    const getUpdates = (
-      sessionId: string
-    ): { events: TimelineEvent[]; rawOutputs: RawProviderOutput[] } => {
+    const updates = new Map<string, { events: TimelineEvent[]; rawOutputs: RawProviderOutput[] }>();
+    const getUpdates = (sessionId: string): { events: TimelineEvent[]; rawOutputs: RawProviderOutput[] } => {
       let sessionUpdates = updates.get(sessionId);
       if (!sessionUpdates) {
         sessionUpdates = { events: [], rawOutputs: [] };
@@ -130,20 +119,14 @@ export class SessionTimelines {
     }
   }
 
-  mergeAgentTail(
-    sessionId: string,
-    result: SessionEventsSinceResult,
-    ticket?: SessionTimelineReadTicket
-  ): boolean {
+  mergeAgentTail(sessionId: string, result: SessionEventsSinceResult, ticket?: SessionTimelineReadTicket): boolean {
     if (!ticket) {
       this.mergeInto(sessionId, result.events, result.rawOutputs);
       return true;
     }
     const bucket = this.validReadBucket(sessionId, ticket);
     if (!bucket) return false;
-    const events = result.events.filter(
-      (event) => this.latestEventVersion(bucket, event.id) <= ticket.revision
-    );
+    const events = result.events.filter((event) => this.latestEventVersion(bucket, event.id) <= ticket.revision);
     const rawOutputs = result.rawOutputs.filter(
       (output) => this.latestRawOutputVersion(bucket, output.id) <= ticket.revision
     );
@@ -186,11 +169,7 @@ export class SessionTimelines {
     return true;
   }
 
-  finishRead(
-    sessionId: string,
-    ticket: SessionTimelineReadTicket,
-    result: RevisionReadResult
-  ): boolean {
+  finishRead(sessionId: string, ticket: SessionTimelineReadTicket, result: RevisionReadResult): boolean {
     const bucket = this.validReadBucket(sessionId, ticket);
     if (!bucket) return false;
 
@@ -206,14 +185,10 @@ export class SessionTimelines {
     }
 
     const events = result.events.filter(
-      (event) =>
-        event.sessionId === sessionId &&
-        this.latestEventVersion(bucket, event.id) <= ticket.revision
+      (event) => event.sessionId === sessionId && this.latestEventVersion(bucket, event.id) <= ticket.revision
     );
     const rawOutputs = result.rawOutputs.filter(
-      (output) =>
-        output.sessionId === sessionId &&
-        this.latestRawOutputVersion(bucket, output.id) <= ticket.revision
+      (output) => output.sessionId === sessionId && this.latestRawOutputVersion(bucket, output.id) <= ticket.revision
     );
     const deletedEventIds = (result.deletedEventIds ?? []).filter(
       (id) => (bucket.eventVersions.get(id) ?? 0) <= ticket.revision
@@ -223,14 +198,10 @@ export class SessionTimelines {
     );
     const authoritative = bucket.authoritativeReadRequired || result.resetRequired === true;
     const baseEvents = authoritative
-      ? bucket.snapshot.events.filter(
-          (event) => this.latestEventVersion(bucket, event.id) > ticket.revision
-        )
+      ? bucket.snapshot.events.filter((event) => this.latestEventVersion(bucket, event.id) > ticket.revision)
       : bucket.snapshot.events;
     const baseRawOutputs = authoritative
-      ? bucket.snapshot.rawOutputs.filter(
-          (output) => this.latestRawOutputVersion(bucket, output.id) > ticket.revision
-        )
+      ? bucket.snapshot.rawOutputs.filter((output) => this.latestRawOutputVersion(bucket, output.id) > ticket.revision)
       : bucket.snapshot.rawOutputs;
     const changed = this.applyBucketUpdate(bucket, events, rawOutputs, {
       baseEvents,
@@ -278,8 +249,7 @@ export class SessionTimelines {
     for (const sessionId of targets) {
       const current = this.buckets.get(sessionId);
       if (!current) continue;
-      const hadContent =
-        current.snapshot.events.length > 0 || current.snapshot.rawOutputs.length > 0;
+      const hadContent = current.snapshot.events.length > 0 || current.snapshot.rawOutputs.length > 0;
       this.buckets.set(sessionId, this.createBucket());
       if (!this.isSubscribed(sessionId)) {
         this.markInactive(sessionId);
@@ -323,10 +293,7 @@ export class SessionTimelines {
     };
   }
 
-  private validReadBucket(
-    sessionId: string,
-    ticket: SessionTimelineReadTicket
-  ): SessionTimelineBucket | null {
+  private validReadBucket(sessionId: string, ticket: SessionTimelineReadTicket): SessionTimelineBucket | null {
     const bucket = this.buckets.get(sessionId);
     if (
       ticket.sessionId !== sessionId ||
@@ -369,11 +336,7 @@ export class SessionTimelines {
     return (this.listeners.get(sessionId)?.size ?? 0) > 0;
   }
 
-  private mergeInto(
-    sessionId: string,
-    events: TimelineEvent[],
-    rawOutputs: RawProviderOutput[]
-  ): void {
+  private mergeInto(sessionId: string, events: TimelineEvent[], rawOutputs: RawProviderOutput[]): void {
     const bucket = this.getOrCreateBucket(sessionId);
     if (this.mergeIntoBucket(bucket, events, rawOutputs)) {
       this.notify(sessionId);
@@ -430,9 +393,7 @@ export class SessionTimelines {
       { events, rawOutputs }
     );
     const mergedEvents =
-      deletedEventIds.size === 0
-        ? merged.events
-        : merged.events.filter((event) => !deletedEventIds.has(event.id));
+      deletedEventIds.size === 0 ? merged.events : merged.events.filter((event) => !deletedEventIds.has(event.id));
     const mergedRawOutputs =
       deletedRawOutputIds.size === 0
         ? merged.rawOutputs
@@ -504,17 +465,11 @@ export class SessionTimelines {
   }
 
   private latestEventVersion(bucket: SessionTimelineBucket, id: string): number {
-    return Math.max(
-      bucket.eventVersions.get(id) ?? 0,
-      bucket.eventDeletionVersions.get(id) ?? 0
-    );
+    return Math.max(bucket.eventVersions.get(id) ?? 0, bucket.eventDeletionVersions.get(id) ?? 0);
   }
 
   private latestRawOutputVersion(bucket: SessionTimelineBucket, id: string): number {
-    return Math.max(
-      bucket.rawOutputVersions.get(id) ?? 0,
-      bucket.rawOutputDeletionVersions.get(id) ?? 0
-    );
+    return Math.max(bucket.rawOutputVersions.get(id) ?? 0, bucket.rawOutputDeletionVersions.get(id) ?? 0);
   }
 
   private compactVersions(bucket: SessionTimelineBucket): void {

@@ -71,9 +71,7 @@ export function ProviderSwitchDialog({
         <p>
           {`${toName} continues this chat. If it worked on it before, it resumes that conversation and reads what it missed. Otherwise it starts from a short summary of the visible chat.`}
         </p>
-        {afterTurn ? (
-          <p>{`Your follow-up waits for the current turn, then runs on ${toName}.`}</p>
-        ) : null}
+        {afterTurn ? <p>{`Your follow-up waits for the current turn, then runs on ${toName}.`}</p> : null}
         <p className="provider-switch-recommendation">A new chat usually works better.</p>
         <div className="provider-switch-actions">
           <button type="button" onClick={onCancel}>
@@ -88,12 +86,7 @@ export function ProviderSwitchDialog({
             Switch
           </button>
           {onStartNewSession ? (
-            <button
-              type="button"
-              className="provider-switch-primary"
-              ref={primaryRef}
-              onClick={onStartNewSession}
-            >
+            <button type="button" className="provider-switch-primary" ref={primaryRef} onClick={onStartNewSession}>
               New chat
             </button>
           ) : null}

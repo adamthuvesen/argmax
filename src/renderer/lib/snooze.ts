@@ -84,9 +84,7 @@ function morning(from: Date, daysAhead: number): Date {
 }
 
 export function snoozeChoices(from: Date): SnoozeChoice[] {
-  return [
-    { key: "tomorrow", label: "Snooze Until Tomorrow", until: morning(from, 1).toISOString() }
-  ];
+  return [{ key: "tomorrow", label: "Snooze Until Tomorrow", until: morning(from, 1).toISOString() }];
 }
 
 /** `setTimeout` stores its delay in 32 bits; a longer wait fires immediately. */

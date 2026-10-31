@@ -6,11 +6,7 @@ import { EditorView } from "@codemirror/view";
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { installZeroLayoutForCodeMirror } from "../../test/jsdomCodeMirror.js";
-import {
-  baseSession,
-  renderConversation,
-  rerenderConversation
-} from "../../test/sessionConversationTestHarness.js";
+import { baseSession, renderConversation, rerenderConversation } from "../../test/sessionConversationTestHarness.js";
 import type { ArgmaxApi } from "../../shared/types.js";
 import { COMPOSER_CLIPBOARD_MIME } from "../lib/composerContext.js";
 

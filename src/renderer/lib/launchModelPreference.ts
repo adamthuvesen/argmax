@@ -42,9 +42,7 @@ export const DEFAULT_EFFORT_KEY = "argmax.launch.effort";
 export function readStoredDefaultEffort(): ReasoningEffort {
   if (typeof window === "undefined") return DEFAULT_REASONING_EFFORT;
   const raw = window.localStorage.getItem(DEFAULT_EFFORT_KEY);
-  return REASONING_EFFORTS.includes(raw as ReasoningEffort)
-    ? (raw as ReasoningEffort)
-    : DEFAULT_REASONING_EFFORT;
+  return REASONING_EFFORTS.includes(raw as ReasoningEffort) ? (raw as ReasoningEffort) : DEFAULT_REASONING_EFFORT;
 }
 
 export function persistDefaultEffort(effort: ReasoningEffort): void {
@@ -116,9 +114,7 @@ export function persistLaunchModel(model: ModelPickerSelection): void {
   }
 }
 
-function persistLaunchModelRecency(
-  model: Pick<ModelPickerSelection, "provider" | "modelId" | "autoTier">
-): void {
+function persistLaunchModelRecency(model: Pick<ModelPickerSelection, "provider" | "modelId" | "autoTier">): void {
   touchIdRecency(LAUNCH_MODEL_RECENCY_KEY, model.autoTier ? autoTierKey(model.autoTier) : providerModelKey(model));
 }
 

@@ -144,16 +144,21 @@ export function searchFilePaths(
   if (!idxs) return [];
   const ranked = info && order?.length ? order.map((index) => info.idx[index]) : idxs;
   const pathQuery = /[/\\]/u.test(query);
-  return ranked.map((index) => {
-    const path = paths[index];
-    const name = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
-    const nameRank = searchMatchRank(name, query);
-    return {
-      path,
-      rank: (pathQuery ? searchMatchRank(path, query)
-        : nameRank < 5 ? nameRank : 6 + searchMatchRank(path, query)) - preference(path)
-    };
-  }).sort((left, right) => left.rank - right.rank).slice(0, limit).map(({ path }) => path);
+  return ranked
+    .map((index) => {
+      const path = paths[index];
+      const name = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
+      const nameRank = searchMatchRank(name, query);
+      return {
+        path,
+        rank:
+          (pathQuery ? searchMatchRank(path, query) : nameRank < 5 ? nameRank : 6 + searchMatchRank(path, query)) -
+          preference(path)
+      };
+    })
+    .sort((left, right) => left.rank - right.rank)
+    .slice(0, limit)
+    .map(({ path }) => path);
 }
 
 export function searchPaletteItems(items: PaletteItem[], rawQuery: string): PaletteHit[] {
@@ -170,22 +175,19 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
   // Keywords are synonyms for the label, so they rank one tier under it and
   // above anything that only matched the subtitle.
   const keyworded = items.filter((item) => item.keywords?.length && !matched.has(item.id));
-  const keywordHits =
-    keyworded.length > 0
-      ? rankBy(keyworded, keyworded.map(keywordText), query, "keywords")
-      : [];
+  const keywordHits = keyworded.length > 0 ? rankBy(keyworded, keyworded.map(keywordText), query, "keywords") : [];
   for (const hit of keywordHits) matched.add(hit.item.id);
   const remaining = items.filter((item) => secondaryText(item) && !matched.has(item.id));
-  const subtitleHits =
-    remaining.length > 0
-      ? rankBy(remaining, remaining.map(secondaryText), query, "subtitle")
-      : [];
+  const subtitleHits = remaining.length > 0 ? rankBy(remaining, remaining.map(secondaryText), query, "subtitle") : [];
 
   for (const hit of subtitleHits) matched.add(hit.item.id);
-  const combinedItems = items.filter((item) =>
-    (secondaryText(item) || item.keywords?.length) && !matched.has(item.id));
-  const combinedHits = rankBy(combinedItems,
-    combinedItems.map((item) => `${item.label} ${secondaryText(item)} ${keywordText(item)}`), query, "label");
+  const combinedItems = items.filter((item) => (secondaryText(item) || item.keywords?.length) && !matched.has(item.id));
+  const combinedHits = rankBy(
+    combinedItems,
+    combinedItems.map((item) => `${item.label} ${secondaryText(item)} ${keywordText(item)}`),
+    query,
+    "label"
+  );
   for (const hit of combinedHits) {
     const offset = hit.item.label.length + 1;
     const secondaryEnd = secondaryText(hit.item).length;
@@ -203,8 +205,9 @@ export function searchPaletteItems(items: PaletteItem[], rawQuery: string): Pale
     }
     hit.matchRank = 6 + (hit.matchRank ?? 5);
   }
-  return [...labelHits, ...keywordHits, ...subtitleHits, ...combinedHits]
-    .sort((left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5));
+  return [...labelHits, ...keywordHits, ...subtitleHits, ...combinedHits].sort(
+    (left, right) => (left.matchRank ?? 5) - (right.matchRank ?? 5)
+  );
 }
 
 function keywordText(item: PaletteItem): string {
@@ -233,16 +236,20 @@ function rankBy(
     // Highlight literal terms without guessing the position of a typo match.
     const terms = needle.split(/\s+/u).map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const literalTerms = new RegExp(terms.join("|"), "giu");
-    return idxs.map((idx) => {
-      const ranges = Array.from(haystack[idx].matchAll(literalTerms))
-        .flatMap((match) => [match.index, match.index + match[0].length]);
-      return {
-        item: items[idx],
-        labelRanges: field === "label" ? ranges : null,
-        subtitleRanges: field === "subtitle" ? ranges : null,
-        matchRank: searchMatchRank(haystack[idx], needle) + offset
-      };
-    }).sort((left, right) => left.matchRank - right.matchRank);
+    return idxs
+      .map((idx) => {
+        const ranges = Array.from(haystack[idx].matchAll(literalTerms)).flatMap((match) => [
+          match.index,
+          match.index + match[0].length
+        ]);
+        return {
+          item: items[idx],
+          labelRanges: field === "label" ? ranges : null,
+          subtitleRanges: field === "subtitle" ? ranges : null,
+          matchRank: searchMatchRank(haystack[idx], needle) + offset
+        };
+      })
+      .sort((left, right) => left.matchRank - right.matchRank);
   }
   const hits: PaletteHit[] = [];
   for (let i = 0; i < order.length; i++) {

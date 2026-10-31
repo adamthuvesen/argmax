@@ -15,11 +15,7 @@ import type { SendInputResult } from "../../shared/bindings.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
-import {
-  readBoundedNumberPreference,
-  type ThinkingDisplay,
-  type ToolCallsDisplay
-} from "../lib/uiPreferences.js";
+import { readBoundedNumberPreference, type ThinkingDisplay, type ToolCallsDisplay } from "../lib/uiPreferences.js";
 import { useReviewState } from "../hooks/useReviewState.js";
 import { useSessionTimeline } from "../hooks/useSessionTimeline.js";
 import type { FontSize } from "../lib/fonts.js";
@@ -80,17 +76,8 @@ export function DetailsPopup({
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
   onClose: () => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
-  onSendQueuedMessageNow: (
-    sessionId: string,
-    messageId: string,
-    delivery?: QueuedMessageDelivery
-  ) => Promise<void>;
-  onMultitask?: (
-    sessionId: string,
-    prompt: string,
-    provider: ProviderId,
-    pendingMessageId?: string
-  ) => Promise<void>;
+  onSendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
   /** The popup has no dock, so a multitask dispatched from it opens as a full
    *  chat — the same fallback the phone uses. Without it the row is a button
    *  that goes nowhere, and the chat has no sidebar row either. */
@@ -111,11 +98,7 @@ export function DetailsPopup({
   workspace: WorkspaceSummary;
 }): JSX.Element {
   const sessionId = session.id;
-  const { events: sessionEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(
-    sessionId,
-    events,
-    rawOutputs
-  );
+  const { events: sessionEvents, rawOutputs: visibleRawOutputs } = useSessionTimeline(sessionId, events, rawOutputs);
   // The seed prompt restates the excerpt the user just selected, so it only
   // eats panel space. Hide it (the oldest user message — events run newest
   // first) and give the whole panel to the answer; typed follow-ups still show.
@@ -194,10 +177,7 @@ export function DetailsPopup({
     document.body.style.cursor = "nwse-resize";
   };
 
-  const sessionPendingMessages = useMemo(
-    () => pendingMessages?.[sessionId] ?? [],
-    [pendingMessages, sessionId]
-  );
+  const sessionPendingMessages = useMemo(() => pendingMessages?.[sessionId] ?? [], [pendingMessages, sessionId]);
 
   // Blank the prompt as well: foldConversation synthesizes a user bubble from
   // `session.prompt` whenever no user.message event is visible, which would
@@ -212,12 +192,7 @@ export function DetailsPopup({
       data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
       style={{ width: `${size.width}px`, height: `${size.height}px` }}
     >
-      <div
-        className="details-popup-resize"
-        role="presentation"
-        title="Drag to resize"
-        onPointerDown={startResize}
-      />
+      <div className="details-popup-resize" role="presentation" title="Drag to resize" onPointerDown={startResize} />
       <SessionConversation
         chatFontSize={chatFontSize}
         defaultToolCallsDisplay={defaultToolCallsDisplay}
@@ -245,10 +220,13 @@ export function DetailsPopup({
         workspaceCardEnabled={false}
         workspace={workspace}
       />
-      {onResolveApproval && approvals.some((approval) => approval.sessionId === sessionId && approval.status === "pending") ? (
+      {onResolveApproval &&
+      approvals.some((approval) => approval.sessionId === sessionId && approval.status === "pending") ? (
         <div className="details-popup-approvals">
           <ApprovalSurface
-            approvals={approvals.filter((approval) => approval.sessionId === sessionId && approval.status === "pending")}
+            approvals={approvals.filter(
+              (approval) => approval.sessionId === sessionId && approval.status === "pending"
+            )}
             events={sessionEvents}
             onResolveApproval={onResolveApproval}
           />

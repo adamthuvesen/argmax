@@ -18,8 +18,16 @@ describe("searchPaletteItems", () => {
     const row = { ...item("a", "Fix sidebar resize"), meta: "Argmax" };
     expect(searchPaletteItems([row], "argmax resize").map((hit) => hit.item.id)).toEqual(["a"]);
     const hit = searchPaletteItems([row], "argmax resize")[0];
-    expect(highlightSegments(row.label, hit.labelRanges).filter((part) => part.matched).map((part) => part.text)).toEqual(["resize"]);
-    expect(highlightSegments(row.meta, hit.subtitleRanges).filter((part) => part.matched).map((part) => part.text)).toEqual(["Argmax"]);
+    expect(
+      highlightSegments(row.label, hit.labelRanges)
+        .filter((part) => part.matched)
+        .map((part) => part.text)
+    ).toEqual(["resize"]);
+    expect(
+      highlightSegments(row.meta, hit.subtitleRanges)
+        .filter((part) => part.matched)
+        .map((part) => part.text)
+    ).toEqual(["Argmax"]);
   });
 
   it("matches a word the user has only started typing", () => {
@@ -113,8 +121,9 @@ describe("searchFilePaths", () => {
     const changed = new Set(["lib/app.ts", "src/appendix.ts"]);
     expect(searchFilePaths(paths, "app.ts", 50, changed)[0]).toBe("lib/app.ts");
     expect(searchFilePaths(paths, "", 50, changed)).toEqual(["lib/app.ts", "src/appendix.ts", "src/app.ts"]);
-    expect(searchFilePaths(["src/app.ts", "src/appendix.ts"], "app.ts", 50, new Set(["src/appendix.ts"]))[0])
-      .toBe("src/app.ts");
+    expect(searchFilePaths(["src/app.ts", "src/appendix.ts"], "app.ts", 50, new Set(["src/appendix.ts"]))[0]).toBe(
+      "src/app.ts"
+    );
   });
 
   it("keeps exact filenames first in large result sets", () => {

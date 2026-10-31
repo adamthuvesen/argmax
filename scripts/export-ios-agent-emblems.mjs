@@ -112,8 +112,7 @@ function arcToCurves(from, arc) {
 
   const denominator = rx * rx * y1 * y1 + ry * ry * x1 * x1;
   const factor =
-    Math.sqrt(Math.max(0, (rx * rx * ry * ry - denominator) / denominator)) *
-    (largeArc === sweep ? -1 : 1);
+    Math.sqrt(Math.max(0, (rx * rx * ry * ry - denominator) / denominator)) * (largeArc === sweep ? -1 : 1);
   const cx1 = (factor * rx * y1) / ry;
   const cy1 = (-factor * ry * x1) / rx;
   const cx = cos * cx1 - sin * cy1 + (from.x + x) / 2;
@@ -125,12 +124,7 @@ function arcToCurves(from, arc) {
     return sign * Math.acos(Math.min(1, Math.max(-1, cosine)));
   };
   const start = angle(1, 0, (x1 - cx1) / rx, (y1 - cy1) / ry);
-  let sweepAngle = angle(
-    (x1 - cx1) / rx,
-    (y1 - cy1) / ry,
-    (-x1 - cx1) / rx,
-    (-y1 - cy1) / ry
-  );
+  let sweepAngle = angle((x1 - cx1) / rx, (y1 - cy1) / ry, (-x1 - cx1) / rx, (-y1 - cy1) / ry);
   if (!sweep && sweepAngle > 0) sweepAngle -= 2 * Math.PI;
   if (sweep && sweepAngle < 0) sweepAngle += 2 * Math.PI;
 
@@ -212,9 +206,7 @@ async function loadEmblems() {
 }
 
 const { EMBLEM_PATHS, EMBLEM_SHAPES, EMBLEM_HUES, EMBLEM_BY_CODENAME } = await loadEmblems();
-const codenames = JSON.parse(
-  await readFile(path.join(repoRoot, "src/shared/agentCodenames.json"), "utf8")
-);
+const codenames = JSON.parse(await readFile(path.join(repoRoot, "src/shared/agentCodenames.json"), "utf8"));
 
 for (const codename of Object.keys(EMBLEM_BY_CODENAME)) {
   if (!codenames.includes(codename)) {
@@ -234,8 +226,7 @@ function swiftPath(shape) {
   const lines = [`        case "${shape}":`];
   for (const command of flatten(EMBLEM_PATHS[shape].d)) {
     if (command.op === "M") lines.push(`            path.move(to: ${point(command.x, command.y)})`);
-    else if (command.op === "L")
-      lines.push(`            path.addLine(to: ${point(command.x, command.y)})`);
+    else if (command.op === "L") lines.push(`            path.addLine(to: ${point(command.x, command.y)})`);
     else if (command.op === "C")
       lines.push(
         `            path.addCurve(to: ${point(command.x, command.y)}, ` +
@@ -307,6 +298,5 @@ ${EMBLEM_SHAPES.map(swiftPath).join("\n")}
 
 await writeFile(outPath, source);
 console.log(
-  `Wrote ${EMBLEM_SHAPES.length} shapes and ${codenames.length} codenames to ` +
-    `${path.relative(repoRoot, outPath)}`
+  `Wrote ${EMBLEM_SHAPES.length} shapes and ${codenames.length} codenames to ` + `${path.relative(repoRoot, outPath)}`
 );

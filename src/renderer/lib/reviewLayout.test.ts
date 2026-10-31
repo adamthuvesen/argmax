@@ -49,10 +49,7 @@ describe("review layout", () => {
   });
 
   it("promotes the surviving pane and retains the split ratio", () => {
-    const split = setReviewSplitRatio(
-      splitReviewMode(createReviewLayout("changes"), "files", "bottom"),
-      0.65
-    );
+    const split = setReviewSplitRatio(splitReviewMode(createReviewLayout("changes"), "files", "bottom"), 0.65);
 
     expect(closeReviewPane(split, 0)).toEqual({
       modes: ["files"],
@@ -74,10 +71,13 @@ describe("review layout", () => {
   });
 
   it("replaces unavailable restored modes with distinct available modes", () => {
-    expect(normalizeReviewLayout(
-      { modes: ["terminal", "agents"], activeIndex: 1, ratio: 0.7 },
-      ["changes", "files", "browser"]
-    )).toEqual({
+    expect(
+      normalizeReviewLayout({ modes: ["terminal", "agents"], activeIndex: 1, ratio: 0.7 }, [
+        "changes",
+        "files",
+        "browser"
+      ])
+    ).toEqual({
       modes: ["changes", "files"],
       activeIndex: 0,
       ratio: 0.7

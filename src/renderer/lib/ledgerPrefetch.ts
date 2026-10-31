@@ -47,16 +47,12 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
 
   if (!getCachedActivitySummary(activityUi.activityWindow, activityUi.projectId, timeZone)) {
     tasks.push(
-      requestActivitySummary(
-        activityUi.activityWindow,
-        activityUi.projectId,
-        timeZone,
-        () =>
-          api.activity.summary({
-            window: activityUi.activityWindow,
-            projectId: activityUi.projectId,
-            timeZone
-          })
+      requestActivitySummary(activityUi.activityWindow, activityUi.projectId, timeZone, () =>
+        api.activity.summary({
+          window: activityUi.activityWindow,
+          projectId: activityUi.projectId,
+          timeZone
+        })
       ).then(() => undefined)
     );
   }
@@ -68,8 +64,7 @@ export async function prefetchLedgerPages(api: ArgmaxApi): Promise<void> {
       requestUsageRemaining(() => api.usage.remaining())
         .then(() => undefined)
         .catch((cause) => {
-          const message =
-            cause instanceof Error ? cause.message : "Could not read remaining usage.";
+          const message = cause instanceof Error ? cause.message : "Could not read remaining usage.";
           recordUsageRemainingFailure(message, Date.now());
         })
     );

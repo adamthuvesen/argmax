@@ -9,7 +9,10 @@ import { objectValue, stringValue } from "../../shared/typeGuards.js";
  * is what lets a turn in the transcript find its own checkpoint instead of the
  * user picking from a list of identically named rows.
  */
-export function useTurnCheckpoints(workspaceId: string | undefined, sessionState: string | undefined): {
+export function useTurnCheckpoints(
+  workspaceId: string | undefined,
+  sessionState: string | undefined
+): {
   checkpointIds: ReadonlyMap<string, string>;
   refresh: () => void;
 } {
@@ -54,7 +57,5 @@ export function readCheckpointUnavailableReason(payload: unknown): string | null
     return null;
   }
   const reason = stringValue(object.checkpointUnavailableReason);
-  return reason
-    ? `No checkpoint was saved before this turn. ${reason}`
-    : "No checkpoint was saved before this turn.";
+  return reason ? `No checkpoint was saved before this turn. ${reason}` : "No checkpoint was saved before this turn.";
 }

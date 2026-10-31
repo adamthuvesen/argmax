@@ -55,9 +55,11 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
 
   private handleReportIssue = (): void => {
     if (typeof window === "undefined") return;
-    void systemActions()?.openPath({ path: ISSUES_URL }).catch(() => {
-      /* swallow — we're already in the error boundary path */
-    });
+    void systemActions()
+      ?.openPath({ path: ISSUES_URL })
+      .catch(() => {
+        /* swallow — we're already in the error boundary path */
+      });
   };
 
   render(): ReactNode {

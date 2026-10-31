@@ -1,10 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IdentityPlans } from "./IdentityPlans.js";
-import {
-  resetLedgerPageStateForTests,
-  setCachedUsageRemaining
-} from "../lib/ledgerPageState.js";
+import { resetLedgerPageStateForTests, setCachedUsageRemaining } from "../lib/ledgerPageState.js";
 import type { ArgmaxApi, UsageRemaining } from "../../shared/types.js";
 import { usageRemainingFixture } from "../../test/fixtures/usageRemaining.js";
 
@@ -43,12 +40,7 @@ describe("IdentityPlans", () => {
 
     const list = screen.getByLabelText("Remaining on your plans");
     const rows = within(list).getAllByRole("listitem");
-    expect(rows.map((row) => row.dataset.provider)).toEqual([
-      "claude",
-      "codex",
-      "opencode",
-      "grok"
-    ]);
+    expect(rows.map((row) => row.dataset.provider)).toEqual(["claude", "codex", "opencode", "grok"]);
     // Cursor is Teams, with its remaining on a dashboard we cannot read.
     expect(within(list).queryByText("Cursor")).toBeNull();
     // Claude's three windows each carry their own figure.

@@ -264,9 +264,7 @@ describe("ScheduledTasksPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Create task" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Choose an Arc for this task's coordinator."
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose an Arc for this task's coordinator.");
     expect(routinesStub.upsert).not.toHaveBeenCalled();
   });
 

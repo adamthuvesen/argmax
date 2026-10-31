@@ -40,9 +40,7 @@ describe("ApprovalSurface", () => {
     });
     const onResolveApproval = vi.fn(() => pending);
 
-    render(
-      <ApprovalSurface approvals={[approval]} events={[event]} onResolveApproval={onResolveApproval} />
-    );
+    render(<ApprovalSurface approvals={[approval]} events={[event]} onResolveApproval={onResolveApproval} />);
 
     expect(screen.getByText(approval.command)).toBeInTheDocument();
     expect(screen.getByText("Removing a worktree can discard local files.")).toBeInTheDocument();
@@ -64,9 +62,7 @@ describe("ApprovalSurface", () => {
   it("keeps a failed request actionable and reports it in the shared toast", async () => {
     resetToastForTests();
     const onResolveApproval = vi.fn().mockRejectedValue(new Error("Request expired"));
-    render(
-      <ApprovalSurface approvals={[approval]} events={[event]} onResolveApproval={onResolveApproval} />
-    );
+    render(<ApprovalSurface approvals={[approval]} events={[event]} onResolveApproval={onResolveApproval} />);
 
     const approve = screen.getByRole("button", { name: `Approve action: ${approval.command}` });
     fireEvent.click(approve);

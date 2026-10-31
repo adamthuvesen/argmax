@@ -107,9 +107,7 @@ describe("NewArcDialog", () => {
     });
 
     await waitFor(() => expect(launchCoordinatorMock).toHaveBeenCalledTimes(1));
-    expect(launchCoordinatorMock).toHaveBeenCalledWith(
-      expect.objectContaining({ arcId: "arc-1", provider: "claude" })
-    );
+    expect(launchCoordinatorMock).toHaveBeenCalledWith(expect.objectContaining({ arcId: "arc-1", provider: "claude" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(overlaysSnapshot().standalonePage).toBeNull();
@@ -173,9 +171,7 @@ describe("NewArcDialog", () => {
     }
 
     it("fills the draft, names what comes along, and promotes the chat", async () => {
-      const promote = installPromote(
-        Promise.resolve({ name: "Pricing rollout", brief: "Ship the new tiers." })
-      );
+      const promote = installPromote(Promise.resolve({ name: "Pricing rollout", brief: "Ship the new tiers." }));
       const onClose = vi.fn();
       render(<NewArcDialog open onClose={onClose} projects={PROJECTS} promote={SOURCE} />);
 

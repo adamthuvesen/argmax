@@ -39,9 +39,7 @@ if (typeof PerformanceObserver !== "undefined") {
           // Performance recording is optional and must never affect rendering.
         });
         if (entry.duration > 500) {
-          console.warn(
-            `[argmax] renderer long task: JS thread blocked ${Math.round(entry.duration)}ms`
-          );
+          console.warn(`[argmax] renderer long task: JS thread blocked ${Math.round(entry.duration)}ms`);
         }
       }
     }).observe({ entryTypes: ["longtask"] });

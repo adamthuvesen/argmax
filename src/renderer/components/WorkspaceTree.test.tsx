@@ -63,11 +63,7 @@ describe("WorkspaceTree virtualization", () => {
   });
 
   it("maps filenames and extensions to distinct icons without changing row labels", () => {
-    const entries: WorkspaceFileEntry[] = [
-      { path: "app.ts" },
-      { path: "README.md" },
-      { path: "CLAUDE.md" }
-    ];
+    const entries: WorkspaceFileEntry[] = [{ path: "app.ts" }, { path: "README.md" }, { path: "CLAUDE.md" }];
 
     render(<WorkspaceTree state={makeState(entries)} height={400} />);
 
@@ -83,16 +79,8 @@ describe("WorkspaceTree virtualization", () => {
   });
 
   it("preserves scroll when entries refresh without shape change (audit M19)", () => {
-    const entriesA: WorkspaceFileEntry[] = [
-      { path: "src/a.ts" },
-      { path: "src/b.ts" },
-      { path: "src/z.ts" }
-    ];
-    const entriesB: WorkspaceFileEntry[] = [
-      { path: "src/a.ts" },
-      { path: "src/c.ts" },
-      { path: "src/z.ts" }
-    ];
+    const entriesA: WorkspaceFileEntry[] = [{ path: "src/a.ts" }, { path: "src/b.ts" }, { path: "src/z.ts" }];
+    const entriesB: WorkspaceFileEntry[] = [{ path: "src/a.ts" }, { path: "src/c.ts" }, { path: "src/z.ts" }];
 
     const { rerender } = render(<WorkspaceTree state={makeState(entriesA)} height={600} />);
     const scroller = screen.getByRole("tree");
@@ -131,10 +119,7 @@ describe("WorkspaceTree virtualization", () => {
   });
 
   it("folds every open directory from the toolbar's collapse-all", () => {
-    const entries: WorkspaceFileEntry[] = [
-      { path: "src/renderer/App.tsx" },
-      { path: "README.md" }
-    ];
+    const entries: WorkspaceFileEntry[] = [{ path: "src/renderer/App.tsx" }, { path: "README.md" }];
     const state = { ...makeState(entries), selectedPath: "src/renderer/App.tsx" };
 
     render(<WorkspaceTree state={state} height={400} toolbar={{ onRefresh: () => undefined }} />);
@@ -154,11 +139,7 @@ describe("WorkspaceTree virtualization", () => {
     const refreshList = vi.fn();
 
     const { rerender } = render(
-      <WorkspaceTree
-        state={{ ...makeState(entries), refreshList }}
-        height={400}
-        toolbar={{ onRefresh: refreshList }}
-      />
+      <WorkspaceTree state={{ ...makeState(entries), refreshList }} height={400} toolbar={{ onRefresh: refreshList }} />
     );
     fireEvent.click(screen.getByRole("button", { name: "Refresh file list" }));
     expect(refreshList).toHaveBeenCalledTimes(1);
@@ -192,10 +173,7 @@ describe("WorkspaceTree virtualization", () => {
       constructor(private readonly callback: ResizeObserverCallback) {}
       observe(target: Element): void {
         observed.push(target);
-        this.callback(
-          [{ target, contentRect: { height: 1200 } } as unknown as ResizeObserverEntry],
-          this
-        );
+        this.callback([{ target, contentRect: { height: 1200 } } as unknown as ResizeObserverEntry], this);
       }
       unobserve(): void {}
       disconnect(): void {}

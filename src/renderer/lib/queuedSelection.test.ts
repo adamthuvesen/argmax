@@ -18,10 +18,7 @@ describe("selectionOfQueuedMessage", () => {
 
   it("gives a legacy row, with no provider, the chat's own", () => {
     expect(
-      selectionOfQueuedMessage(
-        { modelLabel: "GPT-6 Luna", modelId: "gpt-6-luna" },
-        { provider: "codex" }
-      )
+      selectionOfQueuedMessage({ modelLabel: "GPT-6 Luna", modelId: "gpt-6-luna" }, { provider: "codex" })
     ).toEqual({ provider: "codex", label: "GPT-6 Luna", modelId: "gpt-6-luna" });
   });
 

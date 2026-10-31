@@ -24,9 +24,7 @@ export function buildTerminalTranscript(rawOutputs: RawProviderOutput[], session
 
   const transcript = visibleRawProviderLines(combined).join("").trim();
 
-  return transcript.length > RAW_TRANSCRIPT_CHAR_CAP
-    ? transcript.slice(-RAW_TRANSCRIPT_CHAR_CAP)
-    : transcript;
+  return transcript.length > RAW_TRANSCRIPT_CHAR_CAP ? transcript.slice(-RAW_TRANSCRIPT_CHAR_CAP) : transcript;
 }
 
 function visibleRawProviderLines(content: string): string[] {

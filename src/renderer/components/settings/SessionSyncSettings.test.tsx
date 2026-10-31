@@ -48,9 +48,7 @@ describe("SessionSyncSettings", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "Claude Code" }));
 
     await waitFor(() =>
-      expect(syncStub.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ claude: true, windowHours: 24 })
-      )
+      expect(syncStub.setConfig).toHaveBeenCalledWith(expect.objectContaining({ claude: true, windowHours: 24 }))
     );
     expect(await screen.findByRole("status")).toHaveTextContent("Imported 3 chats");
   });
@@ -58,11 +56,7 @@ describe("SessionSyncSettings", () => {
   it("changing the window re-runs the sweep with the new range", async () => {
     render(<SessionSyncSettings />);
     fireEvent.click(await screen.findByRole("radio", { name: /Last 7 days/ }));
-    await waitFor(() =>
-      expect(syncStub.setConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ windowHours: 168 })
-      )
-    );
+    await waitFor(() => expect(syncStub.setConfig).toHaveBeenCalledWith(expect.objectContaining({ windowHours: 168 })));
   });
 
   it("says what turning sync off removes, and confirms it afterwards", async () => {
@@ -74,17 +68,11 @@ describe("SessionSyncSettings", () => {
     render(<SessionSyncSettings />);
 
     // The warning is visible before the user acts, not only after.
-    expect(
-      await screen.findByText(/removes the synced chats you haven't continued/i)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/removes the synced chats you haven't continued/i)).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "Claude Code" }));
-    await waitFor(() =>
-      expect(syncStub.setConfig).toHaveBeenCalledWith(expect.objectContaining({ claude: false }))
-    );
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Synced chats you never continued were removed"
-    );
+    await waitFor(() => expect(syncStub.setConfig).toHaveBeenCalledWith(expect.objectContaining({ claude: false })));
+    expect(await screen.findByRole("status")).toHaveTextContent("Synced chats you never continued were removed");
   });
 
   it("does not offer providers whose transcripts Argmax cannot read", async () => {
@@ -92,9 +80,7 @@ describe("SessionSyncSettings", () => {
     const codex = await screen.findByRole("checkbox", { name: "Codex" });
     fireEvent.click(codex);
     expect(syncStub.setConfig).not.toHaveBeenCalled();
-    expect(screen.getAllByText(/can't read this agent's transcript format/i).length).toBeGreaterThan(
-      0
-    );
+    expect(screen.getAllByText(/can't read this agent's transcript format/i).length).toBeGreaterThan(0);
   });
 
   it("surfaces a failed sweep instead of claiming success", async () => {

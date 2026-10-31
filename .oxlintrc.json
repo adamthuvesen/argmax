@@ -1,0 +1,199 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "react",
+    "import",
+    "vitest",
+    "oxc"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "src-tauri/target/**",
+    "src-tauri/src/browser/*.js",
+    "public/sw.js",
+    "src/shared/bindings.d.ts",
+    ".claude/**",
+    ".argmax/worktrees/**",
+    ".dependency-cruiser.cjs",
+    "scripts/**",
+    ".agents/skills/verify-argmax/*.mjs",
+    ".verify/**",
+    "docs/design/**",
+    "vitest.perf.config.ts",
+    "scratch/**"
+  ],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "react/only-export-components": [
+      "warn",
+      {
+        "allowConstantExport": true
+      }
+    ],
+    "typescript/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports"
+      }
+    ],
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/await-thenable": "error",
+    "typescript/no-implied-eval": "error",
+    "typescript/unbound-method": "error",
+    "typescript/no-base-to-string": "error",
+    "typescript/no-for-in-array": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/require-await": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/no-redundant-type-constituents": "error",
+    "typescript/no-duplicate-type-constituents": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/restrict-plus-operands": "error",
+    "typescript/no-unnecessary-type-arguments": "off",
+    "typescript/no-array-delete": "error",
+    "typescript/no-misused-spread": "off",
+    "typescript/no-unsafe-enum-comparison": "error",
+    "typescript/no-unsafe-unary-minus": "error",
+    "typescript/no-unsafe-type-assertion": "off",
+    "typescript/no-unnecessary-type-parameters": "off",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "regex": "^\\.{1,2}/(?!.*\\.(js|mjs|css|json|txt|svg|png)(\\?.*)?$)",
+            "message": "End a relative import in .js, even for a .ts or .tsx file: import { foo } from \"./foo.js\"."
+          }
+        ]
+      }
+    ],
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "react/immutability": "off",
+    "react/purity": "off",
+    "react/preserve-manual-memoization": "off",
+    "react/globals": "off",
+    "react/static-components": "off",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/no-conditional-expect": "off",
+    "vitest/require-to-throw-message": "off",
+    "react/jsx-key": "off",
+    "vitest/valid-expect": [
+      "error",
+      {
+        "maxArgs": 2,
+        "alwaysAwait": false
+      }
+    ],
+    "typescript/no-meaningless-void-operator": "off"
+  },
+  "jsPlugins": [
+    "./scripts/oxlint-plugin.mjs"
+  ],
+  "overrides": [
+    {
+      "files": [
+        "src/renderer/**/*.ts",
+        "src/renderer/**/*.tsx"
+      ],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "crypto",
+            "property": "randomUUID",
+            "message": "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/renderer/lib/uuid.ts"
+      ],
+      "rules": {
+        "no-restricted-properties": "off"
+      }
+    },
+    {
+      "files": [
+        "src/renderer/components/**/*.ts",
+        "src/renderer/components/**/*.tsx"
+      ],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "crypto",
+            "property": "randomUUID",
+            "message": "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+          },
+          {
+            "object": "window",
+            "property": "argmax",
+            "message": "Components do not call the bridge. Read with useBridgeQuery from data/useBridgeQuery.js, which drops stale replies. Start a write from data/bridgeActions.js."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/renderer/components/**/*.test.ts",
+        "src/renderer/components/**/*.test.tsx"
+      ],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "crypto",
+            "property": "randomUUID",
+            "message": "The mobile remote bridge serves an insecure origin where crypto.randomUUID is undefined. Use uuidV4() from lib/uuid.js."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/renderer/**/*.ts",
+        "src/renderer/**/*.tsx"
+      ],
+      "rules": {
+        "argmax/no-timeline-payload-access": "warn",
+        "argmax/no-raw-model-id": "warn"
+      }
+    },
+    {
+      "files": [
+        "src/renderer/**/*.test.ts",
+        "src/renderer/**/*.test.tsx",
+        "src/renderer/lib/canonicalTimeline.ts"
+      ],
+      "rules": {
+        "argmax/no-timeline-payload-access": "off",
+        "argmax/no-raw-model-id": "off"
+      }
+    },
+    {
+      "files": [
+        "src/renderer/**/*.test.tsx"
+      ],
+      "rules": {
+        "argmax/no-container": "warn",
+        "argmax/no-node-access": "warn"
+      }
+    }
+  ]
+}

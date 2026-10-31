@@ -11,7 +11,12 @@ afterEach(() => {
 it("consumes Escape only while a selection toolbar is open", () => {
   function Probe() {
     const ref = useRef<HTMLDivElement>(null);
-    return <><div ref={ref}>Selected response</div><SelectionToolbar containerRef={ref} onAddToChat={() => undefined} /></>;
+    return (
+      <>
+        <div ref={ref}>Selected response</div>
+        <SelectionToolbar containerRef={ref} onAddToChat={() => undefined} />
+      </>
+    );
   }
   render(<Probe />);
   const range = document.createRange();

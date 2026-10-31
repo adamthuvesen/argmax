@@ -187,10 +187,11 @@ export function paintFreshRuns(root: HTMLElement | null): void {
     // jsdom and any engine without the Web Animations API: the run stays at its
     // own ink, which is the reveal the app had before the fade.
     if (typeof node.animate !== "function") return;
-    const animation = node.animate(
-      [{ opacity: String(FRESH_RUN_FROM_OPACITY) }, { opacity: "1" }],
-      { duration: FRESH_RUN_FADE_MS, easing: "ease-out", fill: "both" }
-    );
+    const animation = node.animate([{ opacity: String(FRESH_RUN_FROM_OPACITY) }, { opacity: "1" }], {
+      duration: FRESH_RUN_FADE_MS,
+      easing: "ease-out",
+      fill: "both"
+    });
     animation.startTime = startedAt(at);
     // Cancelling on finish drops the held value and the animation with it; the
     // run is at its own ink by then, and a long answer never accumulates one

@@ -71,9 +71,7 @@ export function CheckedFileChip({ fallback, ...props }: FileChipProps & { fallba
 export function FileChip({ path, line, workspaceId, workspaceCwd, onOpen }: FileChipProps): JSX.Element {
   const label = formatFileChipLabel(path, workspaceCwd, line);
   const ariaLabel = line ? `Open ${path} at line ${line}` : `Open ${path}`;
-  const title = onOpen
-    ? `${ariaLabel} (⌘-click to open in IDE)`
-    : ariaLabel;
+  const title = onOpen ? `${ariaLabel} (⌘-click to open in IDE)` : ariaLabel;
   const handleOpen = (event: ReactMouseEvent<HTMLButtonElement>): void => {
     const preferIde = event.metaKey || event.ctrlKey;
     if (onOpen) {

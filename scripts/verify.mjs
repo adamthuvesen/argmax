@@ -2,7 +2,19 @@
 
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, copyFile, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  stat,
+  writeFile
+} from "node:fs/promises";
 import { loadavg, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -10,11 +22,36 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { connectBridge } from "./bridge-client.mjs";
 import { buildScratchApp, freePort, scratchBinaryPath, startScratchApp } from "./scratch-app.mjs";
 import { verifyBrowserSession } from "./verification/browser.mjs";
-import { checkoutFingerprint, delay, fileSha256, runChecked, terminateRunningCommands, uniqueRunId } from "./verification/common.mjs";
-import { copyIfPresent, listEvidenceFiles, redact, redactEvidenceTextFiles, writeJson, writeNdjson } from "./verification/evidence.mjs";
+import {
+  checkoutFingerprint,
+  delay,
+  fileSha256,
+  runChecked,
+  terminateRunningCommands,
+  uniqueRunId,
+  writeTripwires
+} from "./verification/common.mjs";
+import {
+  copyIfPresent,
+  listEvidenceFiles,
+  redact,
+  redactEvidenceTextFiles,
+  writeJson,
+  writeNdjson
+} from "./verification/evidence.mjs";
 import { verifySessionMove } from "./verification/session-move.mjs";
 import { verifyStagedPreservingRevert } from "./verification/workspace-recovery.mjs";
-import { verifyBrowserFocus, verifyBrowserFrames, verifyComposerEditor, verifyComposerReference, verifyForkMergeBack, verifyWorkspaceSettings, verifyVisualizations, workflowDiagnostics, workflowProgress } from "./verification/workflows.mjs";
+import {
+  verifyBrowserFocus,
+  verifyBrowserFrames,
+  verifyComposerEditor,
+  verifyComposerReference,
+  verifyForkMergeBack,
+  verifyWorkspaceSettings,
+  verifyVisualizations,
+  workflowDiagnostics,
+  workflowProgress
+} from "./verification/workflows.mjs";
 import {
   VERIFICATION_BARRIERS,
   VERIFICATION_CONVERSATION_ID,
@@ -27,12 +64,19 @@ import {
   VERIFICATION_PROVIDER,
   VERIFICATION_MOVED_CONVERSATION_ID,
   VERIFICATION_SCENARIOS,
-  VERIFICATION_SUBAGENT,
+  VERIFICATION_SUBAGENT
 } from "./verification/provider-fixture.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// A temp HOME does not isolate these: they reach launchd, preferences, the keychain, and package managers.
+const MACHINE_COMMANDS = ["launchctl", "defaults", "brew", "security", "op", "crontab", "systemctl"];
 const terminalStates = new Set(["complete", "failed", "cancelled"]);
-const persistentSubagentScenarios = new Set(["persistent-subagent", "persistent-codex-subagent", "persistent-opencode-subagent", "persistent-cursor-subagent"]);
+const persistentSubagentScenarios = new Set([
+  "persistent-subagent",
+  "persistent-codex-subagent",
+  "persistent-opencode-subagent",
+  "persistent-cursor-subagent"
+]);
 const scenarioDefinitionKeys = Object.freeze({
   "chat-resume": "chatResumeFirst",
   "queued-restart": "chatResumeFirst",
@@ -51,11 +95,22 @@ const scenarioDefinitionKeys = Object.freeze({
   "browser-frames": "composerSource",
   visualizations: "composerSource",
   "fork-merge": "forkTurnOne",
-  "workspace-settings": "workspaceSettings",
+  "workspace-settings": "workspaceSettings"
 });
 // Scenarios that drive the New chat launcher, composer chips, or fork and merge
 // through the native window and so have no remote-browser fallback.
-const nativeOnlyScenarios = ["queued-restart", "session-move", "staged-revert", "composer-reference", "composer-editor", "browser-focus", "browser-frames", "visualizations", "fork-merge", "workspace-settings"];
+const nativeOnlyScenarios = [
+  "queued-restart",
+  "session-move",
+  "staged-revert",
+  "composer-reference",
+  "composer-editor",
+  "browser-focus",
+  "browser-frames",
+  "visualizations",
+  "fork-merge",
+  "workspace-settings"
+];
 
 function providerForScenario(scenario) {
   if (scenario === "persistent-codex-subagent" || scenario === "codex-user-input") return VERIFICATION_CODEX_PROVIDER;
@@ -95,14 +150,27 @@ export function parseVerifyArgs(argv) {
   if (!Object.hasOwn(scenarioDefinitionKeys, options.scenario)) {
     throw new Error(`--scenario must be one of: ${Object.keys(scenarioDefinitionKeys).join(", ")}`);
   }
-  if (!['required', 'auto', 'off'].includes(options.native)) {
+  if (!["required", "auto", "off"].includes(options.native)) {
     throw new Error("--native must be required, auto, or off");
   }
-  if (["session-move", "staged-revert", "composer-reference", "composer-editor", "browser-focus", "browser-frames", "visualizations", "fork-merge", "workspace-settings"].includes(options.scenario)
-      && options.native !== "required") {
+  if (
+    [
+      "session-move",
+      "staged-revert",
+      "composer-reference",
+      "composer-editor",
+      "browser-focus",
+      "browser-frames",
+      "visualizations",
+      "fork-merge",
+      "workspace-settings"
+    ].includes(options.scenario) &&
+    options.native !== "required"
+  ) {
     throw new Error(`${options.scenario} requires native verification`);
   }
-  if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 5000) throw new Error("--timeout must be at least 5 seconds");
+  if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 5000)
+    throw new Error("--timeout must be at least 5 seconds");
   return options;
 }
 
@@ -134,7 +202,9 @@ async function prepareNativeAppBinary(binaryDirectory, sourceBinary) {
   }
   await copyFile(sourceBinary, nativeBinary);
   await chmod(nativeBinary, (await stat(sourceBinary)).mode);
-  await writeFile(path.join(contentsDirectory, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
+  await writeFile(
+    path.join(contentsDirectory, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -152,7 +222,8 @@ async function prepareNativeAppBinary(binaryDirectory, sourceBinary) {
   <string>1</string>
 </dict>
 </plist>
-`);
+`
+  );
   return nativeBinary;
 }
 
@@ -224,7 +295,10 @@ async function initializeRepo(repoPath) {
   await mkdir(repoPath, { recursive: true });
   await runChecked("git", ["init", "-q", "-b", "main"], { cwd: repoPath, timeoutMs: 10_000 });
   await runChecked("git", ["config", "user.name", "Argmax Verification"], { cwd: repoPath, timeoutMs: 10_000 });
-  await runChecked("git", ["config", "user.email", "verification@argmax.invalid"], { cwd: repoPath, timeoutMs: 10_000 });
+  await runChecked("git", ["config", "user.email", "verification@argmax.invalid"], {
+    cwd: repoPath,
+    timeoutMs: 10_000
+  });
   await writeFile(path.join(repoPath, "README.md"), "# Argmax verification fixture\n");
   await runChecked("git", ["add", "README.md"], { cwd: repoPath, timeoutMs: 10_000 });
   await runChecked("git", ["commit", "-q", "-m", "verification fixture"], { cwd: repoPath, timeoutMs: 10_000 });
@@ -269,7 +343,8 @@ async function collectUntilTerminal(bridge, sessionId, timeoutMs, initialCursors
   let rawOutputCursor = initialCursors.rawOutputCursor ?? null;
   let changeCursor = initialCursors.changeCursor ?? null;
   for (;;) {
-    if (Date.now() - startedAt > timeoutMs) throw new Error(`session ${sessionId} did not finish within ${timeoutMs}ms`);
+    if (Date.now() - startedAt > timeoutMs)
+      throw new Error(`session ${sessionId} did not finish within ${timeoutMs}ms`);
     const batch = await bridge.call("session:events-since", { sessionId, eventCursor, rawOutputCursor, changeCursor });
     eventCursor = batch.eventCursor;
     rawOutputCursor = batch.rawOutputCursor;
@@ -279,7 +354,8 @@ async function collectUntilTerminal(bridge, sessionId, timeoutMs, initialCursors
     const dashboard = await bridge.call("dashboard:list", {});
     const session = dashboard.sessions.find((entry) => entry.id === sessionId);
     if (!session) throw new Error(`session ${sessionId} disappeared from dashboard`);
-    if (terminalStates.has(session.state)) return { session, records, cursors: { eventCursor, rawOutputCursor, changeCursor } };
+    if (terminalStates.has(session.state))
+      return { session, records, cursors: { eventCursor, rawOutputCursor, changeCursor } };
     await delay(100);
   }
 }
@@ -318,11 +394,7 @@ function assertRecordIncludes(records, expected, label) {
 }
 
 function assertOnlyPendingMessage(entries, expected, label) {
-  if (
-    entries.length !== 1
-    || entries[0].id !== expected.id
-    || entries[0].content !== expected.content
-  ) {
+  if (entries.length !== 1 || entries[0].id !== expected.id || entries[0].content !== expected.content) {
     throw new Error(`${label} must contain exactly queued follow-up ${expected.id}`);
   }
   return entries[0];
@@ -349,9 +421,18 @@ async function runScenario({
   timeline
 }) {
   const definition = definitionForScenario(scenario);
-  const { project, workspace } = await resolveProjectAndWorkspace(bridge, repoPath, definition.taskLabel ?? definition.prompt);
+  const { project, workspace } = await resolveProjectAndWorkspace(
+    bridge,
+    repoPath,
+    definition.taskLabel ?? definition.prompt
+  );
   const launched = await launchFixture(bridge, workspace.id, definition.prompt, provider);
-  timeline.push({ at: new Date().toISOString(), type: "session-launched", sessionId: launched.id, workspaceId: workspace.id });
+  timeline.push({
+    at: new Date().toISOString(),
+    type: "session-launched",
+    sessionId: launched.id,
+    workspaceId: workspace.id
+  });
 
   const workflows = {
     "composer-reference": verifyComposerReference,
@@ -360,7 +441,7 @@ async function runScenario({
     "browser-frames": verifyBrowserFrames,
     visualizations: verifyVisualizations,
     "fork-merge": verifyForkMergeBack,
-    "workspace-settings": verifyWorkspaceSettings,
+    "workspace-settings": verifyWorkspaceSettings
   };
   if (workflows[scenario]) {
     return workflows[scenario]({
@@ -376,7 +457,7 @@ async function runScenario({
       outputDir,
       timeoutMs,
       verifyUi,
-      sendInput,
+      sendInput
     });
   }
 
@@ -391,7 +472,7 @@ async function runScenario({
       controlDir,
       outputDir: path.join(outputDir, "native"),
       timeoutMs,
-      invocationLog,
+      invocationLog
     });
   }
 
@@ -400,8 +481,11 @@ async function runScenario({
     let requestId = null;
     while (Date.now() < deadline) {
       const batch = await bridge.call("session:events-since", { sessionId: launched.id });
-      const question = batch.events.find((event) => event.type === "command.started"
-        && event.payload?.input?.questions?.some((entry) => entry.id === definition.questionId));
+      const question = batch.events.find(
+        (event) =>
+          event.type === "command.started" &&
+          event.payload?.input?.questions?.some((entry) => entry.id === definition.questionId)
+      );
       if (question) {
         requestId = question.payload.input.requestId;
         if (!requestId) throw new Error("Codex question omitted its response request ID");
@@ -416,10 +500,15 @@ async function runScenario({
     if (waiting?.state !== "waiting" || waiting.attention !== "question-asked") {
       throw new Error(`Pending question has incorrect session state: ${waiting?.state}/${waiting?.attention}`);
     }
-    const waitingUi = await verifyUi({ name: "question-waiting", expectedTexts: [definition.questionText], expectIdle: false });
+    const waitingUi = await verifyUi({
+      name: "question-waiting",
+      expectedTexts: [definition.questionText],
+      expectIdle: false
+    });
     await bridge.call("questions:resolve", {
-      sessionId: launched.id, requestId,
-      answers: { [definition.questionId]: [definition.expectedAnswer] },
+      sessionId: launched.id,
+      requestId,
+      answers: { [definition.questionId]: [definition.expectedAnswer] }
     });
     const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
     if (result.session.state !== "complete") throw new Error(`question turn ended in ${result.session.state}`);
@@ -430,7 +519,11 @@ async function runScenario({
 
   if (scenario === "chat-resume") {
     await waitForFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.ready`), timeoutMs);
-    const streamingUi = await verifyUi({ name: "streaming", expectedTexts: ["Verification first turn complete."], expectIdle: false });
+    const streamingUi = await verifyUi({
+      name: "streaming",
+      expectedTexts: ["Verification first turn complete."],
+      expectIdle: false
+    });
     timeline.push({ at: new Date().toISOString(), type: "ui-streaming", ...streamingUi.uiState });
     await writeFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeStream}.continue`), "continue\n");
 
@@ -440,7 +533,8 @@ async function runScenario({
     await writeFile(path.join(controlDir, `${VERIFICATION_BARRIERS.chatResumeTool}.continue`), "continue\n");
     const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
     if (first.session.state !== "complete") throw new Error(`first turn ended in ${first.session.state}`);
-    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("provider conversation id was not persisted");
+    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID)
+      throw new Error("provider conversation id was not persisted");
     assertIncludes(first.records, VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, "first turn");
 
     const before = await bridge.call("session:events-since", {
@@ -456,7 +550,10 @@ async function runScenario({
     const combined = [...first.records, ...second.records];
     const ui = await verifyUi({
       name: "complete",
-      expectedTexts: [VERIFICATION_SCENARIOS.chatResumeFirst.visibleText, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText],
+      expectedTexts: [
+        VERIFICATION_SCENARIOS.chatResumeFirst.visibleText,
+        VERIFICATION_SCENARIOS.chatResumeSecond.visibleText
+      ],
       expectIdle: true
     });
     return { session: second.session, workspace, records: combined, browser: [streamingUi, toolUi, ui] };
@@ -485,7 +582,9 @@ async function runScenario({
     const beforeRestart = await sqliteSnapshot(databasePath, launched.id);
     await writeJson(path.join(outputDir, "queued-before-restart.json"), beforeRestart);
     const firstTurnDeltaSequence = beforeRestart.events
-      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .filter(
+        (event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0
+      )
       .map((event) => ({ id: event.id, message: event.message }));
     if (firstTurnDeltaSequence.length === 0) {
       throw new Error("held first turn did not persist any streamed content before restart");
@@ -517,7 +616,9 @@ async function runScenario({
     const recovered = await sqliteSnapshot(databasePath, launched.id);
     await writeJson(path.join(outputDir, "queued-after-restart.json"), recovered);
     const recoveredFirstTurnDeltaSequence = recovered.events
-      .filter((event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0)
+      .filter(
+        (event) => event.type === "message.delta" && typeof event.message === "string" && event.message.length > 0
+      )
       .map((event) => ({ id: event.id, message: event.message }));
     if (JSON.stringify(recoveredFirstTurnDeltaSequence) !== JSON.stringify(firstTurnDeltaSequence)) {
       throw new Error("restart changed the persisted first-turn stream fragments");
@@ -533,9 +634,10 @@ async function runScenario({
     if (recovered.events.some((event) => event.type === "user.message" && event.message === secondPrompt)) {
       throw new Error("recovered queued follow-up replayed without an explicit send");
     }
-    const recoveryLabel = recoveredDashboardMessage.recoveryStatus === "delivery-unknown"
-      ? "Delivery uncertain • check the chat before sending again"
-      : "Paused • not sent";
+    const recoveryLabel =
+      recoveredDashboardMessage.recoveryStatus === "delivery-unknown"
+        ? "Delivery uncertain • check the chat before sending again"
+        : "Paused • not sent";
     const recoveredUi = await verifyUi({
       name: "queued-recovered",
       expectedTexts: [secondPrompt, recoveryLabel],
@@ -558,8 +660,9 @@ async function runScenario({
       expectedQueuedMessage,
       "SQLite queue before explicit Send"
     );
-    const userMessagesBeforeExplicitSend = beforeExplicitSend.events
-      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    const userMessagesBeforeExplicitSend = beforeExplicitSend.events.filter(
+      (event) => event.type === "user.message" && event.message === secondPrompt
+    );
     if (userMessagesBeforeExplicitSend.length !== 0) {
       throw new Error("recovered queued follow-up replayed before explicit Send");
     }
@@ -568,8 +671,9 @@ async function runScenario({
     if (second.session.state !== "complete") throw new Error(`recovered follow-up ended in ${second.session.state}`);
     assertIncludes(second.records, VERIFICATION_SCENARIOS.chatResumeSecond.visibleText, "recovered follow-up");
     const finalSnapshot = await sqliteSnapshot(databasePath, launched.id);
-    const deliveredUserMessages = finalSnapshot.events
-      .filter((event) => event.type === "user.message" && event.message === secondPrompt);
+    const deliveredUserMessages = finalSnapshot.events.filter(
+      (event) => event.type === "user.message" && event.message === secondPrompt
+    );
     if (deliveredUserMessages.length !== 1) {
       throw new Error(`recovered follow-up persisted ${deliveredUserMessages.length} user turns instead of one`);
     }
@@ -597,7 +701,11 @@ async function runScenario({
       assertions: [
         { name: "held-first-turn-fragments-preserved", ok: true, value: firstTurnDeltaSequence.length },
         { name: "queued-follow-up-persisted-before-restart", ok: true, value: pendingMessage.id },
-        { name: "recovered-follow-up-requires-explicit-send", ok: true, value: recoveredDashboardMessage.recoveryStatus },
+        {
+          name: "recovered-follow-up-requires-explicit-send",
+          ok: true,
+          value: recoveredDashboardMessage.recoveryStatus
+        },
         { name: "recovered-follow-up-delivered-exactly-once", ok: true, value: deliveredUserMessages[0].id },
         { name: "delivered-follow-up-cleared-from-pending-journal", ok: true }
       ]
@@ -630,11 +738,17 @@ async function runScenario({
           ? VERIFICATION_SCENARIOS.persistentCursorSubagentSecond
           : VERIFICATION_SCENARIOS.persistentSubagentSecond;
     const first = await collectUntilTerminal(bridge, launched.id, timeoutMs);
-    if (first.session.state !== "complete") throw new Error(`persistent child first turn ended in ${first.session.state}`);
-    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID) throw new Error("persistent child parent conversation id was not persisted");
+    if (first.session.state !== "complete")
+      throw new Error(`persistent child first turn ended in ${first.session.state}`);
+    if (first.session.providerConversationId !== VERIFICATION_CONVERSATION_ID)
+      throw new Error("persistent child parent conversation id was not persisted");
     if (isCodex) {
       assertRecordIncludes(first.records, `\"tool\":\"spawn_agent\"`, "persistent Codex child spawn");
-      assertRecordIncludes(first.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child identity");
+      assertRecordIncludes(
+        first.records,
+        `\"receiver_thread_ids\":[\"${subagent.id}\"]`,
+        "persistent Codex child identity"
+      );
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Codex child first response");
     } else if (isOpencode) {
       assertRecordIncludes(first.records, `\"tool\":\"task\"`, "persistent OpenCode child task");
@@ -642,11 +756,19 @@ async function runScenario({
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent OpenCode child first response");
     } else if (isCursor) {
       assertRecordIncludes(first.records, `\"message\":\"task\"`, "persistent Cursor ACP child task");
-      assertRecordIncludes(first.records, `\"agentId\":\"${subagent.id}\"`, "persistent Cursor authoritative child identity");
+      assertRecordIncludes(
+        first.records,
+        `\"agentId\":\"${subagent.id}\"`,
+        "persistent Cursor authoritative child identity"
+      );
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent Cursor child first response");
     } else {
       assertRecordIncludes(first.records, `\"task_id\":\"${subagent.id}\"`, "persistent child start");
-      assertRecordIncludes(first.records, `\"parent_tool_use_id\":\"${subagent.rootToolUseId}\"`, "persistent child parent linkage");
+      assertRecordIncludes(
+        first.records,
+        `\"parent_tool_use_id\":\"${subagent.rootToolUseId}\"`,
+        "persistent child parent linkage"
+      );
       assertRecordIncludes(first.records, firstDefinition.visibleText, "persistent child first response");
     }
 
@@ -656,43 +778,70 @@ async function runScenario({
       sessionId: launched.id,
       eventCursor: null,
       rawOutputCursor: null,
-      changeCursor: null,
+      changeCursor: null
     });
     await sendInput(launched.id, secondDefinition.prompt);
     const second = await collectUntilTerminal(resumedBridge, launched.id, timeoutMs, before);
-    if (second.session.state !== "complete") throw new Error(`persistent child follow-up ended in ${second.session.state}`);
+    if (second.session.state !== "complete")
+      throw new Error(`persistent child follow-up ended in ${second.session.state}`);
     if (isCodex) {
       assertRecordIncludes(second.records, `\"tool\":\"resume_agent\"`, "persistent Codex child resume");
       assertRecordIncludes(second.records, `\"tool\":\"send_input\"`, "persistent Codex child input");
-      assertRecordIncludes(second.records, `\"id\":\"${subagent.followUpToolUseId}\"`, "persistent Codex child follow-up invocation");
-      assertRecordIncludes(second.records, `\"receiver_thread_ids\":[\"${subagent.id}\"]`, "persistent Codex child stable identity");
+      assertRecordIncludes(
+        second.records,
+        `\"id\":\"${subagent.followUpToolUseId}\"`,
+        "persistent Codex child follow-up invocation"
+      );
+      assertRecordIncludes(
+        second.records,
+        `\"receiver_thread_ids\":[\"${subagent.id}\"]`,
+        "persistent Codex child stable identity"
+      );
       assertRecordIncludes(second.records, `\"status\":\"pending_init\"`, "persistent Codex child restart state");
       assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent Codex child follow-up response");
     } else if (isOpencode) {
       assertRecordIncludes(second.records, `\"task_id\":\"${subagent.id}\"`, "persistent OpenCode child continuation");
-      assertRecordIncludes(second.records, `\"callID\":\"${subagent.followUpToolUseId}\"`, "persistent OpenCode child follow-up invocation");
-      assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent OpenCode child follow-up response");
+      assertRecordIncludes(
+        second.records,
+        `\"callID\":\"${subagent.followUpToolUseId}\"`,
+        "persistent OpenCode child follow-up invocation"
+      );
+      assertRecordIncludes(
+        second.records,
+        secondDefinition.visibleText,
+        "persistent OpenCode child follow-up response"
+      );
     } else if (isCursor) {
       assertRecordIncludes(second.records, `\"resume\":\"${subagent.id}\"`, "persistent Cursor child continuation");
-      assertRecordIncludes(second.records, `\"call_id\":\"${subagent.followUpToolUseId}\"`, "persistent Cursor child follow-up invocation");
+      assertRecordIncludes(
+        second.records,
+        `\"call_id\":\"${subagent.followUpToolUseId}\"`,
+        "persistent Cursor child follow-up invocation"
+      );
       assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent Cursor child follow-up response");
     } else {
       assertRecordIncludes(second.records, `\"resumedAgentId\":\"${subagent.id}\"`, "persistent child resume identity");
-      assertRecordIncludes(second.records, `\"tool_use_id\":\"${subagent.followUpToolUseId}\"`, "persistent child follow-up invocation");
+      assertRecordIncludes(
+        second.records,
+        `\"tool_use_id\":\"${subagent.followUpToolUseId}\"`,
+        "persistent child follow-up invocation"
+      );
       assertRecordIncludes(second.records, secondDefinition.visibleText, "persistent child follow-up response");
     }
     const agentEvents = await resumedBridge.call("session:agent-events", {
       sessionId: launched.id,
-      parentToolUseId: subagent.rootToolUseId,
+      parentToolUseId: subagent.rootToolUseId
     });
-    const lifecycle = agentEvents.events.filter((event) => event.type === "agent.started" || event.type === "agent.completed");
+    const lifecycle = agentEvents.events.filter(
+      (event) => event.type === "agent.started" || event.type === "agent.completed"
+    );
     for (const event of lifecycle) {
       const payload = event.payload ?? {};
       if (
-        payload.providerChildSessionId !== subagent.id
-        || payload.providerParentConversationId !== VERIFICATION_CONVERSATION_ID
-        || payload.agentRootToolUseId !== subagent.rootToolUseId
-        || typeof payload.providerInvocationId !== "string"
+        payload.providerChildSessionId !== subagent.id ||
+        payload.providerParentConversationId !== VERIFICATION_CONVERSATION_ID ||
+        payload.agentRootToolUseId !== subagent.rootToolUseId ||
+        typeof payload.providerInvocationId !== "string"
       ) {
         throw new Error("persistent child lifecycle correlation fields were not persisted");
       }
@@ -713,20 +862,19 @@ async function runScenario({
       at: new Date().toISOString(),
       type: "persistent-agent-events",
       count: agentEvents.events.length,
-      source: "agent-events",
+      source: "agent-events"
     });
     const browser = [];
     for (const theme of ["light", "dark"]) {
-      browser.push(await verifyUi({
-        name: `persistent-agent-${theme}`,
-        expectedTexts: [],
-        agentExpectedTexts: [
-          firstDefinition.visibleText,
-          secondDefinition.visibleText,
-        ],
-        agentMustSucceed: true,
-        theme,
-      }));
+      browser.push(
+        await verifyUi({
+          name: `persistent-agent-${theme}`,
+          expectedTexts: [],
+          agentExpectedTexts: [firstDefinition.visibleText, secondDefinition.visibleText],
+          agentMustSucceed: true,
+          theme
+        })
+      );
     }
     return {
       session: second.session,
@@ -735,18 +883,31 @@ async function runScenario({
       browser,
       bridge: resumedBridge,
       nativeChildId: subagent.id,
-      agentEventCount: agentEvents.events.length,
+      agentEventCount: agentEvents.events.length
     };
   }
 
   if (scenario === "cancellation") {
     const partial = await collectUntilText(bridge, launched.id, definition.visibleText, timeoutMs);
-    const streamingUi = await verifyUi({ name: "cancellation-streaming", expectedTexts: [definition.visibleText], expectIdle: false });
+    const streamingUi = await verifyUi({
+      name: "cancellation-streaming",
+      expectedTexts: [definition.visibleText],
+      expectIdle: false
+    });
     await terminate(launched.id);
     const result = await collectUntilTerminal(bridge, launched.id, timeoutMs, partial.cursors);
     if (result.session.state !== "cancelled") throw new Error(`cancelled scenario ended in ${result.session.state}`);
-    const completeUi = await verifyUi({ name: "cancellation-complete", expectedTexts: [definition.visibleText], expectIdle: true });
-    return { session: result.session, workspace, records: [...partial.records, ...result.records], browser: [streamingUi, completeUi] };
+    const completeUi = await verifyUi({
+      name: "cancellation-complete",
+      expectedTexts: [definition.visibleText],
+      expectIdle: true
+    });
+    return {
+      session: result.session,
+      workspace,
+      records: [...partial.records, ...result.records],
+      browser: [streamingUi, completeUi]
+    };
   }
 
   const result = await collectUntilTerminal(bridge, launched.id, timeoutMs);
@@ -757,7 +918,8 @@ async function runScenario({
 }
 
 async function sqliteSnapshot(databasePath, sessionId) {
-  const sql = "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at),'pendingMessages',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'content',content,'position',position,'deliveryState',delivery_state,'queuedAt',queued_at)) FROM pending_messages ORDER BY position));";
+  const sql =
+    "SELECT json_object('sessions',(SELECT json_group_array(json_object('id',id,'state',state,'provider',provider,'providerConversationId',provider_conversation_id)) FROM sessions),'events',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'type',type,'message',message,'createdAt',created_at)) FROM events ORDER BY created_at),'rawOutputs',(SELECT json_group_array(json_object('sessionId',session_id,'stream',stream,'content',content,'createdAt',created_at)) FROM raw_outputs ORDER BY created_at),'pendingMessages',(SELECT json_group_array(json_object('id',id,'sessionId',session_id,'content',content,'position',position,'deliveryState',delivery_state,'queuedAt',queued_at)) FROM pending_messages ORDER BY position));";
   const result = await runChecked("sqlite3", [databasePath, sql], { timeoutMs: 20_000 });
   const all = JSON.parse(result.stdout.trim());
   return {
@@ -775,37 +937,39 @@ function expectedPersistenceTexts(scenario) {
   }
   if (scenario === "queued-restart") return [VERIFICATION_SCENARIOS.chatResumeSecond.visibleText];
   // The result session is the background chat, not the seeded source chat.
-  if (scenario === "composer-reference" || scenario === "composer-editor") return [VERIFICATION_SCENARIOS.composerBackground.visibleText];
+  if (scenario === "composer-reference" || scenario === "composer-editor")
+    return [VERIFICATION_SCENARIOS.composerBackground.visibleText];
   if (scenario === "fork-merge") {
     return [VERIFICATION_SCENARIOS.forkTurnOne.visibleText, VERIFICATION_SCENARIOS.forkMerge.visibleText];
   }
   if (scenario === "workspace-settings") return [VERIFICATION_SCENARIOS.workspaceSettings.visibleText];
-  if (scenario === "browser-focus" || scenario === "browser-frames" || scenario === "visualizations") return [VERIFICATION_SCENARIOS.composerSource.visibleText];
+  if (scenario === "browser-focus" || scenario === "browser-frames" || scenario === "visualizations")
+    return [VERIFICATION_SCENARIOS.composerSource.visibleText];
   if (scenario === "session-move") {
     return [VERIFICATION_SCENARIOS.sessionMoveFirst.visibleText, VERIFICATION_SCENARIOS.sessionMoveSecond.visibleText];
   }
   if (scenario === "persistent-subagent") {
     return [
       VERIFICATION_SCENARIOS.persistentSubagentFirst.visibleText,
-      VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText,
+      VERIFICATION_SCENARIOS.persistentSubagentSecond.visibleText
     ];
   }
   if (scenario === "persistent-codex-subagent") {
     return [
       VERIFICATION_SCENARIOS.persistentCodexSubagentFirst.visibleText,
-      VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.visibleText,
+      VERIFICATION_SCENARIOS.persistentCodexSubagentSecond.visibleText
     ];
   }
   if (scenario === "persistent-opencode-subagent") {
     return [
       VERIFICATION_SCENARIOS.persistentOpencodeSubagentFirst.visibleText,
-      VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond.visibleText,
+      VERIFICATION_SCENARIOS.persistentOpencodeSubagentSecond.visibleText
     ];
   }
   if (scenario === "persistent-cursor-subagent") {
     return [
       VERIFICATION_SCENARIOS.persistentCursorSubagentFirst.visibleText,
-      VERIFICATION_SCENARIOS.persistentCursorSubagentSecond.visibleText,
+      VERIFICATION_SCENARIOS.persistentCursorSubagentSecond.visibleText
     ];
   }
   if (scenario === "cancellation") return [VERIFICATION_SCENARIOS.cancellation.visibleText];
@@ -849,17 +1013,26 @@ export async function runVerification(options) {
   const repoPath = path.join(runRoot, "repo");
   const controlDir = path.join(runRoot, "control");
   const invocationLog = path.join(outputDir, "provider-invocations.ndjson");
-  await Promise.all([mkdir(profile, { recursive: true }), mkdir(home, { recursive: true }), mkdir(controlDir, { recursive: true })]);
-  await writeFile(path.join(profile, "sync.json"), `${JSON.stringify({ claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 })}\n`);
+  await Promise.all([
+    mkdir(profile, { recursive: true }),
+    mkdir(home, { recursive: true }),
+    mkdir(controlDir, { recursive: true })
+  ]);
+  await writeFile(
+    path.join(profile, "sync.json"),
+    `${JSON.stringify({ claude: false, codex: false, cursor: false, opencode: false, grok: false, windowHours: 24 })}\n`
+  );
+  const tripwireLog = path.join(outputDir, "tripwire.log");
+  await writeFile(tripwireLog, "");
+  await writeTripwires(path.join(runRoot, "tripwire"), tripwireLog, MACHINE_COMMANDS);
   await initializeRepo(repoPath);
   let movePath = null;
   if (options.scenario === "session-move") {
     const siblingPath = path.join(runRoot, "sibling");
-    await runChecked(
-      "git",
-      ["worktree", "add", "-q", "-b", "verification-session-move-target", siblingPath],
-      { cwd: repoPath, timeoutMs: 10_000 },
-    );
+    await runChecked("git", ["worktree", "add", "-q", "-b", "verification-session-move-target", siblingPath], {
+      cwd: repoPath,
+      timeoutMs: 10_000
+    });
     movePath = await realpath(siblingPath);
   }
 
@@ -867,7 +1040,8 @@ export async function runVerification(options) {
   const provider = providerForScenario(options.scenario);
   const env = {
     ...isolatedEnvironment(home, fixturePath, controlDir, invocationLog, provider),
-    ...(movePath ? { ARGMAX_VERIFICATION_MOVE_PATH: movePath } : {}),
+    PATH: [path.join(runRoot, "tripwire"), process.env.PATH].join(path.delimiter),
+    ...(movePath ? { ARGMAX_VERIFICATION_MOVE_PATH: movePath } : {})
   };
   const report = {
     schemaVersion: 1,
@@ -986,7 +1160,7 @@ export async function runVerification(options) {
       report.keptRunRoot = options.keep ? runRoot : null;
       if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath, provider });
       if (!options.keep) await rm(runRoot, { recursive: true, force: true });
-      report.evidenceFiles = [...await listEvidenceFiles(outputDir), "report.json"].sort();
+      report.evidenceFiles = [...(await listEvidenceFiles(outputDir)), "report.json"].sort();
       await writeJson(path.join(outputDir, "report.json"), report);
       process.stderr.write(`INTERRUPTED ${options.scenario} evidence=${outputDir}\n`);
       process.exit(130);
@@ -1021,15 +1195,14 @@ export async function runVerification(options) {
     });
     if (!existsSync(builtBinary)) throw new Error(`verification binary missing at ${builtBinary}`);
     report.source.afterBuild = await checkoutFingerprint(repoRoot);
-    if (report.source.beforeBuild.sha256 !== report.source.afterBuild.sha256) throw new Error("checkout changed while the verification build was running");
+    if (report.source.beforeBuild.sha256 !== report.source.afterBuild.sha256)
+      throw new Error("checkout changed while the verification build was running");
     const binaryDirectory = path.join(runRoot, "bin");
     const binary = path.join(binaryDirectory, "argmax");
     await mkdir(binaryDirectory, { recursive: true });
     await copyFile(builtBinary, binary);
     await chmod(binary, (await stat(builtBinary)).mode);
-    const nativeBinary = options.native === "off"
-      ? binary
-      : await prepareNativeAppBinary(binaryDirectory, builtBinary);
+    const nativeBinary = options.native === "off" ? binary : await prepareNativeAppBinary(binaryDirectory, builtBinary);
     const binarySha256 = await fileSha256(binary);
     const nativeBinarySha256 = await fileSha256(nativeBinary);
     report.build = {
@@ -1047,7 +1220,11 @@ export async function runVerification(options) {
 
     const remotePort = await freePort();
     const remoteToken = randomUUID().replaceAll("-", "");
-    await writeFile(path.join(profile, "remote.json"), `${JSON.stringify({ enabled: true, port: remotePort, token: remoteToken }, null, 2)}\n`, { mode: 0o600 });
+    await writeFile(
+      path.join(profile, "remote.json"),
+      `${JSON.stringify({ enabled: true, port: remotePort, token: remoteToken }, null, 2)}\n`,
+      { mode: 0o600 }
+    );
     if (options.native !== "off") {
       desktopModule = await import("./verification/desktop.mjs");
       const prerequisites = await desktopModule.inspectDesktopPrerequisites({ appBinaryPath: nativeBinary });
@@ -1117,18 +1294,19 @@ export async function runVerification(options) {
           if (!result.ok) throw new Error(`native UI verification failed: ${result.errors.join("; ")}`);
           return result;
         }
-      : ({ name, expectedTexts, agentExpectedTexts, agentMustSucceed, theme, titleIncludes = defaultTitleIncludes }) => verifyBrowserSession({
-          repoRoot,
-          port: remotePort,
-          token: remoteToken,
-          outputDir,
-          name: `browser-${name}`,
-          titleIncludes,
-          expectedTexts,
-          agentExpectedTexts,
-          agentMustSucceed,
-          theme
-        });
+      : ({ name, expectedTexts, agentExpectedTexts, agentMustSucceed, theme, titleIncludes = defaultTitleIncludes }) =>
+          verifyBrowserSession({
+            repoRoot,
+            port: remotePort,
+            token: remoteToken,
+            outputDir,
+            name: `browser-${name}`,
+            titleIncludes,
+            expectedTexts,
+            agentExpectedTexts,
+            agentMustSucceed,
+            theme
+          });
     const recordNativeAction = (result) => {
       report.native.actions ??= [];
       report.native.actions.push(result);
@@ -1136,34 +1314,47 @@ export async function runVerification(options) {
       return result;
     };
     const sendInput = desktopHandle
-      ? async (_sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({ browser: desktopHandle.browser, input }))
-      : (sessionId, input) => bridge.call("providers:send-input", {
-          sessionId,
-          input,
-          provider: null,
-          modelLabel: null,
-          modelId: null,
-          reasoningEffort: null,
-          fastMode: false
-        });
+      ? async (_sessionId, input) =>
+          recordNativeAction(await desktopModule.sendDesktopMessage({ browser: desktopHandle.browser, input }))
+      : (sessionId, input) =>
+          bridge.call("providers:send-input", {
+            sessionId,
+            input,
+            provider: null,
+            modelLabel: null,
+            modelId: null,
+            reasoningEffort: null,
+            fastMode: false
+          });
     const queueInput = desktopHandle
-      ? async (sessionId, input) => recordNativeAction(await desktopModule.sendDesktopMessage({
-          browser: desktopHandle.browser,
-          input,
-          sessionId,
-          expectQueued: true
-        }))
-      : () => { throw new Error("queued-restart requires the native composer"); };
+      ? async (sessionId, input) =>
+          recordNativeAction(
+            await desktopModule.sendDesktopMessage({
+              browser: desktopHandle.browser,
+              input,
+              sessionId,
+              expectQueued: true
+            })
+          )
+      : () => {
+          throw new Error("queued-restart requires the native composer");
+        };
     const sendQueuedInput = desktopHandle
-      ? async (sessionId, messageId, input) => recordNativeAction(await desktopModule.sendDesktopQueuedMessage({
-          browser: desktopHandle.browser,
-          sessionId,
-          messageId,
-          input
-        }))
-      : () => { throw new Error("queued-restart requires the native queued-message action"); };
+      ? async (sessionId, messageId, input) =>
+          recordNativeAction(
+            await desktopModule.sendDesktopQueuedMessage({
+              browser: desktopHandle.browser,
+              sessionId,
+              messageId,
+              input
+            })
+          )
+      : () => {
+          throw new Error("queued-restart requires the native queued-message action");
+        };
     const terminate = desktopHandle
-      ? async (sessionId) => recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser, sessionId }))
+      ? async (sessionId) =>
+          recordNativeAction(await desktopModule.stopDesktopSession({ browser: desktopHandle.browser, sessionId }))
       : (sessionId) => bridge.call("providers:terminate", { sessionId });
     const restartBackend = async () => {
       bridge?.close();
@@ -1199,7 +1390,7 @@ export async function runVerification(options) {
           binary,
           env,
           port: remotePort,
-          readyTimeoutMs: Math.min(options.timeoutMs, 60_000),
+          readyTimeoutMs: Math.min(options.timeoutMs, 60_000)
         });
         report.process.scratch.restarted = { pid: app.pid, port: app.port };
       }
@@ -1227,18 +1418,24 @@ export async function runVerification(options) {
         queueInput,
         sendQueuedInput,
         terminate,
-        restartBackend,
+        restartBackend
       });
     } catch (error) {
       if (workflowProgress().length) {
         await mkdir(path.join(outputDir, "native"), { recursive: true });
-        await writeJson(path.join(outputDir, "native", "workflow-progress.json"), { failedWith: error.message, passedBefore: workflowProgress(), diagnostics: workflowDiagnostics(), hostLoadAverage: loadavg() });
+        await writeJson(path.join(outputDir, "native", "workflow-progress.json"), {
+          failedWith: error.message,
+          passedBefore: workflowProgress(),
+          diagnostics: workflowDiagnostics(),
+          hostLoadAverage: loadavg()
+        });
       }
       if (options.scenario === "session-move") {
         const nativeOutput = path.join(outputDir, "native");
         const failurePath = path.join(nativeOutput, "session-move-failure.json");
-        const artifacts = ["session-move-source.png", "session-move-destination.png", "session-move.json"]
-          .filter((name) => existsSync(path.join(nativeOutput, name)));
+        const artifacts = ["session-move-source.png", "session-move-destination.png", "session-move.json"].filter(
+          (name) => existsSync(path.join(nativeOutput, name))
+        );
         await writeJson(failurePath, { message: error.message, repoPath, movePath, artifacts });
         report.native.sessionMove = { failure: failurePath, artifacts };
       }
@@ -1248,7 +1445,7 @@ export async function runVerification(options) {
     if (options.scenario === "session-move") {
       report.native.sessionMove = {
         proof: path.join(outputDir, "native", "session-move.json"),
-        phases: scenarioResult.browser,
+        phases: scenarioResult.browser
       };
     }
     if (options.scenario === "staged-revert") {
@@ -1262,14 +1459,18 @@ export async function runVerification(options) {
       report.workspaceRecovery = recovery;
       report.assertions.push(...recovery.assertions);
     }
-    report.session = { id: scenarioResult.session.id, workspaceId: scenarioResult.workspace.id, state: scenarioResult.session.state };
+    report.session = {
+      id: scenarioResult.session.id,
+      workspaceId: scenarioResult.workspace.id,
+      state: scenarioResult.session.state
+    };
     report.assertions.push({ name: "scenario-state", ok: true, value: scenarioResult.session.state });
     report.assertions.push(...(scenarioResult.assertions ?? []));
     if (scenarioResult.coverage) report.workflowCoverage = scenarioResult.coverage;
     if (persistentSubagentScenarios.has(options.scenario)) {
       report.assertions.push(
         { name: "persistent-child-stable-id", ok: true, value: scenarioResult.nativeChildId },
-        { name: "persistent-child-queryable-after-restart", ok: true, value: scenarioResult.agentEventCount },
+        { name: "persistent-child-queryable-after-restart", ok: true, value: scenarioResult.agentEventCount }
       );
     }
     await writeNdjson(path.join(outputDir, "timeline.ndjson"), scenarioResult.records);
@@ -1279,8 +1480,12 @@ export async function runVerification(options) {
         return window.argmax.system.diagnostics();
       });
       databasePath = diagnostics.databasePath;
-      report.database = { path: databasePath, isolated: path.resolve(databasePath) === path.resolve(profile, "local-state", "argmax.sqlite") };
-      if (!report.database.isolated) throw new Error(`native app escaped its isolated database profile: ${databasePath}`);
+      report.database = {
+        path: databasePath,
+        isolated: path.resolve(databasePath) === path.resolve(profile, "local-state", "argmax.sqlite")
+      };
+      if (!report.database.isolated)
+        throw new Error(`native app escaped its isolated database profile: ${databasePath}`);
     }
     bridge.close();
     bridge = null;
@@ -1298,21 +1503,32 @@ export async function runVerification(options) {
     const persistence = await sqliteSnapshot(databasePath, scenarioResult.session.id);
     await writeJson(path.join(outputDir, "database.json"), persistence);
     const persistedSession = persistence.sessions.find((entry) => entry.id === scenarioResult.session.id);
-    const persistedMessages = [...persistence.events.map((entry) => entry.message), ...persistence.rawOutputs.map((entry) => entry.content)];
+    const persistedMessages = [
+      ...persistence.events.map((entry) => entry.message),
+      ...persistence.rawOutputs.map((entry) => entry.content)
+    ];
     const persistenceAssertions = [
       { name: "sqlite-session-persisted", ok: Boolean(persistedSession) },
-      { name: "sqlite-terminal-state-persisted", ok: persistedSession?.state === scenarioResult.session.state, value: persistedSession?.state },
+      {
+        name: "sqlite-terminal-state-persisted",
+        ok: persistedSession?.state === scenarioResult.session.state,
+        value: persistedSession?.state
+      },
       ...expectedPersistenceTexts(options.scenario).map((text) => ({
         name: `sqlite-event-persisted:${text}`,
         ok: persistedMessages.some((message) => message.includes(text))
       }))
     ];
-    if (options.scenario === "chat-resume" || options.scenario === "queued-restart" || options.scenario === "session-move") {
+    if (
+      options.scenario === "chat-resume" ||
+      options.scenario === "queued-restart" ||
+      options.scenario === "session-move"
+    ) {
       persistenceAssertions.push({
         name: "sqlite-provider-conversation-persisted",
-        ok: persistedSession?.providerConversationId === (options.scenario === "session-move"
-          ? VERIFICATION_MOVED_CONVERSATION_ID
-          : VERIFICATION_CONVERSATION_ID),
+        ok:
+          persistedSession?.providerConversationId ===
+          (options.scenario === "session-move" ? VERIFICATION_MOVED_CONVERSATION_ID : VERIFICATION_CONVERSATION_ID),
         value: persistedSession?.providerConversationId
       });
     }
@@ -1321,9 +1537,11 @@ export async function runVerification(options) {
     if (persistenceFailure) throw new Error(`persistence assertion failed: ${persistenceFailure.name}`);
 
     report.source.afterRun = await checkoutFingerprint(repoRoot);
-    if (report.source.afterBuild.sha256 !== report.source.afterRun.sha256) throw new Error("checkout changed during verification; evidence does not describe one source state");
-    if (await fileSha256(binary) !== binarySha256) throw new Error("verification binary changed during the run");
-    if (await fileSha256(nativeBinary) !== nativeBinarySha256) throw new Error("native verification binary changed during the run");
+    if (report.source.afterBuild.sha256 !== report.source.afterRun.sha256)
+      throw new Error("checkout changed during verification; evidence does not describe one source state");
+    if ((await fileSha256(binary)) !== binarySha256) throw new Error("verification binary changed during the run");
+    if ((await fileSha256(nativeBinary)) !== nativeBinarySha256)
+      throw new Error("native verification binary changed during the run");
     report.assertions.push({ name: "checkout-stable", ok: true });
     report.status = "passed";
   } catch (error) {
@@ -1331,7 +1549,8 @@ export async function runVerification(options) {
     report.errors.push({ message: error.message, stack: error.stack });
   } finally {
     if (interrupting) return { report, outputDir };
-    const launchedSessionId = scenarioResult?.session.id ?? report.timeline.find((entry) => entry.type === "session-launched")?.sessionId;
+    const launchedSessionId =
+      scenarioResult?.session.id ?? report.timeline.find((entry) => entry.type === "session-launched")?.sessionId;
     if (bridge) {
       try {
         report.debugSnapshot ??= redact(await bridge.call("system:debug-snapshot", { afterLogSeq: null }));
@@ -1403,13 +1622,18 @@ export async function runVerification(options) {
         report.errors.push({ message: `failure database snapshot failed: ${error.message}` });
       }
     }
+    const machineCalls = (await readFile(tripwireLog, "utf8")).trim();
+    if (machineCalls) {
+      report.status = "failed";
+      report.errors.push({ message: `machine-global command attempted: ${machineCalls.split("\n").join(", ")}` });
+    }
     await copyIfPresent(path.join(profile, "app.log"), path.join(outputDir, "app.log"));
     await redactEvidenceTextFiles(outputDir);
     report.finishedAt = new Date().toISOString();
     report.keptRunRoot = options.keep ? runRoot : null;
     if (options.keep) report.replay = replayDetails({ report, repoRoot, home, profile, env, fixturePath, provider });
     if (!options.keep) await rm(runRoot, { recursive: true, force: true });
-    report.evidenceFiles = [...await listEvidenceFiles(outputDir), "report.json"].sort();
+    report.evidenceFiles = [...(await listEvidenceFiles(outputDir)), "report.json"].sort();
     await writeJson(path.join(outputDir, "report.json"), report);
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
@@ -1422,7 +1646,9 @@ async function main() {
     const options = parseVerifyArgs(process.argv.slice(2));
     const { report, outputDir } = await runVerification(options);
     process.stderr.write(`${report.status === "passed" ? "PASS" : "FAIL"} ${report.scenario} evidence=${outputDir}\n`);
-    process.stdout.write(`${JSON.stringify({ ok: report.status === "passed", scenario: report.scenario, evidence: outputDir, report: path.join(outputDir, "report.json") })}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ ok: report.status === "passed", scenario: report.scenario, evidence: outputDir, report: path.join(outputDir, "report.json") })}\n`
+    );
     process.exitCode = report.status === "passed" ? 0 : 1;
   } catch (error) {
     process.stderr.write(`verification setup failed: ${error.message}\n`);

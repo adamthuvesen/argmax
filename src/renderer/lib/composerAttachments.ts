@@ -59,19 +59,12 @@ export function imageMimeFromDragType(type: string): AttachmentMimeType | null {
 export function isImageDragType(type: string): boolean {
   if (imageMimeFromDragType(type) !== null) return true;
   if (type.startsWith("image/")) return true;
-  return (
-    type === "public.tiff" ||
-    type === "public.image" ||
-    type === "public.heic" ||
-    type === "public.heif"
-  );
+  return type === "public.tiff" || type === "public.image" || type === "public.heic" || type === "public.heif";
 }
 
 function isFilePromiseDragType(type: string): boolean {
   return (
-    type.includes("promised-file") ||
-    type === "com.apple.NSPromiseContents" ||
-    type === "NSPromiseContentsPboardType"
+    type.includes("promised-file") || type === "com.apple.NSPromiseContents" || type === "NSPromiseContentsPboardType"
   );
 }
 
@@ -83,10 +76,7 @@ function isFilePromiseDragType(type: string): boolean {
  */
 export function isTransientScreenshotPath(path: string): boolean {
   const normalized = path.replaceAll("\\", "/").toLowerCase();
-  return (
-    normalized.includes("screencaptureui") ||
-    normalized.includes("/temporaryitems/nsird_")
-  );
+  return normalized.includes("screencaptureui") || normalized.includes("/temporaryitems/nsird_");
 }
 
 /** Whether a dropped File should use the Finder @-mention path rather than

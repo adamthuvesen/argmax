@@ -17,17 +17,10 @@ function normalizedInteractiveToolName(name: string): string {
 
 export function isAskUserQuestionToolName(name: string): boolean {
   const normalized = normalizedInteractiveToolName(name);
-  return (
-    normalized === "askuserquestion" ||
-    normalized === "askquestiontoolcall" ||
-    normalized === "sendusermessage"
-  );
+  return normalized === "askuserquestion" || normalized === "askquestiontoolcall" || normalized === "sendusermessage";
 }
 
-function toolsMatching(
-  toolItems: readonly TurnToolItem[],
-  predicate: (tool: ToolCall) => boolean
-): ToolCall[] {
+function toolsMatching(toolItems: readonly TurnToolItem[], predicate: (tool: ToolCall) => boolean): ToolCall[] {
   const matches: ToolCall[] = [];
   for (const item of toolItems) {
     for (const tool of [item.tool, ...(item.children ?? [])]) {
@@ -58,9 +51,7 @@ export function collectAskUserQuestionState(toolItems: readonly TurnToolItem[]):
         createdAt: candidate.createdAt,
         questions,
         ...(delivery === "async" || delivery === "blocking" ? { delivery } : {}),
-        ...(typeof candidate.inputFull?.requestId === "string"
-          ? { requestId: candidate.inputFull.requestId }
-          : {})
+        ...(typeof candidate.inputFull?.requestId === "string" ? { requestId: candidate.inputFull.requestId } : {})
       };
     }
   }
@@ -78,10 +69,10 @@ export function hasOutstandingCardAsk(events: TimelineEvent[], toolCalls: ToolCa
   }
   return toolCalls.some(
     (tool) =>
-      (isAskUserQuestionToolName(tool.name) &&
-        tool.inputFull?.delivery !== "async" &&
-        (tool.inputFull?.delivery !== "blocking" || tool.status === "running") &&
-        parseQuestionsFromToolInput(tool)) &&
+      isAskUserQuestionToolName(tool.name) &&
+      tool.inputFull?.delivery !== "async" &&
+      (tool.inputFull?.delivery !== "blocking" || tool.status === "running") &&
+      parseQuestionsFromToolInput(tool) &&
       tool.createdAt > lastUserMessageTime
   );
 }

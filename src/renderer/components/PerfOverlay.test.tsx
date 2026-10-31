@@ -1,11 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  ArgmaxApi,
-  DebugSnapshot,
-  IpcChannelStats,
-  PerformanceStatus
-} from "../../shared/types.js";
+import type { ArgmaxApi, DebugSnapshot, IpcChannelStats, PerformanceStatus } from "../../shared/types.js";
 import { PERF_OVERLAY_KEY, PerfOverlay } from "./PerfOverlay.js";
 
 function snapshotWith(stats: IpcChannelStats[]): DebugSnapshot {
@@ -110,9 +105,7 @@ describe("PerfOverlay", () => {
       }
     };
     const debugSnapshot = vi.fn().mockResolvedValue(snapshotWith([]));
-    const performanceStatus = vi.fn()
-      .mockResolvedValueOnce(inactive)
-      .mockResolvedValue(active);
+    const performanceStatus = vi.fn().mockResolvedValueOnce(inactive).mockResolvedValue(active);
     const performanceStart = vi.fn().mockResolvedValue(active);
     const performanceStop = vi.fn().mockResolvedValue({});
     (window as unknown as { argmax: Partial<ArgmaxApi> }).argmax = {

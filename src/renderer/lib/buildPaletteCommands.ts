@@ -142,26 +142,30 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
         run: () => onArchiveWorkspace(workspace.id)
       },
       ...(openInIde
-        ? [{
-            id: "action:open-in-ide",
-            label: `Open in ${openInIde.label}`,
-            subtitle: label,
-            group: "Actions" as const,
-            icon: Code,
-            keywords: ["editor", "ide", "code"],
-            run: () => openInIde.run(workspace.id)
-          }]
+        ? [
+            {
+              id: "action:open-in-ide",
+              label: `Open in ${openInIde.label}`,
+              subtitle: label,
+              group: "Actions" as const,
+              icon: Code,
+              keywords: ["editor", "ide", "code"],
+              run: () => openInIde.run(workspace.id)
+            }
+          ]
         : []),
       ...(onOpenInNewWindow
-        ? [{
-            id: "action:open-in-new-window",
-            label: "Open chat in new window",
-            subtitle: label,
-            group: "Actions" as const,
-            icon: AppWindow,
-            keywords: ["tear off", "detach", "pop out"],
-            run: () => onOpenInNewWindow(workspace.id)
-          }]
+        ? [
+            {
+              id: "action:open-in-new-window",
+              label: "Open chat in new window",
+              subtitle: label,
+              group: "Actions" as const,
+              icon: AppWindow,
+              keywords: ["tear off", "detach", "pop out"],
+              run: () => onOpenInNewWindow(workspace.id)
+            }
+          ]
         : [])
     ];
   }
@@ -170,10 +174,16 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
   // sidebar's Priority section draws. The chat on screen needs no jump.
   function attentionActions(): PaletteCommand[] {
     const working = workingWorkspaceIds(snapshot.sessions);
-    const unreadIds = new Set(snapshot.workspaces.filter((workspace) => workspaceHasUnreadResponse(workspace, {
-      selectedWorkspaceId: selectedSession?.workspaceId ?? null,
-      working: working.has(workspace.id)
-    })).map((workspace) => workspace.id));
+    const unreadIds = new Set(
+      snapshot.workspaces
+        .filter((workspace) =>
+          workspaceHasUnreadResponse(workspace, {
+            selectedWorkspaceId: selectedSession?.workspaceId ?? null,
+            working: working.has(workspace.id)
+          })
+        )
+        .map((workspace) => workspace.id)
+    );
     const attention = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, unreadIds);
     return [...attention].flatMap(([workspaceId, entry]) => {
       if (workspaceId === selectedSession?.workspaceId) return [];
@@ -181,19 +191,21 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
       const session = snapshot.sessions.find((candidate) => candidate.workspaceId === workspaceId);
       if (!session) return [];
       const copy = ATTENTION_COPY[entry.attention];
-      return [{
-        id: `attention:${workspaceId}`,
-        label: `${copy.verb} ${chatLabel(session)}`,
-        subtitle: copy.subtitle,
-        group: "Actions" as const,
-        icon: Bell,
-        keywords: ["attention", "waiting", "needs me", "inbox"],
-        suggest: true,
-        run: () => {
-          closeOverlays();
-          onOpenWorkspace(workspaceId);
+      return [
+        {
+          id: `attention:${workspaceId}`,
+          label: `${copy.verb} ${chatLabel(session)}`,
+          subtitle: copy.subtitle,
+          group: "Actions" as const,
+          icon: Bell,
+          keywords: ["attention", "waiting", "needs me", "inbox"],
+          suggest: true,
+          run: () => {
+            closeOverlays();
+            onOpenWorkspace(workspaceId);
+          }
         }
-      }];
+      ];
     });
   }
 
@@ -380,23 +392,23 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     // Ephemeral "More details" popup sessions are not navigable surfaces.
     .filter((session) => workspaceById.get(session.workspaceId)?.kind !== "popup")
     .map((session) => {
-    const workspace = workspaceById.get(session.workspaceId) ?? null;
-    const project = workspace ? projectById.get(workspace.projectId) ?? null : null;
-    const label = workspace?.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel;
-    return {
-      id: `session:${session.id}`,
-      label,
-      // Project alone. Branch, model, and state are visible in the session
-      // itself and only crowd the row here.
-      meta: project?.name,
-      group: "Sessions",
-      icon: MessageSquare,
-      run: () => {
-        closeOverlays();
-        onOpenWorkspace(session.workspaceId);
-      }
-    };
-  });
+      const workspace = workspaceById.get(session.workspaceId) ?? null;
+      const project = workspace ? (projectById.get(workspace.projectId) ?? null) : null;
+      const label = workspace?.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel;
+      return {
+        id: `session:${session.id}`,
+        label,
+        // Project alone. Branch, model, and state are visible in the session
+        // itself and only crowd the row here.
+        meta: project?.name,
+        group: "Sessions",
+        icon: MessageSquare,
+        run: () => {
+          closeOverlays();
+          onOpenWorkspace(session.workspaceId);
+        }
+      };
+    });
 
   // The Settings scope reuses the panel's own section registry, so the palette
   // can never list a page the panel doesn't have. Section jumps lead; the
@@ -422,17 +434,17 @@ export function buildPaletteCommands(input: BuildPaletteCommandsInput): PaletteC
     // openable repository.
     .filter((project) => project.id !== SCRATCH_PROJECT_ID)
     .map((project) => ({
-    id: `project:${project.id}`,
-    label: project.name,
-    subtitle: [project.currentBranch, collapseHome(project.repoPath)].filter(Boolean).join(" · "),
-    group: "Projects",
-    icon: Folder,
-    run: () => {
-      closeOverlays();
-      onSelectProject(project.id);
-      onClearGrid();
-    }
-  }));
+      id: `project:${project.id}`,
+      label: project.name,
+      subtitle: [project.currentBranch, collapseHome(project.repoPath)].filter(Boolean).join(" · "),
+      group: "Projects",
+      icon: Folder,
+      run: () => {
+        closeOverlays();
+        onSelectProject(project.id);
+        onClearGrid();
+      }
+    }));
 
   return [...actions, ...sessions, ...projects, ...settings, ...buildSettingCommands(preferences)];
 }
@@ -451,7 +463,7 @@ export function buildSessionLabelById(snapshot: DashboardSnapshot): Map<string, 
   const map = new Map<string, string>();
   for (const session of snapshot.sessions) {
     const workspace = workspaceById.get(session.workspaceId) ?? null;
-    const project = workspace ? projectById.get(workspace.projectId) ?? null : null;
+    const project = workspace ? (projectById.get(workspace.projectId) ?? null) : null;
     const taskLabel = workspace?.taskLabel || titleFromPrompt(session.prompt) || session.modelLabel;
     map.set(session.id, project ? `${project.name} · ${taskLabel}` : taskLabel);
   }

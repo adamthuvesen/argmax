@@ -37,13 +37,7 @@ function WindowMeter({ window }: { window: UsageLimitWindow }): JSX.Element {
   );
 }
 
-function RemainingDetail({
-  message,
-  messageUrl
-}: {
-  message: string;
-  messageUrl?: string | null;
-}): JSX.Element {
+function RemainingDetail({ message, messageUrl }: { message: string; messageUrl?: string | null }): JSX.Element {
   if (!messageUrl) {
     return <p className="usage-remaining-detail">{message}</p>;
   }
@@ -69,11 +63,7 @@ function RemainingDetail({
   );
 }
 
-function RemainingRow({
-  row
-}: {
-  row: UsageProviderRemaining;
-}): JSX.Element {
+function RemainingRow({ row }: { row: UsageProviderRemaining }): JSX.Element {
   const title = kindLabel(row);
   const showWindows = row.kind === "subscription" && row.windows.length > 0;
   return (
@@ -92,9 +82,7 @@ function RemainingRow({
       ) : (
         <RemainingDetail message={row.message ?? "No remaining usage to show."} messageUrl={row.messageUrl} />
       )}
-      {showWindows && row.message ? (
-        <RemainingDetail message={row.message} messageUrl={row.messageUrl} />
-      ) : null}
+      {showWindows && row.message ? <RemainingDetail message={row.message} messageUrl={row.messageUrl} /> : null}
     </li>
   );
 }

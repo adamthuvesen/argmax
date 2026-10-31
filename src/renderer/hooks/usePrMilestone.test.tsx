@@ -14,8 +14,15 @@ function wrapper({ children }: { children: ReactNode }) {
   return <PrMilestoneCelebrationContext value={enabled}>{children}</PrMilestoneCelebrationContext>;
 }
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(start); enabled = true; });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(start);
+  enabled = true;
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("confirmed PR milestones", () => {
   it("celebrates a newly created PR once, independently of turn completion", () => {

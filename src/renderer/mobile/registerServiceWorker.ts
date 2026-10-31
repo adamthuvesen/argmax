@@ -10,9 +10,11 @@
  */
 export type RegistrationSkip = "unsupported" | "insecure-context" | "dev";
 
-export function reasonToSkip(
-  environment: { supported: boolean; secureContext: boolean; dev: boolean }
-): RegistrationSkip | null {
+export function reasonToSkip(environment: {
+  supported: boolean;
+  secureContext: boolean;
+  dev: boolean;
+}): RegistrationSkip | null {
   if (environment.dev) return "dev";
   if (!environment.supported) return "unsupported";
   if (!environment.secureContext) return "insecure-context";

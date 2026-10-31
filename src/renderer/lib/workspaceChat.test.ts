@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionSummary } from "../../shared/types.js";
 import { chatSessionByWorkspace, chatSessionFor } from "./workspaceChat.js";
 
-const session = (
-  id: string,
-  workspaceId: string,
-  lastActivityAt: string
-): SessionSummary => ({
+const session = (id: string, workspaceId: string, lastActivityAt: string): SessionSummary => ({
   id,
   workspaceId,
   provider: "codex",

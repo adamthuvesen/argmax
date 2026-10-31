@@ -6,9 +6,7 @@ import { useLayoutEffect, type RefObject } from "react";
 // caret-reveal viewport pan each keystroke, visibly bouncing the chat behind
 // the keyboard. Prefer the CSS engine wherever it exists.
 const supportsFieldSizing =
-  typeof CSS !== "undefined" &&
-  typeof CSS.supports === "function" &&
-  CSS.supports("field-sizing", "content");
+  typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
 
 function computedMinHeight(el: HTMLTextAreaElement): number {
   const minHeight = Number.parseFloat(window.getComputedStyle(el).minHeight);
@@ -57,11 +55,7 @@ export function useAutoGrowTextArea(
     // Native caret reveal can leave the last line box and bottom padding
     // clipped at the height cap. Follow end-of-draft edits after sizing, but
     // leave selections and edits earlier in the draft at their own position.
-    if (
-      document.activeElement === el &&
-      el.selectionStart === value.length &&
-      el.selectionEnd === value.length
-    ) {
+    if (document.activeElement === el && el.selectionStart === value.length && el.selectionEnd === value.length) {
       el.scrollTop = el.scrollHeight;
     }
   }, [ref, value, maxHeightPx]);

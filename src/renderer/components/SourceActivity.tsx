@@ -11,7 +11,9 @@ export function SourceActivity({ activity }: { activity: ProjectSourceActivity }
   const isWebLink = /^https?:\/\//i.test(location);
   return (
     <>
-      <span className="sr-only" role="status" aria-live="polite">{label}</span>
+      <span className="sr-only" role="status" aria-live="polite">
+        {label}
+      </span>
       <details className="project-source-activity">
         <summary aria-label={label}>
           <ChevronRight className="project-source-chevron" size={12} aria-hidden="true" />
@@ -25,7 +27,9 @@ export function SourceActivity({ activity }: { activity: ProjectSourceActivity }
           <p>{activity.guidance}</p>
           <p>
             {isRead ? "Retrieved" : "Added by agent"} <time dateTime={activity.at}>{activity.at.slice(0, 10)}</time>.
-            {isRead ? " Retrieval does not verify the source’s claims." : " Listed for future reference, not read or verified."}
+            {isRead
+              ? " Retrieval does not verify the source’s claims."
+              : " Listed for future reference, not read or verified."}
           </p>
           {activity.truncated ? <p>Only part of the content was returned to the agent.</p> : null}
         </div>

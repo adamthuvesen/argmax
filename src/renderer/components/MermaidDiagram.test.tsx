@@ -29,7 +29,7 @@ describe("MermaidDiagram", () => {
   });
 
   afterEach(() => {
-  resetDrawnMermaidDiagramsForTests();
+    resetDrawnMermaidDiagramsForTests();
     cleanup();
   });
 

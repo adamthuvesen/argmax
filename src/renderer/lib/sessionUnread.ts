@@ -118,11 +118,13 @@ export function useUnreadWorkspaceIds(
     const selected = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
     if (!selected?.lastViewedAt || !window.argmax?.markWorkspacesViewed) return;
     if (Date.parse(selected.lastActivityAt) <= Date.parse(selected.lastViewedAt)) return;
-    void window.argmax.markWorkspacesViewed({
-      workspaces: [{ workspaceId: selected.id, observedActivityAt: selected.lastActivityAt }]
-    }).catch((error: unknown) => {
-      logger.warn("renderer.sessionUnread", "Could not sync viewed chat", { error: String(error) });
-    });
+    void window.argmax
+      .markWorkspacesViewed({
+        workspaces: [{ workspaceId: selected.id, observedActivityAt: selected.lastActivityAt }]
+      })
+      .catch((error: unknown) => {
+        logger.warn("renderer.sessionUnread", "Could not sync viewed chat", { error: String(error) });
+      });
   }, [workspaces, selectedWorkspaceId]);
   return useMemo(() => {
     const unread = new Set<string>();

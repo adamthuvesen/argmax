@@ -1,14 +1,4 @@
-import {
-  Check,
-  CircleAlert,
-  CircleCheck,
-  CircleHelp,
-  Copy,
-  Link2,
-  PlugZap,
-  Puzzle,
-  RefreshCw
-} from "lucide-react";
+import { Check, CircleAlert, CircleCheck, CircleHelp, Copy, Link2, PlugZap, Puzzle, RefreshCw } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
@@ -98,18 +88,15 @@ export function ConnectionCatalog({
       {load.rows.length > 0 ? (
         <ul className="connection-list" aria-label={`${PROVIDER_DISPLAY_NAMES[provider]} connections`}>
           {load.rows.map((connection) => (
-            <ConnectionRow
-              key={`${connection.kind}:${connection.name}`}
-              connection={connection}
-            />
+            <ConnectionRow key={`${connection.kind}:${connection.name}`} connection={connection} />
           ))}
         </ul>
       ) : load.state === "ready" ? (
         <p className="connection-catalog-empty">No connections found.</p>
       ) : null}
       <p className="connection-catalog-footnote">
-        Confirmed means the provider health-check succeeded. Unknown means the provider does not
-        expose login validity. It does not mean that login failed.
+        Confirmed means the provider health-check succeeded. Unknown means the provider does not expose login validity.
+        It does not mean that login failed.
       </p>
     </div>
   );
@@ -118,8 +105,7 @@ export function ConnectionCatalog({
 function ConnectionRow({ connection }: { connection: ConnectionSummary }): JSX.Element {
   const [copyState, copy] = useCopyToClipboard();
   const status = rowStatus(connection);
-  const KindIcon =
-    connection.kind === "plugin" ? Puzzle : connection.kind === "connector" ? Link2 : PlugZap;
+  const KindIcon = connection.kind === "plugin" ? Puzzle : connection.kind === "connector" ? Link2 : PlugZap;
   const StatusIcon =
     status === "connected" || status === "available"
       ? CircleCheck
@@ -165,10 +151,8 @@ function summarize(rows: ConnectionSummary[]): {
 } {
   return rows.reduce(
     (counts, row) => ({
-      connected:
-        counts.connected + (row.authentication === "authenticated" ? 1 : 0),
-      needsAuthentication:
-        counts.needsAuthentication + (row.authentication === "required" ? 1 : 0)
+      connected: counts.connected + (row.authentication === "authenticated" ? 1 : 0),
+      needsAuthentication: counts.needsAuthentication + (row.authentication === "required" ? 1 : 0)
     }),
     { connected: 0, needsAuthentication: 0 }
   );

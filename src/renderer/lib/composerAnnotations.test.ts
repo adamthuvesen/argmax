@@ -32,10 +32,7 @@ describe("prependAnnotationsToPrompt", () => {
   });
 
   it("keeps multi-line excerpts as one quote block per annotation", () => {
-    const annotations = [
-      createAnnotation("first line\nsecond line"),
-      createAnnotation("another excerpt")
-    ];
+    const annotations = [createAnnotation("first line\nsecond line"), createAnnotation("another excerpt")];
     expect(prependAnnotationsToPrompt("compare these", annotations)).toBe(
       "Regarding these excerpts from our conversation above:\n\n" +
         "> first line\n> second line\n\n" +
@@ -57,9 +54,7 @@ describe("prependAnnotationsToPrompt", () => {
   });
 
   it("keeps the typed message after the notes", () => {
-    const prompt = prependAnnotationsToPrompt("then rerun tests", [
-      createDiffNoteAnnotation(diffNote())
-    ]);
+    const prompt = prependAnnotationsToPrompt("then rerun tests", [createDiffNoteAnnotation(diffNote())]);
     expect(prompt.endsWith("</argmax-diff-note>\n\nthen rerun tests")).toBe(true);
   });
 
@@ -115,9 +110,7 @@ describe("prependAnnotationsToPrompt", () => {
       createAnnotation("the plan above")
     ];
     const prompt = prependAnnotationsToPrompt("go", annotations);
-    expect(prompt.indexOf("Regarding this excerpt")).toBeLessThan(
-      prompt.indexOf("<argmax-diff-note")
-    );
+    expect(prompt.indexOf("Regarding this excerpt")).toBeLessThan(prompt.indexOf("<argmax-diff-note"));
     expect(prompt.endsWith("go")).toBe(true);
   });
 });
@@ -125,24 +118,18 @@ describe("prependAnnotationsToPrompt", () => {
 describe("annotationChipLabel", () => {
   it("labels excerpts with their text and names a diff note as one", () => {
     expect(annotationChipLabel(createAnnotation("plain excerpt"))).toBe("plain excerpt");
-    expect(
-      annotationChipLabel(
-        createDiffNoteAnnotation(diffNote({ line: 7, comment: "tighten this" }))
-      )
-    ).toBe("Diff note · src/x.ts:7 — tighten this");
+    expect(annotationChipLabel(createDiffNoteAnnotation(diffNote({ line: 7, comment: "tighten this" })))).toBe(
+      "Diff note · src/x.ts:7 — tighten this"
+    );
   });
 
   it("shows a compact line span for a range on one diff side", () => {
+    expect(annotationChipLabel(createDiffNoteAnnotation(diffNote({ endLine: 15, comment: "tighten these" })))).toBe(
+      "Diff note · src/x.ts:12-15 — tighten these"
+    );
     expect(
       annotationChipLabel(
-        createDiffNoteAnnotation(diffNote({ endLine: 15, comment: "tighten these" }))
-      )
-    ).toBe("Diff note · src/x.ts:12-15 — tighten these");
-    expect(
-      annotationChipLabel(
-        createDiffNoteAnnotation(
-          diffNote({ endLine: 15, endSide: "addition", comment: "tighten these" })
-        )
+        createDiffNoteAnnotation(diffNote({ endLine: 15, endSide: "addition", comment: "tighten these" }))
       )
     ).toBe("Diff note · src/x.ts:12-15 — tighten these");
   });

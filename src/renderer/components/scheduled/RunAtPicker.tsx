@@ -45,7 +45,10 @@ function triggerLabel(date: Date | null, time: string): string | null {
   if (!date) return null;
   const day = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const [hour, minute] = time.split(":").map(Number);
-  const clock = new Date(2000, 0, 1, hour, minute).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const clock = new Date(2000, 0, 1, hour, minute).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
   return `${day} · ${clock}`;
 }
 

@@ -51,14 +51,7 @@ describe("MultitaskRow", () => {
   });
 
   it("surfaces live attention and keeps the chat reachable", () => {
-    render(
-      <MultitaskRow
-        notice={notice()}
-        liveState="running"
-        liveAttention="question-asked"
-        onOpen={vi.fn()}
-      />
-    );
+    render(<MultitaskRow notice={notice()} liveState="running" liveAttention="question-asked" onOpen={vi.fn()} />);
 
     expect(screen.getByRole("img", { name: "Needs you" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open multitask: Fix the README typo" })).toBeInTheDocument();

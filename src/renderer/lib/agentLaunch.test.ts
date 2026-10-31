@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  agentLaunchAriaLabel,
-  agentLaunchLabel,
-  isInternalAgentLaunchMetadata
-} from "./agentLaunch.js";
+import { agentLaunchAriaLabel, agentLaunchLabel, isInternalAgentLaunchMetadata } from "./agentLaunch.js";
 import type { ToolCall } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -21,7 +17,6 @@ function tool(overrides: Partial<ToolCall> = {}): ToolCall {
     ...overrides
   };
 }
-
 
 describe("agentLaunchLabel", () => {
   it("leads with the agent's own description and follows it with the codename", () => {
@@ -51,7 +46,9 @@ describe("agentLaunchAriaLabel", () => {
 describe("isInternalAgentLaunchMetadata", () => {
   it("detects async launch confirmation phrases", () => {
     expect(isInternalAgentLaunchMetadata("Async agent launched successfully. output_file: /tmp/out")).toBe(true);
-    expect(isInternalAgentLaunchMetadata("This tool result is internal metadata. Use SendMessage with to: ...")).toBe(true);
+    expect(isInternalAgentLaunchMetadata("This tool result is internal metadata. Use SendMessage with to: ...")).toBe(
+      true
+    );
     expect(isInternalAgentLaunchMetadata("Background task launched.")).toBe(true);
     expect(isInternalAgentLaunchMetadata("Subagent launched successfully.")).toBe(true);
     expect(

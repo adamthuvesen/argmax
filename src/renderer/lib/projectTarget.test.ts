@@ -20,6 +20,9 @@ describe("ProjectTarget", () => {
 
   it("reads files from the picked folder when there is one", () => {
     expect(projectFileSource({ project, projectFolderId: null })).toEqual({ kind: "project", id: "project-1" });
-    expect(projectFileSource({ project, projectFolderId: "folder-2" })).toEqual({ kind: "projectFolder", id: "folder-2" });
+    expect(projectFileSource({ project, projectFolderId: "folder-2" })).toEqual({
+      kind: "projectFolder",
+      id: "folder-2"
+    });
   });
 });

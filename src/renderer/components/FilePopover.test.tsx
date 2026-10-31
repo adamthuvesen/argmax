@@ -1,10 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  FileAutocompleteEntry,
-  FileAutocompleteState
-} from "../hooks/useFileAutocomplete.js";
+import type { FileAutocompleteEntry, FileAutocompleteState } from "../hooks/useFileAutocomplete.js";
 import { FilePopover } from "./FilePopover.js";
 
 const ENTRIES: FileAutocompleteEntry[] = [
@@ -41,24 +38,14 @@ describe("FilePopover", () => {
 
     const rows = screen.getAllByRole("option", { name: /mod\.rs$/ });
 
-    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
-      "src/files/mod.rs",
-      "src/persistence/mod.rs"
-    ]);
+    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual(["src/files/mod.rs", "src/persistence/mod.rs"]);
     expect(rows[0]).toHaveTextContent("mod.rs");
-    expect(rows[0].querySelector('[aria-hidden="true"].file-popover-dir')).toHaveTextContent(
-      "src/files"
-    );
+    expect(rows[0].querySelector('[aria-hidden="true"].file-popover-dir')).toHaveTextContent("src/files");
   });
 
   it("highlights a row on hover by moving the shared selection index", () => {
     const setSelectionIndex = vi.fn();
-    render(
-      <FilePopover
-        state={makeState({ selectionIndex: 0, setSelectionIndex })}
-        inputRef={createRef()}
-      />
-    );
+    render(<FilePopover state={makeState({ selectionIndex: 0, setSelectionIndex })} inputRef={createRef()} />);
 
     fireEvent.mouseMove(screen.getByText("src/"));
 
@@ -67,9 +54,7 @@ describe("FilePopover", () => {
 
   it("commits the entry on mouse down", () => {
     const selectEntry = vi.fn();
-    render(
-      <FilePopover state={makeState({ selectEntry })} inputRef={createRef()} />
-    );
+    render(<FilePopover state={makeState({ selectEntry })} inputRef={createRef()} />);
 
     fireEvent.mouseDown(screen.getByText("README.md"));
 

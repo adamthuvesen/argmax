@@ -13,11 +13,7 @@ import {
 } from "./streamFreshRuns.js";
 
 function render(markdown: string, runs: readonly FreshRun[]): string {
-  const processor = unified()
-    .use(remarkParse)
-    .use(remarkGfm)
-    .use(remarkRehype)
-    .use(rehypeFreshRuns(runs));
+  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkRehype).use(rehypeFreshRuns(runs));
   return toHtml(processor.runSync(processor.parse(markdown)));
 }
 

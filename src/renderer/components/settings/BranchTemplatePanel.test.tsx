@@ -22,10 +22,7 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
   };
 }
 
-function install(overrides: {
-  setProject?: ReturnType<typeof vi.fn>;
-  setApp?: ReturnType<typeof vi.fn>;
-}): void {
+function install(overrides: { setProject?: ReturnType<typeof vi.fn>; setApp?: ReturnType<typeof vi.fn> }): void {
   (window as unknown as { argmax: ArgmaxApi }).argmax = {
     settings: {
       branchTemplate: vi.fn().mockResolvedValue({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
@@ -42,10 +39,7 @@ describe("BranchTemplatePanel", () => {
 
     expect(screen.getByText(/\{type\}, \{slug\}, \{word\}, \{id\}, \{date\}/)).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByLabelText("Default for all projects")).toHaveAttribute(
-        "placeholder",
-        "argmax/{word}-{id}"
-      )
+      expect(screen.getByLabelText("Default for all projects")).toHaveAttribute("placeholder", "argmax/{word}-{id}")
     );
   });
 
@@ -69,9 +63,7 @@ describe("BranchTemplatePanel", () => {
   it("clears an override by saving it blank", async () => {
     const setProject = vi.fn().mockResolvedValue(project());
     install({ setProject });
-    render(
-      <BranchTemplatePanel project={project({ branchTemplate: "adam/{slug}" })} onProjectUpdated={vi.fn()} />
-    );
+    render(<BranchTemplatePanel project={project({ branchTemplate: "adam/{slug}" })} onProjectUpdated={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Argmax override"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save project template" }));

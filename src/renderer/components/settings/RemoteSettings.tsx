@@ -47,13 +47,18 @@ export function RemoteSettings(): JSX.Element {
       else setQueryLoadError(errorMessage(error));
     }
   });
-  const loadError = statusQuery.isAvailable ? queryLoadError : "Open the Argmax desktop app to configure remote access.";
+  const loadError = statusQuery.isAvailable
+    ? queryLoadError
+    : "Open the Argmax desktop app to configure remote access.";
   const { refetch: refetchStatus } = statusQuery;
-  const loadStatus = useCallback(async (explicit = false): Promise<void> => {
-    explicitLoad.current = explicit;
-    await refetchStatus();
-    explicitLoad.current = false;
-  }, [refetchStatus]);
+  const loadStatus = useCallback(
+    async (explicit = false): Promise<void> => {
+      explicitLoad.current = explicit;
+      await refetchStatus();
+      explicitLoad.current = false;
+    },
+    [refetchStatus]
+  );
 
   // `fields` defaults to the drafts, which is what "Save changes" commits. The
   // enable toggle passes the saved values instead: flipping the switch must not
@@ -155,7 +160,10 @@ export function RemoteSettings(): JSX.Element {
       const results = await remote.pushTest();
       const failed = results.filter((result) => !result.ok);
       if (failed.length === 0) {
-        setNote({ kind: "saved", message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.` });
+        setNote({
+          kind: "saved",
+          message: `Test push sent to ${results.length} device${results.length === 1 ? "" : "s"}.`
+        });
       } else {
         // Naming the device matters when only one of several pushes fails.
         showErrorToast(failed.map((result) => `${result.name}: ${result.error ?? "failed"}`).join("; "));
@@ -167,8 +175,7 @@ export function RemoteSettings(): JSX.Element {
     }
   }, []);
 
-  const dirty =
-    status !== null && (portField !== String(status.port) || topicField !== (status.ntfyTopic ?? ""));
+  const dirty = status !== null && (portField !== String(status.port) || topicField !== (status.ntfyTopic ?? ""));
 
   const apnsDirty =
     status !== null &&
@@ -215,15 +222,15 @@ export function RemoteSettings(): JSX.Element {
               />
               <div className="settings-remote-pairing-info">
                 <p className="settings-note">
-                  Scan with your phone's camera. The link carries the pairing token in the URL
-                  fragment, so it never crosses the network.
+                  Scan with your phone's camera. The link carries the pairing token in the URL fragment, so it never
+                  crosses the network.
                 </p>
                 <CopyValueRow label="Pairing link" value={status.pairingUrl} />
                 <CopyValueRow label="Tailscale proxy" value={status.serveCommand} code />
                 {status.tailnetUrl === null ? (
                   <p className="settings-note" data-tone="warn">
-                    Tailscale CLI not found — the QR points at this Mac only. Install Tailscale to
-                    reach it from your phone.
+                    Tailscale CLI not found — the QR points at this Mac only. Install Tailscale to reach it from your
+                    phone.
                   </p>
                 ) : !status.tailscaleRunning ? (
                   <p className="settings-note" data-tone="warn">
@@ -346,8 +353,7 @@ export function RemoteSettings(): JSX.Element {
             </ul>
           ) : (
             <p className="settings-note">
-              No phones paired yet. The Argmax app registers itself the first time you open it on a
-              paired phone.
+              No phones paired yet. The Argmax app registers itself the first time you open it on a paired phone.
             </p>
           )}
 
@@ -393,11 +399,7 @@ export function RemoteSettings(): JSX.Element {
               className="settings-button"
               disabled={busy || status.ntfyTopic === null || dirty}
               title={
-                status.ntfyTopic === null
-                  ? "Save an ntfy topic first"
-                  : dirty
-                    ? "Save your changes first"
-                    : undefined
+                status.ntfyTopic === null ? "Save an ntfy topic first" : dirty ? "Save your changes first" : undefined
               }
               onClick={() => void sendTestNotification()}
             >
@@ -429,15 +431,7 @@ export function RemoteSettings(): JSX.Element {
   );
 }
 
-function CopyValueRow({
-  label,
-  value,
-  code = false
-}: {
-  label: string;
-  value: string;
-  code?: boolean;
-}): JSX.Element {
+function CopyValueRow({ label, value, code = false }: { label: string; value: string; code?: boolean }): JSX.Element {
   const [copyFlash, copy] = useCopyToClipboard();
   return (
     <div className="settings-remote-copyrow">

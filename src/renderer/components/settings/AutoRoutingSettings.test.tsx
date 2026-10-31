@@ -17,13 +17,17 @@ describe("AutoRoutingSettings", () => {
     const setRoutingKey = vi.fn().mockResolvedValue({ enabled: true, keyHint: "…abcd", projectCheck: "switch" });
     vi.stubGlobal("argmax", { settings: { setRoutingKey } });
     const onRoutingChange = vi.fn();
-    render(<AutoRoutingSettings routing={{ enabled: false, projectCheck: "switch" }} onRoutingChange={onRoutingChange} />);
+    render(
+      <AutoRoutingSettings routing={{ enabled: false, projectCheck: "switch" }} onRoutingChange={onRoutingChange} />
+    );
 
     expect(screen.getByLabelText("Jev API key")).toHaveAttribute("type", "password");
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     enterKey("  jev_live_abcd  ");
 
-    await waitFor(() => expect(onRoutingChange).toHaveBeenCalledWith({ enabled: true, keyHint: "…abcd", projectCheck: "switch" }));
+    await waitFor(() =>
+      expect(onRoutingChange).toHaveBeenCalledWith({ enabled: true, keyHint: "…abcd", projectCheck: "switch" })
+    );
     expect(setRoutingKey).toHaveBeenCalledWith({ apiKey: "jev_live_abcd" });
   });
 
@@ -35,7 +39,9 @@ describe("AutoRoutingSettings", () => {
     });
     vi.stubGlobal("argmax", { settings: { setRoutingKey } });
     const onRoutingChange = vi.fn();
-    render(<AutoRoutingSettings routing={{ enabled: false, projectCheck: "switch" }} onRoutingChange={onRoutingChange} />);
+    render(
+      <AutoRoutingSettings routing={{ enabled: false, projectCheck: "switch" }} onRoutingChange={onRoutingChange} />
+    );
 
     enterKey("jev_bad");
 
@@ -48,7 +54,10 @@ describe("AutoRoutingSettings", () => {
     vi.stubGlobal("argmax", { settings: { clearRoutingKey } });
     const onRoutingChange = vi.fn();
     render(
-      <AutoRoutingSettings routing={{ enabled: true, keyHint: "…abcd", projectCheck: "switch" }} onRoutingChange={onRoutingChange} />
+      <AutoRoutingSettings
+        routing={{ enabled: true, keyHint: "…abcd", projectCheck: "switch" }}
+        onRoutingChange={onRoutingChange}
+      />
     );
 
     expect(screen.getByText("On · key …abcd")).toBeInTheDocument();

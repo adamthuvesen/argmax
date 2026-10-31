@@ -23,9 +23,7 @@ afterEach(() => {
 
 describe("<WorkingNest />", () => {
   it("derives a stable quarter-cycle phase from the entity key", () => {
-    const { container, rerender } = render(
-      <WorkingNest active size={11} phaseKey="agent-charon" />
-    );
+    const { container, rerender } = render(<WorkingNest active size={11} phaseKey="agent-charon" />);
     const expectedPhase = String(stableHash32("agent-charon") % 4);
     const nest = container.querySelector(".working-nest");
 
@@ -61,9 +59,7 @@ describe("<WorkingNest />", () => {
       configurable: true,
       value: () => []
     });
-    const { container, rerender } = render(
-      <WorkingNest active phaseKey="session-alpha" />
-    );
+    const { container, rerender } = render(<WorkingNest active phaseKey="session-alpha" />);
 
     rerender(<WorkingNest active={false} phaseKey="session-alpha" />);
     rerender(<WorkingNest active={false} size={12} phaseKey="session-alpha" />);
@@ -74,18 +70,13 @@ describe("<WorkingNest />", () => {
   // Every style has to reach the stylesheet as `[data-mark]` and bring the exact
   // number of parts its rules position — a style that renders four parts against
   // nine cell positions draws a broken grid rather than failing loudly.
-  it.each(ACTIVITY_MARK_OPTIONS.map((option) => option.id))(
-    "renders the parts %s styles",
-    (markId) => {
-      const { container } = render(<WorkingNest active markId={markId} />);
-      const nest = container.querySelector(".working-nest");
+  it.each(ACTIVITY_MARK_OPTIONS.map((option) => option.id))("renders the parts %s styles", (markId) => {
+    const { container } = render(<WorkingNest active markId={markId} />);
+    const nest = container.querySelector(".working-nest");
 
-      expect(nest).toHaveAttribute("data-mark", markId);
-      expect(container.querySelectorAll(".working-nest-part")).toHaveLength(
-        ACTIVITY_MARK_PART_COUNT[markId]
-      );
-    }
-  );
+    expect(nest).toHaveAttribute("data-mark", markId);
+    expect(container.querySelectorAll(".working-nest-part")).toHaveLength(ACTIVITY_MARK_PART_COUNT[markId]);
+  });
 
   it("carries the orbit trail inside the single rotating part", () => {
     const { container } = render(<WorkingNest active markId="orbit" />);

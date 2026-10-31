@@ -25,9 +25,7 @@ import { TerminalIcon } from "./ReviewModeIcons.js";
  * platform. Users primarily care that tabs are distinguishable, not strictly
  * accurate.
  */
-const SHELL_LABEL = (typeof navigator !== "undefined" ? navigator.platform : "")
-  .toLowerCase()
-  .includes("win")
+const SHELL_LABEL = (typeof navigator !== "undefined" ? navigator.platform : "").toLowerCase().includes("win")
   ? "powershell"
   : "zsh";
 
@@ -185,7 +183,9 @@ export function TerminalTabsPanel({
     return (
       <div className="review-terminal">
         <p className="review-empty">
-          <span className="review-empty-mark" aria-hidden="true">∅</span>
+          <span className="review-empty-mark" aria-hidden="true">
+            ∅
+          </span>
           <span>No terminal open.</span>
           <button type="button" className="review-empty-action" onClick={addTab}>
             New terminal
@@ -197,55 +197,57 @@ export function TerminalTabsPanel({
 
   return (
     <div className="review-terminal">
-      {!controlledTabId ? <div className="file-tabs-shell">
-        <div className="file-tabs" role="tablist" aria-label="Terminal tabs" aria-orientation="horizontal">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTabId;
-            return (
-              <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.id}>
-                <button
-                  ref={setTabButtonRef(tab.id)}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls={`terminal-tabpanel-${tab.id}`}
-                  id={`terminal-tab-${tab.id}`}
-                  tabIndex={isActive ? 0 : -1}
-                  title={tab.label}
-                  onClick={() => activateTab(tab.id)}
-                  onKeyDown={handleTabKeyDown(tab.id)}
-                >
-                  <span className="file-tab-icon" aria-hidden="true">
-                    <TerminalIcon size={13} />
-                  </span>
-                  <span className="file-tab-name">{tab.label}</span>
-                </button>
-                <button
-                  type="button"
-                  className="file-tab-close"
-                  aria-label={`Close ${tab.label}`}
-                  title={`Close ${tab.label}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                >
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
+      {!controlledTabId ? (
+        <div className="file-tabs-shell">
+          <div className="file-tabs" role="tablist" aria-label="Terminal tabs" aria-orientation="horizontal">
+            {tabs.map((tab) => {
+              const isActive = tab.id === activeTabId;
+              return (
+                <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.id}>
+                  <button
+                    ref={setTabButtonRef(tab.id)}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`terminal-tabpanel-${tab.id}`}
+                    id={`terminal-tab-${tab.id}`}
+                    tabIndex={isActive ? 0 : -1}
+                    title={tab.label}
+                    onClick={() => activateTab(tab.id)}
+                    onKeyDown={handleTabKeyDown(tab.id)}
+                  >
+                    <span className="file-tab-icon" aria-hidden="true">
+                      <TerminalIcon size={13} />
+                    </span>
+                    <span className="file-tab-name">{tab.label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="file-tab-close"
+                    aria-label={`Close ${tab.label}`}
+                    title={`Close ${tab.label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      closeTab(tab.id);
+                    }}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="file-tab-add"
+            aria-label="New terminal"
+            title="New terminal"
+            onClick={addTab}
+          >
+            <Plus size={13} aria-hidden="true" />
+          </button>
         </div>
-        <button
-          type="button"
-          className="file-tab-add"
-          aria-label="New terminal"
-          title="New terminal"
-          onClick={addTab}
-        >
-          <Plus size={13} aria-hidden="true" />
-        </button>
-      </div> : null}
+      ) : null}
 
       <div className="terminal-tab-bodies">
         {(controlledTabId ? tabs.filter((tab) => tab.id === controlledTabId) : tabs).map((tab) => {

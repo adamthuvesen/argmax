@@ -231,12 +231,22 @@ describe("TurnBlock", () => {
     const disclosure: TurnBodyChild = {
       kind: "tool",
       id: "disclosure",
-      node: <details><summary>Inspect tool output</summary><p>Tool output</p></details>
+      node: (
+        <details>
+          <summary>Inspect tool output</summary>
+          <p>Tool output</p>
+        </details>
+      )
     };
     const plan: TurnBodyChild = {
       kind: "assistant",
       id: "plan",
-      node: <details><summary>Plan</summary><p>Review the changes</p></details>
+      node: (
+        <details>
+          <summary>Plan</summary>
+          <p>Review the changes</p>
+        </details>
+      )
     };
     const props = { toolItems: [{ kind: "tool" as const, tool: tool() }], assistantTimestamps: [] };
     const { rerender } = render(<TurnBlock {...props} body={body(activity, disclosure)} />);
@@ -329,10 +339,7 @@ describe("TurnBlock", () => {
       <TurnBlock
         toolItems={items}
         assistantTimestamps={[Date.parse("2026-05-12T15:00:03.000Z")]}
-        body={body(
-          toolChild("tool-before", "search call"),
-          assistantChild("assistant-after", "final answer")
-        )}
+        body={body(toolChild("tool-before", "search call"), assistantChild("assistant-after", "final answer"))}
         toolsExpanded
       />
     );

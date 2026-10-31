@@ -101,11 +101,7 @@ export function routeSwitchMotionMs(routeSwitch: RouteSwitch | null | undefined)
 
 /** How far into a switch's motion a component seeing it now is, or null when
  *  a motion of `durationMs` would already be over. */
-export function routeSwitchElapsed(
-  routeSwitch: RouteSwitch,
-  durationMs: number,
-  now = Date.now()
-): number | null {
+export function routeSwitchElapsed(routeSwitch: RouteSwitch, durationMs: number, now = Date.now()): number | null {
   const elapsed = Math.max(0, now - routeSwitch.at);
   return elapsed < durationMs ? elapsed : null;
 }

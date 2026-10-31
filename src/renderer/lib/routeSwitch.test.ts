@@ -26,8 +26,18 @@ describe("routeSwitchDirection", () => {
   });
 
   it("falls back to effort between Cursor's models, which bill at no per-token price", () => {
-    const composer: RoutedModel = { provider: "cursor", modelId: "composer-2.5", modelLabel: "Composer 2.5 (Cursor)", reasoningEffort: null };
-    const cursorOpus: RoutedModel = { provider: "cursor", modelId: "claude-opus-5-5-medium", modelLabel: "Claude Opus 5.5 (Cursor)", reasoningEffort: "medium" };
+    const composer: RoutedModel = {
+      provider: "cursor",
+      modelId: "composer-2.5",
+      modelLabel: "Composer 2.5 (Cursor)",
+      reasoningEffort: null
+    };
+    const cursorOpus: RoutedModel = {
+      provider: "cursor",
+      modelId: "claude-opus-5-5-medium",
+      modelLabel: "Claude Opus 5.5 (Cursor)",
+      reasoningEffort: "medium"
+    };
     expect(routeSwitchDirection(composer, cursorOpus)).toBe("up");
   });
 });

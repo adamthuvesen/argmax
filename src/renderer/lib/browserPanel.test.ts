@@ -59,9 +59,7 @@ describe("normalizeBrowserUrl", () => {
 
   it("upgrades bare hosts to https", () => {
     expect(normalizeBrowserUrl("github.com")).toBe("https://github.com");
-    expect(normalizeBrowserUrl("github.com/argmax?tab=repos")).toBe(
-      "https://github.com/argmax?tab=repos"
-    );
+    expect(normalizeBrowserUrl("github.com/argmax?tab=repos")).toBe("https://github.com/argmax?tab=repos");
     expect(normalizeBrowserUrl("localhost:5173")).toBe("https://localhost:5173");
   });
 
@@ -181,10 +179,7 @@ describe("tab persistence", () => {
     vi.resetModules();
     const fresh = await import("./browserPanel.js");
 
-    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.id)).toEqual([
-      "tab-1",
-      "tab-2"
-    ]);
+    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.id)).toEqual(["tab-1", "tab-2"]);
     expect(fresh.getActiveBrowserTabId(fresh.BROWSER_PAGE_OWNER_ID)).toBe("tab-2");
     expect(fresh.getBrowserTabs("session-a")).toEqual([]);
     // Restored tabs have no native webview until this run recreates one.
@@ -197,9 +192,12 @@ describe("tab persistence", () => {
   });
 
   it("ignores a persisted last URL when every tab was closed", async () => {
-    window.localStorage.setItem("argmax.browser.tabs", JSON.stringify({
-      scopes: { [BROWSER_PAGE_OWNER_ID]: { activeTabId: null, lastUrl: "https://claude.ai", tabs: [] } }
-    }));
+    window.localStorage.setItem(
+      "argmax.browser.tabs",
+      JSON.stringify({
+        scopes: { [BROWSER_PAGE_OWNER_ID]: { activeTabId: null, lastUrl: "https://claude.ai", tabs: [] } }
+      })
+    );
     vi.resetModules();
     const fresh = await import("./browserPanel.js");
     expect(fresh.getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([]);
@@ -232,9 +230,7 @@ describe("tab persistence", () => {
     vi.resetModules();
     const fresh = await import("./browserPanel.js");
 
-    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.url)).toEqual([
-      "https://github.com"
-    ]);
+    expect(fresh.getBrowserTabs(fresh.BROWSER_PAGE_OWNER_ID).map((tab) => tab.url)).toEqual(["https://github.com"]);
     expect(fresh.getBrowserTabs("session-a").map((tab) => tab.id)).toEqual(["tab-2", "tab-3"]);
     expect(fresh.getActiveBrowserTabId("session-a")).toBe("tab-3");
     expect(fresh.createBrowserTab("session-a", "https://new.example").id).toBe("tab-4");
@@ -344,10 +340,7 @@ describe("mirroring the app's tab registry", () => {
     resetBrowserSurfaceForTests();
   });
 
-  const registryTab = (
-    tabId: string,
-    overrides: Partial<BrowserTabInfo> = {}
-  ): BrowserTabInfo => ({
+  const registryTab = (tabId: string, overrides: Partial<BrowserTabInfo> = {}): BrowserTabInfo => ({
     tabId,
     ownerSessionId: null,
     group: null,
@@ -387,10 +380,7 @@ describe("mirroring the app's tab registry", () => {
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).map((tab) => tab.id)).toEqual([local.id]);
     expect(getBrowserTabs("s1").map((tab) => tab.id)).toEqual(["agent-1"]);
 
-    applyBrowserTabs([
-      registryTab("agent-1", { ownerSessionId: "s1" }),
-      registryTab(local.id)
-    ]);
+    applyBrowserTabs([registryTab("agent-1", { ownerSessionId: "s1" }), registryTab(local.id)]);
     applyBrowserTabs([registryTab("agent-1", { ownerSessionId: "s1" })]);
     expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID)).toEqual([]);
     expect(getBrowserTabs("s1").map((tab) => tab.id)).toEqual(["agent-1"]);

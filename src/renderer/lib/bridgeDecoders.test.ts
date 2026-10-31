@@ -22,12 +22,20 @@ describe("bridge contract boundaries", () => {
   it("rejects invalid stored enum values instead of claiming narrowed types", () => {
     const row = { provider: "unsupported" } as Routine;
     expect(() => routine(row)).toThrow("routine.provider");
-    expect(() => rawOutput({ id: "r", sessionId: "s", content: "x", stream: "binary", createdAt: "now", rowCursor: null })).toThrow("output.stream");
+    expect(() =>
+      rawOutput({ id: "r", sessionId: "s", content: "x", stream: "binary", createdAt: "now", rowCursor: null })
+    ).toThrow("output.stream");
   });
   it("keeps a queued follow-up's provider and reads a missing one as the chat's own", () => {
     const row: PendingMessage = {
-      id: "m1", sessionId: "s1", content: "next", agentMode: "auto", fastMode: false,
-      attachments: [], agentReferences: [], queuedAt: "now"
+      id: "m1",
+      sessionId: "s1",
+      content: "next",
+      agentMode: "auto",
+      fastMode: false,
+      attachments: [],
+      agentReferences: [],
+      queuedAt: "now"
     };
     expect(pendingMessage({ ...row, provider: "codex" }).provider).toBe("codex");
     expect(pendingMessage({ ...row, provider: null }).provider).toBeUndefined();

@@ -7,7 +7,12 @@ describe("splitMarkdownBlocks", () => {
   it("tiles the source into top-level blocks, blank lines kept with the block before", () => {
     const source = "# Title\n\nFirst paragraph.\n\n```ts\nconst a = 1;\n```\n\n- one\n- two";
     const split = splitMarkdownBlocks(source);
-    expect(texts(split)).toEqual(["# Title\n\n", "First paragraph.\n\n", "```ts\nconst a = 1;\n```\n\n", "- one\n- two"]);
+    expect(texts(split)).toEqual([
+      "# Title\n\n",
+      "First paragraph.\n\n",
+      "```ts\nconst a = 1;\n```\n\n",
+      "- one\n- two"
+    ]);
     expect(split.blocks.map((block) => block.start)).toEqual([0, 9, 27, 51]);
   });
 

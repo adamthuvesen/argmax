@@ -44,12 +44,7 @@ export function DebugTraceTab({
   }, [label, labels]);
 
   return (
-    <div
-      className="debug-tab"
-      role="tabpanel"
-      id="debug-panel-trace"
-      aria-labelledby="debug-tab-trace"
-    >
+    <div className="debug-tab" role="tabpanel" id="debug-panel-trace" aria-labelledby="debug-tab-trace">
       <div className="debug-filters">
         <div className="debug-segmented" role="group" aria-label="Trace source">
           {(
@@ -59,12 +54,7 @@ export function DebugTraceTab({
               ["raw", "Raw"]
             ] as const
           ).map(([value, text]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={source === value}
-              onClick={() => setSource(value)}
-            >
+            <button key={value} type="button" aria-pressed={source === value} onClick={() => setSource(value)}>
               {text}
             </button>
           ))}
@@ -92,9 +82,7 @@ export function DebugTraceTab({
         />
       </div>
       <p className="debug-count" role="status">
-        {matched.length === rows.length
-          ? `${rows.length} rows`
-          : `${matched.length} of ${rows.length} rows`}
+        {matched.length === rows.length ? `${rows.length} rows` : `${matched.length} of ${rows.length} rows`}
         {matched.length > visible.length ? ` · showing last ${visible.length}` : ""}
       </p>
       <div className="debug-rows">

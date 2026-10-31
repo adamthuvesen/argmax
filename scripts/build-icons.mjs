@@ -347,7 +347,7 @@ function parseIcns(icns) {
   }
 
   const chunks = [];
-  for (let offset = 8; offset < icns.length; ) {
+  for (let offset = 8; offset < icns.length;) {
     const type = icns.subarray(offset, offset + 4).toString("ascii");
     const length = icns.readUInt32BE(offset + 4);
     if (length < 8 || offset + length > icns.length) {
@@ -403,14 +403,7 @@ function buildIcns(sourcePng, scratch) {
   const iconset = path.join(scratch, "icon.iconset");
   mkdirSync(iconset);
   for (const { points, scale, file } of ICONSET_RENDITIONS) {
-    run("sips", [
-      "-z",
-      String(points * scale),
-      String(points * scale),
-      sourcePng,
-      "--out",
-      path.join(iconset, file)
-    ]);
+    run("sips", ["-z", String(points * scale), String(points * scale), sourcePng, "--out", path.join(iconset, file)]);
   }
   const icnsPath = path.join(scratch, "icon.icns");
   run("iconutil", ["-c", "icns", iconset, "-o", icnsPath]);

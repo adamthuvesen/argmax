@@ -30,7 +30,8 @@ export function usePrMilestone(workspace: WorkspaceSummary | null): {
     const created = `${number}:created`;
     const merged = `${number}:merged`;
     const newCreation = Date.parse(createdAt ?? "") > watch.current.startedAt && !watch.current.seen.has(created);
-    const newMerge = state === "MERGED" && Date.parse(mergedAt ?? "") > watch.current.startedAt && !watch.current.seen.has(merged);
+    const newMerge =
+      state === "MERGED" && Date.parse(mergedAt ?? "") > watch.current.startedAt && !watch.current.seen.has(merged);
     if (Number.isFinite(Date.parse(createdAt ?? ""))) watch.current.seen.add(created);
     if (state === "MERGED" && Number.isFinite(Date.parse(mergedAt ?? ""))) watch.current.seen.add(merged);
     if (enabled && (newMerge || (state === "OPEN" && newCreation))) {

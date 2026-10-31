@@ -38,7 +38,12 @@ async function waitForUrl(url, child) {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Vite exited with code ${child.exitCode}`);
-    if (await fetch(url).then((response) => response.ok).catch(() => false)) return;
+    if (
+      await fetch(url)
+        .then((response) => response.ok)
+        .catch(() => false)
+    )
+      return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error("timed out waiting for the chat-scroll fixture");
@@ -53,8 +58,12 @@ function run(command, args, options = {}) {
     });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
-    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
     child.once("error", reject);
     child.once("exit", (code, signal) => resolve({ code, signal, stdout, stderr }));
   });
@@ -947,7 +956,9 @@ async function main() {
       stdio: ["ignore", "ignore", "pipe"]
     });
     let viteErrors = "";
-    vite.stderr.on("data", (chunk) => { viteErrors += String(chunk); });
+    vite.stderr.on("data", (chunk) => {
+      viteErrors += String(chunk);
+    });
     await waitForUrl(fixtureUrl, vite);
 
     if (process.argv.includes("--serve")) {
@@ -960,37 +971,49 @@ async function main() {
     }
 
     const expression = getBrowserCheckSource();
-  const shot = await run(process.execPath, [
-    "scripts/ui-screenshot.mjs",
-    "--url", fixtureUrl,
-    "--out", screenshotPath,
-    "--width", "900",
-    "--height", "650",
-    "--settle", "0",
-    "--eval", expression
-  ]);
-  if (shot.code !== 0) {
-    fail(`browser check could not run:\n${shot.stderr || shot.stdout || viteErrors}`);
-  } else {
-    const payloadLine = shot.stdout.trim().split("\n").filter(Boolean).at(-1);
-    const payload = JSON.parse(payloadLine);
-    const results = payload.eval ?? [];
-    const failures = results.filter((result) => !result.ok);
-    console.log(JSON.stringify({
-      ok: failures.length === 0,
-      checks: results.length,
-      failures: failures.map((failure) => ({
-        name: failure.name,
-        movement: failure.movement,
-        scrollTopBefore: failure.before?.scrollTop ?? null,
-        scrollTopAfter: failure.after?.scrollTop ?? null,
-        scrollHeightBefore: failure.before?.scrollHeight ?? null,
-        scrollHeightAfter: failure.after?.scrollHeight ?? null
-      })),
-      results
-    }, null, 2));
-    if (failures.length > 0) process.exitCode = 1;
-  }
+    const shot = await run(process.execPath, [
+      "scripts/ui-screenshot.mjs",
+      "--url",
+      fixtureUrl,
+      "--out",
+      screenshotPath,
+      "--width",
+      "900",
+      "--height",
+      "650",
+      "--settle",
+      "0",
+      "--eval",
+      expression
+    ]);
+    if (shot.code !== 0) {
+      fail(`browser check could not run:\n${shot.stderr || shot.stdout || viteErrors}`);
+    } else {
+      const payloadLine = shot.stdout.trim().split("\n").filter(Boolean).at(-1);
+      const payload = JSON.parse(payloadLine);
+      const results = payload.eval ?? [];
+      const failures = results.filter((result) => !result.ok);
+      console.log(
+        JSON.stringify(
+          {
+            ok: failures.length === 0,
+            checks: results.length,
+            failures: failures.map((failure) => ({
+              name: failure.name,
+              movement: failure.movement,
+              scrollTopBefore: failure.before?.scrollTop ?? null,
+              scrollTopAfter: failure.after?.scrollTop ?? null,
+              scrollHeightBefore: failure.before?.scrollHeight ?? null,
+              scrollHeightAfter: failure.after?.scrollHeight ?? null
+            })),
+            results
+          },
+          null,
+          2
+        )
+      );
+      if (failures.length > 0) process.exitCode = 1;
+    }
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   } finally {

@@ -24,7 +24,10 @@ function runNode(script, ...args) {
 }
 
 function outputLines(result) {
-  return `${result.stdout ?? ""}${result.stderr ?? ""}`.split("\n").map((line) => line.trimEnd()).filter(Boolean);
+  return `${result.stdout ?? ""}${result.stderr ?? ""}`
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter(Boolean);
 }
 
 /** Checks fast enough to run after every edit. Returns lines an agent can act on. */
@@ -45,13 +48,26 @@ export function checkFile(path, { fast = false } = {}) {
   }
   if (path.endsWith(".swift")) {
     const fonts = runNode("scripts/check-ios-fonts.mjs");
-    if (fonts.status !== 0) problems.push(...outputLines(fonts).filter((line) => line.includes(path) || line.includes("Fix")));
+    if (fonts.status !== 0)
+      problems.push(...outputLines(fonts).filter((line) => line.includes(path) || line.includes("Fix")));
   }
   if (!fast && /\.(ts|tsx)$/.test(path) && path.startsWith("src/")) {
-    const related = run("npx", ["--no-install", "vitest", "related", "--run", "--passWithNoTests", "--reporter=dot", path]);
+    const related = run("npx", [
+      "--no-install",
+      "vitest",
+      "related",
+      "--run",
+      "--passWithNoTests",
+      "--reporter=dot",
+      path
+    ]);
     if (related.status !== 0) {
       problems.push(`${path}: related tests fail. Run: npx vitest related --run ${path}`);
-      problems.push(...outputLines(related).filter((line) => /FAIL|AssertionError|Error:/.test(line)).slice(0, 12));
+      problems.push(
+        ...outputLines(related)
+          .filter((line) => /FAIL|AssertionError|Error:/.test(line))
+          .slice(0, 12)
+      );
     }
   }
   return problems;
@@ -64,7 +80,7 @@ function commandFailure(result, command) {
 }
 
 function checkTypescript(files) {
-  const result = runNode("node_modules/typescript-7/bin/tsc", "--noEmit");
+  const result = runNode("node_modules/typescript/bin/tsc", "--noEmit");
   if (result.status === 0) return [];
   const failure = commandFailure(result, "TypeScript");
   if (failure.length) return failure;
@@ -75,22 +91,30 @@ function checkTypescript(files) {
   return [...diagnostics.filter((line) => files.some((file) => line.startsWith(`${file}(`))), ...globalErrors];
 }
 
-function checkEslint(files) {
+function checkLint(files) {
   const lintable = files.filter((file) => /\.(ts|tsx)$/.test(file) && file.startsWith("src/"));
   if (!lintable.length) return [];
-  const result = run("npx", ["--no-install", "eslint", "--no-warn-ignored", "--pass-on-unpruned-suppressions", "--format", "json", ...lintable]);
+  const result = runNode("scripts/lint.mjs", ...lintable);
   if (result.status === 0) return [];
-  if (result.status !== 1) return [`eslint could not run:`, ...outputLines(result).slice(0, 8)];
-  return JSON.parse(result.stdout).flatMap(({ filePath, messages }) =>
-    messages.map(({ line, ruleId, message }) => `${relative(ROOT, filePath)}:${line}: ${message} (${ruleId})`)
-  );
+  const failure = commandFailure(result, "oxlint");
+  return failure.length ? failure : outputLines(result).filter((line) => !/^error: \d+ lint problems?\.$/.test(line));
 }
 
 function checkDependencies(files) {
   const sources = files.filter((file) => /^src\/.*\.(ts|tsx)$/.test(file) && existsSync(resolve(ROOT, file)));
   if (!sources.length) return [];
-  const result = run("npx", ["--no-install", "depcruise", "--ignore-known", "--output-type", "err-long", ...sources]);
-  return result.status === 0 ? [] : outputLines(result).filter((line) => !/^(?:x \d+ dependency violations|‼)/.test(line));
+  const result = run(process.execPath, [
+    "--import",
+    "./scripts/typescript-5-hook.mjs",
+    "node_modules/dependency-cruiser/bin/dependency-cruiser.mjs",
+    "--ignore-known",
+    "--output-type",
+    "err-long",
+    ...sources
+  ]);
+  return result.status === 0
+    ? []
+    : outputLines(result).filter((line) => !/^(?:x \d+ dependency violations|‼)/.test(line));
 }
 
 /** A file nobody has edited cannot hold a peer's unfinished work, so its errors are this change's. */
@@ -101,17 +125,27 @@ function isOwnedError(line, files) {
 
 function checkRustCompiles(files) {
   if (!files.some((file) => file.endsWith(".rs"))) return [];
-  const result = run("cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml", "--workspace", "--message-format", "short"]);
+  const result = run("cargo", [
+    "check",
+    "--manifest-path",
+    "src-tauri/Cargo.toml",
+    "--workspace",
+    "--message-format",
+    "short"
+  ]);
   if (result.status === 0) return [];
   const failure = commandFailure(result, "cargo check");
   if (failure.length) return failure;
   const lines = outputLines(result);
   const diagnostics = lines.filter((line) => /^.+\.rs:\d+:\d+: error/.test(line));
-  const globalErrors = lines.filter((line) =>
-    !diagnostics.includes(line) && /(?:^|: )error(?:\[|:)/.test(line) &&
-    !(diagnostics.length && /^error: could not compile .+ due to \d+ previous errors?/.test(line))
+  const globalErrors = lines.filter(
+    (line) =>
+      !diagnostics.includes(line) &&
+      /(?:^|: )error(?:\[|:)/.test(line) &&
+      !(diagnostics.length && /^error: could not compile .+ due to \d+ previous errors?/.test(line))
   );
-  if (!diagnostics.length && !globalErrors.length) return ["cargo check failed. Run: cargo check --manifest-path src-tauri/Cargo.toml --workspace", ...lines];
+  if (!diagnostics.length && !globalErrors.length)
+    return ["cargo check failed. Run: cargo check --manifest-path src-tauri/Cargo.toml --workspace", ...lines];
   return [...diagnostics.filter((line) => isOwnedError(line, files)), ...globalErrors];
 }
 
@@ -122,7 +156,7 @@ export function checkFiles(files) {
   return [
     ...present.flatMap((file) => checkFile(file)),
     ...(typescript.length ? checkTypescript(typescript) : []),
-    ...checkEslint(present),
+    ...checkLint(present),
     ...checkDependencies(present),
     ...checkRustCompiles(present)
   ];

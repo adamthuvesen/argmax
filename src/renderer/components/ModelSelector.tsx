@@ -24,10 +24,7 @@ import { EffortPixelField } from "./EffortPixelField.js";
 import { PickerFilterRow } from "./PickerFilterRow.js";
 import { PickerLead } from "./PickerLead.js";
 import { RollingText } from "./RollingText.js";
-import {
-  LAUNCH_MODEL_RECENCY_KEY,
-  readLaunchModelRecency
-} from "../lib/launchModelPreference.js";
+import { LAUNCH_MODEL_RECENCY_KEY, readLaunchModelRecency } from "../lib/launchModelPreference.js";
 import { touchIdRecency } from "../lib/recencyList.js";
 import { routeSwitchMotionMs, routeSwitchPace, type RouteSwitch } from "../lib/routeSwitch.js";
 import {
@@ -337,9 +334,7 @@ export function LaunchModelSelector({
       // An Auto row shares its fallback model with the catalog's Opus row,
       // so the tier has to match too.
       isSelected={(model) =>
-        model.autoTier === value.autoTier &&
-        model.provider === value.provider &&
-        model.modelId === value.modelId
+        model.autoTier === value.autoTier && model.provider === value.provider && model.modelId === value.modelId
       }
       onChange={onChange}
       onFastModeEnabledChange={onFastModeEnabledChange}
@@ -441,9 +436,7 @@ function EffortSlider({
   // effort trails the model's roll unless the model stayed put.
   const fromRoute = routeSwitch?.from;
   const fromEffort = fromRoute?.reasoningEffort ?? null;
-  const effortDelayMs = pace
-    ? pace.delayMs + (fromRoute?.modelId === routeSwitch?.to.modelId ? 0 : pace.staggerMs)
-    : 0;
+  const effortDelayMs = pace ? pace.delayMs + (fromRoute?.modelId === routeSwitch?.to.modelId ? 0 : pace.staggerMs) : 0;
   const effortRoll =
     routeSwitch && pace && switchElapsed !== null && (fromRoute === null || fromEffort)
       ? {
@@ -488,12 +481,7 @@ function EffortSlider({
     setDragging(false);
     if (draft !== value) onChange(draft);
   };
-  useDismissOnOutsideOrEscape(
-    flyout.anchorRef,
-    open,
-    commitAndClose,
-    portaled ? flyout.popoverRef : undefined
-  );
+  useDismissOnOutsideOrEscape(flyout.anchorRef, open, commitAndClose, portaled ? flyout.popoverRef : undefined);
 
   useEffect(() => {
     if (!dragging) setPos(index);
@@ -795,12 +783,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
     strategy: portaled ? "fixed" : "absolute"
   });
 
-  useDismissOnOutsideOrEscape(
-    flyout.anchorRef,
-    open,
-    () => setOpen(false),
-    portaled ? flyout.popoverRef : undefined
-  );
+  useDismissOnOutsideOrEscape(flyout.anchorRef, open, () => setOpen(false), portaled ? flyout.popoverRef : undefined);
   const selectedSupportsFastMode = supportsFastModeForValue(value);
   // Fast mode is a submenu (Off / On) at the foot of the list. It is not called
   // "Speed" there: that is the name of a Router tier higher up the same list.
@@ -888,11 +871,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           return (
             <Fragment key={option.key}>
               {option.group && option.group !== previousGroup ? (
-                <li
-                  className="project-picker-group-label"
-                  role="presentation"
-                  data-provider={option.groupProvider}
-                >
+                <li className="project-picker-group-label" role="presentation" data-provider={option.groupProvider}>
                   {option.group}
                 </li>
               ) : null}
@@ -902,9 +881,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                 aria-disabled={option.disabled || undefined}
                 // Name-from-content on the option ignores the button's
                 // aria-label, so the full label goes on both.
-                aria-label={
-                  option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
-                }
+                aria-label={option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined}
                 className="model-picker-row"
                 data-disabled={option.disabled || undefined}
                 data-active={index === modelFilter.activeIndex ? "true" : undefined}
@@ -913,9 +890,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
                   type="button"
                   className="project-picker-item model-picker-item"
                   aria-pressed={selected}
-                  aria-label={
-                    option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined
-                  }
+                  aria-label={option.fullLabel && option.fullLabel !== option.label ? option.fullLabel : undefined}
                   disabled={option.disabled}
                   title={option.disabled ? `${option.label} — provider CLI not installed` : option.description}
                   onClick={() => selectModel(option)}
@@ -1000,9 +975,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   );
 
   return (
-    <div
-      className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}
-    >
+    <div className={`model-picker-cluster${withEffortSlider ? " model-picker-cluster--chip" : ""}`}>
       {/* A stronger pick flushes the pill and blooms one halo out of it; a
           launch only flushes. Keyed on the switch so each one replays. */}
       {playing?.direction === "up" && withEffortSlider ? (
@@ -1030,41 +1003,35 @@ function ChipModelPicker<T extends ProviderModelSelection>({
           ) : null}
         </Fragment>
       ) : null}
-    <div
-      className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
-      ref={flyout.setAnchor}
-    >
-      <button
-        type="button"
-        id={inputId}
-        className="composer-context-chip"
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={
-          chipTitle ?? (effectiveFastModeEnabled ? `${value.label} · Fast speed` : value.label)
-        }
-        onClick={() => setOpen((o) => !o)}
+      <div
+        className={`project-picker-anchor model-picker-anchor${anchorClassName ? ` ${anchorClassName}` : ""}`}
+        ref={flyout.setAnchor}
       >
-        {effectiveFastModeEnabled ? (
-          <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" />
-        ) : null}
-        <span className="model-picker-label">
-          <RollingText text={chipLabel ?? value.label} roll={labelRoll} />
-        </span>
-        {/* In a composer the pill around model + effort is the affordance, the
+        <button
+          type="button"
+          id={inputId}
+          className="composer-context-chip"
+          aria-label={ariaLabel}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          title={chipTitle ?? (effectiveFastModeEnabled ? `${value.label} · Fast speed` : value.label)}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {effectiveFastModeEnabled ? <Zap size={14} aria-hidden="true" className="model-picker-speed-icon" /> : null}
+          <span className="model-picker-label">
+            <RollingText text={chipLabel ?? value.label} roll={labelRoll} />
+          </span>
+          {/* In a composer the pill around model + effort is the affordance, the
             way the phone draws it — no caret on either half. Settings has no
             pill and no effort chip, so the model chip carries the caret. */}
-        {withEffortSlider ? null : (
-          <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />
-        )}
-      </button>
-      {open
-        ? portaled && typeof document !== "undefined"
-          ? createPortal(modelPickerFlyout, document.body)
-          : modelPickerFlyout
-        : null}
-    </div>
+          {withEffortSlider ? null : <ChevronDown size={11} className="composer-context-caret" aria-hidden="true" />}
+        </button>
+        {open
+          ? portaled && typeof document !== "undefined"
+            ? createPortal(modelPickerFlyout, document.body)
+            : modelPickerFlyout
+          : null}
+      </div>
       {showEffortSlider && value.reasoningEffort ? (
         <EffortSlider
           value={value.reasoningEffort}
@@ -1096,9 +1063,7 @@ export function CombinedModelSelector({
   onChange: (model: ModelPickerSelection) => void;
   value: ModelPickerSelection;
 }): JSX.Element {
-  const matched = allModelOptions.find(
-    (model) => model.provider === value.provider && model.modelId === value.modelId
-  );
+  const matched = allModelOptions.find((model) => model.provider === value.provider && model.modelId === value.modelId);
   const selectedReasoningEffort = value.reasoningEffort ?? matched?.reasoningEffort;
   const fallback = factoryLaunchModel();
   const selectedValue: ModelPickerSelection = value.autoTier

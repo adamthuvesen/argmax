@@ -26,8 +26,7 @@ const NOISY_CODEX_TRACING_MODULES = [
   "codex_api::endpoint::responses_websocket"
 ] as const;
 const MISSING_CUSTOM_TOOL_OUTPUT = "Custom tool call output is missing for call id:";
-const UNSUPPORTED_MCP_ELICITATION =
-  "Argmax does not support Codex app-server request mcpServer/elicitation/request";
+const UNSUPPORTED_MCP_ELICITATION = "Argmax does not support Codex app-server request mcpServer/elicitation/request";
 const NOISY_PLAIN_PROVIDER_PREFIXES = [
   "Skill descriptions were shortened to fit",
   "failed to parse plugin hooks config",
@@ -80,10 +79,10 @@ export function isNoisyPlainProviderLine(message: string): boolean {
 }
 
 export function isNoisyProviderTracing(target: string | null | undefined, message: string): boolean {
-  if (target && NOISY_CODEX_TRACING_MODULES.some(
-    (module) => target === module || target.startsWith(`${module}::`)
-  )) return true;
-  const appServerEventHandling = target === "codex_app_server::bespoke_event_handling" ||
+  if (target && NOISY_CODEX_TRACING_MODULES.some((module) => target === module || target.startsWith(`${module}::`)))
+    return true;
+  const appServerEventHandling =
+    target === "codex_app_server::bespoke_event_handling" ||
     Boolean(target?.startsWith("codex_app_server::bespoke_event_handling::"));
   if (appServerEventHandling && message.includes(UNSUPPORTED_MCP_ELICITATION)) return true;
   const utilCrate = target === "codex_core::util" || Boolean(target?.startsWith("codex_core::util::"));

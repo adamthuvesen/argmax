@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  THEME_STORAGE_KEY,
-  readStoredTheme,
-  resolveTheme
-} from "./theme.js";
+import { THEME_STORAGE_KEY, readStoredTheme, resolveTheme } from "./theme.js";
 
 afterEach(() => {
   window.localStorage.removeItem(THEME_STORAGE_KEY);

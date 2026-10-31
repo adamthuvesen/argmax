@@ -79,26 +79,23 @@ export function autoSessionChipLabel(session: SessionSummary): string | null {
  *  an editable reasoning effort (fast models don't). */
 type ModelPickerOption = ModelPickerSelection & { supportsReasoningEffort: boolean };
 
-export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[])
-  .flatMap((provider) =>
-    PROVIDER_MODELS[provider].map((model) => {
-      // Resolve the seed onto what the model actually offers: the OpenCode
-      // variant lists are discrete (Qwen3.8 Flash is high/max only), so an unresolved
-      // "medium" would show Medium in the picker while the adapter launched a
-      // different variant. The row seed is catalog-level, so it uses the
-      // built-in default effort rather than the user's preference.
-      const reasoningEffort = model.supportsReasoningEffort
-        ? effortForModel(provider, model.modelId)
-        : undefined;
-      return {
-        provider,
-        label: model.label,
-        modelId: model.modelId,
-        supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
-        ...(reasoningEffort ? { reasoningEffort } : {})
-      };
-    })
-  );
+export const allModelOptions: ModelPickerOption[] = (Object.keys(PROVIDER_MODELS) as ProviderId[]).flatMap((provider) =>
+  PROVIDER_MODELS[provider].map((model) => {
+    // Resolve the seed onto what the model actually offers: the OpenCode
+    // variant lists are discrete (Qwen3.8 Flash is high/max only), so an unresolved
+    // "medium" would show Medium in the picker while the adapter launched a
+    // different variant. The row seed is catalog-level, so it uses the
+    // built-in default effort rather than the user's preference.
+    const reasoningEffort = model.supportsReasoningEffort ? effortForModel(provider, model.modelId) : undefined;
+    return {
+      provider,
+      label: model.label,
+      modelId: model.modelId,
+      supportsReasoningEffort: Boolean(model.supportsReasoningEffort),
+      ...(reasoningEffort ? { reasoningEffort } : {})
+    };
+  })
+);
 
 // One row per model now, so the key no longer encodes effort. The cross-provider
 // picker needs the provider in the key (model ids can repeat across providers);
@@ -157,13 +154,7 @@ export function modelDefaultForProvider(
  *  Must list every ProviderId — a provider missing here is invisible to the
  *  launcher even when it is the only one installed, and the array type won't
  *  catch the omission (see the exhaustiveness test in models.test.ts). */
-export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = [
-  "claude",
-  "codex",
-  "cursor",
-  "opencode",
-  "grok"
-];
+export const PROVIDER_LAUNCH_PRIORITY: ProviderId[] = ["claude", "codex", "cursor", "opencode", "grok"];
 
 /** Last-resort launcher pick when no provider CLI is installed: OpenCode's
  *  catalog default. */
@@ -233,11 +224,9 @@ export function modelSelectionFromSession(session: SessionSummary | null): Provi
   // the ladder: `reasoningEffortsForModel` answers per provider, so it hands
   // Haiku the full Claude ladder for a model that has no effort at all.
   const supportsEffort =
-    PROVIDER_MODELS[session.provider].find((model) => model.modelId === modelId)
-      ?.supportsReasoningEffort === true;
+    PROVIDER_MODELS[session.provider].find((model) => model.modelId === modelId)?.supportsReasoningEffort === true;
   const reasoningEffort =
-    session.reasoningEffort ??
-    (supportsEffort ? effortForModel(session.provider, modelId) : undefined);
+    session.reasoningEffort ?? (supportsEffort ? effortForModel(session.provider, modelId) : undefined);
   return {
     label,
     modelId,

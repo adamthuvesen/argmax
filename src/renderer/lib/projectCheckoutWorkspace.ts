@@ -20,10 +20,7 @@ export function findSharedCheckoutWorkspace(
     if (!workspace.sharedWorkspace) continue;
     if (workspace.state === "archived") continue;
     if (normalizeCheckoutPath(workspace.path) !== repoPath) continue;
-    if (
-      !best ||
-      (workspace.lastActivityAt ?? "") > (best.lastActivityAt ?? "")
-    ) {
+    if (!best || (workspace.lastActivityAt ?? "") > (best.lastActivityAt ?? "")) {
       best = workspace;
     }
   }

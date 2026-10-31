@@ -29,7 +29,12 @@ function stubBridge(): void {
     configurable: true,
     writable: true,
     value: {
-      browser: { onNewTab: (listener: (event: { tabId: string; url: string }) => void) => { nativeNewTabListener = listener; return () => undefined; } },
+      browser: {
+        onNewTab: (listener: (event: { tabId: string; url: string }) => void) => {
+          nativeNewTabListener = listener;
+          return () => undefined;
+        }
+      },
       review: { listChangedFiles: vi.fn().mockResolvedValue([]), loadDiff: vi.fn().mockResolvedValue(null) },
       workspace: { listFiles: vi.fn().mockResolvedValue([]) }
     }
@@ -38,8 +43,7 @@ function stubBridge(): void {
 
 function renderPanel(claimsBrowserRequests: boolean, sessionId?: string) {
   return renderHook(
-    ({ claims }: { claims: boolean }) =>
-      useReviewState(null, { claimsBrowserRequests: claims, sessionId }),
+    ({ claims }: { claims: boolean }) => useReviewState(null, { claimsBrowserRequests: claims, sessionId }),
     { initialProps: { claims: claimsBrowserRequests } }
   );
 }
@@ -145,18 +149,30 @@ describe("useReviewState — browser mode", () => {
 
   it("preserves close focus when the native registry push arrives before the close reply", async () => {
     let resolveClose: () => void = () => undefined;
-    const pendingClose = new Promise<void>((resolve) => { resolveClose = resolve; });
+    const pendingClose = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
     Object.assign(window.argmax?.browser ?? {}, { close: vi.fn().mockReturnValue(pendingClose) });
     const panel = renderPanel(true, "registry-before-close");
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/first"));
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/second"));
     const [survivor, closing] = getBrowserTabs("registry-before-close");
-    const registryTabs = [survivor, closing].map((tab) => ({ tabId: tab.id, ownerSessionId: null, url: tab.url, title: null, loading: false, group: null }));
+    const registryTabs = [survivor, closing].map((tab) => ({
+      tabId: tab.id,
+      ownerSessionId: null,
+      url: tab.url,
+      title: null,
+      loading: false,
+      group: null
+    }));
     act(() => applyBrowserTabs(registryTabs));
     act(() => panel.result.current.tabs!.close(`browser:${closing.id}`));
     act(() => applyBrowserTabs([registryTabs[0]]));
     expect(panel.result.current.tabs!.paneTabIds).toEqual([`browser:${closing.id}`]);
-    await act(async () => { resolveClose(); await pendingClose; });
+    await act(async () => {
+      resolveClose();
+      await pendingClose;
+    });
     expect(panel.result.current.tabs!.paneTabIds).toEqual([`browser:${survivor.id}`]);
     expect(getBrowserTabFocusRequest(survivor.id)).not.toBeNull();
     expect(panel.result.current.isPanelOpen).toBe(true);
@@ -168,7 +184,9 @@ describe("useReviewState — browser mode", () => {
     act(() => panel.result.current.tabs!.openBrowser("https://example.com/first"));
     act(() => panel.result.current.splitMode("changes", "bottom"));
     const before = panel.result.current.tabs!.paneTabIds;
-    act(() => { createBrowserTab("background-tabs", "https://example.com/background"); });
+    act(() => {
+      createBrowserTab("background-tabs", "https://example.com/background");
+    });
     expect(panel.result.current.tabs!.items.filter((tab) => tab.kind === "browser")).toHaveLength(2);
     expect(panel.result.current.tabs!.paneTabIds).toEqual(before);
     expect(panel.result.current.layout.activeIndex).toBe(1);
@@ -203,28 +221,48 @@ describe("useReviewState — browser mode", () => {
 
   it("waits for browser registry hydration before pruning unresolved restored tabs", async () => {
     let resolveSnapshot: (value: { tabs: BrowserTabInfo[] }) => void = () => undefined;
-    const initialSnapshot = new Promise<{ tabs: BrowserTabInfo[] }>((resolve) => { resolveSnapshot = resolve; });
+    const initialSnapshot = new Promise<{ tabs: BrowserTabInfo[] }>((resolve) => {
+      resolveSnapshot = resolve;
+    });
     Object.assign(window.argmax?.browser ?? {}, {
       onTabs: vi.fn().mockReturnValue(() => undefined),
       onAgentOpen: vi.fn().mockReturnValue(() => undefined),
       listTabs: vi.fn().mockReturnValue(initialSnapshot)
     });
-    localStorage.setItem("argmax.reviewPanel.layout.hydrating", JSON.stringify({
-      version: 2,
-      tabs: [
-        { id: "browser:hydrating", kind: "browser", browserTabId: "hydrating" },
-        { id: "browser:missing", kind: "browser", browserTabId: "missing" }
-      ],
-      paneTabIds: ["browser:hydrating", "browser:missing"], activeIndex: 1, ratio: 0.5
-    }));
+    localStorage.setItem(
+      "argmax.reviewPanel.layout.hydrating",
+      JSON.stringify({
+        version: 2,
+        tabs: [
+          { id: "browser:hydrating", kind: "browser", browserTabId: "hydrating" },
+          { id: "browser:missing", kind: "browser", browserTabId: "missing" }
+        ],
+        paneTabIds: ["browser:hydrating", "browser:missing"],
+        activeIndex: 1,
+        ratio: 0.5
+      })
+    );
     const panel = renderPanel(true, "hydrating");
     expect(panel.result.current.tabs!.items).toHaveLength(2);
     expect(panel.result.current.tabs!.paneTabIds).toEqual(["browser:hydrating", "browser:missing"]);
     await act(async () => {
-      resolveSnapshot({ tabs: [{ tabId: "hydrating", ownerSessionId: "hydrating", url: "https://example.com/restored", title: null, loading: false, group: null }] });
+      resolveSnapshot({
+        tabs: [
+          {
+            tabId: "hydrating",
+            ownerSessionId: "hydrating",
+            url: "https://example.com/restored",
+            title: null,
+            loading: false,
+            group: null
+          }
+        ]
+      });
       await initialSnapshot;
     });
-    await waitFor(() => expect(panel.result.current.tabs!.items.some((tab) => tab.id === "browser:missing")).toBe(false));
+    await waitFor(() =>
+      expect(panel.result.current.tabs!.items.some((tab) => tab.id === "browser:missing")).toBe(false)
+    );
     expect(panel.result.current.tabs!.items.some((tab) => tab.id === "browser:hydrating")).toBe(true);
     expect(panel.result.current.tabs!.paneTabIds).toEqual(["browser:hydrating"]);
   });

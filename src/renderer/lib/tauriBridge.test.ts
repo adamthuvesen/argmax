@@ -88,14 +88,17 @@ describe("tauriBridge", () => {
     const { installTauriBridge } = await import("./tauriBridge.js");
     installTauriBridge();
 
-    await expect(window.argmax!.system.confirm("Archive this worktree?"))
-      .resolves.toBe(result === "Ok");
-    expect(mocks.invoke).toHaveBeenCalledWith("plugin:dialog|message", {
-      message: "Archive this worktree?",
-      title: "Argmax",
-      kind: "warning",
-      buttons: "OkCancel"
-    }, undefined);
+    await expect(window.argmax!.system.confirm("Archive this worktree?")).resolves.toBe(result === "Ok");
+    expect(mocks.invoke).toHaveBeenCalledWith(
+      "plugin:dialog|message",
+      {
+        message: "Archive this worktree?",
+        title: "Argmax",
+        kind: "warning",
+        buttons: "OkCancel"
+      },
+      undefined
+    );
   });
 
   it("returns synchronous unsubscribe functions for async Tauri listeners", async () => {

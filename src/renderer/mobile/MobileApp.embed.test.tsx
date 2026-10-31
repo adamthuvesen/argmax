@@ -5,10 +5,7 @@ import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT_ID } from "../lib/accent.js";
 import { CHAT_FONT_SIZE_STORAGE_KEY, FONT_SIZE_STORAGE_KEY } from "../lib/fonts.js";
 import { THEME_STORAGE_KEY } from "../lib/theme.js";
 import { CHAT_VERBOSITY_KEY } from "../lib/uiPreferences.js";
-import {
-  DEFAULT_USER_BUBBLE_TINT,
-  USER_BUBBLE_TINT_STORAGE_KEY
-} from "../lib/userBubbleTint.js";
+import { DEFAULT_USER_BUBBLE_TINT, USER_BUBBLE_TINT_STORAGE_KEY } from "../lib/userBubbleTint.js";
 import {
   dashboardList,
   dashboardListSnapshot,
@@ -56,9 +53,7 @@ vi.mock("../lib/wsTransport.js", () => ({
 const postMessage = vi.fn<(message: NativeMessage) => void>();
 
 /** What the page has told native so far, of one kind. */
-function posted<T extends NativeMessage["type"]>(
-  type: T
-): Extract<NativeMessage, { type: T }>[] {
+function posted<T extends NativeMessage["type"]>(type: T): Extract<NativeMessage, { type: T }>[] {
   return postMessage.mock.calls
     .map(([message]) => message)
     .filter((message): message is Extract<NativeMessage, { type: T }> => message.type === type);
@@ -188,9 +183,11 @@ describe("MobileApp embed mode", () => {
     act(() => window.argmaxNative?.openSession("session-1"));
 
     await waitFor(() =>
-      expect(posted("composer").at(-1)?.queued?.map(({ id, text }) => ({ id, text }))).toEqual([
-        { id: "pending-1", text: "compare with Billing please" }
-      ])
+      expect(
+        posted("composer")
+          .at(-1)
+          ?.queued?.map(({ id, text }) => ({ id, text }))
+      ).toEqual([{ id: "pending-1", text: "compare with Billing please" }])
     );
   });
 
@@ -213,9 +210,7 @@ describe("MobileApp embed mode", () => {
     await renderEmbedded();
     act(() => window.argmaxNative?.openSession("session-1"));
 
-    const shell = (await screen.findByRole("region", { name: "Conversation" })).closest(
-      "[data-font-size]"
-    );
+    const shell = (await screen.findByRole("region", { name: "Conversation" })).closest("[data-font-size]");
     // One above the 7 the web phone runs a transcript at: inside the shell
     // the transcript is the whole screen. See MobileApp.
     expect(shell?.getAttribute("data-font-size")).toBe("9");
@@ -258,9 +253,7 @@ describe("MobileApp embed mode", () => {
 
     act(() => window.argmaxNative?.closeSession());
 
-    await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Conversation" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Conversation" })).not.toBeInTheDocument());
   });
 
   it("asks native for the review surface when a file reference is tapped", async () => {
@@ -299,14 +292,10 @@ describe("MobileApp embed mode", () => {
     // opens the file change card, whose "Open" action is the file itself.
     fireEvent.click(await screen.findByRole("button", { name: /^Edited a file(: |$)/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Edited panel.ts" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" })
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Open /tmp/worktrees/dashboard/src/panel.ts" }));
 
     await waitFor(() =>
-      expect(posted("openReview")).toEqual([
-        { type: "openReview", sessionId: "session-1", filePath: "src/panel.ts" }
-      ])
+      expect(posted("openReview")).toEqual([{ type: "openReview", sessionId: "session-1", filePath: "src/panel.ts" }])
     );
     // And nothing of the page's own review screen came up behind it.
     expect(screen.queryByRole("tab", { name: "Changes" })).not.toBeInTheDocument();
@@ -355,9 +344,7 @@ describe("MobileApp embed mode", () => {
     act(() => window.argmaxNative?.openSession("session-1"));
     await screen.findByRole("region", { name: "Conversation" });
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") })
-    );
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") }));
     await screen.findByRole("dialog", { name: "Delegated work" });
     await waitFor(() => expect(posted("agents")).toEqual([{ type: "agents", open: true }]));
 
@@ -369,9 +356,7 @@ describe("MobileApp embed mode", () => {
     expect(screen.getByRole("dialog", { name: "Delegated work" })).toBeInTheDocument();
     expect(posted("agents")).toEqual([{ type: "agents", open: true }]);
 
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
     // Waited for, not asserted outright: the sheet leaving the DOM and the
     // page reporting it are two renders — the overlay unmounts, then it hands
     // its dismiss back and the effect posts. The "not before it has gone"

@@ -1,4 +1,10 @@
-import type { DashboardDelta, DashboardSnapshot, PendingMessage, ProjectSummary, TimelineEvent } from "../../shared/types.js";
+import type {
+  DashboardDelta,
+  DashboardSnapshot,
+  PendingMessage,
+  ProjectSummary,
+  TimelineEvent
+} from "../../shared/types.js";
 import { decodeTimelineEvent } from "./canonicalTimeline.js";
 import { isSubAgentProseEcho, supersededAnswerDeltaIds } from "./turnBoundaries.js";
 
@@ -97,10 +103,7 @@ const EVENT_PROTECTED_LIMIT = 2000;
  * (the eviction partition and the supersede sweep) still walks the array, so
  * this removes the sort and the Map, not the linear pass.
  */
-function appendNewerEvents(
-  current: TimelineEvent[],
-  updates: TimelineEvent[]
-): TimelineEvent[] | null {
+function appendNewerEvents(current: TimelineEvent[], updates: TimelineEvent[]): TimelineEvent[] | null {
   if (updates.length === 0) return null;
   const updateIds = new Set<string>();
   let lowestUpdateCursor = Number.POSITIVE_INFINITY;
@@ -119,14 +122,15 @@ function appendNewerEvents(
     previousCursor = cursor;
   }
   // Same comparator as the general path, over the delta alone.
-  const head = sortByTimestamp(updates, (event) => event.createdAt, (event) => event.rowCursor);
+  const head = sortByTimestamp(
+    updates,
+    (event) => event.createdAt,
+    (event) => event.rowCursor
+  );
   return [...head, ...current];
 }
 
-function mergeEventsBounded(
-  current: TimelineEvent[],
-  updates: TimelineEvent[] | undefined
-): TimelineEvent[] {
+function mergeEventsBounded(current: TimelineEvent[], updates: TimelineEvent[] | undefined): TimelineEvent[] {
   if (!updates || updates.length === 0) {
     return current;
   }
@@ -137,7 +141,11 @@ function mergeEventsBounded(
     if (merged === current) {
       return pruneSupersededDeltas(current);
     }
-    sorted = sortByTimestamp(merged, (event) => event.createdAt, (event) => event.rowCursor);
+    sorted = sortByTimestamp(
+      merged,
+      (event) => event.createdAt,
+      (event) => event.rowCursor
+    );
   }
   const deltaKeptBySession = new Map<string, number>();
   let thinkingKept = 0;
@@ -164,10 +172,7 @@ function mergeEventsBounded(
   return pruneSupersededDeltas(capped.length === sorted.length ? sorted : capped);
 }
 
-export function mergeDashboardDelta(
-  incoming: DashboardSnapshot,
-  delta: DashboardDelta
-): DashboardSnapshot {
+export function mergeDashboardDelta(incoming: DashboardSnapshot, delta: DashboardDelta): DashboardSnapshot {
   let snapshot = incoming;
   // Removals first: the sync pruner deletes imported sessions in the
   // background, and the rest of the delta protocol has no way to say "gone".
@@ -187,7 +192,10 @@ export function mergeDashboardDelta(
   const projects = delta.projects
     ? (() => {
         const existing = new Map(snapshot.projects.map((project) => [project.id, project]));
-        const merged = upsertById(snapshot.projects, delta.projects.map((project) => mergeProjectSummary(existing.get(project.id), project)));
+        const merged = upsertById(
+          snapshot.projects,
+          delta.projects.map((project) => mergeProjectSummary(existing.get(project.id), project))
+        );
         return merged === snapshot.projects ? snapshot.projects : sortProjects(merged);
       })()
     : snapshot.projects;

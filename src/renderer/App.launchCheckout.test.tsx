@@ -148,7 +148,10 @@ describe("launching into the branch picked in the launcher", () => {
   it("sends the pick that was made at send time with a background start, whatever happens after", async () => {
     let finishLaunch!: () => void;
     createAlongsideWorkspace.mockImplementation(
-      () => new Promise((resolve) => { finishLaunch = () => resolve(workspace); })
+      () =>
+        new Promise((resolve) => {
+          finishLaunch = () => resolve(workspace);
+        })
     );
     mockDashboardSnapshot({ ...snapshot, projects: [primaryProject(), secondProject()] });
     render(<App />);

@@ -42,15 +42,8 @@ export function AgentEmblem({
     >
       <path className="agent-emblem-rim" fillRule={fillRule} transform="translate(0 0.75)" d={d} />
       <path className="agent-emblem-face" fillRule={fillRule} d={d} />
-      <path
-        className="agent-emblem-light"
-        fillRule={fillRule}
-        transform="translate(1.85 1.85) scale(0.7)"
-        d={d}
-      />
-      {status === "error" ? (
-        <circle className="agent-emblem-fault" cx="12.6" cy="12.6" r="2.4" />
-      ) : null}
+      <path className="agent-emblem-light" fillRule={fillRule} transform="translate(1.85 1.85) scale(0.7)" d={d} />
+      {status === "error" ? <circle className="agent-emblem-fault" cx="12.6" cy="12.6" r="2.4" /> : null}
     </svg>
   );
 }

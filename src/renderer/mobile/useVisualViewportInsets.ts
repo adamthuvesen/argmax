@@ -29,8 +29,7 @@ export function useVisualViewportInsets(shellRef: RefObject<HTMLElement | null>)
     // The bug below is a home-screen web app's. Safari also changes its
     // viewport height as the toolbar collapses and expands, and "restoring"
     // that would push the shell behind the toolbar.
-    const standalone =
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const standalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
     let frame = 0;
     let tallestIdleHeight = window.innerHeight;
     let keyboardWasUp = false;

@@ -42,16 +42,10 @@ describe("<PrWatchPill />", () => {
   it("shows each open PR the chat watches and nothing else", () => {
     render(
       <PrWatchPill
-        prs={[
-          pr({}),
-          pr({ prNumber: 1665, prState: "MERGED" }),
-          pr({ prNumber: 1370, isWatched: false })
-        ]}
+        prs={[pr({}), pr({ prNumber: 1665, prState: "MERGED" }), pr({ prNumber: 1370, isWatched: false })]}
       />
     );
-    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Babysitting PR #1666"
-    ]);
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Babysitting PR #1666"]);
   });
 
   it("renders nothing once no open PR is watched", () => {

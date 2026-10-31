@@ -27,40 +27,45 @@ describe("resolveOpenablePath", () => {
   });
 
   it("resolves a unique bare filename but not an ambiguous one", async () => {
+    await expect(resolveOpenablePath(apiWithFiles(["docs/README.md"]), "workspace-1", "README.md")).resolves.toBe(
+      "docs/README.md"
+    );
     await expect(
-      resolveOpenablePath(apiWithFiles(["docs/README.md"]), "workspace-1", "README.md")
-    ).resolves.toBe("docs/README.md");
-    await expect(
-      resolveOpenablePath(
-        apiWithFiles(["docs/README.md", "fixtures/README.md"]),
-        "workspace-1",
-        "README.md"
-      )
+      resolveOpenablePath(apiWithFiles(["docs/README.md", "fixtures/README.md"]), "workspace-1", "README.md")
     ).resolves.toBeNull();
   });
 
   it("breaks a basename tie with the one changed match", async () => {
     const files = ["apps/a/instructions.md", "apps/b/instructions.md", "apps/c/instructions.md"];
     await expect(
-      resolveOpenablePath(apiWithFiles(files, ["apps/b/instructions.md", "apps/b/agent.ts"]), "workspace-1", "instructions.md")
+      resolveOpenablePath(
+        apiWithFiles(files, ["apps/b/instructions.md", "apps/b/agent.ts"]),
+        "workspace-1",
+        "instructions.md"
+      )
     ).resolves.toBe("apps/b/instructions.md");
     await expect(
-      resolveOpenablePath(apiWithFiles(files, ["apps/a/instructions.md", "apps/c/instructions.md"]), "workspace-1", "instructions.md")
+      resolveOpenablePath(
+        apiWithFiles(files, ["apps/a/instructions.md", "apps/c/instructions.md"]),
+        "workspace-1",
+        "instructions.md"
+      )
     ).resolves.toBeNull();
   });
 
   it("keeps an existing file outside the workspace as an external path", async () => {
-    const api = apiWithFiles(["package.json"], [], [
-      "/Users/me/.local/share/dotfiles/package.json",
-      "~/.local/share/agent-secrets.json"
-    ]);
+    const api = apiWithFiles(
+      ["package.json"],
+      [],
+      ["/Users/me/.local/share/dotfiles/package.json", "~/.local/share/agent-secrets.json"]
+    );
 
-    await expect(
-      resolveOpenablePath(api, "workspace-1", "/Users/me/.local/share/dotfiles/package.json")
-    ).resolves.toBe("/Users/me/.local/share/dotfiles/package.json");
-    await expect(
-      resolveOpenablePath(api, "workspace-1", "~/.local/share/agent-secrets.json")
-    ).resolves.toBe("~/.local/share/agent-secrets.json");
+    await expect(resolveOpenablePath(api, "workspace-1", "/Users/me/.local/share/dotfiles/package.json")).resolves.toBe(
+      "/Users/me/.local/share/dotfiles/package.json"
+    );
+    await expect(resolveOpenablePath(api, "workspace-1", "~/.local/share/agent-secrets.json")).resolves.toBe(
+      "~/.local/share/agent-secrets.json"
+    );
   });
 
   it("does not guess a workspace file for a missing home path", async () => {

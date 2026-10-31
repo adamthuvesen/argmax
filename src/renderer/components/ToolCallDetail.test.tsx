@@ -70,24 +70,27 @@ describe("ToolCallDetail", () => {
   });
 
   it.each([
-    ["Codex", "file_change", {
-      changes: [{ path: "/repo/greet.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" }]
-    }],
+    [
+      "Codex",
+      "file_change",
+      {
+        changes: [{ path: "/repo/greet.ts", kind: "update", diff: "@@ -1 +1 @@\n-old\n+new" }]
+      }
+    ],
     ["Claude", "Edit", { file_path: "/repo/greet.ts", old_string: "old", new_string: "new" }],
     ["OpenCode", "edit", { filePath: "/repo/greet.ts", oldString: "old", newString: "new" }],
-    ["Grok", "search_replace", {
-      file_path: "/repo/greet.ts",
-      old_string: "old",
-      new_string: "new",
-      replace_all: false
-    }]
+    [
+      "Grok",
+      "search_replace",
+      {
+        file_path: "/repo/greet.ts",
+        old_string: "old",
+        new_string: "new",
+        replace_all: false
+      }
+    ]
   ])("does not repeat %s replacement text above its rendered diff", (_provider, name, inputFull) => {
-    render(
-      <ToolCallDetail
-        workspaceCwd="/repo"
-        tool={tool({ name, inputPreview: "/repo/greet.ts", inputFull })}
-      />
-    );
+    render(<ToolCallDetail workspaceCwd="/repo" tool={tool({ name, inputPreview: "/repo/greet.ts", inputFull })} />);
 
     expect(screen.getByLabelText("Edited /repo/greet.ts")).toBeInTheDocument();
     expect(screen.queryByRole("definition")).toBeNull();
@@ -119,9 +122,7 @@ describe("ToolCallDetail", () => {
   it("leaves a JSON file's own bytes alone when a read prints it", () => {
     const contents = '{"name":"argmax","version":"0.6.0"}';
     render(
-      <ToolCallDetail
-        tool={tool({ name: "Read", inputFull: { file_path: "/repo/package.json" }, output: contents })}
-      />
+      <ToolCallDetail tool={tool({ name: "Read", inputFull: { file_path: "/repo/package.json" }, output: contents })} />
     );
 
     expect(screen.getByText(contents).textContent).toBe(contents);
@@ -154,9 +155,9 @@ describe("ToolCallDetail", () => {
         workspaceCwd="/Users/adam/dev/argmax"
         tool={tool({
           name: "command_execution",
-          inputPreview: "/bin/zsh -lc \"npm run lint\"",
+          inputPreview: '/bin/zsh -lc "npm run lint"',
           inputFull: {
-            command: "/bin/zsh -lc \"find /Users/adam/dev/argmax/src -type f\"",
+            command: '/bin/zsh -lc "find /Users/adam/dev/argmax/src -type f"',
             timeout_ms: 30000
           },
           output: "ok"
@@ -195,12 +196,7 @@ describe("ToolCallDetail", () => {
   });
 
   it("shows a heredoc as a readable Command block, not escaped JSON", () => {
-    const heredoc = [
-      "python3 - <<'PY'",
-      "print('hello')",
-      "print('world')",
-      "PY"
-    ].join("\n");
+    const heredoc = ["python3 - <<'PY'", "print('hello')", "print('world')", "PY"].join("\n");
     render(
       <ToolCallDetail
         tool={tool({

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // After each edit, tells the agent what it must know now: an instant check of
 // the edited file, the subsystem rule the first time it touches that subsystem,
-// and the generator to run. It never blocks. Stop and precheck do that.
+// and the generator to run. It never blocks. Stop and push-gate do that.
 
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -34,7 +34,9 @@ for (const path of editedPaths(request)) {
 }
 
 if (messages.length) {
-  console.log(JSON.stringify({
-    hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: messages.join("\n") }
-  }));
+  console.log(
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: messages.join("\n") }
+    })
+  );
 }

@@ -79,9 +79,11 @@ describe("BrowserHistoryImport", () => {
 
   it("keeps the dialog busy until the import settles and reports import failures", async () => {
     let rejectImport: ((error: Error) => void) | undefined;
-    importChromeHistory.mockReturnValue(new Promise((_resolve, reject) => {
-      rejectImport = reject;
-    }));
+    importChromeHistory.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectImport = reject;
+      })
+    );
 
     render(<BrowserHistoryImport onClose={() => undefined} />);
     await screen.findByRole("combobox", { name: "Chrome profile" });

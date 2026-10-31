@@ -5,10 +5,7 @@ import { DiffBlocks } from "../components/DiffBlocks.js";
 import { FilePreview } from "../components/FilePreview.js";
 import { LinesSkeleton } from "../components/LinesSkeleton.js";
 import { WorkspaceTree } from "../components/WorkspaceTree.js";
-import {
-  useReviewState,
-  type ReviewSource
-} from "../hooks/useReviewState.js";
+import { useReviewState, type ReviewSource } from "../hooks/useReviewState.js";
 import { statusLabel, summarizeChangedFiles } from "../lib/changedFiles.js";
 import { normalizeFileChipPath } from "../lib/fileChipPath.js";
 import { MobileScreenHeader } from "./MobileScreenHeader.js";
@@ -61,8 +58,7 @@ export function MobileReviewScreen({
 
   const isChanges = review.mode === "changes";
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
-  const expandedFilePath =
-    selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
+  const expandedFilePath = selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
   const diffBlocks = useMemo(() => parseUnifiedDiff(review.diff?.content ?? ""), [review.diff?.content]);
   const totals = summarizeChangedFiles(review.files);
 
@@ -98,20 +94,10 @@ export function MobileReviewScreen({
         backLabel={previewingFile ? "Back to files" : "Back to chat"}
         title={
           <div className="mobile-review-tabs" role="tablist" aria-label="Review mode">
-            <button
-              role="tab"
-              type="button"
-              aria-selected={isChanges}
-              onClick={() => showMode("changes")}
-            >
+            <button role="tab" type="button" aria-selected={isChanges} onClick={() => showMode("changes")}>
               Changes
             </button>
-            <button
-              role="tab"
-              type="button"
-              aria-selected={!isChanges}
-              onClick={() => showMode("files")}
-            >
+            <button role="tab" type="button" aria-selected={!isChanges} onClick={() => showMode("files")}>
               Files
             </button>
           </div>
@@ -122,8 +108,7 @@ export function MobileReviewScreen({
         <div className="mobile-review-meta">
           {review.files.length > 0 ? (
             <span className="mobile-review-totals">
-              {review.files.length} file{review.files.length === 1 ? "" : "s"} · +{totals.additions}{" "}
-              −{totals.deletions}
+              {review.files.length} file{review.files.length === 1 ? "" : "s"} · +{totals.additions} −{totals.deletions}
             </span>
           ) : null}
         </div>
@@ -142,7 +127,9 @@ export function MobileReviewScreen({
             ) : null}
             {review.filesState === "ready" && review.files.length === 0 ? (
               <p className="review-empty">
-                <span className="review-empty-mark" aria-hidden="true">∅</span>
+                <span className="review-empty-mark" aria-hidden="true">
+                  ∅
+                </span>
                 <span>No changes.</span>
               </p>
             ) : null}
@@ -166,7 +153,9 @@ export function MobileReviewScreen({
                           data-status={glyph.toLowerCase()}
                           onClick={() => toggleChangedFile(file.path)}
                         >
-                          <span className="review-file-row-status" aria-hidden="true">{glyph}</span>
+                          <span className="review-file-row-status" aria-hidden="true">
+                            {glyph}
+                          </span>
                           <span className="review-file-row-path">{file.path}</span>
                         </button>
                         <ChangeCount additions={file.additions} deletions={file.deletions} />
@@ -183,7 +172,9 @@ export function MobileReviewScreen({
                           ) : null}
                           {review.diffState === "ready" && diffBlocks.length === 0 ? (
                             <p className="review-empty">
-                              <span className="review-empty-mark" aria-hidden="true">∅</span>
+                              <span className="review-empty-mark" aria-hidden="true">
+                                ∅
+                              </span>
                               <span>No textual diff.</span>
                             </p>
                           ) : null}

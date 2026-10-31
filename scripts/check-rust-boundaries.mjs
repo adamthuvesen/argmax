@@ -22,7 +22,8 @@ const RULES = [
     id: "sql-outside-store",
     // SQL text, or a rusqlite call that runs it. Naming a Connection or a
     // Transaction to pass it through to the store does not count.
-    pattern: /"\s*(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|PRAGMA|CREATE|DROP|ALTER|VACUUM|WITH)\s|\.(?:prepare|prepare_cached|execute_batch|query_row|pragma_update|pragma_query_value)\(/g,
+    pattern:
+      /"\s*(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|PRAGMA|CREATE|DROP|ALTER|VACUUM|WITH)\s|\.(?:prepare|prepare_cached|execute_batch|query_row|pragma_update|pragma_query_value)\(/g,
     allowed: (path) => !APP_ONLY(path),
     fix: "Add a query function in src-tauri/crates/argmax-store/src/ and call it from here."
   },
@@ -103,7 +104,9 @@ for (const rule of RULES) {
   }
   for (const [path, count] of Object.entries(known)) {
     if ((found[rule.id][path] ?? 0) < count) {
-      problems.push(`${display(path)}: ${rule.id} fell below the baseline. Run node scripts/check-rust-boundaries.mjs --update and commit the result.`);
+      problems.push(
+        `${display(path)}: ${rule.id} fell below the baseline. Run node scripts/check-rust-boundaries.mjs --update and commit the result.`
+      );
     }
   }
 }

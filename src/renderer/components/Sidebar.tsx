@@ -82,7 +82,7 @@ import {
   showKeyboardCheatSheet,
   showSchedulePage,
   showSettings,
-  showUsagePage,
+  showUsagePage
 } from "../state/overlays.js";
 import { NewArcDialog } from "./arcs/NewArcDialog.js";
 import { usePaneGrid } from "../state/paneGrid.js";
@@ -183,11 +183,7 @@ const SORT_MODE_OPTIONS: ReadonlyArray<{ value: ProjectSortMode; label: string; 
   { value: "manual", label: "Manual", description: "Drag to reorder" }
 ];
 
-function visibleSidebarItems<T extends { id: string }>(
-  items: T[],
-  selectedId: string | null,
-  expanded: boolean
-): T[] {
+function visibleSidebarItems<T extends { id: string }>(items: T[], selectedId: string | null, expanded: boolean): T[] {
   if (expanded || items.length <= SIDEBAR_SESSION_LIMIT) {
     return items;
   }
@@ -291,11 +287,7 @@ export function Sidebar({
   /** "Clear" on the Priority header dismisses every row the section holds. */
   onClearPriority?: (workspaceIds: string[]) => void;
   /** Right-click "Edit Icon" on any row — both values null clears the glyph. */
-  onSetWorkspaceIcon?: (
-    workspaceId: string,
-    icon: string | null,
-    iconColor: string | null
-  ) => void;
+  onSetWorkspaceIcon?: (workspaceId: string, icon: string | null, iconColor: string | null) => void;
   /** Right-click "Sync Now" on an imported row — runs one session-sync sweep. */
   onSyncNowWorkspace?: () => void;
   showArcs?: boolean;
@@ -331,9 +323,7 @@ export function Sidebar({
       fullLauncherOpen
         ? new Set<string>()
         : new Set(
-            grid.rows.flatMap((row) =>
-              row.flatMap((cell) => (cell.kind === "launcher" ? [] : [cell.workspaceId]))
-            )
+            grid.rows.flatMap((row) => row.flatMap((cell) => (cell.kind === "launcher" ? [] : [cell.workspaceId])))
           ),
     [fullLauncherOpen, grid.rows]
   );
@@ -376,9 +366,7 @@ export function Sidebar({
   // toggles persist as usual, and the next launch collapses everything but
   // Pinned again.
   const [collapsedDateGroups, setCollapsedDateGroups] = useState<Set<string>>(() =>
-    readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY)
-      ? loadCollapsedDateGroupIds()
-      : new Set(BOOT_COLLAPSED_GROUP_KEYS)
+    readBootSeeded(BOOT_GROUP_COLLAPSE_SEED_KEY) ? loadCollapsedDateGroupIds() : new Set(BOOT_COLLAPSED_GROUP_KEYS)
   );
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [archivedArcsShown, setArchivedArcsShown] = useState(false);
@@ -391,9 +379,7 @@ export function Sidebar({
     }
     saveCollapsedDateGroupIds(collapsedDateGroups);
   }, [collapsedDateGroups]);
-  const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() =>
-    loadExpandedDateGroupIds()
-  );
+  const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(() => loadExpandedDateGroupIds());
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuAnchorRef = useRef<HTMLDivElement | null>(null);
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
@@ -402,9 +388,9 @@ export function Sidebar({
   // for a "Remove '{name}'?" prompt — no separate modal needed. The popover
   // is portaled to <body> because both `.sidebar` and `.project-list` clip
   // overflow; rendering inside the project row would hide the menu.
-  const [projectMenuState, setProjectMenuState] = useState<
-    { projectId: string; mode: "menu" | "confirm" } | null
-  >(null);
+  const [projectMenuState, setProjectMenuState] = useState<{ projectId: string; mode: "menu" | "confirm" } | null>(
+    null
+  );
   const projectMenu = useAnchoredPopover({ open: projectMenuState !== null, placement: "bottom-end" });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -515,10 +501,7 @@ export function Sidebar({
   // label; a parent that has left the snapshot leaves the row plain.
   const launchedByLabelByWorkspace = useMemo(() => {
     const labelByWorkspaceId = new Map(
-      snapshot.workspaces.map((workspace) => [
-        workspace.id,
-        workspace.taskLabel.trim() || workspace.branch
-      ])
+      snapshot.workspaces.map((workspace) => [workspace.id, workspace.taskLabel.trim() || workspace.branch])
     );
     const sessionById = new Map(snapshot.sessions.map((session) => [session.id, session]));
     const labels = new Map<string, string>();
@@ -554,9 +537,7 @@ export function Sidebar({
   // Archived arcs leave the list but stay one click away at its foot. The one
   // open in the workspace column keeps its row so the selection stays visible.
   const archivedArcCount = arcs.filter((arc) => arc.archivedAt).length;
-  const listedArcs = arcs.filter(
-    (arc) => !arc.archivedAt || archivedArcsShown || arc.id === selectedArcId
-  );
+  const listedArcs = arcs.filter((arc) => !arc.archivedAt || archivedArcsShown || arc.id === selectedArcId);
 
   // A chat that belongs to an arc names it on the row, so a member reads as
   // part of a larger body of work rather than a chat someone opened cold.
@@ -581,10 +562,7 @@ export function Sidebar({
   useEffect(() => {
     saveCollapsedChatIds(collapsedChats);
   }, [collapsedChats]);
-  const workingWorkspaces = useMemo(
-    () => workingWorkspaceIds(snapshot.sessions),
-    [snapshot.sessions]
-  );
+  const workingWorkspaces = useMemo(() => workingWorkspaceIds(snapshot.sessions), [snapshot.sessions]);
   const allSidebarWorkspaces = useMemo(
     () =>
       snapshot.workspaces.filter(
@@ -621,10 +599,7 @@ export function Sidebar({
     const refresh = (): void => setSnoozeNow(Date.now());
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);
-    const timerId = window.setTimeout(
-      () => setSnoozeNow(Date.now()),
-      snoozeTimerDelay(nextSnoozeExpiryAt, Date.now())
-    );
+    const timerId = window.setTimeout(() => setSnoozeNow(Date.now()), snoozeTimerDelay(nextSnoozeExpiryAt, Date.now()));
     return () => {
       window.clearTimeout(timerId);
       window.removeEventListener("focus", refresh);
@@ -636,10 +611,13 @@ export function Sidebar({
     [allSidebarWorkspaces, snoozeShelf]
   );
   const chatTree = useMemo(
-    () => buildSidebarChatTree(
-      unsnoozedWorkspaces.filter((workspace) => !isInArchivedSection(workspace)),
-      snapshot.sessions, detachedIds, nested
-    ),
+    () =>
+      buildSidebarChatTree(
+        unsnoozedWorkspaces.filter((workspace) => !isInArchivedSection(workspace)),
+        snapshot.sessions,
+        detachedIds,
+        nested
+      ),
     [unsnoozedWorkspaces, snapshot.sessions, detachedIds, nested]
   );
   const sidebarWorkspaces = useMemo(
@@ -647,15 +625,11 @@ export function Sidebar({
     [unsnoozedWorkspaces, chatTree]
   );
   const selectedRootId = selectedWorkspaceId
-    ? chatTree.rootByWorkspace.get(selectedWorkspaceId) ?? selectedWorkspaceId
+    ? (chatTree.rootByWorkspace.get(selectedWorkspaceId) ?? selectedWorkspaceId)
     : null;
   // Every listed chat, shelved or not: opening a snoozed chat must still mark
   // it viewed, and a shelved row must still show unread when it returns.
-  const unreadWorkspaces = useUnreadWorkspaceIds(
-    allSidebarWorkspaces,
-    selectedWorkspaceId,
-    workingWorkspaces
-  );
+  const unreadWorkspaces = useUnreadWorkspaceIds(allSidebarWorkspaces, selectedWorkspaceId, workingWorkspaces);
 
   const eligiblePriorityIds = [...new Set([...unreadWorkspaces, ...workingWorkspaces])].sort().join("\n");
   const [prioritySelection, setPrioritySelection] = useState({
@@ -665,10 +639,12 @@ export function Sidebar({
   });
   let retainedId = prioritySelection.retainedId;
   if (prioritySelection.selectedId !== selectedWorkspaceId || prioritySelection.eligibleIds !== eligiblePriorityIds) {
-    retainedId = selectedWorkspaceId && (
-      (prioritySelection.selectedId === selectedWorkspaceId && prioritySelection.retainedId === selectedWorkspaceId) ||
-      prioritySelection.eligibleIds.split("\n").includes(selectedWorkspaceId)
-    ) ? selectedWorkspaceId : null;
+    retainedId =
+      selectedWorkspaceId &&
+      ((prioritySelection.selectedId === selectedWorkspaceId && prioritySelection.retainedId === selectedWorkspaceId) ||
+        prioritySelection.eligibleIds.split("\n").includes(selectedWorkspaceId))
+        ? selectedWorkspaceId
+        : null;
     setPrioritySelection({ selectedId: selectedWorkspaceId, eligibleIds: eligiblePriorityIds, retainedId });
   }
   const priorityUnreadIds = useMemo(() => {
@@ -676,25 +652,19 @@ export function Sidebar({
     if (retainedId) ids.add(retainedId);
     return ids;
   }, [unreadWorkspaces, retainedId]);
-  const rawPriorityEntries = useMemo(
-    () => {
-      const entries = showPriority || viewMode === "status"
-        ? computePriorityEntries(
-            unsnoozedWorkspaces,
-            snapshot.sessions,
-            priorityUnreadIds
-          )
+  const rawPriorityEntries = useMemo(() => {
+    const entries =
+      showPriority || viewMode === "status"
+        ? computePriorityEntries(unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds)
         : [];
-      const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
-      const positions = new Map(manualOrder.map((id, index) => [id, index]));
-      // Unordered entries keep the selector's attention and activity order.
-      return entries.sort((a, b) =>
-        (positions.get(a.workspace.id) ?? manualOrder.length) -
-        (positions.get(b.workspace.id) ?? manualOrder.length)
-      );
-    },
-    [showPriority, viewMode, unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds, workspaceOrders]
-  );
+    const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
+    const positions = new Map(manualOrder.map((id, index) => [id, index]));
+    // Unordered entries keep the selector's attention and activity order.
+    return entries.sort(
+      (a, b) =>
+        (positions.get(a.workspace.id) ?? manualOrder.length) - (positions.get(b.workspace.id) ?? manualOrder.length)
+    );
+  }, [showPriority, viewMode, unsnoozedWorkspaces, snapshot.sessions, priorityUnreadIds, workspaceOrders]);
   const rawPriorityByWorkspace = useMemo(
     () => new Map(rawPriorityEntries.map((entry) => [entry.workspace.id, entry])),
     [rawPriorityEntries]
@@ -713,15 +683,20 @@ export function Sidebar({
     });
     const manualOrder = workspaceOrders[PRIORITY_GROUP_KEY] ?? [];
     const positions = new Map(manualOrder.map((id, index) => [id, index]));
-    return entries.sort((a, b) =>
-      (positions.get(a.workspace.id) ?? manualOrder.length) -
-      (positions.get(b.workspace.id) ?? manualOrder.length)
+    return entries.sort(
+      (a, b) =>
+        (positions.get(a.workspace.id) ?? manualOrder.length) - (positions.get(b.workspace.id) ?? manualOrder.length)
     );
-  }, [sidebarWorkspaces, rawPriorityEntries, rawPriorityByWorkspace, chatTree, workspaceOrders, viewMode, showPriority]);
-  const priorityOrderedIds = useMemo(
-    () => priorityEntries.map((entry) => entry.workspace.id),
-    [priorityEntries]
-  );
+  }, [
+    sidebarWorkspaces,
+    rawPriorityEntries,
+    rawPriorityByWorkspace,
+    chatTree,
+    workspaceOrders,
+    viewMode,
+    showPriority
+  ]);
+  const priorityOrderedIds = useMemo(() => priorityEntries.map((entry) => entry.workspace.id), [priorityEntries]);
 
   // Project-name subtitles (screenshot-style two-line rows) for rows whose
   // group doesn't already name the project: Priority, Pinned, and the flat
@@ -736,7 +711,7 @@ export function Sidebar({
   }, [snapshot.projects]);
   const subtitleFor = useCallback(
     (projectId: string): string | null =>
-      showPriority || viewMode === "status" ? projectNameById.get(projectId) ?? null : null,
+      showPriority || viewMode === "status" ? (projectNameById.get(projectId) ?? null) : null,
     [showPriority, viewMode, projectNameById]
   );
 
@@ -747,7 +722,9 @@ export function Sidebar({
   const dismissablePriorityIds = useMemo(
     () =>
       rawPriorityEntries
-        .filter((entry) => priorityWorkspaceIds.has(chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id))
+        .filter((entry) =>
+          priorityWorkspaceIds.has(chatTree.rootByWorkspace.get(entry.workspace.id) ?? entry.workspace.id)
+        )
         // Unread chats clear too: leaving Priority does not mark them read, so
         // the unread dot still shows where the chat lives. A rule that skipped
         // them flipped the eraser on and off as chats were opened.
@@ -771,18 +748,13 @@ export function Sidebar({
       sortWorkspaceGroup(
         sidebarWorkspaces.filter(
           (workspace) =>
-            workspace.pinned &&
-            !isInArchivedSection(workspace) &&
-            workspaceIdsWithSessions.has(workspace.id)
+            workspace.pinned && !isInArchivedSection(workspace) && workspaceIdsWithSessions.has(workspace.id)
         ),
         workspaceOrders[PINNED_GROUP_KEY] ?? []
       ),
     [sidebarWorkspaces, workspaceIdsWithSessions, workspaceOrders]
   );
-  const pinnedWorkspaceIds = useMemo(
-    () => pinnedWorkspaces.map((workspace) => workspace.id),
-    [pinnedWorkspaces]
-  );
+  const pinnedWorkspaceIds = useMemo(() => pinnedWorkspaces.map((workspace) => workspace.id), [pinnedWorkspaces]);
 
   // Flat, date-bucketed list for the "sessions" view mode — every non-archived,
   // unpinned workspace that has a session, regardless of project, repo-less
@@ -810,21 +782,42 @@ export function Sidebar({
       const rootId = chatTree.rootByWorkspace.get(workspace.id) ?? workspace.id;
       const reasons = rawPriorityByWorkspace.get(workspace.id)?.reasons ?? [];
       const chat = chats.get(workspace.id);
-      const stalled = chat && ["waiting", "blocked", "failed"].includes(chat.state) &&
-        (!workspace.priorityDismissedAt || workspace.priorityDismissedAt < (chat.attentionChangedAt ?? chat.lastActivityAt));
-      const status = workingWorkspaces.has(workspace.id) ? 0
-        : stalled || reasons.some((reason) => reason.kind !== "pr-open") ? 1
-        : chat?.state === "created" ? 3 : 2;
+      const stalled =
+        chat &&
+        ["waiting", "blocked", "failed"].includes(chat.state) &&
+        (!workspace.priorityDismissedAt ||
+          workspace.priorityDismissedAt < (chat.attentionChangedAt ?? chat.lastActivityAt));
+      const status = workingWorkspaces.has(workspace.id)
+        ? 0
+        : stalled || reasons.some((reason) => reason.kind !== "pr-open")
+          ? 1
+          : chat?.state === "created"
+            ? 3
+            : 2;
       statusByRoot.set(rootId, Math.min(statusByRoot.get(rootId) ?? status, status));
     }
     return STATUS_GROUPS.map((group, index) => ({
       ...group,
-      items: sortWorkspaceGroup(sidebarWorkspaces.filter((workspace) =>
-        !workspace.pinned && !isInArchivedSection(workspace) &&
-        !priorityWorkspaceIds.has(workspace.id) && statusByRoot.get(workspace.id) === index
-      ), [])
+      items: sortWorkspaceGroup(
+        sidebarWorkspaces.filter(
+          (workspace) =>
+            !workspace.pinned &&
+            !isInArchivedSection(workspace) &&
+            !priorityWorkspaceIds.has(workspace.id) &&
+            statusByRoot.get(workspace.id) === index
+        ),
+        []
+      )
     })).filter((group) => group.items.length > 0);
-  }, [snapshot.sessions, unsnoozedWorkspaces, chatTree, rawPriorityByWorkspace, workingWorkspaces, sidebarWorkspaces, priorityWorkspaceIds]);
+  }, [
+    snapshot.sessions,
+    unsnoozedWorkspaces,
+    chatTree,
+    rawPriorityByWorkspace,
+    workingWorkspaces,
+    sidebarWorkspaces,
+    priorityWorkspaceIds
+  ]);
   const listGroups = viewMode === "status" ? statusGroups : dateGroups;
 
   // The projects view has no project to file a repo-less chat under, so they
@@ -864,10 +857,7 @@ export function Sidebar({
   const archivedWorkspaces = useMemo(
     () =>
       sidebarWorkspaces
-        .filter(
-          (workspace) =>
-            isInArchivedSection(workspace) && workspaceIdsWithSessions.has(workspace.id)
-        )
+        .filter((workspace) => isInArchivedSection(workspace) && workspaceIdsWithSessions.has(workspace.id))
         .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt)),
     [sidebarWorkspaces, workspaceIdsWithSessions]
   );
@@ -959,8 +949,7 @@ export function Sidebar({
           : viewMode === "projects" && workspace.kind === "scratch"
             ? SIDE_CHATS_GROUP_KEY
             : viewMode !== "projects"
-              ? listGroups.find((group) => group.items.some((item) => item.id === workspace.id))
-                  ?.key ?? null
+              ? (listGroups.find((group) => group.items.some((item) => item.id === workspace.id))?.key ?? null)
               : null;
       // Older is a history dump, often dozens of rows. Auto-opening it to
       // confirm a launch (or because a stale session is selected in the grid)
@@ -1010,10 +999,13 @@ export function Sidebar({
     if (selectedChatIsShelved) setSnoozedExpanded(true);
   }, [selectedWorkspaceId, selectedChatIsShelved]);
   const selectedRootWorkspace = sidebarWorkspaces.find((workspace) => workspace.id === selectedRootId);
-  const selectedGroupKey = selectedRootWorkspace?.pinned ? PINNED_GROUP_KEY
-    : selectedRootId && priorityWorkspaceIds.has(selectedRootId) ? PRIORITY_GROUP_KEY
-    : viewMode === "projects" ? selectedRootWorkspace?.projectId
-    : listGroups.find((group) => group.items.some((workspace) => workspace.id === selectedRootId))?.key;
+  const selectedGroupKey = selectedRootWorkspace?.pinned
+    ? PINNED_GROUP_KEY
+    : selectedRootId && priorityWorkspaceIds.has(selectedRootId)
+      ? PRIORITY_GROUP_KEY
+      : viewMode === "projects"
+        ? selectedRootWorkspace?.projectId
+        : listGroups.find((group) => group.items.some((workspace) => workspace.id === selectedRootId))?.key;
   const selectedRevealKey = `${selectedWorkspaceId}:${selectedRootId}:${viewMode}:${selectedGroupKey}`;
   useEffect(() => {
     if (!selectedWorkspaceId || lastExpandedForWorkspaceId.current === selectedRevealKey) return;
@@ -1165,20 +1157,18 @@ export function Sidebar({
     beginWorkspaceDrag(workspaceId);
   }, []);
 
-  const handleWorkspaceDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>): void => {
-    if (draggingWorkspaceId) {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-    }
-  }, [draggingWorkspaceId]);
+  const handleWorkspaceDragOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>): void => {
+      if (draggingWorkspaceId) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }
+    },
+    [draggingWorkspaceId]
+  );
 
   const reorderWorkspace = useCallback(
-    (
-      sourceWorkspaceId: string,
-      projectId: string,
-      targetWorkspaceId: string,
-      orderedIds: string[]
-    ): void => {
+    (sourceWorkspaceId: string, projectId: string, targetWorkspaceId: string, orderedIds: string[]): void => {
       if (sourceWorkspaceId === targetWorkspaceId) return;
       const from = orderedIds.indexOf(sourceWorkspaceId);
       const to = orderedIds.indexOf(targetWorkspaceId);
@@ -1205,22 +1195,26 @@ export function Sidebar({
     [draggingWorkspaceId, reorderWorkspace]
   );
 
-  useEffect(() => subscribeWorkspacePointerDrag({
-    move: () => {},
-    drop: ({ clientX, clientY }) => {
-      const sourceId = workspaceDragSnapshot();
-      if (!sourceId || !priorityOrderedIds.includes(sourceId)) return;
-      const rows = priorityGroupRef.current?.querySelectorAll<HTMLElement>("[data-workspace-id]") ?? [];
-      for (const row of rows) {
-        const rect = row.getBoundingClientRect();
-        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
-          reorderWorkspace(sourceId, PRIORITY_GROUP_KEY, row.dataset.workspaceId!, priorityOrderedIds);
-          return;
-        }
-      }
-    },
-    cancel: () => {}
-  }), [priorityOrderedIds, reorderWorkspace]);
+  useEffect(
+    () =>
+      subscribeWorkspacePointerDrag({
+        move: () => {},
+        drop: ({ clientX, clientY }) => {
+          const sourceId = workspaceDragSnapshot();
+          if (!sourceId || !priorityOrderedIds.includes(sourceId)) return;
+          const rows = priorityGroupRef.current?.querySelectorAll<HTMLElement>("[data-workspace-id]") ?? [];
+          for (const row of rows) {
+            const rect = row.getBoundingClientRect();
+            if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+              reorderWorkspace(sourceId, PRIORITY_GROUP_KEY, row.dataset.workspaceId!, priorityOrderedIds);
+              return;
+            }
+          }
+        },
+        cancel: () => {}
+      }),
+    [priorityOrderedIds, reorderWorkspace]
+  );
 
   const handleWorkspaceDragEnd = useCallback((): void => {
     setDraggingWorkspaceId(null);
@@ -1251,9 +1245,13 @@ export function Sidebar({
     const isNested = chatTree.parentByWorkspace.has(workspace.id);
     const priority = rawPriorityByWorkspace.get(workspace.id);
     const activity = descendantActivity.get(workspace.id);
-    const childActivity = activity?.attention ? `${activity.attention} need attention`
-      : activity?.working ? `${activity.working} working`
-      : activity?.unread ? `${activity.unread} unread` : undefined;
+    const childActivity = activity?.attention
+      ? `${activity.attention} need attention`
+      : activity?.working
+        ? `${activity.working} working`
+        : activity?.unread
+          ? `${activity.unread} unread`
+          : undefined;
     return (
       <>
         <SidebarSessionRow
@@ -1276,8 +1274,14 @@ export function Sidebar({
           onFork={onForkWorkspace}
           onSetIcon={onSetWorkspaceIcon}
           onSyncNow={onSyncNowWorkspace}
-          onAddToPriority={!workspace.pinned && (viewMode === "status" ? !workspace.priorityAddedAt : !priority) ? addToPriority : undefined}
-          onRemoveFromPriority={priority && (priority.attention !== null || workspace.priorityAddedAt) ? onRemoveFromPriority : undefined}
+          onAddToPriority={
+            !workspace.pinned && (viewMode === "status" ? !workspace.priorityAddedAt : !priority)
+              ? addToPriority
+              : undefined
+          }
+          onRemoveFromPriority={
+            priority && (priority.attention !== null || workspace.priorityAddedAt) ? onRemoveFromPriority : undefined
+          }
           priorityReason={priority?.reason ?? undefined}
           onSnooze={onSnoozeWorkspace}
           detectedIdes={detectedIdes}
@@ -1290,10 +1294,16 @@ export function Sidebar({
           onDetach={isNested ? detachChat : undefined}
         />
         {children.length > 0 && expanded ? (
-          <div className="sidebar-chat-children" role="group" aria-label={`Chats launched from ${workspace.taskLabel || workspace.branch}`}>
+          <div
+            className="sidebar-chat-children"
+            role="group"
+            aria-label={`Chats launched from ${workspace.taskLabel || workspace.branch}`}
+          >
             {children.map((child) => (
               <div key={child.id} className="sidebar-chat-child">
-                {renderChat(child, { subtitle: child.projectId !== workspace.projectId ? projectNameById.get(child.projectId) : undefined })}
+                {renderChat(child, {
+                  subtitle: child.projectId !== workspace.projectId ? projectNameById.get(child.projectId) : undefined
+                })}
               </div>
             ))}
           </div>
@@ -1304,11 +1314,8 @@ export function Sidebar({
 
   // The version lives in the menu header; the chip speaks up only while local
   // data is not ready, so a failed load is never silent.
-  const identitySubLabel = loadState === "loading"
-    ? "Starting…"
-    : loadState === "error"
-      ? "Couldn't load local data"
-      : null;
+  const identitySubLabel =
+    loadState === "loading" ? "Starting…" : loadState === "error" ? "Couldn't load local data" : null;
   const runIdentityAction = useCallback((action: () => void): void => {
     setIdentityMenuOpen(false);
     action();
@@ -1319,7 +1326,7 @@ export function Sidebar({
   // newest recency bucket in sessions view, the "Projects" header in projects
   // view. It falls back to a quiet label-less strip only when sessions view
   // has no bucket to host it.
-  const leadListGroupKey = viewMode !== "projects" ? listGroups[0]?.key ?? null : null;
+  const leadListGroupKey = viewMode !== "projects" ? (listGroups[0]?.key ?? null) : null;
   const pinnedCollapsed = collapsedDateGroups.has(PINNED_GROUP_KEY);
   const priorityCollapsed = collapsedDateGroups.has(PRIORITY_GROUP_KEY);
   const archivedCollapsed = !archivedExpanded;
@@ -1339,11 +1346,7 @@ export function Sidebar({
           <MoreHorizontal size={14} />
         </button>
         {sortMenuOpen && (
-          <ul
-            className="project-picker-popover rail-sort-popover"
-            role="menu"
-            aria-label="Sidebar view options"
-          >
+          <ul className="project-picker-popover rail-sort-popover" role="menu" aria-label="Sidebar view options">
             <li className="project-picker-group-label" role="presentation">
               Group by
             </li>
@@ -1404,14 +1407,8 @@ export function Sidebar({
   // and "New arc" stays on the header so it is one click even when collapsed.
   const arcsCollapsed = collapsedDateGroups.has(ARCS_GROUP_KEY);
   const arcsSection = (
-    <div
-      className="project-group session-date-group arcs-group"
-      data-collapsed={arcsCollapsed ? "true" : undefined}
-    >
-      <div
-        className="project-row session-date-row"
-        onClick={() => toggleDateGroupVisibility(ARCS_GROUP_KEY)}
-      >
+    <div className="project-group session-date-group arcs-group" data-collapsed={arcsCollapsed ? "true" : undefined}>
+      <div className="project-row session-date-row" onClick={() => toggleDateGroupVisibility(ARCS_GROUP_KEY)}>
         <span className="project-name session-date-label">
           <span className="project-name-text">Arcs</span>
           {renderCollapseButton(ARCS_GROUP_KEY, "Arcs", arcsCollapsed, "arcs")}
@@ -1468,14 +1465,8 @@ export function Sidebar({
   // chats into the recency buckets like any other row.
   const sideChatsSection =
     viewMode === "projects" && (onNewSideChat || sideChatWorkspaces.length > 0) ? (
-      <div
-        className="project-group session-date-group"
-        data-collapsed={sideChatsCollapsed ? "true" : undefined}
-      >
-        <div
-          className="project-row session-date-row"
-          onClick={() => toggleDateGroupVisibility(SIDE_CHATS_GROUP_KEY)}
-        >
+      <div className="project-group session-date-group" data-collapsed={sideChatsCollapsed ? "true" : undefined}>
+        <div className="project-row session-date-row" onClick={() => toggleDateGroupVisibility(SIDE_CHATS_GROUP_KEY)}>
           <span className="project-name session-date-label">
             <span className="project-name-text">Chat</span>
             {renderCollapseButton(SIDE_CHATS_GROUP_KEY, "Chat", sideChatsCollapsed, "chats")}
@@ -1508,11 +1499,7 @@ export function Sidebar({
                 type="button"
                 className="sidebar-show-more"
                 aria-expanded={sideChatsExpanded}
-                aria-label={
-                  sideChatsExpanded
-                    ? "Show fewer chats"
-                    : `Show ${hiddenSideChatCount} more chats`
-                }
+                aria-label={sideChatsExpanded ? "Show fewer chats" : `Show ${hiddenSideChatCount} more chats`}
                 onClick={() => toggleDateGroupExpansion(SIDE_CHATS_GROUP_KEY)}
               >
                 {sideChatsExpanded ? "Show less" : `Show ${hiddenSideChatCount} more`}
@@ -1525,684 +1512,708 @@ export function Sidebar({
 
   return (
     <>
-    <aside
-      className="sidebar"
-      data-loading={loadState === "loading" ? "true" : undefined}
-      onMouseLeave={peeking ? endSidebarPeek : undefined}
-    >
-      <div className="window-controls" data-window-drag />
-      <nav className="rail-nav" aria-label="Primary">
-        <button
-          className="rail-nav-item rail-nav-cta"
-          type="button"
-          title="New chat"
-          aria-label="New chat"
-          onClick={onOpenLauncher}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <Plus size={14} />
-          </span>
-          <span className="rail-nav-label">New chat</span>
-          <kbd aria-hidden="true">⌘N</kbd>
-        </button>
-        {/* With no arcs there is no Arcs header to carry its "+", so New arc
-            sits beside New chat as the other way to start work. */}
-        {showArcs && arcs.length === 0 ? (
+      <aside
+        className="sidebar"
+        data-loading={loadState === "loading" ? "true" : undefined}
+        onMouseLeave={peeking ? endSidebarPeek : undefined}
+      >
+        <div className="window-controls" data-window-drag />
+        <nav className="rail-nav" aria-label="Primary">
           <button
-            className="rail-nav-item"
+            className="rail-nav-item rail-nav-cta"
             type="button"
-            title="New arc"
-            aria-label="New arc"
-            onClick={() => setNewArcDialogOpen(true)}
+            title="New chat"
+            aria-label="New chat"
+            onClick={onOpenLauncher}
           >
             <span className="rail-nav-glyph" aria-hidden="true">
               <Plus size={14} />
             </span>
-            <span className="rail-nav-label">New arc</span>
+            <span className="rail-nav-label">New chat</span>
+            <kbd aria-hidden="true">⌘N</kbd>
           </button>
-        ) : null}
-        <button
-          className="rail-nav-item"
-          type="button"
-          title="Schedule"
-          aria-label="Schedule"
-          aria-current={scheduleSelected ? "page" : undefined}
-          onClick={showSchedulePage}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <Clock size={14} />
-          </span>
-          <span className="rail-nav-label">Schedule</span>
-        </button>
-        <button
-          className="rail-nav-item"
-          type="button"
-          title="Hacking"
-          aria-label="Hacking"
-          aria-current={hackingSelected ? "page" : undefined}
-          onMouseEnter={warmLedgerPages}
-          onClick={showUsagePage}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <Activity size={14} />
-          </span>
-          <span className="rail-nav-label">Hacking</span>
-        </button>
-        {onOpenBrowser && typeof window !== "undefined" && browserActions() ? (
+          {/* With no arcs there is no Arcs header to carry its "+", so New arc
+            sits beside New chat as the other way to start work. */}
+          {showArcs && arcs.length === 0 ? (
+            <button
+              className="rail-nav-item"
+              type="button"
+              title="New arc"
+              aria-label="New arc"
+              onClick={() => setNewArcDialogOpen(true)}
+            >
+              <span className="rail-nav-glyph" aria-hidden="true">
+                <Plus size={14} />
+              </span>
+              <span className="rail-nav-label">New arc</span>
+            </button>
+          ) : null}
           <button
             className="rail-nav-item"
             type="button"
-            title="Browser"
-            aria-label="Browser"
-            aria-current={browserSelected ? "page" : undefined}
-            onClick={onOpenBrowser}
+            title="Schedule"
+            aria-label="Schedule"
+            aria-current={scheduleSelected ? "page" : undefined}
+            onClick={showSchedulePage}
           >
             <span className="rail-nav-glyph" aria-hidden="true">
-              <Globe size={14} />
+              <Clock size={14} />
             </span>
-            <span className="rail-nav-label">Browser</span>
+            <span className="rail-nav-label">Schedule</span>
           </button>
-        ) : null}
-        {onOpenClaudeArtifacts && typeof window !== "undefined" && browserActions() ? (
-          <button className="rail-nav-item" type="button" title="Claude artifacts" aria-label="Artifacts" onClick={onOpenClaudeArtifacts}>
-            <span className="rail-nav-glyph" aria-hidden="true"><Shapes size={14} /></span>
-            <span className="rail-nav-label">Artifacts</span>
+          <button
+            className="rail-nav-item"
+            type="button"
+            title="Hacking"
+            aria-label="Hacking"
+            aria-current={hackingSelected ? "page" : undefined}
+            onMouseEnter={warmLedgerPages}
+            onClick={showUsagePage}
+          >
+            <span className="rail-nav-glyph" aria-hidden="true">
+              <Activity size={14} />
+            </span>
+            <span className="rail-nav-label">Hacking</span>
           </button>
-        ) : null}
-        <button
-          className="rail-nav-item"
-          type="button"
-          title="Customize"
-          aria-label="Customize"
-          onClick={openSettings}
-        >
-          <span className="rail-nav-glyph" aria-hidden="true">
-            <Settings2 size={14} />
-          </span>
-          <span className="rail-nav-label">Customize</span>
-          <kbd aria-hidden="true">⌘,</kbd>
-        </button>
-      </nav>
+          {onOpenBrowser && typeof window !== "undefined" && browserActions() ? (
+            <button
+              className="rail-nav-item"
+              type="button"
+              title="Browser"
+              aria-label="Browser"
+              aria-current={browserSelected ? "page" : undefined}
+              onClick={onOpenBrowser}
+            >
+              <span className="rail-nav-glyph" aria-hidden="true">
+                <Globe size={14} />
+              </span>
+              <span className="rail-nav-label">Browser</span>
+            </button>
+          ) : null}
+          {onOpenClaudeArtifacts && typeof window !== "undefined" && browserActions() ? (
+            <button
+              className="rail-nav-item"
+              type="button"
+              title="Claude artifacts"
+              aria-label="Artifacts"
+              onClick={onOpenClaudeArtifacts}
+            >
+              <span className="rail-nav-glyph" aria-hidden="true">
+                <Shapes size={14} />
+              </span>
+              <span className="rail-nav-label">Artifacts</span>
+            </button>
+          ) : null}
+          <button
+            className="rail-nav-item"
+            type="button"
+            title="Customize"
+            aria-label="Customize"
+            onClick={openSettings}
+          >
+            <span className="rail-nav-glyph" aria-hidden="true">
+              <Settings2 size={14} />
+            </span>
+            <span className="rail-nav-label">Customize</span>
+            <kbd aria-hidden="true">⌘,</kbd>
+          </button>
+        </nav>
 
-      <div className="project-list-scroll scroll-fade">
-        <div className="project-list">
-        {viewMode !== "projects" && leadListGroupKey === null ? (
-          <div className="rail-heading">{sidebarActions}</div>
-        ) : null}
-        {/* Arcs sit above everything else: a body of work spanning several
+        <div className="project-list-scroll scroll-fade">
+          <div className="project-list">
+            {viewMode !== "projects" && leadListGroupKey === null ? (
+              <div className="rail-heading">{sidebarActions}</div>
+            ) : null}
+            {/* Arcs sit above everything else: a body of work spanning several
             projects doesn't belong nested under any one of them. */}
-        {showArcs && arcs.length > 0 ? arcsSection : null}
-        {/* Pinned sits at the very top, above Priority: a pin is a standing
+            {showArcs && arcs.length > 0 ? arcsSection : null}
+            {/* Pinned sits at the very top, above Priority: a pin is a standing
             user choice, while Priority is transient triage. */}
-        {pinnedWorkspaces.length > 0 ? (
-          <div
-            className="project-group session-date-group session-pinned-group"
-            data-collapsed={pinnedCollapsed ? "true" : undefined}
-          >
-            <div
-              className="project-row session-date-row session-pinned-row"
-              onClick={() => toggleDateGroupVisibility(PINNED_GROUP_KEY)}
-            >
-              <span className="project-name session-date-label session-pinned-label">
-                <span className="project-name-text">Pinned</span>
-                {renderCollapseButton(PINNED_GROUP_KEY, "Pinned", pinnedCollapsed)}
-              </span>
-              <span aria-hidden="true" />
-            </div>
-            {pinnedCollapsed ? null : pinnedWorkspaces.map((workspace) => (
+            {pinnedWorkspaces.length > 0 ? (
               <div
-                key={workspace.id}
-                className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
-                draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
-                onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
-                onDragOver={handleWorkspaceDragOver}
-                onDrop={(event) =>
-                  handleWorkspaceDrop(event, PINNED_GROUP_KEY, workspace.id, pinnedWorkspaceIds)
-                }
-                onDragEnd={handleWorkspaceDragEnd}
+                className="project-group session-date-group session-pinned-group"
+                data-collapsed={pinnedCollapsed ? "true" : undefined}
               >
-                {renderChat(workspace, { subtitle: subtitleFor(workspace.projectId) })}
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {priorityEntries.length > 0 ? (
-          <div
-            ref={priorityGroupRef}
-            className="project-group session-date-group session-priority-group"
-            data-collapsed={priorityCollapsed ? "true" : undefined}
-          >
-            <div
-              className="project-row session-date-row session-priority-row"
-              onClick={() => toggleDateGroupVisibility(PRIORITY_GROUP_KEY)}
-            >
-              <span className="project-name session-date-label session-priority-label">
-                <span className="project-name-text">Priority</span>
-                {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
-              </span>
-              {onClearPriority ? (
-                <button
-                  className="small-icon"
-                  type="button"
-                  title={dismissablePriorityIds.length === 0
-                    ? "Nothing to clear while every chat here is running"
-                    : "Clear Priority"}
-                  aria-label="Clear Priority"
-                  disabled={dismissablePriorityIds.length === 0}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onClearPriority(dismissablePriorityIds);
-                  }}
+                <div
+                  className="project-row session-date-row session-pinned-row"
+                  onClick={() => toggleDateGroupVisibility(PINNED_GROUP_KEY)}
                 >
-                  <Eraser size={16} aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-            {priorityCollapsed ? null : priorityEntries.map((entry) => (
-              <div
-                key={entry.workspace.id}
-                className={`session-row-wrap${(draggingWorkspaceId ?? pointerDraggingWorkspaceId) === entry.workspace.id ? " dragging" : ""}`}
-                draggable={canDragWorkspaceToGrid}
-                onDragStart={(event) => handleWorkspaceDragStart(event, entry.workspace.id)}
-                onDragOver={handleWorkspaceDragOver}
-                onDrop={(event) =>
-                  handleWorkspaceDrop(event, PRIORITY_GROUP_KEY, entry.workspace.id, priorityOrderedIds)
-                }
-                onDragEnd={handleWorkspaceDragEnd}
-              >
-                {renderChat(entry.workspace, { subtitle: subtitleFor(entry.workspace.projectId) })}
+                  <span className="project-name session-date-label session-pinned-label">
+                    <span className="project-name-text">Pinned</span>
+                    {renderCollapseButton(PINNED_GROUP_KEY, "Pinned", pinnedCollapsed)}
+                  </span>
+                  <span aria-hidden="true" />
+                </div>
+                {pinnedCollapsed
+                  ? null
+                  : pinnedWorkspaces.map((workspace) => (
+                      <div
+                        key={workspace.id}
+                        className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                        draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
+                        onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
+                        onDragOver={handleWorkspaceDragOver}
+                        onDrop={(event) =>
+                          handleWorkspaceDrop(event, PINNED_GROUP_KEY, workspace.id, pinnedWorkspaceIds)
+                        }
+                        onDragEnd={handleWorkspaceDragEnd}
+                      >
+                        {renderChat(workspace, { subtitle: subtitleFor(workspace.projectId) })}
+                      </div>
+                    ))}
               </div>
-            ))}
-          </div>
-        ) : null}
-        {/* Projects view's counterpart to the newest recency header: it names
+            ) : null}
+            {priorityEntries.length > 0 ? (
+              <div
+                ref={priorityGroupRef}
+                className="project-group session-date-group session-priority-group"
+                data-collapsed={priorityCollapsed ? "true" : undefined}
+              >
+                <div
+                  className="project-row session-date-row session-priority-row"
+                  onClick={() => toggleDateGroupVisibility(PRIORITY_GROUP_KEY)}
+                >
+                  <span className="project-name session-date-label session-priority-label">
+                    <span className="project-name-text">Priority</span>
+                    {renderCollapseButton(PRIORITY_GROUP_KEY, "Priority", priorityCollapsed)}
+                  </span>
+                  {onClearPriority ? (
+                    <button
+                      className="small-icon"
+                      type="button"
+                      title={
+                        dismissablePriorityIds.length === 0
+                          ? "Nothing to clear while every chat here is running"
+                          : "Clear Priority"
+                      }
+                      aria-label="Clear Priority"
+                      disabled={dismissablePriorityIds.length === 0}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onClearPriority(dismissablePriorityIds);
+                      }}
+                    >
+                      <Eraser size={16} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
+                {priorityCollapsed
+                  ? null
+                  : priorityEntries.map((entry) => (
+                      <div
+                        key={entry.workspace.id}
+                        className={`session-row-wrap${(draggingWorkspaceId ?? pointerDraggingWorkspaceId) === entry.workspace.id ? " dragging" : ""}`}
+                        draggable={canDragWorkspaceToGrid}
+                        onDragStart={(event) => handleWorkspaceDragStart(event, entry.workspace.id)}
+                        onDragOver={handleWorkspaceDragOver}
+                        onDrop={(event) =>
+                          handleWorkspaceDrop(event, PRIORITY_GROUP_KEY, entry.workspace.id, priorityOrderedIds)
+                        }
+                        onDragEnd={handleWorkspaceDragEnd}
+                      >
+                        {renderChat(entry.workspace, { subtitle: subtitleFor(entry.workspace.projectId) })}
+                      </div>
+                    ))}
+              </div>
+            ) : null}
+            {/* Projects view's counterpart to the newest recency header: it names
             the grouping and hosts the … / + cluster on the same line, so
             switching views doesn't shift the list down. */}
-        {viewMode === "projects" ? (
-          <div className="project-group session-projects-group">
-            <div className="project-row session-date-row session-projects-row">
-              <span className="project-name session-date-label">
-                <span className="project-name-text">Projects</span>
-              </span>
-              {sidebarActions}
-            </div>
-          </div>
-        ) : null}
-        {viewMode !== "projects"
-          ? listGroups.map((group) => {
-              const isCollapsed = collapsedDateGroups.has(group.key);
-              const totalCount = group.items.length;
-              const showAll = expandedDateGroups.has(group.key);
-              const visibleItems = visibleSidebarItems(group.items, selectedRootId, showAll);
-              const hiddenCount = totalCount - visibleItems.length;
-              const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
-              const isLead = group.key === leadListGroupKey;
-              return (
-                <div
-                  className="project-group session-date-group"
-                  data-collapsed={isCollapsed ? "true" : undefined}
-                  key={group.key}
-                  role={viewMode === "status" ? "group" : undefined}
-                  aria-label={viewMode === "status" ? `${group.label} chats` : undefined}
-                >
-                  <div
-                    className={`project-row session-date-row${isLead ? " session-date-row-lead" : ""}`}
-                    onClick={() => toggleDateGroupVisibility(group.key)}
-                  >
-                    {/* The label and its collapse chevron are one cluster on the
+            {viewMode === "projects" ? (
+              <div className="project-group session-projects-group">
+                <div className="project-row session-date-row session-projects-row">
+                  <span className="project-name session-date-label">
+                    <span className="project-name-text">Projects</span>
+                  </span>
+                  {sidebarActions}
+                </div>
+              </div>
+            ) : null}
+            {viewMode !== "projects"
+              ? listGroups.map((group) => {
+                  const isCollapsed = collapsedDateGroups.has(group.key);
+                  const totalCount = group.items.length;
+                  const showAll = expandedDateGroups.has(group.key);
+                  const visibleItems = visibleSidebarItems(group.items, selectedRootId, showAll);
+                  const hiddenCount = totalCount - visibleItems.length;
+                  const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
+                  const isLead = group.key === leadListGroupKey;
+                  return (
+                    <div
+                      className="project-group session-date-group"
+                      data-collapsed={isCollapsed ? "true" : undefined}
+                      key={group.key}
+                      role={viewMode === "status" ? "group" : undefined}
+                      aria-label={viewMode === "status" ? `${group.label} chats` : undefined}
+                    >
+                      <div
+                        className={`project-row session-date-row${isLead ? " session-date-row-lead" : ""}`}
+                        onClick={() => toggleDateGroupVisibility(group.key)}
+                      >
+                        {/* The label and its collapse chevron are one cluster on the
                         left, so the chevron reads as part of the label. The
                         newest bucket doubles as the list header and also hosts
                         the sidebar actions on the right. */}
-                    <span className="project-name session-date-label">
-                      <span className="project-name-text">{group.label}</span>
-                      {renderCollapseButton(group.key, group.label, isCollapsed)}
-                    </span>
-                    {isLead ? sidebarActions : <span aria-hidden="true" />}
-                  </div>
-                  {isCollapsed ? null : (
-                    <>
-                      {visibleItems.map((workspace) => (
-                        <div
-                          key={workspace.id}
-                          className="session-row-wrap"
+                        <span className="project-name session-date-label">
+                          <span className="project-name-text">{group.label}</span>
+                          {renderCollapseButton(group.key, group.label, isCollapsed)}
+                        </span>
+                        {isLead ? sidebarActions : <span aria-hidden="true" />}
+                      </div>
+                      {isCollapsed ? null : (
+                        <>
+                          {visibleItems.map((workspace) => (
+                            <div key={workspace.id} className="session-row-wrap">
+                              {renderChat(workspace, { subtitle: subtitleFor(workspace.projectId) })}
+                            </div>
+                          ))}
+                          {hasOverflow ? (
+                            <button
+                              type="button"
+                              className="sidebar-show-more"
+                              aria-expanded={showAll}
+                              aria-label={
+                                showAll
+                                  ? `Show fewer ${group.label} chats`
+                                  : `Show ${hiddenCount} more ${group.label} chats`
+                              }
+                              onClick={() => toggleDateGroupExpansion(group.key)}
+                            >
+                              {showAll ? "Show less" : `Show ${hiddenCount} more`}
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              : orderedProjects.map((project) => {
+                  const manualOrder = workspaceOrders[project.id] ?? [];
+                  const projectWorkspaces = sortWorkspaceGroup(
+                    sidebarWorkspaces.filter(
+                      (workspace) =>
+                        !workspace.pinned &&
+                        workspace.projectId === project.id &&
+                        !isInArchivedSection(workspace) &&
+                        !priorityWorkspaceIds.has(workspace.id) &&
+                        workspaceIdsWithSessions.has(workspace.id)
+                    ),
+                    manualOrder
+                  );
+                  const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
+                  const isCollapsed = collapsedProjectIds.has(project.id);
+                  const totalCount = projectWorkspaces.length;
+                  const showAll = expandedProjectIds.has(project.id);
+                  const visibleWorkspaces = visibleSidebarItems(projectWorkspaces, selectedRootId, showAll);
+                  const hiddenCount = totalCount - visibleWorkspaces.length;
+                  const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
+                  const isDragging = draggingId === project.id;
+                  const isDragOver = dragOverId === project.id && !isDragging;
+                  // The repo the open chat is working in. A chat that moves to
+                  // another project carries this with it, so the sidebar always
+                  // names where the agent actually is. `isOpenProject` is the
+                  // narrower case — the project opened on its own, no chat.
+                  const hostsOpenChat = selectedProjectId === project.id;
+                  const isOpenProject = hostsOpenChat && !selectedWorkspaceId;
+                  return (
+                    <div
+                      className={`project-group${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
+                      data-collapsed={isCollapsed ? "true" : undefined}
+                      draggable
+                      key={project.id}
+                      onDragStart={(e) => handleDragStart(e, project.id)}
+                      onDragOver={(e) => handleDragOver(e, project.id)}
+                      onDragLeave={(e) => handleDragLeave(e, project.id)}
+                      onDrop={(e) => handleDrop(e, project.id, orderedProjects)}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <div className="project-row" onClick={() => toggleProjectVisibility(project.id)}>
+                        <button
+                          aria-current={hostsOpenChat ? "true" : undefined}
+                          className={hostsOpenChat ? "project-name active" : "project-name"}
+                          type="button"
+                          onClick={(event) => {
+                            // The project name opens the project; the row-level click
+                            // (and the chevron) handle collapse, so stop this from
+                            // bubbling up and immediately toggling visibility back.
+                            event.stopPropagation();
+                            if (isOpenProject) {
+                              toggleProjectVisibility(project.id);
+                              return;
+                            }
+                            expandProjectVisibility(project.id);
+                            onOpenProject(project.id);
+                          }}
                         >
-                          {renderChat(workspace, { subtitle: subtitleFor(workspace.projectId) })}
-                        </div>
-                      ))}
-                      {hasOverflow ? (
+                          <span className="project-name-glyph" aria-hidden="true">
+                            {isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
+                          </span>
+                          <span className="project-name-text">{project.name}</span>
+                          {pinnedProjectIdSet.has(project.id) ? (
+                            <span className="project-pin-mark" title="Pinned">
+                              <Pin size={11} aria-label="Pinned" />
+                            </span>
+                          ) : null}
+                        </button>
+                        {onRemoveProject ? (
+                          <div className="project-picker-anchor project-actions-anchor">
+                            <button
+                              ref={projectMenuState?.projectId === project.id ? projectMenu.setAnchor : null}
+                              className="small-icon project-actions-trigger"
+                              type="button"
+                              title={`Actions for ${project.name}`}
+                              aria-label={`Actions for ${project.name}`}
+                              aria-haspopup="menu"
+                              aria-expanded={projectMenuState?.projectId === project.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (projectMenuState?.projectId === project.id) {
+                                  closeProjectMenu();
+                                  return;
+                                }
+                                projectMenu.setAnchor(event.currentTarget);
+                                setProjectMenuState({ projectId: project.id, mode: "menu" });
+                              }}
+                            >
+                              <MoreHorizontal size={14} />
+                            </button>
+                          </div>
+                        ) : null}
+                        <button
+                          aria-expanded={!isCollapsed}
+                          aria-label={`${isCollapsed ? "Show" : "Hide"} ${project.name} chats`}
+                          className="project-visibility"
+                          title={`${isCollapsed ? "Show" : "Hide"} chats`}
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleProjectVisibility(project.id);
+                          }}
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                      {isCollapsed ? null : (
+                        <>
+                          {visibleWorkspaces.map((workspace) => (
+                            <div
+                              key={workspace.id}
+                              className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
+                              draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
+                              onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
+                              onDragOver={handleWorkspaceDragOver}
+                              onDrop={(event) =>
+                                handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
+                              }
+                              onDragEnd={handleWorkspaceDragEnd}
+                            >
+                              {renderChat(workspace)}
+                            </div>
+                          ))}
+                          {hasOverflow ? (
+                            <button
+                              type="button"
+                              className="sidebar-show-more"
+                              aria-expanded={showAll}
+                              aria-label={
+                                showAll
+                                  ? `Show fewer ${project.name} chats`
+                                  : `Show ${hiddenCount} more ${project.name} chats`
+                              }
+                              onClick={() => toggleProjectExpansion(project.id)}
+                            >
+                              {showAll ? "Show less" : `Show ${hiddenCount} more`}
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+            {sideChatsSection}
+            {snoozedWorkspaces.length > 0 ? (
+              <div
+                className="project-group session-date-group snoozed-shelf"
+                data-collapsed={snoozedCollapsed ? "true" : undefined}
+              >
+                <div
+                  className="project-row session-date-row"
+                  title={`${snoozedWorkspaces.length} snoozed ${snoozedWorkspaces.length === 1 ? "chat" : "chats"}`}
+                  onClick={() => toggleDateGroupVisibility(SNOOZED_GROUP_KEY)}
+                >
+                  <span className="project-name session-date-label">
+                    <span className="project-name-text">Snoozed</span>
+                    {renderCollapseButton(SNOOZED_GROUP_KEY, "Snoozed", snoozedCollapsed)}
+                  </span>
+                  <span aria-hidden="true" />
+                </div>
+                {snoozedCollapsed
+                  ? null
+                  : snoozedWorkspaces.map((workspace) => (
+                      <div key={workspace.id} className="session-row-wrap">
+                        {renderChat(workspace, {
+                          subtitle: projectNameById.get(workspace.projectId),
+                          canDragToGrid: false,
+                          onTogglePin: undefined,
+                          onAddToPriority: undefined,
+                          onSnooze: undefined,
+                          onUnsnooze: onUnsnoozeWorkspace
+                        })}
+                      </div>
+                    ))}
+              </div>
+            ) : null}
+            {showArchived && archivedWorkspaces.length > 0 ? (
+              <div className="project-group session-date-group" data-collapsed={archivedCollapsed ? "true" : undefined}>
+                <div
+                  className="project-row session-date-row"
+                  onClick={() => toggleDateGroupVisibility(ARCHIVED_GROUP_KEY)}
+                >
+                  <span className="project-name session-date-label">
+                    <span className="project-name-text">Archived</span>
+                    {renderCollapseButton(ARCHIVED_GROUP_KEY, "Archived", archivedCollapsed)}
+                  </span>
+                  <span aria-hidden="true" />
+                </div>
+                {archivedCollapsed
+                  ? null
+                  : archivedWorkspaces.map((workspace) => (
+                      <div key={workspace.id} className="session-row-wrap">
+                        {renderChat(workspace, {
+                          subtitle: projectNameById.get(workspace.projectId),
+                          isWorking: false,
+                          hasUnreadResponse: false,
+                          canDragToGrid: false,
+                          onTogglePin: undefined,
+                          onAddToPriority: undefined,
+                          onSnooze: undefined
+                        })}
+                      </div>
+                    ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {projectMenuState
+          ? (() => {
+              const activeProject = snapshot.projects.find((p) => p.id === projectMenuState.projectId);
+              if (!activeProject || !onRemoveProject) return null;
+              return createPortal(
+                <ul
+                  ref={projectMenu.setPopover}
+                  className="project-picker-popover project-actions-popover"
+                  role="menu"
+                  aria-label={`${activeProject.name} actions`}
+                  style={projectMenu.floatingStyles}
+                >
+                  {projectMenuState.mode === "menu" ? (
+                    <>
+                      <li role="none">
                         <button
                           type="button"
-                          className="sidebar-show-more"
-                          aria-expanded={showAll}
-                          aria-label={
-                            showAll
-                              ? `Show fewer ${group.label} chats`
-                              : `Show ${hiddenCount} more ${group.label} chats`
-                          }
-                          onClick={() => toggleDateGroupExpansion(group.key)}
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={() => {
+                            closeProjectMenu();
+                            toggleProjectPinned(activeProject.id);
+                          }}
                         >
-                          {showAll ? "Show less" : `Show ${hiddenCount} more`}
+                          {pinnedProjectIdSet.has(activeProject.id) ? (
+                            <PinOff size={14} aria-hidden="true" />
+                          ) : (
+                            <Pin size={14} aria-hidden="true" />
+                          )}
+                          {pinnedProjectIdSet.has(activeProject.id) ? "Unpin Project" : "Pin Project"}
                         </button>
-                      ) : null}
+                      </li>
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item"
+                          onClick={() => {
+                            closeProjectMenu();
+                            showSettings("projects", "settings-project-folders", activeProject.id);
+                          }}
+                        >
+                          <Settings2 size={14} aria-hidden="true" />
+                          Edit Project
+                        </button>
+                      </li>
+                      <li className="project-picker-divider" role="separator" />
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="project-picker-item project-actions-destructive"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setProjectMenuState({ projectId: activeProject.id, mode: "confirm" });
+                          }}
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                          Remove Project
+                        </button>
+                      </li>
                     </>
+                  ) : (
+                    <li role="none">
+                      <p className="project-actions-confirm-text">
+                        Forget <strong>{activeProject.name}</strong> and all its chats? Files on disk are untouched.
+                      </p>
+                      <div className="project-actions-confirm-buttons">
+                        <button
+                          type="button"
+                          className="project-picker-item project-actions-confirm-cancel"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeProjectMenu();
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          className="project-picker-item project-actions-destructive"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            closeProjectMenu();
+                            onRemoveProject(activeProject.id);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </li>
                   )}
-                </div>
+                </ul>,
+                document.body
               );
-            })
-          : orderedProjects.map((project) => {
-              const manualOrder = workspaceOrders[project.id] ?? [];
-              const projectWorkspaces = sortWorkspaceGroup(
-                sidebarWorkspaces.filter(
-                  (workspace) =>
-                    !workspace.pinned &&
-                    workspace.projectId === project.id &&
-                    !isInArchivedSection(workspace) &&
-                    !priorityWorkspaceIds.has(workspace.id) &&
-                    workspaceIdsWithSessions.has(workspace.id)
-                ),
-                manualOrder
-              );
-              const orderedWorkspaceIds = projectWorkspaces.map((workspace) => workspace.id);
-              const isCollapsed = collapsedProjectIds.has(project.id);
-              const totalCount = projectWorkspaces.length;
-              const showAll = expandedProjectIds.has(project.id);
-              const visibleWorkspaces = visibleSidebarItems(projectWorkspaces, selectedRootId, showAll);
-              const hiddenCount = totalCount - visibleWorkspaces.length;
-              const hasOverflow = totalCount > SIDEBAR_SESSION_LIMIT;
-              const isDragging = draggingId === project.id;
-              const isDragOver = dragOverId === project.id && !isDragging;
-              // The repo the open chat is working in. A chat that moves to
-              // another project carries this with it, so the sidebar always
-              // names where the agent actually is. `isOpenProject` is the
-              // narrower case — the project opened on its own, no chat.
-              const hostsOpenChat = selectedProjectId === project.id;
-              const isOpenProject = hostsOpenChat && !selectedWorkspaceId;
-              return (
-            <div
-              className={`project-group${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
-              data-collapsed={isCollapsed ? "true" : undefined}
-              draggable
-              key={project.id}
-              onDragStart={(e) => handleDragStart(e, project.id)}
-              onDragOver={(e) => handleDragOver(e, project.id)}
-              onDragLeave={(e) => handleDragLeave(e, project.id)}
-              onDrop={(e) => handleDrop(e, project.id, orderedProjects)}
-              onDragEnd={handleDragEnd}
-            >
-              <div
-                className="project-row"
-                onClick={() => toggleProjectVisibility(project.id)}
-              >
-                <button
-                  aria-current={hostsOpenChat ? "true" : undefined}
-                  className={hostsOpenChat ? "project-name active" : "project-name"}
-                  type="button"
-                  onClick={(event) => {
-                    // The project name opens the project; the row-level click
-                    // (and the chevron) handle collapse, so stop this from
-                    // bubbling up and immediately toggling visibility back.
-                    event.stopPropagation();
-                    if (isOpenProject) {
-                      toggleProjectVisibility(project.id);
-                      return;
-                    }
-                    expandProjectVisibility(project.id);
-                    onOpenProject(project.id);
-                  }}
-                >
-                  <span className="project-name-glyph" aria-hidden="true">
-                    {isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
-                  </span>
-                  <span className="project-name-text">{project.name}</span>
-                  {pinnedProjectIdSet.has(project.id) ? (
-                    <span className="project-pin-mark" title="Pinned">
-                      <Pin size={11} aria-label="Pinned" />
-                    </span>
-                  ) : null}
-                </button>
-                {onRemoveProject ? (
-                  <div className="project-picker-anchor project-actions-anchor">
-                    <button
-                      ref={projectMenuState?.projectId === project.id ? projectMenu.setAnchor : null}
-                      className="small-icon project-actions-trigger"
-                      type="button"
-                      title={`Actions for ${project.name}`}
-                      aria-label={`Actions for ${project.name}`}
-                      aria-haspopup="menu"
-                      aria-expanded={projectMenuState?.projectId === project.id}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (projectMenuState?.projectId === project.id) {
-                          closeProjectMenu();
-                          return;
-                        }
-                        projectMenu.setAnchor(event.currentTarget);
-                        setProjectMenuState({ projectId: project.id, mode: "menu" });
-                      }}
-                    >
-                      <MoreHorizontal size={14} />
-                    </button>
-                  </div>
-                ) : null}
-                <button
-                  aria-expanded={!isCollapsed}
-                  aria-label={`${isCollapsed ? "Show" : "Hide"} ${project.name} chats`}
-                  className="project-visibility"
-                  title={`${isCollapsed ? "Show" : "Hide"} chats`}
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    toggleProjectVisibility(project.id);
-                  }}
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-              {isCollapsed ? null : (
-                <>
-                  {visibleWorkspaces.map((workspace) => (
-                    <div
-                      key={workspace.id}
-                      className={`session-row-wrap${draggingWorkspaceId === workspace.id ? " dragging" : ""}`}
-                      draggable={Boolean(onToggleWorkspacePinned) && canDragWorkspaceToGrid}
-                      onDragStart={(event) => handleWorkspaceDragStart(event, workspace.id)}
-                      onDragOver={handleWorkspaceDragOver}
-                      onDrop={(event) =>
-                        handleWorkspaceDrop(event, project.id, workspace.id, orderedWorkspaceIds)
-                      }
-                      onDragEnd={handleWorkspaceDragEnd}
-                    >
-                      {renderChat(workspace)}
-                    </div>
-                  ))}
-                  {hasOverflow ? (
-                    <button
-                      type="button"
-                      className="sidebar-show-more"
-                      aria-expanded={showAll}
-                      aria-label={
-                        showAll
-                          ? `Show fewer ${project.name} chats`
-                          : `Show ${hiddenCount} more ${project.name} chats`
-                      }
-                      onClick={() => toggleProjectExpansion(project.id)}
-                    >
-                      {showAll ? "Show less" : `Show ${hiddenCount} more`}
-                    </button>
-                  ) : null}
-                </>
-              )}
-            </div>
-          );
-        })}
-        {sideChatsSection}
-        {snoozedWorkspaces.length > 0 ? (
-          <div
-            className="project-group session-date-group snoozed-shelf"
-            data-collapsed={snoozedCollapsed ? "true" : undefined}
-          >
-            <div
-              className="project-row session-date-row"
-              title={`${snoozedWorkspaces.length} snoozed ${snoozedWorkspaces.length === 1 ? "chat" : "chats"}`}
-              onClick={() => toggleDateGroupVisibility(SNOOZED_GROUP_KEY)}
-            >
-              <span className="project-name session-date-label">
-                <span className="project-name-text">Snoozed</span>
-                {renderCollapseButton(SNOOZED_GROUP_KEY, "Snoozed", snoozedCollapsed)}
-              </span>
-              <span aria-hidden="true" />
-            </div>
-            {snoozedCollapsed ? null : snoozedWorkspaces.map((workspace) => (
-              <div key={workspace.id} className="session-row-wrap">
-                {renderChat(workspace, { subtitle: projectNameById.get(workspace.projectId), canDragToGrid: false, onTogglePin: undefined, onAddToPriority: undefined, onSnooze: undefined, onUnsnooze: onUnsnoozeWorkspace })}
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {showArchived && archivedWorkspaces.length > 0 ? (
-          <div
-            className="project-group session-date-group"
-            data-collapsed={archivedCollapsed ? "true" : undefined}
-          >
-            <div
-              className="project-row session-date-row"
-              onClick={() => toggleDateGroupVisibility(ARCHIVED_GROUP_KEY)}
-            >
-              <span className="project-name session-date-label">
-                <span className="project-name-text">Archived</span>
-                {renderCollapseButton(ARCHIVED_GROUP_KEY, "Archived", archivedCollapsed)}
-              </span>
-              <span aria-hidden="true" />
-            </div>
-            {archivedCollapsed ? null : archivedWorkspaces.map((workspace) => (
-              <div key={workspace.id} className="session-row-wrap">
-                {renderChat(workspace, { subtitle: projectNameById.get(workspace.projectId), isWorking: false, hasUnreadResponse: false, canDragToGrid: false, onTogglePin: undefined, onAddToPriority: undefined, onSnooze: undefined })}
-              </div>
-            ))}
-          </div>
-        ) : null}
-        </div>
-      </div>
+            })()
+          : null}
 
-      {projectMenuState
-        ? (() => {
-            const activeProject = snapshot.projects.find((p) => p.id === projectMenuState.projectId);
-            if (!activeProject || !onRemoveProject) return null;
-            return createPortal(
-              <ul
-                ref={projectMenu.setPopover}
-                className="project-picker-popover project-actions-popover"
-                role="menu"
-                aria-label={`${activeProject.name} actions`}
-                style={projectMenu.floatingStyles}
-              >
-                {projectMenuState.mode === "menu" ? (
-                  <>
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        onClick={() => {
-                          closeProjectMenu();
-                          toggleProjectPinned(activeProject.id);
-                        }}
-                      >
-                        {pinnedProjectIdSet.has(activeProject.id)
-                          ? <PinOff size={14} aria-hidden="true" />
-                          : <Pin size={14} aria-hidden="true" />}
-                        {pinnedProjectIdSet.has(activeProject.id) ? "Unpin Project" : "Pin Project"}
-                      </button>
-                    </li>
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item"
-                        onClick={() => {
-                          closeProjectMenu();
-                          showSettings("projects", "settings-project-folders", activeProject.id);
-                        }}
-                      >
-                        <Settings2 size={14} aria-hidden="true" />
-                        Edit Project
-                      </button>
-                    </li>
-                    <li className="project-picker-divider" role="separator" />
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="project-picker-item project-actions-destructive"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setProjectMenuState({ projectId: activeProject.id, mode: "confirm" });
-                        }}
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                        Remove Project
-                      </button>
-                    </li>
-                  </>
-                ) : (
-                  <li role="none">
-                    <p className="project-actions-confirm-text">
-                      Forget <strong>{activeProject.name}</strong> and all its chats? Files on disk are untouched.
-                    </p>
-                    <div className="project-actions-confirm-buttons">
-                      <button
-                        type="button"
-                        className="project-picker-item project-actions-confirm-cancel"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          closeProjectMenu();
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className="project-picker-item project-actions-destructive"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          closeProjectMenu();
-                          onRemoveProject(activeProject.id);
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </li>
-                )}
-              </ul>,
-              document.body
-            );
-          })()
-        : null}
-
-      <div className="sidebar-footer">
-        <div className="project-picker-anchor identity-menu-anchor" ref={identityMenuAnchorRef}>
+        <div className="sidebar-footer">
+          <div className="project-picker-anchor identity-menu-anchor" ref={identityMenuAnchorRef}>
+            <button
+              className="identity-chip identity-chip-button"
+              data-state={loadState}
+              type="button"
+              aria-label="Argmax menu"
+              aria-haspopup="menu"
+              aria-expanded={identityMenuOpen}
+              onClick={() => setIdentityMenuOpen((open) => !open)}
+            >
+              <span className="identity-meta">
+                <span className="identity-name">Argmax</span>
+                {identitySubLabel ? <span className="identity-sub">{identitySubLabel}</span> : null}
+              </span>
+              <ChevronDown className="identity-menu-chevron" size={14} aria-hidden="true" />
+            </button>
+            {identityMenuOpen ? (
+              <ul className="project-picker-popover identity-menu-popover" role="menu" aria-label="Argmax menu">
+                <li className="identity-menu-header" role="presentation">
+                  <span className="identity-menu-title">Argmax</span>
+                  <span className="identity-menu-subtitle">Local workspace · {APP_VERSION}</span>
+                </li>
+                <li className="project-picker-divider" role="separator" />
+                <IdentityPlans onOpenUsage={() => runIdentityAction(showUsagePage)} />
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item identity-menu-item"
+                    onClick={() => runIdentityAction(openCommandPalette)}
+                  >
+                    <Command size={14} aria-hidden="true" />
+                    <span>Command Palette</span>
+                    <kbd>⌘K</kbd>
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item identity-menu-item"
+                    onClick={() => runIdentityAction(showKeyboardCheatSheet)}
+                  >
+                    <Keyboard size={14} aria-hidden="true" />
+                    <span>Keyboard Shortcuts</span>
+                    <kbd>⌘/</kbd>
+                  </button>
+                </li>
+                <li className="project-picker-divider" role="separator" />
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item identity-menu-item"
+                    onClick={() => runIdentityAction(openSettings)}
+                  >
+                    <Settings size={14} aria-hidden="true" />
+                    <span>Settings</span>
+                    <kbd>⌘,</kbd>
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item identity-menu-item"
+                    onClick={() => runIdentityAction(openProviderSettings)}
+                  >
+                    <Cpu size={14} aria-hidden="true" />
+                    <span>Providers</span>
+                  </button>
+                </li>
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item identity-menu-item"
+                    onClick={() => runIdentityAction(openDiagnosticsSettings)}
+                  >
+                    <Activity size={14} aria-hidden="true" />
+                    <span>Diagnostics & Logs</span>
+                  </button>
+                </li>
+                <li className="project-picker-divider" role="separator" />
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="project-picker-item identity-menu-item"
+                    onClick={() => runIdentityAction(openAboutSettings)}
+                  >
+                    <Info size={14} aria-hidden="true" />
+                    <span>About Argmax</span>
+                  </button>
+                </li>
+              </ul>
+            ) : null}
+          </div>
           <button
-            className="identity-chip identity-chip-button"
-            data-state={loadState}
             type="button"
-            aria-label="Argmax menu"
-            aria-haspopup="menu"
-            aria-expanded={identityMenuOpen}
-            onClick={() => setIdentityMenuOpen((open) => !open)}
+            className="small-icon sidebar-footer-settings"
+            aria-label="Open settings"
+            title="Settings (⌘,)"
+            onClick={openSettings}
           >
-            <span className="identity-meta">
-              <span className="identity-name">Argmax</span>
-              {identitySubLabel ? (
-                <span className="identity-sub">{identitySubLabel}</span>
-              ) : null}
-            </span>
-            <ChevronDown className="identity-menu-chevron" size={14} aria-hidden="true" />
+            <Settings size={15} aria-hidden="true" />
           </button>
-          {identityMenuOpen ? (
-            <ul className="project-picker-popover identity-menu-popover" role="menu" aria-label="Argmax menu">
-              <li className="identity-menu-header" role="presentation">
-                <span className="identity-menu-title">Argmax</span>
-                <span className="identity-menu-subtitle">Local workspace · {APP_VERSION}</span>
-              </li>
-              <li className="project-picker-divider" role="separator" />
-              <IdentityPlans onOpenUsage={() => runIdentityAction(showUsagePage)} />
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(openCommandPalette)}
-                >
-                  <Command size={14} aria-hidden="true" />
-                  <span>Command Palette</span>
-                  <kbd>⌘K</kbd>
-                </button>
-              </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(showKeyboardCheatSheet)}
-                >
-                  <Keyboard size={14} aria-hidden="true" />
-                  <span>Keyboard Shortcuts</span>
-                  <kbd>⌘/</kbd>
-                </button>
-              </li>
-              <li className="project-picker-divider" role="separator" />
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(openSettings)}
-                >
-                  <Settings size={14} aria-hidden="true" />
-                  <span>Settings</span>
-                  <kbd>⌘,</kbd>
-                </button>
-              </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(openProviderSettings)}
-                >
-                  <Cpu size={14} aria-hidden="true" />
-                  <span>Providers</span>
-                </button>
-              </li>
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(openDiagnosticsSettings)}
-                >
-                  <Activity size={14} aria-hidden="true" />
-                  <span>Diagnostics & Logs</span>
-                </button>
-              </li>
-              <li className="project-picker-divider" role="separator" />
-              <li role="none">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="project-picker-item identity-menu-item"
-                  onClick={() => runIdentityAction(openAboutSettings)}
-                >
-                  <Info size={14} aria-hidden="true" />
-                  <span>About Argmax</span>
-                </button>
-              </li>
-            </ul>
-          ) : null}
+          <button
+            type="button"
+            className="small-icon"
+            aria-label="Open command palette"
+            title="Command palette (⌘K)"
+            onClick={openCommandPalette}
+          >
+            <Search size={15} aria-hidden="true" />
+          </button>
         </div>
-        <button
-          type="button"
-          className="small-icon sidebar-footer-settings"
-          aria-label="Open settings"
-          title="Settings (⌘,)"
-          onClick={openSettings}
-        >
-          <Settings size={15} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="small-icon"
-          aria-label="Open command palette"
-          title="Command palette (⌘K)"
-          onClick={openCommandPalette}
-        >
-          <Search size={15} aria-hidden="true" />
-        </button>
-      </div>
-      <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
-    </aside>
-    <NewArcDialog open={newArcDialogOpen} onClose={() => setNewArcDialogOpen(false)} projects={orderedProjects} />
+        <div className="sidebar-resizer" aria-hidden="true" onMouseDown={onResizeMouseDown} />
+      </aside>
+      <NewArcDialog open={newArcDialogOpen} onClose={() => setNewArcDialogOpen(false)} projects={orderedProjects} />
     </>
   );
 }

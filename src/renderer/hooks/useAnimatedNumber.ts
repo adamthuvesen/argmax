@@ -3,9 +3,11 @@ import { useEffect, useRef, useState } from "react";
 const DEFAULT_DURATION_MS = 600;
 
 function readPrefersReducedMotion(): boolean {
-  return typeof window !== "undefined" &&
+  return (
+    typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 /**

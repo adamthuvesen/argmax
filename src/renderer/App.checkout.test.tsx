@@ -39,9 +39,7 @@ describe("App workspace follow", () => {
       await Promise.resolve();
     });
 
-    expect(
-      await screen.findByRole("button", { name: "Copy branch name adam/updated-checkout" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Copy branch name adam/updated-checkout" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
   });
 
@@ -140,30 +138,19 @@ describe("App workspace follow", () => {
       })
     ).toBeInTheDocument();
 
-    expect(
-      await screen.findByRole("button", { name: "Copy branch name adam/feature-branch" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Copy branch name adam/feature-branch" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Workspace details/ })).toBeNull();
 
     await waitFor(() => {
-      expect(
-        sessionEventsSince.mock.calls.some(([input]) => input.sessionId === "session-moved")
-      ).toBe(true);
+      expect(sessionEventsSince.mock.calls.some(([input]) => input.sessionId === "session-moved")).toBe(true);
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "Files" }));
 
-    await waitFor(() =>
-      expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-moved" })
-    );
+    await waitFor(() => expect(listWorkspaceFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-moved" }));
 
     await waitFor(() =>
-      expect(listChangedFiles).toHaveBeenCalledWith(
-        { kind: "workspace", id: "workspace-moved" },
-        "branch"
-      )
+      expect(listChangedFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-moved" }, "branch")
     );
-
-
   });
 });

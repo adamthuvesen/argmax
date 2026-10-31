@@ -17,9 +17,7 @@ export type HighlightAppearance = "light" | "dark";
 function activeThemeName(appearance?: HighlightAppearance): string {
   if (appearance) return appearance === "dark" ? DARK_THEME : LIGHT_THEME;
   if (typeof document === "undefined") return LIGHT_THEME;
-  return themeAppearance(document.documentElement.getAttribute("data-theme")) === "dark"
-    ? DARK_THEME
-    : LIGHT_THEME;
+  return themeAppearance(document.documentElement.getAttribute("data-theme")) === "dark" ? DARK_THEME : LIGHT_THEME;
 }
 
 function subscribeToThemeAttribute(onChange: () => void): () => void {
@@ -84,10 +82,7 @@ const readyCallbacks = new Set<() => void>();
 function ensureHighlighter(): HighlighterCore | null {
   if (highlighter) return highlighter;
   if (highlighterPromise) return null;
-  highlighterPromise = Promise.all([
-    import("shiki/core"),
-    import("shiki/engine/javascript")
-  ])
+  highlighterPromise = Promise.all([import("shiki/core"), import("shiki/engine/javascript")])
     .then(([{ createHighlighterCore }, { createJavaScriptRegexEngine }]) =>
       createHighlighterCore({
         themes: CURATED_THEMES,
@@ -241,9 +236,7 @@ export function highlightCode(
   let lines: HighlightToken[][];
   try {
     const result = instance.codeToTokens(code, { theme: activeThemeName(appearance), lang });
-    lines = result.tokens.map((line) =>
-      line.map((token) => ({ content: token.content, color: token.color }))
-    );
+    lines = result.tokens.map((line) => line.map((token) => ({ content: token.content, color: token.color })));
   } catch {
     return plainCodeLines(code);
   }

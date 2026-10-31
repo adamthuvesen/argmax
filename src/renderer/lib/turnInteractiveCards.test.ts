@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import type { ToolCall } from "./toolCalls.js";
-import {
-  collectAskUserQuestionState,
-  hasOutstandingCardAsk
-} from "./turnInteractiveCards.js";
+import { collectAskUserQuestionState, hasOutstandingCardAsk } from "./turnInteractiveCards.js";
 import type { TurnToolItem } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -84,7 +81,13 @@ describe("turnInteractiveCards", () => {
         tool: tool({
           id: "bad",
           inputFull: {
-            questions: [{ question: "Too many?", header: "Bad", options: [{ label: "1" }, { label: "2" }, { label: "3" }, { label: "4" }, { label: "5" }] }]
+            questions: [
+              {
+                question: "Too many?",
+                header: "Bad",
+                options: [{ label: "1" }, { label: "2" }, { label: "3" }, { label: "4" }, { label: "5" }]
+              }
+            ]
           }
         })
       }
@@ -139,9 +142,7 @@ describe("turnInteractiveCards", () => {
     ];
 
     expect(collectAskUserQuestionState(items).tool?.id).toBe("q-alias");
-    expect(collectAskUserQuestionState(items).hiddenToolIds).toEqual(
-      new Set(["q-alias", "cursor-q"])
-    );
+    expect(collectAskUserQuestionState(items).hiddenToolIds).toEqual(new Set(["q-alias", "cursor-q"]));
   });
 
   it("treats outstanding card asks as after the latest user message", () => {

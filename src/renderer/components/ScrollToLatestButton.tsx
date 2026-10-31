@@ -17,13 +17,7 @@ export function ScrollToLatestButton({
   if (!detached) return null;
   const label = newBelowCount > 0 ? `Scroll to latest (${newBelowCount} new)` : "Scroll to latest";
   return (
-    <button
-      type="button"
-      className="scroll-to-bottom-fab"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-    >
+    <button type="button" className="scroll-to-bottom-fab" aria-label={label} title={label} onClick={onClick}>
       <ArrowDown size={19} strokeWidth={2.2} aria-hidden="true" />
     </button>
   );

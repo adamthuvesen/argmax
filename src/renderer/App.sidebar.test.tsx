@@ -133,10 +133,7 @@ describe("App sidebar", () => {
       await Promise.resolve();
     });
 
-    expect(await screen.findByRole("button", { name: /Today chats/ })).toHaveAttribute(
-      "aria-expanded",
-      "true"
-    );
+    expect(await screen.findByRole("button", { name: /Today chats/ })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("opens the nth sidebar row on Cmd+1..9, in the order the rows are shown", async () => {
@@ -272,17 +269,14 @@ describe("App sidebar", () => {
     // The sidebar has to name the repo the agent is working in now, not the
     // one it left.
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Dotfiles" })).toHaveAttribute(
-        "aria-current",
-        "true"
-      )
+      expect(screen.getByRole("button", { name: "Dotfiles" })).toHaveAttribute("aria-current", "true")
     );
     expect(screen.getByRole("button", { name: "Argmax" })).not.toHaveAttribute("aria-current");
   });
 
   it("opens a sidebar session", async () => {
-    const secondWorkspace = workspaceRow({  });
-    const secondSession = sessionRow({  });
+    const secondWorkspace = workspaceRow({});
+    const secondSession = sessionRow({});
     const secondEvent: DashboardSnapshot["events"][number] = {
       id: "event-2",
       sessionId: "session-2",
@@ -298,9 +292,29 @@ describe("App sidebar", () => {
     });
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-2") {
-        return Promise.resolve({ events: [secondEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+        return Promise.resolve({
+          events: [secondEvent],
+          rawOutputs: [],
+          eventCursor: 2,
+          rawOutputCursor: 0,
+          changeCursor: null,
+          deletedEventIds: [],
+          deletedRawOutputIds: [],
+          resetRequired: false,
+          hasMore: false
+        });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      return Promise.resolve({
+        events: snapshot.events,
+        rawOutputs: [],
+        eventCursor: 1,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false
+      });
     });
 
     render(<App />);
@@ -629,9 +643,9 @@ describe("App sidebar", () => {
 
   it("opens a changed file review panel with parsed diff lines", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx", status: "M", additions: 2, deletions: 2 , staged: false },
-{ path: "src/renderer/styles.css", status: "M", additions: 0, deletions: 15 , staged: false },
-]);
+      { path: "src/renderer/App.tsx", status: "M", additions: 2, deletions: 2, staged: false },
+      { path: "src/renderer/styles.css", status: "M", additions: 0, deletions: 15, staged: false }
+    ]);
     loadDiff.mockResolvedValue({
       workspaceId: "workspace-1",
       filePath: "src/renderer/App.tsx",
@@ -647,8 +661,8 @@ describe("App sidebar", () => {
         "@@ -20,2 +20,2 @@",
         "-const stale = true;",
         "+const fresh = true;"
-      ].join("\n")
-      , revision: "test-revision"
+      ].join("\n"),
+      revision: "test-revision"
     });
 
     render(<App />);
@@ -671,12 +685,13 @@ describe("App sidebar", () => {
     // so its diff loads without anyone picking one.
     await waitFor(() =>
       expect(loadDiff).toHaveBeenCalledWith(
-        { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch", undefined
+        { kind: "workspace", id: "workspace-1" },
+        "src/renderer/App.tsx",
+        "branch",
+        undefined
       )
     );
-    expect(
-      await screen.findByRole("button", { name: "Collapse src/renderer/App.tsx diff" })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Collapse src/renderer/App.tsx diff" })).toBeInTheDocument();
     // shiki tokenizes lines into per-token <span> children, so getByText on
     // the full source line misses. toHaveTextContent matches concatenated
     // textContent regardless of token carving (same workaround P6.01 used).
@@ -689,14 +704,15 @@ describe("App sidebar", () => {
     fireEvent.click(expandGap);
     await waitFor(() =>
       expect(loadDiff).toHaveBeenCalledWith(
-        { kind: "workspace", id: "workspace-1" }, "src/renderer/App.tsx", "branch", 25
+        { kind: "workspace", id: "workspace-1" },
+        "src/renderer/App.tsx",
+        "branch",
+        25
       )
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
   });
 
   it("browses workspace files via the Files tab and previews a selection", async () => {
@@ -739,9 +755,9 @@ describe("App sidebar", () => {
     fireEvent.click(nestedSrc!);
     fireEvent.click(await screen.findByRole("treeitem", { name: /^index\.ts$/ }));
 
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts"
-    ));
+    await waitFor(() =>
+      expect(readWorkspaceFile).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts")
+    );
     // The shiki highlighter tokenizes lines into per-token spans, so the line
     // text spans multiple DOM nodes. Query the preview wrapper by aria-label
     // and assert against its concatenated textContent — matches the real
@@ -757,9 +773,12 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("treeitem", { name: /^renderer$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^lib$/ }));
     fireEvent.click(await screen.findByRole("treeitem", { name: /^tauriBridge\.ts$/ }));
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src/renderer/lib/tauriBridge.ts"
-    ));
+    await waitFor(() =>
+      expect(readWorkspaceFile).toHaveBeenCalledWith(
+        { kind: "workspace", id: "workspace-1" },
+        "src/renderer/lib/tauriBridge.ts"
+      )
+    );
     expect(await screen.findByLabelText("Preview of src/renderer/lib/tauriBridge.ts")).toHaveTextContent(
       "export const tauriBridge = true;"
     );
@@ -782,12 +801,9 @@ describe("App sidebar", () => {
 
   it("opens workspace files in the review panel with Cmd+G", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx", status: "modified", additions: 2, deletions: 1 , staged: false },
-]);
-    listWorkspaceFiles.mockResolvedValue([
-      { path: "src-tauri/src/index.ts" },
-      { path: "src/renderer/App.tsx" }
+      { path: "src/renderer/App.tsx", status: "modified", additions: 2, deletions: 1, staged: false }
     ]);
+    listWorkspaceFiles.mockResolvedValue([{ path: "src-tauri/src/index.ts" }, { path: "src/renderer/App.tsx" }]);
 
     render(<App />);
 
@@ -801,9 +817,7 @@ describe("App sidebar", () => {
     expect(screen.queryByText("1 file")).not.toBeInTheDocument();
 
     fireEvent.keyDown(input, { key: "g", metaKey: true });
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
 
     fireEvent.keyDown(input, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
@@ -831,17 +845,12 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("tab", { name: "https://www.google.com", selected: true })).toBeInTheDocument();
 
     fireEvent.keyDown(input, { key: "I", metaKey: true, shiftKey: true });
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
   });
 
   it("opens workspace files via the unified command palette on Cmd+P", async () => {
     listChangedFiles.mockResolvedValue([]);
-    listWorkspaceFiles.mockResolvedValue([
-      { path: "src-tauri/src/index.ts" },
-      { path: "src/renderer/App.tsx" }
-    ]);
+    listWorkspaceFiles.mockResolvedValue([{ path: "src-tauri/src/index.ts" }, { path: "src/renderer/App.tsx" }]);
     readWorkspaceFile.mockResolvedValue({
       kind: "text",
       content: "export const hello = 'world';\n",
@@ -868,9 +877,9 @@ describe("App sidebar", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    await waitFor(() => expect(readWorkspaceFile).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts"
-    ));
+    await waitFor(() =>
+      expect(readWorkspaceFile).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }, "src-tauri/src/index.ts")
+    );
   });
 
   it("shows a placeholder when a previewed file is binary or too large", async () => {
@@ -936,10 +945,7 @@ describe("App sidebar", () => {
   });
 
   it("opens project files via the unified command palette on Cmd+P", async () => {
-    listProjectFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx" },
-      { path: "README.md" }
-    ]);
+    listProjectFiles.mockResolvedValue([{ path: "src/renderer/App.tsx" }, { path: "README.md" }]);
     readProjectFile.mockResolvedValue({
       kind: "text",
       content: "export function App() {}\n",
@@ -956,15 +962,19 @@ describe("App sidebar", () => {
     const palette = await screen.findByRole("dialog", { name: "Command palette" });
     const input = within(palette).getByLabelText("Command palette query");
     fireEvent.change(input, { target: { value: "app" } });
-    await waitFor(() => expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" }));
+    await waitFor(() =>
+      expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" })
+    );
     await within(palette).findByRole("option", { name: /App\.tsx/ });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
-    await waitFor(() => expect(readProjectFile).toHaveBeenCalledWith(
-      { kind: "projectFolder", id: "project-1:primary" },
-      "src/renderer/App.tsx"
-    ));
+    await waitFor(() =>
+      expect(readProjectFile).toHaveBeenCalledWith(
+        { kind: "projectFolder", id: "project-1:primary" },
+        "src/renderer/App.tsx"
+      )
+    );
   });
 
   it("opens the launcher review panel in project files mode with Cmd+B", async () => {
@@ -1023,16 +1033,11 @@ describe("App sidebar", () => {
     );
 
     fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
   });
 
   it("dismisses the launcher review panel when New chat is clicked", async () => {
-    listProjectFiles.mockResolvedValue([
-      { path: "src-tauri/src/main.ts" },
-      { path: "README.md" }
-    ]);
+    listProjectFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "README.md" }]);
 
     render(<App />);
 
@@ -1043,9 +1048,7 @@ describe("App sidebar", () => {
     expect(await screen.findByRole("complementary", { name: "Review panel" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
 
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
     expect(screen.getByLabelText("Task prompt")).toBeInTheDocument();
   });
 
@@ -1076,10 +1079,7 @@ describe("App sidebar", () => {
   });
 
   it("keeps launcher review controls available with the sidebar collapsed", async () => {
-    listProjectFiles.mockResolvedValue([
-      { path: "src-tauri/src/main.ts" },
-      { path: "README.md" }
-    ]);
+    listProjectFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "README.md" }]);
 
     render(<App />);
 
@@ -1098,10 +1098,7 @@ describe("App sidebar", () => {
   });
 
   it("opens the launcher review panel when Tauri sends the Cmd+B menu command", async () => {
-    listProjectFiles.mockResolvedValue([
-      { path: "src-tauri/src/main.ts" },
-      { path: "README.md" }
-    ]);
+    listProjectFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "README.md" }]);
 
     render(<App />);
 
@@ -1117,10 +1114,7 @@ describe("App sidebar", () => {
   });
 
   it("opens the launcher review panel in project files mode with Cmd+G", async () => {
-    listProjectFiles.mockResolvedValue([
-      { path: "src-tauri/src/main.ts" },
-      { path: "README.md" }
-    ]);
+    listProjectFiles.mockResolvedValue([{ path: "src-tauri/src/main.ts" }, { path: "README.md" }]);
 
     render(<App />);
 
@@ -1133,9 +1127,7 @@ describe("App sidebar", () => {
     expect(listProjectFiles).toHaveBeenCalledWith({ kind: "projectFolder", id: "project-1:primary" });
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
-    await waitFor(() =>
-      expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument());
 
     fireEvent.keyDown(prompt, { key: "g", metaKey: true });
     fireEvent.contextMenu(await screen.findByRole("tab", { name: "Changes" }));
@@ -1152,10 +1144,7 @@ describe("App sidebar", () => {
   });
 
   it("surfaces project files in the command palette after Cmd+B opens review", async () => {
-    listProjectFiles.mockResolvedValue([
-      { path: "src/renderer/App.tsx" },
-      { path: "README.md" }
-    ]);
+    listProjectFiles.mockResolvedValue([{ path: "src/renderer/App.tsx" }, { path: "README.md" }]);
 
     render(<App />);
 
@@ -1181,9 +1170,7 @@ describe("App sidebar", () => {
           { name: "opsx-archive", description: "Archive a change", source: "codex-prompt" }
         ]);
       }
-      return Promise.resolve([
-        { name: "impl", description: "Implement code from a plan", source: "user" }
-      ]);
+      return Promise.resolve([{ name: "impl", description: "Implement code from a plan", source: "user" }]);
     });
 
     render(<App />);
@@ -1352,13 +1339,32 @@ describe("App sidebar", () => {
     mockDashboardSnapshot(demotionSnapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-wait" || input.sessionId === "session-other") {
-        return Promise.resolve({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+        return Promise.resolve({
+          events: [],
+          rawOutputs: [],
+          eventCursor: 0,
+          rawOutputCursor: 0,
+          changeCursor: null,
+          deletedEventIds: [],
+          deletedRawOutputIds: [],
+          resetRequired: false,
+          hasMore: false
+        });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: [], eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      return Promise.resolve({
+        events: snapshot.events,
+        rawOutputs: [],
+        eventCursor: 1,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false
+      });
     });
     setPriorityDismissed.mockImplementation(({ workspaceId, dismissed }) => {
-      const current =
-        demotionSnapshot.workspaces.find((item) => item.id === workspaceId) ?? waitingWorkspace;
+      const current = demotionSnapshot.workspaces.find((item) => item.id === workspaceId) ?? waitingWorkspace;
       const updated = {
         ...current,
         priorityDismissedAt: dismissed ? new Date().toISOString() : null,
@@ -1366,9 +1372,7 @@ describe("App sidebar", () => {
       };
       const next = {
         ...demotionSnapshot,
-        workspaces: demotionSnapshot.workspaces.map((item) =>
-          item.id === workspaceId ? updated : item
-        )
+        workspaces: demotionSnapshot.workspaces.map((item) => (item.id === workspaceId ? updated : item))
       };
       workspaceStatus.mockResolvedValue(workspaceStatusSnapshot(next));
       dashboardDeltaListener?.({ workspaces: [updated] });
@@ -1479,7 +1483,9 @@ describe("App sidebar", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Working chat/ }));
     fireEvent.click(screen.getByRole("button", { name: /Other chat/ }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /Other chat/ })).toHaveAttribute("aria-current", "true"));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Other chat/ })).toHaveAttribute("aria-current", "true")
+    );
     expect(setPriorityDismissed).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /Working chat/ })).toHaveAttribute(
       "title",

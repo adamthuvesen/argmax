@@ -56,14 +56,7 @@ describe("TurnChangesCard", () => {
   it("prefers the diff over the file view when both are available", () => {
     const onOpenDiff = vi.fn();
     const onOpenFile = vi.fn();
-    render(
-      <TurnChangesCard
-        changes={CHANGES}
-        workspaceCwd="/repo"
-        onOpenDiff={onOpenDiff}
-        onOpenFile={onOpenFile}
-      />
-    );
+    render(<TurnChangesCard changes={CHANGES} workspaceCwd="/repo" onOpenDiff={onOpenDiff} onOpenFile={onOpenFile} />);
     fireEvent.click(screen.getByLabelText("Edited src/styles/tokens.css"));
     expect(onOpenDiff).toHaveBeenCalledTimes(1);
     expect(onOpenFile).not.toHaveBeenCalled();
@@ -84,9 +77,7 @@ describe("TurnChangesCard", () => {
 
   it("colors each row by file family", () => {
     const { container } = render(<TurnChangesCard changes={CHANGES} workspaceCwd="/repo" />);
-    const families = [...container.querySelectorAll(".turn-changes-row")].map((row) =>
-      row.getAttribute("data-family")
-    );
+    const families = [...container.querySelectorAll(".turn-changes-row")].map((row) => row.getAttribute("data-family"));
     expect(families).toEqual(["style", "script", "doc"]);
   });
 });

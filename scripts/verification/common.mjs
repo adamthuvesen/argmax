@@ -16,7 +16,11 @@ export async function writeTripwires(directory, logPath, names) {
   await mkdir(directory, { recursive: true });
   const quotedLog = `'${logPath.replaceAll("'", "'\\''")}'`;
   for (const name of names) {
-    await writeFile(path.join(directory, name), `#!/bin/sh\nprintf '%s %s\\n' '${name}' "$1" >> ${quotedLog}\nexit 97\n`, { mode: 0o755 });
+    await writeFile(
+      path.join(directory, name),
+      `#!/bin/sh\nprintf '%s %s\\n' '${name}' "$1" >> ${quotedLog}\nexit 97\n`,
+      { mode: 0o755 }
+    );
   }
 }
 
@@ -151,7 +155,9 @@ export async function checkoutFingerprint(repoRoot) {
 }
 
 export async function fileSha256(filePath) {
-  return createHash("sha256").update(await readFile(filePath)).digest("hex");
+  return createHash("sha256")
+    .update(await readFile(filePath))
+    .digest("hex");
 }
 
 export function uniqueRunId(now = new Date()) {

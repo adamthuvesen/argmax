@@ -42,12 +42,17 @@ for (const { html, surface } of ENTRIES) {
     console.error(`error: ${html} has no appearance-bootstrap region. Restore the start and end comments.`);
     process.exit(1);
   }
-  const body = appearanceBootstrapScript(surface).split("\n").map((line) => `      ${line}`).join("\n");
+  const body = appearanceBootstrapScript(surface)
+    .split("\n")
+    .map((line) => `      ${line}`)
+    .join("\n");
   const region = `<!-- appearance-bootstrap:start -->\n    <script>\n${body}\n    </script>\n    <!-- appearance-bootstrap:end -->`;
   const next = current.replace(REGION, () => region);
   if (next === current) continue;
   if (check) {
-    console.error(`error: ${html} differs from src/renderer/lib/appearanceBootstrap.ts. Run npm run build:appearance-bootstrap.`);
+    console.error(
+      `error: ${html} differs from src/renderer/lib/appearanceBootstrap.ts. Run npm run build:appearance-bootstrap.`
+    );
     stale = true;
   } else {
     await writeFile(file, next);

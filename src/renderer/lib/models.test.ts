@@ -129,13 +129,15 @@ describe("modelSelectionFromSession", () => {
   });
 
   it("follows a saved DeepSeek Flash selection onto the 1017 snapshot", () => {
-    expect(modelSelectionFromSession({
-      ...BASE_SESSION,
-      provider: "opencode",
-      modelLabel: "DeepSeek V4.1 Flash",
-      modelId: "openrouter/deepseek/deepseek-v4.1-flash",
-      reasoningEffort: "high"
-    })).toEqual({
+    expect(
+      modelSelectionFromSession({
+        ...BASE_SESSION,
+        provider: "opencode",
+        modelLabel: "DeepSeek V4.1 Flash",
+        modelId: "openrouter/deepseek/deepseek-v4.1-flash",
+        reasoningEffort: "high"
+      })
+    ).toEqual({
       label: "DeepSeek V4.1 Flash 1017",
       modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
       reasoningEffort: "high"
@@ -177,12 +179,7 @@ function discovered(
 
 describe("preferredLaunchModel", () => {
   it("prefers Claude, then Codex, then Cursor, then OpenCode", () => {
-    const all = [
-      discovered("opencode"),
-      discovered("cursor"),
-      discovered("codex"),
-      discovered("claude")
-    ];
+    const all = [discovered("opencode"), discovered("cursor"), discovered("codex"), discovered("claude")];
     expect(preferredLaunchProvider(all)).toBe("claude");
     expect(preferredLaunchModel(all)).toEqual({
       provider: "claude",
@@ -204,12 +201,9 @@ describe("preferredLaunchModel", () => {
   });
 
   it("skips a provider that is installed but logged out", () => {
-    expect(
-      preferredLaunchProvider([
-        discovered("claude", { authenticated: false }),
-        discovered("codex")
-      ])
-    ).toBe("codex");
+    expect(preferredLaunchProvider([discovered("claude", { authenticated: false }), discovered("codex")])).toBe(
+      "codex"
+    );
   });
 
   it("falls back to OpenCode's default when no provider is usable", () => {
@@ -221,7 +215,6 @@ describe("preferredLaunchModel", () => {
       ])
     ).toEqual(FALLBACK_LAUNCH_MODEL);
   });
-
 });
 
 describe("allModelOptions", () => {

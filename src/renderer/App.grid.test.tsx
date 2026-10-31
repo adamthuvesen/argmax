@@ -121,13 +121,7 @@ vi.mock("./components/TerminalTabsPanel.js", async () => {
           addTerminalTab(workspaceId, "zsh");
         }
       }, [workspaceId]);
-      return (
-        <div
-          data-testid="terminal-tabs-panel"
-          data-workspace={workspaceId}
-          data-visible={String(visible)}
-        />
-      );
+      return <div data-testid="terminal-tabs-panel" data-workspace={workspaceId} data-visible={String(visible)} />;
     }
   };
 });
@@ -212,9 +206,7 @@ describe("App grid", () => {
     if (!lastArchiveButton) throw new Error("Expected lastArchiveButton to be defined");
     fireEvent.click(lastArchiveButton);
 
-    await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: false })
-    );
+    await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: false }));
 
     // Grid now has only 1 pane (the first one)
     await waitFor(() => {
@@ -248,7 +240,8 @@ describe("App grid", () => {
   });
 
   it("opens the first grid pane when a sidebar session is pointer-dropped onto the launcher", async () => {
-    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    const bounds = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
       .mockReturnValue(new DOMRect(50, 50, 800, 600));
     const pointer = (target: Element | Window, type: string, clientX: number): void => {
       // jsdom lacks PointerEvent, so preserve the coordinates and pointer ID.
@@ -341,7 +334,7 @@ describe("App grid", () => {
     fireEvent.change(chatPrompt, { target: { value: "Keep this draft intact" } });
     chatPrompt.focus();
     chatPrompt.setSelectionRange(9, 9);
-    expect(document.activeElement).toBe(chatPrompt);
+    expect(chatPrompt).toHaveFocus();
 
     await act(async () => {
       dashboardDeltaListener?.({
@@ -355,8 +348,8 @@ describe("App grid", () => {
       await Promise.resolve();
     });
 
-    expect(document.activeElement).toBe(chatPrompt);
-    expect(document.activeElement).not.toBe(launcherPrompt);
+    expect(chatPrompt).toHaveFocus();
+    expect(launcherPrompt).not.toHaveFocus();
     expect(chatPrompt).toHaveValue("Keep this draft intact");
     expect(chatPrompt.selectionStart).toBe(9);
     expect(chatPrompt.selectionEnd).toBe(9);
@@ -437,9 +430,7 @@ describe("App grid", () => {
     fireEvent.click(freshStopButton);
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-embedded-fresh"));
-    await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: true })
-    );
+    await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-2", force: true }));
 
     const restoredLauncher = await screen.findByRole("region", { name: "New chat for Argmax" });
     expect(within(restoredLauncher).getByLabelText("Task prompt")).toHaveValue("Implement embedded early stop feature");
@@ -456,7 +447,11 @@ describe("App grid", () => {
     const launcher = await screen.findByRole("region", { name: "New chat for Argmax" });
     fireEvent.change(within(launcher).getByLabelText("Task prompt"), { target: { value: "Rename the helper" } });
 
-    createCurrentWorkspace.mockResolvedValue({ ...snapshot.workspaces[0], id: "workspace-2", taskLabel: "Routed task" });
+    createCurrentWorkspace.mockResolvedValue({
+      ...snapshot.workspaces[0],
+      id: "workspace-2",
+      taskLabel: "Routed task"
+    });
     launchProvider.mockResolvedValue({
       ...snapshot.sessions[0],
       id: "session-routed",
@@ -481,7 +476,9 @@ describe("App grid", () => {
 
   it("opens an agent activity pane from an agent row without showing child prose in the parent chat", async () => {
     window.localStorage.removeItem(CHAT_VERBOSITY_KEY);
-    const promptText = "Find the renderer entry points and note the important files before reporting back. ".repeat(9).trim();
+    const promptText = "Find the renderer entry points and note the important files before reporting back. "
+      .repeat(9)
+      .trim();
     const data: DashboardSnapshot = {
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({
@@ -642,7 +639,11 @@ describe("App grid", () => {
           sessionId: "session-1",
           type: "command.started",
           message: "Task",
-          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Map renderer", prompt: "Find renderer files." }
+          },
           createdAt: "2026-05-08T15:54:02.000Z"
         },
         {
@@ -671,7 +672,9 @@ describe("App grid", () => {
     expect(within(tablist).getAllByRole("tab")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: startedAgentName("Write tests") }));
 
-    const tabLabels = within(tablist).getAllByRole("tab").map((tab) => tab.textContent);
+    const tabLabels = within(tablist)
+      .getAllByRole("tab")
+      .map((tab) => tab.textContent);
     expect(tabLabels).toHaveLength(2);
     // Each spawn gets its own distinct scientist codename as the tab label.
     expect(new Set(tabLabels).size).toBe(2);
@@ -888,7 +891,9 @@ describe("App grid", () => {
     // This suite runs at Steps, where a single call is its own row rather than
     // a summary to open.
     expect(within(pane).getByRole("button", { name: "Read App.tsx" })).toBeInTheDocument();
-    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+    expect(
+      within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")
+    ).toBeNull();
   });
 
   it("renders the agent instructions prompt as markdown", async () => {
@@ -1136,22 +1141,24 @@ describe("App grid", () => {
       ]
     });
     const completedChild = {
-      events: [{
-        id: "child-done",
-        sessionId: "session-1",
-        type: "agent.completed",
-        message: "Agent completed",
-        payload: {
-          providerInvocationId: "invoke-task",
-          providerChildSessionId: "child-task",
-          agentRootToolUseId: "call-task",
-          agentRunId: "call-task",
-          status: "completed",
-          traceImported: true
-        },
-        createdAt: "2026-05-08T15:54:08.000Z",
-        rowCursor: 3
-      }],
+      events: [
+        {
+          id: "child-done",
+          sessionId: "session-1",
+          type: "agent.completed",
+          message: "Agent completed",
+          payload: {
+            providerInvocationId: "invoke-task",
+            providerChildSessionId: "child-task",
+            agentRootToolUseId: "call-task",
+            agentRunId: "call-task",
+            status: "completed",
+            traceImported: true
+          },
+          createdAt: "2026-05-08T15:54:08.000Z",
+          rowCursor: 3
+        }
+      ],
       rawOutputs: [],
       eventCursor: 3,
       rawOutputCursor: 0,
@@ -1163,9 +1170,10 @@ describe("App grid", () => {
     } satisfies SessionEventsSinceResult;
     let resolveAgentEvents!: (value: SessionEventsSinceResult) => void;
     sessionAgentEvents.mockImplementation(
-      () => new Promise((resolve) => {
-        resolveAgentEvents = resolve;
-      })
+      () =>
+        new Promise((resolve) => {
+          resolveAgentEvents = resolve;
+        })
     );
 
     render(<App />);
@@ -1225,7 +1233,17 @@ describe("App grid", () => {
             resolveAgentEvents = resolve;
           })
       )
-      .mockResolvedValue({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      .mockResolvedValue({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false
+      });
 
     render(<App />);
 
@@ -1238,17 +1256,31 @@ describe("App grid", () => {
     const startsWithThinkingWord = (text: string | null): boolean =>
       THINKING_WORDS.some((word) => text?.startsWith(word) ?? false);
     expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(true);
-    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+    expect(
+      within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")
+    ).toBeNull();
 
     await act(async () => {
-      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      resolveAgentEvents({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false
+      });
       await Promise.resolve();
     });
 
     await waitFor(() => {
       expect(startsWithThinkingWord(within(pane).getByTestId("thinking-label").textContent)).toBe(true);
     });
-    expect(within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")).toBeNull();
+    expect(
+      within(pane).queryByText("This provider reported the agent launch, but did not stream child activity.")
+    ).toBeNull();
   });
 
   it("shows the limited-data notice only after an agent finishes without child activity", async () => {
@@ -1301,7 +1333,9 @@ describe("App grid", () => {
 
     const pane = await screen.findByRole("region", { name: /^Agent activity: / });
     expect(within(pane).queryByTestId("thinking-label")).toBeNull();
-    expect(within(pane).getByText("This provider reported the agent launch, but did not stream child activity.")).toBeInTheDocument();
+    expect(
+      within(pane).getByText("This provider reported the agent launch, but did not stream child activity.")
+    ).toBeInTheDocument();
     expect(within(pane).getByText("Done without child stream.")).toBeInTheDocument();
   });
 
@@ -1360,7 +1394,17 @@ describe("App grid", () => {
 
     expect(sessionAgentEvents).toHaveBeenCalledTimes(1);
     await act(async () => {
-      resolveAgentEvents({ events: [], rawOutputs: [], eventCursor: 0, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      resolveAgentEvents({
+        events: [],
+        rawOutputs: [],
+        eventCursor: 0,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false
+      });
       await Promise.resolve();
     });
   });
@@ -1584,7 +1628,17 @@ describe("App grid", () => {
     });
     Object.defineProperty(dropOverlay, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      })
     });
 
     const dataTransfer = {
@@ -1614,14 +1668,8 @@ describe("App grid", () => {
     ] as const;
     mockDashboardSnapshot({
       ...snapshot,
-      workspaces: [
-        ...snapshot.workspaces,
-        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))
-      ],
-      sessions: [
-        ...snapshot.sessions,
-        ...paneFixtures.map(([index, label]) => gridSession(index, label))
-      ]
+      workspaces: [...snapshot.workspaces, ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))],
+      sessions: [...snapshot.sessions, ...paneFixtures.map(([index, label]) => gridSession(index, label))]
     });
 
     render(<App />);
@@ -1653,7 +1701,17 @@ describe("App grid", () => {
     const dropOverlay = await within(targetPane).findByRole("group", { name: "Drop chat here" });
     Object.defineProperty(dropOverlay, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      })
     });
     const dataTransfer = { types: [], getData: vi.fn(() => ""), dropEffect: "move" };
 
@@ -1676,14 +1734,8 @@ describe("App grid", () => {
     ] as const;
     mockDashboardSnapshot({
       ...snapshot,
-      workspaces: [
-        ...snapshot.workspaces,
-        ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))
-      ],
-      sessions: [
-        ...snapshot.sessions,
-        ...paneFixtures.map(([index, label]) => gridSession(index, label))
-      ]
+      workspaces: [...snapshot.workspaces, ...paneFixtures.map(([index, label]) => gridWorkspace(index, label))],
+      sessions: [...snapshot.sessions, ...paneFixtures.map(([index, label]) => gridSession(index, label))]
     });
 
     render(<App />);
@@ -1708,7 +1760,17 @@ describe("App grid", () => {
     const dropOverlay = await within(targetPane).findByRole("group", { name: "Drop chat here" });
     Object.defineProperty(dropOverlay, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 800, height: 600, top: 0, right: 800, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 800,
+        height: 600,
+        top: 0,
+        right: 800,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      })
     });
     const dataTransfer = { types: [], getData: vi.fn(() => ""), dropEffect: "move" };
 
@@ -1720,10 +1782,16 @@ describe("App grid", () => {
       const rows = screen.getAllByRole("group", { name: /^Pane row/ });
       const [firstRow, secondRow] = rows;
       if (!firstRow || !secondRow) throw new Error("Expected two pane rows");
-      expect(within(firstRow).getAllByRole("region", { name: /^(Bottom right|Upper right)$/ }).map((pane) => pane.getAttribute("aria-label")))
-        .toEqual(["Bottom right", "Upper right"]);
-      expect(within(secondRow).getAllByRole("region", { name: /^(Bottom left|Build dashboard)$/ }).map((pane) => pane.getAttribute("aria-label")))
-        .toEqual(["Bottom left", "Build dashboard"]);
+      expect(
+        within(firstRow)
+          .getAllByRole("region", { name: /^(Bottom right|Upper right)$/ })
+          .map((pane) => pane.getAttribute("aria-label"))
+      ).toEqual(["Bottom right", "Upper right"]);
+      expect(
+        within(secondRow)
+          .getAllByRole("region", { name: /^(Bottom left|Build dashboard)$/ })
+          .map((pane) => pane.getAttribute("aria-label"))
+      ).toEqual(["Bottom left", "Build dashboard"]);
     });
   });
 
@@ -1770,7 +1838,17 @@ describe("App grid", () => {
     if (!(row instanceof HTMLElement)) throw new Error("Expected a grid row");
     Object.defineProperty(row, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 1200, height: 600, top: 0, right: 1200, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 1200,
+        height: 600,
+        top: 0,
+        right: 1200,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      })
     });
     const before = row.style.gridTemplateColumns;
 
@@ -1781,9 +1859,7 @@ describe("App grid", () => {
     await waitFor(() => {
       expect(row.style.gridTemplateColumns).not.toBe(before);
     });
-    const frWidths = [...row.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
-      Number(match[1])
-    );
+    const frWidths = [...row.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) => Number(match[1]));
     expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
 
@@ -1819,7 +1895,17 @@ describe("App grid", () => {
     expect(within(secondRow).getAllByRole("region", { name: /^(Dropped pane|Bottom right)$/ })).toHaveLength(2);
     Object.defineProperty(firstRow, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ width: 1200, height: 600, top: 0, right: 1200, bottom: 600, left: 0, x: 0, y: 0, toJSON: () => ({}) })
+      value: () => ({
+        width: 1200,
+        height: 600,
+        top: 0,
+        right: 1200,
+        bottom: 600,
+        left: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({})
+      })
     });
     const before = firstRow.style.gridTemplateColumns;
     expect(secondRow.style.gridTemplateColumns).toBe(before);
@@ -1833,9 +1919,7 @@ describe("App grid", () => {
       expect(firstRow.style.gridTemplateColumns).not.toBe(before);
       expect(secondRow.style.gridTemplateColumns).toBe(firstRow.style.gridTemplateColumns);
     });
-    const frWidths = [...firstRow.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) =>
-      Number(match[1])
-    );
+    const frWidths = [...firstRow.style.gridTemplateColumns.matchAll(/([\d.]+)fr/g)].map((match) => Number(match[1]));
     expect(Math.min(...frWidths)).toBeGreaterThanOrEqual(MIN_RESIZABLE_CELL_WIDTH_PX - 1);
   });
 
@@ -1945,7 +2029,11 @@ describe("App grid", () => {
           sessionId: "session-1",
           type: "command.started",
           message: "Task",
-          payload: { id: "task-1", name: "Task", input: { description: "Map renderer", prompt: "Find renderer files." } },
+          payload: {
+            id: "task-1",
+            name: "Task",
+            input: { description: "Map renderer", prompt: "Find renderer files." }
+          },
           createdAt: "2026-05-08T15:54:02.000Z"
         },
         {
@@ -1998,5 +2086,4 @@ describe("App grid", () => {
       expect(task1Calls()).toBeGreaterThan(before);
     });
   });
-
 });

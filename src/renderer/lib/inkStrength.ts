@@ -40,9 +40,7 @@ export function toInkStrength(raw: string | number | null | undefined): InkStren
 
 export function readStoredInkStrength(): InkStrength {
   if (typeof window === "undefined") return DEFAULT_INK_STRENGTH;
-  return (
-    toInkStrength(window.localStorage.getItem(INK_STRENGTH_STORAGE_KEY)) ?? DEFAULT_INK_STRENGTH
-  );
+  return toInkStrength(window.localStorage.getItem(INK_STRENGTH_STORAGE_KEY)) ?? DEFAULT_INK_STRENGTH;
 }
 
 /**

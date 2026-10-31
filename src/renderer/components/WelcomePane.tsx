@@ -1,13 +1,4 @@
-import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  Copy,
-  ExternalLink,
-  Plus,
-  RefreshCcw,
-  XCircle
-} from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Copy, ExternalLink, Plus, RefreshCcw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, type JSX } from "react";
 import { useBridgeQuery } from "../data/useBridgeQuery.js";
 import type { DiscoveredProvider } from "../../shared/types.js";
@@ -35,22 +26,25 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
   const providers = query.data;
   const refreshing = query.isLoading;
   const loadError = query.isAvailable
-    ? refreshing ? null : query.error
+    ? refreshing
+      ? null
+      : query.error
     : "Open Argmax on your Mac to detect providers.";
   const { refetch } = query;
-  const refresh = useCallback(async (force: boolean): Promise<void> => {
-    forceDiscovery.current = force;
-    await refetch();
-  }, [refetch]);
+  const refresh = useCallback(
+    async (force: boolean): Promise<void> => {
+      forceDiscovery.current = force;
+      await refetch();
+    },
+    [refetch]
+  );
 
   const anyInstalled = providers !== null && providers.some((p) => p.installed);
   const installedSetupOrder = PROVIDER_SETUP_ORDER.filter((providerId) =>
     providers?.some((entry) => entry.provider === providerId && entry.installed)
   );
   const allReady =
-    providers !== null &&
-    providers.length > 0 &&
-    providers.every((p) => p.installed && p.authenticated !== false);
+    providers !== null && providers.length > 0 && providers.every((p) => p.installed && p.authenticated !== false);
 
   useEffect(() => {
     // Installing or logging in happens in the user's own terminal. Re-probe
@@ -69,15 +63,17 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
       <header className="welcome-header">
         <h1 id="welcome-title">Welcome to Argmax</h1>
         <p className="welcome-tagline">
-          Argmax runs AI coding agents on your machine — in isolated git worktrees or your
-          current checkout. Three steps and you&apos;re working.
+          Argmax runs AI coding agents on your machine — in isolated git worktrees or your current checkout. Three steps
+          and you&apos;re working.
         </p>
       </header>
 
       <section className="welcome-section" aria-labelledby="welcome-providers">
         <header className="welcome-section-header">
           <div className="welcome-section-heading">
-            <span className="welcome-step" aria-hidden="true">1</span>
+            <span className="welcome-step" aria-hidden="true">
+              1
+            </span>
             <h2 id="welcome-providers">Connect your coding agents</h2>
           </div>
           <button
@@ -87,20 +83,18 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
             disabled={refreshing}
             aria-label="Re-run provider discovery"
           >
-            {refreshing ? (
-              <WorkingNest active size={14} />
-            ) : (
-              <RefreshCcw size={14} aria-hidden="true" />
-            )}
+            {refreshing ? <WorkingNest active size={14} /> : <RefreshCcw size={14} aria-hidden="true" />}
             <span>{refreshing ? "Detecting…" : "Try again"}</span>
           </button>
         </header>
         <p className="welcome-hint">
-          Install and log in to the agents you want — one is enough to start. Run the commands in
-          your terminal; Argmax re-checks when you switch back to this window.
+          Install and log in to the agents you want — one is enough to start. Run the commands in your terminal; Argmax
+          re-checks when you switch back to this window.
         </p>
         {loadError ? (
-          <p className="welcome-error" role="alert">{loadError}</p>
+          <p className="welcome-error" role="alert">
+            {loadError}
+          </p>
         ) : providers === null ? (
           <p className="welcome-hint">Looking for installed providers…</p>
         ) : providers.length === 0 ? (
@@ -116,11 +110,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
               const needsLogin = entry.installed && entry.authenticated === false;
               const dataState = !entry.installed ? "false" : needsLogin ? "needs-login" : "true";
               return (
-                <li
-                  key={entry.provider}
-                  className="welcome-provider"
-                  data-installed={dataState}
-                >
+                <li key={entry.provider} className="welcome-provider" data-installed={dataState}>
                   <div className="welcome-provider-head">
                     {!entry.installed ? (
                       <XCircle size={16} aria-hidden="true" className="welcome-provider-icon missing" />
@@ -130,9 +120,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
                       <CheckCircle2 size={16} aria-hidden="true" className="welcome-provider-icon installed" />
                     )}
                     <span className="welcome-provider-name">{entry.displayName}</span>
-                    {entry.version ? (
-                      <span className="welcome-provider-version">v{entry.version}</span>
-                    ) : null}
+                    {entry.version ? <span className="welcome-provider-version">v{entry.version}</span> : null}
                     <span className="welcome-provider-state">
                       {!entry.installed ? "Not installed" : needsLogin ? "Needs login" : "Ready"}
                     </span>
@@ -144,12 +132,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
                         copyLabel={`Copy ${entry.displayName} install command`}
                       />
                       {hint ? (
-                        <a
-                          className="welcome-install-link"
-                          href={hint.url}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                        >
+                        <a className="welcome-install-link" href={hint.url} target="_blank" rel="noreferrer noopener">
                           {hint.label}
                           <ExternalLink size={12} aria-hidden="true" />
                         </a>
@@ -157,9 +140,7 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
                     </div>
                   ) : needsLogin ? (
                     <div className="welcome-provider-actions">
-                      {entry.setupGuidance ? (
-                        <p className="welcome-provider-guidance">{entry.setupGuidance}</p>
-                      ) : null}
+                      {entry.setupGuidance ? <p className="welcome-provider-guidance">{entry.setupGuidance}</p> : null}
                       {setup ? (
                         <CommandSnippet
                           command={setup.loginCommand}
@@ -178,47 +159,49 @@ export function WelcomePane({ onAddProject }: { onAddProject: () => void }): JSX
       </section>
 
       {installedSetupOrder.length > 0 ? (
-      <section className="welcome-section" aria-labelledby="welcome-mcp">
-        <details className="welcome-mcp">
-          <summary>
-            <span className="welcome-step" aria-hidden="true">2</span>
-            <h2 id="welcome-mcp">Connect MCP servers <span className="welcome-optional">optional</span></h2>
-          </summary>
-          <p className="welcome-hint">
-            Argmax launches each agent with your existing configuration, so MCP servers you add to a
-            CLI show up in Argmax chats automatically. Each agent keeps its own list here:
-          </p>
-          <ul className="welcome-mcp-list">
-            {/* Only the agents actually on this Mac: a config path for a CLI
+        <section className="welcome-section" aria-labelledby="welcome-mcp">
+          <details className="welcome-mcp">
+            <summary>
+              <span className="welcome-step" aria-hidden="true">
+                2
+              </span>
+              <h2 id="welcome-mcp">
+                Connect MCP servers <span className="welcome-optional">optional</span>
+              </h2>
+            </summary>
+            <p className="welcome-hint">
+              Argmax launches each agent with your existing configuration, so MCP servers you add to a CLI show up in
+              Argmax chats automatically. Each agent keeps its own list here:
+            </p>
+            <ul className="welcome-mcp-list">
+              {/* Only the agents actually on this Mac: a config path for a CLI
                 the user does not have is trivia, not a next step. */}
-            {installedSetupOrder.map((providerId) => {
-              const setup = PROVIDER_SETUP[providerId];
-              return (
-                <li key={providerId} className="welcome-mcp-row">
-                  <span className="welcome-mcp-name">{setup.displayName}</span>
-                  {setup.mcpCommand ? (
-                    <CommandSnippet
-                      command={setup.mcpCommand}
-                      copyLabel={`Copy ${setup.displayName} MCP command`}
-                    />
-                  ) : null}
-                  <p className="welcome-hint">{setup.mcpHint}</p>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      </section>
+              {installedSetupOrder.map((providerId) => {
+                const setup = PROVIDER_SETUP[providerId];
+                return (
+                  <li key={providerId} className="welcome-mcp-row">
+                    <span className="welcome-mcp-name">{setup.displayName}</span>
+                    {setup.mcpCommand ? (
+                      <CommandSnippet command={setup.mcpCommand} copyLabel={`Copy ${setup.displayName} MCP command`} />
+                    ) : null}
+                    <p className="welcome-hint">{setup.mcpHint}</p>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
+        </section>
       ) : null}
 
       <section className="welcome-section welcome-cta" aria-labelledby="welcome-project">
         <div className="welcome-section-heading">
-          <span className="welcome-step" aria-hidden="true">3</span>
+          <span className="welcome-step" aria-hidden="true">
+            3
+          </span>
           <h2 id="welcome-project">Add your first project</h2>
         </div>
         <p className="welcome-hint">
-          Pick any local git repository. Chats run in your checkout or in isolated worktrees
-          under it.
+          Pick any local git repository. Chats run in your checkout or in isolated worktrees under it.
         </p>
         <button
           className="primary-action"
@@ -246,12 +229,7 @@ function CommandSnippet({ command, copyLabel }: { command: string; copyLabel: st
   return (
     <div className="welcome-command">
       <code>{command}</code>
-      <button
-        type="button"
-        className="welcome-copy"
-        onClick={() => void copy(command)}
-        aria-label={copyLabel}
-      >
+      <button type="button" className="welcome-copy" onClick={() => void copy(command)} aria-label={copyLabel}>
         {copyFlash === "copied" ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
         <span>{copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy"}</span>
       </button>

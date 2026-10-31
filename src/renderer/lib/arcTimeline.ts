@@ -32,16 +32,7 @@ export function matchesArcTimelineFilter(event: ArcTimelineEvent, filter: ArcTim
 
 /** What a row's glyph and colour say. Tone maps to CSS, never to a literal
  *  colour, so both themes and the monochrome activity setting follow. */
-type ArcEventTone =
-  | "accent"
-  | "agent"
-  | "success"
-  | "danger"
-  | "merged"
-  | "notes"
-  | "schedule"
-  | "warning"
-  | "quiet";
+type ArcEventTone = "accent" | "agent" | "success" | "danger" | "merged" | "notes" | "schedule" | "warning" | "quiet";
 
 export type ArcEventGlyph =
   | "flag"

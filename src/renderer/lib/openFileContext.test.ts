@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  appendOpenFilesToPrompt,
-  openFilesChipLabel,
-  orderedOpenFilePaths
-} from "./openFileContext.js";
+import { appendOpenFilesToPrompt, openFilesChipLabel, orderedOpenFilePaths } from "./openFileContext.js";
 
 describe("orderedOpenFilePaths", () => {
   it("puts the active tab first and keeps tab order otherwise", () => {
@@ -19,9 +15,7 @@ describe("orderedOpenFilePaths", () => {
 
 describe("openFilesChipLabel", () => {
   it("names the active file and counts the rest", () => {
-    expect(openFilesChipLabel(["models/deep/query.sql", "docs/notes.md"])).toBe(
-      "Open files: query.sql +1"
-    );
+    expect(openFilesChipLabel(["models/deep/query.sql", "docs/notes.md"])).toBe("Open files: query.sql +1");
     expect(openFilesChipLabel(["docs/notes.md"])).toBe("Open file: notes.md");
   });
 });
@@ -37,8 +31,6 @@ describe("appendOpenFilesToPrompt", () => {
     expect(appendOpenFilesToPrompt("Look at @a.sql please.", ["a.sql", "b.sql"])).toBe(
       "Look at @a.sql please.\n\nFor context, I have these files open in the editor:\n@b.sql"
     );
-    expect(appendOpenFilesToPrompt("Look at @a.sql please.", ["a.sql"])).toBe(
-      "Look at @a.sql please."
-    );
+    expect(appendOpenFilesToPrompt("Look at @a.sql please.", ["a.sql"])).toBe("Look at @a.sql please.");
   });
 });

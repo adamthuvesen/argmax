@@ -247,7 +247,9 @@ export function SettingsPanel({
   const refreshingProviders = providersQuery.isLoading;
   const refreshProviders = providersQuery.refetch;
   const providerLoadError = providersQuery.isAvailable
-    ? refreshingProviders ? null : providersQuery.error
+    ? refreshingProviders
+      ? null
+      : providersQuery.error
     : "Open Argmax on your Mac to detect providers.";
 
   const [diagnostics, setDiagnostics] = useState<DiagnosticsReport | null>(null);

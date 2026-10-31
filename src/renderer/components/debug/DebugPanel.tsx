@@ -12,11 +12,7 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard.js";
 import { formatSessionIds } from "../../lib/sessionIds.js";
 import { useDebugSnapshot } from "../../hooks/useDebugSnapshot.js";
 import { usePersistedSetting } from "../../hooks/usePersistedSetting.js";
-import {
-  clearRendererLog,
-  rendererLogSnapshot,
-  subscribeRendererLog
-} from "../../lib/rendererLogRing.js";
+import { clearRendererLog, rendererLogSnapshot, subscribeRendererLog } from "../../lib/rendererLogRing.js";
 
 import { DebugIpcTab } from "./DebugIpcTab.js";
 import { DebugLogsTab } from "./DebugLogsTab.js";
@@ -83,11 +79,7 @@ export function DebugPanel({
   // than crossing it twice. Merged by timestamp: both sides stamp ISO-8601
   // UTC, so the reader sees one chronology and the tab's existing level/scope/
   // text filters cover both.
-  const breadcrumbs = useSyncExternalStore(
-    subscribeRendererLog,
-    rendererLogSnapshot,
-    rendererLogSnapshot
-  );
+  const breadcrumbs = useSyncExternalStore(subscribeRendererLog, rendererLogSnapshot, rendererLogSnapshot);
   const logs = useMemo(
     () =>
       breadcrumbs.length === 0
@@ -134,9 +126,7 @@ export function DebugPanel({
       </div>
 
       {tab === "trace" ? <DebugTraceTab events={events} rawOutputs={rawOutputs} /> : null}
-      {tab === "logs" ? (
-        <DebugLogsTab logs={logs} error={snapshot.error} onClear={clearLogs} />
-      ) : null}
+      {tab === "logs" ? <DebugLogsTab logs={logs} error={snapshot.error} onClear={clearLogs} /> : null}
       {tab === "ipc" ? <DebugIpcTab stats={snapshot.ipcStats} error={snapshot.error} /> : null}
 
       <DebugIdentity session={session} workspace={workspace} />
@@ -162,7 +152,7 @@ function DebugIdentity({
         {session ? (
           <>
             <b>{session.provider}</b>
-            {/* eslint-disable-next-line no-restricted-syntax -- the debug panel shows the stored id. */}
+            {/* oxlint-disable-next-line argmax/no-raw-model-id -- the debug panel shows the stored id. */}
             <span>{session.modelId}</span>
             <span>{session.state}</span>
           </>

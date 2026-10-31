@@ -8,10 +8,7 @@ import {
   parseLogDump,
   splitLogSegments
 } from "./logDump.js";
-import {
-  collectAskUserQuestionState,
-  type ResolvedAskUserQuestionTool
-} from "./turnInteractiveCards.js";
+import { collectAskUserQuestionState, type ResolvedAskUserQuestionTool } from "./turnInteractiveCards.js";
 import type { TurnToolItem } from "./toolCalls.js";
 
 export type AssistantGroup = {
@@ -146,9 +143,7 @@ export function preToolNarrationGroupIds(
 
 function cursorAssistantSnapshot(event: TimelineEvent): string | null {
   const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "message" && canonical.phase === "delta"
-    ? canonical.cumulativeText
-    : null;
+  return canonical.kind === "message" && canonical.phase === "delta" ? canonical.cumulativeText : null;
 }
 
 function deltaTextForBuffer(event: TimelineEvent, currentText: string): string {
@@ -200,9 +195,13 @@ function appendThinking(current: string, incoming: string, payload: TimelineEven
   // item. Match that saved suffix even after live fragments already gained
   // paragraph breaks, and restore the completed item's own spacing.
   const summary = payload.summary;
-  if (payload.type === "reasoning" && payload.providerEventType === "item.completed" &&
-      Array.isArray(summary) && summary.every((part): part is string => typeof part === "string") &&
-      incoming === summary.join("\n")) {
+  if (
+    payload.type === "reasoning" &&
+    payload.providerEventType === "item.completed" &&
+    Array.isArray(summary) &&
+    summary.every((part): part is string => typeof part === "string") &&
+    incoming === summary.join("\n")
+  ) {
     const streamed = summary.join("");
     for (const suffix of [streamed, incoming]) {
       const prefix = dropTrailingThought(current, suffix);
@@ -300,7 +299,14 @@ export function coalesceAssistantGroups(
   } = {}
 ): AssistantGroup[] {
   const assistantGroups: AssistantGroup[] = [];
-  type Buffer = { id: string; sourceEventId: string; createdAt: string; lastCreatedAt: string; lastEventId: string; text: string };
+  type Buffer = {
+    id: string;
+    sourceEventId: string;
+    createdAt: string;
+    lastCreatedAt: string;
+    lastEventId: string;
+    text: string;
+  };
   let answerBuffer: Buffer | null = null;
   let thinkingBuffer: Buffer | null = null;
   let previousEventCreatedAt: string | null = null;
@@ -363,16 +369,9 @@ export function coalesceAssistantGroups(
   };
   const hardSplitBefore = (event: TimelineEvent): boolean => {
     const previous = previousEventCreatedAt;
-    return (
-      previous !== null &&
-      hardSplitAt.some((time) => time > previous && time <= event.createdAt)
-    );
+    return previous !== null && hardSplitAt.some((time) => time > previous && time <= event.createdAt);
   };
-  const pushErrorLine = (
-    event: TimelineEvent,
-    message: string,
-    canJoinPrevious = true
-  ): void => {
+  const pushErrorLine = (event: TimelineEvent, message: string, canJoinPrevious = true): void => {
     const last = assistantGroups[assistantGroups.length - 1];
     if (canJoinPrevious && last?.error) {
       last.text = `${last.text}\n${message}`;
@@ -396,7 +395,20 @@ export function coalesceAssistantGroups(
     if (canonical.kind === "visualization") {
       flushThinking();
       flushAnswer();
-      assistantGroups.push({ id: event.id, createdAt: event.createdAt, lastActivityAt: event.createdAt, text: "", streaming: false, visualization: { artifactId: canonical.artifactId, sessionId: event.sessionId, title: canonical.title, summary: canonical.summary, mode: canonical.mode } });
+      assistantGroups.push({
+        id: event.id,
+        createdAt: event.createdAt,
+        lastActivityAt: event.createdAt,
+        text: "",
+        streaming: false,
+        visualization: {
+          artifactId: canonical.artifactId,
+          sessionId: event.sessionId,
+          title: canonical.title,
+          summary: canonical.summary,
+          mode: canonical.mode
+        }
+      });
       boundaryEventId = event.id;
       previousEventCreatedAt = event.createdAt;
       continue;
@@ -407,10 +419,7 @@ export function coalesceAssistantGroups(
       flushAnswer();
     }
     const tracing = matchTracingRecord(event.message);
-    if (
-      canonical.kind === "error" ||
-      (canonical.kind === "message" && canonical.phase === "delta" && tracing)
-    ) {
+    if (canonical.kind === "error" || (canonical.kind === "message" && canonical.phase === "delta" && tracing)) {
       flushThinking();
       flushAnswer();
       if (
@@ -431,12 +440,7 @@ export function coalesceAssistantGroups(
       previousEventCreatedAt = event.createdAt;
       continue;
     }
-    if (
-      canonical.kind === "message" &&
-      canonical.phase === "delta" &&
-      canonical.rawStream &&
-      dropRawContinuations
-    ) {
+    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.rawStream && dropRawContinuations) {
       previousEventCreatedAt = event.createdAt;
       continue;
     }
@@ -450,11 +454,7 @@ export function coalesceAssistantGroups(
       }
     }
     dropRawContinuations = false;
-    if (
-      canonical.kind === "message" &&
-      canonical.phase === "delta" &&
-      canonical.content === "thinking"
-    ) {
+    if (canonical.kind === "message" && canonical.phase === "delta" && canonical.content === "thinking") {
       flushAnswer();
       if (!thinkingBuffer) {
         thinkingBuffer = {
@@ -560,7 +560,9 @@ export function coalesceAssistantGroups(
   return assistantGroups;
 }
 
-export function assistantGroupHasVisibleChat(group: Pick<AssistantGroup, "text" | "error" | "thinking" | "visualization">): boolean {
+export function assistantGroupHasVisibleChat(
+  group: Pick<AssistantGroup, "text" | "error" | "thinking" | "visualization">
+): boolean {
   if (group.visualization) return true;
   if (group.thinking) return group.text.trim().length > 0;
   if (group.error) return parseLogDump(group.text).length > 0;
@@ -681,14 +683,14 @@ export function buildTurnRenderState(params: {
     splitAt: toolStartTimes(params.toolItems),
     streaming: params.isStreamingTurn ?? true
   });
-  const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionHiddenToolIds } =
-    collectAskUserQuestionState(params.toolItems);
+  const { tool: askUserQuestionTool, hiddenToolIds: askUserQuestionHiddenToolIds } = collectAskUserQuestionState(
+    params.toolItems
+  );
   const hasQuestionCard = askUserQuestionTool !== null;
   const hasBlockingQuestion = hasQuestionCard && askUserQuestionTool.delivery !== "async";
   const cardCutoff = hasBlockingQuestion ? askUserQuestionTool.createdAt : null;
-  const visibleAssistantGroups = (cardCutoff
-    ? assistantGroups.filter((g) => g.createdAt < cardCutoff)
-    : assistantGroups
+  const visibleAssistantGroups = (
+    cardCutoff ? assistantGroups.filter((g) => g.createdAt < cardCutoff) : assistantGroups
   ).filter(assistantGroupHasVisibleChat);
   const hiddenToolIds = new Set(askUserQuestionHiddenToolIds);
 

@@ -20,9 +20,7 @@ type ApprovalAction = {
  *  question set, a file body, a filter object) are the tool's payload, not the
  *  decision, and printing them is what made this row a JSON dump. */
 function scalarInput(input: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(input).filter(([, value]) => value === null || typeof value !== "object")
-  );
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value === null || typeof value !== "object"));
 }
 
 function parsedInput(text: string): Record<string, unknown> | null {
@@ -30,9 +28,7 @@ function parsedInput(text: string): Record<string, unknown> | null {
   if (!trimmed.startsWith("{")) return null;
   try {
     const parsed: unknown = JSON.parse(trimmed);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
   } catch {
     return null;
   }

@@ -68,14 +68,44 @@ interface DemoRepo {
 
 const REPOS: readonly DemoRepo[] = [
   { projectId: "p-argmax", name: "argmax", path: "~/dev/menti/argmax", githubRepo: "adamthuvesen/argmax", base: 2.2 },
-  { projectId: "p-dbt", name: "dbt-transform", path: "~/dev/menti/dbt-transform", githubRepo: "mentimeter/dbt-transform", base: 1.25 },
-  { projectId: "p-pat", name: "product-analytics-tools", path: "~/dev/menti/product-analytics-tools", githubRepo: "mentimeter/product-analytics-tools", base: 0.9 },
+  {
+    projectId: "p-dbt",
+    name: "dbt-transform",
+    path: "~/dev/menti/dbt-transform",
+    githubRepo: "mentimeter/dbt-transform",
+    base: 1.25
+  },
+  {
+    projectId: "p-pat",
+    name: "product-analytics-tools",
+    path: "~/dev/menti/product-analytics-tools",
+    githubRepo: "mentimeter/product-analytics-tools",
+    base: 0.9
+  },
   { projectId: "p-alfred", name: "alfred", path: "~/dev/alfred", githubRepo: "adamthuvesen/alfred", base: 0.6 },
   { projectId: "p-dotfiles", name: "dotfiles", path: "~/dotfiles", githubRepo: "adamthuvesen/dotfiles", base: 0.42 },
-  { projectId: "p-revops", name: "revops-backoffice", path: "~/dev/menti/revops-backoffice", githubRepo: "mentimeter/revops-backoffice", base: 0.3 },
-  { projectId: "p-hexops", name: "hex-agent-ops", path: "~/dev/menti/hex-agent-ops", githubRepo: "mentimeter/hex-agent-ops", base: 0.24 },
+  {
+    projectId: "p-revops",
+    name: "revops-backoffice",
+    path: "~/dev/menti/revops-backoffice",
+    githubRepo: "mentimeter/revops-backoffice",
+    base: 0.3
+  },
+  {
+    projectId: "p-hexops",
+    name: "hex-agent-ops",
+    path: "~/dev/menti/hex-agent-ops",
+    githubRepo: "mentimeter/hex-agent-ops",
+    base: 0.24
+  },
   { projectId: "p-llm", name: "llm-infer", path: "~/dev/llm-infer", githubRepo: "adamthuvesen/llm-infer", base: 0.17 },
-  { projectId: "p-scenario", name: "scenario-model", path: "~/dev/menti/scenario-model", githubRepo: "mentimeter/scenario-model", base: 0.13 },
+  {
+    projectId: "p-scenario",
+    name: "scenario-model",
+    path: "~/dev/menti/scenario-model",
+    githubRepo: "mentimeter/scenario-model",
+    base: 0.13
+  },
   { projectId: "p-ntfy", name: "ntfy-bridge", path: "~/dev/ntfy-bridge", githubRepo: null, base: 0.1 },
   { projectId: "p-engram", name: "engram", path: "~/dev/engram", githubRepo: "adamthuvesen/engram", base: 0.07 },
   { projectId: "p-trace", name: "trace-index", path: "~/dev/trace-index", githubRepo: null, base: 0.05 }
@@ -133,9 +163,7 @@ function dayIntensities(): number[] {
     // A forced day needs a floor rather than merely a non-zero factor: twelve
     // repositories each rolling under their own mean still leaves the day at
     // zero commits, which breaks the streak the floor exists to guarantee.
-    const forced =
-      day > streakEdge ||
-      (at.getTime() >= LONG_STREAK_START && at.getTime() <= LONG_STREAK_END);
+    const forced = day > streakEdge || (at.getTime() >= LONG_STREAK_START && at.getTime() <= LONG_STREAK_END);
     if (forced) {
       factors.push(1.1 + 1.1 * spread);
       continue;
@@ -143,9 +171,7 @@ function dayIntensities(): number[] {
     // The day either side of a forced run is off, so the run is exactly as
     // long as it says rather than however far the noise happens to extend it.
     const edge =
-      day === streakEdge ||
-      at.getTime() === LONG_STREAK_START - DAY_MS ||
-      at.getTime() === LONG_STREAK_END + DAY_MS;
+      day === streakEdge || at.getTime() === LONG_STREAK_START - DAY_MS || at.getTime() === LONG_STREAK_END + DAY_MS;
     if (edge || roll < (weekend ? 0.42 : 0.06)) {
       factors.push(0);
       continue;
@@ -342,10 +368,7 @@ function heatmapFrom(log: readonly DemoCommit[]): ActivityHeatmapDay[] {
   return days;
 }
 
-function streaksFrom(
-  heatmap: readonly ActivityHeatmapDay[],
-  windowed: readonly DemoCommit[]
-): ActivityStreaks {
+function streaksFrom(heatmap: readonly ActivityHeatmapDay[], windowed: readonly DemoCommit[]): ActivityStreaks {
   let current = 0;
   let currentStart: string | null = null;
   for (let index = heatmap.length - 1; index >= 0; index -= 1) {
@@ -596,8 +619,7 @@ export function demoActivitySummary(
   if (state === "empty") return base;
 
   const inWindow = (at: number): boolean => at >= range.start && at < range.end;
-  const matches = (projectId: string | null): boolean =>
-    input.projectId === null || projectId === input.projectId;
+  const matches = (projectId: string | null): boolean => input.projectId === null || projectId === input.projectId;
 
   // `repositories` and `heatmap` never narrow: their point is the comparison a
   // filter would remove, the same rule the Usage page's provider tiles follow.
@@ -615,8 +637,7 @@ export function demoActivitySummary(
 
   const windowed = windowAll.filter((commit) => matches(commit.projectId));
   const previousWindow = log.filter(
-    (commit) =>
-      commit.at >= range.previousStart && commit.at < range.start && matches(commit.projectId)
+    (commit) => commit.at >= range.previousStart && commit.at < range.start && matches(commit.projectId)
   );
 
   const prs = pullRequestLog().filter((pr) => {
@@ -673,12 +694,8 @@ export function demoActivitySummary(
     heatmap,
     streaks: streaksFrom(heatmap, windowed),
     cadence: cadenceFrom(windowed),
-    pullRequests: prs
-      .sort((left, right) => openedAt(right) - openedAt(left))
-      .slice(0, 100),
+    pullRequests: prs.sort((left, right) => openedAt(right) - openedAt(left)).slice(0, 100),
     reviews: reviews.slice(0, 50),
-    medianCycleSeconds: median(
-      prs.flatMap((pr) => (pr.cycleSeconds === null ? [] : [pr.cycleSeconds]))
-    )
+    medianCycleSeconds: median(prs.flatMap((pr) => (pr.cycleSeconds === null ? [] : [pr.cycleSeconds])))
   };
 }

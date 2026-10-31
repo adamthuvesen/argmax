@@ -1,13 +1,5 @@
 import { Info, MessagesSquare, TextQuote } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type JSX,
-  type RefObject
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 export interface ChatSelection {
   text: string;
@@ -61,9 +53,7 @@ export function SelectionToolbar({
   // mousedown/mouseup around them, so the deferral above can't work and the
   // toolbar would fight the OS selection callout. Same gate the composer uses
   // for autofocus.
-  const [isCoarsePointer] = useState(
-    () => window.matchMedia?.("(pointer: coarse)").matches ?? false
-  );
+  const [isCoarsePointer] = useState(() => window.matchMedia?.("(pointer: coarse)").matches ?? false);
 
   const syncFromSelection = useCallback((): void => {
     const container = containerRef.current;
@@ -73,10 +63,7 @@ export function SelectionToolbar({
       return;
     }
     const range = selection.getRangeAt(0);
-    if (
-      !container.contains(range.startContainer) ||
-      !container.contains(range.endContainer)
-    ) {
+    if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) {
       setActive(null);
       return;
     }
@@ -158,9 +145,7 @@ export function SelectionToolbar({
     const size = el.getBoundingClientRect();
     const left = Math.min(Math.max(12, active.startLeft), window.innerWidth - 12 - size.width);
     const fitsAbove = active.rect.top - TOOLBAR_GAP_PX - size.height > 12;
-    const top = fitsAbove
-      ? active.rect.top - TOOLBAR_GAP_PX - size.height
-      : active.rect.bottom + TOOLBAR_GAP_PX;
+    const top = fitsAbove ? active.rect.top - TOOLBAR_GAP_PX - size.height : active.rect.bottom + TOOLBAR_GAP_PX;
     setPosition({ left, top });
   }, [active]);
 
@@ -205,7 +190,12 @@ export function SelectionToolbar({
       {item("Add to Chat", "Attach this excerpt to your next message", TextQuote, onAddToChat)}
       {onMoreDetails ? item("More Details", "Open an explainer popup about this excerpt", Info, onMoreDetails) : null}
       {onAskSideChat
-        ? item("Ask in New Chat", "Open a chat without a repository, seeded with this excerpt", MessagesSquare, onAskSideChat)
+        ? item(
+            "Ask in New Chat",
+            "Open a chat without a repository, seeded with this excerpt",
+            MessagesSquare,
+            onAskSideChat
+          )
         : null}
     </ul>
   );

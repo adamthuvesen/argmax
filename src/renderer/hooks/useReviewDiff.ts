@@ -58,8 +58,7 @@ export function useReviewDiff(args: {
     filePath: string;
     lines: number;
   } | null>(null);
-  const contextLines =
-    expandedContext && expandedContext.filePath === selectedFilePath ? expandedContext.lines : null;
+  const contextLines = expandedContext && expandedContext.filePath === selectedFilePath ? expandedContext.lines : null;
 
   const fileLoadToken = useRef(0);
   const diffLoadToken = useRef(0);
@@ -129,7 +128,8 @@ export function useReviewDiff(args: {
     } else {
       setFilesState((prev) => (prev === "ready" ? prev : "loading"));
     }
-    void dispatch.listChangedFiles(comparison)
+    void dispatch
+      .listChangedFiles(comparison)
       .then((result) => {
         if (token !== fileLoadToken.current) {
           return;
@@ -161,11 +161,11 @@ export function useReviewDiff(args: {
       if (currentPath && files.some((file) => file.path === currentPath)) {
         return currentPath;
       }
-      return autoSelectFirstFile ? files[0]?.path ?? null : null;
+      return autoSelectFirstFile ? (files[0]?.path ?? null) : null;
     });
   }, [autoSelectFirstFile, files]);
 
-  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? files[0]?.path ?? null : null);
+  const requestedFilePath = selectedFilePath ?? (preloadFirstFile ? (files[0]?.path ?? null) : null);
   useEffect(() => {
     const token = ++diffLoadToken.current;
     if (!sourceId || !sourceKind || !requestedFilePath || !dispatch || !window.argmax) {
@@ -179,8 +179,15 @@ export function useReviewDiff(args: {
 
     if (!enabled) return;
 
-    const requestKey = JSON.stringify([sourceKind, sourceId, comparison, changedFilesKey,
-      actionRevision, requestedFilePath, contextLines]);
+    const requestKey = JSON.stringify([
+      sourceKind,
+      sourceId,
+      comparison,
+      changedFilesKey,
+      actionRevision,
+      requestedFilePath,
+      contextLines
+    ]);
     if (loadedDiffKey.current === requestKey) return;
     loadedDiffKey.current = null;
 
@@ -212,7 +219,8 @@ export function useReviewDiff(args: {
     } else {
       setDiffState((prev) => (prev === "ready" ? prev : "loading"));
     }
-    void dispatch.loadDiff(requestedFilePath, comparison, contextLines ?? undefined)
+    void dispatch
+      .loadDiff(requestedFilePath, comparison, contextLines ?? undefined)
       .then((result) => {
         if (token !== diffLoadToken.current) {
           return;
@@ -224,8 +232,11 @@ export function useReviewDiff(args: {
         if (result && result.content.length <= 4 * 1_024 * 1_024) {
           diffCache.current.set(cacheKey, result);
         }
-        while (diffCache.current.size > 12 ||
-          [...diffCache.current.values()].reduce((size, entry) => size + entry.content.length * 2, 0) > 8 * 1_024 * 1_024) {
+        while (
+          diffCache.current.size > 12 ||
+          [...diffCache.current.values()].reduce((size, entry) => size + entry.content.length * 2, 0) >
+            8 * 1_024 * 1_024
+        ) {
           const oldest = diffCache.current.keys().next().value;
           if (oldest === undefined) break;
           diffCache.current.delete(oldest);
@@ -241,7 +252,18 @@ export function useReviewDiff(args: {
         setDiffState("error");
         setDiffError(errorMessage(error) || "Could not load diff.");
       });
-  }, [enabled, autoSelectFirstFile, sourceId, sourceKind, requestedFilePath, changedFilesKey, comparison, contextLines, dispatch, actionRevision]);
+  }, [
+    enabled,
+    autoSelectFirstFile,
+    sourceId,
+    sourceKind,
+    requestedFilePath,
+    changedFilesKey,
+    comparison,
+    contextLines,
+    dispatch,
+    actionRevision
+  ]);
 
   const openFile = useCallback(
     (filePath: string): void => {

@@ -176,11 +176,7 @@ function MobileSessionRow({
         <span className="mobile-session-text">
           <span className="mobile-session-title-line">
             {awaiting ? (
-              <span
-                className="mobile-session-marker"
-                data-attention={awaiting}
-                aria-label={AWAITING_LABEL[awaiting]}
-              />
+              <span className="mobile-session-marker" data-attention={awaiting} aria-label={AWAITING_LABEL[awaiting]} />
             ) : working ? (
               // The nest moves and the unread dot does not, which is the whole
               // distinction: two accent dots, one pulsing, read as the same
@@ -339,14 +335,11 @@ export function MobileApp(): JSX.Element {
     if (next.kind === "error" && next.message === REMOTE_CONNECTION_LOST_MESSAGE) return;
     publishToast(next);
   }, []);
-  const toast = sharedToast?.kind === "error" && sharedToast.message === REMOTE_CONNECTION_LOST_MESSAGE
-    ? null
-    : sharedToast;
+  const toast =
+    sharedToast?.kind === "error" && sharedToast.message === REMOTE_CONNECTION_LOST_MESSAGE ? null : sharedToast;
   const [theme, setTheme] = useState<ResolvedTheme>(() => resolveTheme(readStoredTheme()));
   const [accentId, setAccentId] = useState<AccentId>(() => readStoredAccent());
-  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() =>
-    readStoredUserBubbleTint()
-  );
+  const [userBubbleTint, setUserBubbleTint] = useState<UserBubbleTint>(() => readStoredUserBubbleTint());
   useEffect(() => {
     applyThemeToDocument(theme);
   }, [theme]);
@@ -477,14 +470,8 @@ export function MobileApp(): JSX.Element {
   // Same set the desktop sidebar uses: a turn in flight here, or a
   // multitask this chat dispatched. The child's own workspace has no list
   // row, so this is the only place that work can still read as live.
-  const hiddenMultitasks = useMemo(
-    () => hiddenMultitaskWorkspaceIds(snapshot.sessions),
-    [snapshot.sessions]
-  );
-  const workingWorkspaces = useMemo(
-    () => workingWorkspaceIds(snapshot.sessions),
-    [snapshot.sessions]
-  );
+  const hiddenMultitasks = useMemo(() => hiddenMultitaskWorkspaceIds(snapshot.sessions), [snapshot.sessions]);
+  const workingWorkspaces = useMemo(() => workingWorkspaceIds(snapshot.sessions), [snapshot.sessions]);
 
   const sessionOpen = selectedWorkspaceId !== null && (selectedSession !== null || selectedSessionId !== null);
   // Unread is this phone's own reading state: the stamp lives in its
@@ -512,11 +499,7 @@ export function MobileApp(): JSX.Element {
   // them. Priority stays until its reason is resolved or dismissed.
   const { pinnedRows, priorityRows, activityRows } = useMemo(() => {
     const sessionsByWorkspace = chatSessionByWorkspace(snapshot.sessions);
-    const attentionByWorkspace = computeWorkspaceAttention(
-      snapshot.workspaces,
-      snapshot.sessions,
-      unreadIds
-    );
+    const attentionByWorkspace = computeWorkspaceAttention(snapshot.workspaces, snapshot.sessions, unreadIds);
     // A workspace with no session is a dead row: tapping it resolves no
     // session, so nothing opens. The desktop sidebar requires a session for
     // every section too, and the launcher's connection-lost path can strand
@@ -726,14 +709,11 @@ export function MobileApp(): JSX.Element {
   // gesture can dismiss a picker without discarding the typed prompt.
   const [newSessionSheet, setNewSessionSheet] = useState<PickerKind | null>(null);
 
-  const startNewChatFromWorkspace = useCallback(
-    (workspace: WorkspaceSummary, seed?: NewSessionSeed) => {
-      setNewSessionWorkspaceId(workspace.id);
-      setNewSessionSeed(seed ?? null);
-      setNewSessionOpen(true);
-    },
-    []
-  );
+  const startNewChatFromWorkspace = useCallback((workspace: WorkspaceSummary, seed?: NewSessionSeed) => {
+    setNewSessionWorkspaceId(workspace.id);
+    setNewSessionSeed(seed ?? null);
+    setNewSessionOpen(true);
+  }, []);
 
   const startNewChat = useCallback(() => {
     setNewSessionWorkspaceId(null);
@@ -756,9 +736,7 @@ export function MobileApp(): JSX.Element {
   const handleLaunched = useCallback(
     (workspace: WorkspaceSummary, session: SessionSummary): void => {
       pendingSelectionRef.current = { sessionId: session.id, workspaceId: workspace.id };
-      setSnapshot((current) =>
-        mergeDashboardDelta(current, { workspaces: [workspace], sessions: [session] })
-      );
+      setSnapshot((current) => mergeDashboardDelta(current, { workspaces: [workspace], sessions: [session] }));
       closeNewSession();
       setSelectedProjectId(workspace.projectId);
       setSelectedWorkspaceId(workspace.id);
@@ -822,15 +800,13 @@ export function MobileApp(): JSX.Element {
   // A sheet is a screen as far as a back gesture is concerned: without this,
   // back on the list screen leaves the app with the sheet still up, and back
   // on the New session screen tears the screen down under an open picker.
-  const sheetOpen =
-    actionsRow !== null || listMenuOpen || newSessionSheet !== null;
+  const sheetOpen = actionsRow !== null || listMenuOpen || newSessionSheet !== null;
 
   const filePreviewShown = reviewShown && reviewFilePreviewOpen;
 
   // Overlay counts only while the session is the front screen. Parked under
   // review or New chat it is not what a back gesture would pop.
-  const agentOverlayShown =
-    sessionOpen && !sessionParked && dismissAgentsOverlay !== null;
+  const agentOverlayShown = sessionOpen && !sessionParked && dismissAgentsOverlay !== null;
 
   // Screen depth for the hardware back button: list → session/new → review →
   // file preview, plus one for an open sheet or the agent overlay.
@@ -838,17 +814,17 @@ export function MobileApp(): JSX.Element {
     (appearanceOpen
       ? 1
       : newSessionOpen
-      ? sessionOpen
-        ? 2
-        : 1
-      : sessionOpen
-        ? reviewShown
-          ? filePreviewShown
-            ? 3
-            : 2
-          : agentOverlayShown
-            ? 2
-            : 1
+        ? sessionOpen
+          ? 2
+          : 1
+        : sessionOpen
+          ? reviewShown
+            ? filePreviewShown
+              ? 3
+              : 2
+            : agentOverlayShown
+              ? 2
+              : 1
           : 0) + (sheetOpen ? 1 : 0);
   const goBackOneScreen = useCallback((): void => {
     if (actionsRow !== null) {
@@ -978,7 +954,7 @@ export function MobileApp(): JSX.Element {
   // ladder must not offer one just because `reasoningEffortsForModel` always
   // returns a list.
   const openSessionProvider = openSession?.provider ?? null;
-  // eslint-disable-next-line no-restricted-syntax -- a change key, not a read of the model.
+  // oxlint-disable-next-line argmax/no-raw-model-id -- a change key, not a read of the model.
   const openSessionModelId = openSession?.modelId ?? null;
   const openSessionModelLabel = openSession?.modelLabel ?? null;
   const openSessionEffort = openSession?.reasoningEffort ?? null;
@@ -988,7 +964,9 @@ export function MobileApp(): JSX.Element {
   // untouched must not re-post.
   const openSessionAgentMode = openSession?.agentMode ?? null;
   const openSessionPendingKey = openSessionPending
-    .map((entry) => `${entry.id}:${entry.content}:${entry.modelId ?? ""}:${entry.reasoningEffort ?? ""}:${entry.agentMode}`)
+    .map(
+      (entry) => `${entry.id}:${entry.content}:${entry.modelId ?? ""}:${entry.reasoningEffort ?? ""}:${entry.agentMode}`
+    )
     .join("|");
   useEffect(() => {
     if (!embedded) return;
@@ -1023,7 +1001,7 @@ export function MobileApp(): JSX.Element {
       })),
       running: openSessionState === "running"
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- openSessionPendingKey stands in for openSessionPending's contents.
+    // oxlint-disable-next-line react/exhaustive-deps -- openSessionPendingKey stands in for openSessionPending's contents.
   }, [
     embedded,
     openSessionId,
@@ -1113,156 +1091,153 @@ export function MobileApp(): JSX.Element {
 
   return (
     <SessionTimelineProvider store={timelines}>
-    <div
-      ref={shellRef}
-      className="mobile-shell"
-      data-font-size={
-        // Reading a transcript wants a larger type than scanning a list of
-        // chats does, so the two screens run at their own scale. Inside the
-        // native shell the transcript is the whole screen rather than one
-        // pane of a web app, and 7 read two steps small there — so embed
-        // mode takes two more. Applied as an attribute for this page's
-        // lifetime only: the phone's stored web preference is the browser
-        // tab's, and the shell has no business rewriting it.
-        sessionOpen || newSessionOpen ? (embedded ? "9" : "7") : "3"
-      }
-      data-screen={newSessionOpen ? "new" : sessionOpen ? "session" : "list"}
-      data-embed={embedded || undefined}
-      data-composer-hidden={composerHidden || undefined}
-    >
-      {/* The native shell owns the chat list, so in embed mode the web one
+      <div
+        ref={shellRef}
+        className="mobile-shell"
+        data-font-size={
+          // Reading a transcript wants a larger type than scanning a list of
+          // chats does, so the two screens run at their own scale. Inside the
+          // native shell the transcript is the whole screen rather than one
+          // pane of a web app, and 7 read two steps small there — so embed
+          // mode takes two more. Applied as an attribute for this page's
+          // lifetime only: the phone's stored web preference is the browser
+          // tab's, and the shell has no business rewriting it.
+          sessionOpen || newSessionOpen ? (embedded ? "9" : "7") : "3"
+        }
+        data-screen={newSessionOpen ? "new" : sessionOpen ? "session" : "list"}
+        data-embed={embedded || undefined}
+        data-composer-hidden={composerHidden || undefined}
+      >
+        {/* The native shell owns the chat list, so in embed mode the web one
           never mounts: the session screen is the root. */}
-      {embedded ? null : (
-        <div
-          className="mobile-list-screen"
-          data-font-size="3"
-          data-parked={listParked || undefined}
-          aria-hidden={listParked}
-          inert={listParked || undefined}
-        >
-          <header className="mobile-list-header">
-            <button
-              type="button"
-              className="mobile-icon-button"
-              aria-label="Open navigation"
-              aria-haspopup="dialog"
-              aria-expanded={listMenuOpen}
-              onClick={() => setListMenuOpen(true)}
-            >
-              <Menu size={21} aria-hidden />
-            </button>
-            <div className="mobile-list-identity">
-              <h1>Remote</h1>
-              <span className="mobile-list-device">
-                <span className="mobile-list-device-dot" aria-hidden="true" />
-                <Laptop size={14} aria-hidden="true" />
-                <span>Mac</span>
-              </span>
-            </div>
-            <div className="mobile-list-header-actions">
+        {embedded ? null : (
+          <div
+            className="mobile-list-screen"
+            data-font-size="3"
+            data-parked={listParked || undefined}
+            aria-hidden={listParked}
+            inert={listParked || undefined}
+          >
+            <header className="mobile-list-header">
               <button
                 type="button"
                 className="mobile-icon-button"
-                aria-label="Remote options"
+                aria-label="Open navigation"
                 aria-haspopup="dialog"
                 aria-expanded={listMenuOpen}
                 onClick={() => setListMenuOpen(true)}
               >
-                <MoreHorizontal size={21} aria-hidden />
+                <Menu size={21} aria-hidden />
               </button>
-            </div>
-          </header>
-          {connectionBanner}
-          {/* The scroller is the list landmark: sections come and go with
-              triage, so this is the one stable handle on "the sessions". */}
-          <div
-            ref={listScrollRef}
-            className="mobile-list-scroll"
-            role="region"
-            aria-label="Chat list"
-            onScroll={(event) => {
-              if (!listParked) listScrollTopRef.current = event.currentTarget.scrollTop;
-            }}
-          >
-            {loadState === "error" ? (
-              <div className="mobile-empty" role="alert">
-                <p>Could not reach Argmax.</p>
-                {loadError ? <p className="mobile-empty-detail">{loadError}</p> : null}
-                <button type="button" className="mobile-retry" onClick={() => void refresh()}>
-                  Retry
+              <div className="mobile-list-identity">
+                <h1>Remote</h1>
+                <span className="mobile-list-device">
+                  <span className="mobile-list-device-dot" aria-hidden="true" />
+                  <Laptop size={14} aria-hidden="true" />
+                  <span>Mac</span>
+                </span>
+              </div>
+              <div className="mobile-list-header-actions">
+                <button
+                  type="button"
+                  className="mobile-icon-button"
+                  aria-label="Remote options"
+                  aria-haspopup="dialog"
+                  aria-expanded={listMenuOpen}
+                  onClick={() => setListMenuOpen(true)}
+                >
+                  <MoreHorizontal size={21} aria-hidden />
                 </button>
               </div>
-            ) : empty ? (
-              <div className="mobile-empty">
-                <p>
-                  {loadState === "loading"
-                    ? "Connecting…"
-                    : searchQuery.trim()
-                      ? `No chats match “${searchQuery.trim()}”.`
-                      : "No active chats."}
-                </p>
-              </div>
-            ) : (
-              <>
-                <SessionSection
-                  label="Pinned"
-                  rows={filteredRows.pinnedRows}
-                  projectNamesById={projectNamesById}
-                  unreadIds={unreadIds}
-                  nowMs={nowMs}
-                  onOpen={openWorkspaceChat}
-                  onOpenActions={setActionsRow}
-                />
-                <SessionSection
-                  label="Priority"
-                  rows={filteredRows.priorityRows}
-                  projectNamesById={projectNamesById}
-                  unreadIds={unreadIds}
-                  nowMs={nowMs}
-                  onOpen={openWorkspaceChat}
-                  onOpenActions={setActionsRow}
-                />
-                <SessionSection
-                  label={filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"}
-                  rows={filteredRows.activityRows}
-                  projectNamesById={projectNamesById}
-                  unreadIds={unreadIds}
-                  nowMs={nowMs}
-                  onOpen={openWorkspaceChat}
-                  onOpenActions={setActionsRow}
-                />
-              </>
-            )}
-          </div>
-          <div className="mobile-list-dock">
-            <label className="mobile-list-search">
-              <Search size={19} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="Search chats"
-                placeholder="Search chats"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="mobile-list-compose"
-              aria-label="New chat"
-              onClick={startNewChat}
+            </header>
+            {connectionBanner}
+            {/* The scroller is the list landmark: sections come and go with
+              triage, so this is the one stable handle on "the sessions". */}
+            <div
+              ref={listScrollRef}
+              className="mobile-list-scroll"
+              role="region"
+              aria-label="Chat list"
+              onScroll={(event) => {
+                if (!listParked) listScrollTopRef.current = event.currentTarget.scrollTop;
+              }}
             >
-              <PenLine size={23} aria-hidden="true" />
-            </button>
+              {loadState === "error" ? (
+                <div className="mobile-empty" role="alert">
+                  <p>Could not reach Argmax.</p>
+                  {loadError ? <p className="mobile-empty-detail">{loadError}</p> : null}
+                  <button type="button" className="mobile-retry" onClick={() => void refresh()}>
+                    Retry
+                  </button>
+                </div>
+              ) : empty ? (
+                <div className="mobile-empty">
+                  <p>
+                    {loadState === "loading"
+                      ? "Connecting…"
+                      : searchQuery.trim()
+                        ? `No chats match “${searchQuery.trim()}”.`
+                        : "No active chats."}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <SessionSection
+                    label="Pinned"
+                    rows={filteredRows.pinnedRows}
+                    projectNamesById={projectNamesById}
+                    unreadIds={unreadIds}
+                    nowMs={nowMs}
+                    onOpen={openWorkspaceChat}
+                    onOpenActions={setActionsRow}
+                  />
+                  <SessionSection
+                    label="Priority"
+                    rows={filteredRows.priorityRows}
+                    projectNamesById={projectNamesById}
+                    unreadIds={unreadIds}
+                    nowMs={nowMs}
+                    onOpen={openWorkspaceChat}
+                    onOpenActions={setActionsRow}
+                  />
+                  <SessionSection
+                    label={
+                      filteredRows.pinnedRows.length > 0 || filteredRows.priorityRows.length > 0 ? "Chats" : "All chats"
+                    }
+                    rows={filteredRows.activityRows}
+                    projectNamesById={projectNamesById}
+                    unreadIds={unreadIds}
+                    nowMs={nowMs}
+                    onOpen={openWorkspaceChat}
+                    onOpenActions={setActionsRow}
+                  />
+                </>
+              )}
+            </div>
+            <div className="mobile-list-dock">
+              <label className="mobile-list-search">
+                <Search size={19} aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Search chats"
+                  placeholder="Search chats"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+              </label>
+              <button type="button" className="mobile-list-compose" aria-label="New chat" onClick={startNewChat}>
+                <PenLine size={23} aria-hidden="true" />
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-      {sessionOpen ? (
-        <div
-          className="mobile-screen-overlay"
-          data-parked={sessionParked || undefined}
-          aria-hidden={sessionParked || undefined}
-          inert={sessionParked || undefined}
-        >
+        )}
+        {sessionOpen ? (
+          <div
+            className="mobile-screen-overlay"
+            data-parked={sessionParked || undefined}
+            aria-hidden={sessionParked || undefined}
+            inert={sessionParked || undefined}
+          >
             <div className="mobile-session-screen">
               {/* Native draws the title and the back affordance, so the web
                   bar would be a second one. */}
@@ -1342,10 +1317,10 @@ export function MobileApp(): JSX.Element {
                 revertEnabled={false}
               />
             </div>
-        </div>
-      ) : null}
-      {appearanceOpen ? (
-        <div className="mobile-screen-overlay">
+          </div>
+        ) : null}
+        {appearanceOpen ? (
+          <div className="mobile-screen-overlay">
             <div className="mobile-settings-screen">
               <MobileScreenHeader
                 onBack={() => setAppearanceOpen(false)}
@@ -1387,29 +1362,27 @@ export function MobileApp(): JSX.Element {
                 </div>
               </div>
             </div>
-        </div>
-      ) : newSessionOpen ? (
-        <div className="mobile-screen-overlay">
-          <Suspense fallback={<LinesSkeleton rows={6} label="Loading new chat" />}>
-            <NewSessionScreen
-              projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
-              workspaces={snapshot.workspaces}
-              initialWorkspaceId={newSessionWorkspaceId}
-              initialSeed={newSessionSeed}
-              backLabel={sessionOpen ? "Back to chat" : "Back to chats"}
-              onClose={closeNewSession}
-              onLaunched={handleLaunched}
-              onError={(message) => showToast({ kind: "error", message })}
-              openSheet={newSessionSheet}
-              onOpenSheetChange={setNewSessionSheet}
-            />
-          </Suspense>
-        </div>
-      ) : reviewShown && selectedWorkspace ? (
-        <div className="mobile-screen-overlay">
-            <Suspense
-              fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}
-            >
+          </div>
+        ) : newSessionOpen ? (
+          <div className="mobile-screen-overlay">
+            <Suspense fallback={<LinesSkeleton rows={6} label="Loading new chat" />}>
+              <NewSessionScreen
+                projects={snapshot.projects.filter((project) => project.id !== SCRATCH_PROJECT_ID)}
+                workspaces={snapshot.workspaces}
+                initialWorkspaceId={newSessionWorkspaceId}
+                initialSeed={newSessionSeed}
+                backLabel={sessionOpen ? "Back to chat" : "Back to chats"}
+                onClose={closeNewSession}
+                onLaunched={handleLaunched}
+                onError={(message) => showToast({ kind: "error", message })}
+                openSheet={newSessionSheet}
+                onOpenSheetChange={setNewSessionSheet}
+              />
+            </Suspense>
+          </div>
+        ) : reviewShown && selectedWorkspace ? (
+          <div className="mobile-screen-overlay">
+            <Suspense fallback={<LinesSkeleton rows={10} label="Loading changes" className="review-diff-skeleton" />}>
               <MobileReviewScreen
                 workspace={selectedWorkspace}
                 initialFilePath={reviewFilePath}
@@ -1418,93 +1391,95 @@ export function MobileApp(): JSX.Element {
                 onClose={closeReview}
               />
             </Suspense>
-        </div>
-      ) : null}
-      {listMenuOpen ? (
-        <BottomSheet label="Remote menu" onClose={() => setListMenuOpen(false)}>
-          <p className="mobile-sheet-group-label">Remote</p>
-          <div className="mobile-sheet-group">
-            <SheetOption
-              label="New chat"
-              detail="Pick a project and start fresh"
-              onSelect={() => {
-                setListMenuOpen(false);
-                startNewChat();
-              }}
-            />
-            <SheetOption
-              label="Appearance"
-              detail="Theme, accent, message bubbles"
-              onSelect={() => {
-                setListMenuOpen(false);
-                setAppearanceOpen(true);
-              }}
-            />
           </div>
-        </BottomSheet>
-      ) : null}
-      {actionsRow ? (
-        <BottomSheet label="Chat actions" onClose={() => setActionsRow(null)}>
-          <p className="mobile-sheet-group-label">{actionsRow.workspace.taskLabel}</p>
-          <div className="mobile-sheet-group">
-            <SheetOption
-              label="New chat here"
-              onSelect={() => {
-                const { workspace } = actionsRow;
-                setActionsRow(null);
-                startNewChatFromWorkspace(workspace);
-              }}
-            />
-            <SheetOption
-              label={actionsRow.workspace.pinned ? "Unpin" : "Pin to top"}
-              onSelect={() => {
-                const { workspace } = actionsRow;
-                setActionsRow(null);
-                void setPinned(workspace);
-              }}
-            />
-            <SheetOption
-              label="Rename"
-              onSelect={() => {
-                const { workspace } = actionsRow;
-                setActionsRow(null);
-                void renameWorkspace(workspace);
-              }}
-            />
-            {isForkable(actionsRow.session) ? (
+        ) : null}
+        {listMenuOpen ? (
+          <BottomSheet label="Remote menu" onClose={() => setListMenuOpen(false)}>
+            <p className="mobile-sheet-group-label">Remote</p>
+            <div className="mobile-sheet-group">
               <SheetOption
-                label="Fork chat"
-                detail="Copy it into a new chat and continue there"
+                label="New chat"
+                detail="Pick a project and start fresh"
                 onSelect={() => {
-                  const { session } = actionsRow;
-                  if (!session) return;
-                  setActionsRow(null);
-                  void forkSession(session.id);
+                  setListMenuOpen(false);
+                  startNewChat();
                 }}
               />
-            ) : null}
-            <SheetOption
-              label="Archive"
-              danger
-              onSelect={() => {
-                const { workspace } = actionsRow;
-                setActionsRow(null);
-                void archiveWorkspace(workspace);
-              }}
-            />
+              <SheetOption
+                label="Appearance"
+                detail="Theme, accent, message bubbles"
+                onSelect={() => {
+                  setListMenuOpen(false);
+                  setAppearanceOpen(true);
+                }}
+              />
+            </div>
+          </BottomSheet>
+        ) : null}
+        {actionsRow ? (
+          <BottomSheet label="Chat actions" onClose={() => setActionsRow(null)}>
+            <p className="mobile-sheet-group-label">{actionsRow.workspace.taskLabel}</p>
+            <div className="mobile-sheet-group">
+              <SheetOption
+                label="New chat here"
+                onSelect={() => {
+                  const { workspace } = actionsRow;
+                  setActionsRow(null);
+                  startNewChatFromWorkspace(workspace);
+                }}
+              />
+              <SheetOption
+                label={actionsRow.workspace.pinned ? "Unpin" : "Pin to top"}
+                onSelect={() => {
+                  const { workspace } = actionsRow;
+                  setActionsRow(null);
+                  void setPinned(workspace);
+                }}
+              />
+              <SheetOption
+                label="Rename"
+                onSelect={() => {
+                  const { workspace } = actionsRow;
+                  setActionsRow(null);
+                  void renameWorkspace(workspace);
+                }}
+              />
+              {isForkable(actionsRow.session) ? (
+                <SheetOption
+                  label="Fork chat"
+                  detail="Copy it into a new chat and continue there"
+                  onSelect={() => {
+                    const { session } = actionsRow;
+                    if (!session) return;
+                    setActionsRow(null);
+                    void forkSession(session.id);
+                  }}
+                />
+              ) : null}
+              <SheetOption
+                label="Archive"
+                danger
+                onSelect={() => {
+                  const { workspace } = actionsRow;
+                  setActionsRow(null);
+                  void archiveWorkspace(workspace);
+                }}
+              />
+            </div>
+          </BottomSheet>
+        ) : null}
+        {toast ? (
+          <div className={`toast toast-${toast.kind} mobile-toast`} role="status">
+            <span className="toast-text">
+              {toast.message}
+              {toast.detail ? <span className="toast-detail">{toast.detail}</span> : null}
+            </span>
+            <button type="button" onClick={dismissToast} aria-label="Dismiss">
+              ×
+            </button>
           </div>
-        </BottomSheet>
-      ) : null}
-      {toast ? (
-        <div className={`toast toast-${toast.kind} mobile-toast`} role="status">
-          <span className="toast-text">
-            {toast.message}
-            {toast.detail ? <span className="toast-detail">{toast.detail}</span> : null}
-          </span>
-          <button type="button" onClick={dismissToast} aria-label="Dismiss">×</button>
-        </div>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
     </SessionTimelineProvider>
   );
 }

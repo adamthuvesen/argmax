@@ -116,11 +116,7 @@ function parseInstant(value: string): Date | null {
  * `AUG 19` for a day bucket, `14:00` for an hour one — the axis carries the
  * unit the buckets are in, so a 24h chart never claims to show days.
  */
-export function formatBucketLabel(
-  bucketStart: string,
-  resolution: UsageResolution,
-  timeZone: string
-): string {
+export function formatBucketLabel(bucketStart: string, resolution: UsageResolution, timeZone: string): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
   if (resolution === "hour") {
@@ -130,11 +126,7 @@ export function formatBucketLabel(
 }
 
 /** The tooltip's fuller stamp: `Aug 19` or `Aug 19, 14:00`. */
-export function formatBucketTitle(
-  bucketStart: string,
-  resolution: UsageResolution,
-  timeZone: string
-): string {
+export function formatBucketTitle(bucketStart: string, resolution: UsageResolution, timeZone: string): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
   if (resolution === "hour") {
@@ -179,10 +171,7 @@ export function formatRangeLabel(
 }
 
 /** `2h`, `17d`, `now` — the bare distance to a window's reset. */
-export function formatResetShort(
-  value: string | null,
-  now: Date = new Date()
-): string | null {
+export function formatResetShort(value: string | null, now: Date = new Date()): string | null {
   if (!value) return null;
   const at = parseInstant(value);
   if (!at) return null;
@@ -197,10 +186,7 @@ export function formatResetShort(
 }
 
 /** A relative account-clock label such as `resets in 2h` or `resets in 17d`. */
-export function formatResetIn(
-  value: string | null,
-  now: Date = new Date()
-): string | null {
+export function formatResetIn(value: string | null, now: Date = new Date()): string | null {
   const distance = formatResetShort(value, now);
   if (!distance) return null;
   return distance === "now" ? "resets now" : `resets in ${distance}`;

@@ -206,8 +206,7 @@ export function FilePreview({
   // A raster image never has a text side to fall back to, so it replaces the
   // editor outright; an SVG is text and only becomes a picture when rendered.
   const showImage =
-    (rasterImageFile && preview.kind === "skipped" && preview.reason !== "not-a-file") ||
-    (svgFile && showRendered);
+    (rasterImageFile && preview.kind === "skipped" && preview.reason !== "not-a-file") || (svgFile && showRendered);
 
   if (preview.kind === "skipped" && !showImage) {
     const message =
@@ -219,7 +218,7 @@ export function FilePreview({
     return <p className="review-empty">{message}</p>;
   }
 
-  const buffer = preview.kind === "text" ? state.buffer ?? preview.content : "";
+  const buffer = preview.kind === "text" ? (state.buffer ?? preview.content) : "";
   const dirtyMarker = state.isDirty ? "•" : "";
   // Only the two file kinds with both a source and a picture get a toggle.
   const toggleLabel = svgFile
@@ -240,16 +239,17 @@ export function FilePreview({
     >
       <div className="file-preview-heading">
         <strong aria-label={state.selectedPath} title={state.selectedPath}>
-          {state.selectedPath.split("/").filter(Boolean).map((segment, index, segments) => (
-            <Fragment key={`${index}-${segment}`}>
-              {index > 0 ? (
-                <ChevronRight size={11} className="file-preview-path-sep" aria-hidden="true" />
-              ) : null}
-              <span className={index === segments.length - 1 ? "file-preview-path-leaf" : "file-preview-path-dir"}>
-                {segment}
-              </span>
-            </Fragment>
-          ))}
+          {state.selectedPath
+            .split("/")
+            .filter(Boolean)
+            .map((segment, index, segments) => (
+              <Fragment key={`${index}-${segment}`}>
+                {index > 0 ? <ChevronRight size={11} className="file-preview-path-sep" aria-hidden="true" /> : null}
+                <span className={index === segments.length - 1 ? "file-preview-path-leaf" : "file-preview-path-dir"}>
+                  {segment}
+                </span>
+              </Fragment>
+            ))}
           {dirtyMarker ? (
             <span className="file-preview-dirty" aria-label="Unsaved changes" title="Unsaved changes">
               {" "}
@@ -273,18 +273,10 @@ export function FilePreview({
         </div>
       </div>
       {state.externalChange ? (
-        <StaleBanner
-          isDirty={state.isDirty}
-          onReload={state.reloadFile}
-          onKeepMine={state.dismissExternalChange}
-        />
+        <StaleBanner isDirty={state.isDirty} onReload={state.reloadFile} onKeepMine={state.dismissExternalChange} />
       ) : null}
       {showImage && assetPath ? (
-        <ImageFilePreview
-          absolutePath={assetPath}
-          label={state.selectedPath}
-          sizeBytes={preview.size ?? null}
-        />
+        <ImageFilePreview absolutePath={assetPath} label={state.selectedPath} sizeBytes={preview.size ?? null} />
       ) : showRendered ? (
         <div className="file-preview-markdown markdown">
           <ReactMarkdown
@@ -297,7 +289,9 @@ export function FilePreview({
                     {children}
                   </WebLink>
                 ) : (
-                  <a href={href} title={title}>{children}</a>
+                  <a href={href} title={title}>
+                    {children}
+                  </a>
                 ),
               table: ({ children }) => <MarkdownTable>{children}</MarkdownTable>,
               // A mermaid fence is a figure; lift it out of the <pre> that wraps code.
@@ -311,7 +305,11 @@ export function FilePreview({
               },
               code: ({ className, children, ...rest }) => {
                 if (!isMermaidFenceClass(className)) {
-                  return <code className={className} {...rest}>{children}</code>;
+                  return (
+                    <code className={className} {...rest}>
+                      {children}
+                    </code>
+                  );
                 }
                 const source = (typeof children === "string" ? children : "").replace(/\n$/, "");
                 return (
@@ -363,9 +361,7 @@ function StaleBanner({
   // When the buffer isn't dirty, there's nothing to lose by reloading — but we
   // still surface the banner so the user notices the external edit instead of
   // having content silently shift under them.
-  const headline = isDirty
-    ? "This file changed on disk while you were editing."
-    : "This file changed on disk.";
+  const headline = isDirty ? "This file changed on disk while you were editing." : "This file changed on disk.";
   return (
     <div className="file-preview-stale" role="alert" aria-label="File changed on disk">
       <span className="file-preview-stale-text">{headline}</span>
@@ -480,7 +476,11 @@ const editorHighlightStyle = HighlightStyle.define([
   { tag: [t.attributeName, t.special(t.variableName)], color: "var(--syntax-constant)" },
   { tag: [t.attributeValue, t.string, t.docString, t.character], color: "var(--syntax-string)" },
   { tag: [t.url, t.escape, t.regexp, t.link], color: "var(--syntax-type)" },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--syntax-comment)", fontStyle: "italic" },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment, t.docComment],
+    color: "var(--syntax-comment)",
+    fontStyle: "italic"
+  },
   { tag: [t.meta, t.processingInstruction], color: "var(--syntax-comment)" },
   { tag: [t.name, t.variableName, t.deleted, t.propertyName, t.namespace], color: "var(--text)" },
   { tag: [t.operator, t.punctuation, t.separator, t.derefOperator], color: "var(--muted-strong)" },

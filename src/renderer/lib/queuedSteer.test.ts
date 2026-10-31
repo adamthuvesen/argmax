@@ -12,13 +12,7 @@ const session = {
   contextWindow: 258_400
 } as Pick<
   SessionSummary,
-  | "state"
-  | "provider"
-  | "modelId"
-  | "reasoningEffort"
-  | "agentMode"
-  | "contextTokens"
-  | "contextWindow"
+  "state" | "provider" | "modelId" | "reasoningEffort" | "agentMode" | "contextTokens" | "contextWindow"
 >;
 
 const entry = {

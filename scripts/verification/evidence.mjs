@@ -5,7 +5,8 @@ const SECRET_KEYS = /(^|_)(token|secret|password|api_?key|authorization|cookie)(
 const BEARER = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const URL_FRAGMENT_TOKEN = /(#token=)[^&#\s"']+/gi;
 const JSON_SECRET = /((?:token|secret|password|api_?key|authorization|cookie)[^"'\s]*["']?\s*:\s*["'])[^"']+/gi;
-const ESCAPED_JSON_SECRET = /((?:token|secret|password|api_?key|authorization|cookie)[A-Z0-9_]*\\?"\s*:\s*\\?")[^"\\]+/gi;
+const ESCAPED_JSON_SECRET =
+  /((?:token|secret|password|api_?key|authorization|cookie)[A-Z0-9_]*\\?"\s*:\s*\\?")[^"\\]+/gi;
 const ENV_SECRET = /((?:TOKEN|SECRET|PASSWORD|API_?KEY|AUTHORIZATION|COOKIE)[A-Z0-9_]*=)[^\s"']+/g;
 
 export function redact(value, key = "") {
@@ -32,7 +33,10 @@ export async function writeJson(filePath, value) {
 
 export async function writeNdjson(filePath, values) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, values.map((value) => JSON.stringify(redact(value))).join("\n") + (values.length ? "\n" : ""));
+  await writeFile(
+    filePath,
+    values.map((value) => JSON.stringify(redact(value))).join("\n") + (values.length ? "\n" : "")
+  );
 }
 
 export async function copyIfPresent(source, destination) {

@@ -26,7 +26,12 @@ function reviewStub(): ReviewState {
   return baseReviewStub({
     files: [{ path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false }],
     selectedFilePath: "src/a.ts",
-    diff: { workspaceId: "workspace-1", filePath: "src/a.ts", content: "@@ -1,1 +1,1 @@\n-old\n+new\n", revision: "test-revision" },
+    diff: {
+      workspaceId: "workspace-1",
+      filePath: "src/a.ts",
+      content: "@@ -1,1 +1,1 @@\n-old\n+new\n",
+      revision: "test-revision"
+    },
     diffState: "ready",
     isPanelOpen: true,
     terminalWorkspaceId: "workspace-1",
@@ -58,15 +63,41 @@ describe("ReviewPanel changes layout", () => {
   it("shows supplementary diffs without offering the chat checkout's write actions", async () => {
     const original = window.argmax;
     const review = reviewStub();
-    review.projectChanges = { projectId: "project", workingFolderId: "working", workingRootPath: "/chat", refreshKey: null };
+    review.projectChanges = {
+      projectId: "project",
+      workingFolderId: "working",
+      workingRootPath: "/chat",
+      refreshKey: null
+    };
     const loadDiff = vi.fn().mockResolvedValue({
-      workspaceId: "other", filePath: "src/a.ts", content: "@@ -1 +1 @@\n-old\n+other repository\n", revision: "other-revision"
+      workspaceId: "other",
+      filePath: "src/a.ts",
+      content: "@@ -1 +1 @@\n-old\n+other repository\n",
+      revision: "other-revision"
     });
     window.argmax = {
-      projects: { getFolders: vi.fn().mockResolvedValue([
-        { id: "working", projectId: "project", name: "working", rootPath: "/repo", isPrimary: true, enabled: true, summary: null },
-        { id: "other", projectId: "project", name: "other", rootPath: "/other", isPrimary: false, enabled: true, summary: null }
-      ]) },
+      projects: {
+        getFolders: vi.fn().mockResolvedValue([
+          {
+            id: "working",
+            projectId: "project",
+            name: "working",
+            rootPath: "/repo",
+            isPrimary: true,
+            enabled: true,
+            summary: null
+          },
+          {
+            id: "other",
+            projectId: "project",
+            name: "other",
+            rootPath: "/other",
+            isPrimary: false,
+            enabled: true,
+            summary: null
+          }
+        ])
+      },
       review: { listChangedFiles: vi.fn().mockResolvedValue(review.files), loadDiff }
     } as unknown as ArgmaxApi;
     function PanelWithFolderChanges() {
@@ -75,9 +106,16 @@ describe("ReviewPanel changes layout", () => {
     }
     try {
       render(<PanelWithFolderChanges />);
-      fireEvent.click(await within(await screen.findByRole("region", { name: "Other project folders" })).findByTitle("src/a.ts"));
+      fireEvent.click(
+        await within(await screen.findByRole("region", { name: "Other project folders" })).findByTitle("src/a.ts")
+      );
       await screen.findByText("other repository");
-      expect(loadDiff).toHaveBeenCalledWith({ kind: "projectFolder", id: "other" }, "src/a.ts", "workingTree", undefined);
+      expect(loadDiff).toHaveBeenCalledWith(
+        { kind: "projectFolder", id: "other" },
+        "src/a.ts",
+        "workingTree",
+        undefined
+      );
       expect(screen.queryByRole("button", { name: "Stage src/a.ts" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Revert/ })).not.toBeInTheDocument();
       expect(screen.queryByText(/These can include other chats/)).not.toBeInTheDocument();
@@ -110,9 +148,9 @@ describe("ReviewPanel changes layout", () => {
   it("renders changed files as a tree beside the selected file diff", () => {
     const review = reviewStub();
     review.files = [
-      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 , staged: false },
-{ path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 , staged: false },
-];
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false },
+      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0, staged: false }
+    ];
     const { container } = render(<ReviewPanel review={review} />);
     const body = container.querySelector(".review-body");
     const leftCol = container.querySelector(".review-list-col");
@@ -138,9 +176,9 @@ describe("ReviewPanel changes layout", () => {
     const openFile = vi.fn();
     review.openFile = openFile;
     review.files = [
-      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1 , staged: false },
-{ path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0 , staged: false },
-];
+      { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false },
+      { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0, staged: false }
+    ];
 
     render(<ReviewPanel review={review} />);
 
@@ -277,10 +315,7 @@ describe("ReviewPanel file tabs", () => {
     render(<ReviewPanel review={review} />);
 
     const tablist = screen.getByRole("tablist", { name: "Open files" });
-    expect(within(tablist).getByRole("tab", { name: /index\.ts/ })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(within(tablist).getByRole("tab", { name: /index\.ts/ })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(within(tablist).getByRole("tab", { name: "utils.ts" }));
     expect(selectTab).toHaveBeenCalledWith("src/utils.ts");
 
@@ -334,10 +369,10 @@ describe("ReviewPanel file tabs", () => {
 
     render(<ReviewPanel review={review} />);
 
-    const wasNotCanceled = fireEvent.keyDown(
-      screen.getByRole("tab", { name: /index\.ts/ }),
-      { key: "w", metaKey: true }
-    );
+    const wasNotCanceled = fireEvent.keyDown(screen.getByRole("tab", { name: /index\.ts/ }), {
+      key: "w",
+      metaKey: true
+    });
 
     expect(wasNotCanceled).toBe(false);
     expect(closeTab).toHaveBeenCalledWith("src/index.ts");
@@ -551,13 +586,25 @@ describe("ReviewPanel browser mode", () => {
 
   it("shows Artifacts only when enabled and opens it in this panel", () => {
     const review = reviewStub();
-    const { rerender } = render(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    const { rerender } = render(
+      <ClaudeArtifactsContext.Provider value={false}>
+        <ReviewPanel review={review} />
+      </ClaudeArtifactsContext.Provider>
+    );
     expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
-    rerender(<ClaudeArtifactsContext.Provider value><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    rerender(
+      <ClaudeArtifactsContext.Provider value>
+        <ReviewPanel review={review} />
+      </ClaudeArtifactsContext.Provider>
+    );
     fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
     expect(review.setPaneMode).toHaveBeenCalledWith(0, "browser");
     expect(review.openBrowser).toHaveBeenLastCalledWith("https://claude.ai/artifacts");
-    rerender(<ClaudeArtifactsContext.Provider value={false}><ReviewPanel review={review} /></ClaudeArtifactsContext.Provider>);
+    rerender(
+      <ClaudeArtifactsContext.Provider value={false}>
+        <ReviewPanel review={review} />
+      </ClaudeArtifactsContext.Provider>
+    );
     expect(screen.queryByRole("button", { name: "Artifacts" })).not.toBeInTheDocument();
   });
 

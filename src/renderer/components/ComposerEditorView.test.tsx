@@ -126,7 +126,7 @@ describe("ComposerEditorView", () => {
     expect(field.current?.contains(box)).toBe(true);
     expect(field.current?.contains(document.body)).toBe(false);
     field.current?.focus();
-    expect(document.activeElement).toBe(box);
+    expect(box).toHaveFocus();
   });
 
   it("stops accepting edits when disabled", () => {
@@ -148,9 +148,7 @@ describe("ComposerEditorView", () => {
   it("announces its placeholder to assistive technology", () => {
     render(<Harness fieldRef={createRef()} />);
 
-    expect(screen.getByRole("textbox", { name: "Chat prompt" }).getAttribute("aria-placeholder")).toBe(
-      "Reply"
-    );
+    expect(screen.getByRole("textbox", { name: "Chat prompt" }).getAttribute("aria-placeholder")).toBe("Reply");
   });
 
   it("reports the text now through the handle, ahead of React", () => {

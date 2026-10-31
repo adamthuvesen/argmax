@@ -1,12 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import {
-  useRef,
-  useState,
-  type CSSProperties,
-  type JSX,
-  type MutableRefObject,
-  type ReactNode
-} from "react";
+import { useRef, useState, type CSSProperties, type JSX, type MutableRefObject, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useAnchoredPopover } from "../../hooks/useAnchoredPopover.js";
 import type { DiagnosticsReport } from "../../../shared/types.js";
@@ -26,11 +19,7 @@ import { useDismissOnOutsideOrEscape } from "../../hooks/useDismissOnOutsideOrEs
 
 export const COLD_START_BUDGET_MS = 1500;
 
-export function ColdStartSummary({
-  phases
-}: {
-  phases: DiagnosticsReport["startupPhases"];
-}): JSX.Element | null {
+export function ColdStartSummary({ phases }: { phases: DiagnosticsReport["startupPhases"] }): JSX.Element | null {
   const ready = phases.find((p) => p.phase === "window.ready-to-show");
   if (!ready) return null;
   const overBudget = ready.elapsedMs > COLD_START_BUDGET_MS;
@@ -136,13 +125,7 @@ export function SettingRow({
 }
 
 /** A read-only row: label on the left, value on the right. */
-export function SettingValueRow({
-  label,
-  value
-}: {
-  label: ReactNode;
-  value: ReactNode;
-}): JSX.Element {
+export function SettingValueRow({ label, value }: { label: ReactNode; value: ReactNode }): JSX.Element {
   return <SettingRow label={label} control={<span className="settings-row-value">{value}</span>} />;
 }
 
@@ -206,20 +189,11 @@ export function SegmentedControl({
   options: ReadonlyArray<SegmentedOption>;
 }): JSX.Element {
   return (
-    <div
-      className="settings-segmented"
-      role="radiogroup"
-      aria-label={ariaLabel}
-      data-count={options.length}
-    >
+    <div className="settings-segmented" role="radiogroup" aria-label={ariaLabel} data-count={options.length}>
       {options.map((option) => {
         const checked = option.value === value;
         return (
-          <label
-            key={option.value}
-            className="settings-segmented-option"
-            data-checked={checked ? "true" : "false"}
-          >
+          <label key={option.value} className="settings-segmented-option" data-checked={checked ? "true" : "false"}>
             <input
               type="radio"
               name={name}
@@ -354,12 +328,7 @@ export function SettingsListPicker<T extends string>({
       {options.map((option) => {
         const isSelected = option.value === value;
         return (
-          <li
-            key={option.value}
-            role="option"
-            aria-selected={isSelected}
-            aria-disabled={option.disabled || undefined}
-          >
+          <li key={option.value} role="option" aria-selected={isSelected} aria-disabled={option.disabled || undefined}>
             <button
               type="button"
               className="project-picker-item"

@@ -64,11 +64,7 @@ function physicalScrollTop(scroll: HTMLDivElement, maxTop: number): number {
   return Math.max(0, Math.min(scroll.scrollTop, maxTop));
 }
 
-function scrollableAncestor(
-  scroll: HTMLDivElement,
-  target: EventTarget | null,
-  direction: -1 | 1
-): HTMLElement | null {
+function scrollableAncestor(scroll: HTMLDivElement, target: EventTarget | null, direction: -1 | 1): HTMLElement | null {
   let node = target instanceof Element ? target : null;
   while (node && node !== scroll) {
     if (node instanceof HTMLElement) {
@@ -85,20 +81,13 @@ function scrollableAncestor(
   return null;
 }
 
-function stableNestedScroller(
-  content: HTMLDivElement,
-  directChild: Element,
-  hit: Element
-): Element | null {
+function stableNestedScroller(content: HTMLDivElement, directChild: Element, hit: Element): Element | null {
   let stable: Element | null = null;
   let node: Element | null = hit;
   while (node && node !== content) {
     if (node instanceof HTMLElement) {
       const overflowY = getComputedStyle(node).overflowY;
-      if (
-        STABLE_SCROLLABLE_OVERFLOW.has(overflowY) &&
-        node.scrollHeight > node.clientHeight + BOTTOM_EPSILON_PX
-      ) {
+      if (STABLE_SCROLLABLE_OVERFLOW.has(overflowY) && node.scrollHeight > node.clientHeight + BOTTOM_EPSILON_PX) {
         stable = node;
       }
     }
@@ -125,10 +114,7 @@ function stableBlock(directChild: Element, hit: Element): Element {
  * reader is detached. A nested scroll area's outer box is the anchor because
  * movement inside it must not move the conversation on the next stream tick.
  */
-function readViewportAnchor(
-  scroll: HTMLDivElement,
-  content: HTMLDivElement
-): ViewportAnchor | null {
+function readViewportAnchor(scroll: HTMLDivElement, content: HTMLDivElement): ViewportAnchor | null {
   const scrollRect = scroll.getBoundingClientRect();
   if (scrollRect.width < 2 || scrollRect.height < 2) return null;
   const y = scrollRect.top + Math.min(ANCHOR_INSET_PX, scrollRect.height / 3);
@@ -145,7 +131,7 @@ function readViewportAnchor(
   const hit = document.elementFromPoint(scrollRect.left + paddingLeft + width / 2, y);
   const node =
     hit instanceof Element && directChild.contains(hit)
-      ? stableNestedScroller(content, directChild, hit) ?? stableBlock(directChild, hit)
+      ? (stableNestedScroller(content, directChild, hit) ?? stableBlock(directChild, hit))
       : directChild;
   return { node, contentTop: contentTop(content, node) };
 }
@@ -157,10 +143,7 @@ function isEditable(target: EventTarget | null): boolean {
 
 function upwardKey(event: KeyboardEvent): boolean {
   return (
-    event.key === "ArrowUp" ||
-    event.key === "PageUp" ||
-    event.key === "Home" ||
-    (event.key === " " && event.shiftKey)
+    event.key === "ArrowUp" || event.key === "PageUp" || event.key === "Home" || (event.key === " " && event.shiftKey)
   );
 }
 
@@ -303,8 +286,7 @@ export function useConversationScroll({
     }
 
     if (content) {
-      const latestAnchor = Array.from(content.querySelectorAll<HTMLElement>("[data-turn-anchor]"))
-        .at(-1);
+      const latestAnchor = Array.from(content.querySelectorAll<HTMLElement>("[data-turn-anchor]")).at(-1);
       let followHeight = 0;
       if (latestAnchor) {
         const paddingTop = Number.parseFloat(getComputedStyle(content).paddingTop) || 0;
@@ -328,9 +310,7 @@ export function useConversationScroll({
       const minHeight = Math.max(
         0,
         followHeight,
-        modeRef.current === "detached"
-          ? (detachedTop ?? currentTop) + scroll.clientHeight
-          : 0
+        modeRef.current === "detached" ? (detachedTop ?? currentTop) + scroll.clientHeight : 0
       );
       const nextMinHeight = minHeight > 0 ? `${minHeight}px` : "";
       if (content.style.minHeight !== nextMinHeight) content.style.minHeight = nextMinHeight;
@@ -366,25 +346,25 @@ export function useConversationScroll({
     reconcile();
   }, [items.length, reconcile, startFollowing]);
 
-  const scrollToElement = useCallback((node: HTMLElement): void => {
-    const scroll = scrollRef.current;
-    const content = contentRef.current;
-    if (!scroll || !content || !content.contains(node)) return;
-    detach();
-    requestedScrollTopRef.current =
-      scroll.scrollTop + node.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
-    reconcile();
-  }, [detach, reconcile]);
+  const scrollToElement = useCallback(
+    (node: HTMLElement): void => {
+      const scroll = scrollRef.current;
+      const content = contentRef.current;
+      if (!scroll || !content || !content.contains(node)) return;
+      detach();
+      requestedScrollTopRef.current =
+        scroll.scrollTop + node.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+      reconcile();
+    },
+    [detach, reconcile]
+  );
 
   // Reconcile before every paint. This covers child replacement and prepend
   // commits; ResizeObserver handles size changes that happen without React.
   // No dependency array: reconciliation intentionally runs after every commit.
   useLayoutEffect(() => {
     const previous = identityRef.current;
-    const reset =
-      previous.sessionId !== sessionId ||
-      previous.resetKey !== resetKey ||
-      previous.enabled !== enabled;
+    const reset = previous.sessionId !== sessionId || previous.resetKey !== resetKey || previous.enabled !== enabled;
     identityRef.current = { sessionId, resetKey, enabled };
     if (reset) startFollowing();
 
@@ -436,12 +416,14 @@ export function useConversationScroll({
       detach();
       reconcile();
       if (topBeforeGesture < bottomBeforeGesture - BOTTOM_EPSILON_PX) return;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (modeRef.current !== "detached") return;
-        if (Math.abs(physicalScrollTop(scroll, bottomBeforeGesture) - topBeforeGesture) > BOTTOM_EPSILON_PX) return;
-        startFollowing();
-        reconcile();
-      }));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (modeRef.current !== "detached") return;
+          if (Math.abs(physicalScrollTop(scroll, bottomBeforeGesture) - topBeforeGesture) > BOTTOM_EPSILON_PX) return;
+          startFollowing();
+          reconcile();
+        })
+      );
     };
 
     const onWheel = (event: WheelEvent): void => {
@@ -504,19 +486,12 @@ export function useConversationScroll({
       const top = physicalScrollTop(scroll, maxTop);
       const rangeShrank = maxTop < lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX;
       const clampedToNewBottom =
-        rangeShrank &&
-        previousTop > maxTop + BOTTOM_EPSILON_PX &&
-        Math.abs(top - maxTop) <= BOTTOM_EPSILON_PX;
+        rangeShrank && previousTop > maxTop + BOTTOM_EPSILON_PX && Math.abs(top - maxTop) <= BOTTOM_EPSILON_PX;
       const movedUp = top < previousTop - BOTTOM_EPSILON_PX;
       const movedDown = top > previousTop;
       const reachedPreviousBottom = top >= lastMaxScrollTopRef.current - BOTTOM_EPSILON_PX;
 
-      if (
-        modeRef.current === "following" &&
-        movedUp &&
-        pointerScrollRef.current &&
-        !clampedToNewBottom
-      ) {
+      if (modeRef.current === "following" && movedUp && pointerScrollRef.current && !clampedToNewBottom) {
         detach();
       } else if (modeRef.current === "detached" && movedDown && reachedPreviousBottom && !rangeShrank) {
         startFollowing();

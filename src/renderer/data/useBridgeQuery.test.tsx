@@ -209,7 +209,15 @@ describe("useBridgeQuery", () => {
     const projectA = { id: "a", name: "A" } as ProjectSummary;
     const projectB = { id: "b", name: "B" } as ProjectSummary;
     const learning = (id: string, summary: string) =>
-      ({ id, summary, verified: false, projectId: id, kind: "fact", createdAt: "", updatedAt: "" }) as unknown as Learning;
+      ({
+        id,
+        summary,
+        verified: false,
+        projectId: id,
+        kind: "fact",
+        createdAt: "",
+        updatedAt: ""
+      }) as unknown as Learning;
 
     const { rerender } = render(<ProjectKnowledgePanel projects={[projectA]} />);
     rerender(<ProjectKnowledgePanel projects={[projectB]} />);

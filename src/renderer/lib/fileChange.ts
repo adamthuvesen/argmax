@@ -47,24 +47,13 @@ function classifySingleFileTool(lower: string): {
     !isMultiEdit && (lower.includes("write") || lower.includes("create_file") || lower.includes("createfile"));
   const isEdit =
     !isMultiEdit &&
-    (lower.includes("edit") ||
-      lower.includes("patch") ||
-      lower.includes("replace") ||
-      lower.includes("update_file"));
-  const isDelete =
-    lower.includes("delete") || lower.includes("remove_file") || lower.includes("removefile");
+    (lower.includes("edit") || lower.includes("patch") || lower.includes("replace") || lower.includes("update_file"));
+  const isDelete = lower.includes("delete") || lower.includes("remove_file") || lower.includes("removefile");
   if (!isWrite && !isEdit && !isMultiEdit && !isDelete) return null;
   return { isMultiEdit, isWrite, isEdit, isDelete };
 }
 
-const SINGLE_FILE_PATH_KEYS = [
-  "file_path",
-  "filePath",
-  "filepath",
-  "path",
-  "relative_path",
-  "absolute_path"
-];
+const SINGLE_FILE_PATH_KEYS = ["file_path", "filePath", "filepath", "path", "relative_path", "absolute_path"];
 
 function isCodexFileChangeTool(lower: string): boolean {
   return lower === "file_change" || lower === "file-change" || lower === "filechange";
@@ -75,23 +64,22 @@ function isCodexFileChangeTool(lower: string): boolean {
 // provider.
 function editPair(source: Record<string, unknown>): { old: string; new: string } {
   return {
-    old: typeof source.old_string === "string"
-      ? source.old_string
-      : typeof source.oldString === "string"
-        ? source.oldString
-        : "",
-    new: typeof source.new_string === "string"
-      ? source.new_string
-      : typeof source.newString === "string"
-        ? source.newString
-        : ""
+    old:
+      typeof source.old_string === "string"
+        ? source.old_string
+        : typeof source.oldString === "string"
+          ? source.oldString
+          : "",
+    new:
+      typeof source.new_string === "string"
+        ? source.new_string
+        : typeof source.newString === "string"
+          ? source.newString
+          : ""
   };
 }
 
-export function interpretFileChange(
-  name: string,
-  input: Record<string, unknown>
-): FileChange[] | null {
+export function interpretFileChange(name: string, input: Record<string, unknown>): FileChange[] | null {
   const lower = name.toLowerCase();
 
   // Notebook edits don't fit the line-diff abstraction — let the fallback
@@ -253,8 +241,7 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
 
     if (kind === "add" || kind === "create" || addBag) {
       const content =
-        (addBag ? pickString(addBag, ["content", "text"]) : null) ??
-        pickString(entry, ["content", "text", "new_text"]);
+        (addBag ? pickString(addBag, ["content", "text"]) : null) ?? pickString(entry, ["content", "text", "new_text"]);
       // Codex names a created path and sends no body, so the diff Argmax
       // measured from git is the only account of what landed. It reads as a
       // create either way: the file is still new to the tree.
@@ -280,10 +267,9 @@ function interpretCodexFileChange(input: Record<string, unknown>): FileChange[] 
       continue;
     }
 
-    const before = (updateBag ? pickString(updateBag, ["before", "old"]) : null) ??
-      pickString(entry, ["before", "old"]);
-    const after = (updateBag ? pickString(updateBag, ["after", "new"]) : null) ??
-      pickString(entry, ["after", "new"]);
+    const before =
+      (updateBag ? pickString(updateBag, ["before", "old"]) : null) ?? pickString(entry, ["before", "old"]);
+    const after = (updateBag ? pickString(updateBag, ["after", "new"]) : null) ?? pickString(entry, ["after", "new"]);
     if (before !== null || after !== null) {
       const built = synthesizeHunk(before ?? "", after ?? "");
       const hunks = parseUnifiedDiff(built.diff);
@@ -312,7 +298,7 @@ function codexChangeKind(entry: Record<string, unknown>): string | null {
   const direct = pickString(entry, ["kind", "type", "operation"]);
   if (direct) return direct.toLowerCase();
   const kind = objectAt(entry, "kind");
-  return kind ? pickString(kind, ["type", "kind", "operation"])?.toLowerCase() ?? null : null;
+  return kind ? (pickString(kind, ["type", "kind", "operation"])?.toLowerCase() ?? null) : null;
 }
 
 export function synthesizeHunk(oldText: string, newText: string): { diff: string; adds: number; dels: number } {
@@ -321,10 +307,7 @@ export function synthesizeHunk(oldText: string, newText: string): { diff: string
   const oldStart = oldLines.length === 0 ? 0 : 1;
   const newStart = newLines.length === 0 ? 0 : 1;
   const header = `@@ -${oldStart},${oldLines.length} +${newStart},${newLines.length} @@`;
-  const body = [
-    ...oldLines.map((l) => `-${l}`),
-    ...newLines.map((l) => `+${l}`)
-  ].join("\n");
+  const body = [...oldLines.map((l) => `-${l}`), ...newLines.map((l) => `+${l}`)].join("\n");
   return {
     diff: body.length > 0 ? `${header}\n${body}` : header,
     adds: newLines.length,
@@ -363,9 +346,7 @@ function pickString(input: Record<string, unknown>, keys: readonly string[]): st
 
 function objectAt(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
   const value = input[key];
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
 function countLines(text: string): number {

@@ -1,0 +1,20 @@
+{
+  "printWidth": 120,
+  "trailingComma": "none",
+  "ignorePatterns": [
+    "**/*.{md,json,jsonl,css,html,svg,toml,yml,yaml,swift,rs,txt}",
+    "public/sw.js",
+    "src-tauri/**",
+    "ios/**",
+    "docs/**",
+    "assets/**",
+    "fixtures/**",
+    "build/**",
+    ".claude/**",
+    ".codex/**",
+    ".verify/**",
+    "scratch/**",
+    "src/shared/bindings.d.ts",
+    "src/shared/ipcSchemas.ts"
+  ]
+}

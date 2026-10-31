@@ -39,7 +39,7 @@ export function FileChangeCard({
     );
   };
 
-  const note = change.kind === "delete" ? null : change.note ?? null;
+  const note = change.kind === "delete" ? null : (change.note ?? null);
 
   return (
     <section
@@ -53,12 +53,7 @@ export function FileChangeCard({
         <code className="file-change-card-path" title={change.path}>
           {shortPath}
         </code>
-        <button
-          className="file-change-card-open"
-          type="button"
-          onClick={onOpen}
-          aria-label={`Open ${change.path}`}
-        >
+        <button className="file-change-card-open" type="button" onClick={onOpen} aria-label={`Open ${change.path}`}>
           <PanelRight size={11} aria-hidden="true" />
           <span>Open</span>
         </button>

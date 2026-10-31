@@ -32,11 +32,7 @@ import {
 import { factoryLaunchModel, type ModelPickerSelection } from "../lib/models.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import { titleFromPrompt } from "../lib/projects.js";
-import {
-  readStoredWorkspaceMode,
-  writeWorkspaceMode,
-  type WorkspaceMode
-} from "../lib/workspaceMode.js";
+import { readStoredWorkspaceMode, writeWorkspaceMode, type WorkspaceMode } from "../lib/workspaceMode.js";
 import { REMOTE_CONNECTION_LOST_MESSAGE } from "../lib/wsTransport.js";
 
 // The ceiling the session and launcher composers already use.
@@ -157,16 +153,12 @@ export function NewSessionScreen({
   onOpenSheetChange: (kind: PickerKind | null) => void;
 }): JSX.Element {
   const initialWorkspace = useMemo(
-    () => (initialWorkspaceId && workspaces ? workspaces.find((w) => w.id === initialWorkspaceId) ?? null : null),
+    () => (initialWorkspaceId && workspaces ? (workspaces.find((w) => w.id === initialWorkspaceId) ?? null) : null),
     [initialWorkspaceId, workspaces]
   );
 
   const [projectId, setProjectId] = useState(
-    () =>
-      initialWorkspace?.projectId ??
-      launchProjectIdFrom(projects) ??
-      projects[0]?.id ??
-      ""
+    () => initialWorkspace?.projectId ?? launchProjectIdFrom(projects) ?? projects[0]?.id ?? ""
   );
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
     if (initialWorkspace && initialWorkspace.kind === "git" && !initialWorkspace.sharedWorkspace) {
@@ -204,7 +196,7 @@ export function NewSessionScreen({
   // until another project is picked.
   const sourceFolderId =
     initialWorkspace && initialWorkspace.projectId === project?.id
-      ? initialWorkspace.projectFolderId ?? undefined
+      ? (initialWorkspace.projectFolderId ?? undefined)
       : undefined;
 
   const projectWorktrees = useMemo(
@@ -246,7 +238,7 @@ export function NewSessionScreen({
     restoreAttachments
   } = useComposerAttachments({
     draftKey,
-    workspacePath: sideChat ? null : project?.repoPath ?? null,
+    workspacePath: sideChat ? null : (project?.repoPath ?? null),
     setInput: setPrompt,
     fieldRef: promptRef,
     carriedOnRetarget: promptCarriedOnRetarget,
@@ -309,7 +301,7 @@ export function NewSessionScreen({
       // folder, null lets the host take that folder's own branch.
       const baseRef =
         workspaceMode === "worktree"
-          ? chosenBaseRef ?? (sourceFolderId ? null : repoTarget?.currentBranch ?? null)
+          ? (chosenBaseRef ?? (sourceFolderId ? null : (repoTarget?.currentBranch ?? null)))
           : null;
       const workspace = repoTarget
         ? workspaceMode === "worktree"
@@ -347,9 +339,7 @@ export function NewSessionScreen({
         // backend may have launched fine and only the reply went missing, so
         // archiving there would kill a live session and delete its worktree.
         if (!(error instanceof Error && error.message === REMOTE_CONNECTION_LOST_MESSAGE)) {
-          void window.argmax.workspaces
-            .archive({ workspaceId: workspace.id, force: true })
-            .catch(() => undefined);
+          void window.argmax.workspaces.archive({ workspaceId: workspace.id, force: true }).catch(() => undefined);
         }
         throw error;
       }
@@ -385,9 +375,7 @@ export function NewSessionScreen({
     workspaceMode
   ]);
 
-  const baseWorktree = chosenBaseRef
-    ? projectWorktrees.find((w) => w.branch === chosenBaseRef)
-    : null;
+  const baseWorktree = chosenBaseRef ? projectWorktrees.find((w) => w.branch === chosenBaseRef) : null;
 
   const workspaceValue = sideChat
     ? "Chat"
@@ -398,10 +386,7 @@ export function NewSessionScreen({
       : `Current branch · ${project?.currentBranch ?? "main"}`;
 
   return (
-    <div
-      ref={screenRef}
-      className="mobile-new-screen"
-    >
+    <div ref={screenRef} className="mobile-new-screen">
       <MobileScreenHeader onBack={onClose} backLabel={backLabel ?? "Back to chats"} title="New chat" />
 
       <div className="mobile-new-body">
@@ -518,11 +503,7 @@ export function NewSessionScreen({
         </form>
       </div>
 
-      <ImageLightbox
-        src={lightboxSrc}
-        alt="Attached image"
-        onClose={() => setLightboxSrc(null)}
-      />
+      <ImageLightbox src={lightboxSrc} alt="Attached image" onClose={() => setLightboxSrc(null)} />
 
       {openSheet === "project" ? (
         <BottomSheet label="Choose project" onClose={() => onOpenSheetChange(null)}>
@@ -578,11 +559,7 @@ export function NewSessionScreen({
                     key={wt.id}
                     label={wt.taskLabel}
                     detail={wt.branch}
-                    selected={
-                      !sideChat &&
-                      workspaceMode === "worktree" &&
-                      chosenBaseRef === wt.branch
-                    }
+                    selected={!sideChat && workspaceMode === "worktree" && chosenBaseRef === wt.branch}
                     onSelect={() => {
                       chooseWorkspaceMode("worktree");
                       setChosenBaseRef(wt.branch);
@@ -603,7 +580,6 @@ export function NewSessionScreen({
           </div>
         </BottomSheet>
       ) : null}
-
     </div>
   );
 }

@@ -1,12 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWsTransport, subscribeRemoteConnection } from "./wsTransport.js";
-import type {
-  ConnectRemote,
-  RemoteConnectionState,
-  RemoteSocket,
-  RemoteSocketHandlers
-} from "./wsTransport.js";
+import type { ConnectRemote, RemoteConnectionState, RemoteSocket, RemoteSocketHandlers } from "./wsTransport.js";
 
 const TOKEN_KEY = "argmax.remote.token";
 /** Backoff cap: advancing past it fires whichever delay was scheduled. */
@@ -150,7 +145,11 @@ describe("wsTransport", () => {
     const input = { terminalId: "terminal", data: "a" };
     const first = transport.invoke("terminal:write", input);
     const oldIdentity = sockets[0].requests()[0].operation;
-    sockets[0].deliver({ type: "response", id: 1, error: { sub_code: "REMOTE_OUTCOME_UNKNOWN", message: "host interrupted" } });
+    sockets[0].deliver({
+      type: "response",
+      id: 1,
+      error: { sub_code: "REMOTE_OUTCOME_UNKNOWN", message: "host interrupted" }
+    });
     await expect(first).rejects.toThrow("host interrupted");
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     await expect(transport.invoke("terminal:write", input)).rejects.toThrow("Nothing new was sent");
@@ -169,6 +168,7 @@ describe("wsTransport", () => {
     const transport = createWsTransport({ connect: first.connect });
     first.sockets[0].authenticate();
     const sent = transport.invoke("workspaces:archive", { workspaceId: "work" });
+    // oxlint-disable-next-line vitest/valid-expect -- awaited after the fake clock advances
     const failure = expect(sent).rejects.toThrow("outcome was confirmed");
     const operation = first.sockets[0].requests()[0].operation;
     first.sockets[0].close();
@@ -190,7 +190,11 @@ describe("wsTransport", () => {
     sockets[0].authenticate();
     const sent = transport.invoke("workspaces:archive", { workspaceId: "work" });
     const original = sockets[0].requests()[0];
-    sockets[0].deliver({ type: "response", id: 1, error: { sub_code: "REMOTE_OPERATION_PENDING", message: "running" } });
+    sockets[0].deliver({
+      type: "response",
+      id: 1,
+      error: { sub_code: "REMOTE_OPERATION_PENDING", message: "running" }
+    });
     await vi.advanceTimersByTimeAsync(500);
     expect(sockets[0].requests()[1]).toEqual(original);
     sockets[0].deliver({ type: "response", id: 1, ok: "archived", operationSettled: true });
@@ -224,9 +228,7 @@ describe("wsTransport", () => {
     expect(socket.requests()).toHaveLength(0);
 
     socket.deliver({ type: "auth-ok" });
-    expect(socket.requests()).toEqual([
-      { type: "request", id: 1, channel: "health:ping", input: {} }
-    ]);
+    expect(socket.requests()).toEqual([{ type: "request", id: 1, channel: "health:ping", input: {} }]);
 
     socket.deliver({ type: "response", id: 1, ok: { ok: true } });
     await expect(pending).resolves.toEqual({ ok: true });
@@ -253,11 +255,13 @@ describe("wsTransport", () => {
     const { connect, sockets } = fakeTransportSeam();
     const answer = "x".repeat(4 * 1024 * 1024 + 1);
     const responseBody = JSON.stringify({ ok: { events: [{ message: answer }] } });
-    const fetch = vi.fn<TestFetch>(() => Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(JSON.parse(responseBody) as unknown)
-    } as Response));
+    const fetch = vi.fn<TestFetch>(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(JSON.parse(responseBody) as unknown)
+      } as Response)
+    );
     const transport = createWsTransport({
       connect,
       fetch,
@@ -297,22 +301,28 @@ describe("wsTransport", () => {
 
   it("returns HTTP transcript errors and never falls back for a mutation", async () => {
     const first = fakeTransportSeam();
-    const fetch = vi.fn<TestFetch>(() => Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve({
-        error: { code: "SERVICE_ERROR", sub_code: "TRANSCRIPT_FAILED", message: "transcript failed" }
-      })
-    } as Response));
+    const fetch = vi.fn<TestFetch>(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            error: { code: "SERVICE_ERROR", sub_code: "TRANSCRIPT_FAILED", message: "transcript failed" }
+          })
+      } as Response)
+    );
     const reads = createWsTransport({ connect: first.connect, fetch });
     first.sockets[0].authenticate();
     const read = reads.invoke("session:agent-events", { sessionId: "s-1", parentToolUseId: "a-1" });
     first.sockets[0].deliver({
-      type: "response", id: 1,
+      type: "response",
+      id: 1,
       error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
     });
     await expect(read).rejects.toMatchObject({
-      code: "SERVICE_ERROR", sub_code: "TRANSCRIPT_FAILED", message: "transcript failed"
+      code: "SERVICE_ERROR",
+      sub_code: "TRANSCRIPT_FAILED",
+      message: "transcript failed"
     });
 
     const second = fakeTransportSeam();
@@ -320,7 +330,9 @@ describe("wsTransport", () => {
     second.sockets[0].authenticate();
     const mutation = mutations.invoke("workspaces:archive", { workspaceId: "w-1" });
     second.sockets[0].deliver({
-      type: "response", id: 1, operationSettled: true,
+      type: "response",
+      id: 1,
+      operationSettled: true,
       error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
     });
     await expect(mutation).rejects.toMatchObject({ sub_code: "REMOTE_RESPONSE_TOO_LARGE" });
@@ -339,7 +351,8 @@ describe("wsTransport", () => {
     sockets[0].authenticate();
     const read = transport.invoke("session:events-since", { sessionId: "s-1" });
     sockets[0].deliver({
-      type: "response", id: 1,
+      type: "response",
+      id: 1,
       error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
     });
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -364,10 +377,12 @@ describe("wsTransport", () => {
     sockets[0].authenticate();
     const read = transport.invoke("session:events-since", { sessionId: "s-1", changeCursor: 42 });
     sockets[0].deliver({
-      type: "response", id: 1,
+      type: "response",
+      id: 1,
       error: { code: "SERVICE_ERROR", sub_code: "REMOTE_RESPONSE_TOO_LARGE", message: "too large" }
     });
 
+    // oxlint-disable-next-line vitest/valid-expect -- awaited after the fake clock advances
     const rejected = expect(read).rejects.toMatchObject({
       code: "SERVICE_ERROR",
       sub_code: "REMOTE_RESPONSE_TIMEOUT",
@@ -445,9 +460,7 @@ describe("wsTransport", () => {
     second.authenticate();
 
     expect(second.frames()[0]).toEqual({ type: "auth", token: "secret-token" });
-    expect(second.requests()).toEqual([
-      { type: "request", id: 2, channel: "health:ping", input: {} }
-    ]);
+    expect(second.requests()).toEqual([{ type: "request", id: 2, channel: "health:ping", input: {} }]);
 
     second.deliver({ type: "response", id: 2, ok: { ok: true, timestamp: "2026-08-28T00:00:00Z" } });
     await expect(queued).resolves.toEqual({ ok: true, timestamp: "2026-08-28T00:00:00Z" });
@@ -638,9 +651,7 @@ describe("wsTransport", () => {
     const { connect, sockets } = fakeTransportSeam();
     const transport = createWsTransport({ connect });
 
-    const pending = Array.from({ length: MAX_QUEUED_REQUESTS + 1 }, () =>
-      transport.invoke("health:ping", {})
-    );
+    const pending = Array.from({ length: MAX_QUEUED_REQUESTS + 1 }, () => transport.invoke("health:ping", {}));
 
     await expect(pending[0]).rejects.toThrow("Argmax remote connection lost");
     sockets[0].authenticate();

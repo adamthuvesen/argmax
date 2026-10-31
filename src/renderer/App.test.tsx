@@ -80,10 +80,13 @@ describe("App", () => {
   it("moves a provider-switch screenshot to the launcher without mixing in its old draft", async () => {
     const screenshot = { filePath: "/attachments/current.png", mimeType: "image/png", sizeBytes: 4 };
     const unrelated = { filePath: "/attachments/old-launcher.png", mimeType: "image/png", sizeBytes: 4 };
-    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
-      "session-1": { text: "", attachments: [screenshot] },
-      "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] }
-    }));
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "session-1": { text: "", attachments: [screenshot] },
+        "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] }
+      })
+    );
     mockDashboardSnapshot({
       ...snapshot,
       sessions: snapshot.sessions.map((session) => ({
@@ -97,16 +100,26 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
     await screen.findByLabelText("Chat prompt");
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-    fireEvent.click(within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).getByRole("button", { name: "New chat" }));
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: "Sonnet 5.5" })
+    );
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).getByRole("button", {
+        name: "New chat"
+      })
+    );
 
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
     expect(attachedScreenshots()).toEqual([attachmentProtocolUrl(screenshot.filePath)]);
     fireEvent.click(screen.getByTitle("Start agent"));
-    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: "@/attachments/current.png",
-      attachments: [screenshot]
-    })));
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "@/attachments/current.png",
+          attachments: [screenshot]
+        })
+      )
+    );
   });
 
   it("toggles project sessions in the sidebar and remembers collapsed projects", async () => {
@@ -225,9 +238,7 @@ describe("App", () => {
       render(<App />);
       fireEvent.click(await screen.findByRole("button", { name: "Archive chat" }));
 
-      await waitFor(() =>
-        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
-      );
+      await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false }));
       expect(confirmSpy).not.toHaveBeenCalled();
     } finally {
       confirmSpy.mockRestore();
@@ -264,9 +275,7 @@ describe("App", () => {
       expect(confirmSpy).toHaveBeenCalledWith(
         "Build dashboard has 2 uncommitted changes. Archive this worktree and keep its files in recovery storage?"
       );
-      await waitFor(() =>
-        expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true })
-      );
+      await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true }));
     } finally {
       confirmSpy.mockRestore();
     }
@@ -276,13 +285,19 @@ describe("App", () => {
     const dirtySnapshot: DashboardSnapshot = {
       ...snapshot,
       workspaces: snapshot.workspaces.map((workspace) => ({
-        ...workspace, state: "complete", sharedWorkspace: false, dirty: true, changedFiles: 2
+        ...workspace,
+        state: "complete",
+        sharedWorkspace: false,
+        dirty: true,
+        changedFiles: 2
       })),
       sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
     };
     mockDashboardSnapshot(dirtySnapshot);
     let resolveConfirmation!: (answer: boolean) => void;
-    const confirmation = new Promise<boolean>((resolve) => { resolveConfirmation = resolve; });
+    const confirmation = new Promise<boolean>((resolve) => {
+      resolveConfirmation = resolve;
+    });
     const confirmSpy = vi.spyOn(window.argmax!.system, "confirm").mockReturnValue(confirmation);
     archiveWorkspace.mockResolvedValue({
       workspace: { ...dirtySnapshot.workspaces[0], state: "archived" },
@@ -310,7 +325,11 @@ describe("App", () => {
     mockDashboardSnapshot({
       ...snapshot,
       workspaces: snapshot.workspaces.map((workspace) => ({
-        ...workspace, state: "complete", sharedWorkspace: false, dirty: true, changedFiles: 2
+        ...workspace,
+        state: "complete",
+        sharedWorkspace: false,
+        dirty: true,
+        changedFiles: 2
       })),
       sessions: snapshot.sessions.map((session) => ({ ...session, state: "complete" }))
     });
@@ -353,9 +372,7 @@ describe("App", () => {
     // Archive the active chat
     fireEvent.click(screen.getByRole("button", { name: "Archive chat" }));
 
-    await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false })
-    );
+    await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: false }));
 
     // Chat should now be closed and launcher should be visible
     await waitFor(() => {
@@ -539,21 +556,54 @@ describe("App", () => {
     };
     // First two tool starts share the announce timestamp.
     const toolEvents: DashboardSnapshot["events"] = [
-      { id: "ev-glob-1-s", sessionId: "session-1", type: "command.started", message: "Glob",
+      {
+        id: "ev-glob-1-s",
+        sessionId: "session-1",
+        type: "command.started",
+        message: "Glob",
         payload: { id: "tu1", name: "Glob", input: { pattern: "src/**/*.py" } },
-        createdAt: "2026-05-08T15:56:49.000Z" },
-      { id: "ev-glob-1-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
-        payload: { tool_use_id: "tu1", content: "match" }, createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-glob-2-s", sessionId: "session-1", type: "command.started", message: "Glob",
+        createdAt: "2026-05-08T15:56:49.000Z"
+      },
+      {
+        id: "ev-glob-1-c",
+        sessionId: "session-1",
+        type: "command.completed",
+        message: "tool_result",
+        payload: { tool_use_id: "tu1", content: "match" },
+        createdAt: "2026-05-08T15:56:50.000Z"
+      },
+      {
+        id: "ev-glob-2-s",
+        sessionId: "session-1",
+        type: "command.started",
+        message: "Glob",
         payload: { id: "tu2", name: "Glob", input: { pattern: "src/**/*.ts" } },
-        createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-glob-2-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
-        payload: { tool_use_id: "tu2", content: "match" }, createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-read-1-s", sessionId: "session-1", type: "command.started", message: "Read",
+        createdAt: "2026-05-08T15:56:50.000Z"
+      },
+      {
+        id: "ev-glob-2-c",
+        sessionId: "session-1",
+        type: "command.completed",
+        message: "tool_result",
+        payload: { tool_use_id: "tu2", content: "match" },
+        createdAt: "2026-05-08T15:56:50.000Z"
+      },
+      {
+        id: "ev-read-1-s",
+        sessionId: "session-1",
+        type: "command.started",
+        message: "Read",
         payload: { id: "tu3", name: "Read", input: { file_path: "README.md" } },
-        createdAt: "2026-05-08T15:56:50.000Z" },
-      { id: "ev-read-1-c", sessionId: "session-1", type: "command.completed", message: "tool_result",
-        payload: { tool_use_id: "tu3", content: "file" }, createdAt: "2026-05-08T15:56:52.000Z" }
+        createdAt: "2026-05-08T15:56:50.000Z"
+      },
+      {
+        id: "ev-read-1-c",
+        sessionId: "session-1",
+        type: "command.completed",
+        message: "tool_result",
+        payload: { tool_use_id: "tu3", content: "file" },
+        createdAt: "2026-05-08T15:56:52.000Z"
+      }
     ];
     const finalAnswer: DashboardSnapshot["events"][number] = {
       id: "ev-msg-final",
@@ -707,9 +757,7 @@ describe("App", () => {
     const promptBox = await screen.findByLabelText("Task prompt");
     // Spy only once the launcher is on screen, so its own random draws (the
     // rotating hero heading) don't eat the queued icon/color values.
-    const random = vi.spyOn(Math, "random")
-      .mockReturnValueOnce(0)
-      .mockReturnValueOnce(0.999);
+    const random = vi.spyOn(Math, "random").mockReturnValueOnce(0).mockReturnValueOnce(0.999);
 
     try {
       fireEvent.change(promptBox, {
@@ -781,49 +829,50 @@ describe("App", () => {
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
   });
 
-  it.each(["button", "Escape"])("returns to the launcher and archives a chat stopped after two seconds using %s", async (stopAction) => {
-    window.localStorage.setItem(ESCAPE_STOPS_CHAT_KEY, "true");
-    const freshWorkspace = {
-      ...snapshot.workspaces[0],
-      id: "workspace-new",
-      taskLabel: "Fix login auth bug in wrong repo"
-    };
-    createCurrentWorkspace.mockResolvedValue(freshWorkspace);
-    const freshSession = {
-      ...snapshot.sessions[0],
-      id: "session-new",
-      workspaceId: "workspace-new",
-      prompt: "Fix login auth bug in wrong repo",
-      startedAt: new Date(Date.now() - 2_000).toISOString(),
-      state: "running" as const
-    };
-    launchProvider.mockResolvedValue(freshSession);
+  it.each(["button", "Escape"])(
+    "returns to the launcher and archives a chat stopped after two seconds using %s",
+    async (stopAction) => {
+      window.localStorage.setItem(ESCAPE_STOPS_CHAT_KEY, "true");
+      const freshWorkspace = {
+        ...snapshot.workspaces[0],
+        id: "workspace-new",
+        taskLabel: "Fix login auth bug in wrong repo"
+      };
+      createCurrentWorkspace.mockResolvedValue(freshWorkspace);
+      const freshSession = {
+        ...snapshot.sessions[0],
+        id: "session-new",
+        workspaceId: "workspace-new",
+        prompt: "Fix login auth bug in wrong repo",
+        startedAt: new Date(Date.now() - 2_000).toISOString(),
+        state: "running" as const
+      };
+      launchProvider.mockResolvedValue(freshSession);
 
-    render(<App />);
+      render(<App />);
 
-    const promptBox = await screen.findByLabelText("Task prompt");
-    fireEvent.change(promptBox, {
-      target: { value: "Fix login auth bug in wrong repo" }
-    });
-    fireEvent.click(screen.getByTitle("Start agent"));
+      const promptBox = await screen.findByLabelText("Task prompt");
+      fireEvent.change(promptBox, {
+        target: { value: "Fix login auth bug in wrong repo" }
+      });
+      fireEvent.click(screen.getByTitle("Start agent"));
 
-    const stopButton = await screen.findByRole("button", { name: "Stop chat" });
-    expect(stopButton).toBeInTheDocument();
+      const stopButton = await screen.findByRole("button", { name: "Stop chat" });
+      expect(stopButton).toBeInTheDocument();
 
-    if (stopAction === "Escape") {
-      fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
-    } else {
-      fireEvent.click(stopButton);
+      if (stopAction === "Escape") {
+        fireEvent.keyDown(screen.getByLabelText("Chat prompt"), { key: "Escape" });
+      } else {
+        fireEvent.click(stopButton);
+      }
+
+      await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
+      await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-new", force: true }));
+
+      const restoredPromptBox = await screen.findByLabelText("Task prompt");
+      expect(restoredPromptBox).toHaveValue("Fix login auth bug in wrong repo");
     }
-
-    await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-new"));
-    await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-new", force: true })
-    );
-
-    const restoredPromptBox = await screen.findByLabelText("Task prompt");
-    expect(restoredPromptBox).toHaveValue("Fix login auth bug in wrong repo");
-  });
+  );
 
   it("does not return to composer when stopped after the 10s window", async () => {
     const oldSession = {
@@ -955,9 +1004,29 @@ describe("App", () => {
     mockDashboardSnapshot(snapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-new") {
-        return Promise.resolve({ events: [newEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+        return Promise.resolve({
+          events: [newEvent],
+          rawOutputs: [],
+          eventCursor: 2,
+          rawOutputCursor: 0,
+          changeCursor: null,
+          deletedEventIds: [],
+          deletedRawOutputIds: [],
+          resetRequired: false,
+          hasMore: false
+        });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      return Promise.resolve({
+        events: snapshot.events,
+        rawOutputs: snapshot.rawOutputs,
+        eventCursor: 1,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false
+      });
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
@@ -1020,9 +1089,29 @@ describe("App", () => {
     mockDashboardSnapshot(snapshot);
     sessionEventsSince.mockImplementation((input) => {
       if (input.sessionId === "session-mention") {
-        return Promise.resolve({ events: [userEvent], rawOutputs: [], eventCursor: 2, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+        return Promise.resolve({
+          events: [userEvent],
+          rawOutputs: [],
+          eventCursor: 2,
+          rawOutputCursor: 0,
+          changeCursor: null,
+          deletedEventIds: [],
+          deletedRawOutputIds: [],
+          resetRequired: false,
+          hasMore: false
+        });
       }
-      return Promise.resolve({ events: snapshot.events, rawOutputs: snapshot.rawOutputs, eventCursor: 1, rawOutputCursor: 0, changeCursor: null, deletedEventIds: [], deletedRawOutputIds: [], resetRequired: false, hasMore: false });
+      return Promise.resolve({
+        events: snapshot.events,
+        rawOutputs: snapshot.rawOutputs,
+        eventCursor: 1,
+        rawOutputCursor: 0,
+        changeCursor: null,
+        deletedEventIds: [],
+        deletedRawOutputIds: [],
+        resetRequired: false,
+        hasMore: false
+      });
     });
     createCurrentWorkspace.mockResolvedValue(newWorkspace);
     launchProvider.mockResolvedValue(newSession);
@@ -1033,11 +1122,7 @@ describe("App", () => {
     fireEvent.change(promptInput, { target: { value: "@AGENTS.md" } });
     fireEvent.click(screen.getByTitle("Start agent"));
 
-    await waitFor(() =>
-      expect(launchProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ prompt: "@AGENTS.md" })
-      )
-    );
+    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ prompt: "@AGENTS.md" })));
     act(() => {
       dashboardDeltaListener?.({
         workspaces: [newWorkspace],
@@ -1127,9 +1212,7 @@ describe("App", () => {
 
     const branchToggle = within(details).getByRole("button", { name: "Switch branch" });
     fireEvent.click(branchToggle);
-    expect(await within(details).findByRole("listbox", { name: "Select branch" })).toHaveTextContent(
-      "feature/tidy"
-    );
+    expect(await within(details).findByRole("listbox", { name: "Select branch" })).toHaveTextContent("feature/tidy");
     fireEvent.click(within(details).getByRole("button", { name: "feature/tidy" }));
     expect(detailsToggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("dialog", { name: "Project and branch" })).not.toBeInTheDocument();
@@ -1144,7 +1227,7 @@ describe("App", () => {
     const list = await screen.findByRole("listbox", { name: "Select branch" });
     // The list holds focus while open, so typing lands here and not in the
     // prompt behind it.
-    await waitFor(() => expect(document.activeElement).toBe(list));
+    await waitFor(() => expect(list).toHaveFocus());
 
     fireEvent.keyDown(list, { key: "f" });
     fireEvent.keyDown(list, { key: "i" });
@@ -1310,7 +1393,6 @@ describe("App", () => {
     expect(launcherCta).not.toBeDisabled();
   });
 
-
   it("renders the dashboard error state with a Retry button and reloads on click", async () => {
     let attempts = 0;
     dashboardList.mockImplementation(() => {
@@ -1330,7 +1412,6 @@ describe("App", () => {
     await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2));
     expect(await screen.findByLabelText("Task prompt")).toBeInTheDocument();
   });
-
 
   it.each([
     new Error("The conversation is still running."),
@@ -1391,9 +1472,7 @@ describe("App without Tauri bridge", () => {
 
     try {
       render(<App />);
-      expect(
-        await screen.findByText(/Preview mode — showing sample data/)
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/Preview mode — showing sample data/)).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {
         configurable: true,
@@ -1418,9 +1497,7 @@ describe("App without Tauri bridge", () => {
     try {
       render(<App />);
 
-      expect(
-        screen.queryByText(/Preview mode — showing sample data/)
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Preview mode — showing sample data/)).not.toBeInTheDocument();
       expect(await screen.findByText("Design parallel agent board")).toBeInTheDocument();
     } finally {
       Object.defineProperty(window, "location", {

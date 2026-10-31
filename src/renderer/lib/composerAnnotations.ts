@@ -67,8 +67,7 @@ function diffNoteLocation(annotation: DiffNoteAnnotation): string {
   if (annotation.endLine === undefined) return `${annotation.filePath}:${annotation.line}`;
 
   const endSide = annotation.endSide ?? annotation.side;
-  const crossesCoordinateSpaces =
-    (annotation.side === "deletion") !== (endSide === "deletion");
+  const crossesCoordinateSpaces = (annotation.side === "deletion") !== (endSide === "deletion");
   if (!crossesCoordinateSpaces) {
     return `${annotation.filePath}:${annotation.line}-${annotation.endLine}`;
   }
@@ -153,10 +152,7 @@ const DIFF_NOTE_RANGE_HEADERS = {
  * expected: annotations can be sent on their own, and then they are the whole
  * message.
  */
-export function prependAnnotationsToPrompt(
-  prompt: string,
-  annotations: readonly ComposerAnnotation[]
-): string {
+export function prependAnnotationsToPrompt(prompt: string, annotations: readonly ComposerAnnotation[]): string {
   if (annotations.length === 0) return prompt;
   const excerpts = annotations.filter((a) => a.kind === "excerpt");
   const notes = annotations.filter((a): a is DiffNoteAnnotation => a.kind === "diff-note");

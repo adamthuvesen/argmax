@@ -32,10 +32,16 @@ describe("CommandPalette", () => {
   });
 
   it("puts an exact action before weaker chat matches in All", () => {
-    render(<CommandPalette open commands={[
-      { id: "chat", label: "Settings redesign", group: "Sessions", run: vi.fn() },
-      { id: "action", label: "Settings", group: "Actions", run: vi.fn() }
-    ]} onClose={vi.fn()} />);
+    render(
+      <CommandPalette
+        open
+        commands={[
+          { id: "chat", label: "Settings redesign", group: "Sessions", run: vi.fn() },
+          { id: "action", label: "Settings", group: "Actions", run: vi.fn() }
+        ]}
+        onClose={vi.fn()}
+      />
+    );
     fireEvent.change(screen.getByRole("searchbox", { name: "Command palette query" }), {
       target: { value: "Settings" }
     });
@@ -60,16 +66,32 @@ describe("CommandPalette", () => {
   it("keeps the chosen action selected when files arrive ahead of it", async () => {
     let finishFiles!: (paths: string[]) => void;
     const run = vi.fn();
-    render(<CommandPalette open commands={[
-      { id: "first", label: "Open settings", group: "Actions", run: vi.fn() },
-      { id: "second", label: "Open usage", group: "Actions", run }
-    ]} onClose={vi.fn()} fileSource={{ kind: "workspace", id: "a" }} filesVisible
-      onFilePick={vi.fn()} loadFiles={() => new Promise((resolve) => { finishFiles = resolve; })} />);
+    render(
+      <CommandPalette
+        open
+        commands={[
+          { id: "first", label: "Open settings", group: "Actions", run: vi.fn() },
+          { id: "second", label: "Open usage", group: "Actions", run }
+        ]}
+        onClose={vi.fn()}
+        fileSource={{ kind: "workspace", id: "a" }}
+        filesVisible
+        onFilePick={vi.fn()}
+        loadFiles={() =>
+          new Promise((resolve) => {
+            finishFiles = resolve;
+          })
+        }
+      />
+    );
     const input = screen.getByRole("searchbox", { name: "Command palette query" });
     fireEvent.change(input, { target: { value: "Open" } });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     const selectedText = screen.getByRole("option", { selected: true }).textContent;
-    await act(async () => { finishFiles(["Open.ts"]); await Promise.resolve(); });
+    await act(async () => {
+      finishFiles(["Open.ts"]);
+      await Promise.resolve();
+    });
     const selected = screen.getByRole("option", { selected: true });
     expect(selected).toHaveTextContent(selectedText);
     expect(input).toHaveAttribute("aria-activedescendant", selected.id);
@@ -78,9 +100,7 @@ describe("CommandPalette", () => {
   it("Enter activates the selected command and closes the palette", () => {
     const onClose = vi.fn();
     const run = vi.fn();
-    const single: PaletteCommand[] = [
-      { id: "only", label: "Only", group: "Actions", run }
-    ];
+    const single: PaletteCommand[] = [{ id: "only", label: "Only", group: "Actions", run }];
     render(<CommandPalette open={true} commands={single} onClose={onClose} />);
     fireEvent.keyDown(screen.getByRole("searchbox", { name: "Command palette query" }), {
       key: "Enter"
@@ -117,34 +137,52 @@ describe("CommandPalette", () => {
     const run = vi.fn();
     render(<CommandPalette open commands={[{ id: "a", label: "Action", group: "Actions", run }]} onClose={vi.fn()} />);
     fireEvent.keyDown(screen.getByRole("searchbox", { name: "Command palette query" }), {
-      key: "Enter", isComposing: true
+      key: "Enter",
+      isComposing: true
     });
     expect(run).not.toHaveBeenCalled();
   });
 
-  it.each(["messages", "contents"] as const)("removes obsolete %s results as soon as the query changes", async (scope) => {
-    const run = vi.fn();
-    render(<CommandPalette open commands={[]} onClose={vi.fn()} initialScope={scope}
-      fileSource={{ kind: "workspace", id: "a" }} onFilePick={run}
-      searchMessages={vi.fn().mockResolvedValue([{ id: "old", sessionId: "a", label: "Old result", snippetSegments: [], run }])}
-      searchContents={vi.fn().mockResolvedValue({ files: [{ path: "old.ts", matches: [{ line: 1, preview: "Old result" }] }], truncated: false })}
-    />);
-    const input = screen.getByRole("searchbox", { name: "Command palette query" });
-    fireEvent.change(input, { target: { value: "old" } });
-    await screen.findByText("Old result");
-    fireEvent.change(input, { target: { value: "new" } });
-    expect(screen.queryAllByRole("option")).toHaveLength(0);
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(run).not.toHaveBeenCalled();
-  });
+  it.each(["messages", "contents"] as const)(
+    "removes obsolete %s results as soon as the query changes",
+    async (scope) => {
+      const run = vi.fn();
+      render(
+        <CommandPalette
+          open
+          commands={[]}
+          onClose={vi.fn()}
+          initialScope={scope}
+          fileSource={{ kind: "workspace", id: "a" }}
+          onFilePick={run}
+          searchMessages={vi
+            .fn()
+            .mockResolvedValue([{ id: "old", sessionId: "a", label: "Old result", snippetSegments: [], run }])}
+          searchContents={vi.fn().mockResolvedValue({
+            files: [{ path: "old.ts", matches: [{ line: 1, preview: "Old result" }] }],
+            truncated: false
+          })}
+        />
+      );
+      const input = screen.getByRole("searchbox", { name: "Command palette query" });
+      fireEvent.change(input, { target: { value: "old" } });
+      await screen.findByText("Old result");
+      fireEvent.change(input, { target: { value: "new" } });
+      expect(screen.queryAllByRole("option")).toHaveLength(0);
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(run).not.toHaveBeenCalled();
+    }
+  );
 
   it("ranks files beyond the first 200 paths before capping visible rows", async () => {
     const onClose = vi.fn();
     const onFilePick = vi.fn();
-    const loadFiles = vi.fn().mockResolvedValue([
-      ...Array.from({ length: 250 }, (_, i) => `src/generated/file-${i}.ts`),
-      "src/renderer/NeedlePanel.tsx"
-    ]);
+    const loadFiles = vi
+      .fn()
+      .mockResolvedValue([
+        ...Array.from({ length: 250 }, (_, i) => `src/generated/file-${i}.ts`),
+        "src/renderer/NeedlePanel.tsx"
+      ]);
 
     render(
       <CommandPalette
@@ -212,12 +250,18 @@ describe("CommandPalette", () => {
 
   it("leads the empty All palette with timely rows, then habits, listing each once", () => {
     recordPaletteUse("usage", "");
-    render(<CommandPalette open commands={[
-      { id: "settings", label: "Open settings", group: "Actions", run: vi.fn() },
-      { id: "usage", label: "Open usage", group: "Actions", run: vi.fn() },
-      { id: "approve", label: "Approve in Fix CI", group: "Actions", suggest: true, run: vi.fn() },
-      { id: "chat", label: "Refactor watcher", group: "Sessions", run: vi.fn() }
-    ]} onClose={vi.fn()} />);
+    render(
+      <CommandPalette
+        open
+        commands={[
+          { id: "settings", label: "Open settings", group: "Actions", run: vi.fn() },
+          { id: "usage", label: "Open usage", group: "Actions", run: vi.fn() },
+          { id: "approve", label: "Approve in Fix CI", group: "Actions", suggest: true, run: vi.fn() },
+          { id: "chat", label: "Refactor watcher", group: "Sessions", run: vi.fn() }
+        ]}
+        onClose={vi.fn()}
+      />
+    );
     const options = screen.getAllByRole("option").map((option) => option.textContent);
     expect(screen.getAllByRole("presentation")[0]).toHaveTextContent("Suggested");
     expect(options.slice(0, 2)).toEqual(["Approve in Fix CI", "Open usage"]);
@@ -226,10 +270,16 @@ describe("CommandPalette", () => {
   });
 
   it("jumps to a filter from a typed prefix and Backspace comes back to All", () => {
-    render(<CommandPalette open commands={[
-      { id: "act", label: "New chat", group: "Actions", run: vi.fn() },
-      { id: "sess", label: "New chat bug", group: "Sessions", run: vi.fn() }
-    ]} onClose={vi.fn()} />);
+    render(
+      <CommandPalette
+        open
+        commands={[
+          { id: "act", label: "New chat", group: "Actions", run: vi.fn() },
+          { id: "sess", label: "New chat bug", group: "Sessions", run: vi.fn() }
+        ]}
+        onClose={vi.fn()}
+      />
+    );
     const input = screen.getByRole("searchbox", { name: "Command palette query" });
     fireEvent.change(input, { target: { value: ">" } });
     expect(screen.getByRole("tab", { selected: true })).toHaveTextContent("Actions");
@@ -341,9 +391,7 @@ describe("CommandPalette", () => {
     render(
       <CommandPalette
         open={true}
-        commands={[
-          { id: "sess", label: "Refactor watcher", meta: "argmax", group: "Sessions", run }
-        ]}
+        commands={[{ id: "sess", label: "Refactor watcher", meta: "argmax", group: "Sessions", run }]}
         onClose={vi.fn()}
       />
     );
@@ -365,14 +413,7 @@ describe("CommandPalette", () => {
           resolveSearch = resolve;
         })
     );
-    render(
-      <CommandPalette
-        open={true}
-        commands={COMMANDS}
-        onClose={vi.fn()}
-        searchMessages={searchMessages}
-      />
-    );
+    render(<CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} searchMessages={searchMessages} />);
 
     const input = screen.getByRole("searchbox", { name: "Command palette query" });
     fireEvent.change(input, { target: { value: "needle" } });
@@ -396,16 +437,9 @@ describe("CommandPalette", () => {
     // Upstream `searchMessages` is rebuilt on every `dashboard:delta`, so while
     // an agent streams the prop churns faster than the 150ms debounce. The
     // effect must not restart its timer for that.
-    const backend = vi
-      .fn<(query: string, limit: number) => Promise<MessageHit[]>>()
-      .mockResolvedValue([]);
+    const backend = vi.fn<(query: string, limit: number) => Promise<MessageHit[]>>().mockResolvedValue([]);
     const paletteWith = (search: (query: string, limit: number) => Promise<MessageHit[]>) => (
-      <CommandPalette
-        open={true}
-        commands={COMMANDS}
-        onClose={vi.fn()}
-        searchMessages={search}
-      />
+      <CommandPalette open={true} commands={COMMANDS} onClose={vi.fn()} searchMessages={search} />
     );
     const { rerender } = render(paletteWith((query, limit) => backend(query, limit)));
 

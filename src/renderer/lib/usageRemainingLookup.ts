@@ -42,9 +42,7 @@ export function isUsageRemainingStale(remaining: UsageRemaining | null, now: num
  * is the user pressing the chip, which may refresh a read that is not yet
  * stale, but not one taken a moment ago.
  */
-export async function lookUpUsageRemaining(
-  options: { manual?: boolean; now?: number } = {}
-): Promise<UsageRemaining> {
+export async function lookUpUsageRemaining(options: { manual?: boolean; now?: number } = {}): Promise<UsageRemaining> {
   const now = options.now ?? Date.now();
   const cached = getCachedUsageRemaining();
   if (cached) {
@@ -56,20 +54,14 @@ export async function lookUpUsageRemaining(
   // again on a mount; only a press of the chip may try sooner. Without this,
   // every chat switch would repeat a fetch that has just failed.
   const failedAt = getUsageRemainingFailedAt();
-  if (
-    failedAt !== null &&
-    now - failedAt < (options.manual ? MANUAL_REFRESH_COOLDOWN_MS : REMAINING_STALE_AFTER_MS)
-  ) {
+  if (failedAt !== null && now - failedAt < (options.manual ? MANUAL_REFRESH_COOLDOWN_MS : REMAINING_STALE_AFTER_MS)) {
     if (cached) return cached;
     throw new Error("Remaining usage could not be read a moment ago.");
   }
   try {
     return await requestUsageRemaining(fetchUsageRemaining);
   } catch (cause) {
-    recordUsageRemainingFailure(
-      cause instanceof Error ? cause.message : "Could not read remaining usage.",
-      now
-    );
+    recordUsageRemainingFailure(cause instanceof Error ? cause.message : "Could not read remaining usage.", now);
     throw cause;
   }
 }
@@ -100,10 +92,7 @@ export function summarizeProviderWithHeld(
   if (currentRow && currentRow.kind !== "error") return null;
   const held = getLastGoodProviderRow(provider);
   if (!held) return null;
-  const rebuilt = summarizeProviderRemaining(
-    { fetchedAt: held.fetchedAt, providers: [held.row] },
-    provider
-  );
+  const rebuilt = summarizeProviderRemaining({ fetchedAt: held.fetchedAt, providers: [held.row] }, provider);
   return rebuilt ? { summary: rebuilt, asOf: held.fetchedAt } : null;
 }
 

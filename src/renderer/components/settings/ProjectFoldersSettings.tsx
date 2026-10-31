@@ -7,7 +7,10 @@ import { ProjectFoldersForm, type ProjectFoldersDraft } from "../ProjectFoldersF
 import { ProjectFolderContext } from "./ProjectFolderContext.js";
 import { ProjectOverviewSettings } from "./ProjectOverviewSettings.js";
 
-export function ProjectFoldersSettings({ project, onProjectUpdated }: {
+export function ProjectFoldersSettings({
+  project,
+  onProjectUpdated
+}: {
   project: ProjectSummary;
   onProjectUpdated: (project: ProjectSummary) => void;
 }): JSX.Element {
@@ -17,7 +20,10 @@ export function ProjectFoldersSettings({ project, onProjectUpdated }: {
   useBridgeQuery({
     key: ["projects.getFolders", project.id, revision],
     read: (api) => api.projects.getFolders({ projectId: project.id }),
-    onData: (result) => { setFolders(result); setError(null); },
+    onData: (result) => {
+      setFolders(result);
+      setError(null);
+    },
     onError: (reason) => setError(validationMessage(reason))
   });
 
@@ -32,22 +38,41 @@ export function ProjectFoldersSettings({ project, onProjectUpdated }: {
 
   return (
     <>
-    <section id="settings-project-folders" className="settings-card" aria-label="Project name and folders">
-      {!api ? <p className="settings-note">Open Argmax on your Mac to edit project folders.</p> : null}
-      {error ? <p className="settings-note" role="alert">{error}</p> : null}
-      {api && !error && !folders ? <p className="settings-note" role="status">Loading project folders…</p> : null}
-      {folders ? <ProjectFoldersForm
+      <section id="settings-project-folders" className="settings-card" aria-label="Project name and folders">
+        {!api ? <p className="settings-note">Open Argmax on your Mac to edit project folders.</p> : null}
+        {error ? (
+          <p className="settings-note" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {api && !error && !folders ? (
+          <p className="settings-note" role="status">
+            Loading project folders…
+          </p>
+        ) : null}
+        {folders ? (
+          <ProjectFoldersForm
+            key={project.id}
+            initialValue={{
+              name: project.name,
+              folders: folders.map((folder) => folder.rootPath),
+              primaryPath: folders.find((folder) => folder.isPrimary)?.rootPath ?? project.repoPath
+            }}
+            submitLabel="Save project"
+            onSubmit={save}
+            renderFolderDetails={(path) => {
+              const folder = folders.find((candidate) => candidate.rootPath === path);
+              return folder && !folder.isPrimary ? <ProjectFolderContext key={folder.id} folder={folder} /> : null;
+            }}
+          />
+        ) : null}
+      </section>
+      <ProjectOverviewSettings
         key={project.id}
-        initialValue={{ name: project.name, folders: folders.map((folder) => folder.rootPath),
-          primaryPath: folders.find((folder) => folder.isPrimary)?.rootPath ?? project.repoPath }}
-        submitLabel="Save project" onSubmit={save}
-        renderFolderDetails={(path) => {
-          const folder = folders.find((candidate) => candidate.rootPath === path);
-          return folder && !folder.isPrimary ? <ProjectFolderContext key={folder.id} folder={folder} /> : null;
-        }}
-      /> : null}
-    </section>
-    <ProjectOverviewSettings key={project.id} project={project} folders={folders ?? []} onProjectUpdated={onProjectUpdated} />
+        project={project}
+        folders={folders ?? []}
+        onProjectUpdated={onProjectUpdated}
+      />
     </>
   );
 }

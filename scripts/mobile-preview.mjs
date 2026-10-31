@@ -33,7 +33,12 @@ const server = await createServer({
   configFile: "vite.config.ts",
   // Bind v4 explicitly: the default resolves to ::1 only, and the
   // simulator asks for 127.0.0.1.
-  server: { host: "127.0.0.1", port: PORT, strictPort: true, proxy: { "/api": { target, ws: true, changeOrigin: true } } }
+  server: {
+    host: "127.0.0.1",
+    port: PORT,
+    strictPort: true,
+    proxy: { "/api": { target, ws: true, changeOrigin: true } }
+  }
 });
 await server.listen();
 console.log(`http://127.0.0.1:${PORT}/mobile.html#token=${remote.token}`);

@@ -81,7 +81,7 @@ export function GoalStatus({ session }: { session: SessionSummary }): JSX.Elemen
           title={expanded ? "Collapse goal details" : goal.condition}
         >
           <Target size={14} className="composer-queued-chip-icon" aria-hidden="true" />
-          <span className="goal-status-label">{active ? "Goal" : OUTCOME_LABELS[goal.state] ?? "Goal"}</span>
+          <span className="goal-status-label">{active ? "Goal" : (OUTCOME_LABELS[goal.state] ?? "Goal")}</span>
           <span className="goal-status-condition">{goal.condition}</span>
         </button>
         <button

@@ -111,11 +111,7 @@ export function ProjectCheckDialog({
                 <span className="project-check-option-name">{project.name}</span>
                 <span className="project-check-option-path">{collapseHome(project.repoPath)}</span>
                 <span className="project-check-option-tag">
-                  {project.id === suggested.id
-                    ? "Suggested"
-                    : project.id === currentProject.id
-                      ? "Current"
-                      : null}
+                  {project.id === suggested.id ? "Suggested" : project.id === currentProject.id ? "Current" : null}
                 </span>
               </label>
             ))}

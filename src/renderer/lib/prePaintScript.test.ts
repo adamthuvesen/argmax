@@ -8,10 +8,7 @@ import { SIDEBAR_INTENSITY_STORAGE_KEY } from "./sidebarIntensity.js";
 import { THEME_STORAGE_KEY } from "./theme.js";
 
 const indexHtml = readFileSync(new URL("../../../index.html", import.meta.url), "utf8");
-const appearanceHook = readFileSync(
-  new URL("../hooks/useLauncherAppearance.ts", import.meta.url),
-  "utf8"
-);
+const appearanceHook = readFileSync(new URL("../hooks/useLauncherAppearance.ts", import.meta.url), "utf8");
 
 // Keys the inline script in index.html restores before React mounts.
 const PRE_PAINTED: Record<string, string> = {
@@ -40,8 +37,14 @@ function runPrePaint(saved: Record<string, string> = {}, systemDark = false) {
     window: { matchMedia: () => ({ matches: systemDark }) },
     document: {
       documentElement: {
-        setAttribute: (name: string, value: string) => { attributes[name] = value; },
-        style: { setProperty: (name: string, value: string) => { properties[name] = value; } }
+        setAttribute: (name: string, value: string) => {
+          attributes[name] = value;
+        },
+        style: {
+          setProperty: (name: string, value: string) => {
+            properties[name] = value;
+          }
+        }
       }
     }
   });

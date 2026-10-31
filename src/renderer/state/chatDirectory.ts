@@ -1,8 +1,5 @@
 import { useSyncExternalStore } from "react";
-import {
-  SCRATCH_PROJECT_ID,
-  type DashboardSnapshot
-} from "../../shared/types.js";
+import { SCRATCH_PROJECT_ID, type DashboardSnapshot } from "../../shared/types.js";
 import { titleFromPrompt } from "../lib/projects.js";
 
 // The chats a prompt can name, and the way to open one.
@@ -50,11 +47,7 @@ export function chatDirectoryFromSnapshot(
     });
   }
   return directory.sort((left, right) =>
-    left.lastActivityAt === right.lastActivityAt
-      ? 0
-      : left.lastActivityAt < right.lastActivityAt
-        ? 1
-        : -1
+    left.lastActivityAt === right.lastActivityAt ? 0 : left.lastActivityAt < right.lastActivityAt ? 1 : -1
   );
 }
 
@@ -91,7 +84,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useChatDirectory(): readonly ChatDirectoryEntry[] {
-  return useSyncExternalStore(subscribe, () => entries, () => entries);
+  return useSyncExternalStore(
+    subscribe,
+    () => entries,
+    () => entries
+  );
 }
 
 /**

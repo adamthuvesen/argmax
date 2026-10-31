@@ -116,7 +116,10 @@ describe("buildSettingCommands", () => {
   });
 
   it("keeps heaviness adjustments open and respects both limits", () => {
-    for (const [level, direction] of [[1, "lighter"], [10, "heavier"]] as const) {
+    for (const [level, direction] of [
+      [1, "lighter"],
+      [10, "heavier"]
+    ] as const) {
       const input = inputWith({ fontHeaviness: level });
       const command = buildSettingCommands(input).find((row) => row.id === `setting:font-heaviness:${direction}`)!;
       expect(command.keepOpen).toBe(true);
@@ -124,12 +127,17 @@ describe("buildSettingCommands", () => {
       expect(input.onFontHeavinessChange).not.toHaveBeenCalled();
     }
     const input = inputWith({ fontHeaviness: 5 });
-    buildSettingCommands(input).find((row) => row.id === "setting:font-heaviness:heavier")!.run();
+    buildSettingCommands(input)
+      .find((row) => row.id === "setting:font-heaviness:heavier")!
+      .run();
     expect(input.onFontHeavinessChange).toHaveBeenCalledWith(6);
   });
 
   it("steps sidebar intensity within its range and keeps the palette open", () => {
-    for (const [level, direction] of [[0, "softer"], [100, "stronger"]] as const) {
+    for (const [level, direction] of [
+      [0, "softer"],
+      [100, "stronger"]
+    ] as const) {
       const input = inputWith({ sidebarIntensity: level });
       const command = buildSettingCommands(input).find((row) => row.id === `setting:sidebar-intensity:${direction}`)!;
       expect(command.keepOpen).toBe(true);
@@ -137,7 +145,9 @@ describe("buildSettingCommands", () => {
       expect(input.onSidebarIntensityChange).not.toHaveBeenCalled();
     }
     const input = inputWith({ sidebarIntensity: 70 });
-    buildSettingCommands(input).find((row) => row.id === "setting:sidebar-intensity:stronger")!.run();
+    buildSettingCommands(input)
+      .find((row) => row.id === "setting:sidebar-intensity:stronger")!
+      .run();
     expect(input.onSidebarIntensityChange).toHaveBeenCalledWith(80);
   });
 
@@ -171,8 +181,7 @@ describe("buildSettingCommands", () => {
 
   it("is reachable by the words a user types", () => {
     const commands = buildSettingCommands(inputWith());
-    const top = (query: string): string | undefined =>
-      searchPaletteItems(commands, query)[0]?.item.label;
+    const top = (query: string): string | undefined => searchPaletteItems(commands, query)[0]?.item.label;
     expect(top("dark")).toBe("Dark theme");
     expect(top("blue accent")).toBe("Blue accent");
     expect(top("black accent")).toBe("Black accent");

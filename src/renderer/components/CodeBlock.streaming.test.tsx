@@ -4,9 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mark the shiki output so a test can tell a real highlight pass from the plain
 // fallback used while a fence is still streaming.
 const highlightCodeMock = vi.hoisted(() =>
-  vi.fn<(code: string, lang: string | null, appearance?: "light" | "dark") => Array<Array<{ content: string; color: string }>>>(
-    (code) => code.split("\n").map((line) => [{ content: `HL:${line}`, color: "#005cc5" }])
-  )
+  vi.fn<
+    (
+      code: string,
+      lang: string | null,
+      appearance?: "light" | "dark"
+    ) => Array<Array<{ content: string; color: string }>>
+  >((code) => code.split("\n").map((line) => [{ content: `HL:${line}`, color: "#005cc5" }]))
 );
 const plainCodeLinesMock = vi.hoisted(() =>
   vi.fn((code: string) => code.split("\n").map((line) => [{ content: line }]))

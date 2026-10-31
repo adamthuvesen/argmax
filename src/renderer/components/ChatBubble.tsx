@@ -18,9 +18,7 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
         type="button"
         className="chat-bubble-copy"
         aria-label="Copy bubble"
-        title={
-          copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy markdown"
-        }
+        title={copyFlash === "copied" ? "Copied" : copyFlash === "failed" ? "Couldn't copy" : "Copy markdown"}
         onClick={() => void copy(rawMarkdown)}
       >
         <Copy size={12} />
@@ -40,13 +38,7 @@ export function ChatBubble({ kind, rawMarkdown, children }: ChatBubbleProps): JS
  * appears when the content is actually clipped, so short messages look
  * untouched.
  */
-function UserBubbleBody({
-  rawMarkdown,
-  children
-}: {
-  rawMarkdown: string;
-  children: ReactNode;
-}): JSX.Element {
+function UserBubbleBody({ rawMarkdown, children }: { rawMarkdown: string; children: ReactNode }): JSX.Element {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -80,10 +72,7 @@ function UserBubbleBody({
 
   return (
     <>
-      <div
-        ref={bodyRef}
-        className={`chat-bubble-body${expanded ? " expanded" : clipped ? " clipped" : ""}`}
-      >
+      <div ref={bodyRef} className={`chat-bubble-body${expanded ? " expanded" : clipped ? " clipped" : ""}`}>
         <div ref={contentRef}>{children}</div>
       </div>
       {clipped ? (

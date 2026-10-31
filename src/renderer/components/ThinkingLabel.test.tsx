@@ -19,11 +19,13 @@ describe("<ThinkingLabel />", () => {
     "uses the selected %s mark for thinking and loading without restarting the wait",
     (markId) => {
       vi.spyOn(performance, "now").mockReturnValue(0);
-      render(<>
-        <ActivityMarkPicker value="nest" onChange={setActivityMark} />
-        <ThinkingLabel />
-        <LoadingLine label="Loading projects" />
-      </>);
+      render(
+        <>
+          <ActivityMarkPicker value="nest" onChange={setActivityMark} />
+          <ThinkingLabel />
+          <LoadingLine label="Loading projects" />
+        </>
+      );
       const thinking = screen.getByLabelText("Thinking");
       const word = screen.getByTestId("thinking-label").textContent;
 
@@ -32,8 +34,10 @@ describe("<ThinkingLabel />", () => {
 
       expect(window.localStorage.getItem(ACTIVITY_MARK_STORAGE_KEY)).toBe(markId);
       expect(thinking.querySelector("[data-mark]")).toHaveAttribute("data-mark", markId);
-      expect(screen.getByRole("status", { name: "Loading projects" }).querySelector("[data-mark]"))
-        .toHaveAttribute("data-mark", markId);
+      expect(screen.getByRole("status", { name: "Loading projects" }).querySelector("[data-mark]")).toHaveAttribute(
+        "data-mark",
+        markId
+      );
       expect(screen.getByTestId("thinking-label")).toHaveTextContent(word ?? "");
       vi.spyOn(performance, "now").mockReturnValue(14_000);
       __liveTimerTickForTest();
@@ -58,10 +62,7 @@ describe("<ThinkingLabel />", () => {
   });
 
   it("chooses one curated word and keeps it stable", () => {
-    vi.spyOn(Math, "random")
-      .mockReturnValueOnce(0.5)
-      .mockReturnValueOnce(0)
-      .mockReturnValue(0.99);
+    vi.spyOn(Math, "random").mockReturnValueOnce(0.5).mockReturnValueOnce(0).mockReturnValue(0.99);
 
     const { rerender } = render(<ThinkingLabel />);
     expect(screen.getByTestId("thinking-label")).toHaveTextContent("Brainstorming");
@@ -155,10 +156,7 @@ describe("<ThinkingLabel />", () => {
     const words = new Set(
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((minute) => {
         const { container, unmount } = render(
-          <ThinkingLabel
-            phaseKey="session-1"
-            startedAtMs={Date.parse("2026-09-06T07:00:00.000Z") + minute * 60_000}
-          />
+          <ThinkingLabel phaseKey="session-1" startedAtMs={Date.parse("2026-09-06T07:00:00.000Z") + minute * 60_000} />
         );
         const word = container.querySelector(".thinking-label")?.textContent;
         unmount();

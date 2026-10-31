@@ -61,8 +61,16 @@ export function ProjectsSettings({
               />
             </div>
           ) : null}
-          <ProjectFoldersSettings key={`folders-${selected.id}`} project={selected} onProjectUpdated={onProjectUpdated} />
-          <ProjectSettingsForm key={`${selected.id}:${selected.repoPath}`} project={selected} onProjectUpdated={onProjectUpdated} />
+          <ProjectFoldersSettings
+            key={`folders-${selected.id}`}
+            project={selected}
+            onProjectUpdated={onProjectUpdated}
+          />
+          <ProjectSettingsForm
+            key={`${selected.id}:${selected.repoPath}`}
+            project={selected}
+            onProjectUpdated={onProjectUpdated}
+          />
           <BranchTemplatePanel
             key={`branch-names-${selected.id}:${selected.repoPath}`}
             project={selected}
@@ -191,8 +199,7 @@ function ProjectSettingsForm({
           spellCheck={false}
         />
         <p className="settings-note">
-          Run once in each fresh worktree before the agent starts, so dependencies are in place.
-          Leave empty to skip.
+          Run once in each fresh worktree before the agent starts, so dependencies are in place. Leave empty to skip.
         </p>
       </div>
 
@@ -210,8 +217,7 @@ function ProjectSettingsForm({
           spellCheck={false}
         />
         <p className="settings-note">
-          One command per line. Offered on a chat's changed-files card so you can verify a
-          workspace before shipping it.
+          One command per line. Offered on a chat's changed-files card so you can verify a workspace before shipping it.
         </p>
       </div>
 
@@ -230,12 +236,7 @@ function ProjectSettingsForm({
       />
 
       <div className="settings-form-footer">
-        <button
-          type="button"
-          className="settings-button"
-          onClick={() => void save()}
-          disabled={saving || !dirty}
-        >
+        <button type="button" className="settings-button" onClick={() => void save()} disabled={saving || !dirty}>
           {saving ? "Saving…" : "Save project settings"}
         </button>
         {status ? (

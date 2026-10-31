@@ -13,11 +13,7 @@ import { useMemo, useRef } from "react";
  * `key` must capture everything the predicate depends on. When `key` is falsy
  * the unfiltered `items` array is returned (and its reference passes through).
  */
-export function useStableFilter<T>(
-  items: T[],
-  key: string | null,
-  predicate: (item: T) => boolean
-): T[] {
+export function useStableFilter<T>(items: T[], key: string | null, predicate: (item: T) => boolean): T[] {
   const prevRef = useRef<T[]>([]);
   return useMemo(() => {
     if (!key) return items;
@@ -28,6 +24,6 @@ export function useStableFilter<T>(
     }
     prevRef.current = next;
     return next;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- predicate is recreated each render; `key` gates recomputation
+    // oxlint-disable-next-line react/exhaustive-deps -- predicate is recreated each render; `key` gates recomputation
   }, [items, key]);
 }

@@ -1,10 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  BROWSER_THEME_STORAGE_KEY,
-  readStoredBrowserTheme,
-  writeStoredBrowserTheme
-} from "./browserTheme.js";
+import { BROWSER_THEME_STORAGE_KEY, readStoredBrowserTheme, writeStoredBrowserTheme } from "./browserTheme.js";
 
 afterEach(() => {
   window.localStorage.removeItem(BROWSER_THEME_STORAGE_KEY);

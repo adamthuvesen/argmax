@@ -58,7 +58,7 @@ function query(databasePath, since, sql) {
   const uri = `file:${databasePath}?mode=ro`;
   const result = spawnSync("sqlite3", ["-json", "-cmd", `.parameter set :since '${since}'`, uri, sql], {
     encoding: "utf8",
-    maxBuffer: 256 * 1024 * 1024,
+    maxBuffer: 256 * 1024 * 1024
   });
   if (result.error?.code === "ENOENT") fail("sqlite3 is not installed or not on PATH");
   if (result.error) fail(`sqlite3 failed: ${result.error.message}`);
@@ -130,7 +130,9 @@ function keptWhy(reason) {
 function countBy(items, keyOf) {
   const counts = new Map();
   for (const item of items) counts.set(keyOf(item), (counts.get(keyOf(item)) ?? 0) + 1);
-  return [...counts].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  return [...counts]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
 }
 
 function buildReport({ days, since, launches, routes: allRoutes, usage, goals, listedCost }) {
@@ -150,7 +152,17 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
   for (const launch of launches) {
     const key = cellKey(launch);
     if (!cells.has(key)) {
-      cells.set(key, { cell: key, routedTo: routedTo(launch), sessions: 0, turns: 0, overrides: 0, pricedSessions: 0, costUsd: 0, unpricedTokens: 0, billedBy: {} });
+      cells.set(key, {
+        cell: key,
+        routedTo: routedTo(launch),
+        sessions: 0,
+        turns: 0,
+        overrides: 0,
+        pricedSessions: 0,
+        costUsd: 0,
+        unpricedTokens: 0,
+        billedBy: {}
+      });
     }
     const cell = cells.get(key);
     cell.sessions += 1;
@@ -161,17 +173,18 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
       const billed = (cell.billedBy[row.model_id] ??= { costUsd: 0, tokens: 0, unpriced: false });
       const tokens = row.input_tokens + row.output_tokens + row.cache_read_tokens + row.cache_write_tokens;
       billed.tokens += tokens;
-      const cost = row.provider === "cursor"
-        ? null
-        : listedCost(
-            {
-              input: row.input_tokens,
-              output: row.output_tokens,
-              cacheRead: row.cache_read_tokens,
-              cacheWrite: row.cache_write_tokens
-            },
-            row.model_id
-          );
+      const cost =
+        row.provider === "cursor"
+          ? null
+          : listedCost(
+              {
+                input: row.input_tokens,
+                output: row.output_tokens,
+                cacheRead: row.cache_read_tokens,
+                cacheWrite: row.cache_write_tokens
+              },
+              row.model_id
+            );
       if (cost === null) {
         billed.unpriced = true;
         cell.unpricedTokens += tokens;
@@ -189,7 +202,9 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
 
   // Rows arrive in id order, so a session's first row is its launch route.
   const launchedSessions = new Set();
-  const followUps = routes.filter((route) => launchedSessions.has(route.session_id) || !launchedSessions.add(route.session_id));
+  const followUps = routes.filter(
+    (route) => launchedSessions.has(route.session_id) || !launchedSessions.add(route.session_id)
+  );
   const decisionCount = (decision) => followUps.filter((route) => route.decision === decision).length;
   const fallbacks = routes.filter((route) => route.decision === "fallback").length;
 
@@ -212,14 +227,22 @@ function buildReport({ days, since, launches, routes: allRoutes, usage, goals, l
       kept: decisionCount("kept"),
       fallback: decisionCount("fallback"),
       pinned: pins,
-      keptReasons: countBy(followUps.filter((route) => route.decision === "kept"), (route) => keptWhy(route.reason)),
-      escalationsByProvider: countBy(followUps.filter((route) => route.decision === "escalate"), (route) => route.provider),
+      keptReasons: countBy(
+        followUps.filter((route) => route.decision === "kept"),
+        (route) => keptWhy(route.reason)
+      ),
+      escalationsByProvider: countBy(
+        followUps.filter((route) => route.decision === "escalate"),
+        (route) => route.provider
+      )
     },
     overrides: {
       total: launches.filter((launch) => launch.current_auto_tier === null).length,
-      byCell: [...cells.values()].filter((cell) => cell.overrides > 0).map((cell) => ({ cell: cell.cell, overrides: cell.overrides, sessions: cell.sessions })),
+      byCell: [...cells.values()]
+        .filter((cell) => cell.overrides > 0)
+        .map((cell) => ({ cell: cell.cell, overrides: cell.overrides, sessions: cell.sessions }))
     },
-    goals: goalCounts,
+    goals: goalCounts
   };
 }
 
@@ -234,10 +257,19 @@ function formatCost(cell, value) {
 }
 
 function table(headers, rows, rightAligned = new Set()) {
-  const widths = headers.map((header, column) => Math.max(header.length, ...rows.map((row) => String(row[column]).length)));
+  const widths = headers.map((header, column) =>
+    Math.max(header.length, ...rows.map((row) => String(row[column]).length))
+  );
   const line = (cells) =>
-    cells.map((cell, column) => (rightAligned.has(column) ? String(cell).padStart(widths[column]) : String(cell).padEnd(widths[column]))).join("  ").trimEnd();
-  return [line(headers), line(widths.map((width) => "─".repeat(width))), ...rows.map(line)].map((text) => `  ${text}`).join("\n");
+    cells
+      .map((cell, column) =>
+        rightAligned.has(column) ? String(cell).padStart(widths[column]) : String(cell).padEnd(widths[column])
+      )
+      .join("  ")
+      .trimEnd();
+  return [line(headers), line(widths.map((width) => "─".repeat(width))), ...rows.map(line)]
+    .map((text) => `  ${text}`)
+    .join("\n");
 }
 
 function percent(share) {
@@ -250,7 +282,9 @@ function renderText(report, databasePath) {
   out.push(`  database        ${databasePath}`);
   out.push(`  Auto sessions   ${report.autoSessions}`);
   out.push(`  routed turns    ${report.routedTurns}`);
-  out.push(`  fallbacks       ${report.fallbacks.count} (${percent(report.fallbacks.share)} of turns; Jev unavailable)`);
+  out.push(
+    `  fallbacks       ${report.fallbacks.count} (${percent(report.fallbacks.share)} of turns; Jev unavailable)`
+  );
   if (report.autoSessions === 0) {
     out.push("", "No Auto sessions in this window.");
     return out.join("\n");
@@ -260,12 +294,24 @@ function renderText(report, databasePath) {
   out.push(
     table(
       ["cell", "routed to", "sessions", "turns", "cost", "$/session"],
-      report.cells.map((cell) => [cell.cell, cell.routedTo, cell.sessions, cell.turns, formatCost(cell, cell.pricedSessions ? cell.costUsd : null), formatCost(cell, cell.costPerSessionUsd)]),
-      new Set([2, 3, 4, 5]),
-    ),
+      report.cells.map((cell) => [
+        cell.cell,
+        cell.routedTo,
+        cell.sessions,
+        cell.turns,
+        formatCost(cell, cell.pricedSessions ? cell.costUsd : null),
+        formatCost(cell, cell.costPerSessionUsd)
+      ]),
+      new Set([2, 3, 4, 5])
+    )
   );
   const billedRows = report.cells.flatMap((cell) =>
-    Object.entries(cell.billedBy).map(([modelId, billed]) => [cell.cell, modelId, billed.tokens.toLocaleString("en-US"), billed.unpriced ? "unpriced" : formatUsd(billed.costUsd)]),
+    Object.entries(cell.billedBy).map(([modelId, billed]) => [
+      cell.cell,
+      modelId,
+      billed.tokens.toLocaleString("en-US"),
+      billed.unpriced ? "unpriced" : formatUsd(billed.costUsd)
+    ])
   );
   if (billedRows.length) {
     out.push("", "Billed by model (usage attributed to the model that billed it)");
@@ -276,19 +322,42 @@ function renderText(report, databasePath) {
 
   const { followUps } = report;
   out.push("", "Follow-ups");
-  out.push(`  reroute ${followUps.reroute} · escalate ${followUps.escalate} · kept ${followUps.kept} · fallback ${followUps.fallback} · pinned ${followUps.pinned}`);
+  out.push(
+    `  reroute ${followUps.reroute} · escalate ${followUps.escalate} · kept ${followUps.kept} · fallback ${followUps.fallback} · pinned ${followUps.pinned}`
+  );
   if (followUps.keptReasons.length) {
     out.push("", "  Top kept reasons");
-    out.push(table(["count", "reason"], followUps.keptReasons.slice(0, 8).map((entry) => [entry.count, entry.key]), new Set([0])).replace(/^/gm, "  "));
+    out.push(
+      table(
+        ["count", "reason"],
+        followUps.keptReasons.slice(0, 8).map((entry) => [entry.count, entry.key]),
+        new Set([0])
+      ).replace(/^/gm, "  ")
+    );
   }
   if (followUps.escalationsByProvider.length) {
     out.push("", "  Escalations by provider");
-    out.push(table(["provider", "count"], followUps.escalationsByProvider.map((entry) => [entry.key, entry.count]), new Set([1])).replace(/^/gm, "  "));
+    out.push(
+      table(
+        ["provider", "count"],
+        followUps.escalationsByProvider.map((entry) => [entry.key, entry.count]),
+        new Set([1])
+      ).replace(/^/gm, "  ")
+    );
   }
 
-  out.push("", `Manual overrides (Auto chats later pinned to a model): ${report.overrides.total} of ${report.autoSessions}`);
+  out.push(
+    "",
+    `Manual overrides (Auto chats later pinned to a model): ${report.overrides.total} of ${report.autoSessions}`
+  );
   if (report.overrides.byCell.length) {
-    out.push(table(["cell", "pinned", "of"], report.overrides.byCell.map((entry) => [entry.cell, entry.overrides, entry.sessions]), new Set([1, 2])));
+    out.push(
+      table(
+        ["cell", "pinned", "of"],
+        report.overrides.byCell.map((entry) => [entry.cell, entry.overrides, entry.sessions]),
+        new Set([1, 2])
+      )
+    );
   }
 
   const { goals } = report;
@@ -330,7 +399,7 @@ const report = buildReport({
   routes: query(databasePath, since, ROUTES_SQL),
   usage: query(databasePath, since, USAGE_SQL),
   listedCost,
-  goals: query(databasePath, since, GOALS_SQL),
+  goals: query(databasePath, since, GOALS_SQL)
 });
 
 console.log(flags.json ? JSON.stringify(report, null, 2) : renderText(report, databasePath));

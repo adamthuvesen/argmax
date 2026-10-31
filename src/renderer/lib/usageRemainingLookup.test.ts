@@ -52,10 +52,7 @@ describe("lookUpUsageRemaining", () => {
   it("shares one read between composers that ask at once, and caches it", async () => {
     fetchRemaining.mockResolvedValue(remaining("2026-10-04T07:59:00Z"));
 
-    const [first, second] = await Promise.all([
-      lookUpUsageRemaining({ now: NOW }),
-      lookUpUsageRemaining({ now: NOW })
-    ]);
+    const [first, second] = await Promise.all([lookUpUsageRemaining({ now: NOW }), lookUpUsageRemaining({ now: NOW })]);
 
     expect(fetchRemaining).toHaveBeenCalledOnce();
     expect(first).toBe(second);

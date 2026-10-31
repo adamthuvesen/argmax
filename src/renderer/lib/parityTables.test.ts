@@ -16,7 +16,9 @@ import { chatSessionByWorkspace, chatSessionFor } from "./workspaceChat.js";
 // platform names its reason in the table, under `desktop` or `phone`. The
 // tables are imported rather than read, so `vitest --changed` sees a table edit.
 
-function onDesktop<Expected extends object>(row: Expected & { desktop?: Partial<Expected> & { reason: string } }): Expected {
+function onDesktop<Expected extends object>(
+  row: Expected & { desktop?: Partial<Expected> & { reason: string } }
+): Expected {
   return { ...row, ...row.desktop };
 }
 
@@ -41,7 +43,9 @@ describe("workspace chat table", () => {
 
   it.each(cases)("$name", ({ sessions, chats }) => {
     const rows = sessions as SessionSummary[];
-    const chosen = Object.fromEntries([...chatSessionByWorkspace(rows)].map(([workspace, chat]) => [workspace, chat.id]));
+    const chosen = Object.fromEntries(
+      [...chatSessionByWorkspace(rows)].map(([workspace, chat]) => [workspace, chat.id])
+    );
     expect(chosen).toEqual(chats);
     for (const [workspaceId, chat] of Object.entries(chats)) {
       expect(chatSessionFor(rows, workspaceId)?.id).toBe(chat);
@@ -74,7 +78,13 @@ describe("chat detail tables", () => {
   const { levels, narration, turns } = chatDetailTable as unknown as {
     levels: Level[];
     narration: { name: string; text: string; repeatToUtf16?: number; isNarration: boolean }[];
-    turns: { name: string; live?: boolean; items: TurnItem[]; hidden: string[]; desktop?: { hidden?: string[]; reason: string } }[];
+    turns: {
+      name: string;
+      live?: boolean;
+      items: TurnItem[];
+      hidden: string[];
+      desktop?: { hidden?: string[]; reason: string };
+    }[];
   };
 
   it.each(levels)("level $level", (row) => {

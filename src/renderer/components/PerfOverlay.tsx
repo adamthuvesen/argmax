@@ -90,9 +90,11 @@ export function PerfOverlay(): JSX.Element | null {
         // Diagnostics IPC is non-essential for the HUD; swallow polling errors.
       }
     };
-    void ensureRecorder().then(tick).catch(() => {
-      void tick();
-    });
+    void ensureRecorder()
+      .then(tick)
+      .catch(() => {
+        void tick();
+      });
     const id = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
     return () => {
       aliveRef.current = false;
@@ -101,12 +103,15 @@ export function PerfOverlay(): JSX.Element | null {
       ownedRecording.current = null;
       const system = systemActions();
       if (startedAt && typeof system?.performanceStatus === "function") {
-        void system.performanceStatus().then((current) => {
-          if (current.recording && current.startedAt === startedAt) {
-            return system.performanceStop();
-          }
-          return undefined;
-        }).catch(() => undefined);
+        void system
+          .performanceStatus()
+          .then((current) => {
+            if (current.recording && current.startedAt === startedAt) {
+              return system.performanceStop();
+            }
+            return undefined;
+          })
+          .catch(() => undefined);
       }
     };
   }, [enabled]);
@@ -135,7 +140,15 @@ export function PerfOverlay(): JSX.Element | null {
         minWidth: 220
       }}
     >
-      <div style={{ opacity: 0.7, marginBottom: 4, fontSize: "var(--text-2xs)", letterSpacing: 0.4, textTransform: "uppercase" }}>
+      <div
+        style={{
+          opacity: 0.7,
+          marginBottom: 4,
+          fontSize: "var(--text-2xs)",
+          letterSpacing: 0.4,
+          textTransform: "uppercase"
+        }}
+      >
         Argmax performance
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "2px 10px", marginBottom: 6 }}>
@@ -156,7 +169,15 @@ export function PerfOverlay(): JSX.Element | null {
           {performance?.latest?.rendererStalls.count ?? "—"}
         </span>
       </div>
-      <div style={{ opacity: 0.7, marginBottom: 4, fontSize: "var(--text-2xs)", letterSpacing: 0.4, textTransform: "uppercase" }}>
+      <div
+        style={{
+          opacity: 0.7,
+          marginBottom: 4,
+          fontSize: "var(--text-2xs)",
+          letterSpacing: 0.4,
+          textTransform: "uppercase"
+        }}
+      >
         IPC p50 / p99
       </div>
       <table style={{ borderCollapse: "collapse", width: "100%" }}>

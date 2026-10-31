@@ -2,11 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { useRef, useState, type JSX } from "react";
 import { codenameForTool, fallbackCodename } from "../lib/agentNames.js";
 import { emblemForCodename, type Emblem } from "../lib/agentEmblems.js";
-import {
-  agentLaunchAriaLabel,
-  agentLaunchLabel,
-  agentStatusLabel
-} from "../lib/agentLaunch.js";
+import { agentLaunchAriaLabel, agentLaunchLabel, agentStatusLabel } from "../lib/agentLaunch.js";
 import { useSettleHold } from "../hooks/useSettleHold.js";
 import { usePacedHeadline } from "../lib/pacedHeadline.js";
 import { useReadingWave } from "../lib/readingWave.js";
@@ -59,27 +55,11 @@ function AgentLaunchMark({
   // and the nest can see `active` go true → false. Returning a different node
   // for the finished state would unmount it mid-landing.
   if (status !== "error" && phase !== "done") {
-    return (
-      <WorkingNest
-        active={phase === "running"}
-        className="agent-launch-mark"
-        size={14}
-        phaseKey={phaseKey}
-      />
-    );
+    return <WorkingNest active={phase === "running"} className="agent-launch-mark" size={14} phaseKey={phaseKey} />;
   }
   return (
-    <span
-      className="agent-launch-mark agent-launch-emblem"
-      aria-hidden="true"
-      data-launch-mark={status}
-    >
-      <AgentEmblem
-        shape={emblem.shape}
-        hue={emblem.hue}
-        size={14}
-        status={status === "error" ? "error" : "done"}
-      />
+    <span className="agent-launch-mark agent-launch-emblem" aria-hidden="true" data-launch-mark={status}>
+      <AgentEmblem shape={emblem.shape} hue={emblem.hue} size={14} status={status === "error" ? "error" : "done"} />
     </span>
   );
 }
@@ -105,11 +85,9 @@ function AgentLaunchRow({
   onOpenAgent?: (tool: ToolCall) => void;
 }): JSX.Element {
   const [userToggle, setUserToggle] = useState<UserToggle | null>(null);
-  const localExpanded =
-    userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
+  const localExpanded = userToggle && userToggle.defaultExpanded === defaultExpanded ? userToggle.value : null;
   const hasDetail = toolCallHasExpandableDetail(tool);
-  const expanded =
-    hasDetail && (localExpanded ?? (tool.status === "error" || (defaultExpanded ?? false)));
+  const expanded = hasDetail && (localExpanded ?? (tool.status === "error" || (defaultExpanded ?? false)));
   const { title, identity } = agentLaunchLabel(tool, agentCodename);
   const action = agentLaunchAriaLabel(tool, agentCodename);
   const emblem = emblemForCodename(agentCodename ?? fallbackCodename(tool.toolUseId));
@@ -146,16 +124,8 @@ function AgentLaunchRow({
           reads a tool row's verb and target; the status word below sits on a
           line of its own and holds still. Keyed on their own text so a
           re-worded part remounts and its fade actually plays. */}
-      <span
-        className="agent-launch-headline"
-        ref={headlineRef}
-        data-reading-wave={liveWork ? "true" : undefined}
-      >
-        <span
-          key={shownTitle}
-          className="agent-launch-title reading-wave-text"
-          data-arriving={arriving(0, shownTitle)}
-        >
+      <span className="agent-launch-headline" ref={headlineRef} data-reading-wave={liveWork ? "true" : undefined}>
+        <span key={shownTitle} className="agent-launch-title reading-wave-text" data-arriving={arriving(0, shownTitle)}>
           {shownTitle}
         </span>
         {shownIdentity ? (
@@ -168,11 +138,7 @@ function AgentLaunchRow({
           </span>
         ) : null}
       </span>
-      <span
-        key={shownStatus}
-        className="agent-launch-status"
-        data-arriving={arriving(2, shownStatus)}
-      >
+      <span key={shownStatus} className="agent-launch-status" data-arriving={arriving(2, shownStatus)}>
         {shownStatus}
       </span>
     </>
@@ -181,11 +147,7 @@ function AgentLaunchRow({
   return (
     // The hue rides the row so a backgrounded launch's nest sits in this
     // agent's colour, the one its emblem takes when the run lands.
-    <div
-      className="agent-launch-row agent-emblem-tint"
-      data-status={tool.status}
-      data-hue={emblem.hue}
-    >
+    <div className="agent-launch-row agent-emblem-tint" data-status={tool.status} data-hue={emblem.hue}>
       <div className="agent-launch-row-main">
         <AgentLaunchMark
           status={tool.status}
@@ -218,13 +180,7 @@ function AgentLaunchRow({
           </button>
         ) : null}
       </div>
-      {expanded ? (
-        <ToolCallDetail
-          tool={tool}
-          workspaceCwd={workspaceCwd ?? null}
-          onOpenFile={onOpenFile}
-        />
-      ) : null}
+      {expanded ? <ToolCallDetail tool={tool} workspaceCwd={workspaceCwd ?? null} onOpenFile={onOpenFile} /> : null}
     </div>
   );
 }

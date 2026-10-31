@@ -23,9 +23,9 @@ function goal(overrides: Partial<Goal> = {}): Goal {
 }
 
 /** Captures the dashboard subscriber so a test can push one delta. */
-const onDelta = vi.fn<(listener: (delta: { changedSessionIds?: string[]; goalChangedIds?: string[] }) => void) => () => void>(
-  () => () => undefined
-);
+const onDelta = vi.fn<
+  (listener: (delta: { changedSessionIds?: string[]; goalChangedIds?: string[] }) => void) => () => void
+>(() => () => undefined);
 
 const goals = {
   set: vi.fn<ArgmaxApi["goals"]["set"]>(),
@@ -42,7 +42,9 @@ beforeEach(() => {
   window.argmax = { goals, dashboard: { onDelta } } as unknown as ArgmaxApi;
 });
 
-afterEach(() => { delete (window as { argmax?: ArgmaxApi }).argmax; });
+afterEach(() => {
+  delete (window as { argmax?: ArgmaxApi }).argmax;
+});
 
 describe("GoalStatus", () => {
   it("expands only the condition without a turn counter or evaluator note", async () => {

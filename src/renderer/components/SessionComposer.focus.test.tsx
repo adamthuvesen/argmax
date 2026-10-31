@@ -1,15 +1,29 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { baseSession, event, renderConversation, rerenderConversation, STARTED_TURN } from "../../test/sessionConversationTestHarness.js";
+import {
+  baseSession,
+  event,
+  renderConversation,
+  rerenderConversation,
+  STARTED_TURN
+} from "../../test/sessionConversationTestHarness.js";
 
 const questionEvents = [
   event("user", "user.message", "Investigate", "2026-05-12T15:30:00.000Z"),
   event("question", "command.started", "AskUserQuestion", "2026-05-12T15:31:00.000Z", {
-    type: "tool_use", id: "question-one", name: "AskUserQuestion",
-    input: { questions: [{
-      question: "Pick a direction", header: "Direction", multiSelect: false,
-      options: [{ label: "Fix findings" }, { label: "General maintenance" }]
-    }] }
+    type: "tool_use",
+    id: "question-one",
+    name: "AskUserQuestion",
+    input: {
+      questions: [
+        {
+          question: "Pick a direction",
+          header: "Direction",
+          multiSelect: false,
+          options: [{ label: "Fix findings" }, { label: "General maintenance" }]
+        }
+      ]
+    }
   })
 ];
 
@@ -91,7 +105,9 @@ describe("SessionComposer focus during background updates", () => {
 
   it("restores focus after sending when the reader has not moved elsewhere", async () => {
     let resolveSend!: () => void;
-    const sendComplete = new Promise<void>((resolve) => { resolveSend = resolve; });
+    const sendComplete = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
     renderConversation(baseSession({ state: "running" }), [], {
       onSendSessionInput: () => sendComplete.then(() => STARTED_TURN)
     });
@@ -103,14 +119,19 @@ describe("SessionComposer focus during background updates", () => {
     fireEvent.keyDown(prompt, { key: "Enter" });
     expect(prompt).toBeDisabled();
     expect(document.body).toHaveFocus();
-    await act(async () => { resolveSend(); await sendComplete; });
+    await act(async () => {
+      resolveSend();
+      await sendComplete;
+    });
     expect(prompt).toBeEnabled();
     expect(prompt).toHaveFocus();
   });
 
   it("keeps a neighboring composer focused when a delayed send completes", async () => {
     let resolveSend!: () => void;
-    const sendComplete = new Promise<void>((resolve) => { resolveSend = resolve; });
+    const sendComplete = new Promise<void>((resolve) => {
+      resolveSend = resolve;
+    });
     const first = renderConversation(baseSession({ state: "running" }), [], {
       onSendSessionInput: () => sendComplete.then(() => STARTED_TURN)
     });
@@ -124,7 +145,10 @@ describe("SessionComposer focus during background updates", () => {
     neighbor.focus();
     fireEvent.change(neighbor, { target: { value: "Still writing here" } });
     neighbor.setSelectionRange(5, 5);
-    await act(async () => { resolveSend(); await sendComplete; });
+    await act(async () => {
+      resolveSend();
+      await sendComplete;
+    });
 
     expect(prompt).toBeEnabled();
     expect(neighbor).toHaveFocus();

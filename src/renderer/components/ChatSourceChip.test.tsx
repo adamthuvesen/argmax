@@ -1,11 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { chatReferenceLink } from "../lib/composerContext.js";
-import {
-  publishChatDirectory,
-  registerChatOpener,
-  resetChatDirectoryForTests
-} from "../state/chatDirectory.js";
+import { publishChatDirectory, registerChatOpener, resetChatDirectoryForTests } from "../state/chatDirectory.js";
 import { ChatSourceChip } from "./ChatSourceChip.js";
 import { SessionConversationUserMessage } from "./SessionConversationTurn.js";
 import { StreamingMarkdown } from "./StreamingMarkdown.js";

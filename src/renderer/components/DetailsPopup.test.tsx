@@ -107,17 +107,19 @@ const MINIMAL_TOOL_EVENTS: TimelineEvent[] = [
 // widens to a call signature, so a loose override type poisons the prop.
 type DetailsPopupProps = Parameters<typeof DetailsPopup>[0];
 
-function renderPopup(overrides: {
-  defaultToolCallsDisplay?: DetailsPopupProps["defaultToolCallsDisplay"];
-  defaultToolCallGroupsExpanded?: DetailsPopupProps["defaultToolCallGroupsExpanded"];
-  thinkingDisplay?: DetailsPopupProps["thinkingDisplay"];
-  chatFontSize?: DetailsPopupProps["chatFontSize"];
-  events?: DetailsPopupProps["events"];
-  approvals?: DetailsPopupProps["approvals"];
-  onResolveApproval?: DetailsPopupProps["onResolveApproval"];
-  onClose?: DetailsPopupProps["onClose"];
-  onLoadSessionEvents?: DetailsPopupProps["onLoadSessionEvents"];
-} = {}) {
+function renderPopup(
+  overrides: {
+    defaultToolCallsDisplay?: DetailsPopupProps["defaultToolCallsDisplay"];
+    defaultToolCallGroupsExpanded?: DetailsPopupProps["defaultToolCallGroupsExpanded"];
+    thinkingDisplay?: DetailsPopupProps["thinkingDisplay"];
+    chatFontSize?: DetailsPopupProps["chatFontSize"];
+    events?: DetailsPopupProps["events"];
+    approvals?: DetailsPopupProps["approvals"];
+    onResolveApproval?: DetailsPopupProps["onResolveApproval"];
+    onClose?: DetailsPopupProps["onClose"];
+    onLoadSessionEvents?: DetailsPopupProps["onLoadSessionEvents"];
+  } = {}
+) {
   return render(
     <DetailsPopup
       approvals={overrides.approvals}
@@ -159,9 +161,7 @@ describe("DetailsPopup", () => {
 
     expect(screen.getByRole("dialog", { name: "More details" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "More details" })).toBeInTheDocument();
-    expect(
-      screen.getByText("A vector clock orders events without a shared clock.")
-    ).toBeInTheDocument();
+    expect(screen.getByText("A vector clock orders events without a shared clock.")).toBeInTheDocument();
     expect(screen.queryByText("Unrelated pane message.")).toBeNull();
     // Floating composer: no attach or workspace-context cluster — the popup
     // is too narrow for them at its minimum width.
@@ -206,12 +206,22 @@ describe("DetailsPopup", () => {
   it("shows and resolves only its own pending approvals", async () => {
     const onResolveApproval = vi.fn().mockResolvedValue(undefined);
     const approval = {
-      id: "approval-popup", sessionId: "session-a", command: "Read local file", cwd: "/tmp",
-      provider: "claude" as const, providerInvocationId: "turn-1", providerRequestId: "request-1",
-      riskLevel: "low" as const, status: "pending" as const,
-      createdAt: "2026-09-07T10:00:00.000Z", resolvedAt: null
+      id: "approval-popup",
+      sessionId: "session-a",
+      command: "Read local file",
+      cwd: "/tmp",
+      provider: "claude" as const,
+      providerInvocationId: "turn-1",
+      providerRequestId: "request-1",
+      riskLevel: "low" as const,
+      status: "pending" as const,
+      createdAt: "2026-09-07T10:00:00.000Z",
+      resolvedAt: null
     };
-    renderPopup({ approvals: [approval, { ...approval, id: "other", sessionId: "other", command: "Unrelated action" }], onResolveApproval });
+    renderPopup({
+      approvals: [approval, { ...approval, id: "other", sessionId: "other", command: "Unrelated action" }],
+      onResolveApproval
+    });
     expect(screen.queryByText("Unrelated action")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Approve action: Read local file" }));
     await waitFor(() => expect(onResolveApproval).toHaveBeenCalledWith("approval-popup", "approved"));

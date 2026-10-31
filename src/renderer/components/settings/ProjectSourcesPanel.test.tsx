@@ -35,7 +35,10 @@ function installSourcesStub(sources: Partial<NonNullable<ArgmaxApi["sources"]>>)
 
 describe("ProjectSourcesPanel", () => {
   it("toasts a failed refresh while keeping the previously loaded sources", async () => {
-    const list = vi.fn().mockResolvedValueOnce([projectSource()]).mockRejectedValueOnce(new Error("Sources unavailable"));
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce([projectSource()])
+      .mockRejectedValueOnce(new Error("Sources unavailable"));
     installSourcesStub({ list });
     render(<ProjectSourcesPanel projectId="project-1" />);
     await screen.findByText("README");
@@ -102,7 +105,11 @@ describe("ProjectSourcesPanel", () => {
     expect(update).toHaveBeenCalledWith({
       projectId: "project-1",
       id: "source-1",
-      source: { title: "Architecture notes", location: "docs/architecture.md", guidance: "Prefer this for system design questions" }
+      source: {
+        title: "Architecture notes",
+        location: "docs/architecture.md",
+        guidance: "Prefer this for system design questions"
+      }
     });
 
     await waitFor(() => expect(screen.getByText("Architecture notes")).toBeInTheDocument());

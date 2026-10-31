@@ -132,50 +132,66 @@ describe("MobileApp", () => {
   it("launches an attachment-only provider-switch seed without the launcher's old image", async () => {
     const screenshot = { filePath: "/attachments/current.png", mimeType: "image/png" as const, sizeBytes: 4 };
     const unrelated = { filePath: "/attachments/old-launcher.png", mimeType: "image/png" as const, sizeBytes: 4 };
-    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
-      "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] },
-      "launch-project-2": { text: "Another project's draft", attachments: [unrelated] }
-    }));
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "launch-project-1": { text: "Old launcher thought", attachments: [unrelated] },
+        "launch-project-2": { text: "Another project's draft", attachments: [unrelated] }
+      })
+    );
     const seed = {
-      model: { provider: "claude" as const, label: "Sonnet 5.5", modelId: "claude-sonnet-5-5", reasoningEffort: "medium" as const },
+      model: {
+        provider: "claude" as const,
+        label: "Sonnet 5.5",
+        modelId: "claude-sonnet-5-5",
+        reasoningEffort: "medium" as const
+      },
       prompt: "",
       attachments: [screenshot]
     };
     function SeededNewSession() {
       const [openSheet, setOpenSheet] = useState<PickerKind | null>(null);
-      return <NewSessionScreen
-        projects={[snapshot.projects[0], secondProject()]}
-        workspaces={snapshot.workspaces}
-        initialSeed={seed}
-        onClose={vi.fn()}
-        onLaunched={vi.fn()}
-        onError={vi.fn()}
-        openSheet={openSheet}
-        onOpenSheetChange={setOpenSheet}
-      />;
+      return (
+        <NewSessionScreen
+          projects={[snapshot.projects[0], secondProject()]}
+          workspaces={snapshot.workspaces}
+          initialSeed={seed}
+          onClose={vi.fn()}
+          onLaunched={vi.fn()}
+          onError={vi.fn()}
+          openSheet={openSheet}
+          onOpenSheetChange={setOpenSheet}
+        />
+      );
     }
     render(<SeededNewSession />);
 
     await waitFor(() => expect(screen.getByLabelText("Task")).toHaveValue(""));
     expect(screen.getByLabelText("Attached images").children).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Project" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "Choose project" })).getByRole("button", { name: "Dotfiles" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Choose project" })).getByRole("button", { name: "Dotfiles" })
+    );
     expect(screen.getByLabelText("Task")).toHaveValue("");
     expect(screen.getByLabelText("Attached images").children).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Start chat" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Start chat" }));
 
-    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: "@/attachments/current.png",
-      attachments: [screenshot]
-    })));
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "@/attachments/current.png",
+          attachments: [screenshot]
+        })
+      )
+    );
   });
 
   it("lists sessions with project subtitle and running marker", async () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    const row = (await within(section).findByRole("button", { name: /Build dashboard/ }));
+    const row = await within(section).findByRole("button", { name: /Build dashboard/ });
     expect(row).toHaveTextContent("Argmax");
     expect(within(row).getByLabelText("running")).toBeInTheDocument();
   });
@@ -189,7 +205,9 @@ describe("MobileApp", () => {
       const toast = screen.getByRole("status");
       expect(toast).toHaveTextContent("Could not save the file.");
       act(() => showInfoToast("Copied."));
-      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(6000);
+      });
       expect(toast).toBeInTheDocument();
       expect(toast).toHaveTextContent("Could not save the file.");
       fireEvent.click(within(toast).getByRole("button", { name: "Dismiss" }));
@@ -197,7 +215,9 @@ describe("MobileApp", () => {
 
       act(() => showInfoToast("Copied."));
       expect(screen.getByRole("status")).toHaveTextContent("Copied.");
-      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4000);
+      });
       expect(screen.queryByText("Copied.")).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
@@ -241,7 +261,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    const row = (await within(section).findByRole("button", { name: /Build dashboard/ }));
+    const row = await within(section).findByRole("button", { name: /Build dashboard/ });
     // The parent's own turn is over; the sibling's is not, so this row still
     // carries the nest — a multitask has no list row of its own.
     expect(within(row).getByLabelText("running")).toBeInTheDocument();
@@ -272,9 +292,7 @@ describe("MobileApp", () => {
       // the workspace row. A completed reply with a still-running session
       // would keep the nest and hide the unread dot.
       sessions: snapshot.sessions.map((candidate) =>
-        candidate.workspaceId === workspace.id
-          ? { ...candidate, state: "complete" as const }
-          : candidate
+        candidate.workspaceId === workspace.id ? { ...candidate, state: "complete" as const } : candidate
       )
     });
 
@@ -294,9 +312,9 @@ describe("MobileApp", () => {
     const search = screen.getByRole("searchbox", { name: "Search chats" });
     fireEvent.change(search, { target: { value: "dashboard" } });
 
-    expect((await within(section).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
+    expect(await within(section).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
     fireEvent.change(search, { target: { value: "argmax" } });
-    expect((await within(section).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
+    expect(await within(section).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
   });
 
   it("floats working and attention rows into Priority, with pinned rows above it", async () => {
@@ -353,11 +371,9 @@ describe("MobileApp", () => {
     // chip on a row in the flat list.
     const priority = screen.getByRole("region", { name: "Priority" });
     expect(
-      within(within(priority).getByRole("button", { name: /Fix flaky tests/ })).getByLabelText(
-        "needs approval"
-      )
+      within(within(priority).getByRole("button", { name: /Fix flaky tests/ })).getByLabelText("needs approval")
     ).toBeInTheDocument();
-    expect((await within(priority).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
+    expect(await within(priority).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
     // The marker carries it now; nothing spells the attention out in text.
     expect(priority).not.toHaveTextContent("needs approval");
   });
@@ -383,7 +399,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    expect((await within(section).findByRole("button", { name: /Build dashboard/ }))).toBeInTheDocument();
+    expect(await within(section).findByRole("button", { name: /Build dashboard/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Stranded launch/ })).not.toBeInTheDocument();
   });
 
@@ -420,7 +436,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const list = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(list).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
 
     const row = await screen.findByRole("button", {
@@ -432,9 +448,7 @@ describe("MobileApp", () => {
     expect(within(overlay).getByText("No issues found.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
   });
 
   it("brings the peek up over the parent's composer and multitask lane", async () => {
@@ -491,33 +505,29 @@ describe("MobileApp", () => {
     // is what it would have returned anyway.
     const box = (top: number, bottom: number): DOMRect =>
       ({ top, bottom, left: 0, right: 390, width: 390, height: bottom - top, x: 0, y: top }) as DOMRect;
-    const rects = vi
-      .spyOn(Element.prototype, "getBoundingClientRect")
-      .mockImplementation(function (this: Element): DOMRect {
-        if (this.classList.contains("session-main-column")) return box(0, 800);
-        if (this.classList.contains("session-composer-stack")) return box(620, 800);
-        return box(0, 0);
-      });
+    const rects = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: Element
+    ): DOMRect {
+      if (this.classList.contains("session-main-column")) return box(0, 800);
+      if (this.classList.contains("session-composer-stack")) return box(620, 800);
+      return box(0, 0);
+    });
 
     try {
       render(<MobileApp />);
 
       const list = await screen.findByRole("region", { name: "Chat list" });
-      fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
+      fireEvent.click(await within(list).findByRole("button", { name: /Build dashboard/ }));
       await screen.findByRole("region", { name: "Conversation" });
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
-      );
+      fireEvent.click(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }));
 
       const overlay = await screen.findByRole("dialog", { name: "Delegated work" });
       // No inline floor at all: the sheet's bottom is the screen's, in CSS.
       expect(overlay.closest(".mobile-agent-overlay")).not.toHaveAttribute("style");
 
       fireEvent.click(screen.getByRole("button", { name: "Close Delegated work" }));
-      await waitFor(() =>
-        expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
-      );
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
       // The parent's composer is answerable again the moment the sheet goes.
       expect(screen.getByRole("textbox", { name: "Chat prompt" })).toBeInTheDocument();
     } finally {
@@ -618,11 +628,9 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     const list = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(list).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" })
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Open multitask: Fix the changelog date" }));
     await screen.findByRole("dialog", { name: "Delegated work" });
   }
 
@@ -694,20 +702,16 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const list = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(list).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(list).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
-    fireEvent.click(
-      await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") })
-    );
+    fireEvent.click(await screen.findByRole("button", { name: startedAgentName("Audit the dashboard query") }));
     await screen.findByRole("dialog", { name: "Delegated work" });
 
     act(() => {
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
 
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Delegated work" })).not.toBeInTheDocument());
     expect(screen.getByRole("region", { name: "Conversation" })).toBeInTheDocument();
   });
 
@@ -720,7 +724,7 @@ describe("MobileApp", () => {
     section.scrollTop = 240;
     fireEvent.scroll(section);
 
-    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(section).findByRole("button", { name: /Build dashboard/ }));
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Chat list" })).not.toBeInTheDocument();
     // The parked list still sits in the shell, so a keyboard-sized viewport
@@ -765,7 +769,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const priority = await screen.findByRole("region", { name: "Priority" });
-    const row = (await within(priority).findByRole("button", { name: /Build dashboard/ }));
+    const row = await within(priority).findByRole("button", { name: /Build dashboard/ });
     fireEvent.click(row);
     await screen.findByRole("region", { name: "Conversation" });
 
@@ -792,7 +796,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
 
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(section).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
 
     const fork = vi.fn().mockResolvedValue({
@@ -816,21 +820,21 @@ describe("MobileApp", () => {
     ]);
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(section).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
     await screen.findByRole("tablist", { name: "Review mode" });
 
-    await waitFor(() => expect(listChangedFiles).toHaveBeenCalledWith(
-      { kind: "workspace", id: "workspace-1" }, "branch"
-    ));
+    await waitFor(() =>
+      expect(listChangedFiles).toHaveBeenCalledWith({ kind: "workspace", id: "workspace-1" }, "branch")
+    );
     expect(screen.queryByRole("button", { name: "Changes shown" })).not.toBeInTheDocument();
   });
 
   it("browses changed diffs and the file tree from the session screen", async () => {
     listChangedFiles.mockResolvedValue([
-      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0 , staged: false },
-]);
+      { path: "src/foo.ts", status: "modified", additions: 1, deletions: 0, staged: false }
+    ]);
     loadDiff.mockResolvedValue({
       workspaceId: "workspace-1",
       filePath: "src/foo.ts",
@@ -841,15 +845,15 @@ describe("MobileApp", () => {
         "@@ -1,1 +1,2 @@",
         " const a = 1;",
         "+const b = 2;"
-      ].join("\n")
-      , revision: "test-revision"
+      ].join("\n"),
+      revision: "test-revision"
     });
     listWorkspaceFiles.mockResolvedValue([{ path: "src/foo.ts" }, { path: "README.md" }]);
     readWorkspaceFile.mockResolvedValue({ kind: "text", content: "hello world", size: 11, mtimeMs: 1 });
 
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(section).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
@@ -889,7 +893,7 @@ describe("MobileApp", () => {
     listChangedFiles.mockResolvedValue([]);
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(section).findByRole("button", { name: /Build dashboard/ }));
     const conversation = await screen.findByRole("region", { name: "Conversation" });
 
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
@@ -933,7 +937,7 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     const section = await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await within(section).findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await within(section).findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
     await waitFor(() => expect(sessionEventsSince).toHaveBeenCalled());
 
@@ -941,9 +945,7 @@ describe("MobileApp", () => {
     act(() => remote.publish({ status: "connected", resync: true }));
 
     await waitFor(() => expect(sessionEventsSince.mock.calls.length).toBeGreaterThan(before));
-    expect(sessionEventsSince).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sessionId: "session-1" })
-    );
+    expect(sessionEventsSince).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "session-1" }));
   });
 
   it("launches a new session in the current checkout from the + screen", async () => {
@@ -1023,15 +1025,13 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await screen.findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await screen.findByRole("button", { name: /Build dashboard/ }));
     expect(await screen.findByRole("region", { name: "Conversation" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Stop chat" }));
 
     await waitFor(() => expect(terminateProvider).toHaveBeenCalledWith("session-1"));
-    await waitFor(() =>
-      expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true })
-    );
+    await waitFor(() => expect(archiveWorkspace).toHaveBeenCalledWith({ workspaceId: "workspace-1", force: true }));
     expect(await screen.findByRole("region", { name: "Chat list" })).toBeInTheDocument();
   });
 
@@ -1319,8 +1319,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     const list = await screen.findByRole("region", { name: "Chat list" });
 
-    const row = (await within(list).findByRole("button", { name: /Build dashboard/ }))
-      .closest(".mobile-session-item");
+    const row = (await within(list).findByRole("button", { name: /Build dashboard/ })).closest(".mobile-session-item");
     if (!row) throw new Error("no row");
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Chat actions" }));
     fireEvent.click(await screen.findByRole("button", { name: /^Archive/ }));
@@ -1418,7 +1417,7 @@ describe("MobileApp", () => {
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
 
-    fireEvent.click((await screen.findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await screen.findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
 
     // The phone's back button pops the entry the session screen pushed.
@@ -1435,7 +1434,7 @@ describe("MobileApp", () => {
 
     render(<MobileApp />);
     await screen.findByRole("region", { name: "Chat list" });
-    fireEvent.click((await screen.findByRole("button", { name: /Build dashboard/ })));
+    fireEvent.click(await screen.findByRole("button", { name: /Build dashboard/ }));
     await screen.findByRole("region", { name: "Conversation" });
     fireEvent.click(screen.getByRole("button", { name: /Files and changes/ }));
     await screen.findByRole("tablist", { name: "Review mode" });
@@ -1524,10 +1523,7 @@ describe("MobileApp", () => {
     fireEvent.click(within(themePicker).getByRole("radio", { name: "Light" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(window.localStorage.getItem("argmax.theme.mode")).toBe("light");
-    expect(within(themePicker).getByRole("radio", { name: "Light" })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
+    expect(within(themePicker).getByRole("radio", { name: "Light" })).toHaveAttribute("aria-checked", "true");
 
     fireEvent.click(within(themePicker).getByRole("radio", { name: "Dark" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
@@ -1554,25 +1550,16 @@ describe("MobileApp", () => {
 
     openAppearance();
     const accentPicker = screen.getByRole("radiogroup", { name: "Accent" });
-    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
+    expect(within(accentPicker).getByRole("radio", { name: "Green" })).toHaveAttribute("aria-checked", "true");
     expect(within(accentPicker).getByRole("radio", { name: "Black" })).toBeTruthy();
 
     fireEvent.click(within(accentPicker).getByRole("radio", { name: "Orange" }));
     expect(document.documentElement.getAttribute("data-accent")).toBe("orange");
     expect(window.localStorage.getItem("argmax.accent.tint")).toBe("orange");
-    expect(within(accentPicker).getByRole("radio", { name: "Orange" })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
+    expect(within(accentPicker).getByRole("radio", { name: "Orange" })).toHaveAttribute("aria-checked", "true");
 
     const bubblePicker = screen.getByRole("radiogroup", { name: "Your message bubbles" });
-    expect(within(bubblePicker).getByRole("radio", { name: "Accent" })).toHaveAttribute(
-      "aria-checked",
-      "true"
-    );
+    expect(within(bubblePicker).getByRole("radio", { name: "Accent" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(bubblePicker).getByRole("radio", { name: "Neutral" }));
     expect(document.documentElement.getAttribute("data-user-bubble")).toBe("neutral");
     expect(window.localStorage.getItem("argmax.chat.bubbleTint")).toBe("neutral");

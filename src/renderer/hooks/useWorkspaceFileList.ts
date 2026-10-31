@@ -70,7 +70,8 @@ export function useWorkspaceFileList(args: {
       setListState((prev) => (prev === "ready" ? prev : "loading"));
     }
     setListError(null);
-    void dispatch.listFiles()
+    void dispatch
+      .listFiles()
       .then((loaded) => {
         if (token !== workspaceListToken.current) return;
         setEntries(loaded);
@@ -82,7 +83,9 @@ export function useWorkspaceFileList(args: {
         setListState("error");
         setListError(errorMessage(error) || "Could not load files.");
       });
-    return () => { workspaceListToken.current += 1; };
+    return () => {
+      workspaceListToken.current += 1;
+    };
   }, [mode, isPanelOpen, sourceId, sourceKind, changedFilesKey, dispatch, refreshCount]);
 
   return {

@@ -161,7 +161,12 @@ async function commandChat(bridge, flags) {
       sessionId: session.id,
       workspaceId: workspace.id,
       ...(session.autoTier
-        ? { provider: session.provider, modelId: session.modelId, effort: session.reasoningEffort, autoRoute: session.autoRoute }
+        ? {
+            provider: session.provider,
+            modelId: session.modelId,
+            effort: session.reasoningEffort,
+            autoRoute: session.autoRoute
+          }
         : {})
     })
   );
@@ -183,7 +188,11 @@ async function commandReply(bridge, flags) {
   if (!session) fail(`no session ${flags.session}`);
   // Only the timeline written after the send is streamed: the cursor is read
   // first so the earlier turns are not replayed.
-  const before = await bridge.call("session:events-since", { sessionId: session.id, eventCursor: null, rawOutputCursor: null });
+  const before = await bridge.call("session:events-since", {
+    sessionId: session.id,
+    eventCursor: null,
+    rawOutputCursor: null
+  });
   const startedAt = Date.now();
   const sent = await bridge.call("providers:send-input", {
     sessionId: session.id,
@@ -325,13 +334,15 @@ async function commandPerf(bridge, flags) {
   await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   const capture = await bridge.call("system:performance-stop", {});
   writeFileSync(outputPath, `${JSON.stringify(capture, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({
-    recording: false,
-    samples: capture.samples.length,
-    droppedSamples: capture.droppedSamples,
-    output: outputPath,
-    summary: capture.summary
-  }));
+  console.log(
+    JSON.stringify({
+      recording: false,
+      samples: capture.samples.length,
+      droppedSamples: capture.droppedSamples,
+      output: outputPath,
+      summary: capture.summary
+    })
+  );
 }
 
 async function main() {

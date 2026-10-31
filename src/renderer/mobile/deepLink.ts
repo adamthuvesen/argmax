@@ -28,11 +28,7 @@ export function takeDeepLinkSessionId(): string | null {
 
   params.delete(SESSION_PARAM);
   const query = params.toString();
-  window.history.replaceState(
-    null,
-    "",
-    window.location.pathname + (query ? `?${query}` : "") + window.location.hash
-  );
+  window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : "") + window.location.hash);
 
   return isDeepLinkSessionId(raw) ? raw : null;
 }

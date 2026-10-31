@@ -2,13 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import type { ReviewState } from "../hooks/useReviewState.js";
-import {
-  baseSession,
-  event,
-  project,
-  reviewStub,
-  workspace
-} from "../../test/sessionConversationTestHarness.js";
+import { baseSession, event, project, reviewStub, workspace } from "../../test/sessionConversationTestHarness.js";
 import { SessionConversation } from "./SessionConversation.js";
 
 function renderPane(
@@ -51,13 +45,31 @@ describe("SessionConversation workspace card", () => {
       files: [{ path: "README.md", status: "M", additions: 1, deletions: 0, staged: false }],
       projectFolderChanges: {
         workingFolder: null,
-        groups: [{
-          folder: { id: "dbt", projectId: "project", name: "dbt", rootPath: "/repos/dbt", isPrimary: false, enabled: true, summary: null },
-          files: [{ path: "README.md", status: "M", additions: 4, deletions: 0, staged: false }],
-          error: null
-        }],
-        error: null, selection: null, selectedFolder: null, diff: null, diffError: null, loadingDiff: false,
-        selectFile, clearSelection, refresh: vi.fn(), expandContext: vi.fn()
+        groups: [
+          {
+            folder: {
+              id: "dbt",
+              projectId: "project",
+              name: "dbt",
+              rootPath: "/repos/dbt",
+              isPrimary: false,
+              enabled: true,
+              summary: null
+            },
+            files: [{ path: "README.md", status: "M", additions: 4, deletions: 0, staged: false }],
+            error: null
+          }
+        ],
+        error: null,
+        selection: null,
+        selectedFolder: null,
+        diff: null,
+        diffError: null,
+        loadingDiff: false,
+        selectFile,
+        clearSelection,
+        refresh: vi.fn(),
+        expandContext: vi.fn()
       }
     });
     renderPane({ review });

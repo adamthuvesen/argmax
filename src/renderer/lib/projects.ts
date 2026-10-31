@@ -137,10 +137,7 @@ function loadStringArray(storageKey: string): string[] {
 // unpinned (or among pinned) sessions inside a single project group.
 export function loadWorkspaceOrders(): Record<string, string[]> {
   if (typeof window === "undefined") return {};
-  const parsed = safeJsonParseRecord(
-    window.localStorage.getItem(workspaceOrderStorageKey),
-    "projects.workspaceOrder"
-  );
+  const parsed = safeJsonParseRecord(window.localStorage.getItem(workspaceOrderStorageKey), "projects.workspaceOrder");
   const result: Record<string, string[]> = {};
   for (const [projectId, ids] of Object.entries(parsed)) {
     if (Array.isArray(ids) && ids.every((entry) => typeof entry === "string")) {
@@ -253,10 +250,7 @@ export function sortProjectsBy(
  * sort mode; the mode orders everything after them. An id with no project
  * (removed since it was pinned) is skipped.
  */
-export function pinnedProjectsFirst(
-  projects: ProjectSummary[],
-  pinnedIds: readonly string[]
-): ProjectSummary[] {
+export function pinnedProjectsFirst(projects: ProjectSummary[], pinnedIds: readonly string[]): ProjectSummary[] {
   if (pinnedIds.length === 0) return projects;
   const byId = new Map(projects.map((project) => [project.id, project]));
   const pinned = pinnedIds.flatMap((id) => byId.get(id) ?? []);

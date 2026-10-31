@@ -1,10 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App.js";
-import {
-  setCachedUsageRemaining,
-  setCachedUsageSummary
-} from "./lib/ledgerPageState.js";
+import { setCachedUsageRemaining, setCachedUsageSummary } from "./lib/ledgerPageState.js";
 import { resetLedgerPrefetchForTests } from "./lib/ledgerPrefetch.js";
 import {
   setupAppTestMocks,
@@ -205,7 +202,6 @@ describe("App usage", () => {
     const chip = (await within(usagePage()).findByText(/vs the previous 30 days/)).parentElement;
     expect(chip).toHaveTextContent("34%");
     expect(chip).toHaveTextContent("up");
-
   });
 
   it("claims no comparison when the ledger does not reach back a whole window", async () => {
@@ -332,9 +328,7 @@ describe("App usage", () => {
 
   it("reopens with the last numbers instead of skeletoning again", async () => {
     await openUsage();
-    const usagePage = screen
-      .getByRole("heading", { name: "Usage" })
-      .closest(".usage-page") as HTMLElement;
+    const usagePage = screen.getByRole("heading", { name: "Usage" }).closest(".usage-page") as HTMLElement;
     expect(await within(usagePage).findByText("Aug 4 to Sep 2")).toBeInTheDocument();
 
     leavePage();
@@ -343,9 +337,7 @@ describe("App usage", () => {
     usageSummary.mockClear();
     crossToUsage();
 
-    const reopened = screen
-      .getByRole("heading", { name: "Usage" })
-      .closest(".usage-page") as HTMLElement;
+    const reopened = screen.getByRole("heading", { name: "Usage" }).closest(".usage-page") as HTMLElement;
     expect(within(reopened).getByText("Aug 4 to Sep 2")).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Loading usage" })).not.toBeInTheDocument();
     await waitFor(() => {

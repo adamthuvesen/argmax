@@ -15,17 +15,7 @@ import {
   Target,
   X
 } from "lucide-react";
-import {
-  Suspense,
-  lazy,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type JSX
-} from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { browserActions, projectActions, providerActions, workspaceActions } from "../data/bridgeActions.js";
 import { useBridgeQuery } from "../data/useBridgeQuery.js";
@@ -41,28 +31,15 @@ import {
 } from "../../shared/types.js";
 import type { LaunchCheckout } from "../lib/launchCheckout.js";
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
-import {
-  cloudProviderName,
-  isHostedCloudProvider,
-  type HostedCloudProvider
-} from "../../shared/cloudProviders.js";
+import { cloudProviderName, isHostedCloudProvider, type HostedCloudProvider } from "../../shared/cloudProviders.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
 import { errorMessage } from "../../shared/error.js";
 import { showErrorToast, showToast } from "../state/toast.js";
-import {
-  appendReferencesToPrompt,
-  imageAttachmentReference
-} from "../lib/composerAttachments.js";
+import { appendReferencesToPrompt, imageAttachmentReference } from "../lib/composerAttachments.js";
 import { useBackgroundSendShortcut } from "../hooks/useBackgroundSendShortcut.js";
 import { useWindowSnapshotAttach } from "../hooks/useWindowSnapshotAttach.js";
 import { windowSnapshotLabel } from "../lib/windowSnapshotInbox.js";
-import {
-  clearDraft,
-  launcherDraftKey,
-  readDraft,
-  restoreDraft,
-  subscribeDraftRestore
-} from "../lib/composerDrafts.js";
+import { clearDraft, launcherDraftKey, readDraft, restoreDraft, subscribeDraftRestore } from "../lib/composerDrafts.js";
 import { restoreDraftAttachments, restoreDraftText } from "../lib/draftRestore.js";
 import { formatChord, matchesChord } from "../lib/shortcutChord.js";
 import { repoNameFromPath, titleFromPrompt } from "../lib/projects.js";
@@ -86,17 +63,9 @@ import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
 import { useTypeToFilter } from "../hooks/useTypeToFilter.js";
 import { LAUNCHER_TITLE, SIDE_CHAT_PLACEHOLDER, SIDE_CHAT_TITLE } from "../lib/launcherTitle.js";
 import type { FontSize } from "../lib/fonts.js";
-import {
-  persistLaunchProjectId,
-  sortProjectsByLaunchRecency
-} from "../lib/launchProjectPreference.js";
+import { persistLaunchProjectId, sortProjectsByLaunchRecency } from "../lib/launchProjectPreference.js";
 import { preferredLaunchModel, type ModelPickerSelection } from "../lib/models.js";
-import {
-  LAUNCHER_MODE_LABELS,
-  cycleLauncherMode,
-  launcherModeTitle,
-  type LauncherMode
-} from "../lib/agentMode.js";
+import { LAUNCHER_MODE_LABELS, cycleLauncherMode, launcherModeTitle, type LauncherMode } from "../lib/agentMode.js";
 import { isMcpCommand, type ComposerCommand } from "../lib/composerCommands.js";
 import {
   readStoredWorkspaceMode,
@@ -250,9 +219,7 @@ export function LaunchSurface({
   projects: ProjectSummary[];
   resetSignal?: number;
   rightPanelToggleSignal?: number;
-  registerPaletteFileContext?: (
-    context: PaletteSurfaceContext | null
-  ) => void;
+  registerPaletteFileContext?: (context: PaletteSurfaceContext | null) => void;
   sideChatMode?: boolean;
   /** Workspaces from the dashboard snapshot — used to resolve the checkout
    *  row that backs the launcher's Terminal tab. */
@@ -295,17 +262,16 @@ export function LaunchSurface({
   // held here and sent with the launch. It belongs to the project it was picked
   // in, so another project shows its own current branch again.
   const [pickedCheckout, setPickedCheckout] = useState<LaunchCheckout | null>(null);
-  const checkout = pickedCheckout?.projectId === activeProject?.id && pickedCheckout?.projectFolderId === selectedFolderId ? pickedCheckout : null;
+  const checkout =
+    pickedCheckout?.projectId === activeProject?.id && pickedCheckout?.projectFolderId === selectedFolderId
+      ? pickedCheckout
+      : null;
 
   // The unsent prompt and its screenshots belong to the project they will be
   // launched in, not to the mounted launcher: a grid cell that retargets its
   // repo remounts, and the full launcher outlives an app restart. Side-chat
   // drafts get their own stable key under the hidden scratch project.
-  const draftKey = chatMode
-    ? launcherDraftKey(SCRATCH_PROJECT_ID)
-    : project
-      ? launcherDraftKey(project.id)
-      : null;
+  const draftKey = chatMode ? launcherDraftKey(SCRATCH_PROJECT_ID) : project ? launcherDraftKey(project.id) : null;
   const [status, setStatus] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const promptInputRef = useRef<ComposerField | null>(null);
@@ -345,13 +311,10 @@ export function LaunchSurface({
   });
   // A window capture goes to the draft the user is composing: this launcher is
   // the focused surface and has a draft to attach to. Cloud tasks take text only.
-  useWindowSnapshotAttach(
-    isFocused && draftKey !== null && !isSubmitting && !cloudMode,
-    (snapshot) => {
-      attachSavedAttachment(snapshot.attachment, windowSnapshotLabel(snapshot));
-      promptInputRef.current?.focus();
-    }
-  );
+  useWindowSnapshotAttach(isFocused && draftKey !== null && !isSubmitting && !cloudMode, (snapshot) => {
+    attachSavedAttachment(snapshot.attachment, windowSnapshotLabel(snapshot));
+    promptInputRef.current?.focus();
+  });
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(readStoredWorkspaceMode);
   const effectiveWorkspaceMode = canUseGit ? workspaceMode : "current";
@@ -430,9 +393,11 @@ export function LaunchSurface({
   );
   useEffect(() => {
     if (!isFocused || !onLaunchFolderChange) return undefined;
-    onLaunchFolderChange(activeProject && selectedFolderId && selectedFolderIsPrimary === false
-      ? { project: activeProject, projectFolderId: selectedFolderId }
-      : null);
+    onLaunchFolderChange(
+      activeProject && selectedFolderId && selectedFolderIsPrimary === false
+        ? { project: activeProject, projectFolderId: selectedFolderId }
+        : null
+    );
     return () => onLaunchFolderChange(null);
   }, [activeProject, isFocused, onLaunchFolderChange, selectedFolderId, selectedFolderIsPrimary]);
   const { terminalWorkspaceId, ensureCheckoutWorkspace } = useProjectCheckoutTerminal(
@@ -474,20 +439,26 @@ export function LaunchSurface({
 
   // What the palette reads about this launcher when it opens, rebuilt each
   // render so the read is current without re-registering.
-  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
+  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({
+    filesVisible: false,
+    changedPaths: [],
+    actions: []
+  }));
   paletteLiveRef.current = (): PaletteSurfaceLive => ({
     filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
     changedPaths: reviewState.files.map((file) => file.path),
-    actions: [{
-      id: "pane:toggle-files",
-      label: "Toggle files",
-      subtitle: "Browse this checkout",
-      group: "Actions",
-      icon: FolderTree,
-      shortcut: "⌘G",
-      keywords: ["file tree", "explorer"],
-      run: toggleFilesPane
-    }]
+    actions: [
+      {
+        id: "pane:toggle-files",
+        label: "Toggle files",
+        subtitle: "Browse this checkout",
+        group: "Actions",
+        icon: FolderTree,
+        shortcut: "⌘G",
+        keywords: ["file tree", "explorer"],
+        run: toggleFilesPane
+      }
+    ]
   });
   const readPaletteLive = useCallback((): PaletteSurfaceLive => paletteLiveRef.current(), []);
 
@@ -587,7 +558,16 @@ export function LaunchSurface({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [chatMode, cloudMode, isFocused, reviewClosePane, reviewIsPanelOpen, reviewModes, reviewOpenBrowser, supportsEffort]);
+  }, [
+    chatMode,
+    cloudMode,
+    isFocused,
+    reviewClosePane,
+    reviewIsPanelOpen,
+    reviewModes,
+    reviewOpenBrowser,
+    supportsEffort
+  ]);
 
   useEffect(() => {
     if (resetSignal === lastResetSignal.current) return;
@@ -617,7 +597,8 @@ export function LaunchSurface({
         event.ctrlKey ||
         event.altKey ||
         event.shiftKey
-      ) return;
+      )
+        return;
       event.preventDefault();
       reviewClosePanel();
     };
@@ -738,8 +719,12 @@ export function LaunchSurface({
     read: (api) => {
       if (!activeProject) return undefined;
       return Promise.all([
-        (selectedFolderId ? api.projects.listBranches(activeProject.id, selectedFolderId) : api.projects.listBranches(activeProject.id)),
-        (selectedFolderId ? api.projects.listCheckouts(activeProject.id, selectedFolderId) : api.projects.listCheckouts(activeProject.id))
+        selectedFolderId
+          ? api.projects.listBranches(activeProject.id, selectedFolderId)
+          : api.projects.listBranches(activeProject.id),
+        selectedFolderId
+          ? api.projects.listCheckouts(activeProject.id, selectedFolderId)
+          : api.projects.listCheckouts(activeProject.id)
       ]);
     },
     onData: ([list, checkoutList]) => {
@@ -789,14 +774,20 @@ export function LaunchSurface({
   const branchListRef = useRef<HTMLUListElement | null>(null);
   // One node is both the positioned menu and the list useTypeToFilter focuses.
   // A fresh inline ref would detach and reattach every render.
-  const setProjectListNode = useCallback((node: HTMLUListElement | null): void => {
-    projectListRef.current = node;
-    setProjectPopover(node);
-  }, [setProjectPopover]);
-  const setBranchListNode = useCallback((node: HTMLUListElement | null): void => {
-    branchListRef.current = node;
-    setBranchPopover(node);
-  }, [setBranchPopover]);
+  const setProjectListNode = useCallback(
+    (node: HTMLUListElement | null): void => {
+      projectListRef.current = node;
+      setProjectPopover(node);
+    },
+    [setProjectPopover]
+  );
+  const setBranchListNode = useCallback(
+    (node: HTMLUListElement | null): void => {
+      branchListRef.current = node;
+      setBranchPopover(node);
+    },
+    [setBranchPopover]
+  );
   const pickProject = useCallback(
     (candidate: ProjectSummary): void => {
       persistLaunchProjectId(candidate.id);
@@ -829,9 +820,7 @@ export function LaunchSurface({
     onPick: pickBranch
   });
 
-  const placeholderText = chatMode
-    ? SIDE_CHAT_PLACEHOLDER
-    : "Ask your agent to inspect, build, or fix something";
+  const placeholderText = chatMode ? SIDE_CHAT_PLACEHOLDER : "Ask your agent to inspect, build, or fix something";
   const formRef = useRef<HTMLFormElement | null>(null);
 
   // Read inside the auto-focus effect without widening its deps: whether a
@@ -851,7 +840,12 @@ export function LaunchSurface({
     // (a dashboard delta re-identifying the project) must not yank that away.
     if (contextPickerOpenRef.current) return;
     const active = document.activeElement;
-    if (becameFocused && active !== promptInputRef.current && promptInputRef.current?.closest('[role="region"]')?.contains(active)) return;
+    if (
+      becameFocused &&
+      active !== promptInputRef.current &&
+      promptInputRef.current?.closest('[role="region"]')?.contains(active)
+    )
+      return;
     promptInputRef.current?.focus();
     // Metadata refreshes replace the project object even in background cells.
     // Only the active launcher may refocus after its project changes.
@@ -970,26 +964,30 @@ export function LaunchSurface({
             setProjectPickerOpen(true);
           }
         },
-        ...(canUseGit ? [{
-          name: "branch",
-          label: "Branch",
-          hint: `Start from a branch other than ${shownBranch ?? "the current one"}`,
-          icon: GitBranch,
-          run: () => {
-            setCompactContextOpen(true);
-            void openBranchPicker();
-          }
-        },
-        {
-          name: "worktree",
-          label: workspaceMode === "worktree" ? "Worktree off" : "Worktree on",
-          hint:
-            workspaceMode === "worktree"
-              ? "Run in your current checkout instead"
-              : "Run in an isolated git worktree on a new branch",
-          icon: FolderGit2,
-          run: toggleWorkspace
-        }] : [])
+        ...(canUseGit
+          ? [
+              {
+                name: "branch",
+                label: "Branch",
+                hint: `Start from a branch other than ${shownBranch ?? "the current one"}`,
+                icon: GitBranch,
+                run: () => {
+                  setCompactContextOpen(true);
+                  void openBranchPicker();
+                }
+              },
+              {
+                name: "worktree",
+                label: workspaceMode === "worktree" ? "Worktree off" : "Worktree on",
+                hint:
+                  workspaceMode === "worktree"
+                    ? "Run in your current checkout instead"
+                    : "Run in an isolated git worktree on a new branch",
+                icon: FolderGit2,
+                run: toggleWorkspace
+              }
+            ]
+          : [])
       );
     }
     return commands;
@@ -1026,17 +1024,12 @@ export function LaunchSurface({
     source: launchTarget && !cloudMode ? projectFileSource(launchTarget) : null,
     chats: cloudMode ? undefined : chatDirectory
   });
-  const chatChips = useMemo(
-    () => chatChipEnvironmentFor(chatDirectory, openChat),
-    [chatDirectory]
-  );
+  const chatChips = useMemo(() => chatChipEnvironmentFor(chatDirectory, openChat), [chatDirectory]);
 
   // Same accent tint for `/skill` tokens as the session composer.
   const isSkillToken = useCallback(
     (name: string): boolean =>
-      name === "mcp" ||
-      (goalEnabled && name === "goal") ||
-      slashAutocomplete.skillNames.has(name),
+      name === "mcp" || (goalEnabled && name === "goal") || slashAutocomplete.skillNames.has(name),
     [goalEnabled, slashAutocomplete.skillNames]
   );
 
@@ -1045,13 +1038,7 @@ export function LaunchSurface({
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
-    if (
-      event.key === "Tab" &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey &&
-      !event.isComposing
-    ) {
+    if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
       event.preventDefault();
       toggleMode();
       return;
@@ -1103,7 +1090,11 @@ export function LaunchSurface({
   const submitPrompt = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const trimmedPrompt = livePrompt().trim();
-    if ((!chatMode && !launchFolder.ready) || (trimmedPrompt.length === 0 && pendingAttachments.length === 0) || isSubmitting) {
+    if (
+      (!chatMode && !launchFolder.ready) ||
+      (trimmedPrompt.length === 0 && pendingAttachments.length === 0) ||
+      isSubmitting
+    ) {
       return;
     }
     if (!cloudMode && isMcpCommand(trimmedPrompt)) {
@@ -1124,7 +1115,12 @@ export function LaunchSurface({
         return;
       }
       setStatus(null);
-      setCloudDraft({ projectId: project.id, projectFolderId: selectedFolderId, provider: cloudProvider, brief: trimmedPrompt });
+      setCloudDraft({
+        projectId: project.id,
+        projectFolderId: selectedFolderId,
+        provider: cloudProvider,
+        brief: trimmedPrompt
+      });
       return;
     }
 
@@ -1186,10 +1182,7 @@ export function LaunchSurface({
     await launchIn(launch, undefined);
   };
 
-  const launchIn = async (
-    launch: PendingLaunch,
-    projectId: string | undefined
-  ): Promise<LaunchedChat | undefined> => {
+  const launchIn = async (launch: PendingLaunch, projectId: string | undefined): Promise<LaunchedChat | undefined> => {
     setIsSubmitting(true);
     // See the side-chat path above: the draft goes before the first await.
     if (draftKey) clearDraft(draftKey);
@@ -1229,7 +1222,12 @@ export function LaunchSurface({
   const startInBackground = async (): Promise<void> => {
     const sentPrompt = livePrompt();
     const trimmedPrompt = sentPrompt.trim();
-    if ((!chatMode && !launchFolder.ready) || isSubmitting || (trimmedPrompt.length === 0 && pendingAttachments.length === 0)) return;
+    if (
+      (!chatMode && !launchFolder.ready) ||
+      isSubmitting ||
+      (trimmedPrompt.length === 0 && pendingAttachments.length === 0)
+    )
+      return;
     if (cloudMode) {
       setStatus("Cloud tasks open a review first. Press Enter to review it.");
       return;
@@ -1281,24 +1279,16 @@ export function LaunchSurface({
       // A launcher showing this draft takes it back above what was typed since,
       // this one or another opened in the meantime. With none on screen it goes
       // to storage, where the next New chat for that project reads it.
-      const stillHere = sentKey
-        ? restoreDraft(sentKey, { text: sentPrompt, attachments: sentAttachments })
-        : false;
+      const stillHere = sentKey ? restoreDraft(sentKey, { text: sentPrompt, attachments: sentAttachments }) : false;
       showErrorToast(
         `${errorMessage(error) || "Could not start agent."} ${
-          stillHere
-            ? "Your draft is back in the composer."
-            : "Your draft was put back in its New chat."
+          stillHere ? "Your draft is back in the composer." : "Your draft was put back in its New chat."
         }`
       );
     }
   };
 
-  const resolveProjectCheck = (
-    check: ProjectCheck,
-    outcome: ProjectCheckOutcome,
-    sessionId: string | null
-  ): void => {
+  const resolveProjectCheck = (check: ProjectCheck, outcome: ProjectCheckOutcome, sessionId: string | null): void => {
     if (!check.checkId) return;
     void projectActions()
       ?.resolveCheck({ checkId: check.checkId, outcome, sessionId })
@@ -1380,480 +1370,500 @@ export function LaunchSurface({
       data-review-open={isReviewOpen ? "true" : undefined}
     >
       <div className="launcher-surface" ref={surfaceRef}>
-      {anyContextPickerOpen && createPortal(
-        <div
-          className="picker-dismiss-layer"
-          aria-hidden="true"
-          onMouseDown={closeContextPickers}
-        />,
-        document.body
-      )}
-      <header className="launcher-hero">
-        <Mascot
-          mood={mascotMood}
-          shades={wearsShades}
-          size={104}
-          className="launcher-hero-mascot"
-          buttonClassName="launcher-hero-mascot-button"
-          onClick={petMascot}
-          title="Pet the fox"
-        />
-        <h1 className="launcher-hero-title">{chatMode ? SIDE_CHAT_TITLE : LAUNCHER_TITLE}</h1>
-      </header>
-      <form
-        className="composer"
-        data-drag-active={isDraggingFiles ? "true" : undefined}
-        data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
-        data-type-scale={chatFontSize === undefined ? "composer" : undefined}
-        ref={formRef}
-        onSubmit={(event) => void submitPrompt(event)}
-        onDragEnter={cloudMode ? undefined : onComposerDragEnter}
-        onDragOver={onComposerDragOver}
-        onDragLeave={onComposerDragLeave}
-        onDrop={(event) => {
-          if (!cloudMode) return onComposerDrop(event);
-          event.preventDefault();
-          setStatus("Cloud tasks support text only. Switch to Local to attach files.");
-        }}
-      >
-        <div className="composer-drop-overlay" aria-hidden="true">
-          <Paperclip size={20} />
-          <span>Drop to attach</span>
-          <small>Images and files</small>
-        </div>
-        <input
-          ref={attachmentInputRef}
-          type="file"
-          multiple
-          hidden
-          aria-hidden="true"
-          tabIndex={-1}
-          onChange={onAttachmentInputChange}
-        />
-        {pendingAttachments.length > 0 ? (
-          <div className="composer-attachments" aria-label="Attached images">
-            {pendingAttachments.map((attachment) => {
-              const src =
-                pendingAttachmentPreviews[attachment.filePath] ?? attachmentProtocolUrl(attachment.filePath);
-              return (
-                <div key={attachment.filePath} className="composer-attachment-chip">
-                  <button
-                    type="button"
-                    className="attachment-open-button"
-                    aria-label={
-                      attachmentLabels[attachment.filePath]
-                        ? `View window capture: ${attachmentLabels[attachment.filePath]}`
-                        : "View attachment"
-                    }
-                    title={attachmentLabels[attachment.filePath] ?? "View attachment"}
-                    onClick={() => setLightboxSrc(src)}
-                  >
-                    <img src={src} alt="" />
-                  </button>
-                  <button
-                    type="button"
-                    className="composer-attachment-remove"
-                    aria-label="Remove attachment"
-                    title="Remove attachment"
-                    onClick={() => removePendingAttachment(attachment.filePath)}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        <div className="composer-input">
-          <ComposerEditor
-            ariaLabel="Task prompt"
-            documentKey={draftKey}
-            expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
-            controls={
-              slashAutocomplete.popoverOpen
-                ? "slash-menu"
-                : fileAutocomplete.popoverOpen
-                  ? "file-popover"
-                  : undefined
-            }
-            disabled={isSubmitting}
-            onChange={setPrompt}
-            onCaretChange={fileAutocomplete.onSelectionChange}
-            onKeyDown={onPromptKeyDown}
-            onPaste={(event) => {
-              if (!cloudMode) return onComposerPaste(event);
-              if ((event.clipboardData?.files.length ?? 0) > 0) {
-                event.preventDefault();
-                setStatus("Cloud tasks support text only. Switch to Local to attach files.");
-              }
-            }}
-            placeholder={placeholderText}
-            fieldRef={promptInputRef}
-            value={prompt}
-            isSkill={isSkillToken}
-            chats={chatChips}
+        {anyContextPickerOpen &&
+          createPortal(
+            <div className="picker-dismiss-layer" aria-hidden="true" onMouseDown={closeContextPickers} />,
+            document.body
+          )}
+        <header className="launcher-hero">
+          <Mascot
+            mood={mascotMood}
+            shades={wearsShades}
+            size={104}
+            className="launcher-hero-mascot"
+            buttonClassName="launcher-hero-mascot-button"
+            onClick={petMascot}
+            title="Pet the fox"
           />
-          <SlashCommandMenu state={slashAutocomplete} />
-          <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
-          <button
-            className="send-button"
-            type="submit"
-            disabled={isSubmitting || !hasSendableContent || (!chatMode && !launchFolder.ready)}
-            title={cloudMode ? "Review cloud task" : "Start agent"}
-            aria-label={cloudMode ? "Review cloud task" : "Start agent"}
-            aria-description={
-              cloudMode
-                ? undefined
-                : `${formatChord(backgroundShortcut)} starts the agent in the background`
-            }
-          >
-            {cloudMode ? <ArrowRight size={15} aria-hidden="true" /> : <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />}
-          </button>
-        </div>
-        <div className="composer-context">
-          <button
-            className="composer-tool"
-            type="button"
-            title={cloudMode ? "Cloud tasks take text only. Switch to Local to attach files." : "Attach file"}
-            aria-label="Attach file"
-            disabled={cloudMode}
-            onClick={openFilePicker}
-          >
-            <Plus size={14} />
-          </button>
-          <div className="composer-context-group composer-context-group--model">
-            {cloudMode ? (
-              <span
-                className="composer-context-chip composer-cloud-provider"
-                title={`${cloudProviderName(cloudProvider)} picks the model`}
-              >
-                <Cloud size={14} aria-hidden="true" />
-                <span className="model-picker-label">{cloudProviderName(cloudProvider)}</span>
-              </span>
-            ) : <LaunchModelSelector
-              ariaLabel="Switch model"
-              autoRouting={autoRouting}
-              availability={providerAvailability}
-              fastModeEnabled={fastModeEnabled}
-              open={modelPickerOpen}
-              onOpenChange={setModelPickerOpen}
-              openBelow
-              withEffortSlider
-              effortOpen={effortPickerOpen}
-              onEffortOpenChange={setEffortPickerOpen}
-              value={model}
-              onChange={onModelChange}
-              onFastModeEnabledChange={onFastModeEnabledChange}
-            />}
-            {cloudMode || model.autoTier ? null : <ComposerUsageSlot provider={model.provider} />}
+          <h1 className="launcher-hero-title">{chatMode ? SIDE_CHAT_TITLE : LAUNCHER_TITLE}</h1>
+        </header>
+        <form
+          className="composer"
+          data-drag-active={isDraggingFiles ? "true" : undefined}
+          data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
+          data-type-scale={chatFontSize === undefined ? "composer" : undefined}
+          ref={formRef}
+          onSubmit={(event) => void submitPrompt(event)}
+          onDragEnter={cloudMode ? undefined : onComposerDragEnter}
+          onDragOver={onComposerDragOver}
+          onDragLeave={onComposerDragLeave}
+          onDrop={(event) => {
+            if (!cloudMode) return onComposerDrop(event);
+            event.preventDefault();
+            setStatus("Cloud tasks support text only. Switch to Local to attach files.");
+          }}
+        >
+          <div className="composer-drop-overlay" aria-hidden="true">
+            <Paperclip size={20} />
+            <span>Drop to attach</span>
+            <small>Images and files</small>
           </div>
-          {chatMode ? null : (
-          <div
-            className="composer-context-group composer-context-group--workspace"
-            data-compact-open={compactContextOpen ? "true" : undefined}
-            ref={compactContextRef}
-          >
-            <button
-              type="button"
-              className="composer-compact-context-trigger"
-              title={contextSummary}
-              aria-label={contextSummary}
-              aria-haspopup="dialog"
-              aria-expanded={compactContextOpen}
-              onClick={() => {
-                if (!compactContextOpen) {
-                  setProjectPickerOpen(false);
-                  setBranchPickerOpen(false);
-                  setModelPickerOpen(false);
-                }
-                setCompactContextOpen((open) => !open);
-              }}
-            >
-              <MoreHorizontal size={14} aria-hidden="true" />
-            </button>
-            <div
-              className="launch-workspace-pickers"
-              role={compactContextOpen ? "dialog" : undefined}
-              aria-label={compactContextOpen ? "Project and branch" : undefined}
-            >
-            <LaunchFolderPicker folders={launchFolder.folders} selected={launchFolder.folder} open={folderPickerOpen}
-              onOpenChange={setFolderPickerOpen}
-              onPick={(folder) => {
-                launchFolder.pickFolder(folder);
-                if (folder.id === selectedFolderId) return;
-                setPickedCheckout(null);
-                setProjectPickedByHand(true);
-              }}>
-            <div className="project-picker-anchor" ref={setProjectAnchor}>
-            <button
-              className="composer-context-chip"
-              type="button"
-              aria-label="Switch project"
-              aria-haspopup="listbox"
-              aria-expanded={projectPickerOpen || folderPickerOpen}
-              title={launchFolder.folder
-                ? `${contextChipLabel} · Work in ${repoNameFromPath(launchFolder.folder.rootPath) ?? launchFolder.folder.name}
-${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a folder" : ""}`
-                : contextChipLabel}
-              onContextMenu={(event) => {
-                if (!showFolderPicker) return;
-                event.preventDefault();
-                event.currentTarget.focus();
-                setProjectPickerOpen(false);
-                setBranchPickerOpen(false);
-                setFolderPickerOpen(true);
-              }}
-              onKeyDown={(event) => {
-                if (!showFolderPicker || !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) return;
-                event.preventDefault();
-                event.currentTarget.focus();
-                setProjectPickerOpen(false);
-                setBranchPickerOpen(false);
-                setFolderPickerOpen(true);
-              }}
-              onClick={() => { setFolderPickerOpen(false); setBranchPickerOpen(false); setProjectPickerOpen((o) => !o); }}
-            >
-              <Folder size={14} aria-hidden="true" />
-              <span className="composer-context-chip-label">{contextChipLabel}</span>
-
-            </button>
-            {projectPickerOpen && (
-              <ul
-                className="project-picker-popover"
-                // Menus read at app-chrome size even though the composer around
-                // them sits one step up. See tokens.css.
-                data-type-scale="chrome"
-                role="listbox"
-                aria-label="Select project"
-                ref={setProjectListNode}
-                style={projectFloatingStyles}
-                tabIndex={-1}
-                onKeyDown={projectFilter.onKeyDown}
-                onClick={(event) => {
-                  if (!isOptionButtonTarget(event.target)) {
-                    setProjectPickerOpen(false);
-                  }
-                }}
-              >
-                <PickerFilterRow
-                  query={projectFilter.query}
-                  matchCount={projectFilter.matches.length}
-                  totalCount={orderedProjects.length}
-                />
-                {projectFilter.matches.map((p, index) => (
-                  <li
-                    key={p.id}
-                    role="option"
-                    aria-selected={p.id === project?.id}
-                    data-active={index === projectFilter.activeIndex ? "true" : undefined}
-                  >
+          <input
+            ref={attachmentInputRef}
+            type="file"
+            multiple
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={onAttachmentInputChange}
+          />
+          {pendingAttachments.length > 0 ? (
+            <div className="composer-attachments" aria-label="Attached images">
+              {pendingAttachments.map((attachment) => {
+                const src =
+                  pendingAttachmentPreviews[attachment.filePath] ?? attachmentProtocolUrl(attachment.filePath);
+                return (
+                  <div key={attachment.filePath} className="composer-attachment-chip">
                     <button
                       type="button"
-                      className="project-picker-item"
-                      aria-pressed={p.id === project?.id}
-                      onClick={() => pickProject(p)}
+                      className="attachment-open-button"
+                      aria-label={
+                        attachmentLabels[attachment.filePath]
+                          ? `View window capture: ${attachmentLabels[attachment.filePath]}`
+                          : "View attachment"
+                      }
+                      title={attachmentLabels[attachment.filePath] ?? "View attachment"}
+                      onClick={() => setLightboxSrc(src)}
                     >
-                      <PickerLead selected={p.id === project?.id}>
-                        <Folder size={13} />
-                      </PickerLead>
-                      <span className="picker-label">{p.name}</span>
-                      <span className="picker-meta" aria-hidden="true">
-                        {collapseHome(p.repoPath)}
-                      </span>
+                      <img src={src} alt="" />
                     </button>
-                  </li>
-                ))}
-                {projectFilter.matches.length === 0 ? (
-                  <li className="project-picker-empty" role="presentation">
-                    No projects match
-                  </li>
-                ) : null}
-                <li className="project-picker-divider" role="separator" />
-                <li role="option" aria-selected={false}>
-                  <button
-                    type="button"
-                    className="project-picker-item"
-                    onClick={() => {
-                      onAddProject();
+                    <button
+                      type="button"
+                      className="composer-attachment-remove"
+                      aria-label="Remove attachment"
+                      title="Remove attachment"
+                      onClick={() => removePendingAttachment(attachment.filePath)}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          <div className="composer-input">
+            <ComposerEditor
+              ariaLabel="Task prompt"
+              documentKey={draftKey}
+              expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+              controls={
+                slashAutocomplete.popoverOpen ? "slash-menu" : fileAutocomplete.popoverOpen ? "file-popover" : undefined
+              }
+              disabled={isSubmitting}
+              onChange={setPrompt}
+              onCaretChange={fileAutocomplete.onSelectionChange}
+              onKeyDown={onPromptKeyDown}
+              onPaste={(event) => {
+                if (!cloudMode) return onComposerPaste(event);
+                if ((event.clipboardData?.files.length ?? 0) > 0) {
+                  event.preventDefault();
+                  setStatus("Cloud tasks support text only. Switch to Local to attach files.");
+                }
+              }}
+              placeholder={placeholderText}
+              fieldRef={promptInputRef}
+              value={prompt}
+              isSkill={isSkillToken}
+              chats={chatChips}
+            />
+            <SlashCommandMenu state={slashAutocomplete} />
+            <FilePopover state={fileAutocomplete} inputRef={promptInputRef} />
+            <button
+              className="send-button"
+              type="submit"
+              disabled={isSubmitting || !hasSendableContent || (!chatMode && !launchFolder.ready)}
+              title={cloudMode ? "Review cloud task" : "Start agent"}
+              aria-label={cloudMode ? "Review cloud task" : "Start agent"}
+              aria-description={
+                cloudMode ? undefined : `${formatChord(backgroundShortcut)} starts the agent in the background`
+              }
+            >
+              {cloudMode ? (
+                <ArrowRight size={15} aria-hidden="true" />
+              ) : (
+                <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          <div className="composer-context">
+            <button
+              className="composer-tool"
+              type="button"
+              title={cloudMode ? "Cloud tasks take text only. Switch to Local to attach files." : "Attach file"}
+              aria-label="Attach file"
+              disabled={cloudMode}
+              onClick={openFilePicker}
+            >
+              <Plus size={14} />
+            </button>
+            <div className="composer-context-group composer-context-group--model">
+              {cloudMode ? (
+                <span
+                  className="composer-context-chip composer-cloud-provider"
+                  title={`${cloudProviderName(cloudProvider)} picks the model`}
+                >
+                  <Cloud size={14} aria-hidden="true" />
+                  <span className="model-picker-label">{cloudProviderName(cloudProvider)}</span>
+                </span>
+              ) : (
+                <LaunchModelSelector
+                  ariaLabel="Switch model"
+                  autoRouting={autoRouting}
+                  availability={providerAvailability}
+                  fastModeEnabled={fastModeEnabled}
+                  open={modelPickerOpen}
+                  onOpenChange={setModelPickerOpen}
+                  openBelow
+                  withEffortSlider
+                  effortOpen={effortPickerOpen}
+                  onEffortOpenChange={setEffortPickerOpen}
+                  value={model}
+                  onChange={onModelChange}
+                  onFastModeEnabledChange={onFastModeEnabledChange}
+                />
+              )}
+              {cloudMode || model.autoTier ? null : <ComposerUsageSlot provider={model.provider} />}
+            </div>
+            {chatMode ? null : (
+              <div
+                className="composer-context-group composer-context-group--workspace"
+                data-compact-open={compactContextOpen ? "true" : undefined}
+                ref={compactContextRef}
+              >
+                <button
+                  type="button"
+                  className="composer-compact-context-trigger"
+                  title={contextSummary}
+                  aria-label={contextSummary}
+                  aria-haspopup="dialog"
+                  aria-expanded={compactContextOpen}
+                  onClick={() => {
+                    if (!compactContextOpen) {
                       setProjectPickerOpen(false);
-                      setCompactContextOpen(false);
+                      setBranchPickerOpen(false);
+                      setModelPickerOpen(false);
+                    }
+                    setCompactContextOpen((open) => !open);
+                  }}
+                >
+                  <MoreHorizontal size={14} aria-hidden="true" />
+                </button>
+                <div
+                  className="launch-workspace-pickers"
+                  role={compactContextOpen ? "dialog" : undefined}
+                  aria-label={compactContextOpen ? "Project and branch" : undefined}
+                >
+                  <LaunchFolderPicker
+                    folders={launchFolder.folders}
+                    selected={launchFolder.folder}
+                    open={folderPickerOpen}
+                    onOpenChange={setFolderPickerOpen}
+                    onPick={(folder) => {
+                      launchFolder.pickFolder(folder);
+                      if (folder.id === selectedFolderId) return;
+                      setPickedCheckout(null);
+                      setProjectPickedByHand(true);
                     }}
                   >
-                    <PickerLead>
-                      <Plus size={13} />
-                    </PickerLead>
-                    New project
-                  </button>
-                </li>
-              </ul>
-            )}
-            </div>
-            </LaunchFolderPicker>
-            {activeProject && canUseGit ? (
-            <div className="project-picker-anchor" ref={setBranchAnchor}>
-            <button
-              className="composer-context-chip branch-chip"
-              type="button"
-              aria-label="Switch branch"
-              aria-haspopup="listbox"
-              aria-expanded={branchPickerOpen}
-              title={
-                runsInLinkedCheckout
-                  ? `Runs in ${collapseHome(checkout?.path ?? "")}. Files, Changes and Terminal show the project checkout.`
-                  : shownBranch ?? undefined
-              }
-              onClick={() => void openBranchPicker()}
-            >
-              <GitBranch size={14} aria-hidden="true" />
-              <span
-                className="composer-context-chip-label"
-                data-in={runsInLinkedCheckout ? checkout?.path?.split("/").pop() : undefined}
-              >
-                {shownBranch}
-              </span>
-            </button>
-            {branchPickerOpen && (
-              <ul
-                className="project-picker-popover"
-                data-type-scale="chrome"
-                role="listbox"
-                aria-label="Select branch"
-                ref={setBranchListNode}
-                style={branchFloatingStyles}
-                tabIndex={-1}
-                onKeyDown={branchFilter.onKeyDown}
-                onClick={(event) => {
-                  if (!isOptionButtonTarget(event.target)) {
-                    setBranchPickerOpen(false);
-                  }
-                }}
-              >
-                <PickerFilterRow
-                  query={branchFilter.query}
-                  matchCount={branchFilter.matches.length}
-                  totalCount={branches.length}
-                />
-                {branchFilter.matches.length > 0 ? (
-                  branchFilter.matches.map((b, index) => {
-                    const holder = checkouts.find((candidate) => candidate.branch === b);
-                    return (
-                      <li
-                        key={b}
-                        role="option"
-                        aria-selected={b === shownBranch}
-                        data-active={index === branchFilter.activeIndex ? "true" : undefined}
+                    <div className="project-picker-anchor" ref={setProjectAnchor}>
+                      <button
+                        className="composer-context-chip"
+                        type="button"
+                        aria-label="Switch project"
+                        aria-haspopup="listbox"
+                        aria-expanded={projectPickerOpen || folderPickerOpen}
+                        title={
+                          launchFolder.folder
+                            ? `${contextChipLabel} · Work in ${repoNameFromPath(launchFolder.folder.rootPath) ?? launchFolder.folder.name}
+${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a folder" : ""}`
+                            : contextChipLabel
+                        }
+                        onContextMenu={(event) => {
+                          if (!showFolderPicker) return;
+                          event.preventDefault();
+                          event.currentTarget.focus();
+                          setProjectPickerOpen(false);
+                          setBranchPickerOpen(false);
+                          setFolderPickerOpen(true);
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            !showFolderPicker ||
+                            !(event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))
+                          )
+                            return;
+                          event.preventDefault();
+                          event.currentTarget.focus();
+                          setProjectPickerOpen(false);
+                          setBranchPickerOpen(false);
+                          setFolderPickerOpen(true);
+                        }}
+                        onClick={() => {
+                          setFolderPickerOpen(false);
+                          setBranchPickerOpen(false);
+                          setProjectPickerOpen((o) => !o);
+                        }}
                       >
-                        <button
-                          type="button"
-                          className="project-picker-item"
-                          // Another checkout has it; the project's own is where a launch runs anyway.
-                          data-in={holder?.isMain === false ? holder.path.split("/").pop() : undefined}
-                          aria-pressed={b === shownBranch}
-                          onClick={() => pickBranch(b)}
+                        <Folder size={14} aria-hidden="true" />
+                        <span className="composer-context-chip-label">{contextChipLabel}</span>
+                      </button>
+                      {projectPickerOpen && (
+                        <ul
+                          className="project-picker-popover"
+                          // Menus read at app-chrome size even though the composer around
+                          // them sits one step up. See tokens.css.
+                          data-type-scale="chrome"
+                          role="listbox"
+                          aria-label="Select project"
+                          ref={setProjectListNode}
+                          style={projectFloatingStyles}
+                          tabIndex={-1}
+                          onKeyDown={projectFilter.onKeyDown}
+                          onClick={(event) => {
+                            if (!isOptionButtonTarget(event.target)) {
+                              setProjectPickerOpen(false);
+                            }
+                          }}
                         >
-                          <PickerLead selected={b === shownBranch}>
-                            <GitBranch size={13} />
-                          </PickerLead>
-                          <span className="picker-label">{b}</span>
-                        </button>
-                      </li>
-                    );
-                  })
-                ) : (
-                  <li role="option" aria-selected={false} aria-disabled="true">
-                    <button type="button" className="project-picker-item" disabled>
-                      {branchFilter.query ? "No branches match" : "No branches"}
-                    </button>
-                  </li>
-                )}
-              </ul>
+                          <PickerFilterRow
+                            query={projectFilter.query}
+                            matchCount={projectFilter.matches.length}
+                            totalCount={orderedProjects.length}
+                          />
+                          {projectFilter.matches.map((p, index) => (
+                            <li
+                              key={p.id}
+                              role="option"
+                              aria-selected={p.id === project?.id}
+                              data-active={index === projectFilter.activeIndex ? "true" : undefined}
+                            >
+                              <button
+                                type="button"
+                                className="project-picker-item"
+                                aria-pressed={p.id === project?.id}
+                                onClick={() => pickProject(p)}
+                              >
+                                <PickerLead selected={p.id === project?.id}>
+                                  <Folder size={13} />
+                                </PickerLead>
+                                <span className="picker-label">{p.name}</span>
+                                <span className="picker-meta" aria-hidden="true">
+                                  {collapseHome(p.repoPath)}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                          {projectFilter.matches.length === 0 ? (
+                            <li className="project-picker-empty" role="presentation">
+                              No projects match
+                            </li>
+                          ) : null}
+                          <li className="project-picker-divider" role="separator" />
+                          <li role="option" aria-selected={false}>
+                            <button
+                              type="button"
+                              className="project-picker-item"
+                              onClick={() => {
+                                onAddProject();
+                                setProjectPickerOpen(false);
+                                setCompactContextOpen(false);
+                              }}
+                            >
+                              <PickerLead>
+                                <Plus size={13} />
+                              </PickerLead>
+                              New project
+                            </button>
+                          </li>
+                        </ul>
+                      )}
+                    </div>
+                  </LaunchFolderPicker>
+                  {activeProject && canUseGit ? (
+                    <div className="project-picker-anchor" ref={setBranchAnchor}>
+                      <button
+                        className="composer-context-chip branch-chip"
+                        type="button"
+                        aria-label="Switch branch"
+                        aria-haspopup="listbox"
+                        aria-expanded={branchPickerOpen}
+                        title={
+                          runsInLinkedCheckout
+                            ? `Runs in ${collapseHome(checkout?.path ?? "")}. Files, Changes and Terminal show the project checkout.`
+                            : (shownBranch ?? undefined)
+                        }
+                        onClick={() => void openBranchPicker()}
+                      >
+                        <GitBranch size={14} aria-hidden="true" />
+                        <span
+                          className="composer-context-chip-label"
+                          data-in={runsInLinkedCheckout ? checkout?.path?.split("/").pop() : undefined}
+                        >
+                          {shownBranch}
+                        </span>
+                      </button>
+                      {branchPickerOpen && (
+                        <ul
+                          className="project-picker-popover"
+                          data-type-scale="chrome"
+                          role="listbox"
+                          aria-label="Select branch"
+                          ref={setBranchListNode}
+                          style={branchFloatingStyles}
+                          tabIndex={-1}
+                          onKeyDown={branchFilter.onKeyDown}
+                          onClick={(event) => {
+                            if (!isOptionButtonTarget(event.target)) {
+                              setBranchPickerOpen(false);
+                            }
+                          }}
+                        >
+                          <PickerFilterRow
+                            query={branchFilter.query}
+                            matchCount={branchFilter.matches.length}
+                            totalCount={branches.length}
+                          />
+                          {branchFilter.matches.length > 0 ? (
+                            branchFilter.matches.map((b, index) => {
+                              const holder = checkouts.find((candidate) => candidate.branch === b);
+                              return (
+                                <li
+                                  key={b}
+                                  role="option"
+                                  aria-selected={b === shownBranch}
+                                  data-active={index === branchFilter.activeIndex ? "true" : undefined}
+                                >
+                                  <button
+                                    type="button"
+                                    className="project-picker-item"
+                                    // Another checkout has it; the project's own is where a launch runs anyway.
+                                    data-in={holder?.isMain === false ? holder.path.split("/").pop() : undefined}
+                                    aria-pressed={b === shownBranch}
+                                    onClick={() => pickBranch(b)}
+                                  >
+                                    <PickerLead selected={b === shownBranch}>
+                                      <GitBranch size={13} />
+                                    </PickerLead>
+                                    <span className="picker-label">{b}</span>
+                                  </button>
+                                </li>
+                              );
+                            })
+                          ) : (
+                            <li role="option" aria-selected={false} aria-disabled="true">
+                              <button type="button" className="project-picker-item" disabled>
+                                {branchFilter.query ? "No branches match" : "No branches"}
+                              </button>
+                            </li>
+                          )}
+                        </ul>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             )}
-            </div>
-            ) : null}
+            <div className="composer-context-group composer-context-group--behavior">
+              {!chatMode ? (
+                <button
+                  type="button"
+                  className="composer-context-chip composer-run-location"
+                  aria-label={`Run location: ${cloudMode ? "Cloud" : "Local"}`}
+                  aria-pressed={cloudMode}
+                  disabled={isSubmitting}
+                  title={
+                    cloudMode
+                      ? "Switch to Local"
+                      : cloudProvider
+                        ? `Switch to Cloud · ${cloudProviderName(cloudProvider)}`
+                        : `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`
+                  }
+                  onClick={() => {
+                    if (!cloudMode && !cloudProvider) {
+                      setStatus(
+                        `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`
+                      );
+                      return;
+                    }
+                    closeContextPickers();
+                    setCloudSelected((selected) => !selected);
+                    setStatus(
+                      !cloudMode && pendingAttachments.length > 0
+                        ? "Cloud tasks support text only. Remove attachments or switch to Local."
+                        : null
+                    );
+                  }}
+                >
+                  {cloudMode ? "Cloud" : "Local"}
+                </button>
+              ) : null}
+              {/* Auto is the resting mode and carries no flags, so it stays unlabelled.
+                The chip appears only for a scratch Chat. */}
+              {launcherMode === "auto" ? null : (
+                <button
+                  type="button"
+                  className="composer-context-chip chat-mode-toggle"
+                  aria-label="Chat mode"
+                  aria-pressed
+                  title={launcherModeTitle(launcherMode, chatAvailable)}
+                  onClick={toggleMode}
+                >
+                  {LAUNCHER_MODE_LABELS[launcherMode]}
+                </button>
+              )}
+              {chatMode || cloudMode || !canUseGit ? null : (
+                <button
+                  type="button"
+                  className="composer-context-chip workspace-mode-toggle"
+                  aria-label="Worktree"
+                  aria-pressed={workspaceMode === "worktree"}
+                  title={
+                    workspaceMode === "worktree"
+                      ? "On — agent runs in an isolated git worktree on a new branch"
+                      : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
+                  }
+                  onClick={toggleWorkspace}
+                >
+                  Worktree
+                </button>
+              )}
             </div>
           </div>
-          )}
-          <div className="composer-context-group composer-context-group--behavior">
-            {!chatMode ? (
+          {launchFolder.error && !chatMode ? (
+            <div className="launcher-error" role="alert">
+              <span>{launchFolder.error}</span>
+              <button type="button" onClick={launchFolder.retry}>
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {status ? (
+            <div className="launcher-error" role="alert">
+              <span>{status}</span>
               <button
                 type="button"
-                className="composer-context-chip composer-run-location"
-                aria-label={`Run location: ${cloudMode ? "Cloud" : "Local"}`}
-                aria-pressed={cloudMode}
-                disabled={isSubmitting}
-                title={cloudMode
-                  ? "Switch to Local"
-                  : cloudProvider
-                    ? `Switch to Cloud · ${cloudProviderName(cloudProvider)}`
-                    : `${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks`}
+                className="icon-button"
+                aria-label="Dismiss error"
                 onClick={() => {
-                  if (!cloudMode && !cloudProvider) {
-                    setStatus(`${model.autoTier ? "The router" : PROVIDER_DISPLAY_NAMES[model.provider]} can’t run cloud tasks. Pick a Claude, Codex, or Cursor model to use Cloud.`);
-                    return;
-                  }
-                  closeContextPickers();
-                  setCloudSelected((selected) => !selected);
-                  setStatus(!cloudMode && pendingAttachments.length > 0
-                    ? "Cloud tasks support text only. Remove attachments or switch to Local."
-                    : null);
+                  setStatus(null);
+                  if (isFocusedRef.current) promptInputRef.current?.focus();
                 }}
               >
-                {cloudMode ? "Cloud" : "Local"}
+                <X size={14} />
               </button>
-            ) : null}
-            {/* Auto is the resting mode and carries no flags, so it stays unlabelled.
-                The chip appears only for a scratch Chat. */}
-            {launcherMode === "auto" ? null : (
-              <button
-                type="button"
-                className="composer-context-chip chat-mode-toggle"
-                aria-label="Chat mode"
-                aria-pressed
-                title={launcherModeTitle(launcherMode, chatAvailable)}
-                onClick={toggleMode}
-              >
-                {LAUNCHER_MODE_LABELS[launcherMode]}
-              </button>
-            )}
-            {chatMode || cloudMode || !canUseGit ? null : (
-              <button
-                type="button"
-                className="composer-context-chip workspace-mode-toggle"
-                aria-label="Worktree"
-                aria-pressed={workspaceMode === "worktree"}
-                title={
-                  workspaceMode === "worktree"
-                    ? "On — agent runs in an isolated git worktree on a new branch"
-                    : "Off — agent runs in your current checkout. Enable to isolate in a worktree."
-                }
-                onClick={toggleWorkspace}
-              >
-                Worktree
-              </button>
-            )}
-          </div>
-        </div>
-        {launchFolder.error && !chatMode ? <div className="launcher-error" role="alert">
-          <span>{launchFolder.error}</span>
-          <button type="button" onClick={launchFolder.retry}>Retry</button>
-        </div> : null}
-        {status ? (
-          <div className="launcher-error" role="alert">
-            <span>{status}</span>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Dismiss error"
-              onClick={() => {
-                setStatus(null);
-                if (isFocusedRef.current) promptInputRef.current?.focus();
-              }}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        ) : null}
-      </form>
+            </div>
+          ) : null}
+        </form>
       </div>
       {projectCheckDraft && project ? (
         <ProjectCheckDialog

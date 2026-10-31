@@ -97,12 +97,14 @@ describe("LaunchSurface picker shortcuts", () => {
   });
 
   it("closes the browser panel with Escape when the launcher has no project", async () => {
-    render(launcher({
-      project: null,
-      projects: [],
-      sideChatMode: true,
-      onLaunchSideChat: () => Promise.resolve()
-    }));
+    render(
+      launcher({
+        project: null,
+        projects: [],
+        sideChatMode: true,
+        onLaunchSideChat: () => Promise.resolve()
+      })
+    );
     await act(async () => {});
 
     fireEvent.keyDown(document, { key: "I", metaKey: true, shiftKey: true });

@@ -76,11 +76,13 @@ describe("Project check in the launcher", () => {
     await waitFor(() => expect(launchLocal).toHaveBeenCalledOnce());
     expect(launchLocal.mock.calls[0]?.[0]).toBe(PROMPT);
     expect(launchLocal.mock.calls[0]?.[6]).toBe("project-argmax");
-    await waitFor(() => expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith({
-      checkId: "check-1",
-      outcome: "accepted",
-      sessionId: "session-new"
-    }));
+    await waitFor(() =>
+      expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith({
+        checkId: "check-1",
+        outcome: "accepted",
+        sessionId: "session-new"
+      })
+    );
   });
 
   it("keeps the current project when the user picks it in the dialog", async () => {
@@ -93,9 +95,9 @@ describe("Project check in the launcher", () => {
 
     await waitFor(() => expect(launchLocal).toHaveBeenCalledOnce());
     expect(launchLocal.mock.calls[0]?.[6]).toBeUndefined();
-    await waitFor(() => expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "stayed" })
-    ));
+    await waitFor(() =>
+      expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(expect.objectContaining({ outcome: "stayed" }))
+    );
   });
 
   it("goes back to the composer with the draft on Back", async () => {
@@ -131,9 +133,7 @@ describe("Project check in the launcher", () => {
     expect(archive).toHaveBeenCalledWith({ workspaceId: "workspace-new", force: true });
     expect(launchLocal.mock.calls[1]?.[0]).toBe(PROMPT);
     expect(launchLocal.mock.calls[1]?.[6]).toBe(current.id);
-    expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(
-      expect.objectContaining({ outcome: "undone" })
-    );
+    expect(window.argmax!.projects.resolveCheck).toHaveBeenCalledWith(expect.objectContaining({ outcome: "undone" }));
   });
 
   it("keeps the picked branch for the launch it was picked for, through a switch and its Undo", async () => {

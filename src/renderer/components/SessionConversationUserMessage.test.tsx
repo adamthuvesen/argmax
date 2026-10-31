@@ -20,12 +20,7 @@ afterEach(() => {
 });
 
 function renderMessage(message: string): void {
-  render(
-    <SessionConversationUserMessage
-      event={{ id: "evt-1", message, createdAt: 0 } as never}
-      attachments={[]}
-    />
-  );
+  render(<SessionConversationUserMessage event={{ id: "evt-1", message, createdAt: 0 } as never} attachments={[]} />);
 }
 
 describe("<SessionConversationUserMessage />", () => {
@@ -35,10 +30,7 @@ describe("<SessionConversationUserMessage />", () => {
     const link = screen.getByRole("link", {
       name: "https://github.com/mentimeter/revops-backoffice/pull/458"
     });
-    expect(link).toHaveAttribute(
-      "href",
-      "https://github.com/mentimeter/revops-backoffice/pull/458"
-    );
+    expect(link).toHaveAttribute("href", "https://github.com/mentimeter/revops-backoffice/pull/458");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(screen.getByRole("article")).toHaveTextContent(
       "Can we check https://github.com/mentimeter/revops-backoffice/pull/458 today"
@@ -52,19 +44,21 @@ describe("<SessionConversationUserMessage />", () => {
       "https://github.com/o/r/pull/1666";
     render(
       <SessionConversationUserMessage
-        event={{
-          id: "evt-1",
-          message: notice,
-          createdAt: 0,
-          payload: {
-            origin: {
-              kind: "message",
-              label: "PR #1666 watch",
-              messageId: "pr-watch:w1:8:65b7d7c",
-              sessionId: "s1"
+        event={
+          {
+            id: "evt-1",
+            message: notice,
+            createdAt: 0,
+            payload: {
+              origin: {
+                kind: "message",
+                label: "PR #1666 watch",
+                messageId: "pr-watch:w1:8:65b7d7c",
+                sessionId: "s1"
+              }
             }
-          }
-        } as never}
+          } as never
+        }
         attachments={[]}
       />
     );
@@ -172,33 +166,31 @@ describe("<SessionConversationUserMessage /> — from another chat", () => {
 
   it("falls back to the plain bubble when the origin block is malformed", () => {
     render(
-      <SessionConversationUserMessage
-        event={originEvent({ sessionId: "session-9", label: "   " })}
-        attachments={[]}
-      />
+      <SessionConversationUserMessage event={originEvent({ sessionId: "session-9", label: "   " })} attachments={[]} />
     );
 
     expect(screen.queryByRole("article", { name: "Message from another chat" })).toBeNull();
     expect(screen.getByRole("article")).toHaveTextContent("Picker is fixed, over to you.");
   });
-
 });
 
 describe("<SessionConversationUserMessage /> — sent mid-turn (steer)", () => {
   it("stacks the steer note after the origin header when a message is both forwarded and steered", () => {
     render(
       <SessionConversationUserMessage
-        event={{
-          id: "evt-origin-steer",
-          message: "Picker is fixed, over to you.",
-          createdAt: 0,
-          payload: {
-            source: "composer",
-            agentMode: "auto",
-            delivery: "steer",
-            origin: { sessionId: "session-9", label: "Fix the model picker", kind: "message" }
-          }
-        } as never}
+        event={
+          {
+            id: "evt-origin-steer",
+            message: "Picker is fixed, over to you.",
+            createdAt: 0,
+            payload: {
+              source: "composer",
+              agentMode: "auto",
+              delivery: "steer",
+              origin: { sessionId: "session-9", label: "Fix the model picker", kind: "message" }
+            }
+          } as never
+        }
         attachments={[]}
       />
     );

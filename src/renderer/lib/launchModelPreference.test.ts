@@ -78,10 +78,7 @@ describe("launch model preference", () => {
 
   it("applies the app-wide default effort to whatever model is stored", () => {
     persistDefaultEffort("xhigh");
-    window.localStorage.setItem(
-      LAUNCH_MODEL_KEY,
-      JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5" })
-    );
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "claude", modelId: "claude-opus-5-5" }));
 
     expect(readStoredLaunchModel()?.reasoningEffort).toBe("xhigh");
   });
@@ -90,10 +87,7 @@ describe("launch model preference", () => {
     // Grok Build's CLI rejects anything above Extra High, so an Ultra default
     // lands on Medium rather than being sent through and refused.
     persistDefaultEffort("ultra");
-    window.localStorage.setItem(
-      LAUNCH_MODEL_KEY,
-      JSON.stringify({ provider: "grok", modelId: "grok-4.7" })
-    );
+    window.localStorage.setItem(LAUNCH_MODEL_KEY, JSON.stringify({ provider: "grok", modelId: "grok-4.7" }));
 
     expect(readStoredLaunchModel()?.reasoningEffort).toBe("medium");
   });
@@ -123,7 +117,12 @@ describe("launch model preference", () => {
   });
 
   it("records model recency so the picker can sort by last use", () => {
-    persistLaunchModel({ provider: "claude", label: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: "medium" });
+    persistLaunchModel({
+      provider: "claude",
+      label: "Opus 5.5",
+      modelId: "claude-opus-5-5",
+      reasoningEffort: "medium"
+    });
     persistLaunchModel({
       provider: "codex",
       label: "GPT-5.6 Sol",

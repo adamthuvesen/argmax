@@ -4,7 +4,12 @@ import type { NativeAgentIdentity, SessionSummary, TimelineEvent, WorkspaceSumma
 import { useRestoreWithoutMotion } from "../hooks/useRestoreWithoutMotion.js";
 import { useConversationScroll } from "../hooks/useConversationScroll.js";
 import { ScrollToLatestButton } from "./ScrollToLatestButton.js";
-import { buildAgentActivity, persistentAgentRuns, type AgentActivity as AgentActivityModel, type AgentModel } from "../lib/agentActivity.js";
+import {
+  buildAgentActivity,
+  persistentAgentRuns,
+  type AgentActivity as AgentActivityModel,
+  type AgentModel
+} from "../lib/agentActivity.js";
 import { decodeTimelineEvent } from "../lib/canonicalTimeline.js";
 import { importChunk } from "../lib/importChunk.js";
 import { VisualizationSessionContext } from "../lib/visualizationSession.js";
@@ -41,7 +46,9 @@ import { ToolCallRow } from "./ToolCallRow.js";
 import { TurnChangesCard } from "./TurnChangesCard.js";
 import { TurnBlock } from "./TurnBlock.js";
 
-const HtmlVisualization = lazy(() => importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization })));
+const HtmlVisualization = lazy(() =>
+  importChunk(async () => ({ default: (await import("./HtmlVisualization.js")).HtmlVisualization }))
+);
 
 /**
  * The run's masthead: what the agent was asked to do as the title, and one
@@ -85,20 +92,21 @@ function AgentHeader({
             identity, sitting above a transcript that already streams and beside
             a tab strip that already carries the status. Even a still nest here
             reads as a second status ticker. */}
-        <AgentEmblem
-          shape={emblem.shape}
-          hue={emblem.hue}
-          size={18}
-          status={status === "error" ? "error" : "done"}
-        />
+        <AgentEmblem shape={emblem.shape} hue={emblem.hue} size={18} status={status === "error" ? "error" : "done"} />
       </span>
       <div className="agent-activity-heading">
-        <h2 className="agent-activity-title" title={title}>{title}</h2>
+        <h2 className="agent-activity-title" title={title}>
+          {title}
+        </h2>
         {facts.length > 0 ? (
           <p className="agent-activity-facts" aria-label="Agent details">
             {facts.map((fact, index) => (
               <span key={`${index}-${fact}`} className="agent-activity-fact">
-                {index > 0 ? <span className="agent-activity-fact-separator" aria-hidden="true">·</span> : null}
+                {index > 0 ? (
+                  <span className="agent-activity-fact-separator" aria-hidden="true">
+                    ·
+                  </span>
+                ) : null}
                 {fact}
               </span>
             ))}
@@ -147,7 +155,17 @@ function renderAssistantGroup({
   onOpenFile?: (path: string, opts?: FileChipOpenOptions) => void;
   restoring?: boolean;
 }): JSX.Element | null {
-  if (group.visualization) return <Suspense fallback={<p role="status">Loading visualization</p>}><HtmlVisualization sessionId={group.visualization.sessionId} artifactId={group.visualization.artifactId} title={group.visualization.title} mode={group.visualization.mode ?? undefined} /></Suspense>;
+  if (group.visualization)
+    return (
+      <Suspense fallback={<p role="status">Loading visualization</p>}>
+        <HtmlVisualization
+          sessionId={group.visualization.sessionId}
+          artifactId={group.visualization.artifactId}
+          title={group.visualization.title}
+          mode={group.visualization.mode ?? undefined}
+        />
+      </Suspense>
+    );
   if (group.thinking) {
     return (
       <ThoughtBlock
@@ -169,7 +187,7 @@ function renderAssistantGroup({
             prefix stops being re-parsed on every reasoning delta. */}
         <StreamingMarkdown
           text={group.text}
-        sourceEventId={group.sourceEventId}
+          sourceEventId={group.sourceEventId}
           streaming={thinkingLive}
           paced={false}
           workspace={workspace}
@@ -212,12 +230,7 @@ function AgentResult({
     // the pane already say "this is the answer", and subagent output usually
     // opens with its own heading. `aria-label` carries the name instead.
     <section className="agent-activity-final" aria-label="Agent result">
-      <StreamingMarkdown
-        text={finalOutput}
-        streaming={false}
-        workspace={workspace}
-        onOpenFile={onOpenFile}
-      />
+      <StreamingMarkdown text={finalOutput} streaming={false} workspace={workspace} onOpenFile={onOpenFile} />
     </section>
   );
 }
@@ -262,9 +275,7 @@ function AgentBrief({
       }
       const lineHeight = parseFloat(getComputedStyle(node).lineHeight);
       const overflow = node.scrollHeight - node.clientHeight;
-      setHiddenLines(
-        overflow > 1 && lineHeight > 0 ? Math.max(1, Math.round(overflow / lineHeight)) : 0
-      );
+      setHiddenLines(overflow > 1 && lineHeight > 0 ? Math.max(1, Math.round(overflow / lineHeight)) : 0);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -287,21 +298,20 @@ function AgentBrief({
       <div
         className="agent-activity-brief-quote"
         ref={quoteRef}
-        onClick={clipped ? (event) => {
-          // A click that lands at the end of a drag-select is the reader
-          // copying a line out of the brief, not asking for the rest of it.
-          if (!document.getSelection()?.isCollapsed) return;
-          // Links and file chips inside the brief keep their own click.
-          if ((event.target as HTMLElement).closest("a, button")) return;
-          onExpand();
-        } : undefined}
+        onClick={
+          clipped
+            ? (event) => {
+                // A click that lands at the end of a drag-select is the reader
+                // copying a line out of the brief, not asking for the rest of it.
+                if (!document.getSelection()?.isCollapsed) return;
+                // Links and file chips inside the brief keep their own click.
+                if ((event.target as HTMLElement).closest("a, button")) return;
+                onExpand();
+              }
+            : undefined
+        }
       >
-        <StreamingMarkdown
-          text={prompt}
-          streaming={false}
-          workspace={workspace}
-          onOpenFile={onOpenFile}
-        />
+        <StreamingMarkdown text={prompt} streaming={false} workspace={workspace} onOpenFile={onOpenFile} />
       </div>
       {clipped ? (
         <button type="button" className="agent-activity-brief-more" onClick={onExpand}>
@@ -370,7 +380,7 @@ function AgentActivityRun({
 }): JSX.Element {
   const parentSessionId = parentSession?.id ?? null;
   const visibleEvents = useMemo(
-    () => parentSessionId ? events.filter((event) => event.sessionId === parentSessionId) : [],
+    () => (parentSessionId ? events.filter((event) => event.sessionId === parentSessionId) : []),
     [events, parentSessionId]
   );
   const activity = useMemo(
@@ -385,7 +395,15 @@ function AgentActivityRun({
         sessionInterrupted: parentSession?.state === "failed" || parentSession?.state === "cancelled",
         provider: parentSession?.provider
       }),
-    [agentRunId, nativeIdentity, parentSession?.provider, parentSession?.state, parentToolUseId, providerInvocationId, visibleEvents]
+    [
+      agentRunId,
+      nativeIdentity,
+      parentSession?.provider,
+      parentSession?.state,
+      parentToolUseId,
+      providerInvocationId,
+      visibleEvents
+    ]
   );
   const finalOutput = activity.finalOutput;
   // Per-agent state needs no reset when the run changes: the dock mounts one
@@ -398,9 +416,7 @@ function AgentActivityRun({
   // the chip folds it away for a run whose brief is already known.
   const [briefShown, setBriefShown] = useState(true);
   const [briefExpanded, setBriefExpanded] = useState(false);
-  const agentKey = parentSessionId
-    ? `${parentSessionId}:${parentToolUseId}:${agentRunId ?? "legacy"}`
-    : null;
+  const agentKey = parentSessionId ? `${parentSessionId}:${parentToolUseId}:${agentRunId ?? "legacy"}` : null;
   const [loadedAgentKey, setLoadedAgentKey] = useState<string | null>(null);
   const [failedAgentKey, setFailedAgentKey] = useState<string | null>(null);
   const [loadingAgentKey, setLoadingAgentKey] = useState<string | null>(null);
@@ -418,9 +434,7 @@ function AgentActivityRun({
   // result until the chip is opened.
   const minimalActivity = defaultToolCallsDisplay === "single-line";
   const compactThinkingDisplay = thinkingDisplay ?? "collapsed";
-  const compactToolSummaries =
-    defaultToolCallsDisplay === "collapsed" &&
-    defaultToolCallGroupsExpanded !== true;
+  const compactToolSummaries = defaultToolCallsDisplay === "collapsed" && defaultToolCallGroupsExpanded !== true;
   const compactActivity = compactToolSummaries && compactThinkingDisplay === "collapsed";
   const activityExpandedDefault =
     !minimalActivity && (defaultToolCallGroupsExpanded ?? defaultToolCallsDisplay === "expanded");
@@ -429,14 +443,11 @@ function AgentActivityRun({
   // Detailed opens individual rows as well as groups. A nested
   // launch row follows that rather than the group level, because what its
   // chevron reveals is the raw launch receipt, not the grandchild's work.
-  const toolRowsExpanded =
-    !minimalActivity && (activityExpandOverride ?? defaultToolCallsDisplay === "expanded");
+  const toolRowsExpanded = !minimalActivity && (activityExpandOverride ?? defaultToolCallsDisplay === "expanded");
   // `loadedAgentKey` is set in the load's `finally`, so this clears whether the
   // read succeeded or failed — a pane that never settled would keep motion
   // suppressed for good.
-  const initialAgentEventsLoadPending = Boolean(
-    agentKey && onLoadAgentEvents && loadedAgentKey !== agentKey
-  );
+  const initialAgentEventsLoadPending = Boolean(agentKey && onLoadAgentEvents && loadedAgentKey !== agentKey);
   // Restored turns must not replay their entrance animation on every reopen,
   // and the run's trace only arrives once `loadAgentEvents` has answered — so
   // the window runs from there, not from mount. Timed from mount it expired
@@ -449,23 +460,17 @@ function AgentActivityRun({
     assistantTimestamps: number[];
     silentSinceMs: number | null;
   } => {
-    const assistantEvents = activity.items.flatMap((item) =>
-      item.kind === "message" ? [item.event] : []
-    );
+    const assistantEvents = activity.items.flatMap((item) => (item.kind === "message" ? [item.event] : []));
     const tools = activity.items.flatMap((item) => (item.kind === "tool" ? [item.tool] : []));
     // Attach child calls before interleaving individual tools with prose.
     const folded = foldTurnToolItems(
-      foldConversationItems([], tools).flatMap((item): TurnToolItem[] =>
-        item.kind === "message" ? [] : [item]
-      )
+      foldConversationItems([], tools).flatMap((item): TurnToolItem[] => (item.kind === "message" ? [] : [item]))
     );
     const assistantGroups = coalesceAssistantGroups(assistantEvents, {
       splitAt: tools.map((tool) => tool.createdAt).sort(),
       streaming
     });
-    const hasAnswerText = assistantGroups.some(
-      (group) => !group.thinking && assistantGroupHasVisibleChat(group)
-    );
+    const hasAnswerText = assistantGroups.some((group) => !group.thinking && assistantGroupHasVisibleChat(group));
     const thinkingLive = streaming && !hasAnswerText;
     const latestGroup = assistantGroups.at(-1);
     const latestToolAt = tools.reduce(
@@ -473,26 +478,31 @@ function AgentActivityRun({
       0
     );
     const latestAssistantEvent = assistantEvents.reduce<TimelineEvent | undefined>(
-      (latest, event) => !latest || event.createdAt >= latest.createdAt ? event : latest,
+      (latest, event) => (!latest || event.createdAt >= latest.createdAt ? event : latest),
       undefined
     );
     const latestMessage = latestAssistantEvent ? decodeTimelineEvent(latestAssistantEvent) : null;
     // Groups keep `streaming` for the text reveal after message.completed.
     // Only incoming answer deltas own the live progress cue.
-    const answerStreaming = latestMessage?.kind === "message" &&
-      latestMessage.content === "answer" && latestMessage.phase === "delta" &&
+    const answerStreaming =
+      latestMessage?.kind === "message" &&
+      latestMessage.content === "answer" &&
+      latestMessage.phase === "delta" &&
       Date.parse(latestMessage.raw.createdAt) >= latestToolAt;
     // A settled Thought is transcript history, not a live progress cue. Once
     // narration has handed progress back, keep the same ticking label as chat
     // through later reasoning bursts. Anchor at the burst's start so incoming
     // reasoning deltas cannot reset its counter.
-    const silentSinceMs = streaming && !answerStreaming &&
+    const silentSinceMs =
+      streaming &&
+      !answerStreaming &&
       !tools.some((tool) => tool.status === "running" && !tool.backgroundLaunch) &&
       !(thinkingLive && assistantGroups.some((group) => group.thinking))
-      ? Math.max(latestToolAt, latestGroup ? Date.parse(
-          latestGroup.thinking ? latestGroup.createdAt : latestGroup.lastActivityAt
-        ) : 0)
-      : null;
+        ? Math.max(
+            latestToolAt,
+            latestGroup ? Date.parse(latestGroup.thinking ? latestGroup.createdAt : latestGroup.lastActivityAt) : 0
+          )
+        : null;
     // Only the run's newest reasoning burst is live: tool boundaries flush a
     // fresh thinking group, so a run that never narrates holds one per call and
     // a turn-wide flag opened every one of them at once. See
@@ -505,61 +515,70 @@ function AgentActivityRun({
       // no last prose group worth keeping to stand in for one.
       { separateAnswer: finalOutput !== null }
     );
-    const assistantChildren = assistantGroups.flatMap<TurnBodyChild & { createdAt: string; sortAt: string }>((group) => {
-      const groupLive = thinkingLive && group.id === liveThoughtGroupId;
-      // Minimal folds settled Thought blocks away entirely — only the live
-      // "Thinking" indicator survives.
-      if (minimalActivity && group.thinking && !groupLive) return [];
-      if (hiddenNarrationIds.has(group.id)) {
-        return [{ kind: "assistant" as const, id: `assistant-${group.id}`, createdAt: group.createdAt, sortAt: group.lastActivityAt, node: null }];
-      }
-      const node = renderAssistantGroup({
-        group,
-        thinkingLive: groupLive,
-        thoughtExpanded: activityExpandOverride ?? false,
-        autoExpandWhileLive: !compactActivity,
-        thinkingDisplay,
-        // Keyed on the group, not on `groupLive`: the hold has to outlast live
-        // so the newest block is still open when the answer lands under it.
-        holdThoughtOpen: activityExpandOverride !== false && group.id === liveThoughtGroupId,
-        agentKey,
-        workspace,
-        onOpenFile,
-        restoring: restoringTranscript
-      });
-      if (node === null) return [];
-      return [
-        {
-          kind: "assistant" as const,
-          id: `assistant-${group.id}`,
-          createdAt: group.createdAt,
-          sortAt: group.lastActivityAt,
-          node,
-          activity: group.thinking,
-          ...(compactActivity && group.thinking
-            ? {
-                activityMember: {
-                  kind: "thought" as const,
-                  id: group.id,
-                  node,
-                  live: groupLive
-                }
-              }
-            : {})
+    const assistantChildren = assistantGroups.flatMap<TurnBodyChild & { createdAt: string; sortAt: string }>(
+      (group) => {
+        const groupLive = thinkingLive && group.id === liveThoughtGroupId;
+        // Minimal folds settled Thought blocks away entirely — only the live
+        // "Thinking" indicator survives.
+        if (minimalActivity && group.thinking && !groupLive) return [];
+        if (hiddenNarrationIds.has(group.id)) {
+          return [
+            {
+              kind: "assistant" as const,
+              id: `assistant-${group.id}`,
+              createdAt: group.createdAt,
+              sortAt: group.lastActivityAt,
+              node: null
+            }
+          ];
         }
-      ];
-    });
-    const toolChildren: (TurnBodyChild & { createdAt: string; sortAt: string; runTools?: ToolCall[] })[] = folded.map((item) => {
-      return {
+        const node = renderAssistantGroup({
+          group,
+          thinkingLive: groupLive,
+          thoughtExpanded: activityExpandOverride ?? false,
+          autoExpandWhileLive: !compactActivity,
+          thinkingDisplay,
+          // Keyed on the group, not on `groupLive`: the hold has to outlast live
+          // so the newest block is still open when the answer lands under it.
+          holdThoughtOpen: activityExpandOverride !== false && group.id === liveThoughtGroupId,
+          agentKey,
+          workspace,
+          onOpenFile,
+          restoring: restoringTranscript
+        });
+        if (node === null) return [];
+        return [
+          {
+            kind: "assistant" as const,
+            id: `assistant-${group.id}`,
+            createdAt: group.createdAt,
+            sortAt: group.lastActivityAt,
+            node,
+            activity: group.thinking,
+            ...(compactActivity && group.thinking
+              ? {
+                  activityMember: {
+                    kind: "thought" as const,
+                    id: group.id,
+                    node,
+                    live: groupLive
+                  }
+                }
+              : {})
+          }
+        ];
+      }
+    );
+    const toolChildren: (TurnBodyChild & { createdAt: string; sortAt: string; runTools?: ToolCall[] })[] = folded.map(
+      (item) => {
+        return {
           kind: "tool" as const,
           id: `tool-${item.tool.id}`,
           createdAt: item.tool.createdAt,
           sortAt: item.tool.createdAt,
           // A nested launch stays its own row at every verbosity, Compact
           // included: it is the pane's only handle on the grandchild's work.
-          runTools: isAgentToolName(item.tool.name)
-            ? undefined
-            : [item.tool, ...(item.children ?? [])],
+          runTools: isAgentToolName(item.tool.name) ? undefined : [item.tool, ...(item.children ?? [])],
           node: (
             <ToolCallRow
               key={item.tool.id}
@@ -572,7 +591,8 @@ function AgentActivityRun({
             />
           )
         };
-    });
+      }
+    );
     const sorted = [...assistantChildren, ...toolChildren].sort((a, b) => {
       const cmp = a.sortAt.localeCompare(b.sortAt);
       if (cmp !== 0) return cmp;
@@ -592,11 +612,10 @@ function AgentActivityRun({
         onOpenAgent={onOpenAgent}
       />
     );
-    const bodySource = (compactActivity
-      ? foldActivityRunsToSummaries(sorted, renderActivityGroup)
-      : foldToolRunsToSummaries(sorted, (runTools) =>
-          renderActivityGroup({ tools: runTools, members: [] })
-        )
+    const bodySource = (
+      compactActivity
+        ? foldActivityRunsToSummaries(sorted, renderActivityGroup)
+        : foldToolRunsToSummaries(sorted, (runTools) => renderActivityGroup({ tools: runTools, members: [] }))
     ).filter((child) => child.node !== null);
     return {
       activityChildren: bodySource.map(({ kind, id, node }) => ({ kind, id, node })),
@@ -624,12 +643,11 @@ function AgentActivityRun({
     toolRowsExpanded,
     workspace
   ]);
-  const {
-    scrollRef,
-    contentRef,
-    follow,
-    scrollToBottom
-  } = useConversationScroll({ sessionId: agentKey, items: followItems, enabled: ownsScroll });
+  const { scrollRef, contentRef, follow, scrollToBottom } = useConversationScroll({
+    sessionId: agentKey,
+    items: followItems,
+    enabled: ownsScroll
+  });
   const loadAgentEventsGuarded = useCallback(async (): Promise<void> => {
     const loadKey = agentKey;
     if (!parentSessionId || !onLoadAgentEvents || !loadKey || agentEventsInFlightKeysRef.current.has(loadKey)) {
@@ -638,14 +656,16 @@ function AgentActivityRun({
     agentEventsInFlightKeysRef.current.add(loadKey);
     setLoadingAgentKey(loadKey);
     try {
-      const identity = nativeIdentity ?? (activity.parentTool?.providerParentConversationId && activity.parentTool.providerChildSessionId
-        ? {
-            providerParentConversationId: activity.parentTool.providerParentConversationId,
-            providerChildSessionId: activity.parentTool.providerChildSessionId
-          }
-        : undefined);
+      const identity =
+        nativeIdentity ??
+        (activity.parentTool?.providerParentConversationId && activity.parentTool.providerChildSessionId
+          ? {
+              providerParentConversationId: activity.parentTool.providerParentConversationId,
+              providerChildSessionId: activity.parentTool.providerChildSessionId
+            }
+          : undefined);
       const result = await onLoadAgentEvents(parentSessionId, parentToolUseId, identity);
-      setLimitedHistoryKey(result?.hasMore ? loadKey : (currentKey) => currentKey === loadKey ? null : currentKey);
+      setLimitedHistoryKey(result?.hasMore ? loadKey : (currentKey) => (currentKey === loadKey ? null : currentKey));
       setFailedAgentKey((currentKey) => (currentKey === loadKey ? null : currentKey));
     } catch {
       setFailedAgentKey(loadKey);
@@ -654,7 +674,15 @@ function AgentActivityRun({
       setLoadedAgentKey(loadKey);
       setLoadingAgentKey((currentKey) => (currentKey === loadKey ? null : currentKey));
     }
-  }, [activity.parentTool?.providerChildSessionId, activity.parentTool?.providerParentConversationId, agentKey, nativeIdentity, onLoadAgentEvents, parentSessionId, parentToolUseId]);
+  }, [
+    activity.parentTool?.providerChildSessionId,
+    activity.parentTool?.providerParentConversationId,
+    agentKey,
+    nativeIdentity,
+    onLoadAgentEvents,
+    parentSessionId,
+    parentToolUseId
+  ]);
 
   // Both load effects below run for *this agent*, not for whatever identity
   // the callbacks happen to have. Depending on the callbacks made the pane
@@ -712,158 +740,154 @@ function AgentActivityRun({
   }, [activity.parentTool?.createdAt]);
   // Minimal collapses the whole body away, so a run with tools but no visible
   // child is still a rendered run, not a pane still waiting for one.
-  const hasRenderedActivity =
-    activityChildren.length > 0 || toolItems.length > 0 || finalOutput !== null;
+  const hasRenderedActivity = activityChildren.length > 0 || toolItems.length > 0 || finalOutput !== null;
   // Key on the agent's own status, not the parent's: a follow-up turn sets the
   // parent running again while an agent the cancelled turn left behind is dead.
   const waitingForRunningAgentActivity = activity.status === "running" && activity.limited;
   const showLoadFailureNotice = failedAgentKey === agentKey;
-  const showAgentActivityThinking = (
+  const showAgentActivityThinking =
     (loadingAgentKey === agentKey || initialAgentEventsLoadPending || waitingForRunningAgentActivity) &&
     !hasRenderedActivity &&
-    !showLoadFailureNotice
-  );
+    !showLoadFailureNotice;
   const showLimitedNotice = activity.limited && !showAgentActivityThinking && !showLoadFailureNotice;
   const hasRun = activityChildren.length > 0 || toolItems.length > 0;
   // The brief's toggle joins the run's header row rather than drawing a
   // second hairline above it: one band, the control on the left and the
   // elapsed on the right. See `TurnBlock`'s `brief` prop.
-  const brief = activity.prompt ? {
-    control: (
-      <button
-        type="button"
-        className="turn-block-chip"
-        aria-label={briefShown ? "Collapse instructions" : "Expand instructions"}
-        title={briefShown ? "Collapse instructions" : "Expand instructions"}
-        aria-expanded={briefShown}
-        onClick={() => setBriefShown((shown) => !shown)}
-      >
-        <span>Instructions</span>
-        <ChevronRight
-          size={11}
-          className={`turn-block-chevron${briefShown ? " expanded" : ""}`}
-          aria-hidden="true"
-        />
-      </button>
-    ),
-    quote: briefShown ? (
-      <AgentBrief
-        prompt={activity.prompt}
-        expanded={briefExpanded}
-        onExpand={() => setBriefExpanded(true)}
-        workspace={workspace}
-        {...(onOpenFile ? { onOpenFile } : {})}
-      />
-    ) : null
-  } : null;
+  const brief = activity.prompt
+    ? {
+        control: (
+          <button
+            type="button"
+            className="turn-block-chip"
+            aria-label={briefShown ? "Collapse instructions" : "Expand instructions"}
+            title={briefShown ? "Collapse instructions" : "Expand instructions"}
+            aria-expanded={briefShown}
+            onClick={() => setBriefShown((shown) => !shown)}
+          >
+            <span>Instructions</span>
+            <ChevronRight
+              size={11}
+              className={`turn-block-chevron${briefShown ? " expanded" : ""}`}
+              aria-hidden="true"
+            />
+          </button>
+        ),
+        quote: briefShown ? (
+          <AgentBrief
+            prompt={activity.prompt}
+            expanded={briefExpanded}
+            onExpand={() => setBriefExpanded(true)}
+            workspace={workspace}
+            {...(onOpenFile ? { onOpenFile } : {})}
+          />
+        ) : null
+      }
+    : null;
   const runChanges = useMemo(() => collectTurnFileChanges(toolItems), [toolItems]);
 
   return (
     <VisualizationSessionContext.Provider value={parentSession?.id ?? null}>
-    <section
-      className="agent-activity"
-      aria-label={codename ? `Agent activity: ${codename} — ${activity.title}` : `Agent activity: ${activity.title}`}
-      data-focused={isFocused ? "true" : undefined}
-    >
-      <AgentHeader
-        title={activity.title}
-        status={activity.status}
-        codename={codename}
-        subagentType={activity.subagentType}
-        model={activity.model}
-        phaseKey={parentToolUseId}
-      />
-      <div className="agent-activity-viewport">
-        <div
-          className="agent-activity-scroll"
-          data-restoring={restoringTranscript ? "true" : undefined}
-          ref={scrollRef}
-          aria-label="Agent messages"
-          tabIndex={ownsScroll ? 0 : undefined}
-        >
-          <div className="agent-activity-content" ref={contentRef}>
-            {brief && !hasRun ? (
-              // Before the first child event there is no turn to hang the
-              // brief's control on, so it keeps its own row until one arrives.
-              <section className="agent-activity-summary" aria-label="Agent instructions">
-                <div className="turn-block-header">{brief.control}</div>
-                {brief.quote}
-              </section>
-            ) : null}
+      <section
+        className="agent-activity"
+        aria-label={codename ? `Agent activity: ${codename} — ${activity.title}` : `Agent activity: ${activity.title}`}
+        data-focused={isFocused ? "true" : undefined}
+      >
+        <AgentHeader
+          title={activity.title}
+          status={activity.status}
+          codename={codename}
+          subagentType={activity.subagentType}
+          model={activity.model}
+          phaseKey={parentToolUseId}
+        />
+        <div className="agent-activity-viewport">
+          <div
+            className="agent-activity-scroll"
+            data-restoring={restoringTranscript ? "true" : undefined}
+            ref={scrollRef}
+            aria-label="Agent messages"
+            tabIndex={ownsScroll ? 0 : undefined}
+          >
+            <div className="agent-activity-content" ref={contentRef}>
+              {brief && !hasRun ? (
+                // Before the first child event there is no turn to hang the
+                // brief's control on, so it keeps its own row until one arrives.
+                <section className="agent-activity-summary" aria-label="Agent instructions">
+                  <div className="turn-block-header">{brief.control}</div>
+                  {brief.quote}
+                </section>
+              ) : null}
 
-            {showAgentActivityThinking ? (
-              <div className="agent-activity-empty" role="status">
-                <ThinkingLabel phaseKey={agentKey ?? parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
-              </div>
-            ) : null}
+              {showAgentActivityThinking ? (
+                <div className="agent-activity-empty" role="status">
+                  <ThinkingLabel phaseKey={agentKey ?? parentToolUseId} startedAtMs={launchedAtMs ?? undefined} />
+                </div>
+              ) : null}
 
-            {showLoadFailureNotice ? (
-              <div className="agent-activity-empty" role="alert">
-                Agent activity could not be loaded. Showing launch/result metadata.
-              </div>
-            ) : showLimitedNotice ? (
-              <div className="agent-activity-empty" role="status">
-                This provider reported the agent launch, but did not stream child activity.
-              </div>
-            ) : null}
+              {showLoadFailureNotice ? (
+                <div className="agent-activity-empty" role="alert">
+                  Agent activity could not be loaded. Showing launch/result metadata.
+                </div>
+              ) : showLimitedNotice ? (
+                <div className="agent-activity-empty" role="status">
+                  This provider reported the agent launch, but did not stream child activity.
+                </div>
+              ) : null}
 
-            {limitedHistoryKey === agentKey ? (
-              <div className="agent-activity-empty" role="status">
-                Earlier agent activity is not shown.
-              </div>
-            ) : null}
+              {limitedHistoryKey === agentKey ? (
+                <div className="agent-activity-empty" role="status">
+                  Earlier agent activity is not shown.
+                </div>
+              ) : null}
 
-            {hasRun ? (
-              // The same block the transcript wraps a turn in, so the run carries
-              // the same "Worked for Xs" chip: one control over every tool group
-              // and Thought block below it, and the brief's toggle beside it.
-              <TurnBlock
-                toolItems={toolItems}
-                assistantTimestamps={assistantTimestamps}
-                {...(launchedAtMs !== null ? { turnStartedAtMs: launchedAtMs } : {})}
-                isTurnActive={streaming}
-                toolsExpanded={activityExpanded}
-                onToggleTools={() => setActivityExpandOverride(!activityExpanded)}
-                hasCollapsibleActivity={compactActivity && activityChildren.some((child) => child.kind === "tool")}
-                hideWorkingWhenCollapsed={minimalActivity}
-                body={activityChildren}
-                {...(brief ? { brief } : {})}
-              />
-            ) : !showLimitedNotice && !showAgentActivityThinking ? (
-              <div className="agent-activity-empty" role="status">
-                Waiting for agent activity.
-              </div>
-            ) : null}
+              {hasRun ? (
+                // The same block the transcript wraps a turn in, so the run carries
+                // the same "Worked for Xs" chip: one control over every tool group
+                // and Thought block below it, and the brief's toggle beside it.
+                <TurnBlock
+                  toolItems={toolItems}
+                  assistantTimestamps={assistantTimestamps}
+                  {...(launchedAtMs !== null ? { turnStartedAtMs: launchedAtMs } : {})}
+                  isTurnActive={streaming}
+                  toolsExpanded={activityExpanded}
+                  onToggleTools={() => setActivityExpandOverride(!activityExpanded)}
+                  hasCollapsibleActivity={compactActivity && activityChildren.some((child) => child.kind === "tool")}
+                  hideWorkingWhenCollapsed={minimalActivity}
+                  body={activityChildren}
+                  {...(brief ? { brief } : {})}
+                />
+              ) : !showLimitedNotice && !showAgentActivityThinking ? (
+                <div className="agent-activity-empty" role="status">
+                  Waiting for agent activity.
+                </div>
+              ) : null}
 
-            {hasRenderedActivity && silentSinceMs !== null ? (
-              <ThinkingLabel
-                key={`${agentKey}:${silentSinceMs}`}
-                phaseKey={agentKey ?? parentToolUseId}
-                startedAtMs={Math.max(silentSinceMs, launchedAtMs ?? 0) || undefined}
-              />
-            ) : null}
+              {hasRenderedActivity && silentSinceMs !== null ? (
+                <ThinkingLabel
+                  key={`${agentKey}:${silentSinceMs}`}
+                  phaseKey={agentKey ?? parentToolUseId}
+                  startedAtMs={Math.max(silentSinceMs, launchedAtMs ?? 0) || undefined}
+                />
+              ) : null}
 
-            {finalOutput !== null ? (
-              <AgentResult
-                finalOutput={finalOutput}
-                workspace={workspace}
-                onOpenFile={onOpenFile}
-              />
-            ) : null}
-            {!streaming && runChanges.length > 0 ? (
-              <TurnChangesCard
-                changes={runChanges}
-                workspaceCwd={workspace?.path ?? null}
-                {...(onOpenDiff ? { onOpenDiff } : {})}
-                {...(onOpenFile ? { onOpenFile } : {})}
-                {...(onOpenReview ? { onOpenReview } : {})}
-              />
-            ) : null}
+              {finalOutput !== null ? (
+                <AgentResult finalOutput={finalOutput} workspace={workspace} onOpenFile={onOpenFile} />
+              ) : null}
+              {!streaming && runChanges.length > 0 ? (
+                <TurnChangesCard
+                  changes={runChanges}
+                  workspaceCwd={workspace?.path ?? null}
+                  {...(onOpenDiff ? { onOpenDiff } : {})}
+                  {...(onOpenFile ? { onOpenFile } : {})}
+                  {...(onOpenReview ? { onOpenReview } : {})}
+                />
+              ) : null}
+            </div>
           </div>
+          {ownsScroll ? <ScrollToLatestButton follow={follow} onClick={scrollToBottom} /> : null}
         </div>
-        {ownsScroll ? <ScrollToLatestButton follow={follow} onClick={scrollToBottom} /> : null}
-      </div>
-    </section>
+      </section>
     </VisualizationSessionContext.Provider>
   );
 }
@@ -871,18 +895,19 @@ function AgentActivityRun({
 export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JSX.Element {
   const onLoadAgentEventsProp = props.onLoadAgentEvents;
   const [historyHydrated, setHistoryHydrated] = useState(!onLoadAgentEventsProp);
-  const loadAgentEvents = useCallback<NonNullable<typeof onLoadAgentEventsProp>>(async (...args) => {
-    try {
-      return await onLoadAgentEventsProp?.(...args);
-    } finally {
-      setHistoryHydrated(true);
-    }
-  }, [onLoadAgentEventsProp]);
+  const loadAgentEvents = useCallback<NonNullable<typeof onLoadAgentEventsProp>>(
+    async (...args) => {
+      try {
+        return await onLoadAgentEventsProp?.(...args);
+      } finally {
+        setHistoryHydrated(true);
+      }
+    },
+    [onLoadAgentEventsProp]
+  );
   const onLoadAgentEvents = onLoadAgentEventsProp ? loadAgentEvents : undefined;
   const parentSessionId = props.parentSession?.id ?? null;
-  const visibleEvents = parentSessionId
-    ? props.events.filter((event) => event.sessionId === parentSessionId)
-    : [];
+  const visibleEvents = parentSessionId ? props.events.filter((event) => event.sessionId === parentSessionId) : [];
   const runs = persistentAgentRuns(visibleEvents, props.parentToolUseId, props.nativeIdentity ?? null);
   const { scrollRef, contentRef, follow, scrollToBottom } = useConversationScroll({
     sessionId: `${parentSessionId}:${props.parentToolUseId}`,
@@ -902,7 +927,12 @@ export function AgentActivity(props: Parameters<typeof AgentActivityRun>[0]): JS
   }
   return (
     <div className="agent-activity-history-viewport">
-      <div className="agent-activity-history" ref={scrollRef} tabIndex={0} aria-label={`Agent runs: ${props.codename ?? props.parentToolUseId}`}>
+      <div
+        className="agent-activity-history"
+        ref={scrollRef}
+        tabIndex={0}
+        aria-label={`Agent runs: ${props.codename ?? props.parentToolUseId}`}
+      >
         <div className="agent-activity-history-content" ref={contentRef}>
           {runs.map((run, index) => (
             <AgentActivityRun

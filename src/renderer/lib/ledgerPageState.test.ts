@@ -54,7 +54,12 @@ describe("ledgerPageState", () => {
     let reject!: (cause: Error) => void;
     const fetch = vi
       .fn<() => Promise<typeof summary>>()
-      .mockImplementationOnce(() => new Promise((_, rejectRequest) => { reject = rejectRequest; }))
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, rejectRequest) => {
+            reject = rejectRequest;
+          })
+      )
       .mockResolvedValueOnce(summary);
 
     const first = requestUsageSummary("30d", null, "UTC", fetch);

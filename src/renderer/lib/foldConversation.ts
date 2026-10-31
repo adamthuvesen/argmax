@@ -1,24 +1,10 @@
 import type { SessionSummary, TimelineEvent } from "../../shared/types.js";
 import { decodeTimelineEvent, type ProjectSourceActivity } from "./canonicalTimeline.js";
 import { compactionNoticeFor, type CompactionNotice } from "./compaction.js";
-import {
-  mergeMultitaskNotice,
-  multitaskNoticeFor,
-  type MultitaskNotice
-} from "./multitask.js";
-import {
-  projectMoveNoticeFor,
-  type ProjectMoveNotice
-} from "./projectMove.js";
-import {
-  providerSwitchNoticeFor,
-  type ProviderSwitchNotice
-} from "./providerSwitch.js";
-import {
-  isAgentToolName,
-  type ConversationItem,
-  type ToolCall
-} from "./toolCalls.js";
+import { mergeMultitaskNotice, multitaskNoticeFor, type MultitaskNotice } from "./multitask.js";
+import { projectMoveNoticeFor, type ProjectMoveNotice } from "./projectMove.js";
+import { providerSwitchNoticeFor, type ProviderSwitchNotice } from "./providerSwitch.js";
+import { isAgentToolName, type ConversationItem, type ToolCall } from "./toolCalls.js";
 import { foldTurnToolItems, type TurnToolItem } from "./turnToolItems.js";
 import { foldTodoEvents, type TodoList } from "./todoList.js";
 
@@ -96,16 +82,14 @@ export function foldRenderItems(
     }
   }
   finishFallbackRun();
-  let pending:
-    | {
-        assistantEvents: TimelineEvent[];
-        steerEvents: TimelineEvent[];
-        toolItems: TurnToolItem[];
-        multitasks: MultitaskNotice[];
-        firstId: string | null;
-        touchedTodo?: boolean;
-      }
-    | null = null;
+  let pending: {
+    assistantEvents: TimelineEvent[];
+    steerEvents: TimelineEvent[];
+    toolItems: TurnToolItem[];
+    multitasks: MultitaskNotice[];
+    firstId: string | null;
+    touchedTodo?: boolean;
+  } | null = null;
   let activeTurnId: string | null = null;
   const todoEvents: TimelineEvent[] = [];
   // A subagent's child rows belong to the launch that spawned them, not to
@@ -246,19 +230,11 @@ export function foldRenderItems(
       pushMultitask(item.event);
       continue;
     }
-    if (
-      item.kind === "message" &&
-      canonical?.kind === "lifecycle" &&
-      canonical.name === "note"
-    ) {
+    if (item.kind === "message" && canonical?.kind === "lifecycle" && canonical.name === "note") {
       pushSessionNote(item.event);
       continue;
     }
-    if (
-      item.kind === "message" &&
-      canonical?.kind === "lifecycle" &&
-      canonical.name === "moved"
-    ) {
+    if (item.kind === "message" && canonical?.kind === "lifecycle" && canonical.name === "moved") {
       flush();
       const id = `project-move-${item.event.id}`;
       out.push({ kind: "project-move", id, notice: projectMoveNoticeFor(item.event) });
@@ -269,11 +245,7 @@ export function foldRenderItems(
     // turn it lands in, and the follow-up that triggered it opens a fresh one
     // under the new agent. Unlike compaction it is a single row, so there is no
     // start/end pair to collapse.
-    if (
-      item.kind === "message" &&
-      canonical?.kind === "lifecycle" &&
-      canonical.name === "provider-changed"
-    ) {
+    if (item.kind === "message" && canonical?.kind === "lifecycle" && canonical.name === "provider-changed") {
       flush();
       const id = `provider-switch-${item.event.id}`;
       out.push({ kind: "provider-switch", id, notice: providerSwitchNoticeFor(item.event) });
@@ -293,11 +265,7 @@ export function foldRenderItems(
       activeTurnId = `turn-after-${pushCompaction(item.event)}`;
       continue;
     }
-    if (
-      item.kind === "message" &&
-      canonical?.kind === "message" &&
-      canonical.role === "user"
-    ) {
+    if (item.kind === "message" && canonical?.kind === "message" && canonical.role === "user") {
       // Steering is guidance inside the active native turn. Keep it in the
       // same render item so the TurnBlock, live state, timer, and tool
       // ownership survive while the user bubble remains in chronological

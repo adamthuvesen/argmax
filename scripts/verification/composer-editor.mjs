@@ -10,11 +10,15 @@
 // and an input method produce.
 //
 //   node scripts/verification/composer-editor.mjs [--out scratch/composer-editor] [--port 5291]
+//        [--url http://127.0.0.1:<port>/] [--browser-ws ws://…]
+//
+// --url uses a renderer that is already being served, and --browser-ws a running
+// headless browser started with --window-size=1200,900.
 //
 // Prints one JSON report and exits 1 when any check fails. Screenshots of the
 // states worth looking at are written next to it. It cannot prove native
 // window behavior, a real IME's candidate window, or the Rust backend; use the
-// native verify-argmax drives for those.
+// native scenario runner (npm run verify:native) for those.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -36,10 +40,12 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const options = { out: "scratch/composer-editor", port: 5291 };
+  const options = { out: "scratch/composer-editor", port: 5291, url: null, browserWs: null };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === "--out") options.out = argv[++i];
     else if (argv[i] === "--port") options.port = Number(argv[++i]);
+    else if (argv[i] === "--url") options.url = argv[++i];
+    else if (argv[i] === "--browser-ws") options.browserWs = argv[++i];
     else fail(`unknown argument: ${argv[i]}`);
   }
   return options;
@@ -74,7 +80,13 @@ function connectCdp(wsUrl) {
         waitForEvent(method, timeoutMs = 15000) {
           return new Promise((resolveWait, rejectWait) => {
             const timer = setTimeout(() => rejectWait(new Error(`timed out waiting for ${method}`)), timeoutMs);
-            eventWaiters.push({ method, resolve: (params) => { clearTimeout(timer); resolveWait(params); } });
+            eventWaiters.push({
+              method,
+              resolve: (params) => {
+                clearTimeout(timer);
+                resolveWait(params);
+              }
+            });
           });
         },
         close() {
@@ -109,45 +121,58 @@ process.on("exit", () => {
   for (const cleanup of cleanups.reverse()) cleanup();
 });
 
-const baseUrl = `http://localhost:${options.port}/`;
-const vite = spawn("npx", ["vite", "--port", String(options.port), "--strictPort"], {
-  cwd: repoRoot,
-  stdio: ["ignore", "ignore", "inherit"]
-});
-cleanups.push(() => vite.kill("SIGTERM"));
-await waitFor(() => fetch(baseUrl).then((response) => response.ok).catch(() => false), 30000, "the vite dev server");
-
-const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
-if (!chrome) fail("no Chromium-based browser found");
-const profileDir = mkdtempSync(path.join(tmpdir(), "argmax-composer-editor-"));
-const browser = spawn(
-  chrome,
-  [
-    "--headless=new",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${profileDir}`,
-    "--no-first-run",
-    "--use-mock-keychain",
-    "--window-size=1200,900",
-    "about:blank"
-  ],
-  { stdio: ["ignore", "ignore", "pipe"] }
-);
-cleanups.push(() => browser.kill("SIGTERM"));
-const wsUrl = await new Promise((resolve, reject) => {
-  let buffer = "";
-  const timer = setTimeout(() => reject(new Error("browser never printed its DevTools URL")), 15000);
-  browser.stderr.on("data", (chunk) => {
-    buffer += String(chunk);
-    const match = buffer.match(/DevTools listening on (ws:\/\/\S+)/);
-    if (match) {
-      clearTimeout(timer);
-      resolve(match[1]);
-    }
+const baseUrl = options.url ?? `http://localhost:${options.port}/`;
+if (!options.url) {
+  const vite = spawn("npx", ["vite", "--port", String(options.port), "--strictPort"], {
+    cwd: repoRoot,
+    stdio: ["ignore", "ignore", "inherit"]
   });
-}).catch((error) => fail(error.message));
+  cleanups.push(() => vite.kill("SIGTERM"));
+  await waitFor(
+    () =>
+      fetch(baseUrl)
+        .then((response) => response.ok)
+        .catch(() => false),
+    30000,
+    "the vite dev server"
+  );
+}
 
-const cdp = await connectCdp(wsUrl);
+async function launchBrowser() {
+  const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
+  if (!chrome) fail("no Chromium-based browser found");
+  const profileDir = mkdtempSync(path.join(tmpdir(), "argmax-composer-editor-"));
+  const browser = spawn(
+    chrome,
+    [
+      "--headless=new",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profileDir}`,
+      "--no-first-run",
+      "--use-mock-keychain",
+      "--window-size=1200,900",
+      "about:blank"
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] }
+  );
+  cleanups.push(() => browser.kill("SIGTERM"));
+  return new Promise((resolve, reject) => {
+    let buffer = "";
+    const timer = setTimeout(() => reject(new Error("browser never printed its DevTools URL")), 15000);
+    browser.stderr.on("data", (chunk) => {
+      buffer += String(chunk);
+      const match = buffer.match(/DevTools listening on (ws:\/\/\S+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve(match[1]);
+      }
+    });
+  }).catch((error) => fail(error.message));
+}
+
+const cdp = await connectCdp(options.browserWs ?? (await launchBrowser()));
+// A shared browser still opens this page in its default context: headless
+// Chrome delivers IME composition only there, and commits an empty string elsewhere.
 const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
 const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
 await cdp.send("Page.enable", {}, sessionId);
@@ -199,7 +224,11 @@ async function press(key, modifiers = 0, commands = undefined, { char = true } =
     ...(commands ? { commands } : {})
   };
   const withChar = char && spec.text && !modifiers;
-  await cdp.send("Input.dispatchKeyEvent", { type: withChar ? "keyDown" : "rawKeyDown", ...(withChar ? { text: spec.text } : {}), ...base }, sessionId);
+  await cdp.send(
+    "Input.dispatchKeyEvent",
+    { type: withChar ? "keyDown" : "rawKeyDown", ...(withChar ? { text: spec.text } : {}), ...base },
+    sessionId
+  );
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...base }, sessionId);
   await sleep(60);
 }
@@ -248,8 +277,13 @@ await waitFor(() => evaluate(`!!${prompt}`), 20000, "the launcher's prompt");
 await waitFor(() => evaluate(`!!${prompt}?.closest(".cm-editor")`), 20000, "the editor chunk");
 
 await check("the prompt is a CodeMirror textbox", async () => {
-  const facts = await evaluate(`(() => { const el = ${prompt}; return { role: el.getAttribute("role"), multiline: el.getAttribute("aria-multiline"), editable: el.getAttribute("contenteditable"), inEditor: !!el.closest(".cm-editor"), height: el.closest(".composer-editor").getBoundingClientRect().height }; })()`);
-  expect(facts.role === "textbox" && facts.multiline === "true" && facts.editable === "true" && facts.inEditor, JSON.stringify(facts));
+  const facts = await evaluate(
+    `(() => { const el = ${prompt}; return { role: el.getAttribute("role"), multiline: el.getAttribute("aria-multiline"), editable: el.getAttribute("contenteditable"), inEditor: !!el.closest(".cm-editor"), height: el.closest(".composer-editor").getBoundingClientRect().height }; })()`
+  );
+  expect(
+    facts.role === "textbox" && facts.multiline === "true" && facts.editable === "true" && facts.inEditor,
+    JSON.stringify(facts)
+  );
   expect(facts.height >= 52, `field is ${facts.height}px, below the 52px floor`);
   return facts;
 });
@@ -259,11 +293,24 @@ await typeText("Compare with ");
 await typeText("@design");
 
 await check("@ offers chats by title, and Enter attaches one as a chip", async () => {
-  await waitFor(() => evaluate(`!!document.querySelector('#file-popover [role="option"][aria-label^="Chat: Design parallel agent board"]')`), 5000, "the chat row");
+  await waitFor(
+    () =>
+      evaluate(
+        `!!document.querySelector('#file-popover [role="option"][aria-label^="Chat: Design parallel agent board"]')`
+      ),
+    5000,
+    "the chat row"
+  );
   await shot("1-chat-menu");
   await press("Enter");
-  await waitFor(() => evaluate(`!!document.querySelector('.composer-chat-chip[data-status="resolved"]')`), 5000, "the chip");
-  const facts = await evaluate(`(() => { const chip = document.querySelector('.composer-chat-chip'); return { label: chip.textContent, bodyHasRaw: ${prompt}.innerText.includes("argmax://") }; })()`);
+  await waitFor(
+    () => evaluate(`!!document.querySelector('.composer-chat-chip[data-status="resolved"]')`),
+    5000,
+    "the chip"
+  );
+  const facts = await evaluate(
+    `(() => { const chip = document.querySelector('.composer-chat-chip'); return { label: chip.textContent, bodyHasRaw: ${prompt}.innerText.includes("argmax://") }; })()`
+  );
   expect(facts.label === "Design parallel agent board", `chip says ${facts.label}`);
   expect(!facts.bodyHasRaw, "the raw link is showing");
   await shot("2-chip");
@@ -272,9 +319,15 @@ await check("@ offers chats by title, and Enter attaches one as a chip", async (
 
 await check("the draft is plain text carrying the chat's stable id, and copy adds a typed entry", async () => {
   const copied = await draftText();
-  expect(copied?.plain.includes("[Design parallel agent board](argmax://chat/session-ui-board?v=1)"), `plain: ${copied?.plain}`);
+  expect(
+    copied?.plain.includes("[Design parallel agent board](argmax://chat/session-ui-board?v=1)"),
+    `plain: ${copied?.plain}`
+  );
   const typed = JSON.parse(copied.typed);
-  expect(typed.v === 1 && typed.references.length === 1 && typed.references[0].sessionId === "session-ui-board", copied.typed);
+  expect(
+    typed.v === 1 && typed.references.length === 1 && typed.references[0].sessionId === "session-ui-board",
+    copied.typed
+  );
   return { plain: copied.plain };
 });
 
@@ -340,7 +393,11 @@ await check("Enter right after typing sends what was typed", async () => {
   // No pause between the characters and the key, as a fast typist or a dictation tool delivers them.
   await cdp.send("Input.insertText", { text: "go now" }, sessionId);
   await press("Enter");
-  await waitFor(() => evaluate(`document.body.innerText.includes("Open Argmax on your Mac")`), 5000, "the send attempt");
+  await waitFor(
+    () => evaluate(`document.body.innerText.includes("Open Argmax on your Mac")`),
+    5000,
+    "the send attempt"
+  );
   return {};
 });
 
@@ -369,7 +426,9 @@ await check("a typed clipboard entry pastes as a chip", async () => {
     ${prompt}.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
   })()`);
   await sleep(120);
-  const facts = await evaluate(`({ chips: document.querySelectorAll('.composer-chat-chip').length, label: document.querySelector('.composer-chat-chip')?.textContent })`);
+  const facts = await evaluate(
+    `({ chips: document.querySelectorAll('.composer-chat-chip').length, label: document.querySelector('.composer-chat-chip')?.textContent })`
+  );
   // The chip names the chat as the app knows it now, not as the clipboard remembered it.
   expect(facts.chips === 1 && facts.label === "Build review studio shell", JSON.stringify(facts));
   return facts;
@@ -381,7 +440,9 @@ await check("a reference to a chat the app does not have stays visible and unope
   await press("Backspace");
   await typeText("[Old planning chat](argmax://chat/long-gone-chat?v=1) ");
   await sleep(120);
-  const facts = await evaluate(`(() => { const chip = document.querySelector('.composer-chat-chip'); return { status: chip?.dataset.status, label: chip?.textContent, title: chip?.title }; })()`);
+  const facts = await evaluate(
+    `(() => { const chip = document.querySelector('.composer-chat-chip'); return { status: chip?.dataset.status, label: chip?.textContent, title: chip?.title }; })()`
+  );
   expect(facts.status === "unresolved" && facts.label === "Old planning chat (unavailable)", JSON.stringify(facts));
   await shot("3-unresolved-chip");
   return facts;
@@ -393,21 +454,27 @@ await check("Enter during an IME composition does not send; after it commits, En
   await press("Backspace");
   await dismissToasts();
   await sleep(150);
+  // An input method converts the reading to the candidate first, and the Enter
+  // that confirms the candidate ends the composition with it. Chrome commits
+  // the open composition on that key, so the candidate must be in place before it.
   await cdp.send("Input.imeSetComposition", { text: "にほん", selectionStart: 3, selectionEnd: 3 }, sessionId);
   await sleep(80);
-  // An input method consumes the Enter that confirms a candidate, so it makes
-  // no character: a key with no text, while the composition is still open.
+  await cdp.send("Input.imeSetComposition", { text: "日本", selectionStart: 2, selectionEnd: 2 }, sessionId);
+  await sleep(80);
+  // The confirming Enter makes no character: a key with no text, while the composition is still open.
   await press("Enter", 0, undefined, { char: false });
   await sleep(150);
   const toastWhileComposing = await evaluate(`document.body.innerText.includes("Open Argmax on your Mac")`);
   expect(!toastWhileComposing, "Enter confirmed the composition AND sent the prompt");
-  await cdp.send("Input.insertText", { text: "日本" }, sessionId);
-  await sleep(80);
   const committed = (await draftText())?.plain;
   expect(committed === "日本", `committed text: ${JSON.stringify(committed)}`);
   await evaluate(`${prompt}.focus()`);
   await press("Enter");
-  await waitFor(() => evaluate(`document.body.innerText.includes("Open Argmax on your Mac")`), 5000, "the send attempt");
+  await waitFor(
+    () => evaluate(`document.body.innerText.includes("Open Argmax on your Mac")`),
+    5000,
+    "the send attempt"
+  );
   return { committed };
 });
 
@@ -417,7 +484,11 @@ await check("background send keeps the launcher, and a failed start restores the
   await press("Backspace");
   await typeText("Background draft");
   await press("Enter", MODIFIER.alt);
-  await waitFor(() => evaluate(`document.body.innerText.includes("Your draft is back in the composer")`), 5000, "the restore notice");
+  await waitFor(
+    () => evaluate(`document.body.innerText.includes("Your draft is back in the composer")`),
+    5000,
+    "the restore notice"
+  );
   const copied = await draftText();
   expect(copied?.plain === "Background draft", `draft after the failed start: ${JSON.stringify(copied?.plain)}`);
   expect(await evaluate(`!!${prompt}`), "the launcher went away");
@@ -429,14 +500,23 @@ await check("the usage chip shows the plan's tightest window and opens a popover
   await waitFor(() => evaluate(`!!document.querySelector('button[aria-label*=" plan: "]')`), 8000, "the usage chip");
   const label = await evaluate(`document.querySelector('button[aria-label*=" plan: "]').getAttribute("aria-label")`);
   await evaluate(`document.querySelector('button[aria-label*=" plan: "]').click()`);
-  await waitFor(() => evaluate(`!!document.querySelector('[role="dialog"][aria-label="Plan usage"]')`), 3000, "the popover");
-  await waitFor(() => evaluate(`document.querySelector('[role="dialog"][aria-label="Plan usage"]').innerText.includes("left")`), 5000, "the usage windows to settle");
+  await waitFor(
+    () => evaluate(`!!document.querySelector('[role="dialog"][aria-label="Plan usage"]')`),
+    3000,
+    "the popover"
+  );
+  await waitFor(
+    () => evaluate(`document.querySelector('[role="dialog"][aria-label="Plan usage"]').innerText.includes("left")`),
+    5000,
+    "the usage windows to settle"
+  );
   const text = await evaluate(`document.querySelector('[role="dialog"][aria-label="Plan usage"]').innerText`);
   expect(text.includes("left") && !text.includes("resets in now"), text);
   await shot("5-usage-popover");
   return { label };
 });
 
+if (options.browserWs) await cdp.send("Target.closeTarget", { targetId });
 cdp.close();
 const failed = checks.filter((entry) => !entry.ok);
 console.log(JSON.stringify({ ok: failed.length === 0, out: outDir, checks }, null, 2));

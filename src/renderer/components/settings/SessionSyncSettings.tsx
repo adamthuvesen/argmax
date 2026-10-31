@@ -26,28 +26,29 @@ export function SessionSyncSettings(): JSX.Element {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const statusQuery = useBridgeQuery({ key: ["sync.getStatus"], read: (api) => api.sync.getStatus(), onData: setStatus });
+  const statusQuery = useBridgeQuery({
+    key: ["sync.getStatus"],
+    read: (api) => api.sync.getStatus(),
+    onData: setStatus
+  });
   const loadError = statusQuery.isAvailable ? statusQuery.error : "Open the Argmax desktop app to configure chat sync.";
 
-  const save = useCallback(
-    async (next: SyncStatus["config"]): Promise<void> => {
-      const sync = syncActions();
-      if (!sync) return;
-      setBusy(true);
-      setNote(null);
-      try {
-        const updated = await sync.setConfig(next);
-        setStatus(updated);
-        if (updated.lastError) showErrorToast(updated.lastError);
-        else setNote(syncSummary(updated));
-      } catch (error) {
-        showErrorToast(errorMessage(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    []
-  );
+  const save = useCallback(async (next: SyncStatus["config"]): Promise<void> => {
+    const sync = syncActions();
+    if (!sync) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const updated = await sync.setConfig(next);
+      setStatus(updated);
+      if (updated.lastError) showErrorToast(updated.lastError);
+      else setNote(syncSummary(updated));
+    } catch (error) {
+      showErrorToast(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   if (loadError) {
     return (
@@ -66,9 +67,7 @@ export function SessionSyncSettings(): JSX.Element {
         <SettingRow
           key={provider}
           label={PROVIDER_LABELS[provider]}
-          description={
-            supported.has(provider) ? undefined : "Argmax can't read this agent's transcript format yet."
-          }
+          description={supported.has(provider) ? undefined : "Argmax can't read this agent's transcript format yet."}
           control={
             <Toggle
               ariaLabel={PROVIDER_LABELS[provider]}
@@ -102,11 +101,14 @@ export function SessionSyncSettings(): JSX.Element {
         }
       />
       <SettingNote>
-        Turning a provider off — or narrowing the window — removes the synced chats you haven&apos;t
-        continued in Argmax. Nothing is lost: the agent&apos;s own history still has them, and turning
-        sync back on brings them back.
+        Turning a provider off — or narrowing the window — removes the synced chats you haven&apos;t continued in
+        Argmax. Nothing is lost: the agent&apos;s own history still has them, and turning sync back on brings them back.
       </SettingNote>
-      {note ? <p className="settings-note settings-form-status" data-status="saved" role="status">{note}</p> : null}
+      {note ? (
+        <p className="settings-note settings-form-status" data-status="saved" role="status">
+          {note}
+        </p>
+      ) : null}
     </SettingGroup>
   );
 }

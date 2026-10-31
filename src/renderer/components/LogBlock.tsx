@@ -1,10 +1,5 @@
 import { type JSX } from "react";
-import {
-  logBlockLabel,
-  parseLogDump,
-  type LogLevel,
-  type LogRecord
-} from "../lib/logDump.js";
+import { logBlockLabel, parseLogDump, type LogLevel, type LogRecord } from "../lib/logDump.js";
 
 function recordTone(level: LogLevel | null, fallbackError: boolean): "error" | "warn" | "info" {
   switch (level) {
@@ -26,9 +21,7 @@ function recordTone(level: LogLevel | null, fallbackError: boolean): "error" | "
   }
 }
 
-function blockTone(
-  label: string
-): "error" | "warn" | "log" {
+function blockTone(label: string): "error" | "warn" | "log" {
   switch (label) {
     case "Error":
       return "error";
@@ -39,13 +32,7 @@ function blockTone(
   }
 }
 
-function LogRecordView({
-  record,
-  fallbackError
-}: {
-  record: LogRecord;
-  fallbackError: boolean;
-}): JSX.Element {
+function LogRecordView({ record, fallbackError }: { record: LogRecord; fallbackError: boolean }): JSX.Element {
   const tone = recordTone(record.level, fallbackError);
   const hasHead = record.timestamp !== null || record.level !== null || record.target !== null;
   return (
@@ -62,13 +49,7 @@ function LogRecordView({
   );
 }
 
-export function LogBlock({
-  text,
-  tone = "auto"
-}: {
-  text: string;
-  tone?: "auto" | "error";
-}): JSX.Element | null {
+export function LogBlock({ text, tone = "auto" }: { text: string; tone?: "auto" | "error" }): JSX.Element | null {
   const records = parseLogDump(text);
   if (records.length === 0) return null;
   const label = logBlockLabel(records, tone);

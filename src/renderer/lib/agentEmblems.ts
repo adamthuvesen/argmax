@@ -30,17 +30,7 @@ export type EmblemShape = (typeof EMBLEM_SHAPES)[number];
 
 /** The session icon palette, so emblems, sidebar rows and the workspace card
  *  never drift apart. Pinned against `SESSION_ICON_COLORS` by the tests. */
-export const EMBLEM_HUES = [
-  "green",
-  "teal",
-  "blue",
-  "violet",
-  "plum",
-  "clay",
-  "amber",
-  "pink",
-  "red"
-] as const;
+export const EMBLEM_HUES = ["green", "teal", "blue", "violet", "plum", "clay", "amber", "pink", "red"] as const;
 
 export type EmblemHue = (typeof EMBLEM_HUES)[number];
 

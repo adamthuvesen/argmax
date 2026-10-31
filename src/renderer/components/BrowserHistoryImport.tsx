@@ -43,14 +43,13 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
       setLoadError("The desktop browser bridge is unavailable.");
       return;
     }
-    void browser.chromeProfiles()
+    void browser
+      .chromeProfiles()
       .then((nextProfiles) => {
         if (profileRequestRef.current !== request) return;
         setProfiles(nextProfiles);
         setSelectedProfileId((current) =>
-          nextProfiles.some((profile) => profile.id === current)
-            ? current
-            : (nextProfiles[0]?.id ?? "")
+          nextProfiles.some((profile) => profile.id === current) ? current : (nextProfiles[0]?.id ?? "")
         );
       })
       .catch((error: unknown) => {
@@ -83,37 +82,42 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
     }
   };
 
-  const profileControls = profiles === null ? (
-    <p className="browser-history-import-loading" role="status" aria-label="Loading Chrome profiles">
-      Loading Chrome profiles…
-    </p>
-  ) : loadError ? (
-    <div className="browser-history-import-profiles-error">
-      <p role="alert">Could not load Chrome profiles: {loadError}</p>
-      <button type="button" onClick={loadProfiles}>Try again</button>
-    </div>
-  ) : profiles.length === 0 ? (
-    <p className="browser-history-import-empty" role="status">
-      No Chrome profiles were found on this computer.
-    </p>
-  ) : (
-    <label className="browser-history-import-profile">
-      <span>Chrome profile</span>
-      <select
-        aria-label="Chrome profile"
-        value={selectedProfileId}
-        disabled={importing}
-        onChange={(event) => {
-          setSelectedProfileId(event.target.value);
-          setSummary(null);
-        }}
-      >
-        {profiles.map((profile) => (
-          <option key={profile.id} value={profile.id}>{profile.name}</option>
-        ))}
-      </select>
-    </label>
-  );
+  const profileControls =
+    profiles === null ? (
+      <p className="browser-history-import-loading" role="status" aria-label="Loading Chrome profiles">
+        Loading Chrome profiles…
+      </p>
+    ) : loadError ? (
+      <div className="browser-history-import-profiles-error">
+        <p role="alert">Could not load Chrome profiles: {loadError}</p>
+        <button type="button" onClick={loadProfiles}>
+          Try again
+        </button>
+      </div>
+    ) : profiles.length === 0 ? (
+      <p className="browser-history-import-empty" role="status">
+        No Chrome profiles were found on this computer.
+      </p>
+    ) : (
+      <label className="browser-history-import-profile">
+        <span>Chrome profile</span>
+        <select
+          aria-label="Chrome profile"
+          value={selectedProfileId}
+          disabled={importing}
+          onChange={(event) => {
+            setSelectedProfileId(event.target.value);
+            setSummary(null);
+          }}
+        >
+          {profiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
 
   return createPortal(
     <div
@@ -154,9 +158,13 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
           <div className="browser-history-import-success" role="status">
             <CheckCircle2 size={17} aria-hidden="true" />
             <p>
-              Imported {summary.read.toLocaleString()} {summary.read === 1 ? "page" : "pages"} from Chrome. {summary.added.toLocaleString()} {summary.added === 1 ? "was" : "were"} new to Argmax.
+              Imported {summary.read.toLocaleString()} {summary.read === 1 ? "page" : "pages"} from Chrome.{" "}
+              {summary.added.toLocaleString()} {summary.added === 1 ? "was" : "were"} new to Argmax.
               {summary.totalAvailable > summary.read ? (
-                <> Chrome has {summary.totalAvailable.toLocaleString()} available pages. Each import is capped at 10,000.</>
+                <>
+                  {" "}
+                  Chrome has {summary.totalAvailable.toLocaleString()} available pages. Each import is capped at 10,000.
+                </>
               ) : null}
             </p>
           </div>
@@ -170,7 +178,9 @@ export function BrowserHistoryImport({ onClose }: { onClose: () => void }): JSX.
             <button
               type="button"
               className="browser-history-import-submit"
-              disabled={profiles === null || profiles.length === 0 || !selectedProfileId || importing || Boolean(loadError)}
+              disabled={
+                profiles === null || profiles.length === 0 || !selectedProfileId || importing || Boolean(loadError)
+              }
               onClick={() => void handleImport()}
             >
               {importing ? "Importing…" : "Import history"}

@@ -45,10 +45,7 @@ function warnRateLimited(context: string | undefined, error: unknown): void {
  * Returns the parsed JSON as `unknown`. Callers that need a typed shape should
  * narrow through `safeJsonParseArray` or `safeJsonParseRecord`.
  */
-export function safeJsonParse(
-  value: string | null | undefined,
-  context?: string
-): unknown {
+export function safeJsonParse(value: string | null | undefined, context?: string): unknown {
   if (value === null || value === undefined) {
     return undefined;
   }
@@ -83,10 +80,7 @@ export function safeJsonParseArray<T>(
  * Parses a JSON string that should be a plain object. Returns `{}` on parse
  * failure, null, array, or any non-object shape.
  */
-export function safeJsonParseRecord(
-  value: string | null | undefined,
-  context?: string
-): Record<string, unknown> {
+export function safeJsonParseRecord(value: string | null | undefined, context?: string): Record<string, unknown> {
   const parsed = safeJsonParse(value, context);
   return isPlainObject(parsed) ? parsed : {};
 }

@@ -125,11 +125,7 @@ export function OpencodeGatewaySettings(): JSX.Element {
                       aria-invalid={error !== null}
                       disabled={isSaving}
                     />
-                    <button
-                      type="submit"
-                      className="settings-button"
-                      disabled={isSaving || apiKey.trim() === ""}
-                    >
+                    <button type="submit" className="settings-button" disabled={isSaving || apiKey.trim() === ""}>
                       {isSaving ? "Checking…" : "Save"}
                     </button>
                   </>

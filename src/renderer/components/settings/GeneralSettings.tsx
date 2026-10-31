@@ -3,12 +3,7 @@ import { systemActions } from "../../data/bridgeActions.js";
 import { showErrorToast } from "../../state/toast.js";
 import { useState, type JSX } from "react";
 import type { DetectedIde, IdeId } from "../../../shared/types.js";
-import {
-  isLinkTarget,
-  persistLinkTarget,
-  readStoredLinkTarget,
-  type LinkTarget
-} from "../../lib/linkTarget.js";
+import { isLinkTarget, persistLinkTarget, readStoredLinkTarget, type LinkTarget } from "../../lib/linkTarget.js";
 import {
   backgroundSendChordProblem,
   DEFAULT_BACKGROUND_SEND_SHORTCUT,
@@ -18,11 +13,7 @@ import {
 import { formatChord } from "../../lib/shortcutChord.js";
 import { useBackgroundSendShortcut } from "../../hooks/useBackgroundSendShortcut.js";
 import type { NewSessionMode } from "../../lib/newSessionMode.js";
-import {
-  ESCAPE_STOPS_CHAT_KEY,
-  useBooleanUiPreference,
-  type FollowUpDelivery
-} from "../../lib/uiPreferences.js";
+import { ESCAPE_STOPS_CHAT_KEY, useBooleanUiPreference, type FollowUpDelivery } from "../../lib/uiPreferences.js";
 import { ShortcutField } from "./ShortcutField.js";
 import { WindowSnapshotSettings } from "./WindowSnapshotSettings.js";
 import {
@@ -68,10 +59,7 @@ export function GeneralSettings({
   // Read at click time by the chat's link handler, so localStorage is the
   // source of truth and no App-level state is needed.
   const [linkTarget, setLinkTarget] = useState<LinkTarget>(readStoredLinkTarget);
-  const [escapeStopsChat, setEscapeStopsChat] = useBooleanUiPreference(
-    ESCAPE_STOPS_CHAT_KEY,
-    false
-  );
+  const [escapeStopsChat, setEscapeStopsChat] = useBooleanUiPreference(ESCAPE_STOPS_CHAT_KEY, false);
   const backgroundSendShortcut = useBackgroundSendShortcut();
   const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
@@ -92,9 +80,7 @@ export function GeneralSettings({
     setTestNotificationStatus(null);
     try {
       await system.testNotification();
-      setTestNotificationStatus(
-        "Test notification sent. No banner? Check System Settings > Notifications > Argmax."
-      );
+      setTestNotificationStatus("Test notification sent. No banner? Check System Settings > Notifications > Argmax.");
     } catch (error) {
       showErrorToast(error instanceof Error ? error.message : "Failed to send notification");
     } finally {
@@ -169,11 +155,7 @@ export function GeneralSettings({
           label="Escape stops a running chat"
           description="Close open menus and panels first, then stop the focused chat."
           control={
-            <Toggle
-              ariaLabel="Escape stops a running chat"
-              checked={escapeStopsChat}
-              onChange={setEscapeStopsChat}
-            />
+            <Toggle ariaLabel="Escape stops a running chat" checked={escapeStopsChat} onChange={setEscapeStopsChat} />
           }
         />
       </SettingGroup>
@@ -205,9 +187,7 @@ export function GeneralSettings({
             </button>
           }
         />
-        {testNotificationStatus ? (
-          <SettingNote role="status">{testNotificationStatus}</SettingNote>
-        ) : null}
+        {testNotificationStatus ? <SettingNote role="status">{testNotificationStatus}</SettingNote> : null}
       </SettingGroup>
 
       <WindowSnapshotSettings />

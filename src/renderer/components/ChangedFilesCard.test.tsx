@@ -51,22 +51,15 @@ describe("ChangedFilesCard checks list", () => {
 
   it("invokes onRunCheck with the workspace and command and disables the button while in flight", async () => {
     const resolvers: Array<() => void> = [];
-    const onRunCheck = vi
-      .fn<(workspaceId: string, command: string) => Promise<void>>()
-      .mockImplementation(
-        () =>
-          new Promise<void>((resolve) => {
-            resolvers.push(resolve);
-          })
-      );
+    const onRunCheck = vi.fn<(workspaceId: string, command: string) => Promise<void>>().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
 
     render(
-      <ChangedFilesCard
-        workspaceId="workspace-1"
-        checkCommands={["npm test"]}
-        checks={[]}
-        onRunCheck={onRunCheck}
-      />
+      <ChangedFilesCard workspaceId="workspace-1" checkCommands={["npm test"]} checks={[]} onRunCheck={onRunCheck} />
     );
 
     const runButton = screen.getByRole("button", { name: "Run check npm test" });

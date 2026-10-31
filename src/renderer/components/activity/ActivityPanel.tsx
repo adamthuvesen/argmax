@@ -87,24 +87,21 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   // land on top of the 24h window the user switched to while it ran.
   const requestRef = useRef(0);
 
-  const load = useCallback(
-    async (target: ActivityWindow, scope: string | null): Promise<void> => {
-      const request = requestRef.current + 1;
-      requestRef.current = request;
-      try {
-        const next = await requestActivitySummary(target, scope, timeZoneRef.current, () =>
-          fetchSummary(target, scope, timeZoneRef.current)
-        );
-        if (requestRef.current !== request) return;
-        setSummary(next);
-        setError(null);
-      } catch (cause) {
-        if (requestRef.current !== request) return;
-        setError(cause instanceof Error ? cause.message : "Could not read your activity.");
-      }
-    },
-    []
-  );
+  const load = useCallback(async (target: ActivityWindow, scope: string | null): Promise<void> => {
+    const request = requestRef.current + 1;
+    requestRef.current = request;
+    try {
+      const next = await requestActivitySummary(target, scope, timeZoneRef.current, () =>
+        fetchSummary(target, scope, timeZoneRef.current)
+      );
+      if (requestRef.current !== request) return;
+      setSummary(next);
+      setError(null);
+    } catch (cause) {
+      if (requestRef.current !== request) return;
+      setError(cause instanceof Error ? cause.message : "Could not read your activity.");
+    }
+  }, []);
 
   useEffect(() => {
     patchActivityUiState({ activityWindow, metric, projectId });
@@ -127,17 +124,11 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
   useEffect(() => {
     if (!visible) return;
     const period = scanning ? SCANNING_REFRESH_MS : REFRESH_MS;
-    const timer = globalThis.setInterval(
-      () => void load(activityWindow, projectId),
-      period
-    );
+    const timer = globalThis.setInterval(() => void load(activityWindow, projectId), period);
     return () => globalThis.clearInterval(timer);
   }, [activityWindow, load, projectId, scanning, visible]);
 
-  const windowOptions = useMemo(
-    () => activityWindowOptions(new Date().getFullYear()),
-    []
-  );
+  const windowOptions = useMemo(() => activityWindowOptions(new Date().getFullYear()), []);
 
   const rangeLabel = summary
     ? formatRangeLabel(summary.rangeStart, summary.rangeEnd, summary.resolution, summary.timeZone)
@@ -161,8 +152,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
                   ·
                 </span>
                 <span>
-                  {formatCount(withCommits)}{" "}
-                  {withCommits === 1 ? "repository" : "repositories"}
+                  {formatCount(withCommits)} {withCommits === 1 ? "repository" : "repositories"}
                 </span>
                 {/* Which identity the commits were matched on. Two machines
                     and a work email make this the difference between 184
@@ -187,11 +177,7 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
             ) : null}
           </div>
           <div className="activity-controls">
-            <ActivityRepositoryPicker
-              summary={summary}
-              value={projectId}
-              onChange={setProjectId}
-            />
+            <ActivityRepositoryPicker summary={summary} value={projectId} onChange={setProjectId} />
             <SettingsListPicker<ActivityWindow>
               ariaLabel="Time range"
               icon={<CalendarDays size={13} aria-hidden="true" />}
@@ -212,23 +198,14 @@ export function ActivityPanel({ visible = true }: { visible?: boolean } = {}): J
         {error ? (
           <div className="activity-notice" data-tone="error" role="alert">
             <p className="activity-notice-line">{error}</p>
-            <button
-              type="button"
-              className="sched-button"
-              onClick={() => void load(activityWindow, projectId)}
-            >
+            <button type="button" className="sched-button" onClick={() => void load(activityWindow, projectId)}>
               Try again
             </button>
           </div>
         ) : null}
 
         {summary ? (
-          <ActivityBody
-            summary={summary}
-            metric={metric}
-            projectId={projectId}
-            onSelectRepository={setProjectId}
-          />
+          <ActivityBody summary={summary} metric={metric} projectId={projectId} onSelectRepository={setProjectId} />
         ) : null}
         {!summary && !error ? <ActivitySkeleton /> : null}
       </div>
@@ -300,8 +277,8 @@ function ActivityBody({
       <div className="activity-blank">
         <p className="activity-blank-headline">No repositories to read yet.</p>
         <p className="activity-blank-body">
-          Activity is walked out of the git clones behind your projects. Add a project, and every
-          commit you have authored in it — on any branch — shows up here.
+          Activity is walked out of the git clones behind your projects. Add a project, and every commit you have
+          authored in it — on any branch — shows up here.
         </p>
       </div>
     );
@@ -320,8 +297,8 @@ function ActivityBody({
       {summary.scan.phase === "scanning" ? (
         <div className="activity-notice" data-tone="scanning" role="status">
           <p className="activity-notice-line">
-            Still walking your clones — {formatCount(summary.scan.reposDone)} of{" "}
-            {formatCount(summary.scan.reposTotal)} repositories. These numbers are partial.
+            Still walking your clones — {formatCount(summary.scan.reposDone)} of {formatCount(summary.scan.reposTotal)}{" "}
+            repositories. These numbers are partial.
           </p>
         </div>
       ) : null}
@@ -339,11 +316,7 @@ function ActivityBody({
               away from them to learn which is which. */}
           <ul className="activity-chart-legend" aria-hidden="true">
             {series.map((entry) => (
-              <li
-                className="activity-chart-legend-item activity-series"
-                key={entry.key}
-                data-slot={entry.slot}
-              >
+              <li className="activity-chart-legend-item activity-series" key={entry.key} data-slot={entry.slot}>
                 <span className="activity-series-dot" />
                 {entry.label}
               </li>
@@ -359,12 +332,7 @@ function ActivityBody({
         />
       </section>
 
-      <ActivityRepositories
-        summary={summary}
-        metric={metric}
-        selected={projectId}
-        onSelect={onSelectRepository}
-      />
+      <ActivityRepositories summary={summary} metric={metric} selected={projectId} onSelect={onSelectRepository} />
 
       {/* The two GitHub cards. They fail together and independently of the
           rest of the page: a signed-out `gh` costs these two panels, not the

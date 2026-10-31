@@ -27,9 +27,7 @@ const NO_SKILLS: SkillSummary[] = [];
 const NO_COMMANDS: ComposerCommand[] = [];
 
 /** One row of the `/` menu: a composer action, or a skill to insert. */
-export type SlashItem =
-  | { kind: "command"; command: ComposerCommand }
-  | { kind: "skill"; skill: SkillSummary };
+export type SlashItem = { kind: "command"; command: ComposerCommand } | { kind: "skill"; skill: SkillSummary };
 
 interface UseSlashAutocompleteArgs {
   input: string;
@@ -126,10 +124,7 @@ export function useSlashAutocomplete({
       });
   }, [input, slashQuery, provider, workspaceId, cacheKey]);
 
-  const skillNames = useMemo(
-    () => new Set(skills.map((skill) => skill.name.toLowerCase())),
-    [skills]
-  );
+  const skillNames = useMemo(() => new Set(skills.map((skill) => skill.name.toLowerCase())), [skills]);
 
   const filteredCommands = useMemo(() => {
     if (!slashQuery) {
@@ -169,10 +164,7 @@ export function useSlashAutocomplete({
     };
     return skills
       .filter((skill) => skill.name.toLowerCase().includes(needle))
-      .sort(
-        (left, right) =>
-          relevance(left.name.toLowerCase()) - relevance(right.name.toLowerCase())
-      );
+      .sort((left, right) => relevance(left.name.toLowerCase()) - relevance(right.name.toLowerCase()));
   }, [skills, slashQuery]);
 
   const items = useMemo<SlashItem[]>(

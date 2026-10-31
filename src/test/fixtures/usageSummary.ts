@@ -1,9 +1,4 @@
-import type {
-  UsageProviderSummary,
-  UsageSummary,
-  UsageSummaryInput,
-  UsageTokenTotals
-} from "../../shared/types.js";
+import type { UsageProviderSummary, UsageSummary, UsageSummaryInput, UsageTokenTotals } from "../../shared/types.js";
 
 /**
  * Usage fixture for App integration tests: three days, two providers with

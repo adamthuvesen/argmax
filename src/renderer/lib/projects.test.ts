@@ -88,11 +88,7 @@ describe("groupWorkspacesByDate", () => {
   it("sorts newest first and groups multiple sessions per bucket", () => {
     const groups = groupWorkspacesByDate([at(2026, 5, 5, 8), at(2026, 5, 5, 18), at(2026, 5, 5, 12)], NOW);
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.items.map((row) => row.id)).toEqual([
-      "2026-5-5-18",
-      "2026-5-5-12",
-      "2026-5-5-8"
-    ]);
+    expect(groups[0]?.items.map((row) => row.id)).toEqual(["2026-5-5-18", "2026-5-5-12", "2026-5-5-8"]);
   });
 
   it("drops empty buckets and returns nothing for no input", () => {

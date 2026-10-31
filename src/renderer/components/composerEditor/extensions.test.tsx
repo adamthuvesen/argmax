@@ -4,11 +4,7 @@ import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { installZeroLayoutForCodeMirror } from "../../../test/jsdomCodeMirror.js";
-import {
-  COMPOSER_CLIPBOARD_MIME,
-  chatReferenceLink,
-  decodeClipboardPayload
-} from "../../lib/composerContext.js";
+import { COMPOSER_CLIPBOARD_MIME, chatReferenceLink, decodeClipboardPayload } from "../../lib/composerContext.js";
 import {
   chatChipEnvironment,
   promptExtensions,

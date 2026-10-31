@@ -350,9 +350,7 @@ export function demoUsageRemaining(): UsageRemaining {
         provider: "codex",
         kind: "subscription",
         planLabel: "Pro",
-        windows: [
-          { id: "seven_day", label: "Weekly", remainingPercent: 88, resetsAt: "2026-09-13T06:00:00Z" }
-        ],
+        windows: [{ id: "seven_day", label: "Weekly", remainingPercent: 88, resetsAt: "2026-09-13T06:00:00Z" }],
         message: null,
         messageUrl: null
       },
@@ -376,9 +374,7 @@ export function demoUsageRemaining(): UsageRemaining {
         provider: "grok",
         kind: "subscription",
         planLabel: "SuperGrok",
-        windows: [
-          { id: "seven_day", label: "Weekly", remainingPercent: 62, resetsAt: "2026-09-13T00:00:00Z" }
-        ],
+        windows: [{ id: "seven_day", label: "Weekly", remainingPercent: 62, resetsAt: "2026-09-13T00:00:00Z" }],
         message: null,
         messageUrl: null
       }
@@ -388,7 +384,10 @@ export function demoUsageRemaining(): UsageRemaining {
 
 function demoTier(
   tier: RouterTierCost["tier"],
-  counts: Pick<RouterTierCost, "chats" | "turns" | "escalations" | "measuredCostUsd" | "estimatedCostUsd" | "unpricedTurns">,
+  counts: Pick<
+    RouterTierCost,
+    "chats" | "turns" | "escalations" | "measuredCostUsd" | "estimatedCostUsd" | "unpricedTurns"
+  >,
   timing: [turnSeconds: number, firstAnswerSeconds: number, outputTokensPerSecond: number],
   tokens: [medianTurnOutputTokens: number, pricedOutputTokens: number],
   models: ReadonlyArray<[ProviderId, string, number, number]>

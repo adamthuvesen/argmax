@@ -158,11 +158,7 @@ export function addTerminalTab(workspaceId: string, label: string): string {
   return id;
 }
 
-export function addAgentTerminalTab(
-  workspaceId: string,
-  terminalId: string,
-  command?: string | null
-): string {
+export function addAgentTerminalTab(workspaceId: string, terminalId: string, command?: string | null): string {
   const entry = entryFor(workspaceId);
   const existing = entry.state.tabs.find((tab) => tab.terminalId === terminalId);
   if (existing) {
@@ -190,8 +186,7 @@ export function closeTerminalTab(workspaceId: string, tabId: string): void {
   tabDisposer?.(tabId, closing.terminalId);
   if (closing.terminalId) agentTerminalReplays.delete(closing.terminalId);
   const tabs = entry.state.tabs.filter((tab) => tab.id !== tabId);
-  const activeTabId =
-    entry.state.activeTabId === tabId ? (tabs[tabs.length - 1]?.id ?? null) : entry.state.activeTabId;
+  const activeTabId = entry.state.activeTabId === tabId ? (tabs[tabs.length - 1]?.id ?? null) : entry.state.activeTabId;
   entry.state = { ...entry.state, tabs, activeTabId };
   touch(entry);
   notify();

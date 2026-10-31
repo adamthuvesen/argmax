@@ -15,9 +15,7 @@ beforeEach(() => {
 
 /** A chunk whose hash the running bundle no longer has. */
 function missingChunk(): Promise<string> {
-  return Promise.reject(
-    new TypeError("Failed to load module script: expected JavaScript, got text/html")
-  );
+  return Promise.reject(new TypeError("Failed to load module script: expected JavaScript, got text/html"));
 }
 
 /** Let the rejected load and the recovery behind it run. */
@@ -43,10 +41,7 @@ describe("importChunk", () => {
     expect(reload).toHaveBeenCalledTimes(1);
     // Pending on purpose: the caller keeps showing its fallback rather than
     // rendering against the bundle that just failed.
-    const settled = await Promise.race([
-      pending.then(() => "settled"),
-      flush().then(() => "pending")
-    ]);
+    const settled = await Promise.race([pending.then(() => "settled"), flush().then(() => "pending")]);
     expect(settled).toBe("pending");
   });
 

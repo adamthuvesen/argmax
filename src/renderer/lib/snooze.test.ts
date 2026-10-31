@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionSummary, WorkspaceSummary } from "../../shared/types.js";
-import {
-  MAX_TIMER_MS,
-  activeSnoozeUntil,
-  computeSnoozeShelf,
-  snoozeChoices,
-  snoozeTimerDelay
-} from "./snooze.js";
+import { MAX_TIMER_MS, activeSnoozeUntil, computeSnoozeShelf, snoozeChoices, snoozeTimerDelay } from "./snooze.js";
 
 const NOW = Date.parse("2026-10-04T12:00:00.000Z");
 const iso = (offsetMs: number): string => new Date(NOW + offsetMs).toISOString();
@@ -44,11 +38,7 @@ describe("snooze shelf", () => {
         workspace("quiet", { snoozedUntil: iso(60_000) }),
         workspace("failed", { snoozedUntil: iso(60_000) })
       ],
-      [
-        session("approval", "approval-needed"),
-        session("question", "question-asked"),
-        session("failed", "failed")
-      ],
+      [session("approval", "approval-needed"), session("question", "question-asked"), session("failed", "failed")],
       NOW
     );
     // A failed run is not an unanswered request, so it is snoozable.

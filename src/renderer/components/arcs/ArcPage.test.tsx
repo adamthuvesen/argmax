@@ -331,7 +331,9 @@ describe("ArcPage", () => {
 
   it("toasts a failed brief save and keeps the draft available", async () => {
     arcsStub.update.mockRejectedValue(new Error("BRIEF_WRITE_FAILED"));
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit brief" }));
     const textarea = await screen.findByPlaceholderText("What this arc is for, and what done looks like.");
@@ -344,7 +346,9 @@ describe("ArcPage", () => {
   });
 
   it("confirms and launches a new coordinator", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "New coordinator" }));
 
@@ -357,7 +361,9 @@ describe("ArcPage", () => {
 
   it("does not launch a new coordinator when the confirmation is declined", async () => {
     systemStub.confirm.mockResolvedValue(false);
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "New coordinator" }));
 
@@ -377,7 +383,9 @@ describe("ArcPage", () => {
       launchesLast24h: 3,
       limits: { maxActiveMembers: 8, maxLaunchesPerDay: 40 }
     });
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     const working = await screen.findByRole("list", { name: "Members working now" });
     // The completed member and the coordinator are not "working now".
@@ -390,7 +398,9 @@ describe("ArcPage", () => {
     expect(aged).toHaveAttribute("title", "This chat is no longer in the recent chat list");
 
     expect(screen.getByRole("region", { name: "Chats" })).toHaveTextContent("1 working · 2 PRs open · 0 merged");
-    expect(screen.getByText("Limits").parentElement).toHaveTextContent("Up to 8 members working at once. 3 of 40 launches used today.");
+    expect(screen.getByText("Limits").parentElement).toHaveTextContent(
+      "Up to 8 members working at once. 3 of 40 launches used today."
+    );
   });
 
   it("renders the timeline by day and filters it to pull requests", async () => {
@@ -419,7 +429,9 @@ describe("ArcPage", () => {
       nextCursor: null
     });
     const onOpenSession = vi.fn();
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={onOpenSession} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={onOpenSession} onClose={vi.fn()} />
+    );
 
     const timeline = await screen.findByRole("region", { name: "Timeline" });
     expect(await within(timeline).findByText("Checks failing")).toBeInTheDocument();
@@ -451,7 +463,9 @@ describe("ArcPage", () => {
         events: [timelineEvent({ id: "older", kind: "brief_updated", title: "Brief edited", detail: null })],
         nextCursor: null
       });
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Show earlier" }));
     expect(await screen.findByText("Brief edited")).toBeInTheDocument();
@@ -465,9 +479,14 @@ describe("ArcPage", () => {
 
   it("toasts a failed earlier-page load and keeps the cursor available for retry", async () => {
     arcsStub.timeline
-      .mockResolvedValueOnce({ events: [timelineEvent({ id: "new" })], nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 } })
+      .mockResolvedValueOnce({
+        events: [timelineEvent({ id: "new" })],
+        nextCursor: { occurredAt: "2026-05-11T09:00:00.000Z", seq: 4 }
+      })
       .mockRejectedValueOnce(new Error("TIMELINE_UNAVAILABLE"));
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     fireEvent.click(await screen.findByRole("button", { name: "Show earlier" }));
 
@@ -488,7 +507,9 @@ describe("ArcPage", () => {
       ...SNAPSHOT,
       arcs: (SNAPSHOT.arcs ?? []).map((arc) => ({ ...arc, memberCount: 2, updatedAt: "2026-05-12T16:00:00.000Z" }))
     };
-    rerender(<ArcPage arcId="arc-1" snapshot={refreshed} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    rerender(
+      <ArcPage arcId="arc-1" snapshot={refreshed} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     await waitFor(() => expect(arcsStub.get).toHaveBeenCalledTimes(2));
     expect(screen.getByPlaceholderText("What this arc is for, and what done looks like.")).toHaveValue(
@@ -498,7 +519,9 @@ describe("ArcPage", () => {
   });
 
   it("lists only this arc's scheduled tasks in Triggers", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     await waitFor(() => expect(routinesStub.list).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Triage the arc.")).toBeInTheDocument();
@@ -506,7 +529,9 @@ describe("ArcPage", () => {
   });
 
   it("removes a trigger after confirming", async () => {
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     await screen.findByText("Triage the arc.");
     fireEvent.click(screen.getByRole("button", { name: "Remove Morning triage" }));
@@ -518,7 +543,9 @@ describe("ArcPage", () => {
 
   it("does not delete a trigger when the confirmation is declined", async () => {
     systemStub.confirm.mockResolvedValue(false);
-    render(<ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <ArcPage arcId="arc-1" snapshot={SNAPSHOT} projects={[PROJECT]} onOpenSession={vi.fn()} onClose={vi.fn()} />
+    );
 
     await screen.findByText("Triage the arc.");
     fireEvent.click(screen.getByRole("button", { name: "Remove Morning triage" }));

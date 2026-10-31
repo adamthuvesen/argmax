@@ -1,17 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildSessionToolCalls } from "./sessionConversationModel.js";
 import type { TimelineEvent } from "../../shared/types.js";
-import {
-  decodeToolActivity,
-  mergeToolActivity,
-  type ToolActivityKind
-} from "./toolActivity.js";
-import {
-  describeToolAction,
-  extractOpenablePath,
-  summarizeToolGroup,
-  type ToolCall
-} from "./toolCalls.js";
+import { decodeToolActivity, mergeToolActivity, type ToolActivityKind } from "./toolActivity.js";
+import { describeToolAction, extractOpenablePath, summarizeToolGroup, type ToolCall } from "./toolCalls.js";
 
 function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
   return {
@@ -27,9 +18,7 @@ function tool(overrides: Partial<ToolCall> & Pick<ToolCall, "name">): ToolCall {
     completionObserved: overrides.completionObserved ?? true,
     error: overrides.error ?? null,
     parentToolUseId: overrides.parentToolUseId ?? null,
-    activity:
-      overrides.activity ??
-      ({ version: 1, kind: "read", evidence: "tool", targets: ["/repo/a.ts"] } as const)
+    activity: overrides.activity ?? ({ version: 1, kind: "read", evidence: "tool", targets: ["/repo/a.ts"] } as const)
   };
 }
 
@@ -41,9 +30,7 @@ describe("decodeToolActivity", () => {
     expect(
       decodeToolActivity({ version: 1, kind: "discovery", evidence: "tool", targets: [], toolCount: -1 })
     ).toBeNull();
-    expect(
-      decodeToolActivity({ version: 1, kind: "read", evidence: "tool", targets: [""] })
-    ).toBeNull();
+    expect(decodeToolActivity({ version: 1, kind: "read", evidence: "tool", targets: [""] })).toBeNull();
   });
 });
 
@@ -56,9 +43,9 @@ describe("mergeToolActivity", () => {
   };
 
   it("keeps a read start when completion is generic", () => {
-    expect(
-      mergeToolActivity(readStart, { version: 1, kind: "tool", evidence: "tool", targets: [] })
-    ).toEqual(readStart);
+    expect(mergeToolActivity(readStart, { version: 1, kind: "tool", evidence: "tool", targets: [] })).toEqual(
+      readStart
+    );
   });
 
   it("upgrades read to image and keeps targets", () => {
@@ -78,16 +65,24 @@ describe("mergeToolActivity", () => {
   });
 
   it("preserves capture intent and discovery results from anonymous completions", () => {
-    expect(mergeToolActivity({ ...readStart, kind: "image-capture" }, { ...readStart, kind: "image" })?.kind).toBe("image-capture");
-    expect(mergeToolActivity({ ...readStart, kind: "computer" }, { ...readStart, kind: "image" })?.kind).toBe("computer");
-    expect(mergeToolActivity({ ...readStart, kind: "discovery", targets: [] }, { ...readStart, kind: "tool", toolCount: 2 }))
-      .toMatchObject({ kind: "discovery", toolCount: 2 });
+    expect(mergeToolActivity({ ...readStart, kind: "image-capture" }, { ...readStart, kind: "image" })?.kind).toBe(
+      "image-capture"
+    );
+    expect(mergeToolActivity({ ...readStart, kind: "computer" }, { ...readStart, kind: "image" })?.kind).toBe(
+      "computer"
+    );
+    expect(
+      mergeToolActivity({ ...readStart, kind: "discovery", targets: [] }, { ...readStart, kind: "tool", toolCount: 2 })
+    ).toMatchObject({ kind: "discovery", toolCount: 2 });
   });
 });
 
 describe("activity-aware summaries", () => {
   it("describes computer use with its actual completion state", () => {
-    const call = tool({ name: "mcp__cua_repl__js", activity: { version: 1, kind: "computer", evidence: "tool", targets: [] } });
+    const call = tool({
+      name: "mcp__cua_repl__js",
+      activity: { version: 1, kind: "computer", evidence: "tool", targets: [] }
+    });
     expect(describeToolAction(call)).toBe("Used a computer");
     expect(describeToolAction({ ...call, status: "running" })).toBe("Using a computer");
     expect(describeToolAction({ ...call, status: "error" })).toBe("Computer use failed");
@@ -96,12 +91,14 @@ describe("activity-aware summaries", () => {
   it("names four kinds of work and counts the rest", () => {
     const kinds: ToolActivityKind[] = ["read", "command", "search", "image", "browser", "skill", "git"];
     const headline = summarizeToolGroup(
-      kinds.map((kind, index) => tool({
-        name: `t${index}`,
-        id: `t${index}`,
-        toolUseId: `tu-${index}`,
-        activity: { version: 1, kind, evidence: "tool", targets: [] }
-      }))
+      kinds.map((kind, index) =>
+        tool({
+          name: `t${index}`,
+          id: `t${index}`,
+          toolUseId: `tu-${index}`,
+          activity: { version: 1, kind, evidence: "tool", targets: [] }
+        })
+      )
     ).headline;
     expect(headline).toBe("Read a file, ran a command, searched files, viewed an image, and 3 more");
   });
@@ -123,11 +120,14 @@ describe("activity-aware summaries", () => {
   });
 
   it("labels running read, uncertain done read, and failed edit precisely", () => {
-    const readActivity = { version: 1 as const, kind: "read" as const, evidence: "tool" as const, targets: ["/repo/a.ts"] };
+    const readActivity = {
+      version: 1 as const,
+      kind: "read" as const,
+      evidence: "tool" as const,
+      targets: ["/repo/a.ts"]
+    };
     expect(
-      describeToolAction(
-        tool({ name: "Read", status: "running", inputPreview: "/repo/a.ts", activity: readActivity })
-      )
+      describeToolAction(tool({ name: "Read", status: "running", inputPreview: "/repo/a.ts", activity: readActivity }))
     ).toBe("Reading a.ts");
     expect(
       describeToolAction(
@@ -184,7 +184,10 @@ describe("activity-aware summaries", () => {
     ).toMatch(/capture/i);
     expect(
       describeToolAction(
-        tool({ name: "Write", activity: { version: 1, kind: "edit", operation: "create", evidence: "tool", targets: ["/new.ts"] } })
+        tool({
+          name: "Write",
+          activity: { version: 1, kind: "edit", operation: "create", evidence: "tool", targets: ["/new.ts"] }
+        })
       )
     ).toMatch(/creat/i);
     expect(
@@ -262,13 +265,21 @@ describe("activity-aware summaries", () => {
 describe("buildSessionToolCalls integration", () => {
   const activity = { version: 1, kind: "read", evidence: "tool", targets: ["/repo/a.ts"] };
   const start: TimelineEvent = {
-    id: "start", sessionId: "s1", type: "command.started", createdAt: "2026-09-12T10:00:00Z",
-    message: "Read", payload: { id: "call-1", name: "Read", input: { file_path: "/repo/a.ts" }, activity }
+    id: "start",
+    sessionId: "s1",
+    type: "command.started",
+    createdAt: "2026-09-12T10:00:00Z",
+    message: "Read",
+    payload: { id: "call-1", name: "Read", input: { file_path: "/repo/a.ts" }, activity }
   };
   it("retains specific start evidence when the result has no identity", () => {
     const end: TimelineEvent = {
-      id: "end", sessionId: "s1", type: "command.completed", createdAt: "2026-09-12T10:00:01Z",
-      message: "", payload: { tool_use_id: "call-1", activity: { version: 1, kind: "tool", evidence: "tool", targets: [] } }
+      id: "end",
+      sessionId: "s1",
+      type: "command.completed",
+      createdAt: "2026-09-12T10:00:01Z",
+      message: "",
+      payload: { tool_use_id: "call-1", activity: { version: 1, kind: "tool", evidence: "tool", targets: [] } }
     };
     const calls = buildSessionToolCalls([start, end], false);
     expect(calls).toHaveLength(1);
@@ -281,16 +292,33 @@ describe("buildSessionToolCalls integration", () => {
     expect(describeToolAction(calls[0])).toBe("File read");
   });
 
-  it.each([{ status: "cancelled" }, { cancelled: true }, { canceled: true }])("keeps cancelled results out of successful activity: %j", (cancellation) => {
-    const calls = buildSessionToolCalls([start, {
-      id: "cancel", sessionId: "s1", type: "command.completed", createdAt: "2026-09-12T10:00:01Z",
-      message: "", payload: { tool_use_id: "call-1", ...cancellation }
-    }], false);
-    expect(describeToolAction(calls[0])).toBe("File read cancelled");
-  });
+  it.each([{ status: "cancelled" }, { cancelled: true }, { canceled: true }])(
+    "keeps cancelled results out of successful activity: %j",
+    (cancellation) => {
+      const calls = buildSessionToolCalls(
+        [
+          start,
+          {
+            id: "cancel",
+            sessionId: "s1",
+            type: "command.completed",
+            createdAt: "2026-09-12T10:00:01Z",
+            message: "",
+            payload: { tool_use_id: "call-1", ...cancellation }
+          }
+        ],
+        false
+      );
+      expect(describeToolAction(calls[0])).toBe("File read cancelled");
+    }
+  );
 
   it("retains the actual command in the expanded row label", () => {
-    const command = tool({ name: "Bash", inputPreview: "npm test", activity: { version: 1, kind: "command", evidence: "tool", targets: [] } });
+    const command = tool({
+      name: "Bash",
+      inputPreview: "npm test",
+      activity: { version: 1, kind: "command", evidence: "tool", targets: [] }
+    });
     expect(describeToolAction(command)).toBe("Ran npm test");
     expect(summarizeToolGroup([command]).headline).toBe("Ran a command");
   });
@@ -310,7 +338,12 @@ describe("linked-repository reads", () => {
     });
     expect(describeToolAction(read)).toBe("Read sv__maru.sql in dbt-transform");
     expect(describeToolAction(listing)).toBe("Listed files in dbt-transform");
-    expect(summarizeToolGroup([read, { ...read, id: "second", activity: { ...read.activity!, targets: ["dbt-transform/README.md"] } }]).headline).toBe("Read 2 files");
+    expect(
+      summarizeToolGroup([
+        read,
+        { ...read, id: "second", activity: { ...read.activity!, targets: ["dbt-transform/README.md"] } }
+      ]).headline
+    ).toBe("Read 2 files");
     expect(extractOpenablePath(read.name, read.inputFull)).toBeNull();
   });
 });

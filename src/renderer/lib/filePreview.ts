@@ -40,11 +40,7 @@ async function fetchFilePreview({
     : await window.argmax.workspace.readFile({ kind: "workspace", id: workspaceId }, path);
   if (result.kind !== "text") {
     const reason =
-      result.reason === "binary"
-        ? "Binary file"
-        : result.reason === "too-large"
-          ? "File too large"
-          : "Not a file";
+      result.reason === "binary" ? "Binary file" : result.reason === "too-large" ? "File too large" : "Not a file";
     throw new Error(reason);
   }
   const allLines = result.content.split("\n");

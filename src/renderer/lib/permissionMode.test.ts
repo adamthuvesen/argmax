@@ -21,15 +21,12 @@ describe("permission mode preferences", () => {
     expect(readStoredPermissionMode()).toBe("provider-defaults");
   });
 
-  it.each(["provider-defaults", "auto-approve", "ask-each-time"] as const)(
-    "preserves the stored %s mode",
-    (mode) => {
-      window.localStorage.setItem(PERMISSION_MODE_KEY, mode);
+  it.each(["provider-defaults", "auto-approve", "ask-each-time"] as const)("preserves the stored %s mode", (mode) => {
+    window.localStorage.setItem(PERMISSION_MODE_KEY, mode);
 
-      expect(isPermissionMode(mode)).toBe(true);
-      expect(readStoredPermissionMode()).toBe(mode);
-    }
-  );
+    expect(isPermissionMode(mode)).toBe(true);
+    expect(readStoredPermissionMode()).toBe(mode);
+  });
 });
 
 describe("provider permission mode preferences", () => {

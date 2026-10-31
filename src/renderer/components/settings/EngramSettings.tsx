@@ -43,10 +43,7 @@ export function EngramSettings({
             label="1. Install Engram"
             description="Optional. Follow the Engram guide to install it and set up its model credentials."
             control={
-              <WebLink
-                className="settings-button"
-                href="https://github.com/adamthuvesen/engram#run-it"
-              >
+              <WebLink className="settings-button" href="https://github.com/adamthuvesen/engram#run-it">
                 Installation guide <ExternalLink size={13} aria-hidden="true" />
               </WebLink>
             }
@@ -104,7 +101,9 @@ export function EngramSettings({
                   rows={setup.kind === "json" ? 10 : 3}
                   aria-describedby="settings-engram-command-help"
                 />
-                <p className="settings-note" id="settings-engram-command-help">{setup.instructions}</p>
+                <p className="settings-note" id="settings-engram-command-help">
+                  {setup.instructions}
+                </p>
                 <div className="settings-form-footer">
                   <CopySetup key={setup.content} content={setup.content} kind={setup.kind} />
                 </div>
@@ -112,9 +111,9 @@ export function EngramSettings({
             ) : null}
           </div>
           <SettingNote>
-            Engram is used when an agent calls its memory tools. Ask it to recall this project’s
-            relevant memories and verify changeable facts against current code or sources.
-            Manage or remove the connection in the agent’s own MCP settings.
+            Engram is used when an agent calls its memory tools. Ask it to recall this project’s relevant memories and
+            verify changeable facts against current code or sources. Manage or remove the connection in the agent’s own
+            MCP settings.
           </SettingNote>
         </div>
       ) : null}

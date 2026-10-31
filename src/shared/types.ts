@@ -167,11 +167,7 @@ type OptionalNullable<T, K extends keyof T> = Omit<T, K> & {
  * fields the wire carries loosely (a `String` column, a serde-untagged enum)
  * that the renderer knows more precisely.
  */
-type Retype<T, R extends { [K in keyof R]: K extends keyof T ? unknown : never }> = Omit<
-  T,
-  keyof R
-> &
-  R;
+type Retype<T, R extends { [K in keyof R]: K extends keyof T ? unknown : never }> = Omit<T, keyof R> & R;
 
 /**
  * A hand-written union that must stay a subtype of what the wire carries.
@@ -210,10 +206,7 @@ export type SessionAgentEventsInput = OptionalNullable<
   Bindings.SessionAgentEventsInput,
   "providerParentConversationId" | "providerChildSessionId"
 >;
-export type SessionForkInput = OptionalNullable<
-  Bindings.SessionForkInput,
-  "boundaryEventId" | "workspace"
->;
+export type SessionForkInput = OptionalNullable<Bindings.SessionForkInput, "boundaryEventId" | "workspace">;
 export type SessionForkLineageInput = Bindings.SessionForkLineageInput;
 export type SessionForkMergePreviewInput = Bindings.SessionForkMergePreviewInput;
 export type SessionForkMergeInput = Bindings.SessionForkMergeInput;
@@ -463,10 +456,7 @@ export type DashboardListSnapshot = Pick<
   "projects" | "workspaces" | "sessions" | "checks" | "pendingMessages" | "arcs"
 >;
 
-export type WorkspaceStatusSnapshot = Pick<
-  DashboardSnapshot,
-  "workspaces" | "sessions" | "checks"
->;
+export type WorkspaceStatusSnapshot = Pick<DashboardSnapshot, "workspaces" | "sessions" | "checks">;
 
 /**
  * The recovery fields are optional here: the renderer treats a missing one
@@ -534,7 +524,10 @@ export interface ArgmaxApi {
     applyOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
     discardOverviewDraft: (input: { projectId: string; expectedRevision: number }) => Promise<ProjectSummary>;
     getFolders: (input: { projectId: string }) => Promise<ProjectFolder[]>;
-    getFolderContext: (input: { projectId: string; projectFolderId?: string }) => Promise<{ project: ProjectSummary; isGit: boolean; folderId: string }>;
+    getFolderContext: (input: {
+      projectId: string;
+      projectFolderId?: string;
+    }) => Promise<{ project: ProjectSummary; isGit: boolean; folderId: string }>;
     pickDirectory: () => Promise<{ cancelled: boolean; path: string | null }>;
     pickFolder: () => Promise<ProjectFolderPickResult>;
     register: (input: RegisterProjectInput) => Promise<ProjectSummary>;
@@ -583,9 +576,7 @@ export interface ArgmaxApi {
     resize: (input: ProviderSessionResizeInput) => Promise<Bindings.SystemOk>;
     terminate: (sessionId: string) => Promise<Bindings.SystemOk>;
     cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) => Promise<Bindings.SystemOk>;
-    sendQueuedMessageNow: (
-      input: ProvidersSendQueuedMessageNowInput
-    ) => Promise<Bindings.SendInputResult>;
+    sendQueuedMessageNow: (input: ProvidersSendQueuedMessageNowInput) => Promise<Bindings.SendInputResult>;
   };
   cloud: {
     prepare: (input: CloudPrepareInput) => Promise<CloudHandoffPreview>;
@@ -598,7 +589,9 @@ export interface ArgmaxApi {
     import: (input: Bindings.VisualizationImportInput) => Promise<VisualizationArtifact>;
     read: (input: Bindings.VisualizationReadInput) => Promise<VisualizationRead>;
     setState: (input: Bindings.VisualizationSetStateInput) => Promise<VisualizationWidgetState>;
-    setControls: (input: Bindings.VisualizationSetControlsInput) => Promise<Partial<Record<string, Bindings.JsonValue>>>;
+    setControls: (
+      input: Bindings.VisualizationSetControlsInput
+    ) => Promise<Partial<Record<string, Bindings.JsonValue>>>;
     preview: (input: Bindings.VisualizationPreviewInput) => Promise<Bindings.VisualizationPreviewResult>;
     publish: (input: Bindings.VisualizationPublishInput) => Promise<VisualizationArtifact>;
     export: (input: Bindings.VisualizationReadInput) => Promise<string>;
@@ -635,12 +628,14 @@ export interface ArgmaxApi {
      *  reply to yet or the helper call failed. */
     suggestFollowUp: (input: SessionSuggestFollowUpInput) => Promise<FollowUpSuggestion>;
     costSummary: (input: SessionCostSummaryInput) => Promise<SessionCostSummary>;
-    search: (input: { query: string; limit?: number }) => Promise<Array<{
-      sessionId: string;
-      eventId: string;
-      snippet: string;
-      rank: number;
-    }>>;
+    search: (input: { query: string; limit?: number }) => Promise<
+      Array<{
+        sessionId: string;
+        eventId: string;
+        snippet: string;
+        rank: number;
+      }>
+    >;
   };
   goals: {
     set: (input: GoalSetInput) => Promise<Goal>;
@@ -1071,14 +1066,7 @@ export type GhPrState = "OPEN" | "CLOSED" | "MERGED";
 export type SessionPrSummary = Bindings.SessionPrSummary;
 export type PrCleanupReport = Bindings.PrCleanupReport;
 
-export type GhCheckState =
-  | "unknown"
-  | "pending"
-  | "success"
-  | "failure"
-  | "neutral"
-  | "cancelled"
-  | "skipped";
+export type GhCheckState = "unknown" | "pending" | "success" | "failure" | "neutral" | "cancelled" | "skipped";
 
 export type LearningKind = "pitfall" | "convention" | "command";
 export type ProjectSource = Bindings.ProjectSource;

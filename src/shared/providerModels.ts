@@ -1,8 +1,5 @@
 import { BoundedSet } from "./boundedSet.js";
-import type {
-  ReasoningEffort as BindingReasoningEffort,
-  UsageCounts as BindingUsageCounts
-} from "./bindings.js";
+import type { ReasoningEffort as BindingReasoningEffort, UsageCounts as BindingUsageCounts } from "./bindings.js";
 import { logger } from "./logger.js";
 import type { ProviderId } from "./types.js";
 
@@ -204,7 +201,13 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // on switches the chat to Opus. https://code.claude.com/docs/en/fast-mode
   claude: [
     { label: "Fable 5.1", modelId: "claude-fable-5-1", supportsReasoningEffort: true, contextWindow: 1_000_000 },
-    { label: "Opus 5.5", modelId: "claude-opus-5-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
+    {
+      label: "Opus 5.5",
+      modelId: "claude-opus-5-5",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 1_000_000
+    },
     { label: "Sonnet 5.5", modelId: "claude-sonnet-5-5", supportsReasoningEffort: true, contextWindow: 1_000_000 },
     { label: "Haiku 5.5", modelId: "claude-haiku-5-5", contextWindow: 1_000_000 }
   ],
@@ -214,10 +217,34 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // Codex itself reports as `model_context_window` in its rollout, and the one
   // the CLI measures occupancy against. Verified against codex-cli 0.149.0.
   codex: [
-    { label: "GPT-6 Astra", modelId: "gpt-6-astra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
-    { label: "GPT-6.1 Sol", modelId: "gpt-6.1-sol", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 },
-    { label: "GPT-5.6 Terra", modelId: "gpt-5.6-terra", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 258_400 },
-    { label: "GPT-6 Luna", modelId: "gpt-6-luna", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 272_000 }
+    {
+      label: "GPT-6 Astra",
+      modelId: "gpt-6-astra",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 272_000
+    },
+    {
+      label: "GPT-6.1 Sol",
+      modelId: "gpt-6.1-sol",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 272_000
+    },
+    {
+      label: "GPT-5.6 Terra",
+      modelId: "gpt-5.6-terra",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 258_400
+    },
+    {
+      label: "GPT-6 Luna",
+      modelId: "gpt-6-luna",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 272_000
+    }
   ],
   cursor: [
     { label: "Auto Cost (Cursor)", modelId: "auto-smart[optimize_for=cost]" },
@@ -238,9 +265,27 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsReasoningEffort: true,
       contextWindow: 1_000_000
     },
-    { label: "GPT-5.6 Sol (Cursor)", modelId: "gpt-5.6-sol-medium", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
-    { label: "GPT-5.6 Terra (Cursor)", modelId: "gpt-5.6-terra-medium", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
-    { label: "GPT-5.6 Luna (Cursor)", modelId: "gpt-5.6-luna-medium", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 },
+    {
+      label: "GPT-5.6 Sol (Cursor)",
+      modelId: "gpt-5.6-sol-medium",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 1_000_000
+    },
+    {
+      label: "GPT-5.6 Terra (Cursor)",
+      modelId: "gpt-5.6-terra-medium",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 1_000_000
+    },
+    {
+      label: "GPT-5.6 Luna (Cursor)",
+      modelId: "gpt-5.6-luna-medium",
+      supportsReasoningEffort: true,
+      supportsFastMode: true,
+      contextWindow: 1_000_000
+    },
     {
       label: "Claude Opus 5.5 (Cursor)",
       modelId: "claude-opus-5-5-medium",
@@ -267,8 +312,20 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
   // Muse Spark 1.3 Contributor is cheap because Meta trains on the prompts and
   // completions it sees, which is what "contributor" in its id means.
   opencode: [
-    { label: "GLM-5.3-Flash", modelId: "openrouter/z-ai/glm-5.3-flash", supportsReasoningEffort: true, contextWindow: 1_048_576, vercelSlug: "zai/glm-5.3-flash" },
-    { label: "GLM-5.3", modelId: "openrouter/z-ai/glm-5.3", supportsReasoningEffort: true, contextWindow: 1_048_576, vercelSlug: "zai/glm-5.3" },
+    {
+      label: "GLM-5.3-Flash",
+      modelId: "openrouter/z-ai/glm-5.3-flash",
+      supportsReasoningEffort: true,
+      contextWindow: 1_048_576,
+      vercelSlug: "zai/glm-5.3-flash"
+    },
+    {
+      label: "GLM-5.3",
+      modelId: "openrouter/z-ai/glm-5.3",
+      supportsReasoningEffort: true,
+      contextWindow: 1_048_576,
+      vercelSlug: "zai/glm-5.3"
+    },
     {
       label: "DeepSeek V4.1 Flash 1017",
       modelId: "openrouter/deepseek/deepseek-v4.1-flash-1017",
@@ -281,16 +338,39 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
       supportsReasoningEffort: true,
       contextWindow: 1_048_576
     },
-    { label: "Kimi K3", modelId: "openrouter/moonshotai/kimi-k3", supportsReasoningEffort: true, contextWindow: 1_048_576 },
-    { label: "Qwen3.8 Max", modelId: "openrouter/qwen/qwen3.8-max-0902", supportsReasoningEffort: true, contextWindow: 1_000_000, vercelSlug: "alibaba/qwen3.8-max-0902" },
-    { label: "Qwen3.8 Flash", modelId: "openrouter/qwen/qwen3.8-flash", supportsReasoningEffort: true, contextWindow: 1_000_000, vercelSlug: "alibaba/qwen3.8-flash" },
+    {
+      label: "Kimi K3",
+      modelId: "openrouter/moonshotai/kimi-k3",
+      supportsReasoningEffort: true,
+      contextWindow: 1_048_576
+    },
+    {
+      label: "Qwen3.8 Max",
+      modelId: "openrouter/qwen/qwen3.8-max-0902",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000,
+      vercelSlug: "alibaba/qwen3.8-max-0902"
+    },
+    {
+      label: "Qwen3.8 Flash",
+      modelId: "openrouter/qwen/qwen3.8-flash",
+      supportsReasoningEffort: true,
+      contextWindow: 1_000_000,
+      vercelSlug: "alibaba/qwen3.8-flash"
+    },
     {
       label: "Muse Spark 1.3 Contributor",
       modelId: "openrouter/meta/muse-spark-1.3-contributor",
       supportsReasoningEffort: true,
       contextWindow: 1_048_576
     },
-    { label: "Muse Wonder", modelId: "openrouter/meta/muse-wonder", supportsReasoningEffort: true, contextWindow: 1_048_576, vercelSlug: "meta/muse-wonder-1.0" }
+    {
+      label: "Muse Wonder",
+      modelId: "openrouter/meta/muse-wonder",
+      supportsReasoningEffort: true,
+      contextWindow: 1_048_576,
+      vercelSlug: "meta/muse-wonder-1.0"
+    }
   ],
   // The picker offers Grok 4.7. It takes --reasoning-effort up to xhigh (the
   // CLI rejects max/ultra). Fast is the advertised SKU `grok-4.7-build-fast`.
@@ -313,9 +393,14 @@ export const PROVIDER_MODELS: Record<ProviderId, ProviderModelOption[]> = {
  * launch facts from the generated catalogue, so they need a row as well.
  */
 export const STORED_ONLY_MODELS: Partial<
-  Record<ProviderId, readonly Pick<ProviderModelOption, "modelId" | "supportsReasoningEffort" | "supportsFastMode" | "contextWindow">[]>
+  Record<
+    ProviderId,
+    readonly Pick<ProviderModelOption, "modelId" | "supportsReasoningEffort" | "supportsFastMode" | "contextWindow">[]
+  >
 > = {
-  claude: [{ modelId: "claude-opus-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 }],
+  claude: [
+    { modelId: "claude-opus-5", supportsReasoningEffort: true, supportsFastMode: true, contextWindow: 1_000_000 }
+  ],
   codex: [
     { modelId: "gpt-5.6-sol", supportsReasoningEffort: true, supportsFastMode: true },
     { modelId: "gpt-5.6-luna", supportsReasoningEffort: true, supportsFastMode: true }
@@ -408,41 +493,41 @@ interface ModelPricing {
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Fable 5.1 keeps Fable 5's per-token rates but cache reads drop to
   // $0.25/MTok (0.025x), a quarter of Fable 5's.
-  "claude-fable-5-1":    { input: 10,   output: 50,  cacheRead: 0.25,  cacheWrite: 12.5 },
+  "claude-fable-5-1": { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 },
   // Claude Code 2.1.280 catalog tier `tier_4_20_cache_read_0_20`.
-  "claude-opus-5-5":     { input: 4,    output: 20,  cacheRead: 0.2,   cacheWrite: 5 },
-  "claude-opus-5":       { input: 5,    output: 25,  cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-sonnet-5-5":   { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
+  "claude-opus-5-5": { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+  "claude-opus-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
   // Short-prompt rates (up to 100K). Above 100K Haiku 5.5 bills $0.50 / $2.50; that surcharge is not modeled.
-  "claude-haiku-5-5":    { input: 0.1,  output: 0.5, cacheRead: 0.01,  cacheWrite: 0.125 },
-  "claude-haiku-4-5":    { input: 1,    output: 5,   cacheRead: 0.1,   cacheWrite: 1.25 },
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+  "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
 
   // Short-context rates (<272K). Long-context multipliers are not modeled.
-  "gpt-6-astra":         { input: 10,   output: 50,  cacheRead: 1,    cacheWrite: 12.5 },
-  "gpt-6.1-sol":         { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
-  "gpt-6-sol":           { input: 2,    output: 10,  cacheRead: 0.2,   cacheWrite: 2.5 },
-  "gpt-6-luna":          { input: 0.1,  output: 0.5, cacheRead: 0.01,  cacheWrite: 0.125 },
+  "gpt-6-astra": { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+  "gpt-6.1-sol": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  "gpt-6-sol": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  "gpt-6-luna": { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
   // Promotional rate, promised through at least 2026-11-21.
-  "gpt-5.6-sol":         { input: 4,    output: 20,  cacheRead: 0.4,   cacheWrite: 5 },
-  "gpt-5.6-terra":       { input: 2,    output: 12,  cacheRead: 0.2,   cacheWrite: 2.5 },
-  "gpt-5.6-luna":        { input: 0.2,  output: 1.2, cacheRead: 0.02,  cacheWrite: 0.25 },
+  "gpt-5.6-sol": { input: 4, output: 20, cacheRead: 0.4, cacheWrite: 5 },
+  "gpt-5.6-terra": { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
+  "gpt-5.6-luna": { input: 0.2, output: 1.2, cacheRead: 0.02, cacheWrite: 0.25 },
 
   // Cursor billing is not estimated here. Zero is the existing telemetry
   // placeholder, not a claim that Cursor usage is free. Auto's routed model
   // can change per request, so it has no fixed token rate.
-  "auto-smart[optimize_for=cost]":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "auto-smart[optimize_for=balanced]":     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "auto-smart[optimize_for=cost]": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "auto-smart[optimize_for=balanced]": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "auto-smart[optimize_for=intelligence]": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "composer-2.5":                     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "grok-4.7-medium":                  { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "cursor-grok-4.6-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gemini-3.8-flash-medium":          { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gpt-5.6-sol-medium":               { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gpt-5.6-terra-medium":             { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gpt-5.6-luna-medium":              { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "claude-opus-5-5-medium":           { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "claude-sonnet-5-5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "claude-opus-5-thinking-medium":    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "composer-2.5": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "grok-4.7-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "cursor-grok-4.6-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.8-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.6-sol-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.6-terra-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.6-luna-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "claude-opus-5-5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "claude-sonnet-5-5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "claude-opus-5-thinking-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 
   // OpenCode via OpenRouter. OpenRouter spreads a request across hosts whose
   // rates differ several-fold, and OpenCode's own `cost` is the catalog's
@@ -450,15 +535,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // turn, 2026-10-04). So these are the model maker's own host rates on
   // OpenRouter: an estimate, not the bill.
   // Cache writes bill as plain input. Keep in sync with the Rust pricing mirror.
-  "openrouter/z-ai/glm-5.3-flash":              { input: 0.15,  output: 0.5,    cacheRead: 0.03,  cacheWrite: 0.15 },
-  "openrouter/z-ai/glm-5.3":                    { input: 1.4,   output: 4.4,    cacheRead: 0.26,  cacheWrite: 1.4 },
-  "openrouter/deepseek/deepseek-v4.1-flash-1017":    { input: 0.15,  output: 0.6,    cacheRead: 0.003, cacheWrite: 0.15 },
-  "openrouter/deepseek/deepseek-v4-pro-0813":   { input: 0.66,  output: 1.98,   cacheRead: 0.022, cacheWrite: 0.66 },
-  "openrouter/moonshotai/kimi-k3":              { input: 3,     output: 15,     cacheRead: 0.3,   cacheWrite: 3 },
-  "openrouter/qwen/qwen3.8-max-0902":           { input: 2,     output: 6,      cacheRead: 0.25,  cacheWrite: 2.5 },
-  "openrouter/qwen/qwen3.8-flash":              { input: 0.15,  output: 0.47,   cacheRead: 0.016, cacheWrite: 0.2 },
-  "openrouter/meta/muse-spark-1.3-contributor": { input: 0.1,   output: 0.2,    cacheRead: 0.002, cacheWrite: 0.1 },
-  "openrouter/meta/muse-wonder":                { input: 4,     output: 20,     cacheRead: 0.2,   cacheWrite: 4 },
+  "openrouter/z-ai/glm-5.3-flash": { input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0.15 },
+  "openrouter/z-ai/glm-5.3": { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 1.4 },
+  "openrouter/deepseek/deepseek-v4.1-flash-1017": { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0.15 },
+  "openrouter/deepseek/deepseek-v4-pro-0813": { input: 0.66, output: 1.98, cacheRead: 0.022, cacheWrite: 0.66 },
+  "openrouter/moonshotai/kimi-k3": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3 },
+  "openrouter/qwen/qwen3.8-max-0902": { input: 2, output: 6, cacheRead: 0.25, cacheWrite: 2.5 },
+  "openrouter/qwen/qwen3.8-flash": { input: 0.15, output: 0.47, cacheRead: 0.016, cacheWrite: 0.2 },
+  "openrouter/meta/muse-spark-1.3-contributor": { input: 0.1, output: 0.2, cacheRead: 0.002, cacheWrite: 0.1 },
+  "openrouter/meta/muse-wonder": { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 4 },
 
   // Grok Build bills its own SKUs (`grok-4.7-build` / `grok-4.6-build` /
   // `grok-4.5-build` in the CLI's modelUsage map), not xAI's public API list
@@ -468,52 +553,52 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // 2026-09-01; 4.5 matches them except on cache reads; 4.7 Fast is twice 4.7.
   // Cache writes are never billed separately. Keep in sync with the Rust
   // pricing mirror.
-  "grok-4.7":                              { input: 0.68,  output: 2.04,   cacheRead: 0.17,  cacheWrite: 0 },
-  "grok-4.7-build-fast":                   { input: 1.36,  output: 4.08,   cacheRead: 0.34,  cacheWrite: 0 },
-  "grok-4.6":                              { input: 0.68,  output: 2.04,   cacheRead: 0.17,  cacheWrite: 0 },
-  "grok-4.5":                              { input: 0.68,  output: 2.04,   cacheRead: 0.102, cacheWrite: 0 }
+  "grok-4.7": { input: 0.68, output: 2.04, cacheRead: 0.17, cacheWrite: 0 },
+  "grok-4.7-build-fast": { input: 1.36, output: 4.08, cacheRead: 0.34, cacheWrite: 0 },
+  "grok-4.6": { input: 0.68, output: 2.04, cacheRead: 0.17, cacheWrite: 0 },
+  "grok-4.5": { input: 0.68, output: 2.04, cacheRead: 0.102, cacheWrite: 0 }
 };
 
 const STORED_MODEL_PRICING_ALIASES: Record<string, ModelPricing> = {
   "openrouter/deepseek/deepseek-v4.1-flash": { input: 0.15, output: 0.6, cacheRead: 0.003, cacheWrite: 0.15 },
-  "claude-fable-5":       { input: 10,   output: 50,   cacheRead: 1,     cacheWrite: 12.5 },
-  "claude-sonnet-5":      { input: 2,    output: 10,   cacheRead: 0.2,   cacheWrite: 2.5 },
-  "claude-opus-4-8":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-7":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-6":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-5":      { input: 5,    output: 25,   cacheRead: 0.5,   cacheWrite: 6.25 },
-  "claude-opus-4-1":      { input: 15,   output: 75,   cacheRead: 1.5,   cacheWrite: 18.75 },
-  "claude-opus-4":        { input: 15,   output: 75,   cacheRead: 1.5,   cacheWrite: 18.75 },
-  "claude-sonnet-4-6":    { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
-  "claude-sonnet-4-5":    { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
-  "claude-sonnet-4":      { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
-  "claude-3-7-sonnet":    { input: 3,    output: 15,   cacheRead: 0.3,   cacheWrite: 3.75 },
-  "claude-3-5-haiku":     { input: 0.8,  output: 4,    cacheRead: 0.08,  cacheWrite: 1 },
-  "claude-3-opus":        { input: 15,   output: 75,   cacheRead: 1.5,   cacheWrite: 18.75 },
-  "claude-3-haiku":       { input: 0.25, output: 1.25, cacheRead: 0.03,  cacheWrite: 0.3 },
-  "gpt-5":                { input: 1.25, output: 10,   cacheRead: 0.125, cacheWrite: 0 },
-  "gpt-5-codex":          { input: 1.25, output: 10,   cacheRead: 0.125, cacheWrite: 0 },
-  "gpt-5-codex-mini":     { input: 0.25, output: 2,    cacheRead: 0.025, cacheWrite: 0 },
-  "gpt-5.1":              { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.1-codex-max":    { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.1-codex-mini":   { input: 0.25, output: 2,    cacheRead: 0.025, cacheWrite: 0 },
-  "gpt-5.2":              { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.2-codex":        { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3":              { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3-codex":        { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.3-chat-latest":  { input: 1.75, output: 14,   cacheRead: 0.175, cacheWrite: 0 },
-  "gpt-5.4":              { input: 2.5,  output: 15,   cacheRead: 0.25,  cacheWrite: 0 },
-  "gpt-5.4-codex":        { input: 2.5,  output: 15,   cacheRead: 0.25,  cacheWrite: 0 },
-  "gpt-5.4-mini":         { input: 0.75, output: 4.5,  cacheRead: 0.075, cacheWrite: 0 },
-  "gpt-5.4-nano":         { input: 0.2,  output: 1.25, cacheRead: 0.02,  cacheWrite: 0 },
-  "gpt-5.4-pro":          { input: 30,   output: 180,  cacheRead: 0,     cacheWrite: 0 },
-  "gpt-5.5":              { input: 5,    output: 30,   cacheRead: 0.5,   cacheWrite: 0 },
-  "gpt-5.5-pro":          { input: 30,   output: 180,  cacheRead: 0,     cacheWrite: 0 },
-  "o4-mini":              { input: 1.1,  output: 4.4,  cacheRead: 0.275, cacheWrite: 0 },
+  "claude-fable-5": { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+  "claude-sonnet-5": { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  "claude-opus-4-8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-6": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-1": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-opus-4": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-sonnet-4-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-sonnet-4": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-3-7-sonnet": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-3-5-haiku": { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 },
+  "claude-3-opus": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+  "claude-3-haiku": { input: 0.25, output: 1.25, cacheRead: 0.03, cacheWrite: 0.3 },
+  "gpt-5": { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 0 },
+  "gpt-5-codex": { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 0 },
+  "gpt-5-codex-mini": { input: 0.25, output: 2, cacheRead: 0.025, cacheWrite: 0 },
+  "gpt-5.1": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.1-codex-max": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.1-codex-mini": { input: 0.25, output: 2, cacheRead: 0.025, cacheWrite: 0 },
+  "gpt-5.2": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.2-codex": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.3": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.3-codex": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.3-chat-latest": { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+  "gpt-5.4": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+  "gpt-5.4-codex": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+  "gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
+  "gpt-5.4-nano": { input: 0.2, output: 1.25, cacheRead: 0.02, cacheWrite: 0 },
+  "gpt-5.4-pro": { input: 30, output: 180, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.5": { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+  "gpt-5.5-pro": { input: 30, output: 180, cacheRead: 0, cacheWrite: 0 },
+  "o4-mini": { input: 1.1, output: 4.4, cacheRead: 0.275, cacheWrite: 0 },
   "claude-opus-4-8-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "claude-opus-4-7-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gpt-5.5-medium":         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  "gemini-3.5-flash":       { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gpt-5.5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  "gemini-3.5-flash": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.6-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "gemini-3.7-flash-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   "cursor-grok-4.5-medium": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
@@ -561,9 +646,7 @@ export function resolveModelId(provider: ProviderId, modelId: string): ResolvedM
 export function modelLabelFor(provider: ProviderId, modelId: string): string | null {
   if (!modelId) return null;
   const wanted = normalizeModelId(resolveModelId(provider, modelId));
-  const match = PROVIDER_MODELS[provider]?.find(
-    (model) => normalizeModelId(model.modelId) === wanted
-  );
+  const match = PROVIDER_MODELS[provider]?.find((model) => normalizeModelId(model.modelId) === wanted);
   return match?.label ?? null;
 }
 
@@ -579,10 +662,9 @@ export function modelLabelForReference(provider: ProviderId, reference: string):
   if (direct) return direct;
   const alias = reference.trim().toLowerCase();
   if (!alias) return null;
-  const matches = PROVIDER_MODELS[provider]?.filter((model) =>
-    normalizeModelId(model.modelId).split("-").includes(alias)
-  ) ?? [];
-  return matches.length === 1 ? matches[0]?.label ?? null : null;
+  const matches =
+    PROVIDER_MODELS[provider]?.filter((model) => normalizeModelId(model.modelId).split("-").includes(alias)) ?? [];
+  return matches.length === 1 ? (matches[0]?.label ?? null) : null;
 }
 
 // Bounded so a runaway caller passing dynamic ids can't leak this dedup set.

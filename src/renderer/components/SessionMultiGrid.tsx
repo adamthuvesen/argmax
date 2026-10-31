@@ -39,10 +39,7 @@ import type { FollowUpDelivery, ThinkingDisplay, ToolCallsDisplay } from "../lib
 import type { TerminateSessionOptions } from "../hooks/useSessionCommands.js";
 import { SessionPane } from "./SessionPane.js";
 import type { ReviewSideChatContext } from "./ReviewSideChat.js";
-import {
-  subscribeWorkspacePointerDrag,
-  type WorkspaceDragPoint
-} from "../state/workspaceDrag.js";
+import { subscribeWorkspacePointerDrag, type WorkspaceDragPoint } from "../state/workspaceDrag.js";
 
 /** Minimum pane width for side-by-side grid splits and divider drags. */
 export const MIN_RESIZABLE_CELL_WIDTH_PX = SESSION_CELL_MIN_WIDTH_PX;
@@ -104,17 +101,18 @@ interface SessionMultiGridProps {
   onDropWorkspace: (workspaceId: string, target: GridCoord & { position: SplitPosition }) => void;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onLoadSessionEvents: (sessionId: string) => Promise<void>;
-  onLoadAgentEvents: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<void | { hasMore: boolean }>;
+  onLoadAgentEvents: (
+    sessionId: string,
+    parentToolUseId: string,
+    identity?: NativeAgentIdentity
+  ) => Promise<void | { hasMore: boolean }>;
   /** Opens a launcher cell beside the focused pane. */
   onNewSession: (seed?: NewSessionSeed) => void;
   /** Launches a repo-less side chat seeded with the given first message. */
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   sideChat?: ReviewSideChatContext;
   onOpenSession?: (sessionId: string) => void;
-  onOpenDetails?: (
-    seedPrompt: string,
-    context?: { attachToChat?: () => void }
-  ) => Promise<void>;
+  onOpenDetails?: (seedPrompt: string, context?: { attachToChat?: () => void }) => Promise<void>;
   defaultIde?: IdeId | null;
   detectedIdes?: DetectedIde[];
   onOpenWorkspaceInIde?: (workspaceId: string, ide: IdeId) => void;
@@ -130,17 +128,8 @@ interface SessionMultiGridProps {
     delivery?: FollowUpDelivery
   ) => Promise<SendInputResult>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow: (
-    sessionId: string,
-    messageId: string,
-    delivery?: QueuedMessageDelivery
-  ) => Promise<void>;
-  onMultitask?: (
-    sessionId: string,
-    prompt: string,
-    provider: ProviderId,
-    pendingMessageId?: string
-  ) => Promise<void>;
+  onSendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
   pendingMessages?: Record<string, PendingMessage[]>;
   onTerminateSession: (sessionId: string, options?: TerminateSessionOptions) => Promise<void>;
   onClearSession: (sessionId: string) => Promise<void>;
@@ -149,9 +138,7 @@ interface SessionMultiGridProps {
   /** App-level setter the focused SessionPane registers with so its file
       source + pick handler are wired into the command palette's Files
       group. */
-  registerPaletteFileContext?: (
-    context: PaletteSurfaceContext | null
-  ) => void;
+  registerPaletteFileContext?: (context: PaletteSurfaceContext | null) => void;
 }
 
 export function SessionMultiGrid({
@@ -243,10 +230,13 @@ export function SessionMultiGrid({
     });
   }, [grid.rows]);
 
-  const cellMinWidthForKey = useCallback((cellKey: string): number => {
-    const rightPanelWidth = rightPanelWidthByCell[cellKey];
-    return rightPanelWidth ? CHAT_PANE_MIN_WIDTH_PX + rightPanelWidth : MIN_RESIZABLE_CELL_WIDTH_PX;
-  }, [rightPanelWidthByCell]);
+  const cellMinWidthForKey = useCallback(
+    (cellKey: string): number => {
+      const rightPanelWidth = rightPanelWidthByCell[cellKey];
+      return rightPanelWidth ? CHAT_PANE_MIN_WIDTH_PX + rightPanelWidth : MIN_RESIZABLE_CELL_WIDTH_PX;
+    },
+    [rightPanelWidthByCell]
+  );
 
   const requiredWorkspaceMinWidth = useMemo(() => {
     const columnWidths = [0, 0];
@@ -302,17 +292,14 @@ export function SessionMultiGrid({
       const startWidths = startWeights.map((weight) => (Math.max(weight, 0.01) / totalWeight) * availableWidth);
       const pairWidth = startWidths[dividerIndex] + startWidths[dividerIndex + 1];
       // Both rows share a divider, so respect the widest dock in each column.
-      const columnMinWidth = (col: number): number => Math.max(
-        MIN_RESIZABLE_CELL_WIDTH_PX,
-        ...grid.rows.map((cells, r) => cells.length === 2
-          ? cellMinWidthForKey(gridCellKey(cells[col], r, col))
-          : 0)
-      );
+      const columnMinWidth = (col: number): number =>
+        Math.max(
+          MIN_RESIZABLE_CELL_WIDTH_PX,
+          ...grid.rows.map((cells, r) => (cells.length === 2 ? cellMinWidthForKey(gridCellKey(cells[col], r, col)) : 0))
+        );
       const leftMinWidth = columnMinWidth(dividerIndex);
       const rightMinWidth = columnMinWidth(dividerIndex + 1);
-      const minScale = pairWidth < leftMinWidth + rightMinWidth
-        ? pairWidth / (leftMinWidth + rightMinWidth)
-        : 1;
+      const minScale = pairWidth < leftMinWidth + rightMinWidth ? pairWidth / (leftMinWidth + rightMinWidth) : 1;
       const effectiveLeftMinWidth = leftMinWidth * minScale;
       const effectiveRightMinWidth = rightMinWidth * minScale;
 
@@ -333,10 +320,11 @@ export function SessionMultiGrid({
         nextWidths[dividerIndex] = startWidths[dividerIndex] + clampedDelta;
         nextWidths[dividerIndex + 1] = startWidths[dividerIndex + 1] - clampedDelta;
         pendingWidths = nextWidths;
-        if (frame === null) frame = requestAnimationFrame(() => {
-          setColumnWeights(pendingWidths);
-          frame = null;
-        });
+        if (frame === null)
+          frame = requestAnimationFrame(() => {
+            setColumnWeights(pendingWidths);
+            frame = null;
+          });
       };
 
       const cleanup = (): void => {
@@ -390,17 +378,21 @@ export function SessionMultiGrid({
           >
             {row.map((cell, c) => {
               const isLauncher = cell.kind === "launcher";
-              const session = isSessionCell(cell) ? sessionsById.get(cell.sessionId) ?? null : null;
-              const workspace = !isLauncher ? workspacesById.get(cell.workspaceId) ?? null : null;
-              const project = workspace ? projectsById.get(workspace.projectId) ?? null : null;
-              const launcherProject = isLauncher ? projectsById.get(cell.projectId) ?? null : null;
+              const session = isSessionCell(cell) ? (sessionsById.get(cell.sessionId) ?? null) : null;
+              const workspace = !isLauncher ? (workspacesById.get(cell.workspaceId) ?? null) : null;
+              const project = workspace ? (projectsById.get(workspace.projectId) ?? null) : null;
+              const launcherProject = isLauncher ? (projectsById.get(cell.projectId) ?? null) : null;
               const focused = grid.focused?.row === r && grid.focused.col === c;
               const paneLabel = isLauncher
                 ? `New chat${launcherProject ? ` for ${launcherProject.name}` : ""}`
                 : workspace?.taskLabel || workspace?.branch || "Chat pane";
               const allowedDropPositions: EdgeDropPosition[] = [
-                ...(!draggingExisting && canAddGridCell && grid.rows.length < MAX_ROWS ? (["above", "below"] as const) : []),
-                ...(!draggingExisting && canAddGridCell && row.length < rowColumnCap ? (["left", "right"] as const) : [])
+                ...(!draggingExisting && canAddGridCell && grid.rows.length < MAX_ROWS
+                  ? (["above", "below"] as const)
+                  : []),
+                ...(!draggingExisting && canAddGridCell && row.length < rowColumnCap
+                  ? (["left", "right"] as const)
+                  : [])
               ];
               const cellKey = gridCellKey(cell, r, c);
               return (
@@ -519,7 +511,7 @@ function edgeDropPositionAtPoint(
     ["left", x / rect.width]
   ];
   const distances = allDistances.filter(([position]) => allowedPositions.includes(position));
-  const nearest = distances.reduce((best, candidate) => candidate[1] < best[1] ? candidate : best);
+  const nearest = distances.reduce((best, candidate) => (candidate[1] < best[1] ? candidate : best));
   return nearest[1] <= 0.25 ? nearest[0] : "replace";
 }
 
@@ -535,26 +527,36 @@ function DropZones({
   const [hovered, setHovered] = useState<SplitPosition | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => subscribeWorkspacePointerDrag({
-    move: (point) => {
-      const overlay = overlayRef.current;
-      if (!overlay) return;
-      const rect = overlay.getBoundingClientRect();
-      const inside = point.clientX >= rect.left && point.clientX <= rect.right &&
-        point.clientY >= rect.top && point.clientY <= rect.bottom;
-      setHovered(inside ? edgeDropPositionAtPoint(point, overlay, allowedPositions) : null);
-    },
-    drop: (point) => {
-      const overlay = overlayRef.current;
-      if (!overlay) return;
-      const rect = overlay.getBoundingClientRect();
-      const inside = point.clientX >= rect.left && point.clientX <= rect.right &&
-        point.clientY >= rect.top && point.clientY <= rect.bottom;
-      setHovered(null);
-      if (inside) onDrop(edgeDropPositionAtPoint(point, overlay, allowedPositions));
-    },
-    cancel: () => setHovered(null)
-  }), [allowedPositions, onDrop]);
+  useEffect(
+    () =>
+      subscribeWorkspacePointerDrag({
+        move: (point) => {
+          const overlay = overlayRef.current;
+          if (!overlay) return;
+          const rect = overlay.getBoundingClientRect();
+          const inside =
+            point.clientX >= rect.left &&
+            point.clientX <= rect.right &&
+            point.clientY >= rect.top &&
+            point.clientY <= rect.bottom;
+          setHovered(inside ? edgeDropPositionAtPoint(point, overlay, allowedPositions) : null);
+        },
+        drop: (point) => {
+          const overlay = overlayRef.current;
+          if (!overlay) return;
+          const rect = overlay.getBoundingClientRect();
+          const inside =
+            point.clientX >= rect.left &&
+            point.clientX <= rect.right &&
+            point.clientY >= rect.top &&
+            point.clientY <= rect.bottom;
+          setHovered(null);
+          if (inside) onDrop(edgeDropPositionAtPoint(point, overlay, allowedPositions));
+        },
+        cancel: () => setHovered(null)
+      }),
+    [allowedPositions, onDrop]
+  );
 
   return (
     <div
@@ -582,15 +584,16 @@ function DropZones({
       }}
     >
       {hovered ? (
-        <div
-          className="multigrid-drop-zone"
-          data-position={hovered}
-          data-hovered="true"
-        >
+        <div className="multigrid-drop-zone" data-position={hovered} data-hovered="true">
           <span className="multigrid-drop-label">
-            {hovered === "replace" ? replaceLabel : {
-              left: "Split left", right: "Split right", above: "Split above", below: "Split below"
-            }[hovered]}
+            {hovered === "replace"
+              ? replaceLabel
+              : {
+                  left: "Split left",
+                  right: "Split right",
+                  above: "Split above",
+                  below: "Split below"
+                }[hovered]}
           </span>
         </div>
       ) : null}

@@ -1,9 +1,4 @@
-import {
-  historyKeymap,
-  history,
-  insertNewline,
-  standardKeymap
-} from "@codemirror/commands";
+import { historyKeymap, history, insertNewline, standardKeymap } from "@codemirror/commands";
 import { Facet, type Extension, type Range } from "@codemirror/state";
 import {
   Decoration,
@@ -122,9 +117,7 @@ function buildDecorations(view: EditorView): ChipSets {
     const resolved = environment.resolve(match.reference.sessionId);
     chips.push(
       Decoration.replace({
-        widget: new ChatChipWidget(match.reference, resolved?.title ?? null, (sessionId) =>
-          environment.open(sessionId)
-        )
+        widget: new ChatChipWidget(match.reference, resolved?.title ?? null, (sessionId) => environment.open(sessionId))
       }).range(match.from, match.to)
     );
   }
@@ -160,17 +153,14 @@ const promptDecorations = ViewPlugin.fromClass(
   },
   {
     decorations: (plugin) => plugin.sets.all,
-    provide: (plugin) =>
-      EditorView.atomicRanges.of((view) => view.plugin(plugin)?.sets.chips ?? Decoration.none)
+    provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.sets.chips ?? Decoration.none)
   }
 );
 
 /** Open the chat reference at the selection, if it names a chat the app has. */
 const openReferenceAtCaret: Command = (view) => {
   const { from, to } = view.state.selection.main;
-  const touching = findChatReferences(view.state.doc.toString()).find(
-    (match) => from <= match.to && to >= match.from
-  );
+  const touching = findChatReferences(view.state.doc.toString()).find((match) => from <= match.to && to >= match.from);
   if (!touching) return false;
   const environment = view.state.facet(chatChipEnvironment);
   if (!environment.resolve(touching.reference.sessionId)) return false;

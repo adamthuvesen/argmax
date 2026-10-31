@@ -37,9 +37,7 @@ export function useStableTailWindow<T>(
   }
 
   const retainedIds = detachedIdsRef.current ?? lastFollowingIdsRef.current;
-  const itemById = detached
-    ? new Map(items.map((item) => [getId(item), item]))
-    : null;
+  const itemById = detached ? new Map(items.map((item) => [getId(item), item])) : null;
   const retainedItems = itemById
     ? retainedIds.flatMap((id) => {
         const item = itemById.get(id);
@@ -65,14 +63,18 @@ export function useStableTailWindow<T>(
   const liveIdsRef = useRef<string[]>([]);
   renderedIdsRef.current = visibleItems.map(getId);
   liveIdsRef.current = followingIds;
-  useEffect(() => follow.subscribe(() => {
-    if (follow.isDetached()) return;
-    const rendered = renderedIdsRef.current;
-    const live = liveIdsRef.current;
-    if (rendered.length !== live.length || rendered.some((id, index) => id !== live[index])) {
-      rerender();
-    }
-  }), [follow]);
+  useEffect(
+    () =>
+      follow.subscribe(() => {
+        if (follow.isDetached()) return;
+        const rendered = renderedIdsRef.current;
+        const live = liveIdsRef.current;
+        if (rendered.length !== live.length || rendered.some((id, index) => id !== live[index])) {
+          rerender();
+        }
+      }),
+    [follow]
+  );
 
   const showEarlier = (): void => {
     setVisibleCount((current) => current + pageSize);

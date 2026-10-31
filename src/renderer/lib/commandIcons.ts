@@ -10,11 +10,19 @@ export function parseCommandIconRules(value: unknown): CommandIconRule[] {
   if (!Array.isArray(value)) throw new Error("argmax-icons.local.json must contain an array of command icon rules");
   return value.map((rule: unknown, index) => {
     if (
-      typeof rule !== "object" || rule === null ||
-      !("commandPattern" in rule) || typeof rule.commandPattern !== "string" || !rule.commandPattern.trim() ||
-      !("server" in rule) || typeof rule.server !== "string" || !serverIconFor(rule.server) ||
+      typeof rule !== "object" ||
+      rule === null ||
+      !("commandPattern" in rule) ||
+      typeof rule.commandPattern !== "string" ||
+      !rule.commandPattern.trim() ||
+      !("server" in rule) ||
+      typeof rule.server !== "string" ||
+      !serverIconFor(rule.server) ||
       Object.keys(rule).some((key) => key !== "commandPattern" && key !== "server")
-    ) throw new Error(`Invalid command icon rule ${index + 1} in argmax-icons.local.json: expected commandPattern and a known server`);
+    )
+      throw new Error(
+        `Invalid command icon rule ${index + 1} in argmax-icons.local.json: expected commandPattern and a known server`
+      );
     try {
       new RegExp(rule.commandPattern);
     } catch {
@@ -39,8 +47,10 @@ const rules = [...parseCommandIconRules(Object.values(localFiles)[0] ?? []), ...
 export function commandIconServer(tool: ToolCall, matchers: CommandIconRule[] = rules): string | null {
   if (!isBashLikeTool(tool.name)) return null;
   const input = tool.inputFull;
-  const command = [input?.command, input?.cmd, input?.shell_command, input?.script]
-    .find((value): value is string => typeof value === "string") ?? tool.inputPreview;
+  const command =
+    [input?.command, input?.cmd, input?.shell_command, input?.script].find(
+      (value): value is string => typeof value === "string"
+    ) ?? tool.inputPreview;
   if (!command) return null;
   const unwrapped = unwrapBashCommand(command);
   return matchers.find((rule) => new RegExp(rule.commandPattern).test(unwrapped))?.server ?? null;

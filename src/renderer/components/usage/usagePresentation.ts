@@ -6,13 +6,7 @@ import { PROVIDER_DISPLAY_NAMES } from "../../../shared/providerModels.js";
  * spend first, then the rest. A provider's colour follows its identity,
  * never its rank, so a window that reorders the rows never repaints them.
  */
-export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = [
-  "claude",
-  "codex",
-  "cursor",
-  "opencode",
-  "grok"
-];
+export const USAGE_PROVIDER_ORDER: readonly ProviderId[] = ["claude", "codex", "cursor", "opencode", "grok"];
 
 /**
  * A model id without its routing prefix: `openrouter/deepseek/deepseek-v4.1-flash-1017`
@@ -63,10 +57,7 @@ export function orderedProviderRows(
  * source and a provider that spent nothing in the window both draw a flat
  * zero line, which is noise — the chart carries only what moved.
  */
-export function chartedProviders(
-  summary: UsageSummary,
-  metric: UsageMetric
-): ProviderId[] {
+export function chartedProviders(summary: UsageSummary, metric: UsageMetric): ProviderId[] {
   const moved = new Set<ProviderId>();
   for (const point of summary.series) {
     for (const value of point.values) {

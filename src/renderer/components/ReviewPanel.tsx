@@ -38,11 +38,7 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { ChangesIcon, TerminalIcon } from "./ReviewModeIcons.js";
 import { SlidingTabIndicator } from "./SlidingTabIndicator.js";
-import {
-  type ReviewPanelMode,
-  type ReviewState,
-  type WorkspaceFilesState
-} from "../hooks/useReviewState.js";
+import { type ReviewPanelMode, type ReviewState, type WorkspaceFilesState } from "../hooks/useReviewState.js";
 import type {
   AgentMode,
   ComposerAttachment,
@@ -80,11 +76,7 @@ import { LinesSkeleton } from "./LinesSkeleton.js";
 import { WorkspaceTree } from "./WorkspaceTree.js";
 import { FileIcon } from "@react-symbols/icons/utils";
 import { registerReviewFileTabCloseHandler } from "../lib/reviewFilePanel.js";
-import {
-  MAX_REVIEW_SPLIT_RATIO,
-  MIN_REVIEW_SPLIT_RATIO,
-  isReviewPanelMode
-} from "../lib/reviewLayout.js";
+import { MAX_REVIEW_SPLIT_RATIO, MIN_REVIEW_SPLIT_RATIO, isReviewPanelMode } from "../lib/reviewLayout.js";
 import { importChunk } from "../lib/importChunk.js";
 import { SPECIAL_FILE_ICONS } from "../lib/specialFileIcons.js";
 import { hostsBrowserSurface } from "../lib/tauriBridge.js";
@@ -111,7 +103,11 @@ interface AgentsPanelContext {
   thinkingDisplay?: ThinkingDisplay;
   parentSession: SessionSummary | null;
   workspace: WorkspaceSummary | null;
-  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<void | { hasMore: boolean }>;
+  onLoadAgentEvents?: (
+    sessionId: string,
+    parentToolUseId: string,
+    identity?: NativeAgentIdentity
+  ) => Promise<void | { hasMore: boolean }>;
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   onOpenAgent?: (tool: ToolCall) => void;
   /** Multitasks dispatched from this session. Their chats run in this dock, so
@@ -197,7 +193,15 @@ function ReviewModeTabs({
     { mode: "changes", label: "Changes", icon: <ChangesIcon /> },
     { mode: "files", label: "Files", icon: <Folder size={14} aria-hidden="true" /> },
     ...(hasAgents
-      ? [{ mode: "agents" as const, label: "Agents", icon: <Bot size={16} aria-hidden="true" />, count: agentCount, showSingleCount: true }]
+      ? [
+          {
+            mode: "agents" as const,
+            label: "Agents",
+            icon: <Bot size={16} aria-hidden="true" />,
+            count: agentCount,
+            showSingleCount: true
+          }
+        ]
       : []),
     ...(hasBrowser
       ? [{ mode: "browser" as const, label: "Browser", icon: <Globe size={14} aria-hidden="true" /> }]
@@ -231,9 +235,9 @@ function ReviewModeTabs({
             >
               {item.icon}
               <span className="review-mode-tab-label">{item.label}</span>
-              {item.count && (item.showSingleCount || item.count > 1)
-                ? <span className="review-mode-tab-count">{item.count}</span>
-                : null}
+              {item.count && (item.showSingleCount || item.count > 1) ? (
+                <span className="review-mode-tab-count">{item.count}</span>
+              ) : null}
             </button>
             {item.mode === "browser" && onOpenArtifacts ? (
               <button type="button" title="Claude artifacts" aria-label="Artifacts" onClick={onOpenArtifacts}>
@@ -280,62 +284,72 @@ function fileBasename(path: string): string {
   return slash === -1 ? path : path.slice(slash + 1);
 }
 
-function FileTabStrip({ state, hideTabs = false }: { state: WorkspaceFilesState; hideTabs?: boolean }): JSX.Element | null {
+function FileTabStrip({
+  state,
+  hideTabs = false
+}: {
+  state: WorkspaceFilesState;
+  hideTabs?: boolean;
+}): JSX.Element | null {
   if (state.tabs.length === 0 || (hideTabs && !state.dirtyClosePrompt)) return null;
   const promptPath = state.dirtyClosePrompt?.path ?? null;
   const promptName = promptPath ? fileBasename(promptPath) : null;
   return (
     <div className="file-tabs-shell">
-      {!hideTabs ? <div className="file-tabs" role="tablist" aria-label="Open files">
-        {state.tabs.map((tab) => {
-          const isActive = tab.path === state.activeTabPath;
-          return (
-            <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.path}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                title={tab.path}
-                onClick={() => state.selectTab(tab.path)}
-              >
-                <span className="file-tab-icon" aria-hidden="true">
-                  <FileIcon
-                    fileName={fileBasename(tab.path)}
-                    autoAssign
-                    editFileNameData={SPECIAL_FILE_ICONS}
-                    width={13}
-                    height={13}
-                  />
-                </span>
-                <span className="file-tab-name">{fileBasename(tab.path)}</span>
-                {tab.isDirty ? (
-                  <span className="file-tab-dirty" aria-label="Unsaved changes" title="Unsaved changes">
-                    •
+      {!hideTabs ? (
+        <div className="file-tabs" role="tablist" aria-label="Open files">
+          {state.tabs.map((tab) => {
+            const isActive = tab.path === state.activeTabPath;
+            return (
+              <div className="file-tab" data-active={isActive ? "true" : "false"} key={tab.path}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  title={tab.path}
+                  onClick={() => state.selectTab(tab.path)}
+                >
+                  <span className="file-tab-icon" aria-hidden="true">
+                    <FileIcon
+                      fileName={fileBasename(tab.path)}
+                      autoAssign
+                      editFileNameData={SPECIAL_FILE_ICONS}
+                      width={13}
+                      height={13}
+                    />
                   </span>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                className="file-tab-close"
-                aria-label={`Close ${tab.path}`}
-                title={`Close ${tab.path}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  state.closeTab(tab.path);
-                }}
-              >
-                <X size={12} aria-hidden="true" />
-              </button>
-            </div>
-          );
-        })}
-      </div> : null}
+                  <span className="file-tab-name">{fileBasename(tab.path)}</span>
+                  {tab.isDirty ? (
+                    <span className="file-tab-dirty" aria-label="Unsaved changes" title="Unsaved changes">
+                      •
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  className="file-tab-close"
+                  aria-label={`Close ${tab.path}`}
+                  title={`Close ${tab.path}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    state.closeTab(tab.path);
+                  }}
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
       {promptPath ? (
         <div className="file-tab-close-prompt" role="alert" aria-label={`Unsaved changes in ${promptPath}`}>
           <span>
             Save changes to <strong>{promptName}</strong>?
           </span>
-          {state.dirtyClosePrompt?.saveError ? <span className="review-error">{state.dirtyClosePrompt.saveError}</span> : null}
+          {state.dirtyClosePrompt?.saveError ? (
+            <span className="review-error">{state.dirtyClosePrompt.saveError}</span>
+          ) : null}
           <div className="file-tab-close-prompt-actions">
             <button
               type="button"
@@ -484,7 +498,9 @@ function ReviewPanelPane({
     getWorkspaceTerminalState(terminalWorkspaceId)
   );
   const terminalMounted = review.tabs
-    ? (isTerminal && tab?.kind === "terminal") || (ownsTerminalMount && review.tabs.items.some((item) => item.kind === "terminal" && item.workspaceId === terminalWorkspaceId))
+    ? (isTerminal && tab?.kind === "terminal") ||
+      (ownsTerminalMount &&
+        review.tabs.items.some((item) => item.kind === "terminal" && item.workspaceId === terminalWorkspaceId))
     : ownsTerminalMount && terminalWorkspaceId !== null && (isTerminal || terminalTabs.tabs.length > 0);
   const selectedFile = review.files.find((file) => file.path === review.selectedFilePath) ?? null;
   const totals = summarizeChangedFiles(review.files);
@@ -653,20 +669,17 @@ function ReviewPanelPane({
     dragCleanupRef.current = cleanup;
   };
 
-  const summaryStrip = isChanges && !projectFolderChanges?.selection && review.files.length > 0
-    ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
-    : null;
+  const summaryStrip =
+    isChanges && !projectFolderChanges?.selection && review.files.length > 0
+      ? `${review.files.length} file${review.files.length === 1 ? "" : "s"} · +${totals.additions} −${totals.deletions}`
+      : null;
   const expandedFilePath = selectedFile && collapsedDiffPath !== selectedFile.path ? selectedFile.path : null;
   const sourceLabel = review.workspaceFiles.rootPath?.split("/").filter(Boolean).pop() ?? "Files";
   const entryCountLabel = `${review.workspaceFiles.entries.length} file${
     review.workspaceFiles.entries.length === 1 ? "" : "s"
   }`;
   const saveStatusLabel =
-    review.workspaceFiles.saveState === "saving"
-      ? "Saving…"
-      : review.workspaceFiles.isDirty
-        ? "Unsaved"
-        : null;
+    review.workspaceFiles.saveState === "saving" ? "Saving…" : review.workspaceFiles.isDirty ? "Unsaved" : null;
 
   const toggleChangedFile = (filePath: string): void => {
     projectFolderChanges?.clearSelection();
@@ -679,10 +692,7 @@ function ReviewPanelPane({
   // tree are siblings of the preview, so a handler on the preview alone misses
   // them and the save silently never happens.
   const files = review.workspaceFiles;
-  const lineCount = useMemo(
-    () => (files.buffer === null ? null : countLines(files.buffer)),
-    [files.buffer]
-  );
+  const lineCount = useMemo(() => (files.buffer === null ? null : countLines(files.buffer)), [files.buffer]);
   const handleFilesModeKeyShortcut = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (mode !== "files") return;
     if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
@@ -719,37 +729,51 @@ function ReviewPanelPane({
       onFocusCapture={() => review.focusPane(paneIndex)}
       onPointerDownCapture={() => review.focusPane(paneIndex)}
     >
-      {(!review.tabs || isSplit) ? <div className="review-toolbar" data-resource-tabs={Boolean(review.tabs)}>
-        <div className="review-toolbar-titles">
-          {review.tabs ? (isChanges ? null : <span className="review-pane-label">{tabLabel ?? sourceLabel}</span>) : <ReviewModeTabs
-            activeMode={mode}
-            agentCount={agentRoster?.running ?? 0}
-            hasAgents={Boolean(agents)}
-            hasBrowser={hasBrowser}
-            onOpenArtifacts={artifactsEnabled && hasBrowser ? () => {
-              review.setMode("browser");
-              review.openBrowser("https://claude.ai/artifacts");
-            } : undefined}
-            hasTerminal={Boolean(terminalWorkspaceId)}
-            onDragEnd={onTabDragEnd}
-            onDragStart={onTabDragStart}
-            onSelectMode={review.setMode}
-            onSplitBelow={(splitMode) => review.splitMode(splitMode, "bottom")}
-            terminalCount={terminalTabs.tabs.length}
-          />}
+      {!review.tabs || isSplit ? (
+        <div className="review-toolbar" data-resource-tabs={Boolean(review.tabs)}>
+          <div className="review-toolbar-titles">
+            {review.tabs ? (
+              isChanges ? null : (
+                <span className="review-pane-label">{tabLabel ?? sourceLabel}</span>
+              )
+            ) : (
+              <ReviewModeTabs
+                activeMode={mode}
+                agentCount={agentRoster?.running ?? 0}
+                hasAgents={Boolean(agents)}
+                hasBrowser={hasBrowser}
+                onOpenArtifacts={
+                  artifactsEnabled && hasBrowser
+                    ? () => {
+                        review.setMode("browser");
+                        review.openBrowser("https://claude.ai/artifacts");
+                      }
+                    : undefined
+                }
+                hasTerminal={Boolean(terminalWorkspaceId)}
+                onDragEnd={onTabDragEnd}
+                onDragStart={onTabDragStart}
+                onSelectMode={review.setMode}
+                onSplitBelow={(splitMode) => review.splitMode(splitMode, "bottom")}
+                terminalCount={terminalTabs.tabs.length}
+              />
+            )}
+          </div>
+          <div className="review-toolbar-actions">
+            {!review.tabs || isSplit ? (
+              <button
+                className="small-icon"
+                type="button"
+                title={isSplit ? `Close ${panePosition} pane` : "Close review"}
+                aria-label={isSplit ? `Close ${panePosition} pane` : "Close review"}
+                onClick={review.closePanel}
+              >
+                {isSplit ? <X size={15} /> : <PanelRightClose size={16} strokeWidth={1.75} />}
+              </button>
+            ) : null}
+          </div>
         </div>
-        <div className="review-toolbar-actions">
-          {(!review.tabs || isSplit) ? <button
-            className="small-icon"
-            type="button"
-            title={isSplit ? `Close ${panePosition} pane` : "Close review"}
-            aria-label={isSplit ? `Close ${panePosition} pane` : "Close review"}
-            onClick={review.closePanel}
-          >
-            {isSplit ? <X size={15} /> : <PanelRightClose size={16} strokeWidth={1.75} />}
-          </button> : null}
-        </div>
-      </div> : null}
+      ) : null}
       <div
         className={
           isChanges
@@ -792,9 +816,13 @@ function ReviewPanelPane({
             onLaunched={(launched) => review.tabs?.openSideChat(launched.sessionId, launched.workspaceId, tab?.id)}
           />
         ) : null}
-        {isSideChat && !sideChat ? <p className="review-empty" role="status">Side chat is unavailable here.</p> : null}
+        {isSideChat && !sideChat ? (
+          <p className="review-empty" role="status">
+            Side chat is unavailable here.
+          </p>
+        ) : null}
         {isBrowser ? (
-          (tab?.kind === "browser" || review.browserOwner) ? (
+          tab?.kind === "browser" || review.browserOwner ? (
             <BrowserPanel
               scopeId={review.browserScopeId}
               controlledTabId={tab?.kind === "browser" ? tab.browserTabId : undefined}
@@ -802,12 +830,16 @@ function ReviewPanelPane({
               onOpenTab={review.tabs?.selectBrowserTab}
               onNewTab={review.tabs ? () => review.tabs?.openTool("new") : undefined}
               onReopenTab={review.tabs?.reopenClosed}
-              onCycleTab={review.tabs ? (direction) => {
-                const items = review.tabs!.items;
-                const index = items.findIndex((item) => item.id === tab?.id);
-                const next = items[(index + direction + items.length) % items.length];
-                if (next) review.tabs!.select(next.id);
-              } : undefined}
+              onCycleTab={
+                review.tabs
+                  ? (direction) => {
+                      const items = review.tabs!.items;
+                      const index = items.findIndex((item) => item.id === tab?.id);
+                      const next = items[(index + direction + items.length) % items.length];
+                      if (next) review.tabs!.select(next.id);
+                    }
+                  : undefined
+              }
               onCloseTab={tab ? () => review.tabs?.close(tab.id) : undefined}
               isFocused={isFocused}
               url={review.browserRequest?.url ?? ""}
@@ -821,7 +853,9 @@ function ReviewPanelPane({
           ) : (
             // Another panel showing this same scope holds its native webview.
             <div className="review-empty">
-              <span className="review-empty-mark" aria-hidden="true">↗</span>
+              <span className="review-empty-mark" aria-hidden="true">
+                ↗
+              </span>
               <span>The browser moved to another pane.</span>
               <button type="button" className="review-empty-action" onClick={() => review.openBrowser()}>
                 Show here
@@ -874,30 +908,44 @@ function ReviewPanelPane({
             <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
               {isChanges ? (
                 <>
-                {projectFolderChanges && projectFolderChanges.groups.length > 0 ? (
-                  <details className="project-folder-change-group project-folder-change-working" open>
-                    <summary title={review.workspaceFiles.rootPath ?? undefined}>
-                      <ChevronRight className="project-folder-change-chevron" size={12} aria-hidden="true" />
-                      <Folder size={14} aria-hidden="true" />
-                      <span className="project-folder-change-name">{sourceLabel}</span>
-                      {review.filesState === "loading" || review.filesState === "error" ? <span className="project-folder-change-total">{review.filesState === "loading" ? "Loading…" : "Unavailable"}</span> : null}
-                    </summary>
-                    {review.files.length > 0 ? <ChangesTree
+                  {projectFolderChanges && projectFolderChanges.groups.length > 0 ? (
+                    <details className="project-folder-change-group project-folder-change-working" open>
+                      <summary title={review.workspaceFiles.rootPath ?? undefined}>
+                        <ChevronRight className="project-folder-change-chevron" size={12} aria-hidden="true" />
+                        <Folder size={14} aria-hidden="true" />
+                        <span className="project-folder-change-name">{sourceLabel}</span>
+                        {review.filesState === "loading" || review.filesState === "error" ? (
+                          <span className="project-folder-change-total">
+                            {review.filesState === "loading" ? "Loading…" : "Unavailable"}
+                          </span>
+                        ) : null}
+                      </summary>
+                      {review.files.length > 0 ? (
+                        <ChangesTree
+                          files={review.files}
+                          selectedPath={projectFolderChanges.selection ? null : review.selectedFilePath}
+                          onSelectFile={toggleChangedFile}
+                          onRefresh={() => {
+                            review.refreshChanges();
+                            projectFolderChanges.refresh();
+                          }}
+                          onOpenInFiles={review.openInFilesView}
+                        />
+                      ) : null}
+                    </details>
+                  ) : (
+                    <ChangesTree
                       files={review.files}
-                      selectedPath={projectFolderChanges.selection ? null : review.selectedFilePath}
+                      selectedPath={projectFolderChanges?.selection ? null : review.selectedFilePath}
                       onSelectFile={toggleChangedFile}
-                      onRefresh={() => { review.refreshChanges(); projectFolderChanges.refresh(); }}
+                      onRefresh={() => {
+                        review.refreshChanges();
+                        projectFolderChanges?.refresh();
+                      }}
                       onOpenInFiles={review.openInFilesView}
-                    /> : null}
-                  </details>
-                ) : <ChangesTree
-                  files={review.files}
-                  selectedPath={projectFolderChanges?.selection ? null : review.selectedFilePath}
-                  onSelectFile={toggleChangedFile}
-                  onRefresh={() => { review.refreshChanges(); projectFolderChanges?.refresh(); }}
-                  onOpenInFiles={review.openInFilesView}
-                />}
-                {projectFolderChanges ? <ProjectFolderChangesList state={projectFolderChanges} /> : null}
+                    />
+                  )}
+                  {projectFolderChanges ? <ProjectFolderChangesList state={projectFolderChanges} /> : null}
                 </>
               ) : (
                 <WorkspaceTree state={files} toolbar={{ onRefresh: files.refreshList }} />
@@ -913,105 +961,126 @@ function ReviewPanelPane({
           </>
         )}
         {!isFileSurface ? null : (
-        <div className={isChanges ? "review-diff review-diff-changes" : "review-diff review-diff-files"}>
-          {isChanges ? (
-            projectFolderChanges?.selection ? <ProjectFolderChangesDiff state={projectFolderChanges} /> : <>
-              {review.filesState === "error" && <p className="review-empty review-error" role="alert">{review.filesError ?? "Couldn't load changed files."}</p>}
-              {review.filesState === "ready" && review.files.length === 0 ? (
-                <p className="review-changes-placeholder">
-                  {projectFolderChanges?.groups.some((group) => group.files.length > 0) ? "Select a file to view changes." : "No changes on this branch."}
-                </p>
-              ) : null}
-              {selectedFile ? (
+          <div className={isChanges ? "review-diff review-diff-changes" : "review-diff review-diff-files"}>
+            {isChanges ? (
+              projectFolderChanges?.selection ? (
+                <ProjectFolderChangesDiff state={projectFolderChanges} />
+              ) : (
                 <>
-                  <div className="review-diff-heading">
-                    <span className="review-diff-heading-icon" aria-hidden="true">
-                      <FileIcon
-                        fileName={fileBasename(selectedFile.path)}
-                        autoAssign
-                        editFileNameData={SPECIAL_FILE_ICONS}
-                        width={14}
-                        height={14}
-                      />
-                    </span>
-                    <span className="review-diff-heading-path" title={selectedFile.path}>
-                      <span>{selectedFile.path.slice(0, -fileBasename(selectedFile.path).length)}</span>
-                      <strong>{fileBasename(selectedFile.path)}</strong>
-                    </span>
-                    <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
-                    <span className="review-diff-heading-actions">
-                      <button
-                        className="small-icon"
-                        type="button"
-                        title={copyPathState === "copied" ? "Copied path" : copyPathState === "failed" ? "Could not copy path" : "Copy path"}
-                        aria-label={`Copy ${selectedFile.path} path`}
-                        onClick={() => void copyPath(selectedFile.path)}
-                      >
-                        <Copy size={13} aria-hidden="true" />
-                      </button>
-                      <button
-                        className="small-icon review-diff-collapse"
-                        type="button"
-                        data-collapsed={expandedFilePath ? undefined : "true"}
-                        title={expandedFilePath ? "Collapse diff" : "Expand diff"}
-                        aria-label={`${expandedFilePath ? "Collapse" : "Expand"} ${selectedFile.path} diff`}
-                        aria-expanded={Boolean(expandedFilePath)}
-                        onClick={() => setCollapsedDiffPath((current) =>
-                          current === selectedFile.path ? null : selectedFile.path
-                        )}
-                      >
-                        <ChevronDown size={13} aria-hidden="true" />
-                      </button>
-                      <button
-                        className="small-icon"
-                        type="button"
-                        title={`Open ${selectedFile.path} in Files view`}
-                        aria-label={`Open ${selectedFile.path} in Files view`}
-                        onClick={() => review.openInFilesView(selectedFile.path)}
-                      >
-                        <FolderOpen size={14} aria-hidden="true" />
-                      </button>
-                    </span>
-                  </div>
-                  {expandedFilePath ? (
-                    <div className="review-diff-scroll">
-                      {review.diffState === "loading" ? (
-                        <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
+                  {review.filesState === "error" && (
+                    <p className="review-empty review-error" role="alert">
+                      {review.filesError ?? "Couldn't load changed files."}
+                    </p>
+                  )}
+                  {review.filesState === "ready" && review.files.length === 0 ? (
+                    <p className="review-changes-placeholder">
+                      {projectFolderChanges?.groups.some((group) => group.files.length > 0)
+                        ? "Select a file to view changes."
+                        : "No changes on this branch."}
+                    </p>
+                  ) : null}
+                  {selectedFile ? (
+                    <>
+                      <div className="review-diff-heading">
+                        <span className="review-diff-heading-icon" aria-hidden="true">
+                          <FileIcon
+                            fileName={fileBasename(selectedFile.path)}
+                            autoAssign
+                            editFileNameData={SPECIAL_FILE_ICONS}
+                            width={14}
+                            height={14}
+                          />
+                        </span>
+                        <span className="review-diff-heading-path" title={selectedFile.path}>
+                          <span>{selectedFile.path.slice(0, -fileBasename(selectedFile.path).length)}</span>
+                          <strong>{fileBasename(selectedFile.path)}</strong>
+                        </span>
+                        <ChangeCount additions={selectedFile.additions} deletions={selectedFile.deletions} />
+                        <span className="review-diff-heading-actions">
+                          <button
+                            className="small-icon"
+                            type="button"
+                            title={
+                              copyPathState === "copied"
+                                ? "Copied path"
+                                : copyPathState === "failed"
+                                  ? "Could not copy path"
+                                  : "Copy path"
+                            }
+                            aria-label={`Copy ${selectedFile.path} path`}
+                            onClick={() => void copyPath(selectedFile.path)}
+                          >
+                            <Copy size={13} aria-hidden="true" />
+                          </button>
+                          <button
+                            className="small-icon review-diff-collapse"
+                            type="button"
+                            data-collapsed={expandedFilePath ? undefined : "true"}
+                            title={expandedFilePath ? "Collapse diff" : "Expand diff"}
+                            aria-label={`${expandedFilePath ? "Collapse" : "Expand"} ${selectedFile.path} diff`}
+                            aria-expanded={Boolean(expandedFilePath)}
+                            onClick={() =>
+                              setCollapsedDiffPath((current) =>
+                                current === selectedFile.path ? null : selectedFile.path
+                              )
+                            }
+                          >
+                            <ChevronDown size={13} aria-hidden="true" />
+                          </button>
+                          <button
+                            className="small-icon"
+                            type="button"
+                            title={`Open ${selectedFile.path} in Files view`}
+                            aria-label={`Open ${selectedFile.path} in Files view`}
+                            onClick={() => review.openInFilesView(selectedFile.path)}
+                          >
+                            <FolderOpen size={14} aria-hidden="true" />
+                          </button>
+                        </span>
+                      </div>
+                      {expandedFilePath ? (
+                        <div className="review-diff-scroll">
+                          {review.diffState === "loading" ? (
+                            <LinesSkeleton rows={14} label="Loading diff" className="review-diff-skeleton" />
+                          ) : null}
+                          {review.diffState === "error" ? (
+                            <p className="review-empty review-error" role="alert">
+                              <span className="review-empty-mark" aria-hidden="true">
+                                !
+                              </span>
+                              <span>{review.diffError ?? "Couldn't load this diff."}</span>
+                            </p>
+                          ) : null}
+                          {review.diffState === "ready" && diffBlocks.length === 0 ? (
+                            <p className="review-empty">
+                              <span className="review-empty-mark" aria-hidden="true">
+                                ∅
+                              </span>
+                              <span>No textual diff.</span>
+                            </p>
+                          ) : null}
+                          {review.diffState === "ready" && diffBlocks.length > 0 ? (
+                            <DiffBlocks
+                              blocks={diffBlocks}
+                              filePath={selectedFile.path}
+                              presentation="review"
+                              onAddComment={onAddDiffNote ? addDiffNote : undefined}
+                              onExpandContext={review.expandDiffContext}
+                            />
+                          ) : null}
+                        </div>
                       ) : null}
-                      {review.diffState === "error" ? (
-                        <p className="review-empty review-error" role="alert">
-                          <span className="review-empty-mark" aria-hidden="true">!</span>
-                          <span>{review.diffError ?? "Couldn't load this diff."}</span>
-                        </p>
-                      ) : null}
-                      {review.diffState === "ready" && diffBlocks.length === 0 ? (
-                        <p className="review-empty">
-                          <span className="review-empty-mark" aria-hidden="true">∅</span>
-                          <span>No textual diff.</span>
-                        </p>
-                      ) : null}
-                      {review.diffState === "ready" && diffBlocks.length > 0 ? (
-                        <DiffBlocks
-                          blocks={diffBlocks}
-                          filePath={selectedFile.path}
-                          presentation="review"
-                          onAddComment={onAddDiffNote ? addDiffNote : undefined}
-                          onExpandContext={review.expandDiffContext}
-
-                        />
-                      ) : null}
-                    </div>
+                    </>
                   ) : null}
                 </>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {!review.tabs ? <FileTabStrip state={review.workspaceFiles} /> : null}
-              <FilePreview state={files} onCursorChange={setCursor} />
-            </>
-          )}
-        </div>
+              )
+            ) : (
+              <>
+                {!review.tabs ? <FileTabStrip state={review.workspaceFiles} /> : null}
+                <FilePreview state={files} onCursorChange={setCursor} />
+              </>
+            )}
+          </div>
         )}
       </div>
       {summaryStrip ? (
@@ -1070,41 +1139,81 @@ export function ReviewPanel({
 }): JSX.Element {
   const artifactsEnabled = useContext(ClaudeArtifactsContext);
   const browserTabs = useSyncExternalStore(subscribeBrowserTabs, () => getBrowserTabs(review.browserScopeId));
-  const terminalState = useSyncExternalStore(subscribeTerminalTabs, () => getWorkspaceTerminalState(review.terminalWorkspaceId));
+  const terminalState = useSyncExternalStore(subscribeTerminalTabs, () =>
+    getWorkspaceTerminalState(review.terminalWorkspaceId)
+  );
   const tabs = review.tabs;
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const [sideChatForms, setSideChatForms] = useState<Record<string, ReviewSideChatFormState>>({});
   useEffect(() => {
-    const formIds = new Set((tabs?.items ?? []).filter((tab) => tab.kind === "tool" && tab.mode === "side-chat").map((tab) => tab.id));
-    setSideChatForms((current) => Object.keys(current).some((id) => !formIds.has(id))
-      ? Object.fromEntries(Object.entries(current).filter(([id]) => formIds.has(id)))
-      : current);
+    const formIds = new Set(
+      (tabs?.items ?? []).filter((tab) => tab.kind === "tool" && tab.mode === "side-chat").map((tab) => tab.id)
+    );
+    setSideChatForms((current) =>
+      Object.keys(current).some((id) => !formIds.has(id))
+        ? Object.fromEntries(Object.entries(current).filter(([id]) => formIds.has(id)))
+        : current
+    );
   }, [tabs?.items]);
   const tabItems: ReviewTabItem[] = (tabs?.items ?? []).map((tab) => {
     switch (tab.kind) {
       case "tool":
-        return { id: tab.id, kind: tab.mode, label: tab.mode === "new" ? "New tab" : tab.mode === "side-chat" ? "Side chat" : `${tab.mode[0].toUpperCase()}${tab.mode.slice(1)}` };
+        return {
+          id: tab.id,
+          kind: tab.mode,
+          label:
+            tab.mode === "new"
+              ? "New tab"
+              : tab.mode === "side-chat"
+                ? "Side chat"
+                : `${tab.mode[0].toUpperCase()}${tab.mode.slice(1)}`
+        };
       case "browser": {
         const browser = browserTabs.find((item) => item.id === tab.browserTabId);
         let host = "Browser";
-        try { host = new URL(browser?.url ?? "").hostname || host; } catch { /* The registry may still be hydrating. */ }
-        return { id: tab.id, kind: "browser", label: browser?.title || host, title: browser?.url, loading: browser?.loading };
+        try {
+          host = new URL(browser?.url ?? "").hostname || host;
+        } catch {
+          /* The registry may still be hydrating. */
+        }
+        return {
+          id: tab.id,
+          kind: "browser",
+          label: browser?.title || host,
+          title: browser?.url,
+          loading: browser?.loading
+        };
       }
       case "side-chat":
-        return { id: tab.id, kind: "side-chat", label: sideChat?.workspacesById.get(tab.workspaceId)?.taskLabel || "Side chat" };
+        return {
+          id: tab.id,
+          kind: "side-chat",
+          label: sideChat?.workspacesById.get(tab.workspaceId)?.taskLabel || "Side chat"
+        };
       case "file":
-        return { id: tab.id, kind: "file", label: fileBasename(tab.path), title: tab.path,
-          dirty: review.workspaceFiles.tabs.find((item) => item.path === tab.path)?.isDirty };
+        return {
+          id: tab.id,
+          kind: "file",
+          label: fileBasename(tab.path),
+          title: tab.path,
+          dirty: review.workspaceFiles.tabs.find((item) => item.path === tab.path)?.isDirty
+        };
       case "terminal":
-        return { id: tab.id, kind: "terminal", label: terminalState.tabs.find((item) => item.id === tab.terminalTabId)?.label ?? "Terminal" };
+        return {
+          id: tab.id,
+          kind: "terminal",
+          label: terminalState.tabs.find((item) => item.id === tab.terminalTabId)?.label ?? "Terminal"
+        };
     }
   });
   const activeTabId = tabs?.paneTabIds[tabs.activeIndex] ?? null;
   const panelElementRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!tabs || !isFocused) return;
-    registerReviewFileTabCloseHandler(() => { if (activeTabId) tabs.close(activeTabId); });
+    registerReviewFileTabCloseHandler(() => {
+      if (activeTabId) tabs.close(activeTabId);
+    });
     return () => registerReviewFileTabCloseHandler(null);
   }, [activeTabId, isFocused, tabs]);
   const openTabFromShortcut = (reopen: boolean): void => {
@@ -1173,9 +1282,7 @@ export function ReviewPanel({
     pendingTabFocusRef.current = null;
     const label = `${pending.mode[0].toUpperCase()}${pending.mode.slice(1)}`;
     stackRef.current
-      ?.querySelector<HTMLButtonElement>(
-        `[data-pane-index="${pending.index}"] [role="tab"][aria-label="${label}"]`
-      )
+      ?.querySelector<HTMLButtonElement>(`[data-pane-index="${pending.index}"] [role="tab"][aria-label="${label}"]`)
       ?.focus();
   }, [review.layout.modes]);
 
@@ -1192,10 +1299,7 @@ export function ReviewPanel({
     setDropPosition(null);
   };
 
-  const handleTabDragStart = (
-    mode: ReviewPanelMode,
-    event: ReactDragEvent<HTMLButtonElement>
-  ): void => {
+  const handleTabDragStart = (mode: ReviewPanelMode, event: ReactDragEvent<HTMLButtonElement>): void => {
     setDraggedMode(mode);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData(REVIEW_MODE_DRAG_MIME, JSON.stringify({ mode, panelId: panelDragId }));
@@ -1275,47 +1379,63 @@ export function ReviewPanel({
   };
 
   return (
-    <aside className="review-panel" data-type-scale="chrome" aria-label="Review panel" ref={panelElementRef} onKeyDown={handlePanelKeys}>
-      {tabs ? <>
-        <div className="review-tabs-header">
-          <ReviewTabsBar
-            items={tabItems}
-            activeId={activeTabId}
-            visibleIds={tabs.paneTabIds}
-            onSelect={(id) => tabs.select(id)}
-            onClose={tabs.close}
-            onMove={tabs.move}
-            onSplit={tabs.split}
-            onOpen={(kind) => {
-              if (kind === "browser") tabs.openBrowser();
-              else if (kind === "artifacts") tabs.openBrowser("https://claude.ai/artifacts");
-              else if (kind === "terminal") tabs.openTerminal();
-              else tabs.openTool(kind);
-            }}
-            onNewTab={() => tabs.openTool("new")}
-            onReopen={tabs.reopenClosed}
-            canReopen={tabs.canReopen}
-            hasAgents={Boolean(agents)}
-            hasBrowser={hostsBrowserSurface()}
-            hasTerminal={Boolean(review.terminalWorkspaceId)}
-            artifactsEnabled={artifactsEnabled}
-          />
-          {onToggleExpanded ? <button
-            type="button"
-            className="small-icon review-tabs-hide"
-            aria-label={isExpanded ? "Restore panel size" : "Expand panel"}
-            aria-pressed={isExpanded}
-            title={isExpanded ? "Restore panel size" : "Expand panel"}
-            onClick={onToggleExpanded}
-          >
-            {isExpanded ? <Minimize2 size={14} strokeWidth={1.75} /> : <Maximize2 size={14} strokeWidth={1.75} />}
-          </button> : null}
-          <button type="button" className="small-icon review-tabs-hide" aria-label="Close review" title="Hide panel (⌘B)" onClick={review.closePanel}>
-            <PanelRightClose size={16} strokeWidth={1.75} />
-          </button>
-        </div>
-        <FileTabStrip state={review.workspaceFiles} hideTabs />
-      </> : null}
+    <aside
+      className="review-panel"
+      data-type-scale="chrome"
+      aria-label="Review panel"
+      ref={panelElementRef}
+      onKeyDown={handlePanelKeys}
+    >
+      {tabs ? (
+        <>
+          <div className="review-tabs-header">
+            <ReviewTabsBar
+              items={tabItems}
+              activeId={activeTabId}
+              visibleIds={tabs.paneTabIds}
+              onSelect={(id) => tabs.select(id)}
+              onClose={tabs.close}
+              onMove={tabs.move}
+              onSplit={tabs.split}
+              onOpen={(kind) => {
+                if (kind === "browser") tabs.openBrowser();
+                else if (kind === "artifacts") tabs.openBrowser("https://claude.ai/artifacts");
+                else if (kind === "terminal") tabs.openTerminal();
+                else tabs.openTool(kind);
+              }}
+              onNewTab={() => tabs.openTool("new")}
+              onReopen={tabs.reopenClosed}
+              canReopen={tabs.canReopen}
+              hasAgents={Boolean(agents)}
+              hasBrowser={hostsBrowserSurface()}
+              hasTerminal={Boolean(review.terminalWorkspaceId)}
+              artifactsEnabled={artifactsEnabled}
+            />
+            {onToggleExpanded ? (
+              <button
+                type="button"
+                className="small-icon review-tabs-hide"
+                aria-label={isExpanded ? "Restore panel size" : "Expand panel"}
+                aria-pressed={isExpanded}
+                title={isExpanded ? "Restore panel size" : "Expand panel"}
+                onClick={onToggleExpanded}
+              >
+                {isExpanded ? <Minimize2 size={14} strokeWidth={1.75} /> : <Maximize2 size={14} strokeWidth={1.75} />}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="small-icon review-tabs-hide"
+              aria-label="Close review"
+              title="Hide panel (⌘B)"
+              onClick={review.closePanel}
+            >
+              <PanelRightClose size={16} strokeWidth={1.75} />
+            </button>
+          </div>
+          <FileTabStrip state={review.workspaceFiles} hideTabs />
+        </>
+      ) : null}
       {onResizePanelMouseDown ? (
         <div className="panel-col-resize-handle" aria-hidden="true" onMouseDown={onResizePanelMouseDown} />
       ) : null}
@@ -1350,11 +1470,26 @@ export function ReviewPanel({
             <ReviewPanelPane
               agents={agents}
               sideChat={sideChat}
-              sideChatFormState={tab ? sideChatForms[tab.id] ?? { prompt: "", launching: false, error: null } : undefined}
-              onSideChatFormStateChange={tab ? (patch) => setSideChatForms((current) => {
-                if (!tabsRef.current?.items.some((item) => item.id === tab.id && item.kind === "tool" && item.mode === "side-chat")) return current;
-                return { ...current, [tab.id]: { ...(current[tab.id] ?? { prompt: "", launching: false, error: null }), ...patch } };
-              }) : undefined}
+              sideChatFormState={
+                tab ? (sideChatForms[tab.id] ?? { prompt: "", launching: false, error: null }) : undefined
+              }
+              onSideChatFormStateChange={
+                tab
+                  ? (patch) =>
+                      setSideChatForms((current) => {
+                        if (
+                          !tabsRef.current?.items.some(
+                            (item) => item.id === tab.id && item.kind === "tool" && item.mode === "side-chat"
+                          )
+                        )
+                          return current;
+                        return {
+                          ...current,
+                          [tab.id]: { ...(current[tab.id] ?? { prompt: "", launching: false, error: null }), ...patch }
+                        };
+                      })
+                  : undefined
+              }
               isFocused={isFocused && review.layout.activeIndex === paneIndex}
               isSplit={isSplit}
               key={tabs ? `pane-${paneIndex}` : mode}

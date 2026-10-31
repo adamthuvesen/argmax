@@ -2,7 +2,14 @@ import { safeJsonParse, safeJsonParseRecord } from "../../shared/safeJson.js";
 import type { TimelineEvent } from "../../shared/types.js";
 import { interpretFileChange, summarizeFileChanges, type ChangeCounts } from "./fileChange.js";
 import { isOpaqueCiphertext } from "./toolArguments.js";
-import { describeActivity, joinClauses, linkedRepoName, summarizeActivities, type ToolActivity, type ToolActivityKind } from "./toolActivity.js";
+import {
+  describeActivity,
+  joinClauses,
+  linkedRepoName,
+  summarizeActivities,
+  type ToolActivity,
+  type ToolActivityKind
+} from "./toolActivity.js";
 
 export type ToolCall = {
   id: string;
@@ -49,9 +56,7 @@ export type ToolCallGroup = {
 
 export type TurnToolItem = { kind: "tool"; tool: ToolCall; children?: ToolCall[] };
 
-export type ConversationItem =
-  | { kind: "message"; event: TimelineEvent }
-  | { kind: "tool"; tool: ToolCall };
+export type ConversationItem = { kind: "message"; event: TimelineEvent } | { kind: "tool"; tool: ToolCall };
 
 export function buildToolCallGroup(tools: ToolCall[]): ToolCallGroup {
   const firstTool = tools[0];
@@ -107,9 +112,15 @@ export function isAgentToolName(name: string): boolean {
   // Agent (Bot icon + "Started an agent") still tells the user a different
   // agent did the work. Anchor literal matches so we don't sweep up
   // "TaskList" or "agent_id"-style names.
-  return lower === "task" || lower === "agent" || lower === "subagent" ||
-    lower === "tasktoolcall" || lower === "collab_tool_call" || lower === "spawn_agent" ||
-    /(^|[_-])(sub-?agent|agent)$/.test(lower);
+  return (
+    lower === "task" ||
+    lower === "agent" ||
+    lower === "subagent" ||
+    lower === "tasktoolcall" ||
+    lower === "collab_tool_call" ||
+    lower === "spawn_agent" ||
+    /(^|[_-])(sub-?agent|agent)$/.test(lower)
+  );
 }
 
 /**
@@ -143,9 +154,7 @@ export function parseMcpToolName(name: string): { server: string; tool: string }
   const argmax = parseArgmaxToolName(name);
   if (argmax) return argmax;
   const match =
-    /^mcp__(.+?)__(.+)$/.exec(name) ??
-    /^([a-z0-9-]+)_\1-(.+)$/.exec(name) ??
-    /^([a-z][a-z0-9-]*)\.(.+)$/.exec(name);
+    /^mcp__(.+?)__(.+)$/.exec(name) ?? /^([a-z0-9-]+)_\1-(.+)$/.exec(name) ?? /^([a-z][a-z0-9-]*)\.(.+)$/.exec(name);
   if (match) {
     const [, namespace, toolSegment] = match;
     if (!namespace || !toolSegment) return null;
@@ -153,17 +162,14 @@ export function parseMcpToolName(name: string): { server: string; tool: string }
     // to the last segment.
     // Claude's hosted namespace adds a client prefix. Other underscores belong
     // to the server (`browser_use`) and must survive.
-    let server = namespace.startsWith("claude_ai_")
-      ? namespace.slice("claude_ai_".length)
-      : namespace;
+    let server = namespace.startsWith("claude_ai_") ? namespace.slice("claude_ai_".length) : namespace;
     if (server.startsWith("plugin-")) {
       const parts = server.slice("plugin-".length).split("-").filter(Boolean);
       const half = parts.length / 2;
       server =
-        Number.isInteger(half) &&
-        parts.slice(0, half).join("-") === parts.slice(half).join("-")
+        Number.isInteger(half) && parts.slice(0, half).join("-") === parts.slice(half).join("-")
           ? parts.slice(0, half).join(" ")
-          : parts.at(-1) ?? server;
+          : (parts.at(-1) ?? server);
     } else {
       server = server.replace(/[-_]/g, " ");
     }
@@ -285,16 +291,7 @@ function getFineBucket(name: string): FineBucket {
   return "other";
 }
 
-const FINE_BUCKET_ORDER: FineBucket[] = [
-  "edit",
-  "read-files",
-  "read-lists",
-  "search",
-  "web",
-  "bash",
-  "agent",
-  "other"
-];
+const FINE_BUCKET_ORDER: FineBucket[] = ["edit", "read-files", "read-lists", "search", "web", "bash", "agent", "other"];
 
 // Each bucket keeps its action verb when several kinds of work share a
 // headline. Counts only decide between singular and plural wording.
@@ -377,7 +374,7 @@ export function describeToolAction(tool: ToolCall): string {
   const preview = tool.inputPreview;
   const basename = (path: string): string => {
     const trimmed = path.replace(/\/$/, "");
-    return trimmed.includes("/") ? trimmed.split("/").pop() ?? trimmed : trimmed;
+    return trimmed.includes("/") ? (trimmed.split("/").pop() ?? trimmed) : trimmed;
   };
   switch (bucket) {
     case "agent":
@@ -428,7 +425,7 @@ export function displayBashCommand(input: string): string {
 function stripOuterQuotes(input: string): string {
   const first = input[0];
   const last = input[input.length - 1];
-  if ((first === "'" || first === "\"" || first === "`") && first === last) {
+  if ((first === "'" || first === '"' || first === "`") && first === last) {
     return input.slice(1, -1).trim();
   }
   return input;
@@ -443,7 +440,10 @@ export function toolGroupKindKey(tools: ToolCall[]): string {
   return FINE_BUCKET_ORDER.filter((bucket) => buckets.has(bucket)).join("+");
 }
 
-export function summarizeToolGroup(tools: ToolCall[], counting = true): {
+export function summarizeToolGroup(
+  tools: ToolCall[],
+  counting = true
+): {
   headline: string;
   currentAction: string | null;
   status: ToolCall["status"];
@@ -525,11 +525,7 @@ export function extractToolName(payload: Record<string, unknown>): string {
   // the input. Resolve that identity before classification so `other` + task
   // becomes an agent launch, and MCP calls name the server they actually used.
   const embeddedName = input._toolName;
-  if (
-    payloadName?.toLowerCase() === "other" &&
-    typeof embeddedName === "string" &&
-    embeddedName.length > 0
-  ) {
+  if (payloadName?.toLowerCase() === "other" && typeof embeddedName === "string" && embeddedName.length > 0) {
     return embeddedName;
   }
 
@@ -596,7 +592,10 @@ export function cleanToolInput(
  *  marker at the head of the prompt. In a one-line title that path is all the
  *  reader sees, so drop the markers and keep the instruction. */
 function withoutImageMarkers(text: string): string {
-  return text.replace(/\[local_image:[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
+  return text
+    .replace(/\[local_image:[^\]]*\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function extractToolInputPreview(name: string, input: Record<string, unknown>): string {
@@ -689,7 +688,9 @@ export function extractToolOutput(payload: Record<string, unknown>): string | nu
   if (typeof payload.content === "string") return unwrapOutputEnvelope(payload.content);
   if (Array.isArray(payload.content)) {
     const text = payload.content
-      .map((c: unknown) => (c && typeof c === "object" && "text" in c ? String((c as Record<string, unknown>).text) : ""))
+      .map((c: unknown) =>
+        c && typeof c === "object" && "text" in c ? String((c as Record<string, unknown>).text) : ""
+      )
       .filter(Boolean)
       .join("\n");
     return text ? unwrapOutputEnvelope(text) : null;
@@ -699,13 +700,7 @@ export function extractToolOutput(payload: Record<string, unknown>): string | nu
 }
 
 const OUTPUT_TEXT_KEYS = ["text", "content", "result", "output"] as const;
-const OUTPUT_ENVELOPE_KEYS = new Set([
-  ...OUTPUT_TEXT_KEYS,
-  "metadata",
-  "title",
-  "type",
-  "url"
-]);
+const OUTPUT_ENVELOPE_KEYS = new Set([...OUTPUT_TEXT_KEYS, "metadata", "title", "type", "url"]);
 
 type FormattedToolOutput = { body: string; title: string | null };
 

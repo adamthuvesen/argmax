@@ -101,11 +101,7 @@ export function parseChord(accelerator: string): Chord | null {
 }
 
 function isNamedKey(key: string): boolean {
-  return (
-    Object.values(NAMED_KEYS).includes(key) ||
-    POSITIONAL_KEYS.has(key) ||
-    /^F([1-9]|1[0-2])$/.test(key)
-  );
+  return Object.values(NAMED_KEYS).includes(key) || POSITIONAL_KEYS.has(key) || /^F([1-9]|1[0-2])$/.test(key);
 }
 
 /** A canonical accelerator for the chord a key event makes, or null if it is not a valid chord. */

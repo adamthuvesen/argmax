@@ -83,13 +83,11 @@ describe("ActivityPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Time range" }));
     const menu = screen.getByRole("listbox", { name: "Time range" });
-    expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Last 24 hours",
-      "Last 7 days",
-      "Last 30 days",
-      "Last 12 months",
-      String(new Date().getFullYear())
-    ]);
+    expect(
+      within(menu)
+        .getAllByRole("option")
+        .map((option) => option.textContent)
+    ).toEqual(["Last 24 hours", "Last 7 days", "Last 30 days", "Last 12 months", String(new Date().getFullYear())]);
 
     pickOption("Last 24 hours");
 
@@ -122,9 +120,7 @@ describe("ActivityPanel", () => {
     const lines = heroFigure("Lines changed");
     // Churn is added plus removed, so it dwarfs the commit count it replaced.
     expect(Number(lines.title.replace(/[^0-9]/g, ""))).toBeGreaterThan(commits);
-    expect(
-      within(screen.getByRole("region", { name: "Summary" })).queryByLabelText("Commits")
-    ).not.toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Summary" })).queryByLabelText("Commits")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Daily lines by repository/ })).toBeInTheDocument();
     // The metric switch is a presentation change: it never re-reads the backend.
     expect(summary).toHaveBeenCalledTimes(1);
@@ -139,17 +135,12 @@ describe("ActivityPanel", () => {
     pickOption("dbt-transform");
 
     await waitFor(() => {
-      expect(summary).toHaveBeenLastCalledWith(
-        expect.objectContaining({ window: "30d", projectId: "p-dbt" })
-      );
+      expect(summary).toHaveBeenLastCalledWith(expect.objectContaining({ window: "30d", projectId: "p-dbt" }));
     });
     expect(picker).toHaveTextContent("dbt-transform");
     const rows = await screen.findByRole("list", { name: "Commits by repository" });
     await waitFor(() => {
-      expect(within(rows).getByRole("button", { name: /dbt-transform/ })).toHaveAttribute(
-        "aria-pressed",
-        "true"
-      );
+      expect(within(rows).getByRole("button", { name: /dbt-transform/ })).toHaveAttribute("aria-pressed", "true");
     });
     // The rows are the filter, so they keep every repository: a one-row table
     // is not the comparison the card exists for.

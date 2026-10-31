@@ -19,7 +19,8 @@ module.exports = {
     {
       name: "hook-imports-component",
       severity: "error",
-      comment: "A hook returns data and actions. Move the shared piece into lib or state, and let the component import the hook.",
+      comment:
+        "A hook returns data and actions. Move the shared piece into lib or state, and let the component import the hook.",
       from: { path: "^src/renderer/hooks/", pathNot: TEST },
       to: { path: "^src/renderer/components/|^src/renderer/App" }
     },

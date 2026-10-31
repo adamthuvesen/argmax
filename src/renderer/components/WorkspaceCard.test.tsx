@@ -37,8 +37,24 @@ function workspaceWithPrs(prs: WorkspaceSessionPr[], overrides: Partial<Workspac
 function subagentCluster(overrides: Partial<SubagentCluster> = {}): SubagentCluster {
   return {
     entries: [
-      { toolUseId: "spawn-1", codename: "Io", title: "Map the renderer", status: "done", iconColor: "blue", emblem: emblemForCodename("Gauss"), multitask: false },
-      { toolUseId: "spawn-2", codename: "Titan", title: "Sweep tests", status: "running", iconColor: "amber", emblem: emblemForCodename("Hopper"), multitask: false }
+      {
+        toolUseId: "spawn-1",
+        codename: "Io",
+        title: "Map the renderer",
+        status: "done",
+        iconColor: "blue",
+        emblem: emblemForCodename("Gauss"),
+        multitask: false
+      },
+      {
+        toolUseId: "spawn-2",
+        codename: "Titan",
+        title: "Sweep tests",
+        status: "running",
+        iconColor: "amber",
+        emblem: emblemForCodename("Hopper"),
+        multitask: false
+      }
     ],
     running: 1,
     hasMultitask: false,
@@ -62,7 +78,7 @@ function renderCard(
     <WorkspaceCard
       changeSummary={
         "changeSummary" in overrides
-          ? overrides.changeSummary ?? null
+          ? (overrides.changeSummary ?? null)
           : { fileCount: 3, additions: 229, deletions: 44 }
       }
       changesState={overrides.changesState ?? "ready"}
@@ -76,7 +92,7 @@ function renderCard(
       onToggleTerminal={vi.fn()}
       session={baseSession()}
       setStatus={overrides.setStatus ?? vi.fn()}
-      subagents={"subagents" in overrides ? overrides.subagents ?? null : undefined}
+      subagents={"subagents" in overrides ? (overrides.subagents ?? null) : undefined}
       workspace={overrides.workspace ?? workspace}
     />
   );
@@ -86,8 +102,18 @@ describe("WorkspaceCard", () => {
   it("shows changed additional repositories separately when the chat checkout is clean", () => {
     const onOpenFolderChanges = vi.fn();
     const group = (id: string, enabled = true, changed = true): ProjectFolderChanges => ({
-      folder: { id, projectId: "project", name: id, rootPath: `/repos/${id}`, isPrimary: false, enabled, summary: null },
-      files: changed ? [{ path: "README.md", status: "M", additions: id === "app" ? 3 : 7, deletions: 1, staged: false }] : [],
+      folder: {
+        id,
+        projectId: "project",
+        name: id,
+        rootPath: `/repos/${id}`,
+        isPrimary: false,
+        enabled,
+        summary: null
+      },
+      files: changed
+        ? [{ path: "README.md", status: "M", additions: id === "app" ? 3 : 7, deletions: 1, staged: false }]
+        : [],
       error: null
     });
     renderCard({
@@ -107,7 +133,10 @@ describe("WorkspaceCard", () => {
     expect(dbt).toHaveTextContent("+7");
     fireEvent.click(app);
     fireEvent.click(dbt);
-    expect(onOpenFolderChanges.mock.calls).toEqual([["app", "README.md"], ["dbt", "README.md"]]);
+    expect(onOpenFolderChanges.mock.calls).toEqual([
+      ["app", "README.md"],
+      ["dbt", "README.md"]
+    ]);
     expect(screen.queryByRole("button", { name: "Changes in disabled" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Changes in clean" })).not.toBeInTheDocument();
   });
@@ -212,7 +241,6 @@ describe("WorkspaceCard", () => {
     expect(refresh).toHaveBeenCalledWith({ sessionId: "session-a" });
   });
 
-
   it("opens an existing pull request by its stored URL without resolving by checkout", () => {
     const openPath = vi.fn().mockResolvedValue({ ok: true });
     (window as { argmax?: unknown }).argmax = {
@@ -239,9 +267,28 @@ describe("WorkspaceCard", () => {
   it("shows current PRs first and keeps older associations expandable", () => {
     const prs = [
       sessionPr(),
-      sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Referenced fix", relationship: "referenced", isPrimary: false }),
-      sessionPr({ prNumber: 755, url: "https://github.com/o/r/pull/755", title: "Earlier work", prState: "MERGED", isPrimary: false }),
-      sessionPr({ prNumber: 750, url: "https://github.com/o/r/pull/750", title: "Candidate", prState: "CLOSED", relationship: "unverified", isPrimary: false })
+      sessionPr({
+        prNumber: 759,
+        url: "https://github.com/o/r/pull/759",
+        title: "Referenced fix",
+        relationship: "referenced",
+        isPrimary: false
+      }),
+      sessionPr({
+        prNumber: 755,
+        url: "https://github.com/o/r/pull/755",
+        title: "Earlier work",
+        prState: "MERGED",
+        isPrimary: false
+      }),
+      sessionPr({
+        prNumber: 750,
+        url: "https://github.com/o/r/pull/750",
+        title: "Candidate",
+        prState: "CLOSED",
+        relationship: "unverified",
+        isPrimary: false
+      })
     ];
     renderCard({ workspace: workspaceWithPrs(prs) });
 
@@ -263,17 +310,13 @@ describe("WorkspaceCard", () => {
       prs: { setPrimary, dismiss: vi.fn().mockResolvedValue([]) }
     };
     renderCard({
-      workspace: workspaceWithPrs([
-        sessionPr({ relationship: "unverified", isPrimary: true, isPinned: false })
-      ])
+      workspace: workspaceWithPrs([sessionPr({ relationship: "unverified", isPrimary: true, isPinned: false })])
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for PR #762" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Confirm and make primary" }));
 
-    await waitFor(() =>
-      expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 })
-    );
+    await waitFor(() => expect(setPrimary).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
   });
 
   it("pins, returns to automatic selection, and removes PR associations", async () => {
@@ -283,7 +326,13 @@ describe("WorkspaceCard", () => {
     renderCard({
       workspace: workspaceWithPrs([
         sessionPr({ isPinned: true }),
-        sessionPr({ prNumber: 759, url: "https://github.com/o/r/pull/759", title: "Candidate", relationship: "unverified", isPrimary: false })
+        sessionPr({
+          prNumber: 759,
+          url: "https://github.com/o/r/pull/759",
+          title: "Candidate",
+          relationship: "unverified",
+          isPrimary: false
+        })
       ])
     });
 
@@ -321,7 +370,6 @@ describe("WorkspaceCard", () => {
     await waitFor(() => expect(cleanup).toHaveBeenCalledWith({ sessionId: "session-a", prNumber: 762 }));
     await waitFor(() => expect(toastSnapshot()).toEqual({ kind: "info", message: report }));
   });
-
 
   it("shows the subagent roster once the session spawns agents", () => {
     renderCard({ subagents: subagentCluster() });

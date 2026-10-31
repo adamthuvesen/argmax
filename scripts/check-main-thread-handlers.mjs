@@ -127,6 +127,4 @@ if (failed) {
   process.exit(1);
 }
 
-console.log(
-  `ok: ${asynchronous.size} handlers resolve off the main thread; ${synchronous.length} are allowlisted.`
-);
+console.log(`ok: ${asynchronous.size} handlers resolve off the main thread; ${synchronous.length} are allowlisted.`);

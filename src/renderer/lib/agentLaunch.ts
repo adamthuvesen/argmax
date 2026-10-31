@@ -48,10 +48,7 @@ export function isInternalAgentLaunchMetadata(output: string): boolean {
  * and truncating it into a title turned every spawn into a path wall — only the
  * provider's own short `description` is short enough to be a title.
  */
-export function agentLaunchLabel(
-  tool: ToolCall,
-  codename?: string
-): { title: string; identity: string | null } {
+export function agentLaunchLabel(tool: ToolCall, codename?: string): { title: string; identity: string | null } {
   const name = trimmedString(codename);
   const description = trimmedString(tool.inputFull.description);
   if (description) return { title: description, identity: name };
@@ -59,10 +56,12 @@ export function agentLaunchLabel(
 }
 
 function agentLaunchPreview(tool: ToolCall): string {
-  return trimmedString(tool.inputPreview)
-    ?? trimmedString(tool.inputFull.description)
-    ?? trimmedString(tool.inputFull.prompt)
-    ?? "Agent";
+  return (
+    trimmedString(tool.inputPreview) ??
+    trimmedString(tool.inputFull.description) ??
+    trimmedString(tool.inputFull.prompt) ??
+    "Agent"
+  );
 }
 
 /** Every launch row names its own state in words, done included: a finished

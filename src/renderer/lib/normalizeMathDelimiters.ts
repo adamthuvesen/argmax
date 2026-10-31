@@ -10,10 +10,7 @@ const LATEX_ENV_REGEX =
 const GREEK_MATH_SYMBOLS =
   "alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega";
 
-const GREEK_MATH_REGEX = new RegExp(
-  `(^|[\\s(])\\\\(${GREEK_MATH_SYMBOLS})([\\s.,;:!?)"]|$)`,
-  "g"
-);
+const GREEK_MATH_REGEX = new RegExp(`(^|[\\s(])\\\\(${GREEK_MATH_SYMBOLS})([\\s.,;:!?)"]|$)`, "g");
 
 /**
  * A private-use sentinel: markdown never contains it, and unlike NUL it is not a
@@ -112,12 +109,9 @@ function transformProseMath(text: string): string {
   });
 
   // 1b. Convert bracketed LaTeX equations missing backslash on brackets: [ \command ... ] -> $$ ... $$
-  result = result.replace(
-    /(?:^|\n)\s*\[\s*(\\[a-zA-Z]+[\s\S]*?)\]\s*(?:\n|$)/g,
-    (_match, equation: string) => {
-      return `\n\n$$\n${equation.trim()}\n$$\n\n`;
-    }
-  );
+  result = result.replace(/(?:^|\n)\s*\[\s*(\\[a-zA-Z]+[\s\S]*?)\]\s*(?:\n|$)/g, (_match, equation: string) => {
+    return `\n\n$$\n${equation.trim()}\n$$\n\n`;
+  });
 
   // 2. Convert LaTeX inline math: \( equation \) -> $equation$
   result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_match, equation: string) => {
@@ -146,17 +140,11 @@ function transformProseMath(text: string): string {
   result = result.replace(/(?<!\\)\$/g, () => "\\$");
 
   // 7. Convert bare Greek letter commands in prose (\tau, \alpha) -> $\tau$, $\alpha$
-  result = result.replace(
-    GREEK_MATH_REGEX,
-    (_match, prefix: string, symbol: string, suffix: string) => {
-      return `${prefix}$\\${symbol}$${suffix}`;
-    }
-  );
+  result = result.replace(GREEK_MATH_REGEX, (_match, prefix: string, symbol: string, suffix: string) => {
+    return `${prefix}$\\${symbol}$${suffix}`;
+  });
 
-  return result.replace(
-    /\uE000(\d+)\uE000/g,
-    (_match, index: string) => mathSpans[Number(index)]
-  );
+  return result.replace(/\uE000(\d+)\uE000/g, (_match, index: string) => mathSpans[Number(index)]);
 }
 
 /**

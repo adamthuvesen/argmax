@@ -151,9 +151,7 @@ describe("SessionComposer unsent drafts", () => {
     fireEvent.keyDown(prompt(), { key: "Enter" });
     await waitFor(() => expect(onSendSessionInput).toHaveBeenCalledTimes(2));
     const retry = onSendSessionInput.mock.calls[1] as unknown as unknown[] | undefined;
-    expect(retry?.[4]).toEqual([
-      { filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }
-    ]);
+    expect(retry?.[4]).toEqual([{ filePath: SCREENSHOT_PATH, mimeType: "image/png", sizeBytes: 4 }]);
 
     cleanup();
     renderConversation(baseSession());

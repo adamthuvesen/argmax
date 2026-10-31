@@ -48,9 +48,7 @@ export function ForkBar({
       const renamed = delta.workspaces?.find((workspace) => workspace.id === sourceWorkspaceId);
       if (!renamed) return;
       setLineage((current) =>
-        current && current.sourceLabel !== renamed.taskLabel
-          ? { ...current, sourceLabel: renamed.taskLabel }
-          : current
+        current && current.sourceLabel !== renamed.taskLabel ? { ...current, sourceLabel: renamed.taskLabel } : current
       );
     });
   }, [sourceWorkspaceId]);
@@ -89,9 +87,7 @@ export function ForkBar({
           Bring findings back
         </button>
       ) : null}
-      {merging ? (
-        <ForkMergeDialog childSessionId={sessionId} onClose={() => setMerging(false)} />
-      ) : null}
+      {merging ? <ForkMergeDialog childSessionId={sessionId} onClose={() => setMerging(false)} /> : null}
     </div>
   );
 }

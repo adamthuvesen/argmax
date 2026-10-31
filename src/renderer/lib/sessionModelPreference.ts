@@ -20,10 +20,7 @@ function sessionModelKey(sessionId: string): string {
  * source of the active turn's settings, so this override is intentionally
  * separate: changing it while a provider is running must not touch that run.
  */
-export function readStoredSessionModel(
-  sessionId: string,
-  fallback: ModelPickerSelection
-): ModelPickerSelection {
+export function readStoredSessionModel(sessionId: string, fallback: ModelPickerSelection): ModelPickerSelection {
   if (typeof window === "undefined") return fallback;
 
   try {

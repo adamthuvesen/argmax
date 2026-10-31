@@ -46,8 +46,6 @@ describe("useAnchoredPopover", () => {
 
   it("opens from the edge attached to its anchor", () => {
     render(<Popover />);
-    expect(screen.getByLabelText("menu").style.getPropertyValue("--popover-transform-origin")).toBe(
-      "top left"
-    );
+    expect(screen.getByLabelText("menu").style.getPropertyValue("--popover-transform-origin")).toBe("top left");
   });
 });

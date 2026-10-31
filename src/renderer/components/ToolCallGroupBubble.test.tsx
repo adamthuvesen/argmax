@@ -15,7 +15,11 @@ afterEach(() => {
 
 describe("observed activity", () => {
   it("keeps the Argmax mascot on browser activity summaries and rows", () => {
-    const browser = tool("browser", { name: "mcp__argmax__browser_click", completionObserved: true, activity: { version: 1, kind: "tool", evidence: "tool", targets: [] } });
+    const browser = tool("browser", {
+      name: "mcp__argmax__browser_click",
+      completionObserved: true,
+      activity: { version: 1, kind: "tool", evidence: "tool", targets: [] }
+    });
     render(<ToolCallGroupBubble compact group={buildToolCallGroup([browser])} />);
     expect(screen.getByRole("img", { name: "Argmax" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Used a tool" }));
@@ -23,23 +27,45 @@ describe("observed activity", () => {
     expect(screen.queryByRole("img", { name: "Computer use" })).not.toBeInTheDocument();
   });
   it("updates a live action and preserves disclosure after its result arrives", () => {
-    const read = tool("read", { completionObserved: true, activity: { version: 1, kind: "read", evidence: "tool", targets: ["/repo/read.ts"] } });
-    const edit = tool("edit", { name: "Edit", status: "running", completionObserved: false, activity: { version: 1, kind: "edit", evidence: "tool", targets: ["/repo/edit.ts"] } });
+    const read = tool("read", {
+      completionObserved: true,
+      activity: { version: 1, kind: "read", evidence: "tool", targets: ["/repo/read.ts"] }
+    });
+    const edit = tool("edit", {
+      name: "Edit",
+      status: "running",
+      completionObserved: false,
+      activity: { version: 1, kind: "edit", evidence: "tool", targets: ["/repo/edit.ts"] }
+    });
     const { rerender } = render(<ToolCallGroupBubble compact group={buildToolCallGroup([read, edit])} />);
     // Compact names the running call too, on its own line under the headline.
     const header = screen.getByRole("button", { name: "Read a file, editing a file: Editing edit.ts" });
     fireEvent.click(header);
     expect(screen.getByRole("button", { name: "Editing edit.ts" })).toBeInTheDocument();
-    rerender(<ToolCallGroupBubble compact group={buildToolCallGroup([read, { ...edit, status: "done", completionObserved: true }])} />);
+    rerender(
+      <ToolCallGroupBubble
+        compact
+        group={buildToolCallGroup([read, { ...edit, status: "done", completionObserved: true }])}
+      />
+    );
     expect(screen.getByRole("button", { name: "Read a file, edited a file" })).toBe(header);
     expect(header).toHaveAttribute("aria-expanded", "true");
   });
 
   it("does not call failed or uncertain work successful in a mixed group", () => {
-    const edit = tool("edit", { status: "error", activity: { version: 1, kind: "edit", evidence: "tool", targets: [] } });
-    const read = tool("read", { completionObserved: false, activity: { version: 1, kind: "read", evidence: "tool", targets: [] } });
+    const edit = tool("edit", {
+      status: "error",
+      activity: { version: 1, kind: "edit", evidence: "tool", targets: [] }
+    });
+    const read = tool("read", {
+      completionObserved: false,
+      activity: { version: 1, kind: "read", evidence: "tool", targets: [] }
+    });
     render(<ToolCallGroupBubble compact group={buildToolCallGroup([edit, read])} />);
-    expect(screen.getByRole("button", { name: "File change failed, file read" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "File change failed, file read" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
   });
 });
 
@@ -118,9 +144,7 @@ describe("ToolCallGroupBubble", () => {
       inputFull: { command: "npm test -- --runInBand" },
       output: "Tests passed"
     });
-    const { rerender } = render(
-      <ToolCallGroupBubble compact group={buildToolCallGroup([command])} />
-    );
+    const { rerender } = render(<ToolCallGroupBubble compact group={buildToolCallGroup([command])} />);
 
     const header = screen.getByRole("button", { name: "Ran a command" });
     expect(screen.queryByRole("button", { name: "Ran npm test -- --runInBand" })).toBeNull();
@@ -133,9 +157,7 @@ describe("ToolCallGroupBubble", () => {
     fireEvent.click(commandRow);
     expect(screen.getByText("Tests passed")).toBeInTheDocument();
 
-    rerender(
-      <ToolCallGroupBubble compact group={buildToolCallGroup([command, tool("second")])} />
-    );
+    rerender(<ToolCallGroupBubble compact group={buildToolCallGroup([command, tool("second")])} />);
     expect(screen.getByRole("button", { name: "Read a file, ran a command" })).toBe(header);
     expect(header).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("Tests passed")).toBeInTheDocument();
@@ -143,11 +165,12 @@ describe("ToolCallGroupBubble", () => {
 
   it("names the running call under a collapsed compact group without opening its row", () => {
     const running = tool("second", { status: "running", completedAt: null });
-    render(
-      <ToolCallGroupBubble compact group={buildToolCallGroup([tool("first"), running])} />
-    );
+    render(<ToolCallGroupBubble compact group={buildToolCallGroup([tool("first"), running])} />);
 
-    expect(screen.getByRole("button", { name: "Read files: Read second.ts" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Read files: Read second.ts" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
     expect(screen.queryByRole("button", { name: "Read second.ts" })).toBeNull();
   });
 
@@ -216,10 +239,18 @@ describe("ToolCallGroupBubble", () => {
       <ToolCallGroupBubble
         compact
         group={buildToolCallGroup([])}
-        activityMembers={[{
-          kind: "thought", id: "thought", live,
-          node: <ThoughtBlock live={live} previewText="Working" durationMs={5000}>Working</ThoughtBlock>
-        }]}
+        activityMembers={[
+          {
+            kind: "thought",
+            id: "thought",
+            live,
+            node: (
+              <ThoughtBlock live={live} previewText="Working" durationMs={5000}>
+                Working
+              </ThoughtBlock>
+            )
+          }
+        ]}
       />
     );
 
@@ -240,25 +271,17 @@ describe("ToolCallGroupBubble", () => {
       }
     });
     const running = tool("running", { status: "running", completedAt: null });
-    const { rerender } = render(
-      <ToolCallGroupBubble group={buildToolCallGroup([edit, running])} />
-    );
+    const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([edit, running])} />);
 
     // A still-growing count would read as the finality of a result; the
     // headline says the group is working instead.
     expect(screen.getByRole("button", { busy: true })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Group edits:/ })).toBeNull();
 
-    rerender(
-      <ToolCallGroupBubble
-        group={buildToolCallGroup([edit, { ...running, status: "done" }])}
-      />
-    );
+    rerender(<ToolCallGroupBubble group={buildToolCallGroup([edit, { ...running, status: "done" }])} />);
 
     expect(screen.queryByRole("button", { busy: true })).toBeNull();
-    expect(
-      screen.getByRole("img", { name: "Group edits: 2 lines added, 2 lines removed" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Group edits: 2 lines added, 2 lines removed" })).toBeInTheDocument();
   });
 
   it("keeps cumulative edit totals on the group header as interleaved tools arrive", () => {
@@ -282,9 +305,7 @@ describe("ToolCallGroupBubble", () => {
     });
     const firstRead = tool("first-read");
     const secondRead = tool("second-read");
-    const { rerender } = render(
-      <ToolCallGroupBubble group={buildToolCallGroup([firstRead, firstEdit, secondRead])} />
-    );
+    const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([firstRead, firstEdit, secondRead])} />);
 
     const header = screen.getByRole("button", { name: "Edited a file, read 2 files" });
     const initialStat = screen.getByRole("img", {
@@ -299,24 +320,17 @@ describe("ToolCallGroupBubble", () => {
     expect(screen.getAllByRole("img", { name: /Group edits:/ })).toHaveLength(1);
     expect(header).toContainElement(initialStat);
 
-    rerender(
-      <ToolCallGroupBubble
-        group={buildToolCallGroup([firstRead, firstEdit, secondRead, secondEdit])}
-      />
-    );
+    rerender(<ToolCallGroupBubble group={buildToolCallGroup([firstRead, firstEdit, secondRead, secondEdit])} />);
     const updatedHeader = screen.getByRole("button", { name: "Edited 2 files, read 2 files" });
-    expect(screen.getByRole("img", {
-      name: "Group edits: 2 lines added, 2 lines removed"
-    })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Group edits: 2 lines added, 2 lines removed"
+      })
+    ).toBeInTheDocument();
 
     rerender(
       <ToolCallGroupBubble
-        group={buildToolCallGroup([
-          firstRead,
-          firstEdit,
-          secondRead,
-          { ...secondEdit, completionObserved: true }
-        ])}
+        group={buildToolCallGroup([firstRead, firstEdit, secondRead, { ...secondEdit, completionObserved: true }])}
       />
     );
     const updatedStat = screen.getByRole("img", {
@@ -340,7 +354,10 @@ describe("ToolCallGroupBubble", () => {
 
     rerender(
       <ToolCallGroupBubble
-        group={buildToolCallGroup([{ ...first }, { ...second, status: "done", completedAt: "2026-09-05T12:00:00.200Z" }])}
+        group={buildToolCallGroup([
+          { ...first },
+          { ...second, status: "done", completedAt: "2026-09-05T12:00:00.200Z" }
+        ])}
       />
     );
     expect(screen.getByRole("button", { name: "Read 2 files: Read second.ts" })).toBe(header);
@@ -369,15 +386,13 @@ describe("ToolCallGroupBubble", () => {
       status: "running",
       completedAt: null
     });
-    rerender(
-      <ToolCallGroupBubble
-        group={buildToolCallGroup([{ ...first }, { ...second, status: "done" }, third])}
-      />
-    );
+    rerender(<ToolCallGroupBubble group={buildToolCallGroup([{ ...first }, { ...second, status: "done" }, third])} />);
 
-    expect(screen.getByRole("button", {
-      name: "Read files, ran a command: Ran npm test"
-    })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Read files, ran a command: Ran npm test"
+      })
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Read second\.ts/ })).toBeNull();
   });
 
@@ -397,11 +412,7 @@ describe("ToolCallGroupBubble", () => {
     const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([first, second])} />);
     await act(() => vi.advanceTimersByTime(700));
 
-    rerender(
-      <ToolCallGroupBubble
-        group={buildToolCallGroup([{ ...first }, { ...second, status: "done" }])}
-      />
-    );
+    rerender(<ToolCallGroupBubble group={buildToolCallGroup([{ ...first }, { ...second, status: "done" }])} />);
 
     expect(screen.getByRole("button", { name: "Read 2 files" })).toBeInTheDocument();
     expect(screen.queryByText("Read second.ts")).toBeNull();
@@ -424,11 +435,7 @@ describe("ToolCallGroupBubble", () => {
     const second = tool("second", { status: "running", completedAt: null });
     const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([first, second])} />);
 
-    rerender(
-      <ToolCallGroupBubble
-        group={buildToolCallGroup([{ ...first }, { ...second, status: "done" }])}
-      />
-    );
+    rerender(<ToolCallGroupBubble group={buildToolCallGroup([{ ...first }, { ...second, status: "done" }])} />);
     const header = screen.getByRole("button", { name: "Read 2 files: Read second.ts" });
     expect(header.parentElement).toHaveAttribute("data-status", "done");
     expect(screen.queryByRole("button", { busy: true })).toBeNull();
@@ -438,7 +445,13 @@ describe("ToolCallGroupBubble", () => {
   });
 
   it("keeps mixed failures quiet until their details are expanded", () => {
-    const failed = tool("failed", { name: "Bash", inputPreview: "npm test", inputFull: { command: "npm test" }, status: "error", error: "Tests failed" });
+    const failed = tool("failed", {
+      name: "Bash",
+      inputPreview: "npm test",
+      inputFull: { command: "npm test" },
+      status: "error",
+      error: "Tests failed"
+    });
     render(<ToolCallGroupBubble group={buildToolCallGroup([tool("first"), failed])} />);
     const header = screen.getByRole("button", { name: "Read a file, ran a command" });
     expect(header).toHaveAttribute("aria-expanded", "false");
@@ -451,9 +464,17 @@ describe("ToolCallGroupBubble", () => {
   it("updates expanded output without requiring status or timestamps to change", () => {
     const first = tool("first", { status: "running" });
     const second = tool("second");
-    const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([first, second])} defaultExpanded defaultToolsExpanded />);
+    const { rerender } = render(
+      <ToolCallGroupBubble group={buildToolCallGroup([first, second])} defaultExpanded defaultToolsExpanded />
+    );
     expect(screen.getByText("Contents of first")).toBeInTheDocument();
-    rerender(<ToolCallGroupBubble group={buildToolCallGroup([{ ...first, output: "More output" }, second])} defaultExpanded defaultToolsExpanded />);
+    rerender(
+      <ToolCallGroupBubble
+        group={buildToolCallGroup([{ ...first, output: "More output" }, second])}
+        defaultExpanded
+        defaultToolsExpanded
+      />
+    );
     expect(screen.getByText("More output")).toBeInTheDocument();
   });
 });
@@ -480,16 +501,22 @@ describe("the beat between calls", () => {
     vi.useFakeTimers();
     const read = tool("read", { status: "running", completedAt: null });
     const second = tool("second", { status: "running", completedAt: null });
-    const { container, rerender } = render(
-      <ToolCallGroupBubble group={buildToolCallGroup([read])} />
-    );
+    const { container, rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([read])} />);
     rerender(<ToolCallGroupBubble group={buildToolCallGroup([read, second])} />);
     expectMeasuredWave(container);
-    const ran = tool("ran", { name: "Bash", status: "running", completedAt: null, inputPreview: "npm test", inputFull: { command: "npm test" } });
+    const ran = tool("ran", {
+      name: "Bash",
+      status: "running",
+      completedAt: null,
+      inputPreview: "npm test",
+      inputFull: { command: "npm test" }
+    });
     rerender(<ToolCallGroupBubble group={buildToolCallGroup([read, second, ran])} />);
     // The new clause waits out the dwell, so the line is re-worded well after
     // the summary that named it changed.
-    act(() => { vi.advanceTimersByTime(CLAUSE_DWELL_MS); });
+    act(() => {
+      vi.advanceTimersByTime(CLAUSE_DWELL_MS);
+    });
     expect(container.querySelector(".tool-call-group-eyebrow")?.textContent).toContain("command");
     expectMeasuredWave(container);
   });

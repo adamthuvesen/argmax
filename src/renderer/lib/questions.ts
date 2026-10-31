@@ -74,9 +74,7 @@ export function formatAnswer(questions: Question[], selected: number[][], otherT
     .map((question, index) => {
       const labels = pickedLabels(question, selected[index] ?? [], otherText[index] ?? "");
       const header = question.header || question.question;
-      const value = question.isSecret
-        ? "(secret provided)"
-        : labels.length > 0 ? labels.join(", ") : "(no selection)";
+      const value = question.isSecret ? "(secret provided)" : labels.length > 0 ? labels.join(", ") : "(no selection)";
       return `${header}: ${value}`;
     })
     .join("\n");
@@ -104,9 +102,12 @@ export function parseQuestionsFromToolInput(tool: ToolCall): Question[] | null {
       .filter((o) => o.label.length > 0);
     // Codex permits free-form-only questions with the default isOther:false.
     // That flag controls the extra choice when options exist.
-    const isOther = tool.inputFull?.delivery === "blocking" && options.length === 0
-      ? true
-      : typeof qq.isOther === "boolean" ? qq.isOther : undefined;
+    const isOther =
+      tool.inputFull?.delivery === "blocking" && options.length === 0
+        ? true
+        : typeof qq.isOther === "boolean"
+          ? qq.isOther
+          : undefined;
     if (options.length === 0 && isOther !== true) continue;
     questions.push({
       ...(typeof qq.id === "string" && qq.id.length > 0 ? { id: qq.id } : {}),

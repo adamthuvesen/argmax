@@ -51,4 +51,3 @@ export type VisualizationHostMessage =
   | { type: "argmax:visualization-control"; instanceId: string; id: string; value: string | number | boolean }
   | { type: "argmax:visualization-reset"; instanceId: string; groupId?: string }
   | { type: "argmax:visualization-original"; instanceId: string; active: boolean; groupId?: string };
-

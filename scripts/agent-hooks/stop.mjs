@@ -12,10 +12,12 @@ const sessionId = request.session_id ?? "unknown";
 const files = readEditedFiles(sessionId);
 const problems = !request.stop_hook_active && files.length ? checkFiles(files) : [];
 if (problems.length) {
-  console.log(JSON.stringify({
-    decision: "block",
-    reason: `Checks failed on files you edited. Fix these before you finish:\n${problems.join("\n")}`
-  }));
+  console.log(
+    JSON.stringify({
+      decision: "block",
+      reason: `Checks failed on files you edited. Fix these before you finish:\n${problems.join("\n")}`
+    })
+  );
 } else {
   clearEditedFiles(sessionId);
 }

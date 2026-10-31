@@ -60,9 +60,10 @@ export function readPaletteUsage(): PaletteUsage {
     const { items, queries } = parsed as Record<string, unknown>;
     return {
       items: entriesOf(items),
-      queries: typeof queries === "object" && queries !== null
-        ? Object.fromEntries(Object.entries(queries).map(([query, picks]) => [query, entriesOf(picks)]))
-        : {}
+      queries:
+        typeof queries === "object" && queries !== null
+          ? Object.fromEntries(Object.entries(queries).map(([query, picks]) => [query, entriesOf(picks)]))
+          : {}
     };
   } catch {
     // Unreadable storage only costs the learned ranking, never the palette.
@@ -75,7 +76,8 @@ function prune<T>(record: Record<string, T>, limit: number, weight: (value: T) =
   const keys = Object.keys(record);
   if (keys.length <= limit) return record;
   return Object.fromEntries(
-    keys.sort((left, right) => weight(record[right]) - weight(record[left]))
+    keys
+      .sort((left, right) => weight(record[right]) - weight(record[left]))
       .slice(0, limit)
       .map((key) => [key, record[key]])
   );
@@ -84,14 +86,16 @@ function prune<T>(record: Record<string, T>, limit: number, weight: (value: T) =
 export function recordPaletteUse(itemId: string, query: string, now = Date.now()): PaletteUsage {
   const usage = readPaletteUsage();
   const bump = (entry: UsageEntry | undefined): UsageEntry => ({ score: decayed(entry, now) + 1, at: now });
-  const items = prune({ ...usage.items, [itemId]: bump(usage.items[itemId]) }, MAX_ITEMS,
-    (entry) => decayed(entry, now));
+  const items = prune({ ...usage.items, [itemId]: bump(usage.items[itemId]) }, MAX_ITEMS, (entry) =>
+    decayed(entry, now)
+  );
   const normalized = normalizeQuery(query);
   let queries = usage.queries;
   if (normalized) {
     const picks = queries[normalized] ?? {};
-    queries = prune({ ...queries, [normalized]: { ...picks, [itemId]: bump(picks[itemId]) } }, MAX_QUERIES,
-      (entries) => Math.max(0, ...Object.values(entries).map((entry) => decayed(entry, now))));
+    queries = prune({ ...queries, [normalized]: { ...picks, [itemId]: bump(picks[itemId]) } }, MAX_QUERIES, (entries) =>
+      Math.max(0, ...Object.values(entries).map((entry) => decayed(entry, now)))
+    );
   }
   const next = { items, queries };
   if (typeof window !== "undefined") {

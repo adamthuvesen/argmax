@@ -3,7 +3,14 @@ import type * as MermaidRuntime from "../lib/mermaidRuntime.js";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { FilePreview } from "./FilePreview.js";
 import { resolveMarkdownImageSrc } from "../lib/markdownImageSrc.js";
-import { BROWSER_PAGE_OWNER_ID, createBrowserTab, getBrowserRequest, getBrowserTabs, resetBrowserTabsForTests, subscribeBrowserRequest } from "../lib/browserPanel.js";
+import {
+  BROWSER_PAGE_OWNER_ID,
+  createBrowserTab,
+  getBrowserRequest,
+  getBrowserTabs,
+  resetBrowserTabsForTests,
+  subscribeBrowserRequest
+} from "../lib/browserPanel.js";
 import { LINK_TARGET_KEY } from "../lib/linkTarget.js";
 import type { WorkspaceFilesState } from "../hooks/useReviewState.js";
 import { WORKSPACE_ASSET_PROTOCOL_SCHEME } from "../../shared/assetProtocol.js";
@@ -76,11 +83,15 @@ describe("FilePreview", () => {
       resetBrowserTabsForTests();
       const existingTab = createBrowserTab(BROWSER_PAGE_OWNER_ID, "https://example.com/already-open");
       const content = `[docs](${href})`;
-      render(<FilePreview state={makeState({
-        selectedPath: "README.md",
-        buffer: content,
-        preview: { kind: "text", content, size: content.length, mtimeMs: 1 }
-      })} />);
+      render(
+        <FilePreview
+          state={makeState({
+            selectedPath: "README.md",
+            buffer: content,
+            preview: { kind: "text", content, size: content.length, mtimeMs: 1 }
+          })}
+        />
+      );
       const link = screen.getByRole("link", { name: "docs" });
       expect(fireEvent.click(link, modifiers)).toBe(false);
       const expectedUrl = href.startsWith("//") ? `https:${href}` : href;
@@ -232,9 +243,7 @@ describe("FilePreview", () => {
       />
     );
     const img = screen.getByRole("img", { name: "docs/design/fox.png" });
-    expect(img.getAttribute("src")).toBe(
-      `${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/Users/me/repo/docs/design/fox.png`
-    );
+    expect(img.getAttribute("src")).toBe(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://file/Users/me/repo/docs/design/fox.png`);
     expect(screen.queryByText(/Binary file/)).not.toBeInTheDocument();
     expect(screen.getByText("4.0 KB")).toBeInTheDocument();
   });

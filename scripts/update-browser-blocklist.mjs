@@ -19,8 +19,15 @@ try {
     return text;
   };
   const [source, license] = await Promise.all([download("adblock/light.txt"), download("LICENSE")]);
-  const domains = source.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("!") && line !== "[Adblock Plus]");
-  if (domains.length < 1_000 || domains.length > 100_000 || domains.some((line) => !/^\|\|[a-z0-9-]+(?:\.[a-z0-9-]+)+\^$/.test(line))) {
+  const domains = source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("!") && line !== "[Adblock Plus]");
+  if (
+    domains.length < 1_000 ||
+    domains.length > 100_000 ||
+    domains.some((line) => !/^\|\|[a-z0-9-]+(?:\.[a-z0-9-]+)+\^$/.test(line))
+  ) {
     throw new Error("The upstream list changed format or has an unexpected domain count");
   }
   if (!license.includes("GNU GENERAL PUBLIC LICENSE") || !license.includes("Version 3, 29 June 2007")) {
@@ -28,9 +35,11 @@ try {
   }
   const destination = new URL("../assets/browser-blocking/", import.meta.url);
   const provenance = {
-    name: "HaGeZi Multi LIGHT", revision,
+    name: "HaGeZi Multi LIGHT",
+    revision,
     source: new URL("adblock/light.txt", base).href,
-    license: "GPL-3.0", domains: domains.length,
+    license: "GPL-3.0",
+    domains: domains.length,
     sha256: createHash("sha256").update(source).digest("hex")
   };
   await mkdir(destination, { recursive: true });

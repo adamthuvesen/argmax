@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scrollChildIntoNearest } from "./scrollChildIntoNearest.js";
 
-function box(
-  top: number,
-  height: number,
-  scrollTop = 0
-): HTMLElement {
+function box(top: number, height: number, scrollTop = 0): HTMLElement {
   return {
     scrollTop,
     getBoundingClientRect: () => ({

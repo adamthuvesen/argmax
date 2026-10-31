@@ -13,10 +13,12 @@ export function engramDirectoryError(directory: string): string | null {
   if (directory.length === 0) {
     return "Enter the absolute path to your Engram directory.";
   }
-  if ([...directory].some((character) => {
-    const codePoint = character.codePointAt(0);
-    return codePoint !== undefined && (codePoint < 32 || codePoint === 127);
-  })) {
+  if (
+    [...directory].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint < 32 || codePoint === 127);
+    })
+  ) {
     return "The Engram directory cannot contain control characters.";
   }
   if (!directory.startsWith("/")) {

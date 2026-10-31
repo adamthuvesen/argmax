@@ -1,10 +1,7 @@
 import { tryParseJsonObject } from "../../shared/safeJson.js";
 import type { RawProviderOutput, TimelineEvent } from "../../shared/types.js";
 import { arrayValue, objectValue, stringValue } from "../../shared/typeGuards.js";
-import {
-  decodeTimelineEvent,
-  type CanonicalTimelineEvent
-} from "./canonicalTimeline.js";
+import { decodeTimelineEvent, type CanonicalTimelineEvent } from "./canonicalTimeline.js";
 
 /**
  * One line in the debug trace. Normalized timeline events and raw provider
@@ -158,7 +155,11 @@ export function buildTraceRows(events: TimelineEvent[], rawOutputs: RawProviderO
   for (const event of events) {
     const decoded = decodeTimelineEvent(event);
     const detail = JSON.stringify(canonicalDiagnostic(decoded), null, 2);
-    const raw = JSON.stringify({ type: decoded.raw.type, message: decoded.raw.message, payload: decoded.raw.payload }, null, 2);
+    const raw = JSON.stringify(
+      { type: decoded.raw.type, message: decoded.raw.message, payload: decoded.raw.payload },
+      null,
+      2
+    );
     rows.push({
       id: `event:${event.id}`,
       at: Date.parse(event.createdAt),

@@ -139,9 +139,7 @@ export function WindowSnapshotSettings(): JSX.Element | null {
               className="settings-button"
               disabled={busy}
               onClick={() =>
-                void api
-                  .requestPermission()
-                  .then(setStatus, (error: unknown) => showErrorToast(message(error)))
+                void api.requestPermission().then(setStatus, (error: unknown) => showErrorToast(message(error)))
               }
             >
               <span>Allow Screen Recording</span>

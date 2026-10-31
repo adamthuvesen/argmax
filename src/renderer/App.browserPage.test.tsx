@@ -47,9 +47,13 @@ describe("App browser page", () => {
     await renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
     expect(await screen.findByRole("region", { name: "Browser" })).toBeInTheDocument();
-    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.objectContaining({ url: "https://claude.ai/artifacts" })));
+    await waitFor(() =>
+      expect(open).toHaveBeenCalledWith(expect.objectContaining({ url: "https://claude.ai/artifacts" }))
+    );
     fireEvent.click(screen.getByRole("button", { name: "Artifacts" }));
-    expect(getBrowserTabs(BROWSER_PAGE_OWNER_ID).filter((tab) => tab.url === "https://claude.ai/artifacts")).toHaveLength(1);
+    expect(
+      getBrowserTabs(BROWSER_PAGE_OWNER_ID).filter((tab) => tab.url === "https://claude.ai/artifacts")
+    ).toHaveLength(1);
   });
 
   it("swaps to the artifacts page while Browser is open, and leaves no page painted over a chat", async () => {
@@ -68,9 +72,10 @@ describe("App browser page", () => {
       shown.set(input.tabId, input.visible);
       return setBounds(input);
     });
-    const visibleUrls = (): string[] => [...shown]
-      .filter(([, visible]) => visible)
-      .map(([tabId]) => getBrowserTabs(BROWSER_PAGE_OWNER_ID).find((tab) => tab.id === tabId)?.url ?? tabId);
+    const visibleUrls = (): string[] =>
+      [...shown]
+        .filter(([, visible]) => visible)
+        .map(([tabId]) => getBrowserTabs(BROWSER_PAGE_OWNER_ID).find((tab) => tab.id === tabId)?.url ?? tabId);
     await renderApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));
@@ -166,7 +171,9 @@ describe("App browser page", () => {
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     const review = await screen.findByRole("complementary", { name: "Review panel" });
     fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
-    fireEvent.change(within(review).getByRole("textbox", { name: "Search or enter a URL" }), { target: { value: "https://example.com" } });
+    fireEvent.change(within(review).getByRole("textbox", { name: "Search or enter a URL" }), {
+      target: { value: "https://example.com" }
+    });
     fireEvent.click(within(review).getByRole("button", { name: "Open address" }));
 
     expect(within(review).getByRole("tab", { name: /example\.com/ })).toHaveAttribute("aria-selected", "true");
@@ -193,12 +200,16 @@ describe("App browser page", () => {
 
     fireEvent.click(within(review).getByRole("button", { name: "New workspace tab" }));
     fireEvent.click(within(review).getByRole("button", { name: "Files" }));
-    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-2", url: "https://example.com/next" }));
+    act(() =>
+      emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-2", url: "https://example.com/next" })
+    );
     expect(within(review).getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
 
     fireEvent.keyDown(document, { key: "b", metaKey: true });
     expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
-    act(() => emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-3", url: "https://example.com/last" }));
+    act(() =>
+      emitAgentOpen!({ sessionId: snapshot.sessions[0].id, tabId: "agent-3", url: "https://example.com/last" })
+    );
     expect(screen.queryByRole("complementary", { name: "Review panel" })).not.toBeInTheDocument();
   });
 });

@@ -50,9 +50,7 @@ export function useProjectCheck({
       const key = `${projectId}\u0000${pickedByHand ? 1 : 0}\u0000${text.trim()}`;
       const cached = cache.current.get(key);
       if (cached) return cached;
-      const pending = api
-        .checkPrompt({ projectId, prompt: text.trim(), pickedByHand })
-        .catch(() => NO_PROJECT_CHECK);
+      const pending = api.checkPrompt({ projectId, prompt: text.trim(), pickedByHand }).catch(() => NO_PROJECT_CHECK);
       cache.current.set(key, pending);
       if (cache.current.size > CACHE_SIZE) {
         const oldest = cache.current.keys().next().value;

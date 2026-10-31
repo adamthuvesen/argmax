@@ -13,9 +13,15 @@ function storedSidebarChatNesting(): SidebarChatNesting {
     try {
       const raw = window.localStorage.getItem(SIDEBAR_CHAT_NESTING_STORAGE_KEY);
       const stored: unknown = raw === null ? null : JSON.parse(raw);
-      if (stored && typeof stored === "object" && "nested" in stored && "detachedIds" in stored &&
-        typeof stored.nested === "boolean" && Array.isArray(stored.detachedIds) &&
-        stored.detachedIds.every((id): id is string => typeof id === "string" && id.length > 0)) {
+      if (
+        stored &&
+        typeof stored === "object" &&
+        "nested" in stored &&
+        "detachedIds" in stored &&
+        typeof stored.nested === "boolean" &&
+        Array.isArray(stored.detachedIds) &&
+        stored.detachedIds.every((id): id is string => typeof id === "string" && id.length > 0)
+      ) {
         return { nested: stored.nested, detachedIds: new Set(stored.detachedIds) };
       }
     } catch {
@@ -37,10 +43,13 @@ function publishSidebarChatNesting(next: SidebarChatNesting): void {
   state = next;
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(SIDEBAR_CHAT_NESTING_STORAGE_KEY, JSON.stringify({
-        nested: next.nested,
-        detachedIds: [...next.detachedIds]
-      }));
+      window.localStorage.setItem(
+        SIDEBAR_CHAT_NESTING_STORAGE_KEY,
+        JSON.stringify({
+          nested: next.nested,
+          detachedIds: [...next.detachedIds]
+        })
+      );
     } catch {
       // The choice still applies when storage is unavailable.
     }
@@ -62,7 +71,9 @@ export function detachSidebarChat(workspaceId: string): void {
 
 function subscribeSidebarChatNesting(listener: () => void): () => void {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function useSidebarChatNesting(): SidebarChatNesting {

@@ -5,18 +5,31 @@ import { emptySnapshot, mergeDashboardDelta, mergeProjectSummary, pruneSupersede
 
 describe("project overview revisions", () => {
   const project: ProjectSummary = {
-    id: "p-1", name: "Argmax", repoPath: "/tmp/argmax", currentBranch: "main", defaultBranch: "main",
+    id: "p-1",
+    name: "Argmax",
+    repoPath: "/tmp/argmax",
+    currentBranch: "main",
+    defaultBranch: "main",
     settings: { mergeCleanup: "off", worktreeLocation: "/tmp", setupCommand: "", checkCommands: [] },
-    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 }, latestActivityAt: null
+    counts: { active: 0, blocked: 0, failed: 0, reviewReady: 0 },
+    latestActivityAt: null
   };
   const current: ProjectSummary = {
     ...project,
-    overview: { revision: 3, saved: { text: "Saved overview", sources: [], generatedAt: null }, draft: null, status: "idle", error: null }
+    overview: {
+      revision: 3,
+      saved: { text: "Saved overview", sources: [], generatedAt: null },
+      draft: null,
+      status: "idle",
+      error: null
+    }
   };
 
   it("preserves the newer overview when a delayed action or delta updates other project fields", () => {
     const delayed = {
-      ...project, name: "Renamed", currentBranch: "feature",
+      ...project,
+      name: "Renamed",
+      currentBranch: "feature",
       overview: { ...current.overview!, revision: 2, status: "generating" as const }
     };
     const merged = mergeProjectSummary(current, delayed);
@@ -36,12 +49,7 @@ describe("project overview revisions", () => {
   });
 });
 
-function event(
-  id: string,
-  type: TimelineEvent["type"],
-  createdAt: string,
-  rowCursor?: number
-): TimelineEvent {
+function event(id: string, type: TimelineEvent["type"], createdAt: string, rowCursor?: number): TimelineEvent {
   return {
     id,
     sessionId: "session-1",
@@ -172,11 +180,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
       }
     ];
 
-    expect(pruneSupersededDeltas(events).map((e) => e.id)).toEqual([
-      "user",
-      "child-tool",
-      "done"
-    ]);
+    expect(pruneSupersededDeltas(events).map((e) => e.id)).toEqual(["user", "child-tool", "done"]);
   });
 
   it("drops streamed answer deltas when a completed message and tools land in chronological order", () => {
@@ -448,9 +452,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
   it("keeps other sessions' protected rows when a large trace import floods the snapshot", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
-      events: [
-        { ...event("u1", "user.message", "2026-05-12T14:59:59.000Z", 1), sessionId: "session-other" }
-      ]
+      events: [{ ...event("u1", "user.message", "2026-05-12T14:59:59.000Z", 1), sessionId: "session-other" }]
     };
     // More imported rows than the protected budget (2000).
     const imported: TimelineEvent[] = Array.from({ length: 2100 }, (_, i) => ({
@@ -494,9 +496,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const base: DashboardSnapshot = {
       ...emptySnapshot,
       workspaces: [{ id: "w-gone" } as DashboardSnapshot["workspaces"][number]],
-      sessions: [
-        { id: "s-orphaned", workspaceId: "w-gone" } as DashboardSnapshot["sessions"][number]
-      ]
+      sessions: [{ id: "s-orphaned", workspaceId: "w-gone" } as DashboardSnapshot["sessions"][number]]
     };
     const next = mergeDashboardDelta(base, { removedWorkspaceIds: ["w-gone"] });
     expect(next.workspaces).toHaveLength(0);
@@ -536,10 +536,7 @@ describe("pruneSupersededDeltas — reference stability", () => {
     const delta = { events: [event("e4", "command.completed", "2026-05-12T15:00:04.000Z", 4)] };
     // The ordered array takes the splice; the scrambled one falls back to the
     // Map-and-sort. Both must land on the same list.
-    const spliced = mergeDashboardDelta(
-      { ...emptySnapshot, events: [retained[1], retained[2], retained[0]] },
-      delta
-    );
+    const spliced = mergeDashboardDelta({ ...emptySnapshot, events: [retained[1], retained[2], retained[0]] }, delta);
     const sorted = mergeDashboardDelta({ ...emptySnapshot, events: retained }, delta);
     expect(spliced.events.map((e) => e.id)).toEqual(sorted.events.map((e) => e.id));
     expect(sorted.events.map((e) => e.id)).toEqual(["e4", "e3", "e2", "e1"]);

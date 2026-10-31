@@ -37,12 +37,7 @@ const integrations = [
 // Kept in the generated manifest because OpenCode omits the MCP marker and
 // only its known-server list distinguishes these from ordinary snake_case
 // tool names. They intentionally have no image set and fall back to a plug.
-const mcpServersWithoutIcons = [
-  "browser use",
-  "confidence experiments",
-  "context7",
-  "profound"
-];
+const mcpServersWithoutIcons = ["browser use", "confidence experiments", "context7", "profound"];
 
 const foxFills = {
   "var(--fox-line)": "#592718",
@@ -59,7 +54,7 @@ function xml(value) {
 
 function svg(icon, monochromeFill, toneDepth) {
   const layers = icon.layers.map((layer) => {
-    const fill = layer.fill === null ? monochromeFill : foxFills[layer.fill] ?? layer.fill;
+    const fill = layer.fill === null ? monochromeFill : (foxFills[layer.fill] ?? layer.fill);
     if (!fill || fill.startsWith("var(")) throw new Error(`Unsupported fill ${layer.fill} in ${icon.title}`);
     // A tinted rendition carries its depth as alpha, because the iPhone tints
     // the mark through its alpha channel and discards these colours entirely.
@@ -143,11 +138,7 @@ async function writeImageSet(key, light, dark) {
 
 for (const { key, icon, monochromeKey } of catalogue) {
   const hasAppearanceVariants = icon.layers.some((layer) => layer.fill === null);
-  await writeImageSet(
-    key,
-    svg(icon, "#1F1D18"),
-    hasAppearanceVariants ? svg(icon, "#F4F2EC") : undefined
-  );
+  await writeImageSet(key, svg(icon, "#1F1D18"), hasAppearanceVariants ? svg(icon, "#F4F2EC") : undefined);
   if (monochromeKey) {
     // The ramp reads away from the row, so each appearance carries its own.
     await writeImageSet(

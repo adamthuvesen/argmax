@@ -191,13 +191,20 @@ describe("App side chat launcher", () => {
     };
     createScratchWorkspace.mockResolvedValue(popupWorkspace);
     let resolveLaunch: ((session: SessionSummary) => void) | null = null;
-    launchProvider.mockImplementation(
-      () => new Promise<SessionSummary>((resolve) => (resolveLaunch = resolve))
-    );
+    launchProvider.mockImplementation(() => new Promise<SessionSummary>((resolve) => (resolveLaunch = resolve)));
 
     // jsdom implements Range selection but not layout measurement.
-    Range.prototype.getBoundingClientRect = () =>
-      ({ left: 40, top: 200, right: 240, bottom: 216, width: 200, height: 16, x: 40, y: 200, toJSON: () => ({}) });
+    Range.prototype.getBoundingClientRect = () => ({
+      left: 40,
+      top: 200,
+      right: 240,
+      bottom: 216,
+      width: 200,
+      height: 16,
+      x: 40,
+      y: 200,
+      toJSON: () => ({})
+    });
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Build dashboard" }));
@@ -210,14 +217,10 @@ describe("App side chat launcher", () => {
     selection?.addRange(range);
     fireEvent(document, new Event("selectionchange"));
 
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "More Details" })
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "More Details" }));
     await waitFor(() => expect(createScratchWorkspace).toHaveBeenCalledTimes(1));
 
-    expect(launchProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ permissionMode: "ask-each-time" })
-    );
+    expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "ask-each-time" }));
 
     // The early delta arrives while providers.launch is still pending.
     act(() => {

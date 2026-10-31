@@ -115,8 +115,8 @@ export function ForkMergeDialog({
             ) : null}
             {preview.unconfirmedMergeId ? (
               <p className="fork-merge-note" role="status">
-                An earlier merge is still waiting in {preview.sourceLabel}&apos;s queue and counts as
-                sent. Discard it there to bring those findings back again.
+                An earlier merge is still waiting in {preview.sourceLabel}&apos;s queue and counts as sent. Discard it
+                there to bring those findings back again.
               </p>
             ) : null}
             {preview.truncated ? (
@@ -136,12 +136,7 @@ export function ForkMergeDialog({
             {preview?.nothingNew ? "Close" : "Cancel"}
           </button>
           {preview?.nothingNew ? null : (
-            <button
-              type="button"
-              className="fork-merge-dialog-submit"
-              disabled={!canSend}
-              onClick={() => void send()}
-            >
+            <button type="button" className="fork-merge-dialog-submit" disabled={!canSend} onClick={() => void send()}>
               {sending ? "Sending…" : preview?.sourceBusy ? "Queue for source" : "Send to source"}
             </button>
           )}

@@ -1,17 +1,8 @@
 import { PROVIDER_DISPLAY_NAMES } from "../../shared/providerModels.js";
 import type { TimelineEvent as WireTimelineEvent } from "../../shared/bindings.js";
 import { decodeToolActivity, type ToolActivity } from "./toolActivity.js";
-import type {
-  ProviderId,
-  RawTimelineEvent,
-  TimelineEvent
-} from "../../shared/types.js";
-import {
-  arrayValue,
-  isPlainObject,
-  objectValue,
-  stringValue
-} from "../../shared/typeGuards.js";
+import type { ProviderId, RawTimelineEvent, TimelineEvent } from "../../shared/types.js";
+import { arrayValue, isPlainObject, objectValue, stringValue } from "../../shared/typeGuards.js";
 import {
   detectToolError,
   extractCompletionCorrelationId,
@@ -85,13 +76,7 @@ type CanonicalApprovalEvent = CanonicalCommon & {
   riskLevel: string | null;
 };
 
-type PlainLifecycleName =
-  | "started"
-  | "streaming"
-  | "completed"
-  | "cancelled"
-  | "cleared"
-  | "recovered-from-crash";
+type PlainLifecycleName = "started" | "streaming" | "completed" | "cancelled" | "cleared" | "recovered-from-crash";
 
 type PlainLifecycleEvent = CanonicalCommon & {
   kind: "lifecycle";
@@ -245,7 +230,14 @@ function decodeSourceActivity(payload: Record<string, unknown>, at: string): Pro
   const location = nonBlankString(source?.location);
   const kind = source?.kind;
   const action = payload.action;
-  if (!sourceId || !title || !location || (kind !== "file" && kind !== "url") || (action !== "read" && action !== "added")) return null;
+  if (
+    !sourceId ||
+    !title ||
+    !location ||
+    (kind !== "file" && kind !== "url") ||
+    (action !== "read" && action !== "added")
+  )
+    return null;
   return {
     sourceId,
     title,
@@ -261,20 +253,25 @@ function decodeSourceActivity(payload: Record<string, unknown>, at: string): Pro
 
 function providerDisplayName(value: unknown): string | null {
   const provider = stringValue(value);
-  return provider ? PROVIDER_DISPLAY_NAMES[provider as ProviderId] ?? provider : null;
+  return provider ? (PROVIDER_DISPLAY_NAMES[provider as ProviderId] ?? provider) : null;
 }
 
 function providerThreadId(payload: Record<string, unknown>): string | null {
   const item = objectValue(payload.item);
   const isAgentMessage = payload.item_type === "agent_message" || item?.type === "agent_message";
   if (!isAgentMessage) return null;
-  return stringValue(payload.thread_id)
-    ?? stringValue(payload.sender_thread_id)
-    ?? stringValue(item?.thread_id)
-    ?? stringValue(item?.sender_thread_id);
+  return (
+    stringValue(payload.thread_id) ??
+    stringValue(payload.sender_thread_id) ??
+    stringValue(item?.thread_id) ??
+    stringValue(item?.sender_thread_id)
+  );
 }
 
-function common<T extends RawTimelineEvent>(raw: T, payload: Record<string, unknown>): Omit<CanonicalCommon, "raw"> & { raw: T } {
+function common<T extends RawTimelineEvent>(
+  raw: T,
+  payload: Record<string, unknown>
+): Omit<CanonicalCommon, "raw"> & { raw: T } {
   const context = raw.semantic?.version === 1 ? raw.semantic.context : null;
   return {
     raw,
@@ -285,9 +282,12 @@ function common<T extends RawTimelineEvent>(raw: T, payload: Record<string, unkn
     agentReasoningEffort: context ? context.agentReasoningEffort : nonBlankString(payload.agentReasoningEffort),
     providerChildSessionId: context ? context.providerChildSessionId : nonBlankString(payload.providerChildSessionId),
     agentRunId: context ? context.agentRunId : nonBlankString(payload.agentRunId),
-    agentRootToolUseId: context ? context.agentRootToolUseId : nonBlankString(payload.agentRootToolUseId)
-      ?? nonBlankString(payload.parentToolUseId),
-    providerParentConversationId: context ? context.providerParentConversationId : nonBlankString(payload.providerParentConversationId),
+    agentRootToolUseId: context
+      ? context.agentRootToolUseId
+      : (nonBlankString(payload.agentRootToolUseId) ?? nonBlankString(payload.parentToolUseId)),
+    providerParentConversationId: context
+      ? context.providerParentConversationId
+      : nonBlankString(payload.providerParentConversationId),
     agentCodename: context ? context.agentCodename : nonBlankString(payload.agentCodename),
     providerInvocationId: context ? context.providerInvocationId : extractProviderInvocationId(payload),
     traceSuperseded: context ? context.traceSuperseded : payload.traceSyntheticSuperseded === true,
@@ -301,9 +301,7 @@ export function decodeWireTimelineEvent(wire: WireTimelineEvent): TimelineEvent 
   return {
     ...wire,
     rowCursor: wire.rowCursor ?? undefined,
-    payload: isPlainObject(payload)
-      ? payload
-      : { __argmaxInvalidPayload: true, rawPayload: payload }
+    payload: isPlainObject(payload) ? payload : { __argmaxInvalidPayload: true, rawPayload: payload }
   };
 }
 
@@ -326,19 +324,21 @@ function decodeMessage(raw: TimelineEvent, payload: Record<string, unknown>): Ca
   const base = {
     ...shared,
     kind: "message" as const,
-    role: meaning?.role ?? (raw.type === "user.message" ? "user" as const : "assistant" as const),
-    delivery: meaning ? meaning.delivery : (raw.type === "user.message" && payload.delivery === "steer" ? "steer" : null),
-    phase: meaning?.phase ?? (raw.type === "message.delta" ? "delta" as const : "completed" as const),
-    content: meaning?.content ?? (raw.type === "message.delta" && payload.thinking === true
-      ? "thinking" as const
-      : "answer" as const),
-    childProse: (meaning?.role ?? (raw.type === "user.message" ? "user" : "assistant")) !== "user" &&
+    role: meaning?.role ?? (raw.type === "user.message" ? ("user" as const) : ("assistant" as const)),
+    delivery: meaning ? meaning.delivery : raw.type === "user.message" && payload.delivery === "steer" ? "steer" : null,
+    phase: meaning?.phase ?? (raw.type === "message.delta" ? ("delta" as const) : ("completed" as const)),
+    content:
+      meaning?.content ??
+      (raw.type === "message.delta" && payload.thinking === true ? ("thinking" as const) : ("answer" as const)),
+    childProse:
+      (meaning?.role ?? (raw.type === "user.message" ? "user" : "assistant")) !== "user" &&
       (shared.parentToolUseId !== null || shared.providerThreadId !== null),
-    rawStream: meaning?.rawStream ?? (payload.stream === "stdout" || payload.stream === "stderr" || payload.stream === "pty")
+    rawStream:
+      meaning?.rawStream ?? (payload.stream === "stdout" || payload.stream === "stderr" || payload.stream === "pty")
   };
   return Object.defineProperty(base, "cumulativeText", {
     enumerable: true,
-    get: () => meaning ? meaning.cumulativeText : cursorCumulativeText(payload)
+    get: () => (meaning ? meaning.cumulativeText : cursorCumulativeText(payload))
   }) as CanonicalMessageEvent;
 }
 
@@ -352,19 +352,30 @@ function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): Canon
     ...shared,
     kind: "tool",
     phase,
-    toolUseId: meaning ? meaning.toolUseId : (phase === "started"
-      ? extractToolUseId(payload) ?? raw.id
-      : extractCompletionCorrelationId(payload)),
+    toolUseId: meaning
+      ? meaning.toolUseId
+      : phase === "started"
+        ? (extractToolUseId(payload) ?? raw.id)
+        : extractCompletionCorrelationId(payload),
     name: meaning?.name ?? extractToolName(payload),
     providerName: meaning ? meaning.providerName : stringValue(payload.name),
     invocationId: shared.providerInvocationId,
     activity: decodeToolActivity(payload.activity),
     surface: meaning ? meaning.surface : stringValue(payload.surface),
-    outcome: meaning ? meaning.outcome : (phase === "completed"
-      ? payload.cancelled === true || payload.canceled === true || status && ["cancelled", "canceled", "interrupted"].includes(status) ? "cancelled"
-        : detectToolError(payload) ? "failed" : "succeeded"
-      : null),
-    running: meaning?.running ?? (phase !== "completed" || status === "running" || status === "started" || status === "in_progress"),
+    outcome: meaning
+      ? meaning.outcome
+      : phase === "completed"
+        ? payload.cancelled === true ||
+          payload.canceled === true ||
+          (status && ["cancelled", "canceled", "interrupted"].includes(status))
+          ? "cancelled"
+          : detectToolError(payload)
+            ? "failed"
+            : "succeeded"
+        : null,
+    running:
+      meaning?.running ??
+      (phase !== "completed" || status === "running" || status === "started" || status === "in_progress"),
     traceSyntheticLaunch: meaning?.traceSyntheticLaunch ?? payload.traceSyntheticLaunch === true
   };
 }
@@ -372,9 +383,9 @@ function decodeTool(raw: TimelineEvent, payload: Record<string, unknown>): Canon
 function decodeApproval(raw: TimelineEvent, payload: Record<string, unknown>): CanonicalApprovalEvent {
   const event = raw.semantic?.version === 1 ? raw.semantic.event : null;
   const meaning = event?.kind === "approval" ? event : null;
-  const phase = meaning?.phase ?? (raw.type === "approval.requested"
-    ? "requested"
-    : raw.type === "approval.resolved" ? "resolved" : "blocked");
+  const phase =
+    meaning?.phase ??
+    (raw.type === "approval.requested" ? "requested" : raw.type === "approval.resolved" ? "resolved" : "blocked");
   const shared = common(raw, payload);
   return {
     ...shared,
@@ -384,8 +395,8 @@ function decodeApproval(raw: TimelineEvent, payload: Record<string, unknown>): C
     provider: meaning ? meaning.provider : stringValue(payload.provider),
     providerInvocationId: shared.providerInvocationId,
     providerRequestId: meaning ? meaning.providerRequestId : stringValue(payload.providerRequestId),
-    toolUseId: meaning ? meaning.toolUseId : stringValue(payload.toolUseId) ?? stringValue(payload.tool_use_id),
-    resolution: meaning ? meaning.resolution : stringValue(payload.status) ?? stringValue(payload.resolution),
+    toolUseId: meaning ? meaning.toolUseId : (stringValue(payload.toolUseId) ?? stringValue(payload.tool_use_id)),
+    resolution: meaning ? meaning.resolution : (stringValue(payload.status) ?? stringValue(payload.resolution)),
     command: stringValue(payload.command),
     cwd: stringValue(payload.cwd),
     riskLevel: stringValue(payload.riskLevel)
@@ -410,7 +421,13 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
   const name = event?.kind === "lifecycle" ? event.name : raw.type.slice("session.".length);
   const shared = common(raw, payload);
   if (name === "compacting" || name === "compacted") {
-    return { ...shared, kind: "lifecycle", name, preTokens: positiveNumber(payload.preTokens), postTokens: positiveNumber(payload.postTokens) };
+    return {
+      ...shared,
+      kind: "lifecycle",
+      name,
+      preTokens: positiveNumber(payload.preTokens),
+      postTokens: positiveNumber(payload.postTokens)
+    };
   }
   if (name === "provider-changed") {
     return {
@@ -453,9 +470,7 @@ function decodeLifecycle(raw: TimelineEvent, payload: Record<string, unknown>): 
   if (name === "moved") {
     const direction = payload.direction === "source" || payload.direction === "destination" ? payload.direction : null;
     const checkoutMode =
-      payload.checkoutMode === "shared" ||
-      payload.checkoutMode === "worktree" ||
-      payload.checkoutMode === "attached"
+      payload.checkoutMode === "shared" || payload.checkoutMode === "worktree" || payload.checkoutMode === "attached"
         ? payload.checkoutMode
         : null;
     return {
@@ -536,17 +551,40 @@ export function decodeTimelineEvent(raw: RawTimelineEvent): CanonicalTimelineEve
     decoded = decodeMultitask(validRaw, payload);
   } else if (meaning?.kind === "visualization") {
     decoded = { ...common(validRaw, payload), ...meaning };
-  } else if (!meaning && raw.type === "visualization.published" && typeof payload.artifactId === "string" && typeof payload.title === "string" && typeof payload.summary === "string" && (payload.format === "html" || payload.format === "image")) {
-    decoded = { ...common(validRaw, payload), kind: "visualization", artifactId: payload.artifactId, title: payload.title, summary: payload.summary, format: payload.format, mode: payload.mode === "wide" ? "wide" : null };
+  } else if (
+    !meaning &&
+    raw.type === "visualization.published" &&
+    typeof payload.artifactId === "string" &&
+    typeof payload.title === "string" &&
+    typeof payload.summary === "string" &&
+    (payload.format === "html" || payload.format === "image")
+  ) {
+    decoded = {
+      ...common(validRaw, payload),
+      kind: "visualization",
+      artifactId: payload.artifactId,
+      title: payload.title,
+      summary: payload.summary,
+      format: payload.format,
+      mode: payload.mode === "wide" ? "wide" : null
+    };
   } else if (meaning?.kind === "error") {
     decoded = decodeError(validRaw, payload);
   } else if (meaning?.kind === "unknown") {
-    decoded = { ...common(validRaw, payload), kind: "unknown", reason: meaning.reason === "invalid-payload" ? "invalid-payload" : "unsupported-type" };
+    decoded = {
+      ...common(validRaw, payload),
+      kind: "unknown",
+      reason: meaning.reason === "invalid-payload" ? "invalid-payload" : "unsupported-type"
+    };
   } else if (raw.type === "user.message" || raw.type === "message.delta" || raw.type === "message.completed") {
     decoded = decodeMessage(validRaw, payload);
   } else if (raw.type === "command.started" || raw.type === "command.output" || raw.type === "command.completed") {
     decoded = decodeTool(validRaw, payload);
-  } else if (raw.type === "approval.requested" || raw.type === "approval.resolved" || raw.type === "permission.blocked") {
+  } else if (
+    raw.type === "approval.requested" ||
+    raw.type === "approval.resolved" ||
+    raw.type === "permission.blocked"
+  ) {
     decoded = decodeApproval(validRaw, payload);
   } else if (raw.type === "agent.started" || raw.type === "agent.completed") {
     decoded = decodeAgent(validRaw, payload);

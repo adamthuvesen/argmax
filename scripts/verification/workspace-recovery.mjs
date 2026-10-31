@@ -122,13 +122,7 @@ async function selectUncommittedChanges(browser, timeoutMs) {
  * bytes, then proves the native Review action reverts only that file's fresh
  * unstaged content while preserving the pre-existing index exactly.
  */
-export async function verifyStagedPreservingRevert({
-  bridge,
-  browser,
-  workspace,
-  outputDir,
-  timeoutMs = 30_000
-}) {
+export async function verifyStagedPreservingRevert({ bridge, browser, workspace, outputDir, timeoutMs = 30_000 }) {
   if (!bridge?.call) throw new Error("verifyStagedPreservingRevert requires a bridge with call()");
   if (!browser) throw new Error("verifyStagedPreservingRevert requires a native browser");
   if (!workspace?.id || !workspace?.path) {
@@ -152,7 +146,11 @@ export async function verifyStagedPreservingRevert({
       isAbsent(stagedPath),
       isAbsent(editedPath)
     ]);
-    assert("disposable recovery workspace begins clean", initialStatus.stdout.trim() === "", initialStatus.stdout.trim());
+    assert(
+      "disposable recovery workspace begins clean",
+      initialStatus.stdout.trim() === "",
+      initialStatus.stdout.trim()
+    );
     assert(
       "recovery fixture paths are absent before creation",
       stagedAbsent && editedAbsent,
@@ -176,7 +174,11 @@ export async function verifyStagedPreservingRevert({
     const stagedNames = (await git(workspacePath, ["diff", "--cached", "--name-only"], timeoutMs)).stdout
       .split("\n")
       .filter(Boolean);
-    assert("fixture stages only staged.txt", stagedNames.length === 1 && stagedNames[0] === STAGED_FILE, stagedNames.join(", "));
+    assert(
+      "fixture stages only staged.txt",
+      stagedNames.length === 1 && stagedNames[0] === STAGED_FILE,
+      stagedNames.join(", ")
+    );
     assert("fixture has a staged diff before recovery", cachedDiffBefore.length > 0);
 
     const staleDiff = await bridge.call("review:load-diff", {
@@ -203,13 +205,15 @@ export async function verifyStagedPreservingRevert({
     } catch (error) {
       staleRevertError = error;
     }
-    const [editedBytesAfterStaleRevert, cachedDiffAfterStaleRevert, indexTreeAfterStaleRevert, checkpointsBefore] = await Promise.all([
-      readFile(editedPath),
-      cachedDiff(workspacePath, timeoutMs),
-      indexTree(workspacePath, timeoutMs),
-      bridge.call("checkpoints:list", { workspaceId: workspace.id, limit: 50 })
-    ]);
-    const staleRevertMessage = staleRevertError instanceof Error ? staleRevertError.message : String(staleRevertError ?? "");
+    const [editedBytesAfterStaleRevert, cachedDiffAfterStaleRevert, indexTreeAfterStaleRevert, checkpointsBefore] =
+      await Promise.all([
+        readFile(editedPath),
+        cachedDiff(workspacePath, timeoutMs),
+        indexTree(workspacePath, timeoutMs),
+        bridge.call("checkpoints:list", { workspaceId: workspace.id, limit: 50 })
+      ]);
+    const staleRevertMessage =
+      staleRevertError instanceof Error ? staleRevertError.message : String(staleRevertError ?? "");
     assert(
       "backend bridge stale-revision subcase rejects with REVIEW_STALE_REVISION",
       staleRevertMessage.includes('"sub_code":"REVIEW_STALE_REVISION"'),
@@ -258,7 +262,11 @@ export async function verifyStagedPreservingRevert({
         gap: header ? window.getComputedStyle(header).gap : null
       };
     });
-    assert("native edited hunk exposes the Stage action", hunkActions.stageText === "Stage", JSON.stringify(hunkActions));
+    assert(
+      "native edited hunk exposes the Stage action",
+      hunkActions.stageText === "Stage",
+      JSON.stringify(hunkActions)
+    );
     assert(
       "native edited hunk actions use the 8px spacing token",
       hunkActions.revertText === "Revert" && hunkActions.gap === "8px",
@@ -299,7 +307,11 @@ export async function verifyStagedPreservingRevert({
 
     assert("edited.txt is restored to HEAD", editedContent === headEditedContent);
     assert("cached diff is byte-identical after recovery", cachedDiffAfter.equals(cachedDiffBefore));
-    assert("index tree is unchanged after recovery", indexTreeAfter === indexTreeBefore, `${indexTreeBefore} → ${indexTreeAfter}`);
+    assert(
+      "index tree is unchanged after recovery",
+      indexTreeAfter === indexTreeBefore,
+      `${indexTreeBefore} → ${indexTreeAfter}`
+    );
     assert(
       "recovery checkpoint preserves the pre-action index tree",
       checkpoint.indexTree === indexTreeBefore,
@@ -312,7 +324,11 @@ export async function verifyStagedPreservingRevert({
       !workingTree.content.includes(EDITED_FILE),
       workingTree.content.slice(0, 500)
     );
-    assert("git working-tree diff omits edited.txt", !workingTreeNames.includes(EDITED_FILE), workingTreeNames.join(", "));
+    assert(
+      "git working-tree diff omits edited.txt",
+      !workingTreeNames.includes(EDITED_FILE),
+      workingTreeNames.join(", ")
+    );
 
     await browser.waitUntil(
       async () => await browser.execute(() => document.body.innerText.includes("staged change")),

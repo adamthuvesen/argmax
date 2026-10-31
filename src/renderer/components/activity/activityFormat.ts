@@ -145,11 +145,7 @@ export function formatSince(value: string | null, timeZone: string, now: Date = 
  * the unit its buckets are in, so a 24h chart never claims to show days and a
  * 12-month chart never claims to show one.
  */
-export function formatBucketLabel(
-  bucketStart: string,
-  resolution: ActivityResolution,
-  timeZone: string
-): string {
+export function formatBucketLabel(bucketStart: string, resolution: ActivityResolution, timeZone: string): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
   if (resolution === "hour") {
@@ -162,11 +158,7 @@ export function formatBucketLabel(
 }
 
 /** The tooltip's fuller stamp: `Aug 19, 14:00`, `Aug 19, 2026`, `Week of Aug 19`. */
-export function formatBucketTitle(
-  bucketStart: string,
-  resolution: ActivityResolution,
-  timeZone: string
-): string {
+export function formatBucketTitle(bucketStart: string, resolution: ActivityResolution, timeZone: string): string {
   const at = parseInstant(bucketStart);
   if (!at) return "";
   if (resolution === "hour") {
@@ -212,9 +204,7 @@ export function formatRangeLabel(
   const spansYears = year.format(start) !== year.format(lastInside);
   const day = dateFormat(
     timeZone,
-    spansYears
-      ? { month: "short", day: "numeric", year: "numeric" }
-      : { month: "short", day: "numeric" }
+    spansYears ? { month: "short", day: "numeric", year: "numeric" } : { month: "short", day: "numeric" }
   );
   return `${day.format(start)} to ${day.format(lastInside)}`;
 }

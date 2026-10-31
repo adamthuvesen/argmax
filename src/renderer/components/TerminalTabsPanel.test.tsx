@@ -1,11 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import type {
-  ArgmaxApi,
-  TerminalAgentOpenEvent,
-  TerminalDataEvent,
-  TerminalExitEvent
-} from "../../shared/types.js";
+import type { ArgmaxApi, TerminalAgentOpenEvent, TerminalDataEvent, TerminalExitEvent } from "../../shared/types.js";
 import { TerminalTabsPanel } from "./TerminalTabsPanel.js";
 import {
   addAgentTerminalTab,
@@ -162,10 +157,12 @@ describe("TerminalTabsPanel", () => {
     addAgentTerminalTab("ws-1", "pty-one", "Server");
     addAgentTerminalTab("ws-1", "pty-two", "Tests");
     const [first, second] = getWorkspaceTerminalState("ws-1").tabs;
-    const view = render(<>
-      <TerminalTabsPanel workspaceId="ws-1" controlledTabId={first.id} visible />
-      <TerminalTabsPanel workspaceId="ws-1" controlledTabId={second.id} visible />
-    </>);
+    const view = render(
+      <>
+        <TerminalTabsPanel workspaceId="ws-1" controlledTabId={first.id} visible />
+        <TerminalTabsPanel workspaceId="ws-1" controlledTabId={second.id} visible />
+      </>
+    );
     await waitFor(() => expect(terminalMockState.instances).toHaveLength(2));
     expect(screen.getByRole("tabpanel", { name: "Server" })).toBeInTheDocument();
     expect(screen.getByRole("tabpanel", { name: "Tests" })).toBeInTheDocument();
@@ -177,18 +174,11 @@ describe("TerminalTabsPanel", () => {
   });
 
   it("seeds with one tab labelled `zsh` and spawns one PTY", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
     expect(screen.getByRole("tab", { name: "zsh" })).toBeInTheDocument();
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
-    expect(stub.spawn).toHaveBeenCalledWith(
-      expect.objectContaining({ workspaceId: "ws-1" })
-    );
+    expect(stub.spawn).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "ws-1" }));
   });
 
   it("adopts an agent-spawned PTY instead of starting a second shell", async () => {
@@ -221,9 +211,7 @@ describe("TerminalTabsPanel", () => {
 
     render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
-    await waitFor(() =>
-      expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("done\r\n")
-    );
+    await waitFor(() => expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("done\r\n"));
     expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
       expect.stringContaining("process exited with code 0")
     );
@@ -242,12 +230,7 @@ describe("TerminalTabsPanel", () => {
     document.documentElement.style.setProperty("--font-mono", '"Token Mono", monospace');
     document.documentElement.style.setProperty("--text-terminal", "15px");
 
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
     await waitFor(() => expect(terminalMockState.instances).toHaveLength(1));
     expect(terminalMockState.instances[0]?.options).toMatchObject({
@@ -259,12 +242,7 @@ describe("TerminalTabsPanel", () => {
   it("bounds the initial PTY size before spawning", async () => {
     terminalMockState.nextSize = { cols: 4, rows: Number.NaN };
 
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
     await waitFor(() =>
       expect(stub.spawn).toHaveBeenCalledWith({
@@ -282,12 +260,7 @@ describe("TerminalTabsPanel", () => {
       message: "could not spawn terminal shell: No such file or directory"
     });
 
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
     await waitFor(() =>
       expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
@@ -302,27 +275,13 @@ describe("TerminalTabsPanel", () => {
       return Promise.resolve({ terminalId: "pty-early" });
     });
 
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
-    await waitFor(() =>
-      expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith(
-        "adam@argmax % "
-      )
-    );
+    await waitFor(() => expect(terminalMockState.instances[0]?.write).toHaveBeenCalledWith("adam@argmax % "));
   });
 
   it("clicking + adds a tab, spawns a second PTY, and switches active", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
@@ -330,20 +289,12 @@ describe("TerminalTabsPanel", () => {
 
     const secondTab = await screen.findByRole("tab", { name: "zsh 2" });
     expect(secondTab).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute(
-      "aria-selected",
-      "false"
-    );
+    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute("aria-selected", "false");
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
   });
 
   it("clicking a tab switches active without spawning a new PTY", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -351,25 +302,14 @@ describe("TerminalTabsPanel", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "zsh" }));
 
-    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute(
-      "aria-selected",
-      "false"
-    );
+    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute("aria-selected", "false");
     // No third spawn.
     expect(stub.spawn).toHaveBeenCalledTimes(2);
   });
 
   it("closing a tab terminates its PTY", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -379,19 +319,11 @@ describe("TerminalTabsPanel", () => {
 
     await waitFor(() => expect(stub.terminate).toHaveBeenCalledWith("pty-2"));
     expect(screen.queryByRole("tab", { name: "zsh 2" })).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("closing the last tab rests on an empty state instead of reseeding", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "Close zsh" }));
@@ -406,12 +338,7 @@ describe("TerminalTabsPanel", () => {
   });
 
   it("reuses gaps in tab labels (`zsh`, `zsh 2`, `zsh 3` → close 2 → new `zsh 2`)", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -422,21 +349,14 @@ describe("TerminalTabsPanel", () => {
     expect(screen.getByRole("tab", { name: "zsh 3" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close zsh 2" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("tab", { name: "zsh 2" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("tab", { name: "zsh 2" })).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
     expect(await screen.findByRole("tab", { name: "zsh 2" })).toBeInTheDocument();
   });
 
   it("uses roving tabindex — only the active tab is in the natural tab order", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -447,12 +367,7 @@ describe("TerminalTabsPanel", () => {
   });
 
   it("ArrowRight / ArrowLeft moves the active tab and follows with focus", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -468,20 +383,12 @@ describe("TerminalTabsPanel", () => {
 
     // ArrowRight wraps within the list.
     fireEvent.keyDown(first, { key: "ArrowLeft" });
-    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveFocus();
   });
 
   it("Home and End jump to the first and last tabs", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -493,26 +400,15 @@ describe("TerminalTabsPanel", () => {
     second.focus();
     fireEvent.keyDown(second, { key: "Home" });
     expect(screen.getByRole("tab", { name: "zsh" })).toHaveFocus();
-    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(screen.getByRole("tab", { name: "zsh" })).toHaveAttribute("aria-selected", "true");
 
     fireEvent.keyDown(screen.getByRole("tab", { name: "zsh" }), { key: "End" });
     expect(screen.getByRole("tab", { name: "zsh 3" })).toHaveFocus();
-    expect(screen.getByRole("tab", { name: "zsh 3" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(screen.getByRole("tab", { name: "zsh 3" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("Delete on a focused tab closes it and terminates its PTY; Backspace does not", async () => {
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
 
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
@@ -529,12 +425,7 @@ describe("TerminalTabsPanel", () => {
   });
 
   it("keeps tabs and PTYs alive across unmount/remount (session switch)", async () => {
-    const first = render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    const first = render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "New terminal" }));
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
@@ -542,45 +433,25 @@ describe("TerminalTabsPanel", () => {
     first.unmount();
     expect(stub.terminate).not.toHaveBeenCalled();
 
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-1" visible />);
 
     expect(screen.getByRole("tab", { name: "zsh" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
+    expect(screen.getByRole("tab", { name: "zsh 2" })).toHaveAttribute("aria-selected", "true");
     // Reattached the existing runtimes — no new PTYs.
     expect(stub.spawn).toHaveBeenCalledTimes(2);
     expect(stub.terminate).not.toHaveBeenCalled();
   });
 
   it("keeps per-workspace tab lists independent when switching workspaces", async () => {
-    const first = render(
-      <TerminalTabsPanel
-        workspaceId="ws-1"
-        visible
-      />
-    );
+    const first = render(<TerminalTabsPanel workspaceId="ws-1" visible />);
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(1));
     first.unmount();
 
-    render(
-      <TerminalTabsPanel
-        workspaceId="ws-2"
-        visible
-      />
-    );
+    render(<TerminalTabsPanel workspaceId="ws-2" visible />);
 
     // The other workspace seeds its own tab and PTY; ws-1's stays alive.
     await waitFor(() => expect(stub.spawn).toHaveBeenCalledTimes(2));
-    expect(stub.spawn).toHaveBeenLastCalledWith(
-      expect.objectContaining({ workspaceId: "ws-2" })
-    );
+    expect(stub.spawn).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceId: "ws-2" }));
     expect(stub.terminate).not.toHaveBeenCalled();
     expect(screen.getAllByRole("tab")).toHaveLength(1);
   });

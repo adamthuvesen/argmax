@@ -2871,7 +2871,7 @@ async fn a_filed_learning_comes_back_from_a_search_and_counts_its_hit() {
 
     harness
         .ask(json!({
-            "learnings-add": { "kind": "command", "summary": "npm run precheck is the pre-push gate" }
+            "learnings-add": { "kind": "command", "summary": "npm run push-gate is the pre-push gate" }
         }))
         .await;
 

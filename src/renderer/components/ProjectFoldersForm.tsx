@@ -49,7 +49,9 @@ export function ProjectFoldersForm({
       setSynced({ initialKey, draftKey: synced.draftKey });
     }
   }
-  const dirty = name.trim() !== initialValue.name || primaryPath !== initialValue.primaryPath ||
+  const dirty =
+    name.trim() !== initialValue.name ||
+    primaryPath !== initialValue.primaryPath ||
     folders.join("\n") !== initialValue.folders.join("\n");
 
   function markChanged(): void {
@@ -102,9 +104,17 @@ export function ProjectFoldersForm({
   }
 
   return (
-    <form className="project-folders-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <form
+      className="project-folders-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
       <div className="settings-field">
-        <label className="settings-field-label" htmlFor={nameId}>Project name</label>
+        <label className="settings-field-label" htmlFor={nameId}>
+          Project name
+        </label>
         <input
           id={nameId}
           className="settings-text-input project-name-input"
@@ -113,7 +123,10 @@ export function ProjectFoldersForm({
           autoComplete="off"
           placeholder="AI Analytics"
           disabled={busy}
-          onChange={(event) => { setName(event.target.value); markChanged(); }}
+          onChange={(event) => {
+            setName(event.target.value);
+            markChanged();
+          }}
         />
       </div>
       <div className="project-folders-intro">
@@ -140,25 +153,39 @@ export function ProjectFoldersForm({
             return (
               <li key={path} data-primary={primary ? "true" : undefined}>
                 <div className="project-folder-row">
-                  <span className="project-folder-glyph" aria-hidden="true"><Folder size={16} /></span>
+                  <span className="project-folder-glyph" aria-hidden="true">
+                    <Folder size={16} />
+                  </span>
                   <div className="project-folder-path">
                     <strong>{folderName}</strong>
                     <span title={path}>{path}</span>
                   </div>
                   <label className="project-folder-primary-choice">
-                    <input type="radio" name={`${nameId}-primary`} checked={primary} disabled={busy}
+                    <input
+                      type="radio"
+                      name={`${nameId}-primary`}
+                      checked={primary}
+                      disabled={busy}
                       aria-label={`Make ${folderName} primary`}
-                      onChange={() => { setPrimaryPath(path); markChanged(); }} />
+                      onChange={() => {
+                        setPrimaryPath(path);
+                        markChanged();
+                      }}
+                    />
                     <span>Primary</span>
                   </label>
-                  <button type="button" className="small-icon" disabled={busy}
+                  <button
+                    type="button"
+                    className="small-icon"
+                    disabled={busy}
                     aria-label={`Remove folder ${folderName}`}
                     onClick={() => {
                       const remaining = folders.filter((folder) => folder !== path);
                       setFolders(remaining);
                       if (primary) setPrimaryPath(remaining[0] ?? "");
                       markChanged();
-                    }}>
+                    }}
+                  >
                     <X size={14} aria-hidden="true" />
                   </button>
                 </div>
@@ -168,12 +195,27 @@ export function ProjectFoldersForm({
           })}
         </ul>
       )}
-      {duplicateNote ? <p className="project-folders-duplicate" role="status">{duplicateNote}</p> : null}
+      {duplicateNote ? (
+        <p className="project-folders-duplicate" role="status">
+          {duplicateNote}
+        </p>
+      ) : null}
       <footer className="project-folders-actions">
-        {saved ? <span className="settings-note" role="status">Project saved.</span> : null}
-        {onCancel ? <button type="button" className="settings-button" onClick={onCancel} disabled={busy}>Cancel</button> : null}
-        <button type="submit" className="settings-button project-folders-submit"
-          disabled={busy || !name.trim() || !primaryPath || !dirty}>
+        {saved ? (
+          <span className="settings-note" role="status">
+            Project saved.
+          </span>
+        ) : null}
+        {onCancel ? (
+          <button type="button" className="settings-button" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        ) : null}
+        <button
+          type="submit"
+          className="settings-button project-folders-submit"
+          disabled={busy || !name.trim() || !primaryPath || !dirty}
+        >
           {busy ? "Saving…" : submitLabel}
         </button>
       </footer>

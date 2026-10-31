@@ -16,13 +16,7 @@ export function RemainingBar({ remaining }: { remaining: number }): JSX.Element 
       focusable="false"
     >
       <rect className="usage-remaining-bar-track" x="0" y="1" width="100" height="1" />
-      <rect
-        className="usage-remaining-bar-fill"
-        x="0"
-        y="0"
-        width={remainingBarWidth(remaining)}
-        height="3"
-      />
+      <rect className="usage-remaining-bar-fill" x="0" y="0" width={remainingBarWidth(remaining)} height="3" />
     </svg>
   );
 }

@@ -12,14 +12,18 @@ import { projectFolderInput, type ProjectTarget } from "../lib/projectTarget.js"
  * A read that follows state belongs in `useBridgeQuery`, which drops a stale
  * reply. Keep such reads out of these lists, so the shorter path does not compile.
  */
-type Actions<Domain extends keyof ArgmaxApi, Method extends keyof NonNullable<ArgmaxApi[Domain]>> =
-  Pick<NonNullable<ArgmaxApi[Domain]>, Method>;
+type Actions<Domain extends keyof ArgmaxApi, Method extends keyof NonNullable<ArgmaxApi[Domain]>> = Pick<
+  NonNullable<ArgmaxApi[Domain]>,
+  Method
+>;
 
 export function bridgeAvailable(): boolean {
   return typeof window !== "undefined" && Boolean(window.argmax);
 }
 
-export function arcActions(): Actions<"arcs", "create" | "update" | "setState" | "setArchived" | "launchCoordinator" | "promote"> | undefined {
+export function arcActions():
+  | Actions<"arcs", "create" | "update" | "setState" | "setArchived" | "launchCoordinator" | "promote">
+  | undefined {
   return window.argmax?.arcs;
 }
 
@@ -60,7 +64,20 @@ export function prActions(): Actions<"prs", "setPrimary" | "dismiss" | "cleanup"
   return window.argmax?.prs;
 }
 
-export function projectActions(): Actions<"projects", "configure" | "generateOverview" | "updateOverview" | "applyOverviewDraft" | "discardOverviewDraft" | "pickDirectory" | "updateSettings" | "setBranchTemplate" | "resolveCheck"> | undefined {
+export function projectActions():
+  | Actions<
+      "projects",
+      | "configure"
+      | "generateOverview"
+      | "updateOverview"
+      | "applyOverviewDraft"
+      | "discardOverviewDraft"
+      | "pickDirectory"
+      | "updateSettings"
+      | "setBranchTemplate"
+      | "resolveCheck"
+    >
+  | undefined {
   return window.argmax?.projects;
 }
 
@@ -72,11 +89,15 @@ export function questionActions(): Actions<"questions", "resolve"> | undefined {
   return window.argmax?.questions;
 }
 
-export function remoteActions(): Actions<"remote", "setConfig" | "testNotification" | "setApnsConfig" | "unregisterPushDevice" | "pushTest"> | undefined {
+export function remoteActions():
+  | Actions<"remote", "setConfig" | "testNotification" | "setApnsConfig" | "unregisterPushDevice" | "pushTest">
+  | undefined {
   return window.argmax?.remote;
 }
 
-export function routineActions(): Actions<"routines", "upsert" | "delete" | "setEnabled" | "runNow" | "resetSession"> | undefined {
+export function routineActions():
+  | Actions<"routines", "upsert" | "delete" | "setEnabled" | "runNow" | "resetSession">
+  | undefined {
   return window.argmax?.routines;
 }
 
@@ -84,7 +105,20 @@ export function sessionActions(): Actions<"session", "forkMerge"> | undefined {
   return window.argmax?.session;
 }
 
-export function settingsActions(): Actions<"settings", "setRoutingKey" | "clearRoutingKey" | "setProjectCheck" | "setOpencodeGateway" | "setOpencodeGatewayKey" | "clearOpencodeGatewayKey" | "setBranchTemplate" | "previewChatCleanup" | "deleteOldChats"> | undefined {
+export function settingsActions():
+  | Actions<
+      "settings",
+      | "setRoutingKey"
+      | "clearRoutingKey"
+      | "setProjectCheck"
+      | "setOpencodeGateway"
+      | "setOpencodeGatewayKey"
+      | "clearOpencodeGatewayKey"
+      | "setBranchTemplate"
+      | "previewChatCleanup"
+      | "deleteOldChats"
+    >
+  | undefined {
   return window.argmax?.settings;
 }
 
@@ -97,11 +131,29 @@ export function syncActions(): Actions<"sync", "setConfig"> | undefined {
 }
 
 /** Host services a click asks for. The performance and snapshot calls drive the debug HUD. */
-export function systemActions(): Actions<"system", "confirm" | "openPath" | "openFileIn" | "listDetectedIdes" | "diagnostics" | "vacuumDatabase" | "testNotification" | "debugSnapshot" | "performanceStart" | "performanceStop" | "performanceStatus" | "performanceCapture"> | undefined {
+export function systemActions():
+  | Actions<
+      "system",
+      | "confirm"
+      | "openPath"
+      | "openFileIn"
+      | "listDetectedIdes"
+      | "diagnostics"
+      | "vacuumDatabase"
+      | "testNotification"
+      | "debugSnapshot"
+      | "performanceStart"
+      | "performanceStop"
+      | "performanceStatus"
+      | "performanceCapture"
+    >
+  | undefined {
   return window.argmax?.system;
 }
 
-export function visualizationActions(): Actions<"visualization", "setState" | "setControls" | "preview" | "publish" | "export"> | undefined {
+export function visualizationActions():
+  | Actions<"visualization", "setState" | "setControls" | "preview" | "publish" | "export">
+  | undefined {
   return window.argmax?.visualization;
 }
 
@@ -110,7 +162,9 @@ export function windowActions(): Actions<"windows", "openSession"> | undefined {
 }
 
 /** `status` re-reads the chord inside the handler that just failed to change it. */
-export function windowSnapshotActions(): Actions<"windowSnapshot", "status" | "configure" | "requestPermission"> | undefined {
+export function windowSnapshotActions():
+  | Actions<"windowSnapshot", "status" | "configure" | "requestPermission">
+  | undefined {
   return window.argmax?.windowSnapshot;
 }
 

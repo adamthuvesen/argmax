@@ -1,19 +1,13 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  baseSession,
-  renderConversation,
-  rerenderConversation
-} from "../../test/sessionConversationTestHarness.js";
+import { baseSession, renderConversation, rerenderConversation } from "../../test/sessionConversationTestHarness.js";
 import type { NewSessionSeed } from "./SessionComposer.js";
 import { readDraft } from "../lib/composerDrafts.js";
 
 /** Open the idle session's picker and choose a model by its label. */
 function pickModel(label: string): void {
   fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-  fireEvent.click(
-    within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: label })
-  );
+  fireEvent.click(within(screen.getByRole("listbox", { name: "Chat model" })).getByRole("button", { name: label }));
 }
 
 // The session is Codex; "Sonnet 5.5" belongs to Claude, so picking it crosses
@@ -68,7 +62,9 @@ describe("SessionComposer provider switch confirmation", () => {
 
   it("hands the picked model and the half-written follow-up to a new session", () => {
     const onNewSession = vi.fn();
-    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }), [], { onNewSession });
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }), [], {
+      onNewSession
+    });
 
     fireEvent.change(screen.getByRole("textbox", { name: "Chat prompt" }), {
       target: { value: "Try the other agent on this" }
@@ -89,11 +85,16 @@ describe("SessionComposer provider switch confirmation", () => {
 
   it("moves an attachment-only draft to the new chat", () => {
     const attachment = { filePath: "/attachments/shot.png", mimeType: "image/png", sizeBytes: 4 };
-    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
-      "session-a": { text: "", attachments: [attachment] }
-    }));
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "session-a": { text: "", attachments: [attachment] }
+      })
+    );
     const onNewSession = vi.fn();
-    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }), [], { onNewSession });
+    renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }), [], {
+      onNewSession
+    });
 
     expect(screen.getByLabelText("Attached images")).toBeInTheDocument();
     pickModel("Sonnet 5.5");
@@ -120,22 +121,25 @@ describe("SessionComposer provider switch confirmation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat model effort" }));
 
     expect(screen.queryByRole("dialog", { name: "Switch this chat to Claude" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).not.toBe(
-      effortLabelBefore
-    );
+    expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).not.toBe(effortLabelBefore);
   });
 
   // A running chat queues its follow-up with the picked provider, which takes
   // over once the turn ends, so a pick held for confirmation survives the turn
   // starting and the dialog says when the switch happens.
   it("keeps the held pick when a turn starts, and says the switch waits for the turn", () => {
-    const { rerender } = renderConversation(baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" }));
+    const { rerender } = renderConversation(
+      baseSession({ state: "complete", provider: "codex", providerConversationId: "conv-1" })
+    );
 
     pickModel("Sonnet 5.5");
     expect(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).toBeTruthy();
     expect(screen.queryByText(/waits for the current turn/)).toBeNull();
 
-    rerenderConversation(rerender, baseSession({ state: "running", provider: "codex", providerConversationId: "conv-1" }));
+    rerenderConversation(
+      rerender,
+      baseSession({ state: "running", provider: "codex", providerConversationId: "conv-1" })
+    );
 
     expect(screen.getByRole("dialog", { name: "Switch this chat to Claude" })).toBeTruthy();
     expect(screen.getByText("Your follow-up waits for the current turn, then runs on Claude.")).toBeTruthy();

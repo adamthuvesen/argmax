@@ -82,7 +82,7 @@ function useCodeHighlight(
   }, [needsQueue, settledKey, code, lang, appearance]);
   const syncLines = streaming
     ? null
-    : cachedLines ?? (queued?.key === settledKey ? queued.lines : plainCodeLines(code));
+    : (cachedLines ?? (queued?.key === settledKey ? queued.lines : plainCodeLines(code)));
   const [deferred, setDeferred] = useState<{
     code: string;
     lang: string | null;
@@ -163,19 +163,10 @@ function formatFenceLabel(fenceTag: string | null): string | null {
     return null;
   }
   const normalized = fenceTag.toLowerCase();
-  return (
-    FENCE_LABELS[normalized] ??
-    fenceTag.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
-  );
+  return FENCE_LABELS[normalized] ?? fenceTag.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function CodeBlock({
-  className,
-  children
-}: {
-  className?: string;
-  children?: ReactNode;
-}): JSX.Element {
+export function CodeBlock({ className, children }: { className?: string; children?: ReactNode }): JSX.Element {
   const fenceTag = useMemo(() => extractFenceTag(className), [className]);
   const codeText = useMemo(() => collectText(children).replace(/\n$/, ""), [children]);
   const [copyFlash, copy] = useCopyToClipboard();
@@ -237,11 +228,7 @@ export function CodeBlock({
               ) : (
                 <>
                   {line.map((token, tIndex) => (
-                    <span
-                      className="hl-token"
-                      key={tIndex}
-                      style={token.color ? { color: token.color } : undefined}
-                    >
+                    <span className="hl-token" key={tIndex} style={token.color ? { color: token.color } : undefined}>
                       {token.content}
                     </span>
                   ))}

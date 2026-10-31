@@ -8,16 +8,8 @@ import { usageSummaryFixture } from "../../test/fixtures/usageSummary.js";
 import { ActivityPanel } from "../components/activity/ActivityPanel.js";
 import { UsagePanel } from "../components/usage/UsagePanel.js";
 import { demoActivitySummary } from "../demoActivity.js";
-import {
-  getCachedActivitySummary,
-  getCachedUsageSummary,
-  resetLedgerPageStateForTests
-} from "./ledgerPageState.js";
-import {
-  prefetchLedgerPages,
-  resetLedgerPrefetchForTests,
-  scheduleLedgerPrefetch
-} from "./ledgerPrefetch.js";
+import { getCachedActivitySummary, getCachedUsageSummary, resetLedgerPageStateForTests } from "./ledgerPageState.js";
+import { prefetchLedgerPages, resetLedgerPrefetchForTests, scheduleLedgerPrefetch } from "./ledgerPrefetch.js";
 
 describe("ledgerPrefetch", () => {
   const usageSummary = vi.fn<ArgmaxApi["usage"]["summary"]>();
@@ -32,9 +24,7 @@ describe("ledgerPrefetch", () => {
     activitySummary.mockReset();
     usageRemaining.mockReset();
     usageSummary.mockResolvedValue(usageSummaryFixture());
-    activitySummary.mockImplementation((input) =>
-      Promise.resolve(demoActivitySummary(input))
-    );
+    activitySummary.mockImplementation((input) => Promise.resolve(demoActivitySummary(input)));
     usageRemaining.mockResolvedValue({ fetchedAt: "2026-09-06T12:00:00Z", providers: [] });
     api = {
       usage: { summary: usageSummary, remaining: usageRemaining },
@@ -54,12 +44,8 @@ describe("ledgerPrefetch", () => {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     expect(getCachedUsageSummary("30d", null, timeZone)).not.toBeNull();
     expect(getCachedActivitySummary("30d", null, timeZone)).not.toBeNull();
-    expect(usageSummary).toHaveBeenCalledWith(
-      expect.objectContaining({ window: "30d", provider: null })
-    );
-    expect(activitySummary).toHaveBeenCalledWith(
-      expect.objectContaining({ window: "30d", projectId: null })
-    );
+    expect(usageSummary).toHaveBeenCalledWith(expect.objectContaining({ window: "30d", provider: null }));
+    expect(activitySummary).toHaveBeenCalledWith(expect.objectContaining({ window: "30d", projectId: null }));
     expect(usageRemaining).toHaveBeenCalled();
   });
 
@@ -97,13 +83,22 @@ describe("ledgerPrefetch", () => {
     let resolveActivity!: (summary: ReturnType<typeof demoActivitySummary>) => void;
     let resolveRemaining!: (remaining: Awaited<ReturnType<typeof usageRemaining>>) => void;
     usageSummary.mockImplementation(
-      () => new Promise((resolve) => { resolveUsage = resolve; })
+      () =>
+        new Promise((resolve) => {
+          resolveUsage = resolve;
+        })
     );
     activitySummary.mockImplementation(
-      () => new Promise((resolve) => { resolveActivity = resolve; })
+      () =>
+        new Promise((resolve) => {
+          resolveActivity = resolve;
+        })
     );
     usageRemaining.mockImplementation(
-      () => new Promise((resolve) => { resolveRemaining = resolve; })
+      () =>
+        new Promise((resolve) => {
+          resolveRemaining = resolve;
+        })
     );
     window.argmax = api;
 
@@ -118,17 +113,13 @@ describe("ledgerPrefetch", () => {
     });
 
     resolveUsage(usageSummaryFixture());
-    resolveActivity(
-      demoActivitySummary({ window: "30d", projectId: null, timeZone: "UTC" })
-    );
+    resolveActivity(demoActivitySummary({ window: "30d", projectId: null, timeZone: "UTC" }));
     resolveRemaining({ fetchedAt: "2026-09-06T12:00:00Z", providers: [] });
     await prefetch;
   });
 
   it("retries after a shared request fails", async () => {
-    usageSummary
-      .mockRejectedValueOnce(new Error("usage scan failed"))
-      .mockResolvedValueOnce(usageSummaryFixture());
+    usageSummary.mockRejectedValueOnce(new Error("usage scan failed")).mockResolvedValueOnce(usageSummaryFixture());
 
     await expect(prefetchLedgerPages(api)).rejects.toThrow("usage scan failed");
     await prefetchLedgerPages(api);

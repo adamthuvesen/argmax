@@ -74,11 +74,7 @@ function snapshotBufferedFiles(
   const dirtyBuffers = new Map<string, DirtyFileBuffer>();
   for (const tab of tabs) {
     const savePending = pendingSavePaths.has(tab.path);
-    if (
-      (!hasDirtyBuffer(tab) && !savePending) ||
-      tab.buffer === null ||
-      tab.preview?.kind !== "text"
-    ) continue;
+    if ((!hasDirtyBuffer(tab) && !savePending) || tab.buffer === null || tab.preview?.kind !== "text") continue;
     dirtyBuffers.set(tab.path, {
       buffer: tab.buffer,
       // A save may already be carrying different contents to disk. If the
@@ -147,7 +143,8 @@ function readStoredOpenFiles(storageKey: string | null): StoredOpenFiles {
     const validPaths = [...new Set(paths.filter((path): path is string => typeof path === "string"))];
     return {
       paths: validPaths,
-      activePath: typeof activePath === "string" && validPaths.includes(activePath) ? activePath : validPaths[0] ?? null
+      activePath:
+        typeof activePath === "string" && validPaths.includes(activePath) ? activePath : (validPaths[0] ?? null)
     };
   } catch {
     return empty;
@@ -182,9 +179,7 @@ export function useFilePreview(args: {
   // unmount while navigating between chats.
   const transientBufferedFiles = useRef(new Map<string, BufferedFilesSnapshot>());
   const nextBufferedFilesStoreRef = useRef(bufferedFilesByOwnerAndSource);
-  nextBufferedFilesStoreRef.current = storageKey
-    ? bufferedFilesByOwnerAndSource
-    : transientBufferedFiles.current;
+  nextBufferedFilesStoreRef.current = storageKey ? bufferedFilesByOwnerAndSource : transientBufferedFiles.current;
   const activeBufferedFilesStoreRef = useRef(nextBufferedFilesStoreRef.current);
   const nextBufferedFilesKeyRef = useRef<string | null>(null);
   nextBufferedFilesKeyRef.current = bufferedFilesKey(storageKey, sourceKind, sourceId);
@@ -211,9 +206,7 @@ export function useFilePreview(args: {
     if (buffered) return buffered;
     return { ...readStoredOpenFiles(storageKey), dirtyBuffers: new Map<string, DirtyFileBuffer>() };
   });
-  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>(() =>
-    restoreTabs(initialFiles, initialFiles.dirtyBuffers)
-  );
+  const [tabs, setTabs] = useState<WorkspaceFileTabState[]>(() => restoreTabs(initialFiles, initialFiles.dirtyBuffers));
   const [activeTabPath, setActiveTabPath] = useState<string | null>(initialFiles.activePath);
   const [dirtyClosePath, setDirtyClosePath] = useState<string | null>(null);
 
@@ -471,8 +464,7 @@ export function useFilePreview(args: {
 
   const closeTab = useCallback(
     (filePath: string): void => {
-      const tab =
-        listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
+      const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
       if (!tab) return;
       if (isWorkspaceFileTabDirty(tab, listenerStateRef.current.canEdit)) {
         setActiveTabPath(filePath);
@@ -535,20 +527,12 @@ export function useFilePreview(args: {
   }, [updateTab]);
 
   const saveFilePathNow = useCallback(
-    async (
-      filePath: string,
-      generation: number,
-      tabLifetime: number,
-      contentToSave: string
-    ): Promise<SaveOutcome> => {
-      if (
-        sourceGeneration.current !== generation ||
-        workspaceTabLifetimes.current.get(filePath) !== tabLifetime
-      ) return "aborted";
+    async (filePath: string, generation: number, tabLifetime: number, contentToSave: string): Promise<SaveOutcome> => {
+      if (sourceGeneration.current !== generation || workspaceTabLifetimes.current.get(filePath) !== tabLifetime)
+        return "aborted";
       const id = listenerStateRef.current.sourceId;
       const kind = listenerStateRef.current.sourceKind;
-      const tab =
-        listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
+      const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
       if (!id || !kind || !tab || !listenerStateRef.current.canEdit || isExternalFilePath(filePath)) {
         return "aborted";
       }
@@ -573,7 +557,8 @@ export function useFilePreview(args: {
           sourceGeneration.current !== generation ||
           workspaceTabLifetimes.current.get(filePath) !== tabLifetime ||
           workspaceSaveTokens.current.get(filePath) !== token
-        ) return "aborted";
+        )
+          return "aborted";
         if (result.ok === "false") {
           updateTab(filePath, (current) => ({
             ...current,
@@ -598,7 +583,8 @@ export function useFilePreview(args: {
           sourceGeneration.current !== generation ||
           workspaceTabLifetimes.current.get(filePath) !== tabLifetime ||
           workspaceSaveTokens.current.get(filePath) !== token
-        ) return "aborted";
+        )
+          return "aborted";
         const message = errorMessage(error) || "Could not save file.";
         updateTab(filePath, (current) => ({
           ...current,
@@ -615,8 +601,7 @@ export function useFilePreview(args: {
   const saveFilePath = useCallback(
     async (filePath: string): Promise<SaveOutcome> => {
       const generation = sourceGeneration.current;
-      const tab =
-        listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
+      const tab = listenerStateRef.current.workspaceFileTabs.find((candidate) => candidate.path === filePath) ?? null;
       if (!tab || tab.buffer === null || tab.buffer === tab.original) return "saved";
       const tabLifetime = workspaceTabLifetimes.current.get(filePath);
       if (tabLifetime === undefined) return "aborted";
@@ -744,8 +729,7 @@ export function useFilePreview(args: {
     externalChange: tab.externalChange
   }));
 
-  const dirtyCloseTab =
-    dirtyClosePath !== null ? tabs.find((tab) => tab.path === dirtyClosePath) ?? null : null;
+  const dirtyCloseTab = dirtyClosePath !== null ? (tabs.find((tab) => tab.path === dirtyClosePath) ?? null) : null;
   const dirtyClosePrompt: WorkspaceFileDirtyClosePrompt | null =
     dirtyCloseTab && isWorkspaceFileTabDirty(dirtyCloseTab, canEdit)
       ? { path: dirtyCloseTab.path, saveError: dirtyCloseTab.saveError }

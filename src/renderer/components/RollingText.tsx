@@ -74,12 +74,7 @@ export function RollingText({ text, roll }: { text: string; roll?: TextRoll | nu
         {/* The leaving words are painted from the attribute, not the DOM, so
             the label's text is the new label alone throughout the roll. */}
         <span ref={outRef} className="rolling-text-out" aria-hidden="true" data-text={fromRest} style={timing} />
-        <span
-          ref={inRef}
-          className="rolling-text-in"
-          style={timing}
-          onAnimationEnd={() => setFinishedId(rolling.id)}
-        >
+        <span ref={inRef} className="rolling-text-in" style={timing} onAnimationEnd={() => setFinishedId(rolling.id)}>
           {toRest}
         </span>
       </span>

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { splitSkillTokens } from "./slashHighlight.js";
 
-
 describe("splitSkillTokens", () => {
   const isSkill = (name: string): boolean => name === "snow" || name === "eli5";
 

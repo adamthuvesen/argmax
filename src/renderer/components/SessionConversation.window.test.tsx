@@ -23,27 +23,16 @@ function giantTurn(steps: number): TimelineEvent[] {
     const at = (offsetMs: number): string =>
       new Date(Date.UTC(2026, 0, 1, 0, 1, 0, index * 1_000 + offsetMs)).toISOString();
     events.push(
-      event(
-        `progress-${index}`,
-        "message.delta",
-        `progress ${index}`,
-        at(0),
-        { thinking: true }
-      ),
-      event(
-        `tool-${index}-start`,
-        "command.started",
-        "Read",
-        at(100),
-        { id: `tool-${index}`, name: "Read", input: { file_path: `src/${index}.ts` } }
-      ),
-      event(
-        `tool-${index}-end`,
-        "command.completed",
-        "tool_result",
-        at(200),
-        { tool_use_id: `tool-${index}`, content: `file ${index}` }
-      )
+      event(`progress-${index}`, "message.delta", `progress ${index}`, at(0), { thinking: true }),
+      event(`tool-${index}-start`, "command.started", "Read", at(100), {
+        id: `tool-${index}`,
+        name: "Read",
+        input: { file_path: `src/${index}.ts` }
+      }),
+      event(`tool-${index}-end`, "command.completed", "tool_result", at(200), {
+        tool_use_id: `tool-${index}`,
+        content: `file ${index}`
+      })
     );
   }
   return events;

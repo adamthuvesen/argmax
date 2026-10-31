@@ -122,10 +122,7 @@ describe("foldTodoEvents", () => {
   it("ignores an event whose items are missing or malformed", () => {
     const malformed = todoEvent("snapshot", []);
     malformed.payload.items = [{ status: "not-a-status" }, 7];
-    const list = foldTodoEvents([
-      todoEvent("snapshot", [{ id: "1", text: "Survives", status: "pending" }]),
-      malformed
-    ]);
+    const list = foldTodoEvents([todoEvent("snapshot", [{ id: "1", text: "Survives", status: "pending" }]), malformed]);
     expect(list?.items).toEqual([{ id: "1", text: "Survives", status: "pending" }]);
   });
 

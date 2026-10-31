@@ -9,19 +9,28 @@ function launcherElement(
   project: ReturnType<typeof primaryProject>,
   launchLocal: () => Promise<void>
 ) {
-  return <LaunchSurface
-    model={model}
-    onAddProject={vi.fn()}
-    onBranchSwitch={vi.fn()}
-    onLaunchTask={launchLocal}
-    onModelChange={vi.fn()}
-    onSelectProject={vi.fn()}
-    project={project}
-    projects={[project]}
-  />;
+  return (
+    <LaunchSurface
+      model={model}
+      onAddProject={vi.fn()}
+      onBranchSwitch={vi.fn()}
+      onLaunchTask={launchLocal}
+      onModelChange={vi.fn()}
+      onSelectProject={vi.fn()}
+      project={project}
+      projects={[project]}
+    />
+  );
 }
 
-function renderLauncher(model: ModelPickerSelection = { provider: "claude", modelId: "claude-fable-5-1", label: "Fable 5.1", reasoningEffort: "medium" }) {
+function renderLauncher(
+  model: ModelPickerSelection = {
+    provider: "claude",
+    modelId: "claude-fable-5-1",
+    label: "Fable 5.1",
+    reasoningEffort: "medium"
+  }
+) {
   const project = primaryProject();
   const launchLocal = vi.fn().mockResolvedValue(undefined);
   const { rerender } = render(launcherElement(model, project, launchLocal));
@@ -37,8 +46,12 @@ describe("cloud launch from the composer", () => {
     setupAppTestMocks();
     vi.spyOn(window.argmax!.cloud, "prepare").mockResolvedValue({
       provider: "claude",
-      repository: "adamthuvesen/commute-cli", branch: "main", commit: "1234567890abcdef",
-      brief: "", environmentId: "env_default", environmentDescription: "Default",
+      repository: "adamthuvesen/commute-cli",
+      branch: "main",
+      commit: "1234567890abcdef",
+      brief: "",
+      environmentId: "env_default",
+      environmentDescription: "Default",
       environments: [{ id: "env_default", name: "Default" }]
     });
     vi.spyOn(window.argmax!.cloud, "launch").mockResolvedValue({ url: "https://claude.ai/code/session_test" });
@@ -46,9 +59,15 @@ describe("cloud launch from the composer", () => {
   afterEach(cleanup);
 
   it.each([
-    [{ provider: "claude", modelId: "claude-fable-5-1", label: "Fable 5.1", reasoningEffort: "medium" }, "Claude Cloud"],
+    [
+      { provider: "claude", modelId: "claude-fable-5-1", label: "Fable 5.1", reasoningEffort: "medium" },
+      "Claude Cloud"
+    ],
     [{ provider: "codex", modelId: "gpt-6-astra", label: "GPT-6 Astra", reasoningEffort: "medium" }, "Codex Cloud"],
-    [{ provider: "cursor", modelId: "composer-2.5", label: "Composer 2.5 (Cursor)", reasoningEffort: "medium" }, "Cursor Cloud"]
+    [
+      { provider: "cursor", modelId: "composer-2.5", label: "Composer 2.5 (Cursor)", reasoningEffort: "medium" },
+      "Cursor Cloud"
+    ]
   ] as const)("routes the selected $0.provider provider to its hosted agent", async (selectedModel, hostedName) => {
     vi.mocked(window.argmax!.cloud.prepare).mockResolvedValue({
       provider: selectedModel.provider,
@@ -75,11 +94,13 @@ describe("cloud launch from the composer", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
     expect(await screen.findByRole("link", { name: `Open in ${hostedName}` })).toBeInTheDocument();
-    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: project.id,
-      projectFolderId: `${project.id}:primary`,
-      provider: selectedModel.provider
-    }));
+    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: project.id,
+        projectFolderId: `${project.id}:primary`,
+        provider: selectedModel.provider
+      })
+    );
     expect(launchLocal).not.toHaveBeenCalled();
   });
 
@@ -111,15 +132,21 @@ describe("cloud launch from the composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review cloud task" }));
     expect(await screen.findByText("Inspect README")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Task brief" })).not.toBeInTheDocument();
-    expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({ projectId: project.id, projectFolderId: `${project.id}:primary`, provider: "claude" });
+    expect(window.argmax!.cloud.prepare).toHaveBeenCalledWith({
+      projectId: project.id,
+      projectFolderId: `${project.id}:primary`,
+      provider: "claude"
+    });
     expect(window.argmax!.cloud.launch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
     expect(await screen.findByRole("link", { name: "Open in Claude Cloud" })).toBeInTheDocument();
-    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(expect.objectContaining({
-      projectId: project.id,
-      provider: "claude",
-      brief: "Inspect README"
-    }));
+    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: project.id,
+        provider: "claude",
+        brief: "Inspect README"
+      })
+    );
     expect(launchLocal).not.toHaveBeenCalled();
     expect(screen.queryByText("The link is saved in this chat.")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText("Task prompt")).toHaveValue(""));
@@ -150,9 +177,13 @@ describe("cloud launch from the composer", () => {
     expect(prompt).toHaveValue("/goal fix everything");
   });
 
-
   it("drops Cloud when a Router row is picked, so returning to the model starts local", () => {
-    const opus: ModelPickerSelection = { provider: "claude", modelId: "claude-opus-5-5", label: "Opus 5.5", reasoningEffort: "medium" };
+    const opus: ModelPickerSelection = {
+      provider: "claude",
+      modelId: "claude-opus-5-5",
+      label: "Opus 5.5",
+      reasoningEffort: "medium"
+    };
     const { rerenderWith } = renderLauncher(opus);
     fireEvent.click(screen.getByRole("button", { name: "Run location: Local" }));
     expect(screen.getByRole("button", { name: "Run location: Cloud" })).toBeInTheDocument();

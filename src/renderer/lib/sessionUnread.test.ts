@@ -25,15 +25,15 @@ describe("session unread stamps", () => {
     try {
       const working = new Set<string>();
       const { rerender, unmount } = renderHook(
-        ({ lastViewedAt }) => useUnreadWorkspaceIds(
-          [{ id: "w1", lastActivityAt: later, lastViewedAt }], "w1", working
-        ),
+        ({ lastViewedAt }) => useUnreadWorkspaceIds([{ id: "w1", lastActivityAt: later, lastViewedAt }], "w1", working),
         { initialProps: { lastViewedAt: earlier } }
       );
       expect(markWorkspacesViewed).toHaveBeenCalledExactlyOnceWith({
         workspaces: [{ workspaceId: "w1", observedActivityAt: later }]
       });
-      act(() => { rerender({ lastViewedAt: later }); });
+      act(() => {
+        rerender({ lastViewedAt: later });
+      });
       expect(markWorkspacesViewed).toHaveBeenCalledTimes(1);
       unmount();
     } finally {
@@ -44,24 +44,26 @@ describe("session unread stamps", () => {
 
   it("uses shared host read state instead of stale device-local stamps", () => {
     syncWorkspaceViewed([{ id: "w1", lastActivityAt: earlier }], null);
-    expect(workspaceHasUnreadResponse(
-      { id: "w1", lastActivityAt: later, lastViewedAt: later },
-      { selectedWorkspaceId: null, working: false }
-    )).toBe(false);
+    expect(
+      workspaceHasUnreadResponse(
+        { id: "w1", lastActivityAt: later, lastViewedAt: later },
+        { selectedWorkspaceId: null, working: false }
+      )
+    ).toBe(false);
     syncWorkspaceViewed([{ id: "w1", lastActivityAt: later }], "w1");
-    expect(workspaceHasUnreadResponse(
-      { id: "w1", lastActivityAt: later, lastViewedAt: earlier },
-      { selectedWorkspaceId: null, working: false }
-    )).toBe(true);
+    expect(
+      workspaceHasUnreadResponse(
+        { id: "w1", lastActivityAt: later, lastViewedAt: earlier },
+        { selectedWorkspaceId: null, working: false }
+      )
+    ).toBe(true);
   });
 
   it("does not treat first sight as unread", () => {
     const workspace = { id: "w1", lastActivityAt: later };
     syncWorkspaceViewed([workspace], null);
 
-    expect(
-      workspaceHasUnreadResponse(workspace, { selectedWorkspaceId: null, working: false })
-    ).toBe(false);
+    expect(workspaceHasUnreadResponse(workspace, { selectedWorkspaceId: null, working: false })).toBe(false);
   });
 
   it("is unread once activity moves past the stamp", () => {
@@ -69,10 +71,7 @@ describe("session unread stamps", () => {
     syncWorkspaceViewed([workspace], null);
 
     expect(
-      workspaceHasUnreadResponse(
-        { id: "w1", lastActivityAt: later },
-        { selectedWorkspaceId: null, working: false }
-      )
+      workspaceHasUnreadResponse({ id: "w1", lastActivityAt: later }, { selectedWorkspaceId: null, working: false })
     ).toBe(true);
   });
 
@@ -81,12 +80,8 @@ describe("session unread stamps", () => {
     syncWorkspaceViewed([workspace], null);
     const next = { id: "w1", lastActivityAt: later };
 
-    expect(
-      workspaceHasUnreadResponse(next, { selectedWorkspaceId: "w1", working: false })
-    ).toBe(false);
-    expect(
-      workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: true })
-    ).toBe(false);
+    expect(workspaceHasUnreadResponse(next, { selectedWorkspaceId: "w1", working: false })).toBe(false);
+    expect(workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: true })).toBe(false);
   });
 
   it("clears unread by stamping the open chat to the activity it is showing", () => {
@@ -95,9 +90,7 @@ describe("session unread stamps", () => {
     const next = { id: "w1", lastActivityAt: later };
     syncWorkspaceViewed([next], "w1");
 
-    expect(
-      workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: false })
-    ).toBe(false);
+    expect(workspaceHasUnreadResponse(next, { selectedWorkspaceId: null, working: false })).toBe(false);
   });
 
   it("lights up again after a later response once the chat is no longer open", () => {
@@ -105,10 +98,7 @@ describe("session unread stamps", () => {
     syncWorkspaceViewed([{ id: "w1", lastActivityAt: earlier }], null);
 
     expect(
-      workspaceHasUnreadResponse(
-        { id: "w1", lastActivityAt: later },
-        { selectedWorkspaceId: null, working: false }
-      )
+      workspaceHasUnreadResponse({ id: "w1", lastActivityAt: later }, { selectedWorkspaceId: null, working: false })
     ).toBe(true);
   });
 

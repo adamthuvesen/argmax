@@ -86,9 +86,7 @@ describe("FileChangeCard", () => {
       edits: [{ old_string: "a", new_string: "A" }]
     });
     const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
-    expect(
-      container.querySelector(".file-change-card[data-no-line-numbers]")
-    ).not.toBeNull();
+    expect(container.querySelector(".file-change-card[data-no-line-numbers]")).not.toBeNull();
   });
 
   it("renders a note when present", () => {

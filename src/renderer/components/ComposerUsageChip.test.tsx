@@ -15,7 +15,12 @@ function plan(percent: number, fetchedAt = new Date().toISOString()): UsageRemai
         message: null,
         messageUrl: null,
         windows: [
-          { id: "5h", label: "5-hour", remainingPercent: percent, resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString() },
+          {
+            id: "5h",
+            label: "5-hour",
+            remainingPercent: percent,
+            resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString()
+          },
           { id: "week", label: "Weekly", remainingPercent: 88, resetsAt: null }
         ]
       },
@@ -89,7 +94,14 @@ describe("ComposerUsageChip", () => {
       {
         fetchedAt: new Date().toISOString(),
         providers: [
-          { provider: "claude", kind: "error", planLabel: null, message: "token expired", messageUrl: null, windows: [] }
+          {
+            provider: "claude",
+            kind: "error",
+            planLabel: null,
+            message: "token expired",
+            messageUrl: null,
+            windows: []
+          }
         ]
       },
       null

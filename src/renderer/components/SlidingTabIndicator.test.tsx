@@ -6,8 +6,12 @@ function Tabs({ active }: { active: "one" | "two" }): React.JSX.Element {
   return (
     <div role="tablist">
       <SlidingTabIndicator activeKey={active} />
-      <button role="tab" aria-selected={active === "one"}>One</button>
-      <button role="tab" aria-selected={active === "two"}>Two</button>
+      <button role="tab" aria-selected={active === "one"}>
+        One
+      </button>
+      <button role="tab" aria-selected={active === "two"}>
+        Two
+      </button>
     </div>
   );
 }

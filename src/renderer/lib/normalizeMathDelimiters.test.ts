@@ -52,9 +52,9 @@ describe("normalizeMathDelimiters", () => {
   });
 
   it("converts LaTeX inline math \\( ... \\) to $ ... $", () => {
-    const input = "\\(\\tau\\) (\"tau\") is the abstention threshold.";
+    const input = '\\(\\tau\\) ("tau") is the abstention threshold.';
     const output = normalizeMathDelimiters(input);
-    expect(output).toBe("$\\tau$ (\"tau\") is the abstention threshold.");
+    expect(output).toBe('$\\tau$ ("tau") is the abstention threshold.');
   });
 
   it("preserves standard markdown math $$ and $", () => {
@@ -81,14 +81,14 @@ describe("normalizeMathDelimiters", () => {
       "Here is bash code:",
       "```bash",
       "PRICE=$50",
-      "echo \"\\[ escaped \\] and \\( inline \\)\"",
+      'echo "\\[ escaped \\] and \\( inline \\)"',
       "```",
       "And math outside: \\(x + y\\)"
     ].join("\n");
 
     const output = normalizeMathDelimiters(input);
     expect(output).toContain("PRICE=$50");
-    expect(output).toContain("echo \"\\[ escaped \\] and \\( inline \\)\"");
+    expect(output).toContain('echo "\\[ escaped \\] and \\( inline \\)"');
     expect(output).toContain("$x + y$");
   });
 
@@ -99,23 +99,16 @@ describe("normalizeMathDelimiters", () => {
   });
 
   it("wraps bare LaTeX environments in $$ blocks", () => {
-    const input = [
-      "Formula:",
-      "\\begin{align}",
-      "a &= b + c \\\\",
-      "d &= e + f",
-      "\\end{align}",
-      "Done."
-    ].join("\n");
+    const input = ["Formula:", "\\begin{align}", "a &= b + c \\\\", "d &= e + f", "\\end{align}", "Done."].join("\n");
 
     const output = normalizeMathDelimiters(input);
     expect(output).toContain("$$\n\\begin{align}\na &= b + c \\\\\nd &= e + f\n\\end{align}\n$$");
   });
 
   it("converts bare Greek letter commands in prose to math spans", () => {
-    const input = "\\tau (\"tau\") is the threshold. Then \\alpha and \\beta are weights.";
+    const input = '\\tau ("tau") is the threshold. Then \\alpha and \\beta are weights.';
     const output = normalizeMathDelimiters(input);
-    expect(output).toBe("$\\tau$ (\"tau\") is the threshold. Then $\\alpha$ and $\\beta$ are weights.");
+    expect(output).toBe('$\\tau$ ("tau") is the threshold. Then $\\alpha$ and $\\beta$ are weights.');
   });
 
   it("converts bracketed equations like [ \\text{...} ] to display math", () => {
@@ -129,9 +122,7 @@ describe("normalizeMathDelimiters", () => {
   });
 
   it("leaves Greek letters inside existing inline math alone", () => {
-    expect(normalizeMathDelimiters("Given $x = \\alpha + 1$ we win.")).toBe(
-      "Given $x = \\alpha + 1$ we win."
-    );
+    expect(normalizeMathDelimiters("Given $x = \\alpha + 1$ we win.")).toBe("Given $x = \\alpha + 1$ we win.");
   });
 
   it("does not re-wrap Greek letters in math it just converted", () => {

@@ -121,7 +121,9 @@ const tabOwnerListeners = new Set<() => void>();
 
 export function subscribeBrowserTabOwner(listener: () => void): () => void {
   tabOwnerListeners.add(listener);
-  return () => { tabOwnerListeners.delete(listener); };
+  return () => {
+    tabOwnerListeners.delete(listener);
+  };
 }
 
 export function getBrowserTabOwnerId(tabId: string): string | null {
@@ -163,7 +165,9 @@ export function getBrowserTabFocusRequest(tabId: string): number | null {
 
 export function subscribeBrowserTabFocus(listener: () => void): () => void {
   tabFocusListeners.add(listener);
-  return () => { tabFocusListeners.delete(listener); };
+  return () => {
+    tabFocusListeners.delete(listener);
+  };
 }
 
 export function consumeBrowserTabFocusRequest(tabId: string, seq: number): void {
@@ -322,10 +326,7 @@ function isPersistedTab(tab: unknown): tab is { id: string; url: string; title: 
   );
 }
 
-function restoreScope(
-  scopeId: string,
-  snapshot: { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown }
-): void {
+function restoreScope(scopeId: string, snapshot: { activeTabId?: unknown; lastUrl?: unknown; tabs?: unknown }): void {
   if (!Array.isArray(snapshot.tabs)) return;
   const restored = snapshot.tabs.filter(isPersistedTab);
   if (restored.length === 0 && typeof snapshot.lastUrl !== "string") return;
@@ -441,9 +442,7 @@ export function setBrowserTabLoading(id: string, loading: boolean): void {
   const tab = findBrowserTab(id);
   if (!tab || tab.loading === loading) return;
   const state = ensureScope(tab.scopeId);
-  state.tabs = state.tabs.map((candidate) =>
-    candidate.id === id ? { ...candidate, loading } : candidate
-  );
+  state.tabs = state.tabs.map((candidate) => (candidate.id === id ? { ...candidate, loading } : candidate));
   notifyTabListeners(false);
 }
 
@@ -587,10 +586,7 @@ function persistedTabsEqual(next: BrowserTab[], current: BrowserTab[]): boolean 
     next.every((tab, index) => {
       const existing = current[index];
       return (
-        existing !== undefined &&
-        existing.id === tab.id &&
-        existing.url === tab.url &&
-        existing.title === tab.title
+        existing !== undefined && existing.id === tab.id && existing.url === tab.url && existing.title === tab.title
       );
     })
   );
@@ -708,7 +704,9 @@ const browserTabOpenedListeners = new Set<(event: BrowserTabOpened) => void>();
 
 export function subscribeBrowserTabOpened(listener: (event: BrowserTabOpened) => void): () => void {
   browserTabOpenedListeners.add(listener);
-  return () => { browserTabOpenedListeners.delete(listener); };
+  return () => {
+    browserTabOpenedListeners.delete(listener);
+  };
 }
 
 let tabSyncStarted = false;

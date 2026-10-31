@@ -59,10 +59,7 @@ function swiftFiles(dir) {
 
 const failures = [];
 for (const path of swiftFiles(SOURCES)) {
-  const rules = [
-    ...(path === TYPOGRAPHY ? [] : FONT_RULES),
-    ...(path.startsWith(TRANSCRIPT) ? TIER_RULES : [])
-  ];
+  const rules = [...(path === TYPOGRAPHY ? [] : FONT_RULES), ...(path.startsWith(TRANSCRIPT) ? TIER_RULES : [])];
   if (rules.length === 0) continue;
   const lines = readFileSync(path, "utf8").split("\n");
   lines.forEach((line, index) => {

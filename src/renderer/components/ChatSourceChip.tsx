@@ -22,11 +22,7 @@ export function ChatSourceChip({
   const entry = lookUpChat(sessionId);
   if (!entry) {
     return (
-      <span
-        className="chat-source-chip"
-        data-status="unresolved"
-        title="This chat is no longer available"
-      >
+      <span className="chat-source-chip" data-status="unresolved" title="This chat is no longer available">
         <MessageSquare size={12} aria-hidden="true" />
         <span className="chat-source-chip-label">{title} (unavailable)</span>
       </span>

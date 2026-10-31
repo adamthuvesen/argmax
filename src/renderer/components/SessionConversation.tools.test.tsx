@@ -25,12 +25,7 @@ function sameEnvelopeMinimalTurn(tools: TimelineEvent[]): TimelineEvent[] {
     }),
     event("narrate", "message.completed", SAME_ENVELOPE_WORK, SAME_ENVELOPE_AT),
     ...tools,
-    event(
-      "answer",
-      "message.completed",
-      SAME_ENVELOPE_ANSWER,
-      "2026-05-12T15:00:04.000Z"
-    )
+    event("answer", "message.completed", SAME_ENVELOPE_ANSWER, "2026-05-12T15:00:04.000Z")
   ];
 }
 
@@ -70,16 +65,10 @@ const sameEnvelopeProviderCases: Array<{
         tool_use_id: "read-1",
         content: "readme"
       }),
-      event(
-        "wait-start",
-        "command.started",
-        "get_command_or_subagent_output",
-        "2026-05-12T15:00:03.000Z",
-        {
-          id: "wait-1",
-          name: "get_command_or_subagent_output"
-        }
-      ),
+      event("wait-start", "command.started", "get_command_or_subagent_output", "2026-05-12T15:00:03.000Z", {
+        id: "wait-1",
+        name: "get_command_or_subagent_output"
+      }),
       event("wait-end", "command.completed", "tool_result", "2026-05-12T15:00:03.500Z", {
         tool_use_id: "wait-1",
         content: "ok"
@@ -114,14 +103,7 @@ describe("SessionConversation — tools & chrome", () => {
     const onOpenFile = vi.fn();
     renderConversation(
       baseSession({ state: "complete" }),
-      [
-        event(
-          "m1",
-          "message.completed",
-          "See `src/foo.ts:42` for details.",
-          "2026-05-12T15:00:00.000Z"
-        )
-      ],
+      [event("m1", "message.completed", "See `src/foo.ts:42` for details.", "2026-05-12T15:00:00.000Z")],
       { onOpenFile }
     );
 
@@ -134,14 +116,7 @@ describe("SessionConversation — tools & chrome", () => {
     const onOpenFile = vi.fn();
     renderConversation(
       baseSession({ state: "complete" }),
-      [
-        event(
-          "m1",
-          "message.completed",
-          "Open [foo](src/bar.ts) please.",
-          "2026-05-12T15:00:00.000Z"
-        )
-      ],
+      [event("m1", "message.completed", "Open [foo](src/bar.ts) please.", "2026-05-12T15:00:00.000Z")],
       { onOpenFile }
     );
 
@@ -153,14 +128,7 @@ describe("SessionConversation — tools & chrome", () => {
     const onOpenFile = vi.fn();
     renderConversation(
       baseSession({ state: "complete" }),
-      [
-        event(
-          "m1",
-          "message.completed",
-          "See `src/foo.ts` for details.",
-          "2026-05-12T15:00:00.000Z"
-        )
-      ],
+      [event("m1", "message.completed", "See `src/foo.ts` for details.", "2026-05-12T15:00:00.000Z")],
       { onOpenFile }
     );
 
@@ -169,13 +137,10 @@ describe("SessionConversation — tools & chrome", () => {
   });
 
   it("keeps normal turn headers to time and duration, not the selected model name", () => {
-    renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
-      [
-        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
-        event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:01.000Z")
-      ]
-    );
+    renderConversation(baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }), [
+      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+      event("m1", "message.completed", "Here is the summary.", "2026-05-12T15:00:01.000Z")
+    ]);
 
     expect(screen.getByText("Here is the summary.")).toBeInTheDocument();
     expect(screen.getByText("Worked for 1s")).toBeInTheDocument();
@@ -199,7 +164,7 @@ describe("SessionConversation — tools & chrome", () => {
         }),
         event("mcp-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "toolu_mcp_recall",
-          content: "{\"status\":\"ok\",\"data\":{\"answer\":\"stored fact\"}}"
+          content: '{"status":"ok","data":{"answer":"stored fact"}}'
         })
       ],
       { defaultToolCallsDisplay: "expanded" }
@@ -378,34 +343,30 @@ describe("SessionConversation — tools & chrome", () => {
   });
 
   it("keeps a completed launch to its title alone and marks only the failed one", () => {
-    const prompt =
-      "Read-only task in /Users/adamthuvesen/dev/menti/hq: inspect this repository and report the layout";
+    const prompt = "Read-only task in /Users/adamthuvesen/dev/menti/hq: inspect this repository and report the layout";
     const preview = prompt.slice(0, 72);
-    renderConversation(
-      baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }),
-      [
-        event("u1", "user.message", "inspect hq", "2026-05-12T15:00:00.000Z"),
-        event("task-1-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
-          id: "task-1",
-          name: "Task",
-          input: { prompt }
-        }),
-        event("task-1-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
-          tool_use_id: "task-1",
-          is_error: true,
-          content: "Launch did not complete."
-        }),
-        event("task-2-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
-          id: "task-2",
-          name: "Task",
-          input: { prompt }
-        }),
-        event("task-2-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
-          tool_use_id: "task-2",
-          content: "done"
-        })
-      ]
-    );
+    renderConversation(baseSession({ provider: "claude", modelLabel: "Opus 5", state: "complete" }), [
+      event("u1", "user.message", "inspect hq", "2026-05-12T15:00:00.000Z"),
+      event("task-1-start", "command.started", "Task", "2026-05-12T15:00:01.000Z", {
+        id: "task-1",
+        name: "Task",
+        input: { prompt }
+      }),
+      event("task-1-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
+        tool_use_id: "task-1",
+        is_error: true,
+        content: "Launch did not complete."
+      }),
+      event("task-2-start", "command.started", "Task", "2026-05-12T15:00:03.000Z", {
+        id: "task-2",
+        name: "Task",
+        input: { prompt }
+      }),
+      event("task-2-end", "command.completed", "tool_result", "2026-05-12T15:00:04.000Z", {
+        tool_use_id: "task-2",
+        content: "done"
+      })
+    ]);
 
     const rows = screen.getAllByRole("button", { name: startedAgentName(preview) });
     expect(rows).toHaveLength(2);
@@ -476,15 +437,19 @@ describe("SessionConversation — tools & chrome", () => {
       { onOpenAgent }
     );
 
-    const agentRow = screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") });
+    const agentRow = screen.getByRole("button", {
+      name: startedAgentName("Explore repo quickly and report key files.")
+    });
     expect(screen.queryByText("prompt")).not.toBeInTheDocument();
 
     fireEvent.click(agentRow);
     expect(onOpenAgent).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("prompt")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", {
-      name: toggleAgentDetailsName("Explore repo quickly and report key files.")
-    }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: toggleAgentDetailsName("Explore repo quickly and report key files.")
+      })
+    );
 
     // Codex spawn metadata is the only detail it gives us: shown as arguments,
     // not as a JSON dump behind an Input disclosure.
@@ -527,48 +492,48 @@ describe("SessionConversation — tools & chrome", () => {
       }
     );
 
-    expect(screen.getByRole("button", { name: toggleAgentDetailsName(task) }))
-      .toHaveAttribute("aria-expanded", String(open));
+    expect(screen.getByRole("button", { name: toggleAgentDetailsName(task) })).toHaveAttribute(
+      "aria-expanded",
+      String(open)
+    );
     expect(screen.getByRole("button", { name: startedAgentName(task) })).toBeInTheDocument();
   });
 
   it("hides linked Codex wait rows while the spawned-agent row stays visible", () => {
-    renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }),
-      [
-        event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
-        event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
-          id: "item_2",
-          name: "spawn_agent",
-          input: {
-            prompt: "Explore repo quickly and report key files.",
-            receiver_thread_ids: [],
-            sender_thread_id: "sender-thread"
-          }
-        }),
-        event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
-          id: "item_2",
-          name: "spawn_agent",
-          status: "in_progress",
-          input: {
-            prompt: "Explore repo quickly and report key files.",
-            receiver_thread_ids: ["receiver-thread"],
-            sender_thread_id: "sender-thread"
-          }
-        }),
-        event("wait-start", "command.started", "wait", "2026-05-12T15:00:03.000Z", {
-          id: "item_3",
-          name: "wait",
-          input: {
-            receiver_thread_ids: ["receiver-thread"],
-            sender_thread_id: "sender-thread"
-          }
-        })
-      ]
-    );
+    renderConversation(baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }), [
+      event("u1", "user.message", "spawn an agent", "2026-05-12T15:00:00.000Z"),
+      event("agent-start", "command.started", "spawn_agent", "2026-05-12T15:00:01.000Z", {
+        id: "item_2",
+        name: "spawn_agent",
+        input: {
+          prompt: "Explore repo quickly and report key files.",
+          receiver_thread_ids: [],
+          sender_thread_id: "sender-thread"
+        }
+      }),
+      event("agent-end", "command.completed", "spawn_agent", "2026-05-12T15:00:02.000Z", {
+        id: "item_2",
+        name: "spawn_agent",
+        status: "in_progress",
+        input: {
+          prompt: "Explore repo quickly and report key files.",
+          receiver_thread_ids: ["receiver-thread"],
+          sender_thread_id: "sender-thread"
+        }
+      }),
+      event("wait-start", "command.started", "wait", "2026-05-12T15:00:03.000Z", {
+        id: "item_3",
+        name: "wait",
+        input: {
+          receiver_thread_ids: ["receiver-thread"],
+          sender_thread_id: "sender-thread"
+        }
+      })
+    ]);
 
-    expect(screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") }))
-      .toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: startedAgentName("Explore repo quickly and report key files.") })
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "wait" })).toBeNull();
   });
 
@@ -643,59 +608,39 @@ describe("SessionConversation — tools & chrome", () => {
   });
 
   it("renders Codex file_change edit rows between assistant updates", () => {
-    const modelSelectorPath =
-      "/Users/adamthuvesen/dev/menti/argmax/src/renderer/components/ModelSelector.tsx";
-    const cssPath =
-      "/Users/adamthuvesen/dev/menti/argmax/src/renderer/styles/chat-chrome.css";
-    renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }),
-      [
-        event(
-          "m1",
-          "message.completed",
-          "Agreed, that’s a fair read.",
-          "2026-07-01T08:12:21.551Z"
-        ),
-        event(
-          "m2",
-          "message.completed",
-          "The screenshot makes it clear: the main picker row is fine.",
-          "2026-07-01T08:12:30.999Z"
-        ),
-        event("fc1-start", "command.started", "file_change", "2026-07-01T08:12:34.010Z", {
-          id: "item_4",
-          name: "file_change",
-          input: { changes: [{ kind: "update", path: modelSelectorPath }] }
-        }),
-        event("fc1-end", "command.completed", "file_change", "2026-07-01T08:12:34.010Z", {
-          id: "item_4",
-          name: "file_change",
-          input: { changes: [{ kind: "update", path: modelSelectorPath }] }
-        }),
-        event(
-          "m3",
-          "message.completed",
-          "The submenu rows are now plain.",
-          "2026-07-01T08:12:37.522Z"
-        ),
-        event("fc2-start", "command.started", "file_change", "2026-07-01T08:12:39.515Z", {
-          id: "item_6",
-          name: "file_change",
-          input: { changes: [{ kind: "update", path: cssPath }] }
-        }),
-        event("fc2-end", "command.completed", "file_change", "2026-07-01T08:12:39.516Z", {
-          id: "item_6",
-          name: "file_change",
-          input: { changes: [{ kind: "update", path: cssPath }] }
-        }),
-        event(
-          "m4",
-          "message.completed",
-          "Tests still expect the descriptive copy.",
-          "2026-07-01T08:12:41.851Z"
-        )
-      ]
-    );
+    const modelSelectorPath = "/Users/adamthuvesen/dev/menti/argmax/src/renderer/components/ModelSelector.tsx";
+    const cssPath = "/Users/adamthuvesen/dev/menti/argmax/src/renderer/styles/chat-chrome.css";
+    renderConversation(baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "running" }), [
+      event("m1", "message.completed", "Agreed, that’s a fair read.", "2026-07-01T08:12:21.551Z"),
+      event(
+        "m2",
+        "message.completed",
+        "The screenshot makes it clear: the main picker row is fine.",
+        "2026-07-01T08:12:30.999Z"
+      ),
+      event("fc1-start", "command.started", "file_change", "2026-07-01T08:12:34.010Z", {
+        id: "item_4",
+        name: "file_change",
+        input: { changes: [{ kind: "update", path: modelSelectorPath }] }
+      }),
+      event("fc1-end", "command.completed", "file_change", "2026-07-01T08:12:34.010Z", {
+        id: "item_4",
+        name: "file_change",
+        input: { changes: [{ kind: "update", path: modelSelectorPath }] }
+      }),
+      event("m3", "message.completed", "The submenu rows are now plain.", "2026-07-01T08:12:37.522Z"),
+      event("fc2-start", "command.started", "file_change", "2026-07-01T08:12:39.515Z", {
+        id: "item_6",
+        name: "file_change",
+        input: { changes: [{ kind: "update", path: cssPath }] }
+      }),
+      event("fc2-end", "command.completed", "file_change", "2026-07-01T08:12:39.516Z", {
+        id: "item_6",
+        name: "file_change",
+        input: { changes: [{ kind: "update", path: cssPath }] }
+      }),
+      event("m4", "message.completed", "Tests still expect the descriptive copy.", "2026-07-01T08:12:41.851Z")
+    ]);
 
     expect(screen.getByRole("button", { name: "Edited ModelSelector.tsx" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edited chat-chrome.css" })).toBeInTheDocument();
@@ -732,12 +677,7 @@ describe("SessionConversation — tools & chrome", () => {
   });
 
   it("keeps command bursts separated by assistant prose as separate groups", () => {
-    const commandEvents = (
-      id: string,
-      command: string,
-      startedAt: string,
-      completedAt: string
-    ) => [
+    const commandEvents = (id: string, command: string, startedAt: string, completedAt: string) => [
       event(`${id}-start`, "command.started", "command_execution", startedAt, {
         id,
         name: "command_execution",
@@ -749,32 +689,29 @@ describe("SessionConversation — tools & chrome", () => {
         input: { command }
       })
     ];
-    renderConversation(
-      baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }),
-      [
-        event("m1", "message.completed", "Pass 1A.", "2026-07-01T08:32:00.000Z"),
-        ...commandEvents(
-          "cmd-1",
-          "/bin/zsh -lc \"sed -n '1,80p' src/a.ts\"",
-          "2026-07-01T08:32:01.000Z",
-          "2026-07-01T08:32:01.500Z"
-        ),
-        ...commandEvents(
-          "cmd-2",
-          "/bin/zsh -lc \"sed -n '1,80p' src/b.ts\"",
-          "2026-07-01T08:32:02.000Z",
-          "2026-07-01T08:32:02.500Z"
-        ),
-        event("m2", "message.completed", "Pass 1B.", "2026-07-01T08:32:03.000Z"),
-        ...commandEvents(
-          "cmd-3",
-          "/bin/zsh -lc \"sed -n '1,80p' src/c.ts\"",
-          "2026-07-01T08:32:04.000Z",
-          "2026-07-01T08:32:04.500Z"
-        ),
-        event("m3", "message.completed", "Pass 2A.", "2026-07-01T08:32:05.000Z")
-      ]
-    );
+    renderConversation(baseSession({ provider: "codex", modelLabel: "GPT-5.6 Sol", state: "complete" }), [
+      event("m1", "message.completed", "Pass 1A.", "2026-07-01T08:32:00.000Z"),
+      ...commandEvents(
+        "cmd-1",
+        "/bin/zsh -lc \"sed -n '1,80p' src/a.ts\"",
+        "2026-07-01T08:32:01.000Z",
+        "2026-07-01T08:32:01.500Z"
+      ),
+      ...commandEvents(
+        "cmd-2",
+        "/bin/zsh -lc \"sed -n '1,80p' src/b.ts\"",
+        "2026-07-01T08:32:02.000Z",
+        "2026-07-01T08:32:02.500Z"
+      ),
+      event("m2", "message.completed", "Pass 1B.", "2026-07-01T08:32:03.000Z"),
+      ...commandEvents(
+        "cmd-3",
+        "/bin/zsh -lc \"sed -n '1,80p' src/c.ts\"",
+        "2026-07-01T08:32:04.000Z",
+        "2026-07-01T08:32:04.500Z"
+      ),
+      event("m3", "message.completed", "Pass 2A.", "2026-07-01T08:32:05.000Z")
+    ]);
 
     const commandGroups = screen.getAllByRole("button", { name: /^Ran \d+ commands$/ });
     expect(commandGroups).toHaveLength(1);
@@ -793,14 +730,7 @@ describe("SessionConversation — tools & chrome", () => {
     const onOpenFile = vi.fn();
     renderConversation(
       baseSession({ state: "complete" }),
-      [
-        event(
-          "m1",
-          "message.completed",
-          "Docs at [example](https://example.com).",
-          "2026-05-12T15:00:00.000Z"
-        )
-      ],
+      [event("m1", "message.completed", "Docs at [example](https://example.com).", "2026-05-12T15:00:00.000Z")],
       { onOpenFile }
     );
 
@@ -840,7 +770,6 @@ describe("SessionConversation — tools & chrome", () => {
 
     expect(screen.queryByRole("menuitem", { name: "Browse Files" })).toBeNull();
   });
-
 });
 
 describe("SessionConversation — single-line activity mode", () => {
@@ -1117,10 +1046,7 @@ describe("SessionConversation — single-line activity mode", () => {
 
     for (let index = 1; index < levels.length; index += 1) {
       const lost = [...seen[index - 1]].filter((text) => !seen[index].has(text));
-      expect(
-        lost,
-        `${levels[index].label} dropped what ${levels[index - 1].label} showed`
-      ).toEqual([]);
+      expect(lost, `${levels[index].label} dropped what ${levels[index - 1].label} showed`).toEqual([]);
     }
   });
 
@@ -1199,8 +1125,10 @@ describe("SessionConversation — single-line activity mode", () => {
     expect(screen.getByText("The test failed.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
-    expect(screen.getByRole("button", { name: "Read a file, ran a command" }))
-      .toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Read a file, ran a command" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
   });
 
   it.each([
@@ -1371,17 +1299,11 @@ describe("SessionConversation — single-line activity mode", () => {
       baseSession({ state: "complete" }),
       [
         event("u1", "user.message", "read my todo page", "2026-05-12T15:00:00.000Z"),
-        event(
-          "fetch-start",
-          "command.started",
-          "mcp__claude_ai_Notion__notion-fetch",
-          "2026-05-12T15:00:01.000Z",
-          {
-            id: "fetch",
-            name: "mcp__claude_ai_Notion__notion-fetch",
-            input: { id: "28df6da7-abe0-8050-aeba-cb3b394247a3" }
-          }
-        ),
+        event("fetch-start", "command.started", "mcp__claude_ai_Notion__notion-fetch", "2026-05-12T15:00:01.000Z", {
+          id: "fetch",
+          name: "mcp__claude_ai_Notion__notion-fetch",
+          input: { id: "28df6da7-abe0-8050-aeba-cb3b394247a3" }
+        }),
         event("fetch-end", "command.completed", "tool_result", "2026-05-12T15:00:02.000Z", {
           tool_use_id: "fetch",
           content: [
@@ -1496,7 +1418,9 @@ describe("SessionConversation — single-line activity mode", () => {
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
 
     expect(
-      screen.getByText("I'll read the core docs and skim the layout so the summary matches how this vault actually works.")
+      screen.getByText(
+        "I'll read the core docs and skim the layout so the summary matches how this vault actually works."
+      )
     ).toBeInTheDocument();
     expect(screen.queryByText(/Get command or subagent output/)).toBeNull();
     expect(screen.getByText(/Chronicle isn't available/)).toBeInTheDocument();
@@ -1505,11 +1429,9 @@ describe("SessionConversation — single-line activity mode", () => {
   it.each(sameEnvelopeProviderCases)(
     "hides $provider same-timestamp work text on a finished Minimal turn",
     ({ provider, modelLabel, events, hiddenWhenExpanded }) => {
-      renderConversation(
-        baseSession({ provider, modelLabel, state: "complete" }),
-        events,
-        { defaultToolCallsDisplay: "single-line" }
-      );
+      renderConversation(baseSession({ provider, modelLabel, state: "complete" }), events, {
+        defaultToolCallsDisplay: "single-line"
+      });
 
       expect(screen.queryByText(SAME_ENVELOPE_WORK)).toBeNull();
       expect(screen.queryByText(SAME_ENVELOPE_THINKING)).toBeNull();
@@ -1530,11 +1452,9 @@ describe("SessionConversation — single-line activity mode", () => {
   it.each(sameEnvelopeProviderCases)(
     "keeps $provider same-timestamp work text visible while the session is running",
     ({ provider, modelLabel, events }) => {
-      renderConversation(
-        baseSession({ provider, modelLabel, state: "running" }),
-        events,
-        { defaultToolCallsDisplay: "single-line" }
-      );
+      renderConversation(baseSession({ provider, modelLabel, state: "running" }), events, {
+        defaultToolCallsDisplay: "single-line"
+      });
 
       expect(screen.getByText(SAME_ENVELOPE_WORK)).toBeInTheDocument();
       expect(screen.getByText(SAME_ENVELOPE_ANSWER)).toBeInTheDocument();

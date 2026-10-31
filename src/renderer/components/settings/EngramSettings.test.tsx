@@ -14,15 +14,14 @@ afterEach(() => {
 
 describe("EngramSettings", () => {
   it("starts as an optional setup guide without requiring a connection", () => {
-    render(
-      <EngramSettings provider="codex" onProviderChange={vi.fn()} />
-    );
+    render(<EngramSettings provider="codex" onProviderChange={vi.fn()} />);
 
     expect(screen.getByText(/Argmax works without it/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Installation guide" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
     expect(screen.getByRole("link", { name: "Installation guide" })).toHaveAttribute(
-      "href", "https://github.com/adamthuvesen/engram#run-it"
+      "href",
+      "https://github.com/adamthuvesen/engram#run-it"
     );
   });
 
@@ -64,9 +63,7 @@ describe("EngramSettings", () => {
 
   it("keeps the directory when provider changes and updates command format", () => {
     const path = "/Users/dev/argmax";
-    const { rerender } = render(
-      <EngramSettings provider="codex" onProviderChange={vi.fn()} />
-    );
+    const { rerender } = render(<EngramSettings provider="codex" onProviderChange={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Set up Engram" }));
 
     fireEvent.change(screen.getByLabelText("Where Engram is installed"), { target: { value: path } });

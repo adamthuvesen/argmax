@@ -63,7 +63,6 @@ declare global {
   }
 }
 
-
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
 }
@@ -95,7 +94,10 @@ export function hostsBrowserSurface(): boolean {
   return !isSecondaryWindow();
 }
 
-function subscribeThroughTauri<C extends keyof PushPayloads>(channel: C, listener: (payload: PushPayloads[C]) => void): EventSubscription {
+function subscribeThroughTauri<C extends keyof PushPayloads>(
+  channel: C,
+  listener: (payload: PushPayloads[C]) => void
+): EventSubscription {
   let unlisten: UnlistenFn | null = null;
   let disposed = false;
   let unlistenQueued = false;
@@ -237,7 +239,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
 
   return {
     markWorkspacesViewed: (input: WorkspacesMarkViewedInput) =>
-      invokeCommand("workspaces:mark-viewed", input).then(rows => rows.map(decode.workspace)),
+      invokeCommand("workspaces:mark-viewed", input).then((rows) => rows.map(decode.workspace)),
     dashboard: {
       list: () => invokeCommand("dashboard:list").then(decode.dashboard),
       onDelta
@@ -256,8 +258,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       pickFolder: () => invokeCommand("projects:pick-folder").then(decode.pickedFolder),
       register: (input: RegisterProjectInput) => invokeCommand("projects:register", input),
       remove: (input: RemoveProjectInput) => invokeCommand("projects:remove", input).then(() => undefined),
-      updateSettings: (input: UpdateProjectSettingsInput) =>
-        invokeCommand("projects:update-settings", input),
+      updateSettings: (input: UpdateProjectSettingsInput) => invokeCommand("projects:update-settings", input),
       listBranches: (projectId: string, projectFolderId?: string) =>
         invokeCommand("projects:list-branches", { projectId, ...(projectFolderId ? { projectFolderId } : {}) }),
       listCheckouts: (projectId: string, projectFolderId?: string) =>
@@ -280,27 +281,25 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       status: (input: WorkspaceStatusInput = { workspaceIds: null }) =>
         invokeCommand("workspace:status", input).then(decode.workspaceStatus),
       keep: (workspaceId) => invokeCommand("workspaces:keep", { workspaceId }).then(decode.workspace),
-      archive: (input) => invokeCommand("workspaces:archive", input).then(row => ({ ...row, workspace: decode.workspace(row.workspace) })),
+      archive: (input) =>
+        invokeCommand("workspaces:archive", input).then((row) => ({
+          ...row,
+          workspace: decode.workspace(row.workspace)
+        })),
       openInIde: (input: OpenInIdeInput) => invokeCommand("workspaces:open-in-ide", input),
       autoTitle: (input) => invokeCommand("workspaces:autotitle", input),
       setPinned: (input) => invokeCommand("workspaces:set-pinned", input).then(decode.workspace),
-      setPriorityDismissed: (input) =>
-        invokeCommand("workspaces:set-priority-dismissed", input).then(decode.workspace),
-      setPriorityAdded: (input) =>
-        invokeCommand("workspaces:set-priority-added", input).then(decode.workspace),
-      setSnoozedUntil: (input) =>
-        invokeCommand("workspaces:set-snoozed-until", input).then(decode.workspace),
+      setPriorityDismissed: (input) => invokeCommand("workspaces:set-priority-dismissed", input).then(decode.workspace),
+      setPriorityAdded: (input) => invokeCommand("workspaces:set-priority-added", input).then(decode.workspace),
+      setSnoozedUntil: (input) => invokeCommand("workspaces:set-snoozed-until", input).then(decode.workspace),
       setLabel: (input) => invokeCommand("workspaces:set-label", input).then(decode.workspace),
       setIcon: (input) => invokeCommand("workspaces:set-icon", input).then(decode.workspace)
     },
     providers: {
-      discover: (refresh = false) =>
-        invokeCommand("providers:discover", { refresh }),
+      discover: (refresh = false) => invokeCommand("providers:discover", { refresh }),
       launch: (input: LaunchProviderSessionInput) => invokeCommand("providers:launch", input).then(decode.session),
-      sendInput: (input: ProviderSessionInput) =>
-        invokeCommand("providers:send-input", input),
-      steerInput: (input: ProviderSessionInput) =>
-        invokeCommand("providers:steer-input", input),
+      sendInput: (input: ProviderSessionInput) => invokeCommand("providers:send-input", input),
+      steerInput: (input: ProviderSessionInput) => invokeCommand("providers:steer-input", input),
       resize: (input: ProviderSessionResizeInput) => invokeCommand("providers:resize", input),
       terminate: (sessionId: string) => invokeCommand("providers:terminate", { sessionId }),
       cancelQueuedMessage: (input: ProvidersCancelQueuedMessageInput) =>
@@ -309,14 +308,11 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         invokeCommand("providers:send-queued-message-now", input)
     },
     cloud: {
-      prepare: (input: CloudPrepareInput) =>
-        invokeCommand("cloud:prepare", input),
-      launch: (input: CloudLaunchInput) =>
-        invokeCommand("cloud:launch", input)
+      prepare: (input: CloudPrepareInput) => invokeCommand("cloud:prepare", input),
+      launch: (input: CloudLaunchInput) => invokeCommand("cloud:launch", input)
     },
     attachments: {
-      saveImage: (input: AttachmentSaveImageInput) =>
-        invokeCommand("attachments:save-image", input)
+      saveImage: (input: AttachmentSaveImageInput) => invokeCommand("attachments:save-image", input)
     },
     visualization: {
       import: (input) => invokeCommand("visualization:import", input),
@@ -328,13 +324,11 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       export: (input) => invokeCommand("visualization:export", input)
     },
     approvals: {
-      pending: () => invokeCommand("approvals:pending").then(rows => rows.map(decode.approval)),
-      resolve: (input: ResolveApprovalInput) =>
-        invokeCommand("approvals:resolve", input).then(decode.approval)
+      pending: () => invokeCommand("approvals:pending").then((rows) => rows.map(decode.approval)),
+      resolve: (input: ResolveApprovalInput) => invokeCommand("approvals:resolve", input).then(decode.approval)
     },
     questions: {
-      resolve: (input: QuestionsResolveInput) =>
-        invokeCommand("questions:resolve", input)
+      resolve: (input: QuestionsResolveInput) => invokeCommand("questions:resolve", input)
     },
     session: {
       eventsSince: (input: SessionEventsSinceInput) =>
@@ -351,10 +345,8 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
           workspace: decode.workspace(forked.workspace),
           session: decode.session(forked.session)
         })),
-      forkLineage: (input: SessionForkLineageInput) =>
-        invokeCommand("session:fork-lineage", input),
-      forkMergePreview: (input: SessionForkMergePreviewInput) =>
-        invokeCommand("session:fork-merge-preview", input),
+      forkLineage: (input: SessionForkLineageInput) => invokeCommand("session:fork-lineage", input),
+      forkMergePreview: (input: SessionForkMergePreviewInput) => invokeCommand("session:fork-merge-preview", input),
       forkMerge: (input: SessionForkMergeInput) => invokeCommand("session:fork-merge", input),
       multitask: (input) =>
         invokeCommand("session:multitask", {
@@ -364,17 +356,15 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
           taskLabel: input.taskLabel ?? null
         }),
       clear: (input: SessionClearInput) => invokeCommand("session:clear", input).then(decode.session),
-      suggestFollowUp: (input) =>
-        invokeCommand("session:suggest-follow-up", input),
-      costSummary: (input: SessionCostSummaryInput) =>
-        invokeCommand("session:cost-summary", input),
+      suggestFollowUp: (input) => invokeCommand("session:suggest-follow-up", input),
+      costSummary: (input: SessionCostSummaryInput) => invokeCommand("session:cost-summary", input),
       search: (input) => invokeCommand("session:search", input)
     },
     goals: {
       set: (input) => invokeCommand("goal:set", input),
       get: (input) => invokeCommand("goal:get", input),
       list: (input) => invokeCommand("goal:list", input),
-      clear: (input) => invokeCommand("goal:clear", input),
+      clear: (input) => invokeCommand("goal:clear", input)
     },
     arcs: {
       create: (input) => invokeCommand("arc:create", input),
@@ -397,12 +387,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       unstageHunk: (input) => invokeCommand("review:unstage-hunk", input).then(() => undefined),
       listChangedFiles: (target: WorkspaceTarget, comparison?: ReviewComparison) =>
         invokeCommand("review:list-changed-files", { ...target, comparison }),
-      loadDiff: (
-        target: WorkspaceTarget,
-        filePath?: string,
-        comparison?: ReviewComparison,
-        contextLines?: number
-      ) =>
+      loadDiff: (target: WorkspaceTarget, filePath?: string, comparison?: ReviewComparison, contextLines?: number) =>
         invokeCommand("review:load-diff", {
           ...target,
           filePath,
@@ -411,8 +396,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         })
     },
     workspace: {
-      listFiles: (target: WorkspaceTarget) =>
-        invokeCommand("workspace:list-files", target),
+      listFiles: (target: WorkspaceTarget) => invokeCommand("workspace:list-files", target),
       readFile: (target: WorkspaceTarget, filePath: string) =>
         invokeCommand("workspace:read-file", { ...target, filePath }),
       writeFile: (target: WorkspaceTarget, filePath: string, content: string, expectedMtimeMs: number | null) =>
@@ -424,10 +408,8 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
         }),
       statFile: (target: WorkspaceTarget, filePath: string) =>
         invokeCommand("workspace:stat-file", { ...target, filePath }),
-      readExternalFile: (path: string) =>
-        invokeCommand("workspace:read-external-file", { path }),
-      statExternalFile: (path: string) =>
-        invokeCommand("workspace:stat-external-file", { path }),
+      readExternalFile: (path: string) => invokeCommand("workspace:read-external-file", { path }),
+      statExternalFile: (path: string) => invokeCommand("workspace:stat-external-file", { path }),
       grepContent: (input) => invokeCommand("workspace:grep-content", input)
     },
     checks: {
@@ -459,27 +441,25 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       clearOpencodeGatewayKey: (input) => invokeCommand("settings:clear-opencode-gateway-key", input),
       branchTemplate: () => invokeCommand("settings:branch-template"),
       setBranchTemplate: (input) => invokeCommand("settings:set-branch-template", input),
-      setBrowserTools: (input) =>
-        invokeCommand("settings:set-browser-tools", input),
+      setBrowserTools: (input) => invokeCommand("settings:set-browser-tools", input),
       previewChatCleanup: () => invokeCommand("settings:preview-chat-cleanup"),
       deleteOldChats: (input) => invokeCommand("settings:delete-old-chats", input)
     },
     system: {
-      confirm: (message) => isTauriRuntime()
-        ? confirmDialog(message, { title: "Argmax", kind: "warning" })
-        : Promise.resolve(window.confirm(message)),
+      confirm: (message) =>
+        isTauriRuntime()
+          ? confirmDialog(message, { title: "Argmax", kind: "warning" })
+          : Promise.resolve(window.confirm(message)),
       openPath: (input) => invokeCommand("system:open-path", input),
       openFileIn: (input) => invokeCommand("system:open-file-in", input),
       listDetectedIdes: () => invokeCommand("system:list-detected-ides"),
       diagnostics: () => invokeCommand("system:diagnostics"),
-      debugSnapshot: (input) =>
-        invokeCommand("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
+      debugSnapshot: (input) => invokeCommand("system:debug-snapshot", { afterLogSeq: input?.afterLogSeq ?? null }),
       performanceStart: () => invokeCommand("system:performance-start"),
       performanceStop: () => invokeCommand("system:performance-stop"),
       performanceStatus: () => invokeCommand("system:performance-status"),
       performanceCapture: () => invokeCommand("system:performance-capture"),
-      reportRendererStall: (durationMs) =>
-        invokeCommand("system:renderer-stall", { durationMs }),
+      reportRendererStall: (durationMs) => invokeCommand("system:renderer-stall", { durationMs }),
       onZoom: (listener) => subscribe("ui:zoom", listener),
       vacuumDatabase: () => invokeCommand("system:vacuum-database"),
       setTheme: (mode) => invokeCommand("system:set-theme", { mode }),
@@ -488,8 +468,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
           ...input,
           reasoningEffort: input.reasoningEffort ?? null
         }),
-      setNotificationsEnabled: (enabled) =>
-        invokeCommand("system:set-notifications-enabled", { enabled }),
+      setNotificationsEnabled: (enabled) => invokeCommand("system:set-notifications-enabled", { enabled }),
       setKeepAwake: (enabled) => invokeCommand("system:set-keep-awake", { enabled }),
       testNotification: () => invokeCommand("system:test-notification")
     },
@@ -498,10 +477,8 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       setConfig: (input) => invokeCommand("remote:set-config", input),
       testNotification: () => invokeCommand("remote:test-notification"),
       setApnsConfig: (input) => invokeCommand("remote:set-apns-config", input),
-      registerPushDevice: (input) =>
-        invokeCommand("remote:register-push-device", input),
-      unregisterPushDevice: (input) =>
-        invokeCommand("remote:unregister-push-device", input),
+      registerPushDevice: (input) => invokeCommand("remote:register-push-device", input),
+      unregisterPushDevice: (input) => invokeCommand("remote:unregister-push-device", input),
       pushTest: () => invokeCommand("remote:push-test"),
       pushCapability: () => invokeCommand("remote:push-capability")
     },
@@ -511,7 +488,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       runNow: () => invokeCommand("sync:run-now").then(decode.syncStatus)
     },
     routines: {
-      list: () => invokeCommand("routines:list").then(rows => rows.map(decode.routine)),
+      list: () => invokeCommand("routines:list").then((rows) => rows.map(decode.routine)),
       upsert: (input: RoutineUpsertInput) => invokeCommand("routines:upsert", input).then(decode.routine),
       delete: (id: string) => invokeCommand("routines:delete", { id }),
       setEnabled: (id: string, enabled: boolean) =>
@@ -522,8 +499,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
     usage: {
       summary: (input: UsageSummaryInput) => invokeCommand("usage:summary", input),
       remaining: () => invokeCommand("usage:remaining"),
-      routerCost: (input: UsageRouterCostInput) =>
-        invokeCommand("usage:router-cost", input)
+      routerCost: (input: UsageRouterCostInput) => invokeCommand("usage:router-cost", input)
     },
     activity: {
       summary: (input: ActivitySummaryInput) => invokeCommand("activity:summary", input)
@@ -558,13 +534,14 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       delete: (input) => invokeCommand("sources:delete", input).then(() => undefined)
     },
     learnings: {
-      list: (input) => invokeCommand("learnings:list", input).then(rows => rows.map(decode.learning)),
+      list: (input) => invokeCommand("learnings:list", input).then((rows) => rows.map(decode.learning)),
       update: (input) => invokeCommand("learnings:update", input).then(decode.learning),
       delete: (id: string) => invokeCommand("learnings:delete", { id })
     },
     prs: {
-      listForSession: (input) => invokeCommand("prs:list-for-session", input).then(rows => rows.map(decode.pullRequest)),
-      refresh: (input) => invokeCommand("prs:refresh", input).then(rows => rows.map(decode.pullRequest)),
+      listForSession: (input) =>
+        invokeCommand("prs:list-for-session", input).then((rows) => rows.map(decode.pullRequest)),
+      refresh: (input) => invokeCommand("prs:refresh", input).then((rows) => rows.map(decode.pullRequest)),
       setPrimary: (input) => invokeCommand("prs:set-primary", input),
       dismiss: (input) => invokeCommand("prs:dismiss", input),
       cleanup: (input) => invokeCommand("prs:cleanup", input)
@@ -574,23 +551,17 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       write: (input: TerminalWriteInput) => invokeCommand("terminal:write", input),
       resize: (input: TerminalResizeInput) => invokeCommand("terminal:resize", input),
       terminate: (terminalId: string) => invokeCommand("terminal:terminate", { terminalId }),
-      onData: (listener: (event: TerminalDataEvent) => void) =>
-        subscribe("terminal:data", listener),
-      onExit: (listener: (event: TerminalExitEvent) => void) =>
-        subscribe("terminal:exit", listener),
-      onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) =>
-        subscribe("terminal:agent-open", listener)
+      onData: (listener: (event: TerminalDataEvent) => void) => subscribe("terminal:data", listener),
+      onExit: (listener: (event: TerminalExitEvent) => void) => subscribe("terminal:exit", listener),
+      onAgentOpen: (listener: (event: TerminalAgentOpenEvent) => void) => subscribe("terminal:agent-open", listener)
     },
     browser: {
       chromeProfiles: () => invokeCommand("browser:chrome-profiles"),
-      importChromeHistory: (profileId: string) =>
-        invokeCommand("browser:import-chrome-history", { profileId }),
+      importChromeHistory: (profileId: string) => invokeCommand("browser:import-chrome-history", { profileId }),
       contentBlocking: () => invokeCommand("browser:content-blocking"),
-      setSiteBlocking: (input) =>
-        invokeCommand("browser:set-site-blocking", input),
+      setSiteBlocking: (input) => invokeCommand("browser:set-site-blocking", input),
       open: (input) => invokeCommand("browser:open", input),
-      navigate: (url: string, tabId: string) =>
-        invokeCommand("browser:navigate", { url, tabId }),
+      navigate: (url: string, tabId: string) => invokeCommand("browser:navigate", { url, tabId }),
       back: (tabId: string) => invokeCommand("browser:back", { tabId }),
       forward: (tabId: string) => invokeCommand("browser:forward", { tabId }),
       reload: (tabId: string) => invokeCommand("browser:reload", { tabId }),
@@ -599,8 +570,7 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       setBounds: (input) => invokeCommand("browser:set-bounds", input),
       focus: (tabId: string) => invokeCommand("browser:focus", { tabId }),
       close: (tabId: string) => invokeCommand("browser:close", { tabId }),
-      fillCredentials: (tabId: string) =>
-        invokeCommand("browser:fill-credentials", { tabId }),
+      fillCredentials: (tabId: string) => invokeCommand("browser:fill-credentials", { tabId }),
       screenshot: (input) => invokeCommand("browser:screenshot", input),
       evaluate: (input) => invokeCommand("browser:evaluate", input),
       listTabs: (input) => invokeCommand("browser:list-tabs", input),
@@ -610,16 +580,12 @@ function createArgmaxApi(transport: BridgeTransport): ArgmaxApi {
       getText: (input) => invokeCommand("browser:get-text", input),
       extract: (input) => invokeCommand("browser:extract", input).then(decode.pageExtraction),
       act: (input) => invokeCommand("browser:act", input),
-      onState: (listener: (event: BrowserStateEvent) => void) =>
-        subscribe("browser:state", listener),
-      onNewTab: (listener: (event: BrowserNewTabEvent) => void) =>
-        subscribe("browser:new-tab", listener),
+      onState: (listener: (event: BrowserStateEvent) => void) => subscribe("browser:state", listener),
+      onNewTab: (listener: (event: BrowserNewTabEvent) => void) => subscribe("browser:new-tab", listener),
       onPageCommand: (listener: (event: BrowserPageCommandEvent) => void) =>
         subscribe("browser:page-command", listener),
-      onTabs: (listener: (event: { tabs: BrowserTabInfo[] }) => void) =>
-        subscribe("browser:tabs", listener),
-      onAgentOpen: (listener: (event: BrowserAgentOpenEvent) => void) =>
-        subscribe("browser:agent-open", listener)
+      onTabs: (listener: (event: { tabs: BrowserTabInfo[] }) => void) => subscribe("browser:tabs", listener),
+      onAgentOpen: (listener: (event: BrowserAgentOpenEvent) => void) => subscribe("browser:agent-open", listener)
     }
   };
 }

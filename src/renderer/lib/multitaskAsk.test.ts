@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { TimelineEvent } from "../../shared/types.js";
 import { multitaskPendingQuestion } from "./multitaskAsk.js";
 
-function event(id: string, type: string, createdAt: string, message: string, payload: Record<string, unknown>): TimelineEvent {
+function event(
+  id: string,
+  type: string,
+  createdAt: string,
+  message: string,
+  payload: Record<string, unknown>
+): TimelineEvent {
   return { id, sessionId: "child", type, message, payload, createdAt };
 }
 
@@ -12,7 +18,11 @@ const asked = event("ask-start", "command.started", "2026-09-26T10:00:01.000Z", 
   name: "AskUserQuestion",
   input: {
     questions: [
-      { question: "Should this go under fixes or improvements?", header: "Section", options: [{ label: "Fixes" }, { label: "Improvements" }] }
+      {
+        question: "Should this go under fixes or improvements?",
+        header: "Section",
+        options: [{ label: "Fixes" }, { label: "Improvements" }]
+      }
     ]
   }
 });

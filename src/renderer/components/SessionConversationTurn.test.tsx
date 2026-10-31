@@ -143,11 +143,17 @@ describe("SessionConversationTurn", () => {
     };
     const toolItems = Array.from({ length: steps }, (_, index) => ({
       kind: "tool" as const,
-      tool: { ...edit, id: `edit-${index}`, toolUseId: `edit-${index}`,
-        createdAt: new Date(Date.parse(session.startedAt) + index * 2000 + 1000).toISOString() }
+      tool: {
+        ...edit,
+        id: `edit-${index}`,
+        toolUseId: `edit-${index}`,
+        createdAt: new Date(Date.parse(session.startedAt) + index * 2000 + 1000).toISOString()
+      }
     }));
     const narration = toolItems.map((_, index) => ({
-      ...turn.assistantEvents[0], id: `progress-${index}`, message: `Checking file ${index}.`,
+      ...turn.assistantEvents[0],
+      id: `progress-${index}`,
+      message: `Checking file ${index}.`,
       createdAt: new Date(Date.parse(session.startedAt) + index * 2000).toISOString()
     }));
     const options = {
@@ -159,13 +165,22 @@ describe("SessionConversationTurn", () => {
     const { rerender } = renderTurn(options);
     expect(screen.getAllByRole("button", { name: /Edited/ }).length).toBeGreaterThan(0);
     detached = true;
-    options.item = { ...options.item, assistantEvents: [...narration, {
-      ...turn.assistantEvents[0], createdAt: "2026-05-12T15:01:00.000Z",
-      message: "The requested implementation is complete. All focused checks passed."
-    }] };
+    options.item = {
+      ...options.item,
+      assistantEvents: [
+        ...narration,
+        {
+          ...turn.assistantEvents[0],
+          createdAt: "2026-05-12T15:01:00.000Z",
+          message: "The requested implementation is complete. All focused checks passed."
+        }
+      ]
+    };
     options.session = session;
     rerender();
-    act(() => { vi.advanceTimersByTime(600); });
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
     expect(screen.queryByRole("button", { name: /Edited/ })).not.toBeInTheDocument();
     expect(screen.getByText("The requested implementation is complete. All focused checks passed.")).toBeVisible();
     expect(follow.isDetached()).toBe(true);
@@ -194,7 +209,9 @@ describe("SessionConversationTurn", () => {
     expect(Boolean(agentLaunch)).toBe(hasAgent);
     const timeline = [activity, agentLaunch, planGroup, reply].filter((node): node is HTMLElement => node !== null);
     for (let index = 1; index < timeline.length; index += 1) {
-      expect(timeline[index - 1].compareDocumentPosition(timeline[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        timeline[index - 1].compareDocumentPosition(timeline[index]) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
     }
   });
 
@@ -217,10 +234,17 @@ describe("SessionConversationTurn", () => {
     options.item = {
       ...turn,
       toolItems: [...turn.toolItems, { kind: "tool", tool: agent }],
-      assistantEvents: [...turn.assistantEvents, {
-        id: "later-reply", sessionId: session.id, type: "message.completed" as const,
-        message: "The agents finished.", payload: {}, createdAt: "2026-05-12T15:00:05.000Z"
-      }]
+      assistantEvents: [
+        ...turn.assistantEvents,
+        {
+          id: "later-reply",
+          sessionId: session.id,
+          type: "message.completed" as const,
+          message: "The agents finished.",
+          payload: {},
+          createdAt: "2026-05-12T15:00:05.000Z"
+        }
+      ]
     };
     options.todo = { ...plan, updatedAt: "2026-05-12T15:00:01.000Z" };
     rerender();
@@ -245,7 +269,9 @@ describe("SessionConversationTurn", () => {
       expect(screen.getByRole("button", { name: "Waiting" })).toBeInTheDocument();
       options.session = { ...options.session, state };
       rerender();
-      act(() => { vi.advanceTimersByTime(600); });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
       expect(screen.queryByRole("button", { name: "Waiting" })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Edited/ })).not.toBeInTheDocument();
@@ -267,7 +293,9 @@ describe("SessionConversationTurn", () => {
 
       options.session = { ...options.session, state: "waiting", attention: "approval-needed" };
       rerender();
-      act(() => { vi.advanceTimersByTime(10000); });
+      act(() => {
+        vi.advanceTimersByTime(10000);
+      });
       expect(activity).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^Worked/ })).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Waiting" })).toBeInTheDocument();
@@ -276,11 +304,17 @@ describe("SessionConversationTurn", () => {
       options.session = { ...options.session, state: "running", attention: "normal" };
       options.item = {
         ...turn,
-        assistantEvents: [...turn.assistantEvents, {
-          id: "late-answer", sessionId: session.id, type: "message.completed",
-          message: "The approved operation has now finished.", payload: {},
-          createdAt: "2026-05-12T15:00:20.000Z"
-        }]
+        assistantEvents: [
+          ...turn.assistantEvents,
+          {
+            id: "late-answer",
+            sessionId: session.id,
+            type: "message.completed",
+            message: "The approved operation has now finished.",
+            payload: {},
+            createdAt: "2026-05-12T15:00:20.000Z"
+          }
+        ]
       };
       rerender();
       expect(screen.getByRole("button", { name: "Working" })).toBeInTheDocument();
@@ -288,7 +322,9 @@ describe("SessionConversationTurn", () => {
 
       options.session = { ...options.session, state: "complete" };
       rerender();
-      act(() => { vi.advanceTimersByTime(600); });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
       expect(screen.getByRole("button", { name: /^Worked/ })).toBeInTheDocument();
       if (defaultToolCallsDisplay === "single-line") expect(activity).not.toBeInTheDocument();
     }

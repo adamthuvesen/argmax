@@ -47,8 +47,10 @@ afterEach(() => {
 describe("browser history", () => {
   it("retains imported pages beyond the old cap after browsing and reloading", async () => {
     const imported = Array.from({ length: 250 }, (_, index) => ({
-      url: `https://example.com/page-${index}/`, title: `Page ${index}`,
-      visitedAt: 1_700_000_000_000 + index, visitCount: 3
+      url: `https://example.com/page-${index}/`,
+      title: `Page ${index}`,
+      visitedAt: 1_700_000_000_000 + index,
+      visitCount: 3
     }));
     expect(await mergeBrowserHistory(imported)).toBe(250);
     await recordBrowserVisit("https://new.example.com", "New");
@@ -91,16 +93,16 @@ describe("browser history", () => {
 
   it("does not lose visits that arrive while IndexedDB is loading", async () => {
     let finishLoad: ((entries: BrowserHistoryEntry[]) => void) | undefined;
-    loadHistory = () => new Promise((resolve) => { finishLoad = resolve; });
+    loadHistory = () =>
+      new Promise((resolve) => {
+        finishLoad = resolve;
+      });
 
     const visit = recordBrowserVisit("https://new.example.com", "New");
     finishLoad?.([{ url: "https://stored.example.com", title: "Stored", visitedAt: 1, visitCount: 2 }]);
     await visit;
 
-    expect(saved?.map((entry) => entry.url)).toEqual([
-      "https://new.example.com",
-      "https://stored.example.com"
-    ]);
+    expect(saved?.map((entry) => entry.url)).toEqual(["https://new.example.com", "https://stored.example.com"]);
   });
 
   it("orders concurrent visit writes so neither update is overwritten", async () => {
@@ -123,7 +125,10 @@ describe("browser history", () => {
     expect(await mergeBrowserHistory(imported)).toBe(0);
     expect(await mergeBrowserHistory(imported)).toBe(0);
     expect(suggestBrowserHistory("")[0]).toEqual({
-      url: "https://example.com", title: "Local title", visitedAt: 5_000, visitCount: 12
+      url: "https://example.com",
+      title: "Local title",
+      visitedAt: 5_000,
+      visitCount: 12
     });
   });
 
@@ -138,7 +143,10 @@ describe("browser history", () => {
       { url: "https://github.com/old", title: "Old", visitedAt: 1_000, visitCount: 8 }
     ]);
     expect(suggestBrowserHistory("github").map((entry) => entry.url)).toEqual([
-      "https://github.com/often", "https://github.com/once", "https://github.com/old", "https://other.com"
+      "https://github.com/often",
+      "https://github.com/once",
+      "https://github.com/old",
+      "https://other.com"
     ]);
     expect(suggestBrowserHistory("github often")[0]?.url).toBe("https://github.com/often");
   });
@@ -168,18 +176,20 @@ describe("browser history", () => {
   it("reports persistence failure without replacing existing history", async () => {
     await recordBrowserVisit("https://kept.com", "Kept");
     failSave = true;
-    await expect(mergeBrowserHistory([
-      { url: "https://new.com", title: null, visitedAt: Date.now(), visitCount: 1 }
-    ])).rejects.toThrow("Could not save imported history");
+    await expect(
+      mergeBrowserHistory([{ url: "https://new.com", title: null, visitedAt: Date.now(), visitCount: 1 }])
+    ).rejects.toThrow("Could not save imported history");
     expect(suggestBrowserHistory("").map((entry) => entry.url)).toEqual(["https://kept.com"]);
   });
 
   it("rejects malformed import data atomically", async () => {
     await recordBrowserVisit("https://kept.com", "Kept");
-    await expect(mergeBrowserHistory([
-      { url: "https://valid.com", title: null, visitedAt: 1_000 },
-      { url: "file:///private", title: null, visitedAt: 1_000 }
-    ])).rejects.toThrow("invalid browser history");
+    await expect(
+      mergeBrowserHistory([
+        { url: "https://valid.com", title: null, visitedAt: 1_000 },
+        { url: "file:///private", title: null, visitedAt: 1_000 }
+      ])
+    ).rejects.toThrow("invalid browser history");
     expect(suggestBrowserHistory("").map((entry) => entry.url)).toEqual(["https://kept.com"]);
   });
 
@@ -189,10 +199,7 @@ describe("browser history", () => {
     await recordBrowserVisit("https://github.com", null);
 
     const suggestions = suggestBrowserHistory("");
-    expect(suggestions.map((entry) => entry.url)).toEqual([
-      "https://github.com",
-      "https://example.com"
-    ]);
+    expect(suggestions.map((entry) => entry.url)).toEqual(["https://github.com", "https://example.com"]);
     expect(suggestions[0]?.title).toBe("GitHub");
   });
 
@@ -200,12 +207,8 @@ describe("browser history", () => {
     await recordBrowserVisit("https://github.com/argmax", "Argmax repo");
     await recordBrowserVisit("https://example.com", "Example");
 
-    expect(suggestBrowserHistory("ARGMAX").map((entry) => entry.url)).toEqual([
-      "https://github.com/argmax"
-    ]);
-    expect(suggestBrowserHistory("example.com").map((entry) => entry.url)).toEqual([
-      "https://example.com"
-    ]);
+    expect(suggestBrowserHistory("ARGMAX").map((entry) => entry.url)).toEqual(["https://github.com/argmax"]);
+    expect(suggestBrowserHistory("example.com").map((entry) => entry.url)).toEqual(["https://example.com"]);
     expect(suggestBrowserHistory("nothing")).toEqual([]);
   });
 

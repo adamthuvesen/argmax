@@ -23,14 +23,25 @@ function readUnresolved(): UnresolvedOperation[] {
   const raw = sessionStorage.getItem(OPERATIONS_KEY);
   if (!raw) return [];
   const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed) || !parsed.every((entry: unknown) => {
-    if (!entry || typeof entry !== "object" || !("request" in entry) || !("identity" in entry)) return false;
-    const identity = entry.identity;
-    return typeof entry.request === "string" && "owner" in entry && typeof entry.owner === "string"
-      && identity !== null && typeof identity === "object"
-      && "clientId" in identity && typeof identity.clientId === "string"
-      && "operationId" in identity && typeof identity.operationId === "string";
-  })) throw new Error("Cannot read unresolved remote actions. Check the host before clearing browser storage.");
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every((entry: unknown) => {
+      if (!entry || typeof entry !== "object" || !("request" in entry) || !("identity" in entry)) return false;
+      const identity = entry.identity;
+      return (
+        typeof entry.request === "string" &&
+        "owner" in entry &&
+        typeof entry.owner === "string" &&
+        identity !== null &&
+        typeof identity === "object" &&
+        "clientId" in identity &&
+        typeof identity.clientId === "string" &&
+        "operationId" in identity &&
+        typeof identity.operationId === "string"
+      );
+    })
+  )
+    throw new Error("Cannot read unresolved remote actions. Check the host before clearing browser storage.");
   return parsed as UnresolvedOperation[];
 }
 
@@ -43,7 +54,9 @@ export function prepareRemoteOperation(channel: string, input: unknown, owner: s
   const existing = unresolved.find((entry) => entry.request === request && (entry.uncertain || entry.owner !== owner));
   if (existing) {
     if (existing.hostInterrupted) {
-      const retry = window.confirm("The host stopped before confirming the previous action. It may already have happened. After checking the chat or workspace, run it again as a new action?");
+      const retry = window.confirm(
+        "The host stopped before confirming the previous action. It may already have happened. After checking the chat or workspace, run it again as a new action?"
+      );
       if (!retry) throw new Error("Action left unconfirmed. Nothing new was sent.");
       unresolved.splice(unresolved.indexOf(existing), 1);
     } else {

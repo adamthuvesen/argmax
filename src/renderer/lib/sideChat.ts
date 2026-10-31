@@ -22,7 +22,8 @@ function quotedExcerptWithContext(excerpt: string, events: readonly TimelineEven
         decoded.kind !== "message" ||
         (decoded.role !== "user" && decoded.phase !== "completed") ||
         event.message.trim().length === 0
-      ) return [];
+      )
+        return [];
       return [{ role: decoded.role, message: event.message }];
     })
     .slice(-CONTEXT_EVENT_LIMIT)
@@ -31,10 +32,7 @@ function quotedExcerptWithContext(excerpt: string, events: readonly TimelineEven
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n");
-  const context =
-    exchanges.length > 0
-      ? `Recent context from that session:\n\n${exchanges.join("\n\n")}\n\n`
-      : "";
+  const context = exchanges.length > 0 ? `Recent context from that session:\n\n${exchanges.join("\n\n")}\n\n` : "";
   return context + `The excerpt I selected:\n\n${quote}\n\n`;
 }
 

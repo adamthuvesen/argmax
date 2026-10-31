@@ -48,29 +48,16 @@ type TurnBoundary =
   | { kind: "user" };
 
 /** Fold one event (scanning right-to-left) into the session's next-boundary state. */
-function advanceTurnBoundary(
-  previous: TurnBoundary | undefined,
-  event: TimelineEvent
-): TurnBoundary | undefined {
+function advanceTurnBoundary(previous: TurnBoundary | undefined, event: TimelineEvent): TurnBoundary | undefined {
   const canonical = decodeTimelineEvent(event);
-  if (
-    canonical.kind === "message" &&
-    canonical.role === "assistant" &&
-    canonical.phase === "completed"
-  ) {
+  if (canonical.kind === "message" && canonical.role === "assistant" && canonical.phase === "completed") {
     return { kind: "completed", completedText: event.message };
   }
   if (canonical.kind === "tool" && canonical.phase === "started") {
     if (canonical.parentToolUseId !== null) return previous;
-    return previous?.kind === "completed"
-      ? { kind: "tool", completedText: previous.completedText }
-      : previous;
+    return previous?.kind === "completed" ? { kind: "tool", completedText: previous.completedText } : previous;
   }
-  if (
-    canonical.kind === "message" &&
-    canonical.role === "user" &&
-    canonical.delivery !== "steer"
-  ) {
+  if (canonical.kind === "message" && canonical.role === "user" && canonical.delivery !== "steer") {
     return { kind: "user" };
   }
   return previous;

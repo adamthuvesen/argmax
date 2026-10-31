@@ -15,7 +15,8 @@ function fixture() {
   const repository = path.join(directory, "repo");
   const bin = path.join(directory, "bin");
   const log = path.join(directory, "checks.log");
-  for (const name of ["scripts", "src", ".github/workflows"]) mkdirSync(path.join(repository, name), { recursive: true });
+  for (const name of ["scripts", "src", ".github/workflows"])
+    mkdirSync(path.join(repository, name), { recursive: true });
   mkdirSync(bin);
   writeFileSync(log, "");
   const env = {
@@ -23,30 +24,25 @@ function fixture() {
     PATH: `${bin}${path.delimiter}${process.env.PATH}`,
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
-    PRECHECK_TEST_LOG: log,
+    PRECHECK_TEST_LOG: log
   };
   const stub = `#!/usr/bin/env node\nimport { appendFileSync } from "node:fs";\nappendFileSync(process.env.PRECHECK_TEST_LOG, process.argv.slice(1).join(" ") + "\\n");\n`;
   writeFileSync(path.join(bin, "package.json"), '{"type":"module"}');
   for (const command of ["npx", "cargo"]) writeFileSync(path.join(bin, command), stub, { mode: 0o755 });
   const files = ["src/café.ts", "vite.config.ts", ".github/workflows/ci.yml"];
   for (const name of files) writeFileSync(path.join(repository, name), "initial\n");
-  for (const name of [
-    "static-checks.mjs",
-    "check-bundle.mjs",
-    "ios-tests.mjs"
-  ]) {
+  for (const name of ["static-checks.mjs", "lint.mjs", "check-bundle.mjs", "ios-tests.mjs"]) {
     writeFileSync(path.join(repository, "scripts", name), stub);
   }
   writeFileSync(path.join(repository, ".gitignore"), "node_modules/\n");
-  const tscBin = path.join(repository, "node_modules/typescript-7/bin");
-  mkdirSync(tscBin, { recursive: true });
-  writeFileSync(path.join(repository, "node_modules/typescript-7/package.json"), '{"type":"module"}');
-  writeFileSync(path.join(tscBin, "tsc"), stub);
-  writeFileSync(path.join(repository, "scripts/precheck.mjs"), readFileSync(new URL("../../scripts/precheck.mjs", import.meta.url)));
+  writeFileSync(
+    path.join(repository, "scripts/precheck.mjs"),
+    readFileSync(new URL("../../scripts/precheck.mjs", import.meta.url))
+  );
   for (const args of [
     ["init", "-q", "-b", "main"],
     ["add", ".gitignore", "scripts", ...files],
-    ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--no-gpg-sign", "-qm", "fixture"],
+    ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--no-gpg-sign", "-qm", "fixture"]
   ]) {
     const result = spawnSync("git", args, { cwd: repository, env, encoding: "utf8" });
     expect(result.status, result.stderr).toBe(0);
@@ -60,7 +56,17 @@ function fixture() {
     commit(message: string) {
       const result = spawnSync(
         "git",
-        ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-am", message, "--no-gpg-sign", "-q"],
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.invalid",
+          "commit",
+          "-am",
+          message,
+          "--no-gpg-sign",
+          "-q"
+        ],
         { cwd: repository, env, encoding: "utf8" }
       );
       expect(result.status, result.stderr).toBe(0);
@@ -70,32 +76,40 @@ function fixture() {
       return spawnSync("git", ["rev-parse", "HEAD"], { cwd: repository, env, encoding: "utf8" }).stdout.trim();
     },
     run(base = "HEAD") {
-      const result = spawnSync(process.execPath, ["scripts/precheck.mjs", "--base", base], { cwd: repository, env, encoding: "utf8" });
-      return { ...result, checks: readFileSync(log, "utf8") };
-    },
-    runWithPush(input: string, remote = "origin") {
-      const result = spawnSync(process.execPath, ["scripts/precheck.mjs", remote, "git@example.invalid:test/repo.git"], {
+      const result = spawnSync(process.execPath, ["scripts/precheck.mjs", "--base", base], {
         cwd: repository,
         env,
-        input,
-        encoding: "utf8",
+        encoding: "utf8"
       });
       return { ...result, checks: readFileSync(log, "utf8") };
     },
+    runWithPush(input: string, remote = "origin") {
+      const result = spawnSync(
+        process.execPath,
+        ["scripts/precheck.mjs", remote, "git@example.invalid:test/repo.git"],
+        {
+          cwd: repository,
+          env,
+          input,
+          encoding: "utf8"
+        }
+      );
+      return { ...result, checks: readFileSync(log, "utf8") };
+    }
   };
 }
 
 describe("precheck CLI", () => {
   it.each([
-    ["src/café.ts", ["eslint", "typescript-7/bin/tsc --noEmit", "vite build", "check-bundle.mjs"]],
-    [".github/workflows/ci.yml", ["eslint", "cargo test", "check-bundle.mjs"]],
+    ["src/café.ts", ["lint.mjs", "oxfmt --check", "vite build", "check-bundle.mjs"]],
+    [".github/workflows/ci.yml", ["lint.mjs", "cargo test", "check-bundle.mjs"]],
     ["vite.config.ts", ["vite build", "check-bundle.mjs"]],
-    ["src-tauri/src/lib.rs", ["eslint", "cargo test", "check-bundle.mjs"]],
-    ["ios/Argmax/Sources/App.swift", ["eslint", "static-checks.mjs", "check-bundle.mjs", "ios-tests.mjs"]],
-    ["fixtures/parity/inline-math.json", ["eslint", "vitest run --changed", "ios-tests.mjs"]],
-    ["assets/browser-blocking/light.txt", ["eslint", "cargo test", "check-bundle.mjs"]],
-    ["index.html", ["eslint", "vite build", "check-bundle.mjs"]],
-    ["Dockerfile", ["eslint", "cargo test", "check-bundle.mjs"]],
+    ["src-tauri/src/lib.rs", ["lint.mjs", "cargo test", "check-bundle.mjs"]],
+    ["ios/Argmax/Sources/App.swift", ["lint.mjs", "static-checks.mjs", "check-bundle.mjs", "ios-tests.mjs"]],
+    ["fixtures/parity/inline-math.json", ["lint.mjs", "vitest run --changed", "ios-tests.mjs"]],
+    ["assets/browser-blocking/light.txt", ["lint.mjs", "cargo test", "check-bundle.mjs"]],
+    ["index.html", ["lint.mjs", "vite build", "check-bundle.mjs"]],
+    ["Dockerfile", ["lint.mjs", "cargo test", "check-bundle.mjs"]]
   ])("selects checks for %s in a checkout with spaces and #", (name, checks) => {
     const repo = fixture();
     repo.change(name);
@@ -149,11 +163,9 @@ describe("precheck CLI", () => {
     repo.change(".github/workflows/ci.yml");
 
     // Push stdin indicates pushing only initialSha..commitSha
-    const result = repo.runWithPush(
-      `refs/heads/main ${commitSha} refs/heads/main ${initialSha}\n`
-    );
+    const result = repo.runWithPush(`refs/heads/main ${commitSha} refs/heads/main ${initialSha}\n`);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.checks).toContain("eslint");
+    expect(result.checks).toContain("lint.mjs");
     expect(result.checks).toContain("vite build");
     // cargo test must NOT be triggered because the pushed commit only changed JS,
     // even though .github/workflows/ci.yml is dirty in the working tree.
@@ -167,13 +179,5 @@ describe("precheck CLI", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("no refs to push, skipping checks");
     expect(result.checks).toBe("");
-  });
-
-  it("passes the shared content-strategy cache to eslint", () => {
-    const repo = fixture();
-    repo.change("src/café.ts");
-    const result = repo.run();
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.checks).toContain("eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/");
   });
 });

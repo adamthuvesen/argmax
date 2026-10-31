@@ -23,8 +23,7 @@ export function parseScratchArgs(argv) {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) throw new Error("--data-dir requires a value");
       options.dataDir = value;
-    }
-    else if (arg === "--port") options.port = Number(argv[++i]);
+    } else if (arg === "--port") options.port = Number(argv[++i]);
     else if (arg === "--build") options.build = true;
     else if (arg === "--release") options.release = true;
     else throw new Error(`unknown argument: ${arg}`);
@@ -222,7 +221,16 @@ async function main() {
     };
     process.on("SIGINT", () => void stop());
     process.on("SIGTERM", () => void stop());
-    console.log(JSON.stringify({ ready: true, port: app.port, token: app.token, dataDir: app.dataDir, pid: app.pid, log: app.log }));
+    console.log(
+      JSON.stringify({
+        ready: true,
+        port: app.port,
+        token: app.token,
+        dataDir: app.dataDir,
+        pid: app.pid,
+        log: app.log
+      })
+    );
     const result = await app.exited;
     console.error(`argmax exited (code ${result.code ?? "-"}, signal ${result.signal ?? "-"}); log: ${app.log}`);
     process.exitCode = stopping ? 0 : (result.code ?? 1);

@@ -1,0 +1,265 @@
+{
+  "src/renderer/App.grid.test.tsx": {
+    "argmax(no-node-access)": 21
+  },
+  "src/renderer/App.launchCheckout.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/App.multitask.test.tsx": {
+    "argmax(no-node-access)": 4
+  },
+  "src/renderer/App.settings.test.tsx": {
+    "argmax(no-node-access)": 6,
+    "argmax(no-container)": 3
+  },
+  "src/renderer/App.sidebar.test.tsx": {
+    "argmax(no-node-access)": 5
+  },
+  "src/renderer/App.test.tsx": {
+    "argmax(no-node-access)": 3
+  },
+  "src/renderer/App.usage.test.tsx": {
+    "argmax(no-node-access)": 6
+  },
+  "src/renderer/components/AgentActivity.test.tsx": {
+    "argmax(no-node-access)": 3
+  },
+  "src/renderer/components/AgentEmblem.test.tsx": {
+    "argmax(no-node-access)": 9,
+    "argmax(no-container)": 9
+  },
+  "src/renderer/components/AgentLaunchList.test.tsx": {
+    "argmax(no-node-access)": 24,
+    "argmax(no-container)": 23
+  },
+  "src/renderer/components/AgentsView.test.tsx": {
+    "argmax(no-node-access)": 5
+  },
+  "src/renderer/components/arcs/ArcPage.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/BrowserPanel.controlled.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/BrowserPanel.test.tsx": {
+    "argmax(no-node-access)": 3
+  },
+  "src/renderer/components/ChatBubble.test.tsx": {
+    "argmax(no-node-access)": 6,
+    "argmax(no-container)": 5
+  },
+  "src/renderer/components/CloudTaskDialog.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/CodeBlock.test.tsx": {
+    "argmax(no-node-access)": 5
+  },
+  "src/renderer/components/composerEditor/extensions.test.tsx": {
+    "argmax(no-node-access)": 4
+  },
+  "src/renderer/components/ComposerEditorView.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/components/ContextRing.test.tsx": {
+    "argmax(no-node-access)": 2,
+    "argmax(no-container)": 2
+  },
+  "src/renderer/components/DiffBlocks.test.tsx": {
+    "argmax(no-node-access)": 5
+  },
+  "src/renderer/components/FileChangeCard.test.tsx": {
+    "argmax(no-node-access)": 6,
+    "argmax(no-container)": 6
+  },
+  "src/renderer/components/FilePopover.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/FilePreview.test.tsx": {
+    "argmax(no-node-access)": 1,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/ImageLightbox.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/components/KeyboardCheatSheet.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/LaunchSurface.background.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/LaunchSurface.draft.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/LaunchSurface.mascot.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/LaunchSurface.shortcuts.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/loading.test.tsx": {
+    "argmax(no-node-access)": 6,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/markdownSafety.test.tsx": {
+    "argmax(no-node-access)": 1,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/Mascot.test.tsx": {
+    "argmax(no-node-access)": 5,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/MermaidDiagram.test.tsx": {
+    "argmax(no-node-access)": 9,
+    "argmax(no-container)": 7
+  },
+  "src/renderer/components/ModelSelector.test.tsx": {
+    "argmax(no-node-access)": 5
+  },
+  "src/renderer/components/NewProjectDialog.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/PerfOverlay.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/ProjectFolderChanges.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/ReviewPanel.split.test.tsx": {
+    "argmax(no-node-access)": 1,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/ReviewPanel.test.tsx": {
+    "argmax(no-node-access)": 14,
+    "argmax(no-container)": 12
+  },
+  "src/renderer/components/ReviewSideChat.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/ReviewTabsBar.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/components/ServerIcon.test.tsx": {
+    "argmax(no-node-access)": 4
+  },
+  "src/renderer/components/SessionComposer.autoRoute.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/components/SessionComposer.draft.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/SessionComposer.editor.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/components/SessionComposer.goal.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/components/SessionComposer.providerSwitch.test.tsx": {
+    "argmax(no-node-access)": 2
+  },
+  "src/renderer/components/SessionComposer.snapshot.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/SessionConversation.annotations.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/SessionConversation.hostReview.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/SessionConversation.loading.test.tsx": {
+    "argmax(no-node-access)": 4
+  },
+  "src/renderer/components/SessionConversation.sessionNote.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/SessionConversation.streaming.test.tsx": {
+    "argmax(no-node-access)": 30,
+    "argmax(no-container)": 9
+  },
+  "src/renderer/components/SessionConversation.tools.test.tsx": {
+    "argmax(no-node-access)": 6
+  },
+  "src/renderer/components/SessionConversation.window.test.tsx": {
+    "argmax(no-node-access)": 3
+  },
+  "src/renderer/components/SessionConversation.workspaceCard.test.tsx": {
+    "argmax(no-node-access)": 2,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/SessionConversationTurn.test.tsx": {
+    "argmax(no-node-access)": 2,
+    "argmax(no-container)": 2
+  },
+  "src/renderer/components/settings/ProjectOverviewSettings.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/Sidebar.test.tsx": {
+    "argmax(no-node-access)": 26,
+    "argmax(no-container)": 4
+  },
+  "src/renderer/components/SidebarSessionRow.test.tsx": {
+    "argmax(no-node-access)": 44,
+    "argmax(no-container)": 5
+  },
+  "src/renderer/components/SlidingTabIndicator.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/StreamingMarkdown.test.tsx": {
+    "argmax(no-node-access)": 39,
+    "argmax(no-container)": 36
+  },
+  "src/renderer/components/ThinkingLabel.test.tsx": {
+    "argmax(no-node-access)": 13,
+    "argmax(no-container)": 5
+  },
+  "src/renderer/components/ToolCallDetail.test.tsx": {
+    "argmax(no-node-access)": 3,
+    "argmax(no-container)": 2
+  },
+  "src/renderer/components/ToolCallGroupBubble.test.tsx": {
+    "argmax(no-node-access)": 10,
+    "argmax(no-container)": 4
+  },
+  "src/renderer/components/ToolCallRow.test.tsx": {
+    "argmax(no-node-access)": 3,
+    "argmax(no-container)": 3
+  },
+  "src/renderer/components/TurnBlock.test.tsx": {
+    "argmax(no-node-access)": 5,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/TurnChangesCard.test.tsx": {
+    "argmax(no-node-access)": 1,
+    "argmax(no-container)": 1
+  },
+  "src/renderer/components/WelcomePane.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/components/WorkingNest.test.tsx": {
+    "argmax(no-node-access)": 11,
+    "argmax(no-container)": 10
+  },
+  "src/renderer/components/WorkspaceCard.test.tsx": {
+    "argmax(no-node-access)": 6
+  },
+  "src/renderer/components/WorkspaceTree.test.tsx": {
+    "argmax(no-node-access)": 3
+  },
+  "src/renderer/hooks/useGlobalKeybindings.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/hooks/useRestoreFocus.test.tsx": {
+    "argmax(no-node-access)": 1
+  },
+  "src/renderer/lib/toolCalls.ts": {
+    "argmax(no-timeline-payload-access)": 19
+  },
+  "src/renderer/mobile/MobileApp.embed.test.tsx": {
+    "argmax(no-node-access)": 3
+  },
+  "src/renderer/mobile/MobileApp.test.tsx": {
+    "argmax(no-node-access)": 16
+  },
+  "src/renderer/mobile/useVisualViewportInsets.test.tsx": {
+    "argmax(no-node-access)": 1
+  }
+}

@@ -83,8 +83,8 @@ export function BranchTemplatePanel({
     <section id="settings-branch-names" className="settings-card" aria-label="Branch names">
       <h3>Branch names</h3>
       <p className="settings-note">
-        Names the branch of each new worktree chat. Placeholders: {PLACEHOLDERS}. A taken name gets a
-        numeric suffix. Existing branches keep their names.
+        Names the branch of each new worktree chat. Placeholders: {PLACEHOLDERS}. A taken name gets a numeric suffix.
+        Existing branches keep their names.
       </p>
       <div className="settings-field">
         <label className="settings-field-label" htmlFor="settings-branch-template-app">

@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HEADLINE_COUNT, SCIENTIST_NAMES } from "./agentNames.js";
 import { SESSION_ICON_COLORS } from "./sessionIcons.js";
-import {
-  EMBLEM_BY_CODENAME,
-  EMBLEM_HUES,
-  EMBLEM_PATHS,
-  EMBLEM_SHAPES,
-  emblemForCodename
-} from "./agentEmblems.js";
+import { EMBLEM_BY_CODENAME, EMBLEM_HUES, EMBLEM_PATHS, EMBLEM_SHAPES, emblemForCodename } from "./agentEmblems.js";
 
 const pairs = SCIENTIST_NAMES.map((name) => emblemForCodename(name));
 
@@ -36,9 +30,7 @@ describe("the emblem table", () => {
     // The codename probe steps to the next name in the list when one is taken,
     // so neighbours have to differ in colour or the probe buys nothing.
     for (let i = 1; i < pairs.length; i += 1) {
-      expect(pairs[i].hue, `${SCIENTIST_NAMES[i - 1]} → ${SCIENTIST_NAMES[i]}`).not.toBe(
-        pairs[i - 1].hue
-      );
+      expect(pairs[i].hue, `${SCIENTIST_NAMES[i - 1]} → ${SCIENTIST_NAMES[i]}`).not.toBe(pairs[i - 1].hue);
     }
   });
 

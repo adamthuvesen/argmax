@@ -8,9 +8,21 @@ import { SERVER_ICON_TONE_DEPTH } from "../lib/serverIcons.js";
 const LIGHT_RULE = ':root:not([data-theme="dark"])[data-background-intensity]';
 const DARK_RULE = ':root[data-theme="dark"][data-background-intensity]';
 const NEUTRAL_SURFACES = [
-  "bg", "panel", "panel-soft", "composer-surface",
-  "panel-sunken", "code-surface", "terminal-surface", "tool-block-surface", "line-at-intensity",
-  "line-soft-at-intensity", "line-strong-at-intensity", "scrollbar-thumb", "scrollbar-thumb-hover", "overlay-panel", "overlay-panel-raised"
+  "bg",
+  "panel",
+  "panel-soft",
+  "composer-surface",
+  "panel-sunken",
+  "code-surface",
+  "terminal-surface",
+  "tool-block-surface",
+  "line-at-intensity",
+  "line-soft-at-intensity",
+  "line-strong-at-intensity",
+  "scrollbar-thumb",
+  "scrollbar-thumb-hover",
+  "overlay-panel",
+  "overlay-panel-raised"
 ];
 
 function readSource(path: string): string {
@@ -109,8 +121,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     const swift = readSource("ios/Argmax/Sources/Transcript/TranscriptToolIcon.swift");
     // Anchored on the colour function: the file switches over the same kinds
     // earlier to pick each icon's SF Symbol.
-    const body = /guard colorMode == \.color.*?switch kind \{(?<cases>.*?)\n {4}\}/s
-      .exec(swift)?.groups?.cases ?? "";
+    const body = /guard colorMode == \.color.*?switch kind \{(?<cases>.*?)\n {4}\}/s.exec(swift)?.groups?.cases ?? "";
     expect(body).not.toBe("");
 
     const colors = new Map<string, string>();
@@ -131,33 +142,39 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(colors.get("agentStop")).toBe("red");
   });
 
-  it.each(["teal", "purple", "orange", "blue", "coral"])("keeps %s highlights and bubbles readable in both themes", (accent) => {
-    const tokens = readSource("src/renderer/styles/tokens.css");
-    for (const theme of ["light", "dark"]) {
-      const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
-      const palette = cssRuleBody(tokens, `${theme === "dark" ? ':root[data-theme="dark"]' : ":root"}[data-accent="${accent}"]`);
-      for (const surface of ["bg", "sidebar", "panel"]) {
-        expect(contrast(readHex(palette, "accent"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
-        expect(contrast(readHex(palette, "accent-deep"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
-      }
-      const bubble = readHex(palette, palette.includes("--user-message-bg:") ? "user-message-bg" : "accent");
-      const bubbleInk = palette.includes("--user-message-fg:")
-        ? readHex(palette, "user-message-fg")
-        : readHex(base, "bubble-on-ink");
-      if (theme === "light" && accent === "orange") {
-        // The user chose white ink on vivid orange after comparing both options.
-        expect(bubbleInk).toBe("#ffffff");
-      } else if (accent === "orange") {
-        // Dark orange trades the 4.5:1 floor for a lighter fill, picked from mockups.
-        expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4);
-      } else {
-        expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4.5);
-      }
-      if (theme === "dark") {
-        expect(luminance(bubble)).toBeLessThan(luminance(readHex(palette, "accent")));
+  it.each(["teal", "purple", "orange", "blue", "coral"])(
+    "keeps %s highlights and bubbles readable in both themes",
+    (accent) => {
+      const tokens = readSource("src/renderer/styles/tokens.css");
+      for (const theme of ["light", "dark"]) {
+        const base = cssRuleBody(tokens, theme === "dark" ? ':root[data-theme="dark"]' : ":root");
+        const palette = cssRuleBody(
+          tokens,
+          `${theme === "dark" ? ':root[data-theme="dark"]' : ":root"}[data-accent="${accent}"]`
+        );
+        for (const surface of ["bg", "sidebar", "panel"]) {
+          expect(contrast(readHex(palette, "accent"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+          expect(contrast(readHex(palette, "accent-deep"), readHex(base, surface))).toBeGreaterThanOrEqual(4.5);
+        }
+        const bubble = readHex(palette, palette.includes("--user-message-bg:") ? "user-message-bg" : "accent");
+        const bubbleInk = palette.includes("--user-message-fg:")
+          ? readHex(palette, "user-message-fg")
+          : readHex(base, "bubble-on-ink");
+        if (theme === "light" && accent === "orange") {
+          // The user chose white ink on vivid orange after comparing both options.
+          expect(bubbleInk).toBe("#ffffff");
+        } else if (accent === "orange") {
+          // Dark orange trades the 4.5:1 floor for a lighter fill, picked from mockups.
+          expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4);
+        } else {
+          expect(contrast(bubbleInk, bubble)).toBeGreaterThanOrEqual(4.5);
+        }
+        if (theme === "dark") {
+          expect(luminance(bubble)).toBeLessThan(luminance(readHex(palette, "accent")));
+        }
       }
     }
-  });
+  );
 
   it("registers the terminal length token consumed by the canvas renderer", () => {
     const tokens = readSource("src/renderer/styles/tokens.css");
@@ -218,9 +235,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     // the app's text and leave the rest behind.
     const dark = cssRuleBody(tokens, ':root[data-theme="dark"]');
     for (const token of ["text", "text-soft", "muted", "muted-strong", "prose-ink", "prose-ink-strong"]) {
-      expect(dark).toMatch(
-        new RegExp(`--${token}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--ink-toward\\)`)
-      );
+      expect(dark).toMatch(new RegExp(`--${token}: color-mix\\(in oklab, #[0-9a-f]{6}, var\\(--ink-toward\\)`));
     }
   });
 
@@ -274,7 +289,10 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
 
   it("layers contrast over the intensity lines and is a no-op at 50", () => {
     const ladder = readSource("src/renderer/styles/background-intensity.css");
-    for (const [rule, toward] of [[LIGHT_RULE, "#000000"], [DARK_RULE, "#ffffff"]]) {
+    for (const [rule, toward] of [
+      [LIGHT_RULE, "#000000"],
+      [DARK_RULE, "#ffffff"]
+    ]) {
       const body = cssRuleBody(ladder, rule);
       expect(body).toContain("--line-fade: calc(max(0, 50 - var(--contrast, 50)) / 50 * 70%);");
       expect(body).toMatch(/--line-firm: calc\(max\(0, var\(--contrast, 50\) - 50\) \/ 50 \* \d+%\);/);
@@ -303,7 +321,6 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
     expect(light).toContain(
       "--bg: color-mix(in oklab, color-mix(in oklab, #f4f4f4, #ffffff var(--background-whiteness)), #000000 var(--background-dim));"
     );
-
 
     // The dark grounds fall toward black, but 100 stops 67% of the way there.
     for (const surface of ["bg", "panel-sunken", "code-surface", "terminal-surface"]) {
@@ -359,20 +376,14 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
   });
 
   it("keeps the centered transcript fixed when its vertical scrollbar appears", () => {
-    const conversation = cssRuleBody(
-      readSource("src/renderer/styles/chat-conversation.css"),
-      ".conversation-list"
-    );
+    const conversation = cssRuleBody(readSource("src/renderer/styles/chat-conversation.css"), ".conversation-list");
     // `auto` is the bug: WebKit only applies `scrollbar-gutter` once the
     // scrollbar exists, so the reservation arrives one state too late and the
     // column jumps every time a disclosure crosses the overflow boundary.
     expect(conversation).toContain("overflow-y: scroll;");
     expect(conversation).toContain("scrollbar-gutter: stable both-edges;");
 
-    const agents = cssRuleBody(
-      readSource("src/renderer/styles/chat-conversation.css"),
-      ".agent-activity-scroll"
-    );
+    const agents = cssRuleBody(readSource("src/renderer/styles/chat-conversation.css"), ".agent-activity-scroll");
     expect(agents).toContain("overflow-y: scroll;");
     expect(agents).toContain("scrollbar-gutter: stable both-edges;");
   });
@@ -430,9 +441,7 @@ describe("CSS contracts that cannot be exercised in jsdom", () => {
       expect(state, selector).toBeDefined();
       const minimumGutter = pixels(cssRuleBody(conversation, state.grid), "--session-inline-padding-min");
 
-      expect(Number(rule.groups?.threshold), selector).toBe(
-        measure(width, state.measure) + gutter + minimumGutter
-      );
+      expect(Number(rule.groups?.threshold), selector).toBe(measure(width, state.measure) + gutter + minimumGutter);
       // The card and the shift switch together: a block that revealed the card
       // without handing it the gutter would land it on the transcript.
       expect(rule.groups?.block, selector).toContain(

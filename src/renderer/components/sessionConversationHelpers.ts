@@ -50,4 +50,3 @@ export function parseUserMessageAttachments(
     })
     .filter((value): value is UserMessageAttachment => Boolean(value));
 }
-

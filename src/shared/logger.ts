@@ -20,11 +20,7 @@ type LogLevel = "info" | "warn" | "error";
 function isDebugEnabled(): boolean {
   // Read each call so tests that toggle `process.env.DEBUG` between calls
   // see the new value. The cost is negligible.
-  return (
-    typeof process !== "undefined" &&
-    typeof process.env !== "undefined" &&
-    process.env.DEBUG === "1"
-  );
+  return typeof process !== "undefined" && typeof process.env !== "undefined" && process.env.DEBUG === "1";
 }
 
 function consoleFor(level: LogLevel): (...args: unknown[]) => void {
@@ -60,5 +56,5 @@ export const logger = {
   },
   error(scope: string, message: string, fields?: Record<string, unknown>): void {
     record("error", scope, message, fields);
-  },
+  }
 };

@@ -94,8 +94,8 @@ function DecisionBreakdown({ tier }: { tier: RouterTierCost }): JSX.Element {
   return (
     <>
       <p className="usage-router-detail-caption">
-        Matching decisions are grouped. One decision can cover several turns, including goal
-        continuations. Escalations record a model or effort change, not whether the work succeeded.
+        Matching decisions are grouped. One decision can cover several turns, including goal continuations. Escalations
+        record a model or effort change, not whether the work succeeded.
       </p>
       <table
         className="usage-table usage-router-decisions"
@@ -106,21 +106,30 @@ function DecisionBreakdown({ tier }: { tier: RouterTierCost }): JSX.Element {
             <th scope="col">Task</th>
             <th scope="col">Model · effort</th>
             <th scope="col">Decision · reason</th>
-            <th scope="col" className="usage-table-num">Decisions</th>
-            <th scope="col" className="usage-table-num">Turns</th>
+            <th scope="col" className="usage-table-num">
+              Decisions
+            </th>
+            <th scope="col" className="usage-table-num">
+              Turns
+            </th>
           </tr>
         </thead>
         <tbody>
           {tier.decisions.map((decision) => (
-            <tr key={JSON.stringify([
-              decision.provider, decision.modelId, decision.reasoningEffort,
-              decision.kind, decision.difficulty, decision.decision, decision.reason
-            ])}>
+            <tr
+              key={JSON.stringify([
+                decision.provider,
+                decision.modelId,
+                decision.reasoningEffort,
+                decision.kind,
+                decision.difficulty,
+                decision.decision,
+                decision.reason
+              ])}
+            >
               <th scope="row">
                 {decision.kind ?? "Not classified"}
-                <span className="usage-router-note">
-                  {decision.difficulty ?? "Difficulty not recorded"}
-                </span>
+                <span className="usage-router-note">{decision.difficulty ?? "Difficulty not recorded"}</span>
               </th>
               <td>
                 {modelName(decision)}
@@ -161,8 +170,7 @@ type Figure = {
   format: (value: number, tier: RouterTierCost) => string;
 };
 
-const formatTierCost = (value: number, tier: RouterTierCost): string =>
-  formatCost(value, tier.estimatedCostUsd > 0);
+const formatTierCost = (value: number, tier: RouterTierCost): string => formatCost(value, tier.estimatedCostUsd > 0);
 
 const FIGURES: readonly Figure[] = [
   { group: "volume", header: "Chats", value: (tier) => tier.chats, format: formatCount },
@@ -351,10 +359,18 @@ export function RouterCostCard({
                 spend from tokens from time without reading every header. */}
             <tr className="usage-router-groups">
               <td />
-              <th scope="colgroup" colSpan={2} data-group="volume">Volume</th>
-              <th scope="colgroup" colSpan={2} data-group="spend">Spend</th>
-              <th scope="colgroup" colSpan={2} data-group="tokens">Tokens</th>
-              <th scope="colgroup" colSpan={2} data-group="pace">Pace</th>
+              <th scope="colgroup" colSpan={2} data-group="volume">
+                Volume
+              </th>
+              <th scope="colgroup" colSpan={2} data-group="spend">
+                Spend
+              </th>
+              <th scope="colgroup" colSpan={2} data-group="tokens">
+                Tokens
+              </th>
+              <th scope="colgroup" colSpan={2} data-group="pace">
+                Pace
+              </th>
             </tr>
             <tr>
               <th scope="col">Tier</th>

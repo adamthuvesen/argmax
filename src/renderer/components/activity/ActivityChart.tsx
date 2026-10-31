@@ -153,12 +153,8 @@ export function ActivityChart({
       if (!rect || rect.width <= 0) return;
       setSize((current) => {
         const height =
-          rect.height > 0
-            ? Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, rect.height)))
-            : current.height;
-        return current.width === rect.width && current.height === height
-          ? current
-          : { width: rect.width, height };
+          rect.height > 0 ? Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, rect.height))) : current.height;
+        return current.width === rect.width && current.height === height ? current : { width: rect.width, height };
       });
     });
     observer.observe(frame);
@@ -197,9 +193,7 @@ export function ActivityChart({
   const plotTop = PAD_TOP;
   const xAt = useCallback(
     (index: number): number =>
-      points.length <= 1
-        ? PAD_LEFT + plotWidth / 2
-        : PAD_LEFT + (plotWidth * index) / (points.length - 1),
+      points.length <= 1 ? PAD_LEFT + plotWidth / 2 : PAD_LEFT + (plotWidth * index) / (points.length - 1),
     [points.length, plotWidth]
   );
   const yAt = useCallback(
@@ -244,10 +238,7 @@ export function ActivityChart({
   }, [points.length]);
 
   const bucketNoun = resolution === "hour" ? "hours" : resolution === "week" ? "weeks" : "days";
-  const peakIndex = totals.reduce(
-    (best, value, index) => (value > (totals[best] ?? -1) ? index : best),
-    -1
-  );
+  const peakIndex = totals.reduce((best, value, index) => (value > (totals[best] ?? -1) ? index : best), -1);
   const ariaLabel = [
     `${title} by repository, ${formatCount(points.length)} ${bucketNoun}.`,
     ...series.map((entry) => {
@@ -275,12 +266,16 @@ export function ActivityChart({
     cursorIndex === null
       ? []
       : series
-          .map((entry) => ({ key: entry.key, label: entry.label, slot: entry.slot, value: entry.values[cursorIndex] ?? 0 }))
+          .map((entry) => ({
+            key: entry.key,
+            label: entry.label,
+            slot: entry.slot,
+            value: entry.values[cursorIndex] ?? 0
+          }))
           .filter((row) => row.value > 0);
   const activeTotal = cursorIndex === null ? 0 : totals[cursorIndex];
   const showTotal = activeRows.length > 1;
-  const tooltipHeight =
-    26 + (Math.max(1, activeRows.length) + (showTotal ? 1 : 0)) * TOOLTIP_ROW + (showTotal ? 6 : 0);
+  const tooltipHeight = 26 + (Math.max(1, activeRows.length) + (showTotal ? 1 : 0)) * TOOLTIP_ROW + (showTotal ? 6 : 0);
   const anchorX = cursorIndex === null ? 0 : xAt(cursorIndex);
   const flip = anchorX + 12 + TOOLTIP_WIDTH > PAD_LEFT + plotWidth;
   const tooltipX = flip ? anchorX - 12 - TOOLTIP_WIDTH : anchorX + 12;
@@ -313,12 +308,7 @@ export function ActivityChart({
                 y2={round(yAt(tick))}
                 data-baseline={tick === 0 ? "true" : undefined}
               />
-              <text
-                className="activity-chart-tick"
-                x={PAD_LEFT - 10}
-                y={round(yAt(tick)) + 3.5}
-                textAnchor="end"
-              >
+              <text className="activity-chart-tick" x={PAD_LEFT - 10} y={round(yAt(tick)) + 3.5} textAnchor="end">
                 {formatCompact(tick)}
               </text>
             </g>
@@ -336,11 +326,7 @@ export function ActivityChart({
           const lowerPath = monotonePath([...xs].reverse(), [...lower].reverse());
           const area = points.length === 1 ? "" : `${upperPath} L ${lowerPath.slice(2)} Z`;
           return (
-            <g
-              className="activity-chart-band activity-series"
-              key={band.entry.key}
-              data-slot={band.entry.slot}
-            >
+            <g className="activity-chart-band activity-series" key={band.entry.key} data-slot={band.entry.slot}>
               {/* The gradient sits inside the band's group so its stops inherit
                   that group's `--activity-series`; one shared <defs> block
                   would resolve every band to the same colour. */}
@@ -353,32 +339,22 @@ export function ActivityChart({
                 </defs>
               ) : null}
               {area ? (
-                <path
-                  className="activity-chart-area"
-                  d={area}
-                  fill={`url(#${gradientId}-${band.entry.key})`}
-                />
+                <path className="activity-chart-area" d={area} fill={`url(#${gradientId}-${band.entry.key})`} />
               ) : null}
             </g>
           );
         })}
         {bands.map((band) => (
-          <g
-            className="activity-chart-band activity-series"
-            key={`${band.entry.key}-line`}
-            data-slot={band.entry.slot}
-          >
+          <g className="activity-chart-band activity-series" key={`${band.entry.key}-line`} data-slot={band.entry.slot}>
             <path
               className="activity-chart-line"
-              d={monotonePath(xs, band.upper.map((value) => yAt(value)))}
+              d={monotonePath(
+                xs,
+                band.upper.map((value) => yAt(value))
+              )}
             />
             {points.length === 1 ? (
-              <circle
-                className="activity-chart-point"
-                cx={round(xs[0])}
-                cy={round(yAt(band.upper[0]))}
-                r="3.5"
-              />
+              <circle className="activity-chart-point" cx={round(xs[0])} cy={round(yAt(band.upper[0]))} r="3.5" />
             ) : null}
           </g>
         ))}
@@ -406,16 +382,8 @@ export function ActivityChart({
               y1={plotTop}
               y2={round(plotBottom)}
             />
-            <circle
-              className="activity-chart-marker"
-              cx={round(anchorX)}
-              cy={round(yAt(activeTotal))}
-              r="3"
-            />
-            <g
-              className="activity-chart-tooltip"
-              transform={`translate(${round(tooltipX)} ${round(tooltipY)})`}
-            >
+            <circle className="activity-chart-marker" cx={round(anchorX)} cy={round(yAt(activeTotal))} r="3" />
+            <g className="activity-chart-tooltip" transform={`translate(${round(tooltipX)} ${round(tooltipY)})`}>
               <rect
                 className="activity-chart-tooltip-box"
                 x="0"
@@ -443,12 +411,7 @@ export function ActivityChart({
                     <text className="activity-chart-tooltip-name" x="26" y="11">
                       {row.label}
                     </text>
-                    <text
-                      className="activity-chart-tooltip-value"
-                      x={TOOLTIP_WIDTH - 12}
-                      y="11"
-                      textAnchor="end"
-                    >
+                    <text className="activity-chart-tooltip-value" x={TOOLTIP_WIDTH - 12} y="11" textAnchor="end">
                       {formatCount(row.value)}
                     </text>
                   </g>
@@ -456,22 +419,11 @@ export function ActivityChart({
               )}
               {showTotal ? (
                 <g transform={`translate(0 ${20 + activeRows.length * TOOLTIP_ROW + 6})`}>
-                  <line
-                    className="activity-chart-tooltip-rule"
-                    x1="12"
-                    x2={TOOLTIP_WIDTH - 12}
-                    y1="0"
-                    y2="0"
-                  />
+                  <line className="activity-chart-tooltip-rule" x1="12" x2={TOOLTIP_WIDTH - 12} y1="0" y2="0" />
                   <text className="activity-chart-tooltip-name" x="12" y="13">
                     Total
                   </text>
-                  <text
-                    className="activity-chart-tooltip-value"
-                    x={TOOLTIP_WIDTH - 12}
-                    y="13"
-                    textAnchor="end"
-                  >
+                  <text className="activity-chart-tooltip-value" x={TOOLTIP_WIDTH - 12} y="13" textAnchor="end">
                     {formatCount(activeTotal)}
                   </text>
                 </g>
@@ -486,9 +438,7 @@ export function ActivityChart({
         <caption>{title} by repository</caption>
         <thead>
           <tr>
-            <th scope="col">
-              {resolution === "hour" ? "Hour" : resolution === "week" ? "Week" : "Day"}
-            </th>
+            <th scope="col">{resolution === "hour" ? "Hour" : resolution === "week" ? "Week" : "Day"}</th>
             {series.map((entry) => (
               <th scope="col" key={entry.key}>
                 {entry.label}

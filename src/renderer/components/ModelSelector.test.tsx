@@ -51,12 +51,11 @@ describe("ModelSelector — one row per model", () => {
 
     const list = screen.getByRole("listbox", { name: "Chat model" });
     expect(within(list).queryByText("Recent")).not.toBeInTheDocument();
-    expect(within(list).getAllByRole("option").map((option) => optionName(option))).toEqual([
-      "Fable 5.1",
-      "Opus 5.5",
-      "Sonnet 5.5",
-      "Haiku 5.5"
-    ]);
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((option) => optionName(option))
+    ).toEqual(["Fable 5.1", "Opus 5.5", "Sonnet 5.5", "Haiku 5.5"]);
   });
 
   it("shows at most three recent models before the full catalog", () => {
@@ -71,11 +70,7 @@ describe("ModelSelector — one row per model", () => {
       ])
     );
     render(
-      <LaunchModelSelector
-        ariaLabel="Launch model"
-        value={{ provider: "claude", ...OPUS_MEDIUM }}
-        onChange={vi.fn()}
-      />
+      <LaunchModelSelector ariaLabel="Launch model" value={{ provider: "claude", ...OPUS_MEDIUM }} onChange={vi.fn()} />
     );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
 
@@ -85,7 +80,9 @@ describe("ModelSelector — one row per model", () => {
     expect(labels.slice(0, 3)).toEqual(["DeepSeek V4.1 Flash 1017", "DeepSeek V4 Pro", "Grok 4.7"]);
     expect(labels).toContain("DeepSeek V4.1 Flash 1017");
     expect(labels).toContain("Grok 4.7");
-    expect(labels.some((label) => label.includes("Grok 4.6") || label.includes("Grok 4.5") || label.includes("Nemotron"))).toBe(false);
+    expect(
+      labels.some((label) => label.includes("Grok 4.6") || label.includes("Grok 4.5") || label.includes("Nemotron"))
+    ).toBe(false);
     expect(labels.indexOf("DeepSeek V4.1 Flash 1017")).toBeLessThan(labels.lastIndexOf("DeepSeek V4.1 Flash 1017"));
     expect(labels.indexOf("Grok 4.7")).toBeLessThan(labels.lastIndexOf("Grok 4.7"));
     expect(labels.slice(3, 4)).toEqual(["Fable 5.1"]);
@@ -100,7 +97,9 @@ describe("Cursor Auto models", () => {
   ];
 
   it("places Auto modes before the other Cursor models in the launch catalog", () => {
-    render(<LaunchModelSelector ariaLabel="Launch model" value={{ provider: "claude", ...OPUS_MEDIUM }} onChange={vi.fn()} />);
+    render(
+      <LaunchModelSelector ariaLabel="Launch model" value={{ provider: "claude", ...OPUS_MEDIUM }} onChange={vi.fn()} />
+    );
     fireEvent.click(screen.getByRole("button", { name: "Launch model" }));
     const cursorLabels = within(screen.getByRole("listbox", { name: "Launch model" }))
       .getAllByRole("option")
@@ -112,13 +111,30 @@ describe("Cursor Auto models", () => {
   it.each(autoModels)("selects $label without effort or speed overrides", (model) => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <ModelSelector ariaLabel="Chat model" provider="cursor" value={{ label: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: "high" }} onChange={onChange} />
+      <ModelSelector
+        ariaLabel="Chat model"
+        provider="cursor"
+        value={{ label: "Grok 4.7 (Cursor)", modelId: "grok-4.7-medium", reasoningEffort: "high" }}
+        onChange={onChange}
+      />
     );
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
-    fireEvent.click(within(screen.getByRole("option", { name: model.label })).getByRole("button", { name: model.label }));
+    fireEvent.click(
+      within(screen.getByRole("option", { name: model.label })).getByRole("button", { name: model.label })
+    );
     expect(onChange).toHaveBeenCalledWith(model);
 
-    rerender(<ModelSelector ariaLabel="Chat model" provider="cursor" value={model} onChange={onChange} withEffortSlider fastModeEnabled onFastModeEnabledChange={vi.fn()} />);
+    rerender(
+      <ModelSelector
+        ariaLabel="Chat model"
+        provider="cursor"
+        value={model}
+        onChange={onChange}
+        withEffortSlider
+        fastModeEnabled
+        onFastModeEnabledChange={vi.fn()}
+      />
+    );
     expect(screen.queryByRole("button", { name: "Chat model effort" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Chat model" }));
     expect(screen.queryByRole("button", { name: /Fast mode/ })).toBeNull();
@@ -156,7 +172,7 @@ describe("ModelSelector type to filter", () => {
     try {
       openClaudePicker(OPUS_MEDIUM);
       const list = screen.getByRole("listbox", { name: "Chat model" });
-      expect(document.activeElement).toBe(list);
+      expect(list).toHaveFocus();
       expect(focus).toHaveBeenCalledWith({ preventScroll: true });
       expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
@@ -168,7 +184,7 @@ describe("ModelSelector type to filter", () => {
   it("takes focus on open so typing narrows the list instead of the input behind it", () => {
     openClaudePicker();
     const list = screen.getByRole("listbox", { name: "Chat model" });
-    expect(document.activeElement).toBe(list);
+    expect(list).toHaveFocus();
 
     fireEvent.keyDown(list, { key: "h" });
 
@@ -264,7 +280,9 @@ describe("LaunchModelSelector — all providers", () => {
     }
     expect(screen.queryByRole("separator")).not.toBeInTheDocument();
     expect(screen.getAllByText("GPT-5.6 Sol")).toHaveLength(1);
-    expect(within(screen.getByRole("listbox", { name: "Launch model" })).queryByText("GPT-5.6 Sol (Cursor)")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("listbox", { name: "Launch model" })).queryByText("GPT-5.6 Sol (Cursor)")
+    ).not.toBeInTheDocument();
     // The chosen row is the one carrying the check, not a fill.
     const chosen = screen.getByRole("option", { selected: true });
     expect(chosen).toHaveTextContent("GPT-5.6 Sol");
@@ -485,13 +503,7 @@ describe("LaunchModelSelector — provider availability gating", () => {
 describe("ModelSelector — standalone effort slider", () => {
   it("with withEffortSlider the model chip stays effort-free and a separate chip shows it", () => {
     render(
-      <ModelSelector
-        ariaLabel="Chat model"
-        provider="claude"
-        value={OPUS_MEDIUM}
-        onChange={vi.fn()}
-        withEffortSlider
-      />
+      <ModelSelector ariaLabel="Chat model" provider="claude" value={OPUS_MEDIUM} onChange={vi.fn()} withEffortSlider />
     );
     const modelButton = screen.getByRole("button", { name: "Chat model" });
     expect(modelButton).toHaveTextContent("Opus 5.5");

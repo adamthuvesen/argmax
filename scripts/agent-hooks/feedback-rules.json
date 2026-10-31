@@ -12,7 +12,7 @@
     { "pattern": "^src-tauri/src/browser/|BrowserPanel", "text": "Read docs/browser.md." },
     { "pattern": "^src-tauri/src/remote/", "text": "Read docs/remote.md. The iPhone ships separately: omit new optional input keys." },
     { "pattern": "^src/shared/providerModels\\.ts$", "text": "Run npm run export:provider-models after a catalogue change. Read docs/providers.md." },
-    { "pattern": "^src/renderer/.*\\.css$|^src/renderer/components/.*\\.tsx$", "text": "A visual change ships light and dark screenshots: node .agents/skills/verify-argmax/verify.mjs ui. Read docs/styling.md. A visual-design request gets 3 mockups before code." },
+    { "pattern": "^src/renderer/.*\\.css$|^src/renderer/components/.*\\.tsx$", "text": "A visual change ships light and dark screenshots: npm run verify -- launcher writes them under .verify/runs/. Read docs/styling.md. A visual-design request gets 3 mockups before code." },
     { "pattern": "^src/renderer/.*(Conversation|Turn|Timeline|foldConversation)", "text": "Read docs/chat-cards.md. A new event type must pass isConversationVisible in lib/sessionConversationModel.ts. The phone mirrors chat rules: update ios/ in the same change." },
     { "pattern": "^ios/", "text": "Read docs/ios-performance.md. Type goes through Sources/Design/Typography.swift. The phone ships separately from the Mac build." }
   ],

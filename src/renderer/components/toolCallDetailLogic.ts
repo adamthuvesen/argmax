@@ -1,9 +1,5 @@
 import { interpretFileChange } from "../lib/fileChange.js";
-import {
-  displayToolInput,
-  isAgentMessageToolName,
-  isOpaqueCiphertext
-} from "../lib/toolArguments.js";
+import { displayToolInput, isAgentMessageToolName, isOpaqueCiphertext } from "../lib/toolArguments.js";
 import {
   displayBashCommand,
   extractOpenablePath,
@@ -127,23 +123,19 @@ export function hasVisibleToolOutput(tool: ToolCall, output: string | null): boo
 
 /** True when expanding the row would reveal a payload, leftover arguments, a
  *  file, or nested activity. A command that printed nothing is not a disclosure. */
-export function toolCallHasExpandableDetail(
-  tool: ToolCall,
-  options?: { hasLeadingContent?: boolean }
-): boolean {
+export function toolCallHasExpandableDetail(tool: ToolCall, options?: { hasLeadingContent?: boolean }): boolean {
   const changes = interpretFileChange(tool.name, tool.inputFull);
   if (changes && changes.length > 0) return true;
 
   const visibleInput = visibleInputForTool(tool);
   const bashCommand = isBashLikeTool(tool.name)
-    ? pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview
+    ? (pickString(tool.inputFull, BASH_COMMAND_INPUT_KEYS) ?? tool.inputPreview)
     : null;
   const fullCommand = bashCommand ? unwrapBashCommand(bashCommand) : null;
   const showCommandBlock = fullCommand !== null && fullCommand.includes("\n");
   const openable = tool.status !== "error" ? extractOpenablePath(tool.name, tool.inputFull) : null;
   const filePath =
-    openable ??
-    pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
+    openable ?? pickString(tool.inputFull, ["path", "file_path", "filepath", "relative_path", "absolute_path"]);
   const streamContent = pickString(tool.inputFull, ["streamContent", "content", "text"]);
   const canShowFilePreview = Boolean(!changes && filePath && streamContent);
   const isAgent = getToolTypeBucket(tool.name) === "agent";

@@ -1,13 +1,7 @@
 import type { JSX } from "react";
 import { Mascot } from "./Mascot.js";
 
-export function EmptyState({
-  message,
-  onRetry
-}: {
-  message?: string | null;
-  onRetry?: () => void;
-}): JSX.Element {
+export function EmptyState({ message, onRetry }: { message?: string | null; onRetry?: () => void }): JSX.Element {
   return (
     <section className="empty-state">
       <Mascot mood="sad" size={72} />

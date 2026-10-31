@@ -57,9 +57,7 @@ describe("LaunchSurface with the real editor", () => {
 
     act(() => {
       type(view, "Fix the flaky test");
-      view.contentDOM.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })
-      );
+      view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     });
 
     await waitFor(() => expect(launchProvider).toHaveBeenCalledOnce());

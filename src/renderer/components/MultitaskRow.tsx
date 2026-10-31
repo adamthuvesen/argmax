@@ -23,13 +23,28 @@ function MultitaskMark({ status }: { status: MultitaskDisplayStatus }): JSX.Elem
     <span className="multitask-mark" role="img" aria-label={STATUS_LABEL[status]}>
       {status === "running" ? <i className="multitask-mark-dot" /> : null}
       {status === "done" ? (
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.9}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
         </svg>
       ) : null}
       {status === "needs-you" ? <span aria-hidden="true">?</span> : null}
       {status === "failed" || status === "stopped" ? (
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
           <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5" />
         </svg>
       ) : null}
@@ -86,13 +101,14 @@ export function MultitaskRow({
     status === "needs-you" && liveAttention === "question-asked",
     onLoadSessionEvents
   );
-  const ask = status !== "needs-you"
-    ? null
-    : liveAttention === "approval-needed" && liveApprovalCommand
-      ? { kind: "approval" as const, text: liveApprovalCommand }
-      : question
-        ? { kind: "question" as const, text: question }
-        : null;
+  const ask =
+    status !== "needs-you"
+      ? null
+      : liveAttention === "approval-needed" && liveApprovalCommand
+        ? { kind: "approval" as const, text: liveApprovalCommand }
+        : question
+          ? { kind: "question" as const, text: question }
+          : null;
   const reading = state === "running" && status === "running";
   const labelRef = useRef<HTMLSpanElement | null>(null);
   useReadingWave(labelRef, reading, taskLabel);
@@ -108,8 +124,10 @@ export function MultitaskRow({
     if (!node || !counting) return;
     return registerLiveTimer(node, () => Date.now() - startedMs, formatElapsedSeconds);
   }, [counting, startedMs]);
-  const canStop = (state === "running" || state === null || state === "waiting" || state === "blocked") && childSessionId && onStop;
-  const canDismiss = !canStop && (status === "done" || status === "failed" || status === "stopped") && childSessionId && onDismiss;
+  const canStop =
+    (state === "running" || state === null || state === "waiting" || state === "blocked") && childSessionId && onStop;
+  const canDismiss =
+    !canStop && (status === "done" || status === "failed" || status === "stopped") && childSessionId && onDismiss;
 
   const contents = (
     <>
@@ -139,19 +157,39 @@ export function MultitaskRow({
   return (
     <li className="multitask-row" data-status={status}>
       {childSessionId && onOpen ? (
-        <button type="button" className="multitask-row-open" aria-label={`Open multitask: ${taskLabel}`} title={notice.prompt ?? taskLabel} onClick={() => onOpen(childSessionId)}>
+        <button
+          type="button"
+          className="multitask-row-open"
+          aria-label={`Open multitask: ${taskLabel}`}
+          title={notice.prompt ?? taskLabel}
+          onClick={() => onOpen(childSessionId)}
+        >
           {contents}
         </button>
       ) : (
-        <span className="multitask-row-open" title={notice.prompt ?? taskLabel}>{contents}</span>
+        <span className="multitask-row-open" title={notice.prompt ?? taskLabel}>
+          {contents}
+        </span>
       )}
       <span className="multitask-row-seat">
         {canStop ? (
-          <button type="button" className="multitask-row-action" aria-label={`Stop multitask: ${taskLabel}`} title="Stop this multitask" onClick={() => onStop(childSessionId)}>
+          <button
+            type="button"
+            className="multitask-row-action"
+            aria-label={`Stop multitask: ${taskLabel}`}
+            title="Stop this multitask"
+            onClick={() => onStop(childSessionId)}
+          >
             <Square size={9} fill="currentColor" strokeWidth={0} aria-hidden="true" />
           </button>
         ) : canDismiss ? (
-          <button type="button" className="multitask-row-action" aria-label={`Dismiss multitask: ${taskLabel}`} title="Dismiss this multitask" onClick={() => onDismiss(childSessionId)}>
+          <button
+            type="button"
+            className="multitask-row-action"
+            aria-label={`Dismiss multitask: ${taskLabel}`}
+            title="Dismiss this multitask"
+            onClick={() => onDismiss(childSessionId)}
+          >
             <X size={12} aria-hidden="true" />
           </button>
         ) : null}

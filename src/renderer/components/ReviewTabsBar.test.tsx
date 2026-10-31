@@ -11,9 +11,17 @@ function props(overrides: Partial<ReviewTabsBarProps> = {}): ReviewTabsBarProps 
     ],
     activeId: "changes",
     visibleIds: ["changes"],
-    onSelect: vi.fn(), onClose: vi.fn(), onMove: vi.fn(), onSplit: vi.fn(),
-    onOpen: vi.fn(), onReopen: vi.fn(), canReopen: false,
-    hasAgents: true, hasBrowser: true, hasTerminal: true, artifactsEnabled: false,
+    onSelect: vi.fn(),
+    onClose: vi.fn(),
+    onMove: vi.fn(),
+    onSplit: vi.fn(),
+    onOpen: vi.fn(),
+    onReopen: vi.fn(),
+    canReopen: false,
+    hasAgents: true,
+    hasBrowser: true,
+    hasTerminal: true,
+    artifactsEnabled: false,
     ...overrides
   };
 }
@@ -133,7 +141,11 @@ describe("ReviewTabsBar", () => {
   it("reorders dragged resources without propagating a drag to the split panel", () => {
     const callbacks = props();
     const onPanelDrag = vi.fn();
-    render(<div onDragStart={onPanelDrag}><ReviewTabsBar {...callbacks} /></div>);
+    render(
+      <div onDragStart={onPanelDrag}>
+        <ReviewTabsBar {...callbacks} />
+      </div>
+    );
     const changes = screen.getByRole("tab", { name: "Changes" });
     const browser = screen.getByRole("tab", { name: "http://localhost:3000" });
     const dataTransfer = { setData: vi.fn(), effectAllowed: "none", dropEffect: "none" };

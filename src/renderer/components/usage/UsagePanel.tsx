@@ -94,11 +94,7 @@ function hostTimeZone(): string {
   }
 }
 
-async function fetchSummary(
-  window: UsageWindow,
-  provider: ProviderId | null,
-  timeZone: string
-): Promise<UsageSummary> {
+async function fetchSummary(window: UsageWindow, provider: ProviderId | null, timeZone: string): Promise<UsageSummary> {
   const api = globalThis.window?.argmax;
   if (api) return api.usage.summary({ window, provider, timeZone });
   // No bridge: browser preview boots the whole app on demo data, and the
@@ -130,33 +126,28 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
   const openedFromCache = useRef(summary !== null);
   const [error, setError] = useState<string | null>(null);
   const [remaining, setRemaining] = useState<UsageRemaining | null>(() => getCachedUsageRemaining());
-  const [remainingError, setRemainingError] = useState<string | null>(() =>
-    getCachedUsageRemainingError()
-  );
+  const [remainingError, setRemainingError] = useState<string | null>(() => getCachedUsageRemainingError());
   const [remainingHoldOver, setRemainingHoldOver] = useState(() => usageRemainingHasSettled());
   // Only the newest request may write state: a slow 30-day scan must not
   // land on top of the 24h window the user switched to while it ran.
   const requestRef = useRef(0);
   const remainingRequestRef = useRef(0);
 
-  const load = useCallback(
-    async (target: UsageWindow, scope: ProviderId | null): Promise<void> => {
-      const request = requestRef.current + 1;
-      requestRef.current = request;
-      try {
-        const next = await requestUsageSummary(target, scope, timeZoneRef.current, () =>
-          fetchSummary(target, scope, timeZoneRef.current)
-        );
-        if (requestRef.current !== request) return;
-        setSummary(next);
-        setError(null);
-      } catch (cause) {
-        if (requestRef.current !== request) return;
-        setError(cause instanceof Error ? cause.message : "Could not read usage.");
-      }
-    },
-    []
-  );
+  const load = useCallback(async (target: UsageWindow, scope: ProviderId | null): Promise<void> => {
+    const request = requestRef.current + 1;
+    requestRef.current = request;
+    try {
+      const next = await requestUsageSummary(target, scope, timeZoneRef.current, () =>
+        fetchSummary(target, scope, timeZoneRef.current)
+      );
+      if (requestRef.current !== request) return;
+      setSummary(next);
+      setError(null);
+    } catch (cause) {
+      if (requestRef.current !== request) return;
+      setError(cause instanceof Error ? cause.message : "Could not read usage.");
+    }
+  }, []);
 
   const loadRemaining = useCallback(async (): Promise<void> => {
     const request = remainingRequestRef.current + 1;
@@ -168,8 +159,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
       setRemainingError(null);
     } catch (cause) {
       if (remainingRequestRef.current !== request) return;
-      const message =
-        cause instanceof Error ? cause.message : "Could not read remaining usage.";
+      const message = cause instanceof Error ? cause.message : "Could not read remaining usage.";
       recordUsageRemainingFailure(message, Date.now());
       setRemainingError(message);
     }
@@ -258,11 +248,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
             ) : null}
           </div>
           <div className="usage-controls">
-            <UsageProviderPicker
-              summary={summary}
-              value={provider}
-              onChange={setProvider}
-            />
+            <UsageProviderPicker summary={summary} value={provider} onChange={setProvider} />
             <SettingsListPicker<UsageWindow>
               ariaLabel="Time range"
               icon={<CalendarDays size={13} aria-hidden="true" />}
@@ -302,11 +288,7 @@ export function UsagePanel({ visible = true }: { visible?: boolean } = {}): JSX.
             ) : null}
             {!summary && !error ? <UsageSkeleton /> : null}
 
-            <UsageRemainingCard
-              remaining={remaining}
-              error={remainingError}
-              onRefresh={() => void loadRemaining()}
-            />
+            <UsageRemainingCard remaining={remaining} error={remainingError} onRefresh={() => void loadRemaining()} />
             <RouterCostCard usageWindow={usageWindow} visible={visible} />
           </>
         ) : (
@@ -332,9 +314,7 @@ function UsageProviderPicker({
   value: ProviderId | null;
   onChange: (provider: ProviderId | null) => void;
 }): JSX.Element {
-  const unavailable = new Set(
-    (summary?.providers ?? []).filter((row) => !row.available).map((row) => row.provider)
-  );
+  const unavailable = new Set((summary?.providers ?? []).filter((row) => !row.available).map((row) => row.provider));
   const options: Array<{
     value: ProviderChoice;
     label: string;
@@ -393,8 +373,8 @@ function UsageBody({
       <div className="usage-blank">
         <p className="usage-blank-headline">No usage in this window.</p>
         <p className="usage-blank-body">
-          Argmax reads every transcript the provider CLIs left on disk, not only the sessions it
-          started. Run an agent, or widen the range.
+          Argmax reads every transcript the provider CLIs left on disk, not only the sessions it started. Run an agent,
+          or widen the range.
         </p>
       </div>
     );
@@ -405,8 +385,8 @@ function UsageBody({
       {summary.scan.phase === "scanning" ? (
         <div className="usage-notice" data-tone="scanning" role="status">
           <span>
-            Still scanning — {formatCount(summary.scan.filesDone)} of{" "}
-            {formatCount(summary.scan.filesTotal)} files. These numbers are partial.
+            Still scanning — {formatCount(summary.scan.filesDone)} of {formatCount(summary.scan.filesTotal)} files.
+            These numbers are partial.
           </span>
         </div>
       ) : null}
@@ -422,12 +402,7 @@ function UsageBody({
           delta={windowDelta(summary, metric)}
           onShowAll={() => onSelectProvider(null)}
         />
-        <UsageProviderRows
-          summary={summary}
-          metric={metric}
-          selected={provider}
-          onSelect={onSelectProvider}
-        />
+        <UsageProviderRows summary={summary} metric={metric} selected={provider} onSelect={onSelectProvider} />
       </section>
       <section className="usage-chart-card" aria-label={chartHeading}>
         <div className="usage-section-head">

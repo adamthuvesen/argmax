@@ -34,7 +34,9 @@ function Harness({ items, follow }: { items: readonly string[]; follow: Transcri
     <div>
       <output aria-label="Visible rows">{window.visibleItems.join(",")}</output>
       <output aria-label="Hidden rows">{window.hiddenEarlierCount}</output>
-      <button type="button" onClick={window.showEarlier}>Show earlier</button>
+      <button type="button" onClick={window.showEarlier}>
+        Show earlier
+      </button>
     </div>
   );
 }

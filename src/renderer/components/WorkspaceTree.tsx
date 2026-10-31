@@ -110,10 +110,7 @@ function subtreeEndIndex(rows: VisibleRow[], index: number): number {
  * row changes which row is covered), plus the negative offset that slides the
  * block out of view as the deepest folder's subtree scrolls past.
  */
-function stickyBlockFor(
-  rows: VisibleRow[],
-  scrollTop: number
-): { indexes: number[]; offset: number } {
+function stickyBlockFor(rows: VisibleRow[], scrollTop: number): { indexes: number[]; offset: number } {
   if (rows.length === 0) return { indexes: [], offset: 0 };
   const topIndex = Math.min(rows.length - 1, Math.max(0, Math.floor(scrollTop / ROW_HEIGHT)));
   let indexes = ancestorRowIndexes(rows, topIndex).slice(-STICKY_MAX_ROWS);
@@ -272,10 +269,7 @@ export function WorkspaceTree({
   // DOM nodes at default viewport sizes.
   const totalHeight = visibleRows.length * ROW_HEIGHT;
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS);
-  const endIndex = Math.min(
-    visibleRows.length,
-    Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT) + OVERSCAN_ROWS
-  );
+  const endIndex = Math.min(visibleRows.length, Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT) + OVERSCAN_ROWS);
   const visibleSlice = visibleRows.slice(startIndex, endIndex);
   const topPad = startIndex * ROW_HEIGHT;
   const bottomPad = Math.max(0, totalHeight - endIndex * ROW_HEIGHT);
@@ -439,11 +433,7 @@ export function WorkspaceTree({
           // Duplicates rows that are already in the tree, so it stays out of the
           // accessibility tree and out of the tab order; the pointer still gets
           // the fold-from-here affordance.
-          <div
-            className="workspace-tree-sticky"
-            style={{ top: scrollTop + sticky.offset }}
-            aria-hidden="true"
-          >
+          <div className="workspace-tree-sticky" style={{ top: scrollTop + sticky.offset }} aria-hidden="true">
             {sticky.indexes.map((index) => {
               const row = visibleRows[index];
               if (!row) return null;
@@ -559,13 +549,7 @@ function TreeRow({
     >
       <span className="workspace-tree-chevron-spacer" aria-hidden="true" />
       <span className="workspace-tree-icon" title={`File icon for ${node.name}`} aria-hidden="true">
-        <FileIcon
-          fileName={node.name}
-          autoAssign
-          editFileNameData={SPECIAL_FILE_ICONS}
-          width={14}
-          height={14}
-        />
+        <FileIcon fileName={node.name} autoAssign editFileNameData={SPECIAL_FILE_ICONS} width={14} height={14} />
       </span>
       <span className="workspace-tree-label">{node.name}</span>
     </button>

@@ -30,10 +30,7 @@ import {
   usageBoost,
   type PaletteUsage
 } from "../lib/paletteUsage.js";
-import type {
-  WorkspaceContentSearchFile,
-  WorkspaceContentSearchResult
-} from "../../shared/types.js";
+import type { WorkspaceContentSearchFile, WorkspaceContentSearchResult } from "../../shared/types.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useRestoreFocus } from "../hooks/useRestoreFocus.js";
 import { WorkingNest } from "./WorkingNest.js";
@@ -59,14 +56,7 @@ const EMPTY_CONTENT_RESULT: WorkspaceContentSearchResult = { files: [], truncate
  * ⌘P on `files`, ⌘F on `messages`, ⌘⇧F on `contents`. Each scope names the
  * groups it shows, in display order.
  */
-export type PaletteScope =
-  | "all"
-  | "agents"
-  | "files"
-  | "messages"
-  | "contents"
-  | "actions"
-  | "settings";
+export type PaletteScope = "all" | "agents" | "files" | "messages" | "contents" | "actions" | "settings";
 
 const SCOPE_TABS: ReadonlyArray<{ scope: PaletteScope; label: string }> = [
   { scope: "all", label: "All" },
@@ -271,8 +261,7 @@ export function CommandPalette({
   const [filePaths, setFilePaths] = useState<string[]>([]);
   const [filesRunning, setFilesRunning] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
-  const [contentResult, setContentResult] =
-    useState<WorkspaceContentSearchResult>(EMPTY_CONTENT_RESULT);
+  const [contentResult, setContentResult] = useState<WorkspaceContentSearchResult>(EMPTY_CONTENT_RESULT);
   const [contentsRunning, setContentsRunning] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -335,10 +324,7 @@ export function CommandPalette({
   }, [open, initialScope, motionState]);
 
   const visibleGroups = useMemo(() => SCOPE_GROUPS[scope], [scope]);
-  const showsGroup = useCallback(
-    (group: PaletteGroup): boolean => visibleGroups.includes(group),
-    [visibleGroups]
-  );
+  const showsGroup = useCallback((group: PaletteGroup): boolean => visibleGroups.includes(group), [visibleGroups]);
   // The Files tab is a file picker: it lists recents with an empty query, so
   // the path list loads on open instead of waiting for a first keystroke.
   const filesEagerly = showsGroup("Files") && visibleGroups.length === 1;
@@ -520,7 +506,11 @@ export function CommandPalette({
       return hits
         .map((hit) => ({
           hit,
-          rank: hit.item.suggest ? -Number.MAX_SAFE_INTEGER : HABIT_GROUPS.has(hit.item.group) ? -frecencyOf(hit.item.id) : 0
+          rank: hit.item.suggest
+            ? -Number.MAX_SAFE_INTEGER
+            : HABIT_GROUPS.has(hit.item.group)
+              ? -frecencyOf(hit.item.id)
+              : 0
         }))
         .sort((left, right) => left.rank - right.rank);
     }
@@ -542,10 +532,7 @@ export function CommandPalette({
   // index/option mapping.
   const flatRows = useMemo<PaletteRow[]>(() => {
     const trimmed = query.trim();
-    const perGroup =
-      trimmed.length === 0 && visibleGroups.length > 1
-        ? MAX_RECENT_PER_GROUP
-        : MAX_PER_GROUP;
+    const perGroup = trimmed.length === 0 && visibleGroups.length > 1 ? MAX_RECENT_PER_GROUP : MAX_PER_GROUP;
 
     // The empty All palette leads with what fits right now (a chat waiting on
     // the user, Stop mid-turn), then the actions and settings used most. Each
@@ -578,10 +565,14 @@ export function CommandPalette({
       const learned = usage ? learnedPicks(usage.picks, trimmed, usage.at) : new Map<string, number>();
       const bestRank = (group: PaletteGroup): number => {
         if (group === "Files") {
-          return Math.min(...fileHits.map(({ item }) =>
-            Math.min(searchMatchRank(item.label, trimmed), 6 + searchMatchRank(item.subtitle ?? "", trimmed)) +
-            GROUP_PRIOR.Files -
-            usageBoost(frecencyOf(item.id), learned.get(item.id) ?? 0)));
+          return Math.min(
+            ...fileHits.map(
+              ({ item }) =>
+                Math.min(searchMatchRank(item.label, trimmed), 6 + searchMatchRank(item.subtitle ?? "", trimmed)) +
+                GROUP_PRIOR.Files -
+                usageBoost(frecencyOf(item.id), learned.get(item.id) ?? 0)
+            )
+          );
         }
         return Math.min(...(byGroup.get(group) ?? []).map(({ rank }) => rank));
       };
@@ -627,7 +618,10 @@ export function CommandPalette({
     return rows;
   }, [contentResult.files, fileHits, frecencyOf, localHits, messageHits, query, scope, usage, visibleGroups]);
 
-  const selectedIndex = Math.max(0, flatRows.findIndex((row) => rowKey(row) === selectedRowKey));
+  const selectedIndex = Math.max(
+    0,
+    flatRows.findIndex((row) => rowKey(row) === selectedRowKey)
+  );
 
   // Every row commits the same way, whichever list it came from. Content rows
   // open their file: the file header and its match rows both land on the path,
@@ -826,9 +820,7 @@ export function CommandPalette({
             })}
           </div>
           <span className="command-palette-count" aria-hidden="true">
-            {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) ||
-            filesRunning ||
-            contentsRunning
+            {(messagesRunning && trimmedQuery.length >= MIN_MESSAGE_QUERY_LENGTH) || filesRunning || contentsRunning
               ? "searching…"
               : totalCount > 0
                 ? `${totalCount} found${contentResult.truncated ? " (truncated)" : ""}`
@@ -846,13 +838,17 @@ export function CommandPalette({
         >
           {searchErrors.map((message) => (
             <li key={message} className="command-palette-empty" role="alert">
-              <span className="command-palette-empty-mark" aria-hidden="true">!</span>
+              <span className="command-palette-empty-mark" aria-hidden="true">
+                !
+              </span>
               <span className="command-palette-empty-text">{message}</span>
             </li>
           ))}
           {showingEmptyState ? (
             <li className="command-palette-empty" role="status">
-              <span className="command-palette-empty-mark" aria-hidden="true">∅</span>
+              <span className="command-palette-empty-mark" aria-hidden="true">
+                ∅
+              </span>
               <span className="command-palette-empty-text">
                 {trimmedQuery.length > 0
                   ? "No matches — try shorter terms or another filter."
@@ -880,18 +876,16 @@ export function CommandPalette({
                 <li
                   role="option"
                   id={`command-palette-option-${index}`}
-                  aria-label={row.kind === "hit"
-                    ? [row.hit.item.label, row.hit.item.subtitle, row.hit.item.meta].filter(Boolean).join(" ")
-                    : undefined}
+                  aria-label={
+                    row.kind === "hit"
+                      ? [row.hit.item.label, row.hit.item.subtitle, row.hit.item.meta].filter(Boolean).join(" ")
+                      : undefined
+                  }
                   aria-selected={isSelected}
                   className={`command-palette-result${isSelected ? " selected" : ""}`}
                   data-group={row.group}
                   data-content={
-                    row.kind === "content-file"
-                      ? "file"
-                      : row.kind === "content-match"
-                        ? "match"
-                        : undefined
+                    row.kind === "content-file" ? "file" : row.kind === "content-match" ? "match" : undefined
                   }
                   onMouseDown={(event) => {
                     event.preventDefault();
@@ -910,7 +904,7 @@ export function CommandPalette({
                     <RowIcon
                       icon={
                         row.kind === "hit"
-                          ? row.hit.item.icon ?? GROUP_ICON[row.hit.item.group]
+                          ? (row.hit.item.icon ?? GROUP_ICON[row.hit.item.group])
                           : GROUP_ICON[row.group]
                       }
                     />
@@ -925,12 +919,8 @@ export function CommandPalette({
                     </span>
                   ) : row.kind === "content-file" ? (
                     <span className="command-palette-result-body">
-                      <span className="command-palette-result-label">
-                        {basename(row.file.path)}
-                      </span>
-                      <span className="command-palette-result-subtitle">
-                        {dirname(row.file.path)}
-                      </span>
+                      <span className="command-palette-result-label">{basename(row.file.path)}</span>
+                      <span className="command-palette-result-subtitle">{dirname(row.file.path)}</span>
                     </span>
                   ) : (
                     <span className="command-palette-result-body">
@@ -965,13 +955,25 @@ export function CommandPalette({
           ) : null}
         </ul>
         <footer className="command-palette-footer" aria-hidden="true">
-          <span><kbd>↑</kbd><kbd>↓</kbd> select</span>
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> select
+          </span>
           <span className="command-palette-footer-sep">·</span>
-          <span><kbd>⏎</kbd> open</span>
+          <span>
+            <kbd>⏎</kbd> open
+          </span>
           <span className="command-palette-footer-sep">·</span>
-          <span><kbd>⇥</kbd><kbd>&gt;</kbd><kbd>@</kbd><kbd>#</kbd> change filter</span>
+          <span>
+            <kbd>⇥</kbd>
+            <kbd>&gt;</kbd>
+            <kbd>@</kbd>
+            <kbd>#</kbd> change filter
+          </span>
           <span className="command-palette-footer-sep">·</span>
-          <span><kbd>esc</kbd> close</span>
+          <span>
+            <kbd>esc</kbd> close
+          </span>
         </footer>
       </div>
     </div>
@@ -1057,33 +1059,19 @@ function MessageHitRow({ hit }: { hit: MessageHit }): JSX.Element {
       <span className="command-palette-result-label">{hit.label}</span>
       <span className="command-palette-result-snippet">
         {hit.snippetSegments.map((segment, index) =>
-          segment.matched ? (
-            <mark key={index}>{segment.text}</mark>
-          ) : (
-            <span key={index}>{segment.text}</span>
-          )
+          segment.matched ? <mark key={index}>{segment.text}</mark> : <span key={index}>{segment.text}</span>
         )}
       </span>
     </>
   );
 }
 
-function HighlightedText({
-  text,
-  ranges
-}: {
-  text: string;
-  ranges: number[] | null;
-}): JSX.Element {
+function HighlightedText({ text, ranges }: { text: string; ranges: number[] | null }): JSX.Element {
   const segments = highlightSegments(text, ranges);
   return (
     <>
       {segments.map((segment, index) =>
-        segment.matched ? (
-          <mark key={index}>{segment.text}</mark>
-        ) : (
-          <span key={index}>{segment.text}</span>
-        )
+        segment.matched ? <mark key={index}>{segment.text}</mark> : <span key={index}>{segment.text}</span>
       )}
     </>
   );

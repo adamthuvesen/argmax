@@ -9,6 +9,7 @@ import { readStoredSidebarIntensity } from "./sidebarIntensity.js";
 import { readStoredTheme, resolveTheme } from "./theme.js";
 
 function runScript(surface: AppearanceSurface): void {
+  // oxlint-disable-next-line no-eval -- indirect eval runs the shipped bootstrap script in global scope
   (0, eval)(appearanceBootstrapScript(surface));
 }
 
@@ -23,8 +24,22 @@ describe("appearanceBootstrapScript", () => {
   it.each([
     [{}],
     [{ "argmax.theme.mode": "light" }],
-    [{ "argmax.theme.mode": "dark", "argmax.background.level": "42", "argmax.contrast.level": "75", "argmax.sidebar.level": "10" }],
-    [{ "argmax.theme.mode": "nonsense", "argmax.background.level": "101", "argmax.contrast.level": "x", "argmax.sidebar.level": "-1" }],
+    [
+      {
+        "argmax.theme.mode": "dark",
+        "argmax.background.level": "42",
+        "argmax.contrast.level": "75",
+        "argmax.sidebar.level": "10"
+      }
+    ],
+    [
+      {
+        "argmax.theme.mode": "nonsense",
+        "argmax.background.level": "101",
+        "argmax.contrast.level": "x",
+        "argmax.sidebar.level": "-1"
+      }
+    ],
     [{ "argmax.background.intensity": "7" }],
     [{ "argmax.background.intensity": "11" }]
   ])("paints what the desktop modules read for %j", (stored) => {
@@ -39,11 +54,14 @@ describe("appearanceBootstrapScript", () => {
     }
   });
 
-  it.each(["green", "teal", "black", "coral", "not-an-accent"])("paints the phone accent the module reads for %s", (accent) => {
-    window.localStorage.setItem("argmax.accent.tint", accent);
-    runScript("mobile");
-    expect(root.getAttribute("data-accent")).toBe(readStoredAccent());
-  });
+  it.each(["green", "teal", "black", "coral", "not-an-accent"])(
+    "paints the phone accent the module reads for %s",
+    (accent) => {
+      window.localStorage.setItem("argmax.accent.tint", accent);
+      runScript("mobile");
+      expect(root.getAttribute("data-accent")).toBe(readStoredAccent());
+    }
+  );
 
   it("paints the phone's dark default and accent bubble", () => {
     runScript("mobile");
@@ -51,7 +69,10 @@ describe("appearanceBootstrapScript", () => {
     expect(root.getAttribute("data-user-bubble")).toBe("accent");
   });
 
-  it.each([["index.html", "desktop"], ["mobile.html", "mobile"]] as const)("is inlined in %s", (html, surface) => {
+  it.each([
+    ["index.html", "desktop"],
+    ["mobile.html", "mobile"]
+  ] as const)("is inlined in %s", (html, surface) => {
     const page = readFileSync(resolve(process.cwd(), html), "utf8");
     const inlined = page.replace(/^ {6}/gm, "");
     expect(inlined).toContain(appearanceBootstrapScript(surface));

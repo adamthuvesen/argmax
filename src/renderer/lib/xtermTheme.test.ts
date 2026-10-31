@@ -5,9 +5,7 @@ import { DEFAULT_BACKGROUND_INTENSITY } from "./backgroundIntensity.js";
 import { readActiveXtermTheme } from "./xtermTheme.js";
 
 vi.mock("./pixelField.js", () => ({
-  readColorToken: (name: string) => name === "--terminal-surface"
-    ? { r: 3, g: 3, b: 3 }
-    : { r: 90, g: 143, b: 114 }
+  readColorToken: (name: string) => (name === "--terminal-surface" ? { r: 3, g: 3, b: 3 } : { r: 90, g: 143, b: 114 })
 }));
 
 afterEach(() => {

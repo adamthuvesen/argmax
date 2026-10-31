@@ -19,16 +19,12 @@ export interface CompactionNotice {
 
 function isCompactionEvent(event: TimelineEvent): boolean {
   const canonical = decodeTimelineEvent(event);
-  return canonical.kind === "lifecycle" &&
-    (canonical.name === "compacting" || canonical.name === "compacted");
+  return canonical.kind === "lifecycle" && (canonical.name === "compacting" || canonical.name === "compacted");
 }
 
 export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
   const canonical = decodeTimelineEvent(event);
-  if (
-    canonical.kind !== "lifecycle" ||
-    (canonical.name !== "compacting" && canonical.name !== "compacted")
-  ) {
+  if (canonical.kind !== "lifecycle" || (canonical.name !== "compacting" && canonical.name !== "compacted")) {
     return { running: false, preTokens: null, postTokens: null };
   }
   return {
@@ -48,9 +44,11 @@ export function compactionNoticeFor(event: TimelineEvent): CompactionNotice {
 function landsDuringCompaction(event: TimelineEvent): boolean {
   if (event.type === "command.completed") return true;
   const canonical = decodeTimelineEvent(event);
-  return canonical.parentToolUseId !== null ||
+  return (
+    canonical.parentToolUseId !== null ||
     canonical.providerThreadId !== null ||
-    canonical.providerChildSessionId !== null;
+    canonical.providerChildSessionId !== null
+  );
 }
 
 /**

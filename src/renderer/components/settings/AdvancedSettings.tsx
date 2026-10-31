@@ -57,7 +57,8 @@ export function AdvancedSettings({
     enabled: performanceOpen,
     read: (api) => api.system.performanceStatus(),
     onData: setPerformanceStatus,
-    onError: (error) => setDiagnosticsStatus(error instanceof Error ? error.message : "Could not read performance status.")
+    onError: (error) =>
+      setDiagnosticsStatus(error instanceof Error ? error.message : "Could not read performance status.")
   });
   useEffect(() => {
     if (!performanceOpen) return undefined;
@@ -209,25 +210,25 @@ export function AdvancedSettings({
         />
 
         {developerToolsEnabled ? (
-        <SettingRow
-          label="Performance"
-          description={
-            readyPhase
-              ? `Started in ${readyPhase.elapsedMs.toFixed(0)} ms of a ${COLD_START_BUDGET_MS.toLocaleString()} ms budget.`
-              : "Startup timings, request latency, and stored row counts for this launch."
-          }
-          control={
-            <button
-              type="button"
-              className="settings-button settings-button-quiet"
-              aria-expanded={performanceOpen}
-              onClick={() => setPerformanceOpen((open) => !open)}
-            >
-              <span>{performanceOpen ? "Hide details" : "Show details"}</span>
-              <ChevronRight size={13} aria-hidden="true" data-rotated={performanceOpen ? "true" : undefined} />
-            </button>
-          }
-        />
+          <SettingRow
+            label="Performance"
+            description={
+              readyPhase
+                ? `Started in ${readyPhase.elapsedMs.toFixed(0)} ms of a ${COLD_START_BUDGET_MS.toLocaleString()} ms budget.`
+                : "Startup timings, request latency, and stored row counts for this launch."
+            }
+            control={
+              <button
+                type="button"
+                className="settings-button settings-button-quiet"
+                aria-expanded={performanceOpen}
+                onClick={() => setPerformanceOpen((open) => !open)}
+              >
+                <span>{performanceOpen ? "Hide details" : "Show details"}</span>
+                <ChevronRight size={13} aria-hidden="true" data-rotated={performanceOpen ? "true" : undefined} />
+              </button>
+            }
+          />
         ) : null}
 
         <SettingRow
@@ -255,8 +256,8 @@ export function AdvancedSettings({
           <div className="settings-card">
             <h4 className="settings-card-title">Performance recorder</h4>
             <p className="settings-note">
-              Opt-in, one-second samples of the Argmax process tree, active chats, provider output,
-              IPC, SQLite reader pressure, and renderer stalls. The last 30 minutes stay in memory.
+              Opt-in, one-second samples of the Argmax process tree, active chats, provider output, IPC, SQLite reader
+              pressure, and renderer stalls. The last 30 minutes stay in memory.
             </p>
             <div className="settings-performance-recorder">
               <span className="settings-note" role="status">
@@ -268,19 +269,11 @@ export function AdvancedSettings({
               </span>
               <div className="settings-performance-actions">
                 {performanceStatus?.recording ? (
-                  <button
-                    type="button"
-                    className="settings-button"
-                    onClick={() => void stopPerformanceRecording()}
-                  >
+                  <button type="button" className="settings-button" onClick={() => void stopPerformanceRecording()}>
                     Stop
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    className="settings-button"
-                    onClick={() => void startPerformanceRecording()}
-                  >
+                  <button type="button" className="settings-button" onClick={() => void startPerformanceRecording()}>
                     Start
                   </button>
                 )}
@@ -353,7 +346,8 @@ export function AdvancedSettings({
               <div className="settings-card">
                 <h4 className="settings-card-title">SQLite readers</h4>
                 <p className="settings-note">
-                  {stats.readers.active} active of {stats.readers.maxConcurrent} · peak {stats.readers.peakActive} · {stats.readers.idle} idle
+                  {stats.readers.active} active of {stats.readers.maxConcurrent} · peak {stats.readers.peakActive} ·{" "}
+                  {stats.readers.idle} idle
                 </p>
                 <dl className="settings-metric-grid">
                   <div>
@@ -395,8 +389,7 @@ export function AdvancedSettings({
                 </thead>
                 <tbody>
                   {diagnostics.startupPhases.map((phase) => {
-                    const overBudget =
-                      phase.phase === "window.ready-to-show" && phase.elapsedMs > COLD_START_BUDGET_MS;
+                    const overBudget = phase.phase === "window.ready-to-show" && phase.elapsedMs > COLD_START_BUDGET_MS;
                     return (
                       <tr key={phase.phase} data-over-budget={overBudget || undefined}>
                         <td>
@@ -422,8 +415,7 @@ export function AdvancedSettings({
             <div className="settings-card">
               <h4 className="settings-card-title">IPC latency</h4>
               <p className="settings-note">
-                Per-channel p50 / p99 across the last 100 invocations. Refreshes when this page
-                re-opens.
+                Per-channel p50 / p99 across the last 100 invocations. Refreshes when this page re-opens.
               </p>
               <table className="settings-startup-table" aria-label="IPC channel latency">
                 <thead>
@@ -490,9 +482,8 @@ export function AdvancedSettings({
           }
         />
         <SettingNote>
-          Argmax is pre-1.0 and under active development, so expect rough edges. It sends no
-          telemetry — the only traffic it makes on its own is to GitHub, for the pull request and
-          check status on your own branches.
+          Argmax is pre-1.0 and under active development, so expect rough edges. It sends no telemetry — the only
+          traffic it makes on its own is to GitHub, for the pull request and check status on your own branches.
         </SettingNote>
         <SettingNote>© 2026 Adam Thuvesen</SettingNote>
       </SettingGroup>

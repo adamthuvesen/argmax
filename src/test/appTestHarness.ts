@@ -68,13 +68,7 @@ export {
 
 export type { ArgmaxApi, DashboardDelta, DashboardSnapshot };
 
-export type SettingsGroup =
-  | "General"
-  | "Appearance"
-  | "Agents"
-  | "Projects"
-  | "Integrations"
-  | "Advanced";
+export type SettingsGroup = "General" | "Appearance" | "Agents" | "Projects" | "Integrations" | "Advanced";
 
 export type AppTestMockFn<T extends (...args: never[]) => unknown> = ReturnType<typeof vi.fn<T>>;
 
@@ -219,18 +213,18 @@ export function setupAppTestMocks(): void {
   // would break the single-match role queries App tests rely on. Priority
   // behavior is covered directly in Sidebar.test.tsx.
   window.localStorage.setItem("argmax.sidebar.priority.visible", "false");
-  createCurrentWorkspace = vi.fn<ArgmaxApi["workspaces"]["createCurrent"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
-  createAlongsideWorkspace = vi.fn<ArgmaxApi["workspaces"]["createAlongside"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
-  createIsolatedWorkspace = vi.fn<ArgmaxApi["workspaces"]["createIsolated"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
-  createScratchWorkspace = vi.fn<ArgmaxApi["workspaces"]["createScratch"]>().mockResolvedValue(
-    snapshot.workspaces[0] ?? missingWorkspace()
-  );
+  createCurrentWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createCurrent"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
+  createAlongsideWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createAlongside"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
+  createIsolatedWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createIsolated"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
+  createScratchWorkspace = vi
+    .fn<ArgmaxApi["workspaces"]["createScratch"]>()
+    .mockResolvedValue(snapshot.workspaces[0] ?? missingWorkspace());
   autotitleWorkspace = vi.fn<ArgmaxApi["workspaces"]["autoTitle"]>().mockResolvedValue({ ok: true });
   archiveWorkspace = vi.fn<ArgmaxApi["workspaces"]["archive"]>().mockImplementation(({ workspaceId }) =>
     Promise.resolve({
@@ -244,7 +238,9 @@ export function setupAppTestMocks(): void {
   dashboardList = vi.fn<ArgmaxApi["dashboard"]["list"]>().mockResolvedValue(dashboardListSnapshot(snapshot));
   dashboardDeltaListener = null;
   dashboardDeltaUnsubscribe = vi.fn<() => void>();
-  launchProvider = vi.fn<ArgmaxApi["providers"]["launch"]>().mockResolvedValue(snapshot.sessions[0] ?? missingSession());
+  launchProvider = vi
+    .fn<ArgmaxApi["providers"]["launch"]>()
+    .mockResolvedValue(snapshot.sessions[0] ?? missingSession());
   openSessionWindow = vi.fn<ArgmaxApi["windows"]["openSession"]>().mockResolvedValue({ label: "chat-1" });
   approvalsPending = vi.fn<ArgmaxApi["approvals"]["pending"]>().mockResolvedValue(snapshot.approvals);
   approvalsResolve = vi.fn<ArgmaxApi["approvals"]["resolve"]>().mockImplementation(({ approvalId, status }) =>
@@ -262,30 +258,51 @@ export function setupAppTestMocks(): void {
       resolvedAt: new Date().toISOString()
     })
   );
-  questionsResolve = vi.fn<ArgmaxApi["questions"]["resolve"]>().mockImplementation(({ sessionId, requestId, dismissed }) =>
-    Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" })
-  );
-  createProject = vi.fn<ArgmaxApi["projects"]["create"]>().mockImplementation(({ name, primaryPath }) =>
-    Promise.resolve({ ...primaryProject(), name, repoPath: primaryPath })
-  );
-  configureProject = vi.fn<ArgmaxApi["projects"]["configure"]>().mockImplementation(({ projectId, name, primaryPath }) =>
-    Promise.resolve({ ...(snapshot.projects.find((project) => project.id === projectId) ?? primaryProject()), name, repoPath: primaryPath })
-  );
+  questionsResolve = vi
+    .fn<ArgmaxApi["questions"]["resolve"]>()
+    .mockImplementation(({ sessionId, requestId, dismissed }) =>
+      Promise.resolve({ sessionId, requestId, status: dismissed ? "dismissed" : "answered" })
+    );
+  createProject = vi
+    .fn<ArgmaxApi["projects"]["create"]>()
+    .mockImplementation(({ name, primaryPath }) =>
+      Promise.resolve({ ...primaryProject(), name, repoPath: primaryPath })
+    );
+  configureProject = vi
+    .fn<ArgmaxApi["projects"]["configure"]>()
+    .mockImplementation(({ projectId, name, primaryPath }) =>
+      Promise.resolve({
+        ...(snapshot.projects.find((project) => project.id === projectId) ?? primaryProject()),
+        name,
+        repoPath: primaryPath
+      })
+    );
   getProjectFolders = vi.fn<ArgmaxApi["projects"]["getFolders"]>().mockImplementation(({ projectId }) => {
     const project = snapshot.projects.find((candidate) => candidate.id === projectId) ?? primaryProject();
-    return Promise.resolve([{ id: `${projectId}:primary`, projectId, name: project.name, rootPath: project.repoPath,
-      isPrimary: true, enabled: true, summary: null }]);
+    return Promise.resolve([
+      {
+        id: `${projectId}:primary`,
+        projectId,
+        name: project.name,
+        rootPath: project.repoPath,
+        isPrimary: true,
+        enabled: true,
+        summary: null
+      }
+    ]);
   });
-  pickProjectDirectory = vi.fn<ArgmaxApi["projects"]["pickDirectory"]>().mockResolvedValue({ cancelled: false, path: primaryProject().repoPath });
+  pickProjectDirectory = vi
+    .fn<ArgmaxApi["projects"]["pickDirectory"]>()
+    .mockResolvedValue({ cancelled: false, path: primaryProject().repoPath });
   pickProjectFolder = vi.fn<ArgmaxApi["projects"]["pickFolder"]>().mockResolvedValue({
     cancelled: false,
     project: primaryProject()
   });
   listBranches = vi.fn<ArgmaxApi["projects"]["listBranches"]>().mockResolvedValue(["main"]);
   listCheckouts = vi.fn<ArgmaxApi["projects"]["listCheckouts"]>().mockResolvedValue([]);
-  switchBranch = vi.fn<ArgmaxApi["projects"]["switchBranch"]>().mockImplementation(() =>
-    Promise.resolve(primaryProject())
-  );
+  switchBranch = vi
+    .fn<ArgmaxApi["projects"]["switchBranch"]>()
+    .mockImplementation(() => Promise.resolve(primaryProject()));
   sessionEventsSince = vi.fn<ArgmaxApi["session"]["eventsSince"]>().mockResolvedValue(eventPageStub(snapshot));
   sessionAgentEvents = vi.fn<ArgmaxApi["session"]["agentEvents"]>().mockResolvedValue(eventPageStub(snapshot));
   sessionCostSummary = vi.fn<ArgmaxApi["session"]["costSummary"]>().mockResolvedValue({
@@ -376,12 +393,8 @@ export function setupAppTestMocks(): void {
     ]
   });
   vacuumDatabaseStub = vi.fn<ArgmaxApi["system"]["vacuumDatabase"]>().mockResolvedValue({ ok: true });
-  setNotificationsEnabledStub = vi
-    .fn<ArgmaxApi["system"]["setNotificationsEnabled"]>()
-    .mockResolvedValue({ ok: true });
-  agentToolsStub = vi
-    .fn<ArgmaxApi["settings"]["agentTools"]>()
-    .mockResolvedValue({ browserTools: true });
+  setNotificationsEnabledStub = vi.fn<ArgmaxApi["system"]["setNotificationsEnabled"]>().mockResolvedValue({ ok: true });
+  agentToolsStub = vi.fn<ArgmaxApi["settings"]["agentTools"]>().mockResolvedValue({ browserTools: true });
   setBrowserToolsStub = vi
     .fn<ArgmaxApi["settings"]["setBrowserTools"]>()
     .mockImplementation(({ enabled }) => Promise.resolve({ browserTools: enabled }));
@@ -424,9 +437,7 @@ export function setupAppTestMocks(): void {
   usageSummary = vi
     .fn<ArgmaxApi["usage"]["summary"]>()
     .mockImplementation((input) => Promise.resolve(usageSummaryFor(input)));
-  usageRemaining = vi
-    .fn<ArgmaxApi["usage"]["remaining"]>()
-    .mockResolvedValue(usageRemainingFixture());
+  usageRemaining = vi.fn<ArgmaxApi["usage"]["remaining"]>().mockResolvedValue(usageRemainingFixture());
   usageRouterCost = vi.fn<ArgmaxApi["usage"]["routerCost"]>().mockResolvedValue(null);
   activitySummary = vi
     .fn<ArgmaxApi["activity"]["summary"]>()
@@ -466,8 +477,13 @@ export function setupAppTestMocks(): void {
       list: dashboardList,
       onDelta: (listener) => {
         deltaListeners.add(listener);
-        dashboardDeltaListener = (delta) => { for (const subscriber of [...deltaListeners]) subscriber(delta); };
-        return () => { deltaListeners.delete(listener); dashboardDeltaUnsubscribe(); };
+        dashboardDeltaListener = (delta) => {
+          for (const subscriber of [...deltaListeners]) subscriber(delta);
+        };
+        return () => {
+          deltaListeners.delete(listener);
+          dashboardDeltaUnsubscribe();
+        };
       }
     },
     usage: {
@@ -491,8 +507,7 @@ export function setupAppTestMocks(): void {
       delete: () => Promise.resolve(null),
       setEnabled: (id, enabled) => Promise.resolve(routineStub({ id, enabled })),
       runNow: (id) => Promise.resolve(routineStub({ id, enabled: false })),
-      resetSession: (id) =>
-        Promise.resolve(routineStub({ id, worktree: false, runTarget: "same_session" }))
+      resetSession: (id) => Promise.resolve(routineStub({ id, worktree: false, runTarget: "same_session" }))
     },
     projects: {
       list: () => Promise.resolve(snapshot.projects),
@@ -503,10 +518,15 @@ export function setupAppTestMocks(): void {
       applyOverviewDraft: () => Promise.resolve(primaryProject()),
       discardOverviewDraft: () => Promise.resolve(primaryProject()),
       getFolders: getProjectFolders,
-      getFolderContext: vi.fn().mockImplementation(({ projectId, projectFolderId }: { projectId: string; projectFolderId?: string }) => Promise.resolve({
-        project: snapshot.projects.find((project) => project.id === projectId) ?? primaryProject(),
-        isGit: true, folderId: projectFolderId ?? `${projectId}:primary`
-      })),
+      getFolderContext: vi
+        .fn()
+        .mockImplementation(({ projectId, projectFolderId }: { projectId: string; projectFolderId?: string }) =>
+          Promise.resolve({
+            project: snapshot.projects.find((project) => project.id === projectId) ?? primaryProject(),
+            isGit: true,
+            folderId: projectFolderId ?? `${projectId}:primary`
+          })
+        ),
       pickDirectory: pickProjectDirectory,
       pickFolder: pickProjectFolder,
       register: () => Promise.resolve(primaryProject()),
@@ -516,17 +536,17 @@ export function setupAppTestMocks(): void {
       listCheckouts,
       refreshBranch: () => Promise.resolve(primaryProject()),
       switchBranch,
-      setBranchTemplate: ({ template }) =>
-        Promise.resolve({ ...primaryProject(), branchTemplate: template }),
-      checkPrompt: () => Promise.resolve({
-        decision: "none",
-        checkId: null,
-        suggestedProjectId: null,
-        runnerUpProjectId: null,
-        suggestedProbability: 0,
-        currentProbability: 0,
-        reasons: []
-      }),
+      setBranchTemplate: ({ template }) => Promise.resolve({ ...primaryProject(), branchTemplate: template }),
+      checkPrompt: () =>
+        Promise.resolve({
+          decision: "none",
+          checkId: null,
+          suggestedProjectId: null,
+          runnerUpProjectId: null,
+          suggestedProbability: 0,
+          currentProbability: 0,
+          reasons: []
+        }),
       resolveCheck: () => Promise.resolve()
     },
     workspaces: {
@@ -618,7 +638,7 @@ export function setupAppTestMocks(): void {
       list: () => Promise.resolve([]),
       get: () => Promise.resolve(null),
       set: () => Promise.reject(new Error("Goal not stubbed")),
-      clear: () => Promise.resolve(null),
+      clear: () => Promise.resolve(null)
     },
     arcs: {
       list: () => Promise.resolve([]),
@@ -630,12 +650,12 @@ export function setupAppTestMocks(): void {
       launchCoordinator: () => Promise.reject(new Error("Arc not stubbed")),
       timeline: () => Promise.resolve({ events: [], nextCursor: null }),
       draftFromSession: () => Promise.resolve({ name: null, brief: null }),
-      promote: () => Promise.reject(new Error("Arc not stubbed")),
+      promote: () => Promise.reject(new Error("Arc not stubbed"))
     },
     checkpoints: {
       list: () => Promise.resolve([]),
       previewRewind: () => Promise.reject(new Error("Checkpoint not stubbed")),
-      rewindFiles: () => Promise.reject(new Error("Checkpoint not stubbed")),
+      rewindFiles: () => Promise.reject(new Error("Checkpoint not stubbed"))
     },
     review: {
       listChangedFiles,
@@ -645,14 +665,16 @@ export function setupAppTestMocks(): void {
       revertFile: () => Promise.resolve(),
       stageHunk: () => Promise.resolve(),
       unstageHunk: () => Promise.resolve(),
-      revertHunk: () => Promise.resolve(),
+      revertHunk: () => Promise.resolve()
     },
     workspace: {
-      listFiles: (target) => target.kind !== "workspace" ? listProjectFiles(target) : listWorkspaceFiles(target),
-      readFile: (target, path) => target.kind !== "workspace" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
-      writeFile: (target, path, content, mtime) => target.kind !== "workspace"
-        ? writeProjectFile(target, path, content, mtime)
-        : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
+      listFiles: (target) => (target.kind !== "workspace" ? listProjectFiles(target) : listWorkspaceFiles(target)),
+      readFile: (target, path) =>
+        target.kind !== "workspace" ? readProjectFile(target, path) : readWorkspaceFile(target, path),
+      writeFile: (target, path, content, mtime) =>
+        target.kind !== "workspace"
+          ? writeProjectFile(target, path, content, mtime)
+          : Promise.resolve({ ok: "true", mtimeMs: 0, size: 0 } as const),
       statFile: () => Promise.resolve({ mtimeMs: 0, size: 0 }),
       readExternalFile: () => Promise.reject(new Error("not available in the harness")),
       statExternalFile: () => Promise.reject(new Error("not available in the harness")),
@@ -681,8 +703,7 @@ export function setupAppTestMocks(): void {
       setOpencodeGatewayKey: () => Promise.reject(new Error("Gateway key not stubbed")),
       clearOpencodeGatewayKey: () => Promise.resolve({ gateway: "openrouter" }),
       branchTemplate: () => Promise.resolve({ template: null, defaultTemplate: "argmax/{word}-{id}" }),
-      setBranchTemplate: ({ template }) =>
-        Promise.resolve({ template, defaultTemplate: "argmax/{word}-{id}" }),
+      setBranchTemplate: ({ template }) => Promise.resolve({ template, defaultTemplate: "argmax/{word}-{id}" }),
       setBrowserTools: setBrowserToolsStub,
       previewChatCleanup: () => Promise.reject(new Error("Chat cleanup not stubbed")),
       deleteOldChats: () => Promise.reject(new Error("Chat cleanup not stubbed"))
@@ -694,10 +715,15 @@ export function setupAppTestMocks(): void {
       openFileIn: () => Promise.resolve({ ok: true }),
       listDetectedIdes: listDetectedIdes,
       diagnostics: diagnosticsStub,
-      debugSnapshot: () =>
-        Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
+      debugSnapshot: () => Promise.resolve({ generatedAt: "2026-05-14T11:00:05.000Z", ipcStats: [], logs: [] }),
       performanceStart: () =>
-        Promise.resolve({ recording: true, startedAt: "2026-05-14T11:00:05.000Z", sampleCount: 0, droppedSamples: 0, latest: null }),
+        Promise.resolve({
+          recording: true,
+          startedAt: "2026-05-14T11:00:05.000Z",
+          sampleCount: 0,
+          droppedSamples: 0,
+          latest: null
+        }),
       performanceStop: () => Promise.reject(new Error("performance capture not stubbed")),
       performanceStatus: () =>
         Promise.resolve({ recording: false, startedAt: null, sampleCount: 0, droppedSamples: 0, latest: null }),
@@ -747,7 +773,9 @@ export function setupAppTestMocks(): void {
     windows: {
       onFocusSession: (listener) => {
         focusSessionListener = listener;
-        return () => { focusSessionListener = null; };
+        return () => {
+          focusSessionListener = null;
+        };
       },
       openSession: openSessionWindow,
       setSession: () => Promise.resolve({ label: "main" })

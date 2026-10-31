@@ -1,11 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  ArgmaxApi,
-  RemoteApnsStatus,
-  RemotePushDevice,
-  RemoteStatus
-} from "../../../shared/types.js";
+import type { ArgmaxApi, RemoteApnsStatus, RemotePushDevice, RemoteStatus } from "../../../shared/types.js";
 import { resetToastForTests, toastSnapshot } from "../../state/toast.js";
 import { RemoteSettings } from "./RemoteSettings.js";
 
@@ -117,17 +112,13 @@ describe("RemoteSettings", () => {
     installRemoteStub({ getStatus: vi.fn().mockResolvedValue(remoteStatus({ serving: false })) });
     render(<RemoteSettings />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The bridge is enabled but not running."
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("The bridge is enabled but not running.");
   });
 
   it("sends a test notification once a topic is saved", async () => {
     const testNotification = vi.fn().mockResolvedValue({ ok: true });
     installRemoteStub({
-      getStatus: vi
-        .fn()
-        .mockResolvedValue(remoteStatus({ ntfyTopic: "https://ntfy.sh/argmax-test" })),
+      getStatus: vi.fn().mockResolvedValue(remoteStatus({ ntfyTopic: "https://ntfy.sh/argmax-test" })),
       testNotification
     });
     render(<RemoteSettings />);
@@ -219,9 +210,7 @@ describe("RemoteSettings", () => {
   it("sends a test push once a key and a phone are in place", async () => {
     const pushTest = vi
       .fn()
-      .mockResolvedValue([
-        { token: "a1b2c3d4e5f6a7b8", name: "Adam's iPhone", ok: true, error: null }
-      ]);
+      .mockResolvedValue([{ token: "a1b2c3d4e5f6a7b8", name: "Adam's iPhone", ok: true, error: null }]);
     installRemoteStub({
       getStatus: vi.fn().mockResolvedValue(remoteStatus({ apns: pairedApns() })),
       pushTest

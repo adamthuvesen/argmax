@@ -70,8 +70,7 @@ export function ActivityReviews({ summary }: { summary: ActivitySummary }): JSX.
           <p className="activity-reviews-count">
             <span className="activity-reviews-figure">{formatCount(totals.reviewsGiven)}</span>
             <span className="activity-reviews-label">
-              {totals.reviewsGiven === 1 ? "review" : "reviews"} on{" "}
-              {formatCount(pullRequests)} pull{" "}
+              {totals.reviewsGiven === 1 ? "review" : "reviews"} on {formatCount(pullRequests)} pull{" "}
               {pullRequests === 1 ? "request" : "requests"}
             </span>
           </p>
@@ -117,20 +116,14 @@ export function ActivityReviews({ summary }: { summary: ActivitySummary }): JSX.
             <ul className="activity-recent" aria-label="Recently reviewed">
               {reviews.slice(0, VISIBLE_ROWS).map((review) => (
                 <li key={`${review.repository}#${review.number}`}>
-                  <span
-                    className="activity-verdict"
-                    data-state={review.state}
-                    title={STATE_LABEL[review.state]}
-                  />
+                  <span className="activity-verdict" data-state={review.state} title={STATE_LABEL[review.state]} />
                   <span className="activity-recent-what">
                     <span className="activity-recent-title">{review.title}</span>
                     <span className="activity-recent-repo">
                       {review.repository.split("/").pop()} #{review.number}
                     </span>
                   </span>
-                  <span className="activity-recent-when">
-                    {formatShortDate(review.submittedAt, summary.timeZone)}
-                  </span>
+                  <span className="activity-recent-when">{formatShortDate(review.submittedAt, summary.timeZone)}</span>
                 </li>
               ))}
             </ul>

@@ -6,9 +6,27 @@ import type { ChatDirectoryEntry } from "../state/chatDirectory.js";
 import { useFileAutocomplete } from "./useFileAutocomplete.js";
 
 const directory: ChatDirectoryEntry[] = [
-  { sessionId: "s-billing", workspaceId: "w1", title: "Billing rewrite", projectName: "Argmax", lastActivityAt: "2026-10-03T00:00:00Z" },
-  { sessionId: "s-export", workspaceId: "w2", title: "Export job", projectName: "Dotfiles", lastActivityAt: "2026-10-02T00:00:00Z" },
-  { sessionId: "s-self", workspaceId: "w3", title: "Billing this chat", projectName: "Argmax", lastActivityAt: "2026-10-01T00:00:00Z" }
+  {
+    sessionId: "s-billing",
+    workspaceId: "w1",
+    title: "Billing rewrite",
+    projectName: "Argmax",
+    lastActivityAt: "2026-10-03T00:00:00Z"
+  },
+  {
+    sessionId: "s-export",
+    workspaceId: "w2",
+    title: "Export job",
+    projectName: "Dotfiles",
+    lastActivityAt: "2026-10-02T00:00:00Z"
+  },
+  {
+    sessionId: "s-self",
+    workspaceId: "w3",
+    title: "Billing this chat",
+    projectName: "Argmax",
+    lastActivityAt: "2026-10-01T00:00:00Z"
+  }
 ];
 
 function Harness({ initialInput }: { initialInput: string }): JSX.Element {
@@ -75,9 +93,7 @@ describe("useFileAutocomplete chat references", () => {
     caretAtEnd();
 
     expect(screen.getByTestId("open").textContent).toBe("yes");
-    expect(screen.getAllByTestId("entry-chat").map((node) => node.textContent)).toEqual([
-      "Billing rewrite|"
-    ]);
+    expect(screen.getAllByTestId("entry-chat").map((node) => node.textContent)).toEqual(["Billing rewrite|"]);
   });
 
   it("stays a files-only menu for a one-letter query", () => {

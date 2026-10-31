@@ -74,7 +74,7 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
       tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextTokens: 0,
       imported: false,
-      launchKind: "agent",
+      launchKind: "agent"
     }
   ],
   events: [
@@ -92,9 +92,7 @@ export const defaultDashboardSnapshot: DashboardSnapshot = {
   checks: []
 };
 
-export function dashboardListSnapshot(
-  data: DashboardSnapshot
-): Awaited<ReturnType<ArgmaxApi["dashboard"]["list"]>> {
+export function dashboardListSnapshot(data: DashboardSnapshot): Awaited<ReturnType<ArgmaxApi["dashboard"]["list"]>> {
   return {
     projects: data.projects,
     workspaces: data.workspaces,

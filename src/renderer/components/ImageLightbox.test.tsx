@@ -7,7 +7,9 @@ function LightboxHarness(): JSX.Element {
   const [src, setSrc] = useState<string | null>(null);
   return (
     <>
-      <button type="button" onClick={() => setSrc("data:image/png;base64,preview")}>Open preview</button>
+      <button type="button" onClick={() => setSrc("data:image/png;base64,preview")}>
+        Open preview
+      </button>
       <ImageLightbox src={src} alt="Attached image" onClose={() => setSrc(null)} />
     </>
   );
@@ -37,13 +39,7 @@ describe("ImageLightbox", () => {
 
   it("dismisses from anywhere outside the image, including beside it", () => {
     const onClose = vi.fn();
-    render(
-      <ImageLightbox
-        src="data:image/png;base64,preview"
-        alt="Attached image"
-        onClose={onClose}
-      />
-    );
+    render(<ImageLightbox src="data:image/png;base64,preview" alt="Attached image" onClose={onClose} />);
 
     const image = screen.getByRole("img", { name: "Attached image" });
     fireEvent.mouseDown(image);

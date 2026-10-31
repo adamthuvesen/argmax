@@ -21,12 +21,7 @@ function event(
   };
 }
 
-function tool(
-  id: string,
-  name: string,
-  createdAt: string,
-  parentToolUseId: string | null = null
-): ToolCall {
+function tool(id: string, name: string, createdAt: string, parentToolUseId: string | null = null): ToolCall {
   return {
     id,
     toolUseId: id,
@@ -147,14 +142,10 @@ describe("foldRenderItems", () => {
 
     const turnBeforeSteer = beforeSteer.find((item) => item.kind === "turn");
     const turnsAfterSteer = afterSteer.filter((item) => item.kind === "turn");
-    expect(afterSteer.map((item) => item.kind)).toEqual([
-      "user-message",
-      "turn"
-    ]);
+    expect(afterSteer.map((item) => item.kind)).toEqual(["user-message", "turn"]);
     expect(turnsAfterSteer[0]?.id).toBe(turnBeforeSteer?.id);
     expect(topLevelToolIds(turnsAfterSteer[0])).toEqual(["read"]);
-    expect(turnsAfterSteer[0]?.kind === "turn" ? turnsAfterSteer[0].toolItems[0]?.tool.status : null)
-      .toBe("running");
+    expect(turnsAfterSteer[0]?.kind === "turn" ? turnsAfterSteer[0].toolItems[0]?.tool.status : null).toBe("running");
     expect(turnsAfterSteer[0]?.steerEvents.map((event) => event.id)).toEqual(["steer"]);
     expect(turnsAfterSteer[0]?.assistantEvents.map((event) => event.id)).toEqual(["intro", "answer"]);
   });
@@ -220,12 +211,7 @@ describe("foldRenderItems", () => {
 
     const out = foldRenderItems(items, null);
 
-    expect(out.map((item) => item.kind)).toEqual([
-      "user-message",
-      "turn",
-      "project-move",
-      "user-message"
-    ]);
+    expect(out.map((item) => item.kind)).toEqual(["user-message", "turn", "project-move", "user-message"]);
     const move = out.find((item) => item.kind === "project-move");
     expect(move?.kind === "project-move" ? move.notice : null).toEqual({
       from: "HQ",
@@ -254,14 +240,9 @@ describe("foldRenderItems", () => {
 
     expect(out.map((item) => item.kind)).toEqual(["user-message", "turn", "session-note"]);
     const turn = out.find((item) => item.kind === "turn");
-    expect(turn?.kind === "turn" ? turn.assistantEvents.map((e) => e.id) : null).toEqual([
-      "answer-1",
-      "answer-2"
-    ]);
+    expect(turn?.kind === "turn" ? turn.assistantEvents.map((e) => e.id) : null).toEqual(["answer-1", "answer-2"]);
     const note = out.find((item) => item.kind === "session-note");
-    expect(note?.kind === "session-note" ? note.message : null).toBe(
-      "The scheduled move was cancelled."
-    );
+    expect(note?.kind === "session-note" ? note.message : null).toBe("The scheduled move was cancelled.");
   });
 
   it("leaves a background subagent's later rows out of the next turn", () => {
@@ -285,17 +266,12 @@ describe("foldRenderItems", () => {
     expect(topLevelToolIds(turns[1])).toEqual(["own"]);
     // The same-turn child still nests under the launch it belongs to.
     const launchItem = turns[0]?.kind === "turn" ? turns[0].toolItems[0] : undefined;
-    expect(launchItem?.kind === "tool" ? launchItem.children?.map((t) => t.id) : null).toEqual([
-      "child-1"
-    ]);
+    expect(launchItem?.kind === "tool" ? launchItem.children?.map((t) => t.id) : null).toEqual(["child-1"]);
   });
 
   it("keeps an orphaned child row when its launch is no longer in the transcript", () => {
     const orphan = tool("orphan", "Bash", "2026-05-12T15:00:05.000Z", "evicted-launch");
-    const items = foldConversationItems(
-      [event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go")],
-      [orphan]
-    );
+    const items = foldConversationItems([event("user-1", "user.message", "2026-05-12T15:00:00.000Z", "Go")], [orphan]);
 
     const out = foldRenderItems(items, null);
 
@@ -398,24 +374,31 @@ describe("plans within conversation turns", () => {
       event("u2", "user.message", "2026-05-12T15:00:03.000Z"),
       update("plan-2", "2026-05-12T15:00:04.000Z", "active")
     ];
-    const fold = (input: TimelineEvent[]) => foldRenderItems(foldConversationItems(input, []), null)
-      .filter((item) => item.kind === "turn");
+    const fold = (input: TimelineEvent[]) =>
+      foldRenderItems(foldConversationItems(input, []), null).filter((item) => item.kind === "turn");
     const turns = fold(events);
     expect(turns.map((item) => item.id)).toEqual(["turn-u1", "turn-u2"]);
     expect(turns[0].todo?.items[0].status).toBe("pending");
     expect(turns[1].todo?.active?.text).toBe("Ship the fix");
     expect(turns[1].assistantEvents).toEqual([]);
-    expect(fold([...events, event("a2", "message.completed", "2026-05-12T15:00:05.000Z")])
-      .map((item) => item.todo)).toEqual(turns.map((item) => item.todo));
+    expect(
+      fold([...events, event("a2", "message.completed", "2026-05-12T15:00:05.000Z")]).map((item) => item.todo)
+    ).toEqual(turns.map((item) => item.todo));
   });
 
   it("does not add a plan to a turn that never updated it", () => {
-    const turns = foldRenderItems(foldConversationItems([
-      event("u1", "user.message", "2026-05-12T15:00:00.000Z"),
-      update("plan-1", "2026-05-12T15:00:01.000Z", "done"),
-      event("u2", "user.message", "2026-05-12T15:00:02.000Z"),
-      event("a2", "message.completed", "2026-05-12T15:00:03.000Z")
-    ], []), null).filter((item) => item.kind === "turn");
+    const turns = foldRenderItems(
+      foldConversationItems(
+        [
+          event("u1", "user.message", "2026-05-12T15:00:00.000Z"),
+          update("plan-1", "2026-05-12T15:00:01.000Z", "done"),
+          event("u2", "user.message", "2026-05-12T15:00:02.000Z"),
+          event("a2", "message.completed", "2026-05-12T15:00:03.000Z")
+        ],
+        []
+      ),
+      null
+    ).filter((item) => item.kind === "turn");
     expect(turns[0].todo?.doneCount).toBe(1);
     expect(turns[1].todo).toBeUndefined();
   });

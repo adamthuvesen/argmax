@@ -65,9 +65,7 @@ interface SortState {
  * and read oldest first, which is the order the backend hands them over in.
  */
 function defaultSort(mode: BreakdownMode): SortState {
-  return mode === "model"
-    ? { column: "primary", direction: "desc" }
-    : { column: "name", direction: "asc" };
+  return mode === "model" ? { column: "primary", direction: "desc" } : { column: "name", direction: "asc" };
 }
 
 /** The column a figure in dollars lands in, whichever metric is active. */
@@ -100,11 +98,7 @@ function compareName(a: BreakdownRow, b: BreakdownRow): number {
   return a.sortName.localeCompare(b.sortName, "en") || a.key.localeCompare(b.key, "en");
 }
 
-function sortRows(
-  rows: readonly BreakdownRow[],
-  sort: SortState,
-  metric: UsageMetric
-): BreakdownRow[] {
+function sortRows(rows: readonly BreakdownRow[], sort: SortState, metric: UsageMetric): BreakdownRow[] {
   const direction = sort.direction === "asc" ? 1 : -1;
   const parkUnpriced = isCostColumn(sort.column, metric);
   return [...rows].sort((a, b) => {
@@ -167,11 +161,7 @@ function dayRows(days: readonly UsageDayRow[], summary: UsageSummary): Breakdown
     key: row.bucketStart,
     // RFC 3339 in UTC, so a lexical sort of the key is a chronological one.
     sortName: row.bucketStart,
-    name: (
-      <span className="usage-table-day">
-        {formatBucketTitle(row.bucketStart, "day", summary.timeZone)}
-      </span>
-    ),
+    name: <span className="usage-table-day">{formatBucketTitle(row.bucketStart, "day", summary.timeZone)}</span>,
     sessions: row.sessions,
     costUsd: row.costUsd,
     tokens: processedTokens(row.tokens),
@@ -202,12 +192,7 @@ function SortHeader({
       aria-sort={ariaSort(column, sort)}
       title={title}
     >
-      <button
-        type="button"
-        className="usage-sort"
-        aria-label={`Sort by ${label}`}
-        onClick={() => onSort(column)}
-      >
+      <button type="button" className="usage-sort" aria-label={`Sort by ${label}`} onClick={() => onSort(column)}>
         <span>{label}</span>
         {/* The glyph, not its colour, is what marks the sorted column; it
             keeps its box when inactive so the labels never shift. */}
@@ -219,13 +204,7 @@ function SortHeader({
   );
 }
 
-export function UsageBreakdown({
-  summary,
-  metric
-}: {
-  summary: UsageSummary;
-  metric: UsageMetric;
-}): JSX.Element {
+export function UsageBreakdown({ summary, metric }: { summary: UsageSummary; metric: UsageMetric }): JSX.Element {
   const [mode, setMode] = useState<BreakdownMode>("model");
   const [sort, setSort] = useState<SortState>(() => defaultSort("model"));
   const [expanded, setExpanded] = useState(false);
@@ -300,22 +279,11 @@ export function UsageBreakdown({
           <table className="usage-table" aria-label={mode === "model" ? "Usage by model" : "Usage by day"}>
             <thead>
               <tr>
-                <SortHeader
-                  column="name"
-                  label={mode === "model" ? "Model" : "Day"}
-                  sort={sort}
-                  onSort={onSort}
-                />
+                <SortHeader column="name" label={mode === "model" ? "Model" : "Day"} sort={sort} onSort={onSort} />
                 <SortHeader column="sessions" label="Sessions" numeric sort={sort} onSort={onSort} />
                 <SortHeader column="primary" label={primaryLabel} numeric sort={sort} onSort={onSort} />
                 <SortHeader column="share" label="Share" numeric sort={sort} onSort={onSort} />
-                <SortHeader
-                  column="secondary"
-                  label={secondaryLabel}
-                  numeric
-                  sort={sort}
-                  onSort={onSort}
-                />
+                <SortHeader column="secondary" label={secondaryLabel} numeric sort={sort} onSort={onSort} />
                 <SortHeader
                   column="rate"
                   label="$ / 1M"
@@ -376,16 +344,12 @@ export function UsageBreakdown({
                     </th>
                     <td className="usage-table-num">{formatCount(hiddenSessions)}</td>
                     <td className="usage-table-num">{formatMetric(hiddenPrimary, metric)}</td>
-                    <td className="usage-table-num">
-                      {formatPercent(shareOfTotal(hiddenPrimary, shareTotal))}
-                    </td>
+                    <td className="usage-table-num">{formatPercent(shareOfTotal(hiddenPrimary, shareTotal))}</td>
                     <td className="usage-table-num">
                       {metric === "cost" ? formatTokens(hiddenTokens) : formatUsd(hiddenCost)}
                     </td>
                     <td className="usage-table-num">
-                      {hiddenPricedTokens > 0
-                        ? formatUsdRate((hiddenCost / hiddenPricedTokens) * 1_000_000)
-                        : "—"}
+                      {hiddenPricedTokens > 0 ? formatUsdRate((hiddenCost / hiddenPricedTokens) * 1_000_000) : "—"}
                     </td>
                   </tr>
                 ) : null}
@@ -420,14 +384,7 @@ export function UsageBreakdown({
 function ShareMeter({ share }: { share: number | null }): JSX.Element {
   const width = share === null ? 0 : Math.max(2, Math.round(share * 96));
   return (
-    <svg
-      className="usage-share-meter"
-      viewBox="0 0 96 8"
-      width="96"
-      height="8"
-      aria-hidden="true"
-      focusable="false"
-    >
+    <svg className="usage-share-meter" viewBox="0 0 96 8" width="96" height="8" aria-hidden="true" focusable="false">
       <rect className="usage-share-track" x="0" y="3" width="96" height="2" rx="1" />
       <rect className="usage-share-fill" x="0" y="1" width={width} height="6" rx="3" />
     </svg>

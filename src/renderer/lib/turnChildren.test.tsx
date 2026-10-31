@@ -61,24 +61,14 @@ describe("foldActivityRunsToSummaries", () => {
       ["thought-1", "command-1", "thought-2", "command-2"],
       ["thought-3", "command-3"]
     ]);
-    expect(runs.map((run) => run.tools.map((item) => item.id))).toEqual([
-      ["command-1", "command-2"],
-      ["command-3"]
-    ]);
-    expect(folded.map((child) => child.id)).toEqual([
-      "activity-thought-1",
-      "prose",
-      "activity-thought-3"
-    ]);
+    expect(runs.map((run) => run.tools.map((item) => item.id))).toEqual([["command-1", "command-2"], ["command-3"]]);
+    expect(folded.map((child) => child.id)).toEqual(["activity-thought-1", "prose", "activity-thought-3"]);
   });
 
   it("keeps the first thought as the stable anchor when a tool arrives", () => {
     const renderRun = (): null => null;
     const before = foldActivityRunsToSummaries([thought("thought-1")], renderRun);
-    const after = foldActivityRunsToSummaries(
-      [thought("thought-1"), toolChild("command-1")],
-      renderRun
-    );
+    const after = foldActivityRunsToSummaries([thought("thought-1"), toolChild("command-1")], renderRun);
 
     expect(after[0]?.id).toBe(before[0]?.id);
   });

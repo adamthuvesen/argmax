@@ -4,7 +4,14 @@
  */
 
 const MODIFIER_CODES = new Set([
-  "MetaLeft", "MetaRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "ShiftLeft", "ShiftRight"
+  "MetaLeft",
+  "MetaRight",
+  "ControlLeft",
+  "ControlRight",
+  "AltLeft",
+  "AltRight",
+  "ShiftLeft",
+  "ShiftRight"
 ]);
 
 /** The host reads physical key names, so `Alt+S` is the S key, not "ß". */
@@ -17,13 +24,12 @@ function keyName(code: string): string | null {
   return code;
 }
 
-export type ChordRecording =
-  | { kind: "chord"; chord: string }
-  | { kind: "modifier-only" }
-  | { kind: "needs-modifier" };
+export type ChordRecording = { kind: "chord"; chord: string } | { kind: "modifier-only" } | { kind: "needs-modifier" };
 
 /** Reads one keydown while the user is recording a new chord. */
-export function recordChord(event: Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">): ChordRecording {
+export function recordChord(
+  event: Pick<KeyboardEvent, "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">
+): ChordRecording {
   const key = keyName(event.code);
   if (key === null) return { kind: "modifier-only" };
   // Shift alone makes a capital letter, which would fire while typing.
@@ -39,19 +45,35 @@ export function recordChord(event: Pick<KeyboardEvent, "code" | "metaKey" | "ctr
 }
 
 const GLYPHS: Readonly<Record<string, string>> = {
-  command: "⌘", commandorcontrol: "⌘", cmdorctrl: "⌘", cmd: "⌘", super: "⌘", meta: "⌘",
-  control: "⌃", ctrl: "⌃", alt: "⌥", option: "⌥", shift: "⇧"
+  command: "⌘",
+  commandorcontrol: "⌘",
+  cmdorctrl: "⌘",
+  cmd: "⌘",
+  super: "⌘",
+  meta: "⌘",
+  control: "⌃",
+  ctrl: "⌃",
+  alt: "⌥",
+  option: "⌥",
+  shift: "⇧"
 };
 
 /** `Command+Alt+Shift+S` as ⌘⌥⇧S, in the macOS order ⌃⌥⇧⌘. */
 export function displayChord(chord: string): string {
-  const tokens = chord.split("+").map((token) => token.trim()).filter(Boolean);
+  const tokens = chord
+    .split("+")
+    .map((token) => token.trim())
+    .filter(Boolean);
   const glyphs = new Set<string>();
   let key = "";
   for (const token of tokens) {
     const glyph = GLYPHS[token.toLowerCase()];
     if (glyph) glyphs.add(glyph);
-    else key = token.replace(/^Key/, "").replace(/^Digit/, "").toUpperCase();
+    else
+      key = token
+        .replace(/^Key/, "")
+        .replace(/^Digit/, "")
+        .toUpperCase();
   }
   const order = ["⌃", "⌥", "⇧", "⌘"];
   return `${order.filter((glyph) => glyphs.has(glyph)).join("")}${key}`;

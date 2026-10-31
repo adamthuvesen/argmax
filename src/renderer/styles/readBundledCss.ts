@@ -19,13 +19,10 @@ export function readBundledCss(entryPath: string): string {
     seen.add(path);
     const content = readFileSync(path, "utf8");
     const dir = dirname(path);
-    return content.replace(
-      /@import\s+url\(\s*['"]([^'"]+)['"]\s*\)\s*;?/g,
-      (match, importPath: string) => {
-        if (/^https?:/i.test(importPath)) return match;
-        return read(resolve(dir, importPath));
-      }
-    );
+    return content.replace(/@import\s+url\(\s*['"]([^'"]+)['"]\s*\)\s*;?/g, (match, importPath: string) => {
+      if (/^https?:/i.test(importPath)) return match;
+      return read(resolve(dir, importPath));
+    });
   }
 
   return read(entryPath);

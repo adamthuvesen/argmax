@@ -66,7 +66,10 @@ describe("starting a new chat in the background", () => {
   it("is ready for the next draft while the launch is still running", async () => {
     let finishLaunch!: () => void;
     launchProvider.mockImplementation(
-      () => new Promise((resolve) => { finishLaunch = () => resolve(session); })
+      () =>
+        new Promise((resolve) => {
+          finishLaunch = () => resolve(session);
+        })
     );
     render(<App />);
     const field = await promptField();
@@ -88,7 +91,10 @@ describe("starting a new chat in the background", () => {
   it("puts the draft back above newer typing when the launch fails", async () => {
     let failLaunch!: (error: Error) => void;
     launchProvider.mockImplementation(
-      () => new Promise((_resolve, reject) => { failLaunch = reject; })
+      () =>
+        new Promise((_resolve, reject) => {
+          failLaunch = reject;
+        })
     );
     render(<App />);
     const field = await promptField();
@@ -113,7 +119,10 @@ describe("starting a new chat in the background", () => {
   it("puts the draft back in storage when the launcher is gone by the time the start fails", async () => {
     let failLaunch!: (error: Error) => void;
     launchProvider.mockImplementation(
-      () => new Promise((_resolve, reject) => { failLaunch = reject; })
+      () =>
+        new Promise((_resolve, reject) => {
+          failLaunch = reject;
+        })
     );
     render(<App />);
     const field = await promptField();
@@ -141,7 +150,10 @@ describe("starting a new chat in the background", () => {
   it("hands a failed start's draft to a launcher opened in the meantime, above what was typed there", async () => {
     let failLaunch!: (error: Error) => void;
     launchProvider.mockImplementation(
-      () => new Promise((_resolve, reject) => { failLaunch = reject; })
+      () =>
+        new Promise((_resolve, reject) => {
+          failLaunch = reject;
+        })
     );
     const first = render(<App />);
     fireEvent.change(await promptField(), { target: { value: "Doomed task" } });

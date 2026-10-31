@@ -15,15 +15,11 @@ describe("htmlToMarkdown", () => {
     // The prompt goes to the agent as raw text, so \_\_pycache\_\_-style
     // escaping would pollute pasted paths and code.
     expect(htmlToMarkdown("<code>agents/hooks/__pycache__/</code>")).toBe("`agents/hooks/__pycache__/`");
-    expect(htmlToMarkdown("<p>see agents/hooks/__pycache__/ here</p>")).toBe(
-      "see agents/hooks/__pycache__/ here"
-    );
+    expect(htmlToMarkdown("<p>see agents/hooks/__pycache__/ here</p>")).toBe("see agents/hooks/__pycache__/ here");
   });
 
   it("fences copied code blocks", () => {
-    expect(htmlToMarkdown("<pre><code>let x = 1;\nlet y = 2;</code></pre>")).toBe(
-      "```\nlet x = 1;\nlet y = 2;\n```"
-    );
+    expect(htmlToMarkdown("<pre><code>let x = 1;\nlet y = 2;</code></pre>")).toBe("```\nlet x = 1;\nlet y = 2;\n```");
   });
 
   it("keeps links as markdown", () => {
@@ -33,8 +29,6 @@ describe("htmlToMarkdown", () => {
   });
 
   it("nests lists", () => {
-    expect(htmlToMarkdown("<ul><li>top<ul><li>inner</li></ul></li></ul>")).toBe(
-      "- top\n    - inner"
-    );
+    expect(htmlToMarkdown("<ul><li>top<ul><li>inner</li></ul></li></ul>")).toBe("- top\n    - inner");
   });
 });

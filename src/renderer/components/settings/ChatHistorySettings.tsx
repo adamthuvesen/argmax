@@ -55,7 +55,9 @@ export function ChatHistorySettings(): JSX.Element {
       const skipped = result.skippedRecentCount + result.skippedRunningCount;
       const message =
         `Deleted ${result.deletedChatCount} ${result.deletedChatCount === 1 ? "chat" : "chats"}.` +
-          (skipped ? ` Kept ${skipped} ${skipped === 1 ? "chat that is" : "chats that are"} active or recently updated.` : "");
+        (skipped
+          ? ` Kept ${skipped} ${skipped === 1 ? "chat that is" : "chats that are"} active or recently updated.`
+          : "");
       setLastCleanup(message);
       setStatus(null);
       try {
@@ -79,7 +81,12 @@ export function ChatHistorySettings(): JSX.Element {
         label="Delete chats older than 7 days"
         description="Permanently removes chats whose last activity was more than 7 days ago. Chats with active work are kept. Project files and worktrees stay on disk."
         control={
-          <button type="button" className="settings-button" disabled={busy || preview !== null} onClick={() => void reviewCleanup()}>
+          <button
+            type="button"
+            className="settings-button"
+            disabled={busy || preview !== null}
+            onClick={() => void reviewCleanup()}
+          >
             {busy && !preview ? "Checking…" : "Delete old chats…"}
           </button>
         }
@@ -90,7 +97,9 @@ export function ChatHistorySettings(): JSX.Element {
           description="This cannot be undone. These chats will also stay excluded from chat sync."
           control={
             <>
-              <button type="button" className="settings-button" disabled={busy} onClick={() => setPreview(null)}>Cancel</button>
+              <button type="button" className="settings-button" disabled={busy} onClick={() => setPreview(null)}>
+                Cancel
+              </button>
               <button type="button" className="settings-button" disabled={busy} onClick={() => void deleteChats()}>
                 {busy ? "Deleting…" : `Delete ${preview.chatCount} ${preview.chatCount === 1 ? "chat" : "chats"}`}
               </button>

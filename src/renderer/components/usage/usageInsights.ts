@@ -48,10 +48,7 @@ function completedBuckets(summary: UsageSummary): UsageSeriesPoint[] {
 
 /** One bucket's total across the providers the series carries. */
 function bucketTotal(point: UsageSeriesPoint, metric: UsageMetric): number {
-  return point.values.reduce(
-    (sum, value) => sum + (metric === "cost" ? value.costUsd : value.tokens),
-    0
-  );
+  return point.values.reduce((sum, value) => sum + (metric === "cost" ? value.costUsd : value.tokens), 0);
 }
 
 /**

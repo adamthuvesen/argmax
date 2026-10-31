@@ -23,7 +23,14 @@ function assistantEvent(
 
 describe("coalesceAssistantGroups", () => {
   it("keeps published visualizations between prose without swallowing continuation text", () => {
-    const artifact: TimelineEvent = { id: "viz", sessionId: "s1", type: "visualization.published", message: "Chart", createdAt: "2026-05-12T15:00:02.000Z", payload: { artifactId: "saved-chart", title: "Chart", summary: "Chart summary", format: "html", mode: null } };
+    const artifact: TimelineEvent = {
+      id: "viz",
+      sessionId: "s1",
+      type: "visualization.published",
+      message: "Chart",
+      createdAt: "2026-05-12T15:00:02.000Z",
+      payload: { artifactId: "saved-chart", title: "Chart", summary: "Chart summary", format: "html", mode: null }
+    };
     const groups = coalesceAssistantGroups([
       assistantEvent("before", "message.completed", "Before.", "2026-05-12T15:00:01.000Z"),
       artifact,
@@ -49,7 +56,13 @@ describe("coalesceAssistantGroups", () => {
 
   it.each(["message.delta", "error"] as const)("keeps an answer that matches prior %s text", (type) => {
     const groups = coalesceAssistantGroups([
-      assistantEvent("t1", type, "Done.", "2026-05-12T15:00:01.000Z", type === "message.delta" ? { thinking: true } : {}),
+      assistantEvent(
+        "t1",
+        type,
+        "Done.",
+        "2026-05-12T15:00:01.000Z",
+        type === "message.delta" ? { thinking: true } : {}
+      ),
       assistantEvent("a1", "message.completed", "Done.", "2026-05-12T15:00:02.000Z")
     ]);
 
@@ -175,12 +188,21 @@ describe("coalesceAssistantGroups", () => {
   it.each([true, false])("replays saved Codex summary parts once (streamed=%s)", (streamed) => {
     const summary = ["**Planning auto-merge activation**", "**Deciding on polling strategy for checks**"];
     const groups = coalesceAssistantGroups([
-      assistantEvent("prior", "message.delta", "Earlier reasoning.\n\n", "2026-09-13T07:49:23.000Z", { thinking: true }),
-      ...(streamed ? summary.map((part, index) => assistantEvent(
-        `delta-${index}`, "message.delta", part, `2026-09-13T07:49:${24 + index}.000Z`, { thinking: true }
-      )) : []),
+      assistantEvent("prior", "message.delta", "Earlier reasoning.\n\n", "2026-09-13T07:49:23.000Z", {
+        thinking: true
+      }),
+      ...(streamed
+        ? summary.map((part, index) =>
+            assistantEvent(`delta-${index}`, "message.delta", part, `2026-09-13T07:49:${24 + index}.000Z`, {
+              thinking: true
+            })
+          )
+        : []),
       assistantEvent("completed", "message.delta", summary.join("\n"), "2026-09-13T07:49:30.213Z", {
-        thinking: true, type: "reasoning", providerEventType: "item.completed", summary
+        thinking: true,
+        type: "reasoning",
+        providerEventType: "item.completed",
+        summary
       })
     ]);
 
@@ -301,9 +323,7 @@ describe("coalesceAssistantGroups", () => {
   });
 
   it("drops a blank error event", () => {
-    const groups = coalesceAssistantGroups([
-      assistantEvent("e1", "error", "   ", "2026-05-12T15:00:01.000Z")
-    ]);
+    const groups = coalesceAssistantGroups([assistantEvent("e1", "error", "   ", "2026-05-12T15:00:01.000Z")]);
     expect(groups).toHaveLength(0);
   });
 
@@ -335,15 +355,17 @@ describe("coalesceAssistantGroups", () => {
     "Reconnecting... 5/5",
     "Skill descriptions were shortened to fit the skills context budget."
   ])("drops stale provider advisory error rows: %s", (message) => {
-    expect(coalesceAssistantGroups([
-      assistantEvent("e1", "error", message, "2026-09-13T17:25:56.617Z")
-    ])).toHaveLength(0);
+    expect(coalesceAssistantGroups([assistantEvent("e1", "error", message, "2026-09-13T17:25:56.617Z")])).toHaveLength(
+      0
+    );
   });
 
   it("keeps a real plain provider error", () => {
-    expect(coalesceAssistantGroups([
-      assistantEvent("e1", "error", "Authentication failed; run `codex login`", "2026-09-13T17:25:56.617Z")
-    ])).toHaveLength(1);
+    expect(
+      coalesceAssistantGroups([
+        assistantEvent("e1", "error", "Authentication failed; run `codex login`", "2026-09-13T17:25:56.617Z")
+      ])
+    ).toHaveLength(1);
   });
 
   it("drops Codex apply_patch tracing that leaked in as stdout deltas, including context lines", () => {
@@ -355,15 +377,16 @@ describe("coalesceAssistantGroups", () => {
       assistantEvent("d2", "message.delta", "point = points[tau]", "2026-09-01T09:08:10.411Z", {
         stream: "stdout"
       }),
-      assistantEvent("d3", "message.delta", "interval_wrong, interval_correct = _exchange_counts(point, current)", "2026-09-01T09:08:10.411Z", {
-        stream: "stdout"
-      }),
       assistantEvent(
-        "a2",
-        "message.completed",
-        "The preregistered runner is ready.",
-        "2026-09-01T09:09:16.000Z"
-      )
+        "d3",
+        "message.delta",
+        "interval_wrong, interval_correct = _exchange_counts(point, current)",
+        "2026-09-01T09:08:10.411Z",
+        {
+          stream: "stdout"
+        }
+      ),
+      assistantEvent("a2", "message.completed", "The preregistered runner is ready.", "2026-09-01T09:09:16.000Z")
     ]);
     expect(groups.map((group) => group.text)).toEqual([
       "Preregistration is written.",
@@ -373,8 +396,7 @@ describe("coalesceAssistantGroups", () => {
   });
 
   it("lifts session-disconnect tracing that leaked in as a stdout delta into an error group", () => {
-    const log =
-      '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    const log = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
     const groups = coalesceAssistantGroups([
       assistantEvent("a1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
       assistantEvent("d1", "message.delta", log, "2026-05-12T15:00:02.000Z", { stream: "stdout" })
@@ -388,8 +410,7 @@ describe("coalesceAssistantGroups", () => {
   });
 
   it("joins continuation lines of kept tracing onto the error group", () => {
-    const header =
-      '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
+    const header = '2026-09-01T07:21:37.004170Z ERROR codex_core::session: stream disconnected session_id="abc"';
     const groups = coalesceAssistantGroups([
       assistantEvent("d1", "message.delta", header, "2026-05-12T15:00:01.000Z", { stream: "stdout" }),
       assistantEvent("d2", "message.delta", "retry scheduled", "2026-05-12T15:00:01.001Z", {
@@ -407,12 +428,7 @@ describe("coalesceAssistantGroups", () => {
   it("joins completed fragments that continue the previous sentence", () => {
     const groups = coalesceAssistantGroups([
       assistantEvent("a1", "message.completed", "I'll", "2026-05-12T15:00:01.000Z"),
-      assistantEvent(
-        "a2",
-        "message.completed",
-        " read the core docs and skim the layout.",
-        "2026-05-12T15:00:02.000Z"
-      )
+      assistantEvent("a2", "message.completed", " read the core docs and skim the layout.", "2026-05-12T15:00:02.000Z")
     ]);
 
     expect(groups).toHaveLength(1);
@@ -495,9 +511,7 @@ describe("reasoning bursts", () => {
       think("t2", "**Searching session completion events**", "2026-05-12T15:00:02.000Z")
     ]);
 
-    expect(groups[0].text).toBe(
-      "**Adding missing session default**\n\n**Searching session completion events**"
-    );
+    expect(groups[0].text).toBe("**Adding missing session default**\n\n**Searching session completion events**");
   });
 
   it("splits Codex titles that already arrived glued as ****", () => {
@@ -509,9 +523,7 @@ describe("reasoning bursts", () => {
       )
     ]);
 
-    expect(groups[0].text).toBe(
-      "**Designing test with fake client for failure**\n\n**Exploring test seam placement**"
-    );
+    expect(groups[0].text).toBe("**Designing test with fake client for failure**\n\n**Exploring test seam placement**");
   });
 
   it("does not treat a mid-word ** split as a new title", () => {
@@ -545,21 +557,57 @@ describe("liveThoughtOwnsProgress", () => {
   it.each([
     // Claude and Cursor narrate before a burst; the burst is still the cue.
     { name: "a thought after narration", events: [prose("p", "1"), thought("t", "2")], tools: [], expected: true },
-    { name: "a thought after narration and a settled tool", events: [prose("p", "1"), thought("t", "3")], tools: [toolAt("2")], expected: true },
+    {
+      name: "a thought after narration and a settled tool",
+      events: [prose("p", "1"), thought("t", "3")],
+      tools: [toolAt("2")],
+      expected: true
+    },
     { name: "a thought a tool started after", events: [thought("t", "1")], tools: [toolAt("2")], expected: false },
     // Claude envelopes carry thinking and tool_use under one timestamp.
-    { name: "a thought sharing its instant with a tool", events: [thought("t", "1")], tools: [toolAt("1")], expected: false },
-    { name: "a thought answer text followed", events: [thought("t", "1"), prose("p", "2")], tools: [], expected: false },
+    {
+      name: "a thought sharing its instant with a tool",
+      events: [thought("t", "1")],
+      tools: [toolAt("1")],
+      expected: false
+    },
+    {
+      name: "a thought answer text followed",
+      events: [thought("t", "1"), prose("p", "2")],
+      tools: [],
+      expected: false
+    },
     // Grok alternates tiny thinking/text pairs; the newest one decides.
-    { name: "Grok alternation ending on thinking", events: [thought("a", "1"), prose("b", "2"), thought("c", "3")], tools: [], expected: true }
+    {
+      name: "Grok alternation ending on thinking",
+      events: [thought("a", "1"), prose("b", "2"), thought("c", "3")],
+      tools: [],
+      expected: true
+    }
   ])("$name → $expected", ({ events, tools, expected }) => {
     expect(live(events, tools)).toBe(expected);
   });
 
   it("never claims the beat for a finished or paused turn", () => {
     const events = [thought("t", "1")];
-    expect(liveThoughtOwnsProgress({ assistantEvents: events, toolItems: [], isLatestTurn: true, sessionRunning: false, isPausedOnUserInput: false })).toBe(false);
-    expect(liveThoughtOwnsProgress({ assistantEvents: events, toolItems: [], isLatestTurn: true, sessionRunning: true, isPausedOnUserInput: true })).toBe(false);
+    expect(
+      liveThoughtOwnsProgress({
+        assistantEvents: events,
+        toolItems: [],
+        isLatestTurn: true,
+        sessionRunning: false,
+        isPausedOnUserInput: false
+      })
+    ).toBe(false);
+    expect(
+      liveThoughtOwnsProgress({
+        assistantEvents: events,
+        toolItems: [],
+        isLatestTurn: true,
+        sessionRunning: true,
+        isPausedOnUserInput: true
+      })
+    ).toBe(false);
   });
 });
 

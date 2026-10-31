@@ -81,9 +81,15 @@ describe("buildConversationEvents", () => {
   // `error` because that was the only non-message kind the chat rendered.
   it("keeps a session note in the visible chat", () => {
     const events = [
-      event("note", "session.note", "2026-05-12T15:00:02.000Z", "Resuming the archive scheduled before Argmax last quit.", {
-        operation: "workspace.archive"
-      }),
+      event(
+        "note",
+        "session.note",
+        "2026-05-12T15:00:02.000Z",
+        "Resuming the archive scheduled before Argmax last quit.",
+        {
+          operation: "workspace.archive"
+        }
+      ),
       event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
     ];
 
@@ -147,11 +153,7 @@ describe("buildConversationEvents", () => {
       event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
     ];
 
-    expect(buildConversationEvents(events).map((event) => event.id)).toEqual([
-      "user",
-      "steer",
-      "done"
-    ]);
+    expect(buildConversationEvents(events).map((event) => event.id)).toEqual(["user", "steer", "done"]);
   });
 
   it("keeps pre-tool narration when a later completed answer lands", () => {
@@ -229,12 +231,7 @@ describe("buildConversationEvents", () => {
       event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")
     ];
 
-    expect(buildConversationEvents(events).map((e) => e.id)).toEqual([
-      "user",
-      "mt-start",
-      "done",
-      "mt-done"
-    ]);
+    expect(buildConversationEvents(events).map((e) => e.id)).toEqual(["user", "mt-start", "done", "mt-done"]);
   });
 });
 
@@ -243,10 +240,7 @@ describe("hasRenderableSessionContent", () => {
     const onlyUser = [event("user", "user.message", "2026-05-12T15:00:01.000Z", "Go")];
     expect(hasRenderableSessionContent(buildConversationEvents(onlyUser), onlyUser)).toBe(false);
 
-    const withAssistant = [
-      event("done", "message.completed", "2026-05-12T15:00:02.000Z", "Done"),
-      ...onlyUser
-    ];
+    const withAssistant = [event("done", "message.completed", "2026-05-12T15:00:02.000Z", "Done"), ...onlyUser];
     expect(hasRenderableSessionContent(buildConversationEvents(withAssistant), withAssistant)).toBe(true);
 
     const withTool = [
@@ -255,10 +249,7 @@ describe("hasRenderableSessionContent", () => {
     ];
     expect(hasRenderableSessionContent(buildConversationEvents(withTool), withTool)).toBe(true);
 
-    const withBeacon = [
-      event("beacon", "session.streaming", "2026-05-12T15:00:02.000Z"),
-      ...onlyUser
-    ];
+    const withBeacon = [event("beacon", "session.streaming", "2026-05-12T15:00:02.000Z"), ...onlyUser];
     expect(hasRenderableSessionContent(buildConversationEvents(withBeacon), withBeacon)).toBe(true);
   });
 });
@@ -274,10 +265,7 @@ describe("openRunMarkerAt", () => {
     const closers: EventType[] = ["session.completed", "session.cancelled", "error"];
     for (const type of closers) {
       expect(
-        openRunMarkerAt([
-          event("close", type, "2026-05-12T15:00:03.000Z"),
-          beacon("2026-05-12T15:00:02.000Z")
-        ])
+        openRunMarkerAt([event("close", type, "2026-05-12T15:00:03.000Z"), beacon("2026-05-12T15:00:02.000Z")])
       ).toBeNull();
     }
   });
@@ -578,20 +566,23 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("keeps a Grok spawn_subagent row running after the launch ack", () => {
-    const tools = buildSessionToolCalls([
-      event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
-        tool_use_id: "call-spawn",
-        content: JSON.stringify({
-          type: "Text",
-          text: "Subagent started in background.\nsubagent_id: child-1"
+    const tools = buildSessionToolCalls(
+      [
+        event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+          tool_use_id: "call-spawn",
+          content: JSON.stringify({
+            type: "Text",
+            text: "Subagent started in background.\nsubagent_id: child-1"
+          })
+        }),
+        event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_subagent", {
+          id: "call-spawn",
+          name: "spawn_subagent",
+          input: { description: "Review screenshot drop fix", subagent_type: "reviewer" }
         })
-      }),
-      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_subagent", {
-        id: "call-spawn",
-        name: "spawn_subagent",
-        input: { description: "Review screenshot drop fix", subagent_type: "reviewer" }
-      })
-    ], true);
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -601,29 +592,32 @@ describe("buildSessionToolCalls", () => {
       completedAt: null
     });
     expect(tools[0]?.output).toContain("Subagent started in background");
-    expect(tools[0]?.output).not.toContain("\"type\"");
+    expect(tools[0]?.output).not.toContain('"type"');
   });
 
   it("keeps a Codex spawn_agent row running while the spawned thread is in progress", () => {
-    const tools = buildSessionToolCalls([
-      event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "spawn-1",
-        input: {
-          prompt: "Explore the repo.",
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "spawn-1",
-        name: "spawn_agent",
-        input: {
-          prompt: "Explore the repo.",
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "spawn-1",
+          input: {
+            prompt: "Explore the repo.",
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "spawn-1",
+          name: "spawn_agent",
+          input: {
+            prompt: "Explore the repo.",
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -635,21 +629,24 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("settles a synthetic Codex launch when the child trace completes", () => {
-    const tools = buildSessionToolCalls([
-      event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "trace-spawn-child",
-        name: "spawn_agent",
-        traceSyntheticLaunch: true,
-        providerChildSessionId: "child"
-      }),
-      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "trace-spawn-child",
-        name: "spawn_agent",
-        traceSyntheticLaunch: true,
-        providerChildSessionId: "child",
-        input: { receiver_thread_ids: ["child"] }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "trace-spawn-child",
+          name: "spawn_agent",
+          traceSyntheticLaunch: true,
+          providerChildSessionId: "child"
+        }),
+        event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "trace-spawn-child",
+          name: "spawn_agent",
+          traceSyntheticLaunch: true,
+          providerChildSessionId: "child",
+          input: { receiver_thread_ids: ["child"] }
+        })
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -660,46 +657,53 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("hides a superseded synthetic launch after the real launch takes over", () => {
-    const tools = buildSessionToolCalls([
-      event("real-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
-        id: "real-spawn",
-        name: "spawn_agent",
-        input: { receiver_thread_ids: ["child"] }
-      }),
-      event("synthetic-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "trace-spawn-child",
-        name: "spawn_agent",
-        traceSyntheticSuperseded: true,
-        traceSupersededBy: "real-spawn"
-      }),
-      event("synthetic-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "trace-spawn-child",
-        name: "spawn_agent",
-        traceSyntheticSuperseded: true,
-        traceSupersededBy: "real-spawn"
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("real-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
+          id: "real-spawn",
+          name: "spawn_agent",
+          input: { receiver_thread_ids: ["child"] }
+        }),
+        event("synthetic-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "trace-spawn-child",
+          name: "spawn_agent",
+          traceSyntheticSuperseded: true,
+          traceSupersededBy: "real-spawn"
+        }),
+        event("synthetic-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "trace-spawn-child",
+          name: "spawn_agent",
+          traceSyntheticSuperseded: true,
+          traceSupersededBy: "real-spawn"
+        })
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]?.toolUseId).toBe("real-spawn");
   });
 
   it("keeps a Claude Task row running when it completed with async launch metadata and the session is running", () => {
-    const tools = buildSessionToolCalls([
-      event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
-        tool_use_id: "task-1",
-        content: "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
-      }),
-      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "task-1",
-        name: "Task",
-        input: {
-          description: "Map renderer",
-          prompt: "Explore the repo.",
-          subagent_type: "explorer"
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+          tool_use_id: "task-1",
+          content:
+            "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
+        }),
+        event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "task-1",
+          name: "Task",
+          input: {
+            description: "Map renderer",
+            prompt: "Explore the repo.",
+            subagent_type: "explorer"
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -711,21 +715,25 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("marks an async subagent launch done when the session stops", () => {
-    const tools = buildSessionToolCalls([
-      event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
-        tool_use_id: "task-1",
-        content: "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
-      }),
-      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "task-1",
-        name: "Task",
-        input: {
-          description: "Map renderer",
-          prompt: "Explore the repo.",
-          subagent_type: "explorer"
-        }
-      })
-    ], false);
+    const tools = buildSessionToolCalls(
+      [
+        event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+          tool_use_id: "task-1",
+          content:
+            "Async agent launched successfully. output_file: /tmp/agent.txt. This tool result is internal metadata."
+        }),
+        event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "task-1",
+          name: "Task",
+          input: {
+            description: "Map renderer",
+            prompt: "Explore the repo.",
+            subagent_type: "explorer"
+          }
+        })
+      ],
+      false
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -737,21 +745,24 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("keeps a Cursor task row running after its parent turn ends when only a dispatch receipt exists", () => {
-    const tools = buildSessionToolCalls([
-      event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
-        call_id: "call-task",
-        providerInvocationId: "invoke-task",
-        name: "task",
-        input: { _toolName: "task", description: "Map session workspace tools" },
-        result: { durationMs: 34, isBackground: true }
-      }),
-      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
-        call_id: "call-task",
-        providerInvocationId: "invoke-task",
-        name: "task",
-        input: { _toolName: "task", description: "Map session workspace tools" }
-      })
-    ], false);
+    const tools = buildSessionToolCalls(
+      [
+        event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
+          call_id: "call-task",
+          providerInvocationId: "invoke-task",
+          name: "task",
+          input: { _toolName: "task", description: "Map session workspace tools" },
+          result: { durationMs: 34, isBackground: true }
+        }),
+        event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+          call_id: "call-task",
+          providerInvocationId: "invoke-task",
+          name: "task",
+          input: { _toolName: "task", description: "Map session workspace tools" }
+        })
+      ],
+      false
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -763,29 +774,32 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("settles a Cursor background task when its child finishes before the parent turn", () => {
-    const tools = buildSessionToolCalls([
-      event("child-done", "agent.completed", "2026-05-12T15:00:07.000Z", "Agent completed", {
-        providerInvocationId: "invoke-task",
-        providerChildSessionId: "child-task",
-        agentRootToolUseId: "call-task",
-        agentRunId: "call-task",
-        status: "completed",
-        traceImported: true
-      }),
-      event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
-        call_id: "call-task",
-        providerInvocationId: "invoke-task",
-        name: "task",
-        input: { _toolName: "task", description: "Map session workspace tools" },
-        result: { durationMs: 34, isBackground: true }
-      }),
-      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
-        call_id: "call-task",
-        providerInvocationId: "invoke-task",
-        name: "task",
-        input: { _toolName: "task", description: "Map session workspace tools" }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("child-done", "agent.completed", "2026-05-12T15:00:07.000Z", "Agent completed", {
+          providerInvocationId: "invoke-task",
+          providerChildSessionId: "child-task",
+          agentRootToolUseId: "call-task",
+          agentRunId: "call-task",
+          status: "completed",
+          traceImported: true
+        }),
+        event("task-end", "command.completed", "2026-05-12T15:00:01.120Z", "task", {
+          call_id: "call-task",
+          providerInvocationId: "invoke-task",
+          name: "task",
+          input: { _toolName: "task", description: "Map session workspace tools" },
+          result: { durationMs: 34, isBackground: true }
+        }),
+        event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+          call_id: "call-task",
+          providerInvocationId: "invoke-task",
+          name: "task",
+          input: { _toolName: "task", description: "Map session workspace tools" }
+        })
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -797,40 +811,46 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("settles a Cursor task row that returned its agent's own result", () => {
-    const tools = buildSessionToolCalls([
-      event("task-end", "command.completed", "2026-05-12T15:02:00.000Z", "task", {
-        call_id: "call-task",
-        name: "task",
-        input: { _toolName: "task", description: "Map session workspace tools" },
-        result: { success: { agentId: "child-1" }, durationMs: 94_000, isBackground: false }
-      }),
-      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
-        call_id: "call-task",
-        name: "task",
-        input: { _toolName: "task", description: "Map session workspace tools" }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("task-end", "command.completed", "2026-05-12T15:02:00.000Z", "task", {
+          call_id: "call-task",
+          name: "task",
+          input: { _toolName: "task", description: "Map session workspace tools" },
+          result: { success: { agentId: "child-1" }, durationMs: 94_000, isBackground: false }
+        }),
+        event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "task", {
+          call_id: "call-task",
+          name: "task",
+          input: { _toolName: "task", description: "Map session workspace tools" }
+        })
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({ toolUseId: "call-task", name: "task", status: "done" });
   });
 
   it("keeps a subagent launch with run_in_background running while the session is running", () => {
-    const tools = buildSessionToolCalls([
-      event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
-        tool_use_id: "task-bg",
-        content: "Agent dispatched."
-      }),
-      event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "task-bg",
-        name: "Task",
-        input: {
-          description: "Background worker",
-          prompt: "Run tests.",
-          run_in_background: true
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("task-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+          tool_use_id: "task-bg",
+          content: "Agent dispatched."
+        }),
+        event("task-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "task-bg",
+          name: "Task",
+          input: {
+            description: "Background worker",
+            prompt: "Run tests.",
+            run_in_background: true
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({
@@ -842,50 +862,53 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("hides Codex no-op duplicate spawn_agent rows", () => {
-    const tools = buildSessionToolCalls([
-      event("real-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "item_1",
-        name: "spawn_agent",
-        status: "in_progress",
-        input: {
-          prompt: "Read README.md and summarize it quickly.",
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("real-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "item_1",
-        name: "spawn_agent",
-        input: {
-          prompt: "Read README.md and summarize it quickly.",
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("noop-end", "command.completed", "2026-05-12T15:00:04.000Z", "spawn_agent", {
-        id: "item_2",
-        name: "spawn_agent",
-        input: {
-          prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
-          receiver_thread_ids: ["thread-noop"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("noop-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
-        id: "item_2",
-        name: "spawn_agent",
-        input: {
-          prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("noop-child", "message.completed", "2026-05-12T15:00:05.000Z", "Got it. No action taken.", {
-        parent_tool_use_id: "item_2",
-        providerChildSessionId: "thread-noop",
-        traceImported: true
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("real-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "item_1",
+          name: "spawn_agent",
+          status: "in_progress",
+          input: {
+            prompt: "Read README.md and summarize it quickly.",
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("real-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "item_1",
+          name: "spawn_agent",
+          input: {
+            prompt: "Read README.md and summarize it quickly.",
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("noop-end", "command.completed", "2026-05-12T15:00:04.000Z", "spawn_agent", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: {
+            prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
+            receiver_thread_ids: ["thread-noop"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("noop-start", "command.started", "2026-05-12T15:00:03.000Z", "spawn_agent", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: {
+            prompt: "Actually, please ignore this duplicate if you receive it; no action needed.",
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("noop-child", "message.completed", "2026-05-12T15:00:05.000Z", "Got it. No action taken.", {
+          parent_tool_use_id: "item_2",
+          providerChildSessionId: "thread-noop",
+          traceImported: true
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["item_1"]);
   });
@@ -895,64 +918,70 @@ describe("buildSessionToolCalls", () => {
     // may be a legitimate parallel agent — hiding it would also force-close
     // its open activity pane. It is only pruned once it is terminal.
     const prompt = "Review the README.";
-    const tools = buildSessionToolCalls([
-      event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "spawn_agent", {
-        id: "item_1",
-        name: "spawn_agent",
-        status: "in_progress",
-        input: {
-          prompt,
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "item_1",
-        name: "spawn_agent",
-        input: {
-          prompt,
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "item_0",
-        name: "spawn_agent",
-        input: {
-          prompt,
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "spawn_agent", {
+          id: "item_1",
+          name: "spawn_agent",
+          status: "in_progress",
+          input: {
+            prompt,
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "item_1",
+          name: "spawn_agent",
+          input: {
+            prompt,
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "item_0",
+          name: "spawn_agent",
+          input: {
+            prompt,
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["item_0", "item_1"]);
   });
 
   it("keeps a running same-prompt Task when a parallel Task completes", () => {
     const prompt = "Review the README.";
-    const tools = buildSessionToolCalls([
-      event("second-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
-        tool_use_id: "toolu_2",
-        content: "Second result."
-      }),
-      event("second-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
-        id: "toolu_2",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      }),
-      event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "toolu_1",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("second-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+          tool_use_id: "toolu_2",
+          content: "Second result."
+        }),
+        event("second-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
+          id: "toolu_2",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        }),
+        event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "toolu_1",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
     expect(tools[0]).toMatchObject({ toolUseId: "toolu_1", status: "running" });
@@ -960,130 +989,142 @@ describe("buildSessionToolCalls", () => {
 
   it("hides a superseded Codex spawn_agent retry after the session stops", () => {
     const prompt = "Review the README.";
-    const tools = buildSessionToolCalls([
-      event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "spawn_agent", {
-        id: "item_2",
-        name: "spawn_agent",
-        status: "completed",
-        input: {
-          prompt,
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "item_2",
-        name: "spawn_agent",
-        input: {
-          prompt,
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "item_1",
-        name: "spawn_agent",
-        input: {
-          prompt,
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      })
-    ], false);
+    const tools = buildSessionToolCalls(
+      [
+        event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "spawn_agent", {
+          id: "item_2",
+          name: "spawn_agent",
+          status: "completed",
+          input: {
+            prompt,
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "item_2",
+          name: "spawn_agent",
+          input: {
+            prompt,
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "item_1",
+          name: "spawn_agent",
+          input: {
+            prompt,
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        })
+      ],
+      false
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["item_2"]);
   });
 
   it("hides a superseded Cursor taskToolCall retry once a later launch completes", () => {
     const prompt = "Review the README.";
-    const tools = buildSessionToolCalls([
-      event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "taskToolCall", {
-        call_id: "call_2",
-        name: "taskToolCall",
-        result: {
-          success: {
-            agentId: "cursor-agent-1"
+    const tools = buildSessionToolCalls(
+      [
+        event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "taskToolCall", {
+          call_id: "call_2",
+          name: "taskToolCall",
+          result: {
+            success: {
+              agentId: "cursor-agent-1"
+            }
           }
-        }
-      }),
-      event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "taskToolCall", {
-        call_id: "call_2",
-        name: "taskToolCall",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      }),
-      event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "taskToolCall", {
-        call_id: "call_1",
-        name: "taskToolCall",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      })
-    ], false);
+        }),
+        event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "taskToolCall", {
+          call_id: "call_2",
+          name: "taskToolCall",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        }),
+        event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "taskToolCall", {
+          call_id: "call_1",
+          name: "taskToolCall",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        })
+      ],
+      false
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["call_2"]);
   });
 
   it("hides a superseded Claude Task retry once a later Task returns output", () => {
     const prompt = "Review the README.";
-    const tools = buildSessionToolCalls([
-      event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
-        tool_use_id: "toolu_2",
-        content: "README is OK."
-      }),
-      event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
-        id: "toolu_2",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      }),
-      event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "toolu_1",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      })
-    ], false);
+    const tools = buildSessionToolCalls(
+      [
+        event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+          tool_use_id: "toolu_2",
+          content: "README is OK."
+        }),
+        event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
+          id: "toolu_2",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        }),
+        event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "toolu_1",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        })
+      ],
+      false
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_2"]);
   });
 
   it("keeps an agent launch that completed with a provider error payload", () => {
     const prompt = "Review the README.";
-    const tools = buildSessionToolCalls([
-      event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
-        tool_use_id: "toolu_2",
-        content: "README is OK."
-      }),
-      event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
-        id: "toolu_2",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      }),
-      event("failed-end", "command.completed", "2026-05-12T15:00:01.500Z", "tool_result", {
-        tool_use_id: "toolu_1",
-        is_error: true,
-        content: "permission denied"
-      }),
-      event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "toolu_1",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      })
-    ], false);
+    const tools = buildSessionToolCalls(
+      [
+        event("retry-end", "command.completed", "2026-05-12T15:00:03.000Z", "tool_result", {
+          tool_use_id: "toolu_2",
+          content: "README is OK."
+        }),
+        event("retry-start", "command.started", "2026-05-12T15:00:02.000Z", "Task", {
+          id: "toolu_2",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        }),
+        event("failed-end", "command.completed", "2026-05-12T15:00:01.500Z", "tool_result", {
+          tool_use_id: "toolu_1",
+          is_error: true,
+          content: "permission denied"
+        }),
+        event("failed-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "toolu_1",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        })
+      ],
+      false
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
     expect(tools[0]).toMatchObject({
@@ -1095,67 +1136,73 @@ describe("buildSessionToolCalls", () => {
 
   it("keeps two completed agent launches with the same prompt", () => {
     const prompt = "Review the README.";
-    const tools = buildSessionToolCalls([
-      event("second-end", "command.completed", "2026-05-12T15:00:04.000Z", "tool_result", {
-        tool_use_id: "toolu_2",
-        content: "Second result."
-      }),
-      event("second-start", "command.started", "2026-05-12T15:00:03.000Z", "Task", {
-        id: "toolu_2",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      }),
-      event("first-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
-        tool_use_id: "toolu_1",
-        content: "First result."
-      }),
-      event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
-        id: "toolu_1",
-        name: "Task",
-        input: {
-          description: "Review README",
-          prompt
-        }
-      })
-    ], false);
+    const tools = buildSessionToolCalls(
+      [
+        event("second-end", "command.completed", "2026-05-12T15:00:04.000Z", "tool_result", {
+          tool_use_id: "toolu_2",
+          content: "Second result."
+        }),
+        event("second-start", "command.started", "2026-05-12T15:00:03.000Z", "Task", {
+          id: "toolu_2",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        }),
+        event("first-end", "command.completed", "2026-05-12T15:00:02.000Z", "tool_result", {
+          tool_use_id: "toolu_1",
+          content: "First result."
+        }),
+        event("first-start", "command.started", "2026-05-12T15:00:01.000Z", "Task", {
+          id: "toolu_1",
+          name: "Task",
+          input: {
+            description: "Review README",
+            prompt
+          }
+        })
+      ],
+      false
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["toolu_1", "toolu_2"]);
   });
 
   it("shows discovery and the real external call while hiding bookkeeping", () => {
-    const tools = buildSessionToolCalls([
-      event("search", "command.started", "2026-05-12T15:00:01.000Z", "ToolSearch", {
-        id: "search",
-        name: "ToolSearch",
-        input: { query: "notion fetch" }
-      }),
-      event("todo", "command.started", "2026-05-12T15:00:02.000Z", "TodoWrite", {
-        id: "todo",
-        name: "TodoWrite",
-        input: { todos: [{ content: "Read page", status: "in_progress" }] }
-      }),
-      event("discover", "command.started", "2026-05-12T15:00:03.000Z", "getMcpToolsToolCall", {
-        call_id: "discover",
-        name: "getMcpToolsToolCall",
-        input: {
-          server: "plugin-notion-workspace-notion",
-          toolName: "notion-fetch"
-        }
-      }),
-      event("fetch", "command.started", "2026-05-12T15:00:04.000Z", "mcpToolCall", {
-        call_id: "fetch",
-        name: "mcpToolCall",
-        input: {
-          args: { id: "page-1" },
-          serverIdentifier: "plugin-notion-workspace-notion",
-          toolCallId: "fetch",
-          toolName: "notion-fetch"
-        }
-      })
-    ], false);
+    const tools = buildSessionToolCalls(
+      [
+        event("search", "command.started", "2026-05-12T15:00:01.000Z", "ToolSearch", {
+          id: "search",
+          name: "ToolSearch",
+          input: { query: "notion fetch" }
+        }),
+        event("todo", "command.started", "2026-05-12T15:00:02.000Z", "TodoWrite", {
+          id: "todo",
+          name: "TodoWrite",
+          input: { todos: [{ content: "Read page", status: "in_progress" }] }
+        }),
+        event("discover", "command.started", "2026-05-12T15:00:03.000Z", "getMcpToolsToolCall", {
+          call_id: "discover",
+          name: "getMcpToolsToolCall",
+          input: {
+            server: "plugin-notion-workspace-notion",
+            toolName: "notion-fetch"
+          }
+        }),
+        event("fetch", "command.started", "2026-05-12T15:00:04.000Z", "mcpToolCall", {
+          call_id: "fetch",
+          name: "mcpToolCall",
+          input: {
+            args: { id: "page-1" },
+            serverIdentifier: "plugin-notion-workspace-notion",
+            toolCallId: "fetch",
+            toolName: "notion-fetch"
+          }
+        })
+      ],
+      false
+    );
 
     expect(tools.map((tool) => tool.toolUseId)).toEqual(["search", "discover", "fetch"]);
     expect(tools[2]).toMatchObject({
@@ -1165,17 +1212,20 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("turns Cursor's other wrapper back into an agent launch", () => {
-    const tools = buildSessionToolCalls([
-      event("task", "command.started", "2026-05-12T15:00:01.000Z", "other", {
-        call_id: "task",
-        name: "other",
-        input: {
-          _toolName: "task",
-          description: "Review code",
-          prompt: "Review the current changes."
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("task", "command.started", "2026-05-12T15:00:01.000Z", "other", {
+          call_id: "task",
+          name: "other",
+          input: {
+            _toolName: "task",
+            description: "Review code",
+            prompt: "Review the current changes."
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools[0]).toMatchObject({
       name: "task",
@@ -1185,35 +1235,38 @@ describe("buildSessionToolCalls", () => {
   });
 
   it("folds a linked Codex wait row into the spawn_agent row", () => {
-    const tools = buildSessionToolCalls([
-      event("wait-start", "command.started", "2026-05-12T15:00:03.000Z", "wait", {
-        id: "wait-1",
-        name: "wait",
-        input: {
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "spawn-1",
-        name: "spawn_agent",
-        status: "in_progress",
-        input: {
-          prompt: "Explore the repo.",
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "spawn-1",
-        name: "spawn_agent",
-        input: {
-          prompt: "Explore the repo.",
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("wait-start", "command.started", "2026-05-12T15:00:03.000Z", "wait", {
+          id: "wait-1",
+          name: "wait",
+          input: {
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "spawn-1",
+          name: "spawn_agent",
+          status: "in_progress",
+          input: {
+            prompt: "Explore the repo.",
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "spawn-1",
+          name: "spawn_agent",
+          input: {
+            prompt: "Explore the repo.",
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.name)).toEqual(["spawn_agent"]);
     expect(tools[0]).toMatchObject({
@@ -1226,60 +1279,64 @@ describe("buildSessionToolCalls", () => {
     // Codex can omit `spawn_agent` from structured stdout. The leftover `wait`
     // used to be the turn's only visible activity, labelled with its raw tool
     // name over two internal thread ids.
-    const tools = buildSessionToolCalls([
-      event("read-start", "command.started", "2026-05-12T15:00:01.000Z", "Read", {
-        id: "read-1",
-        name: "Read",
-        input: { file_path: "/repo/a.ts" }
-      }),
-      event("wait-start", "command.started", "2026-05-12T15:00:02.000Z", "wait", {
-        id: "wait-1",
-        name: "wait",
-        input: {
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("close-start", "command.started", "2026-05-12T15:00:03.000Z", "close_agent", {
-        id: "close-1",
-        name: "close_agent",
-        input: { receiver_thread_ids: ["thread-child"] }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("read-start", "command.started", "2026-05-12T15:00:01.000Z", "Read", {
+          id: "read-1",
+          name: "Read",
+          input: { file_path: "/repo/a.ts" }
+        }),
+        event("wait-start", "command.started", "2026-05-12T15:00:02.000Z", "wait", {
+          id: "wait-1",
+          name: "wait",
+          input: {
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("close-start", "command.started", "2026-05-12T15:00:03.000Z", "close_agent", {
+          id: "close-1",
+          name: "close_agent",
+          input: { receiver_thread_ids: ["thread-child"] }
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.name)).toEqual(["Read"]);
   });
 
   it("keeps a tool merely named wait when it carries no Codex thread plumbing", () => {
-    const tools = buildSessionToolCalls([
-      event("wait-start", "command.started", "2026-05-12T15:00:01.000Z", "wait", {
-        id: "wait-1",
-        name: "wait",
-        input: { seconds: 30 }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("wait-start", "command.started", "2026-05-12T15:00:01.000Z", "wait", {
+          id: "wait-1",
+          name: "wait",
+          input: { seconds: 30 }
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.name)).toEqual(["wait"]);
   });
 
   it("keeps every Codex child running during an aggregate wait", () => {
     const events = codexSpawnEvents(["alpha", "beta", "gamma"]);
-    events.push(event("wait-start", "command.started", "2026-05-12T15:00:04.000Z", "wait", {
-      id: "wait-1",
-      name: "wait",
-      input: {
-        receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
-        sender_thread_id: "thread-parent"
-      }
-    }));
+    events.push(
+      event("wait-start", "command.started", "2026-05-12T15:00:04.000Z", "wait", {
+        id: "wait-1",
+        name: "wait",
+        input: {
+          receiver_thread_ids: ["thread-alpha", "thread-beta", "thread-gamma"],
+          sender_thread_id: "thread-parent"
+        }
+      })
+    );
 
     const tools = buildSessionToolCalls(events, true);
 
-    expect(tools.map((tool) => tool.toolUseId)).toEqual([
-      "spawn-alpha",
-      "spawn-beta",
-      "spawn-gamma"
-    ]);
+    expect(tools.map((tool) => tool.toolUseId)).toEqual(["spawn-alpha", "spawn-beta", "spawn-gamma"]);
     expect(tools.map((tool) => tool.status)).toEqual(["running", "running", "running"]);
   });
 
@@ -1303,8 +1360,11 @@ describe("buildSessionToolCalls", () => {
       })
     ];
 
-    expect(buildSessionToolCalls([...spawnEvents, ...timeoutEvents], true).map((tool) => tool.status))
-      .toEqual(["running", "running", "running"]);
+    expect(buildSessionToolCalls([...spawnEvents, ...timeoutEvents], true).map((tool) => tool.status)).toEqual([
+      "running",
+      "running",
+      "running"
+    ]);
 
     const gammaDoneEvents = [
       event("wait-gamma-end", "command.completed", "2026-05-12T15:00:08.000Z", "wait", {
@@ -1324,8 +1384,9 @@ describe("buildSessionToolCalls", () => {
       })
     ];
 
-    expect(buildSessionToolCalls([...spawnEvents, ...timeoutEvents, ...gammaDoneEvents], true).map((tool) => tool.status))
-      .toEqual(["running", "running", "done"]);
+    expect(
+      buildSessionToolCalls([...spawnEvents, ...timeoutEvents, ...gammaDoneEvents], true).map((tool) => tool.status)
+    ).toEqual(["running", "running", "done"]);
 
     const betaDoneEvents = [
       event("wait-beta-end", "command.completed", "2026-05-12T15:00:10.000Z", "wait", {
@@ -1345,76 +1406,81 @@ describe("buildSessionToolCalls", () => {
       })
     ];
 
-    expect(buildSessionToolCalls([
-      ...spawnEvents,
-      ...timeoutEvents,
-      ...gammaDoneEvents,
-      ...betaDoneEvents
-    ], true).map((tool) => tool.status)).toEqual(["running", "done", "done"]);
+    expect(
+      buildSessionToolCalls([...spawnEvents, ...timeoutEvents, ...gammaDoneEvents, ...betaDoneEvents], true).map(
+        (tool) => tool.status
+      )
+    ).toEqual(["running", "done", "done"]);
   });
 
   it("backfills spawn receiver ids from a linked wait when the spawn completion is missing", () => {
     // Real Codex `item.started` payloads carry `receiver_thread_ids: []`; if
     // the spawn completion never lands, the wait row is the only source of
     // the ids and must overwrite the spawn's empty array.
-    const tools = buildSessionToolCalls([
-      event("wait-start", "command.started", "2026-05-12T15:00:02.000Z", "wait", {
-        id: "wait-1",
-        name: "wait",
-        input: {
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "spawn-1",
-        name: "spawn_agent",
-        input: {
-          prompt: "Explore the repo.",
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("wait-start", "command.started", "2026-05-12T15:00:02.000Z", "wait", {
+          id: "wait-1",
+          name: "wait",
+          input: {
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "spawn-1",
+          name: "spawn_agent",
+          input: {
+            prompt: "Explore the repo.",
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.name)).toEqual(["spawn_agent"]);
     expect(tools[0]?.inputFull.receiver_thread_ids).toEqual(["thread-child"]);
   });
 
   it("uses a linked Codex wait completion as the spawn_agent completion", () => {
-    const tools = buildSessionToolCalls([
-      event("wait-end", "command.completed", "2026-05-12T15:00:05.000Z", "wait", {
-        id: "wait-1",
-        content: "Child agent finished."
-      }),
-      event("wait-start", "command.started", "2026-05-12T15:00:03.000Z", "wait", {
-        id: "wait-1",
-        name: "wait",
-        input: {
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
-        id: "spawn-1",
-        name: "spawn_agent",
-        status: "in_progress",
-        input: {
-          prompt: "Explore the repo.",
-          receiver_thread_ids: ["thread-child"],
-          sender_thread_id: "thread-parent"
-        }
-      }),
-      event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "spawn-1",
-        name: "spawn_agent",
-        input: {
-          prompt: "Explore the repo.",
-          receiver_thread_ids: [],
-          sender_thread_id: "thread-parent"
-        }
-      })
-    ], true);
+    const tools = buildSessionToolCalls(
+      [
+        event("wait-end", "command.completed", "2026-05-12T15:00:05.000Z", "wait", {
+          id: "wait-1",
+          content: "Child agent finished."
+        }),
+        event("wait-start", "command.started", "2026-05-12T15:00:03.000Z", "wait", {
+          id: "wait-1",
+          name: "wait",
+          input: {
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("spawn-end", "command.completed", "2026-05-12T15:00:02.000Z", "spawn_agent", {
+          id: "spawn-1",
+          name: "spawn_agent",
+          status: "in_progress",
+          input: {
+            prompt: "Explore the repo.",
+            receiver_thread_ids: ["thread-child"],
+            sender_thread_id: "thread-parent"
+          }
+        }),
+        event("spawn-start", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
+          id: "spawn-1",
+          name: "spawn_agent",
+          input: {
+            prompt: "Explore the repo.",
+            receiver_thread_ids: [],
+            sender_thread_id: "thread-parent"
+          }
+        })
+      ],
+      true
+    );
 
     expect(tools.map((tool) => tool.name)).toEqual(["spawn_agent"]);
     expect(tools[0]).toMatchObject({
@@ -1694,31 +1760,49 @@ describe("persistent native subagent runs", () => {
   it("hides Codex transport without letting a completed wait settle an active native run", () => {
     const input = { sender_thread_id: "parent", receiver_thread_ids: ["child"] };
     const identity = {
-      providerInvocationId: "invocation", providerChildSessionId: "child",
-      providerParentConversationId: "parent", agentRootToolUseId: "spawn", agentRunId: "spawn"
+      providerInvocationId: "invocation",
+      providerChildSessionId: "child",
+      providerParentConversationId: "parent",
+      agentRootToolUseId: "spawn",
+      agentRunId: "spawn"
     };
     const events = [
       event("spawn", "command.started", "2026-05-12T15:00:01.000Z", "spawn_agent", {
-        id: "spawn", name: "spawn_agent", providerInvocationId: "invocation", input
+        id: "spawn",
+        name: "spawn_agent",
+        providerInvocationId: "invocation",
+        input
       }),
       event("native", "agent.started", "2026-05-12T15:00:01.100Z", "Agent started", {
-        ...identity, prompt: "Original assignment"
+        ...identity,
+        prompt: "Original assignment"
       }),
       ...["resume_agent", "send_input", "wait"].flatMap((name, index) => [
         event(`${name}-start`, "command.started", `2026-05-12T15:00:0${index + 2}.000Z`, name, {
-          id: name, name, providerInvocationId: "invocation", input
+          id: name,
+          name,
+          providerInvocationId: "invocation",
+          input
         }),
         event(`${name}-end`, "command.completed", `2026-05-12T15:00:0${index + 2}.100Z`, name, {
-          id: name, name, providerInvocationId: "invocation", input, status: "completed"
+          id: name,
+          name,
+          providerInvocationId: "invocation",
+          input,
+          status: "completed"
         })
       ])
     ];
     const active = buildSessionToolCalls(events, true);
     expect(active).toHaveLength(1);
     expect(active[0]?.status).toBe("running");
-    events.push(event("native-end", "agent.completed", "2026-05-12T15:00:05.000Z", "Done", {
-      ...identity, prompt: null, status: "completed"
-    }));
+    events.push(
+      event("native-end", "agent.completed", "2026-05-12T15:00:05.000Z", "Done", {
+        ...identity,
+        prompt: null,
+        status: "completed"
+      })
+    );
     const completed = buildSessionToolCalls(events, true);
     expect(completed[0]?.status).toBe("done");
     expect(completed[0]?.inputFull.prompt).toBe("Original assignment");
@@ -1727,15 +1811,23 @@ describe("persistent native subagent runs", () => {
   it("uses persisted order when native start and completion share a timestamp", () => {
     const timestamp = "2026-05-12T15:00:01.000Z";
     const identity = {
-      providerInvocationId: "invocation", providerChildSessionId: "child",
-      providerParentConversationId: "parent", agentRootToolUseId: "spawn", agentRunId: "spawn"
+      providerInvocationId: "invocation",
+      providerChildSessionId: "child",
+      providerParentConversationId: "parent",
+      agentRootToolUseId: "spawn",
+      agentRunId: "spawn"
     };
     const events = [
       { ...event("start", "agent.started", timestamp, "Started", identity), rowCursor: 2 },
       { ...event("done", "agent.completed", timestamp, "Done", { ...identity, status: "completed" }), rowCursor: 3 },
-      { ...event("tool", "command.started", timestamp, "spawn_agent", {
-        id: "spawn", name: "spawn_agent", providerInvocationId: "invocation"
-      }), rowCursor: 1 }
+      {
+        ...event("tool", "command.started", timestamp, "spawn_agent", {
+          id: "spawn",
+          name: "spawn_agent",
+          providerInvocationId: "invocation"
+        }),
+        rowCursor: 1
+      }
     ];
     expect(buildSessionToolCalls(events, true)[0]?.status).toBe("done");
     expect(buildSessionToolCalls([...events].reverse(), true)[0]?.status).toBe("done");

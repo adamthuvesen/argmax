@@ -40,9 +40,7 @@ describe("chat references", () => {
 
   it("refuses ids that could escape the link", () => {
     expect(() => chatReferenceLink({ sessionId: "a)b", title: "x" })).toThrow("Not a chat id");
-    expect(() => chatReferenceLink({ sessionId: "a", eventId: "e&v=2", title: "x" })).toThrow(
-      "Not an event id"
-    );
+    expect(() => chatReferenceLink({ sessionId: "a", eventId: "e&v=2", title: "x" })).toThrow("Not an event id");
   });
 
   it("leaves a reference this build cannot read as visible text", () => {

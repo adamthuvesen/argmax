@@ -1,13 +1,6 @@
 import type { JSX } from "react";
 import type { ProviderId, UsageSummary } from "../../../shared/types.js";
-import {
-  approximately,
-  formatCount,
-  formatMetric,
-  formatPercent,
-  formatTokens,
-  formatUsd
-} from "./usageFormat.js";
+import { approximately, formatCount, formatMetric, formatPercent, formatTokens, formatUsd } from "./usageFormat.js";
 import {
   isEstimatedProvider,
   orderedProviderRows,
@@ -96,9 +89,7 @@ export function UsageProviderRows({
                 <span className="usage-provider-head">
                   <span className="usage-series-dot" aria-hidden="true" />
                   <span className="usage-provider-name">{providerLabel(row.provider)}</span>
-                  {row.available ? (
-                    <span className="usage-provider-share">{formatPercent(share)}</span>
-                  ) : null}
+                  {row.available ? <span className="usage-provider-share">{formatPercent(share)}</span> : null}
                 </span>
                 <span className="usage-provider-amount">
                   {row.available ? approximately(formatMetric(value, metric), estimated) : "—"}

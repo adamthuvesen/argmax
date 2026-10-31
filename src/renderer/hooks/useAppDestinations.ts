@@ -3,12 +3,7 @@ import type { SessionSummary } from "../../shared/types.js";
 import { hostsBrowserSurface } from "../lib/tauriBridge.js";
 import { persistLaunchProjectId } from "../lib/launchProjectPreference.js";
 import { clearPaneGrid } from "../state/paneGrid.js";
-import {
-  hideArcPage,
-  hideCommandPalette,
-  hideStandalonePage,
-  showArcPage
-} from "../state/overlays.js";
+import { hideArcPage, hideCommandPalette, hideStandalonePage, showArcPage } from "../state/overlays.js";
 import { hideFullLauncher, setLauncherSideChatMode } from "../state/launcherSurface.js";
 
 interface AppDestinations {
@@ -27,34 +22,46 @@ export function useAppDestinations({
   openWorkspaceChat,
   setBrowserPageOpen
 }: AppDestinations) {
-  const openRepoProjectLauncher = useCallback((projectId: string): void => {
-    persistLaunchProjectId(projectId);
-    setLauncherSideChatMode(false);
-    openProjectLauncher(projectId);
-  }, [openProjectLauncher]);
+  const openRepoProjectLauncher = useCallback(
+    (projectId: string): void => {
+      persistLaunchProjectId(projectId);
+      setLauncherSideChatMode(false);
+      openProjectLauncher(projectId);
+    },
+    [openProjectLauncher]
+  );
 
-  const openProject = useCallback((projectId: string): void => {
-    hideStandalonePage();
-    hideFullLauncher();
-    closeWorkspacePages();
-    clearPaneGrid();
-    openRepoProjectLauncher(projectId);
-  }, [closeWorkspacePages, openRepoProjectLauncher]);
+  const openProject = useCallback(
+    (projectId: string): void => {
+      hideStandalonePage();
+      hideFullLauncher();
+      closeWorkspacePages();
+      clearPaneGrid();
+      openRepoProjectLauncher(projectId);
+    },
+    [closeWorkspacePages, openRepoProjectLauncher]
+  );
 
-  const openWorkspace = useCallback((workspaceId: string, modifiers: { ctrlOrMeta: boolean; alt: boolean }): void => {
-    hideStandalonePage();
-    hideFullLauncher();
-    closeWorkspacePages();
-    openWorkspaceChat(workspaceId, modifiers);
-  }, [closeWorkspacePages, openWorkspaceChat]);
+  const openWorkspace = useCallback(
+    (workspaceId: string, modifiers: { ctrlOrMeta: boolean; alt: boolean }): void => {
+      hideStandalonePage();
+      hideFullLauncher();
+      closeWorkspacePages();
+      openWorkspaceChat(workspaceId, modifiers);
+    },
+    [closeWorkspacePages, openWorkspaceChat]
+  );
 
-  const openArc = useCallback((arcId: string): void => {
-    hideCommandPalette();
-    hideStandalonePage();
-    hideFullLauncher();
-    closeWorkspacePages();
-    showArcPage(arcId);
-  }, [closeWorkspacePages]);
+  const openArc = useCallback(
+    (arcId: string): void => {
+      hideCommandPalette();
+      hideStandalonePage();
+      hideFullLauncher();
+      closeWorkspacePages();
+      showArcPage(arcId);
+    },
+    [closeWorkspacePages]
+  );
 
   const openBrowser = useCallback((): void => {
     if (!hostsBrowserSurface()) return;
@@ -65,11 +72,14 @@ export function useAppDestinations({
     setBrowserPageOpen(true);
   }, [setBrowserPageOpen]);
 
-  const openSession = useCallback((sessionId: string): void => {
-    const session = sessions.find((candidate) => candidate.id === sessionId);
-    if (!session) return;
-    openWorkspace(session.workspaceId, { ctrlOrMeta: false, alt: false });
-  }, [openWorkspace, sessions]);
+  const openSession = useCallback(
+    (sessionId: string): void => {
+      const session = sessions.find((candidate) => candidate.id === sessionId);
+      if (!session) return;
+      openWorkspace(session.workspaceId, { ctrlOrMeta: false, alt: false });
+    },
+    [openWorkspace, sessions]
+  );
 
   return { openRepoProjectLauncher, openProject, openWorkspace, openArc, openBrowser, openSession };
 }

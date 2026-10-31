@@ -97,7 +97,9 @@ export function ApprovalSurface({
       }));
     } catch (error) {
       const detail = errorMessage(error);
-      showErrorToast(`Could not send your response. ${detail || "The provider did not accept the response. Try again."}`);
+      showErrorToast(
+        `Could not send your response. ${detail || "The provider did not accept the response. Try again."}`
+      );
       setResolutionById((current) => ({
         ...current,
         [approval.id]: { phase: "failed" }

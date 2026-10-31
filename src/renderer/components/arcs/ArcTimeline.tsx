@@ -230,12 +230,7 @@ function ArcTimelineRow({
           <span className="arc-event-verb">{presentation.verb}</span>
           {presentation.subject ? (
             openTarget ? (
-              <button
-                type="button"
-                className="arc-event-subject"
-                title={openTarget.label}
-                onClick={openTarget.open}
-              >
+              <button type="button" className="arc-event-subject" title={openTarget.label} onClick={openTarget.open}>
                 {presentation.subject}
               </button>
             ) : (

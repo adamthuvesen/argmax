@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  displayToolInput,
-  isAgentMessageToolName,
-  isOpaqueCiphertext
-} from "./toolArguments.js";
+import { displayToolInput, isAgentMessageToolName, isOpaqueCiphertext } from "./toolArguments.js";
 
 const CIPHERTEXT =
   "gAAAAABqpr4RdQiuoPbbS8PNeXuPtwfMGzgdXSHeWlWEyxGKhoB8JNw93a0oEyUkXVys9_wfawjMwX2QyWz8Ld6BwXbK_iZ0zfaCj5BZ5d038NLnbMX1rp3M00FqlwAaKycytD6E";

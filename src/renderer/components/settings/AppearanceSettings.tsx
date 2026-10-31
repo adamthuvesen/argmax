@@ -21,12 +21,7 @@ import {
   setActivityIconColorMode,
   useActivityIconColorMode
 } from "../../lib/activityIconColorMode.js";
-import {
-  CHAT_WIDTH_HINTS,
-  CHAT_WIDTH_MAX,
-  CHAT_WIDTH_MIN,
-  type ChatWidth
-} from "../../lib/chatWidth.js";
+import { CHAT_WIDTH_HINTS, CHAT_WIDTH_MAX, CHAT_WIDTH_MIN, type ChatWidth } from "../../lib/chatWidth.js";
 import {
   FONT_OPTIONS,
   FONT_SIZE_MAX,
@@ -57,13 +52,7 @@ import {
   toSidebarIntensity,
   type SidebarIntensity
 } from "../../lib/sidebarIntensity.js";
-import {
-  contrastHint,
-  CONTRAST_MAX,
-  CONTRAST_MIN,
-  toContrast,
-  type Contrast
-} from "../../lib/contrast.js";
+import { contrastHint, CONTRAST_MAX, CONTRAST_MIN, toContrast, type Contrast } from "../../lib/contrast.js";
 import { setSidebarChatsNested, useSidebarChatNesting } from "../../lib/sidebarChatNesting.js";
 import { setForkBarVisible, useForkBarVisible } from "../../lib/forkBarVisibility.js";
 import { setMascotVisible, useMascotVisible } from "../../lib/mascotVisibility.js";
@@ -71,10 +60,7 @@ import { toScaleLevel } from "../../lib/scaleLevel.js";
 import type { ReviewPanelSide } from "../../lib/reviewPanelSide.js";
 import { THEME_OPTIONS, type ThemeMode } from "../../lib/theme.js";
 import { isUserBubbleTint, type UserBubbleTint } from "../../lib/userBubbleTint.js";
-import {
-  WINDOW_TRANSLUCENCY_MAX,
-  WINDOW_TRANSLUCENCY_MIN
-} from "../../lib/windowTranslucency.js";
+import { WINDOW_TRANSLUCENCY_MAX, WINDOW_TRANSLUCENCY_MIN } from "../../lib/windowTranslucency.js";
 import {
   AccentPicker,
   ActivityMarkPicker,
@@ -294,11 +280,7 @@ export function AppearanceSettings({
         />
         <SettingRow
           label="Activity icons"
-          description={
-            ACTIVITY_ICON_COLOR_MODE_OPTIONS.find(
-              (option) => option.id === activityIconColorMode
-            )?.hint
-          }
+          description={ACTIVITY_ICON_COLOR_MODE_OPTIONS.find((option) => option.id === activityIconColorMode)?.hint}
           control={
             <SegmentedControl
               ariaLabel="Activity icons"
@@ -319,18 +301,12 @@ export function AppearanceSettings({
           description={ACTIVITY_MARK_OPTIONS.find((option) => option.id === activityMark)?.hint}
           htmlFor="settings-activity-mark"
           control={
-            <ActivityMarkPicker
-              inputId="settings-activity-mark"
-              value={activityMark}
-              onChange={setActivityMark}
-            />
+            <ActivityMarkPicker inputId="settings-activity-mark" value={activityMark} onChange={setActivityMark} />
           }
         />
         <SettingRow
           label="Running row underline"
-          description={
-            SESSION_UNDERLINE_OPTIONS.find((option) => option.id === sessionUnderline)?.hint
-          }
+          description={SESSION_UNDERLINE_OPTIONS.find((option) => option.id === sessionUnderline)?.hint}
           htmlFor="settings-session-underline"
           control={
             <SessionUnderlinePicker
@@ -365,13 +341,7 @@ export function AppearanceSettings({
           label="Font family"
           description="Interface and code."
           htmlFor="settings-font-family"
-          control={
-            <FontFamilyPicker
-              inputId="settings-font-family"
-              value={fontFamily}
-              onChange={onFontFamilyChange}
-            />
-          }
+          control={<FontFamilyPicker inputId="settings-font-family" value={fontFamily} onChange={onFontFamilyChange} />}
         />
         {/* The one preview worth keeping: a name cannot show what a face looks like. */}
         <p className="settings-font-specimen" aria-hidden="true" style={{ fontFamily: fontStack }}>
@@ -492,13 +462,7 @@ export function AppearanceSettings({
         <SettingRow
           label="Show arcs"
           description="Show New arc and the Arcs section in the sidebar."
-          control={
-            <Toggle
-              ariaLabel="Show arcs"
-              checked={sidebarArcsVisible}
-              onChange={onSidebarArcsVisibleChange}
-            />
-          }
+          control={<Toggle ariaLabel="Show arcs" checked={sidebarArcsVisible} onChange={onSidebarArcsVisibleChange} />}
         />
         <SettingRow
           label="Show archived chats"
@@ -522,20 +486,24 @@ export function AppearanceSettings({
             />
           }
         />
-        {onSidebarClaudeArtifactsVisibleChange ? <SettingRow
-          label="Claude artifacts"
-          description="Show Artifacts in the sidebar and review panel. Opens Claude artifacts in Argmax's browser."
-          control={<Toggle ariaLabel="Claude artifacts" checked={sidebarClaudeArtifactsVisible} onChange={onSidebarClaudeArtifactsVisibleChange} />}
-        /> : null}
+        {onSidebarClaudeArtifactsVisibleChange ? (
+          <SettingRow
+            label="Claude artifacts"
+            description="Show Artifacts in the sidebar and review panel. Opens Claude artifacts in Argmax's browser."
+            control={
+              <Toggle
+                ariaLabel="Claude artifacts"
+                checked={sidebarClaudeArtifactsVisible}
+                onChange={onSidebarClaudeArtifactsVisibleChange}
+              />
+            }
+          />
+        ) : null}
         <SettingRow
           label="Translucent window"
           description="Let the desktop show through the app's background, blurred the way Finder's sidebar is. Cards, panels and the composer stay solid."
           control={
-            <Toggle
-              ariaLabel="Translucent window"
-              checked={windowTranslucent}
-              onChange={onWindowTranslucentChange}
-            />
+            <Toggle ariaLabel="Translucent window" checked={windowTranslucent} onChange={onWindowTranslucentChange} />
           }
         />
         <SettingRow
@@ -574,9 +542,7 @@ export function AppearanceSettings({
         <SettingRow
           label="Fox mascot"
           description="Draw the fox on the launch screen, the empty state, and the mobile new-chat screen."
-          control={
-            <Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />
-          }
+          control={<Toggle ariaLabel="Fox mascot" checked={mascotVisible} onChange={setMascotVisible} />}
         />
         <SettingRow
           label="Context indicator in composer"

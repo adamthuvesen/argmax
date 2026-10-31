@@ -52,20 +52,20 @@ describe("SessionComposer /cloud", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send task" }));
 
     await screen.findByRole("link", { name: "Open in Codex Cloud" });
-    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: "session-a",
-      provider: "codex",
-      brief: "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser"
-    }));
+    expect(window.argmax!.cloud.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-a",
+        provider: "codex",
+        brief: "Conversation so far:\nUser: Earlier chat context\n\nNew user message:\nFix the parser"
+      })
+    );
     await waitFor(() => expect(prompt()).toHaveValue(""));
     expect(onSendSessionInput).not.toHaveBeenCalled();
   });
 
   it("does not silently omit open-file context from a cloud task", async () => {
     const review = reviewStub({ isPanelOpen: true, mode: "files" });
-    review.workspaceFiles.tabs = [
-      { path: "src/parser.ts", isDirty: false, saveState: "idle", externalChange: false }
-    ];
+    review.workspaceFiles.tabs = [{ path: "src/parser.ts", isDirty: false, saveState: "idle", externalChange: false }];
     review.workspaceFiles.activeTabPath = "src/parser.ts";
     renderConversation(baseSession(), [], { review });
 

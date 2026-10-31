@@ -1,10 +1,6 @@
 import { cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  baseSession,
-  event,
-  renderConversation
-} from "../../test/sessionConversationTestHarness.js";
+import { baseSession, event, renderConversation } from "../../test/sessionConversationTestHarness.js";
 
 // `events` reach the pane newest-first, matching the dashboard merge order.
 describe("SessionConversation provider handoff", () => {

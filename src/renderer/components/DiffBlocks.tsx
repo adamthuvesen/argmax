@@ -17,7 +17,12 @@ import {
   useHighlightThemeAppearance,
   type HighlightToken
 } from "../lib/highlighter.js";
-import { highlightHunksInSlices, hunkLineTokens, hunkTokensVersion, subscribeHunkTokens } from "../lib/diffHighlight.js";
+import {
+  highlightHunksInSlices,
+  hunkLineTokens,
+  hunkTokensVersion,
+  subscribeHunkTokens
+} from "../lib/diffHighlight.js";
 import type { DiffNoteAnchor } from "../lib/composerAnnotations.js";
 
 type DiffHunk = Extract<ParsedDiffBlock, { kind: "hunk" }>;
@@ -80,14 +85,13 @@ export const DiffBlocks = memo(function DiffBlocks({
     return highlightHunksInSlices(hunkLines, effectiveLang, appearance);
   }, [blocks, effectiveLang, appearance]);
   // A refreshed diff can reuse hunk ids and line numbers for different code.
-  const activeSelection = selection && selection.filePath === filePath && blocks.includes(selection.block)
-    ? selection
-    : null;
+  const activeSelection =
+    selection && selection.filePath === filePath && blocks.includes(selection.block) ? selection : null;
   const dragging = activeSelection?.dragging === true;
   useEffect(() => {
     if (!dragging) return;
     const finish = (): void => {
-      setSelection((current) => current ? { ...current, dragging: false } : null);
+      setSelection((current) => (current ? { ...current, dragging: false } : null));
     };
     const cancel = (): void => setSelection(null);
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -109,11 +113,7 @@ export const DiffBlocks = memo(function DiffBlocks({
   // would only drop more. Show the gaps, but stop advertising the action.
   const truncated = blocks.some((block) => block.kind === "truncated");
   return (
-    <div
-      className="diff-blocks"
-      data-presentation={presentation}
-      data-selecting={dragging || undefined}
-    >
+    <div className="diff-blocks" data-presentation={presentation} data-selecting={dragging || undefined}>
       {blocks.map((block, blockIndex) => {
         switch (block.kind) {
           case "hunk":
@@ -139,21 +139,15 @@ export const DiffBlocks = memo(function DiffBlocks({
                 key={block.id}
                 count={block.count}
                 onExpand={truncated ? undefined : onExpandContext}
-                direction={
-                  blockIndex === 0
-                    ? "up"
-                    : blockIndex === blocks.length - 1
-                      ? "down"
-                      : "both"
-                }
+                direction={blockIndex === 0 ? "up" : blockIndex === blocks.length - 1 ? "down" : "both"}
                 presentation={presentation}
               />
             );
           case "truncated":
             return (
               <p key={block.id} className="diff-truncated" role="status">
-                Diff too large to show in full — {formatBytes(block.droppedBytes)} of changes
-                were dropped. Open the file to see the rest.
+                Diff too large to show in full — {formatBytes(block.droppedBytes)} of changes were dropped. Open the
+                file to see the rest.
               </p>
             );
           default: {
@@ -193,9 +187,12 @@ function OmittedLines({
   if (!onExpand) {
     return <div className="diff-omitted">{label}</div>;
   }
-  const icon = direction === "both"
-    ? <ChevronsUpDown size={10} aria-hidden="true" />
-    : <ChevronRight size={10} aria-hidden="true" />;
+  const icon =
+    direction === "both" ? (
+      <ChevronsUpDown size={10} aria-hidden="true" />
+    ) : (
+      <ChevronRight size={10} aria-hidden="true" />
+    );
   return (
     <button
       type="button"
@@ -250,18 +247,27 @@ function UnifiedHunk({
   const startLine = firstLine?.newLineNumber ?? firstLine?.oldLineNumber;
   const endLine = lastLine?.newLineNumber ?? lastLine?.oldLineNumber;
   const range = start !== end;
-  const crossesSides = firstLine && lastLine
-    && (firstLine.kind === "deletion") !== (lastLine.kind === "deletion");
+  const crossesSides = firstLine && lastLine && (firstLine.kind === "deletion") !== (lastLine.kind === "deletion");
   const location = crossesSides
     ? `${filePath}:${startLine} (${firstLine.kind === "deletion" ? "removed" : firstLine.kind === "addition" ? "added" : "unchanged"})-${endLine} (${lastLine.kind === "deletion" ? "removed" : lastLine.kind === "addition" ? "added" : "unchanged"})`
     : `${filePath}:${startLine}${range ? `-${endLine}` : ""}`;
   return (
     <div className="diff-hunk">
-      {presentation === "card" || onIndexHunk || onRevertHunk ? <div className="diff-hunk-header">
-        {presentation === "card" ? <span>{block.header}</span> : null}
-        {onIndexHunk ? <button type="button" onClick={onIndexHunk} aria-label={`${indexHunkLabel} hunk`}>{indexHunkLabel}</button> : null}
-        {onRevertHunk ? <button type="button" onClick={onRevertHunk} aria-label="Revert unstaged hunk">Revert</button> : null}
-      </div> : null}
+      {presentation === "card" || onIndexHunk || onRevertHunk ? (
+        <div className="diff-hunk-header">
+          {presentation === "card" ? <span>{block.header}</span> : null}
+          {onIndexHunk ? (
+            <button type="button" onClick={onIndexHunk} aria-label={`${indexHunkLabel} hunk`}>
+              {indexHunkLabel}
+            </button>
+          ) : null}
+          {onRevertHunk ? (
+            <button type="button" onClick={onRevertHunk} aria-label="Revert unstaged hunk">
+              Revert
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {block.lines.map((line, index) => {
         const key = `${block.id}-${index}`;
         const lineNumber = line.newLineNumber ?? line.oldLineNumber ?? null;
@@ -270,7 +276,7 @@ function UnifiedHunk({
           <div key={key}>
             <div
               className={`diff-line ${line.kind}`}
-              data-selected={index >= start && index <= end || undefined}
+              data-selected={(index >= start && index <= end) || undefined}
               onMouseEnter={() => {
                 if (selection?.dragging && lineNumber !== null) {
                   onSelectionChange({ ...selection, focus: index });
@@ -299,9 +305,11 @@ function UnifiedHunk({
                       // Mouse selection finishes on mouseup. Its following
                       // click must not collapse the range back to one line.
                       if (event.detail !== 0) return;
-                      onSelectionChange(selection && start === index && end === index
-                        ? null
-                        : { block, filePath, anchor: index, focus: index, dragging: false });
+                      onSelectionChange(
+                        selection && start === index && end === index
+                          ? null
+                          : { block, filePath, anchor: index, focus: index, dragging: false }
+                      );
                     }}
                   >
                     <Plus size={12} aria-hidden="true" />
@@ -309,7 +317,10 @@ function UnifiedHunk({
                 ) : null}
               </span>
               <code>
-                <DiffLineContent content={line.content || " "} tokens={lang ? hunkLineTokens(block.lines, tokensKey, index) : undefined} />
+                <DiffLineContent
+                  content={line.content || " "}
+                  tokens={lang ? hunkLineTokens(block.lines, tokensKey, index) : undefined}
+                />
               </code>
             </div>
             {commentable && selection && !selection.dragging && index === end && firstLine && lastLine ? (
@@ -326,11 +337,13 @@ function UnifiedHunk({
                     // travels with it: the agent needs to know that line is
                     // not in the file on disk.
                     side: firstLine.kind,
-                    lineText: selectedLines.map((selected) => {
-                      if (!range) return selected.content;
-                      const prefix = selected.kind === "addition" ? "+" : selected.kind === "deletion" ? "-" : " ";
-                      return `${prefix}${selected.content}`;
-                    }).join("\n"),
+                    lineText: selectedLines
+                      .map((selected) => {
+                        if (!range) return selected.content;
+                        const prefix = selected.kind === "addition" ? "+" : selected.kind === "deletion" ? "-" : " ";
+                        return `${prefix}${selected.content}`;
+                      })
+                      .join("\n"),
                     comment
                   });
                   onSelectionChange(null);
@@ -390,12 +403,7 @@ function DiffCommentForm({
         <button type="button" className="diff-comment-cancel" onClick={onCancel}>
           Cancel
         </button>
-        <button
-          type="button"
-          className="diff-comment-submit"
-          disabled={!draft.trim()}
-          onClick={submit}
-        >
+        <button type="button" className="diff-comment-submit" disabled={!draft.trim()} onClick={submit}>
           Comment
         </button>
       </div>
@@ -405,7 +413,10 @@ function DiffCommentForm({
 
 // Selection changes must not tokenize unchanged code again. Appearance stays
 // in the memo's props because it selects the Shiki theme for each line.
-const DiffLineContent = memo(function DiffLineContent({ content, tokens }: {
+const DiffLineContent = memo(function DiffLineContent({
+  content,
+  tokens
+}: {
   content: string;
   /** Undefined until this line's slice of the hunk has been highlighted. */
   tokens: HighlightToken[] | undefined;
@@ -418,11 +429,7 @@ const DiffLineContent = memo(function DiffLineContent({ content, tokens }: {
   return (
     <>
       {tokens.map((token, index) => (
-        <span
-          className="hl-token"
-          key={index}
-          style={token.color ? { color: token.color } : undefined}
-        >
+        <span className="hl-token" key={index} style={token.color ? { color: token.color } : undefined}>
           {token.content}
         </span>
       ))}

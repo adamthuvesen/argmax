@@ -32,12 +32,8 @@ describe("isCompacting", () => {
   // chat's life, so every later turn ran with nothing on screen.
   it("reads false for a marker a Stop stranded, whatever came after it", () => {
     const stranded = event("c1", "session.compacting", "2026-05-12T15:00:01.000Z");
-    expect(
-      isCompacting([event("x", "session.cancelled", "2026-05-12T15:00:30.000Z"), stranded])
-    ).toBe(false);
-    expect(
-      isCompacting([event("u2", "user.message", "2026-05-12T15:01:00.000Z"), stranded])
-    ).toBe(false);
+    expect(isCompacting([event("x", "session.cancelled", "2026-05-12T15:00:30.000Z"), stranded])).toBe(false);
+    expect(isCompacting([event("u2", "user.message", "2026-05-12T15:01:00.000Z"), stranded])).toBe(false);
   });
 
   // Codex forwards a spawned child's rows while the parent is mid-rewrite,

@@ -25,7 +25,11 @@ describe("agent hooks", () => {
     ["Claude Code", { tool_name: "Edit", tool_input: { file_path: path.join(ROOT, "src/shared/ipcSchemas.ts") } }],
     [
       "Codex",
-      { tool_name: "apply_patch", cwd: ROOT, tool_input: { command: "*** Begin Patch\n*** Update File: src/shared/ipcSchemas.ts\n" } }
+      {
+        tool_name: "apply_patch",
+        cwd: ROOT,
+        tool_input: { command: "*** Begin Patch\n*** Update File: src/shared/ipcSchemas.ts\n" }
+      }
     ]
   ])("refuses a generated file from %s and names the generator", (_client, input) => {
     const result = runHook("pre-tool-use", input);
@@ -47,12 +51,9 @@ describe("agent hooks", () => {
     "git -C . restore .",
     "git restore --staged --worktree .",
     "cd src && git add -A"
-  ])(
-    "refuses %s",
-    (command) => {
-      expect(runHook("pre-tool-use", { tool_name: "Bash", tool_input: { command } }).status).toBe(2);
-    }
-  );
+  ])("refuses %s", (command) => {
+    expect(runHook("pre-tool-use", { tool_name: "Bash", tool_input: { command } }).status).toBe(2);
+  });
 
   it.each([
     "git add src/a.ts",
@@ -106,7 +107,10 @@ describe("agent hooks", () => {
     writeFileSync(source, "export const broken: number = 'text';\n");
     try {
       runHook("post-tool-use", { session_id: stopSession, tool_name: "Write", tool_input: { file_path: source } });
-      const blocked = JSON.parse(runHook("stop", { session_id: stopSession }).stdout) as { decision: string; reason: string };
+      const blocked = JSON.parse(runHook("stop", { session_id: stopSession }).stdout) as {
+        decision: string;
+        reason: string;
+      };
       expect(blocked.decision).toBe("block");
       expect(blocked.reason).toContain(sourceName);
       expect(runHook("stop", { session_id: stopSession, stop_hook_active: true }).stdout).toBe("");

@@ -14,11 +14,7 @@ export type ReviewSourceKind = WorkspaceTarget["kind"];
 
 export interface ReviewIpcDispatch {
   listChangedFiles: (comparison?: ReviewComparison) => Promise<ChangedFileSummary[]>;
-  loadDiff: (
-    filePath: string,
-    comparison?: ReviewComparison,
-    contextLines?: number
-  ) => Promise<WorkspaceDiff>;
+  loadDiff: (filePath: string, comparison?: ReviewComparison, contextLines?: number) => Promise<WorkspaceDiff>;
   stageFile: (filePath: string, revision: string) => Promise<void>;
   unstageFile: (filePath: string, revision: string) => Promise<void>;
   revertFile: (filePath: string, revision: string) => Promise<void>;
@@ -79,15 +75,36 @@ export function reviewIpcDispatch(target: ReviewTarget): ReviewIpcDispatch {
     },
     stageHunk: (filePath, revision, hunkIndex, contextLines) => {
       if (!window.argmax) return noBridge();
-      return window.argmax.review.stageHunk({ kind, id, filePath, revision, hunkIndex, contextLines: contextLines ?? null });
+      return window.argmax.review.stageHunk({
+        kind,
+        id,
+        filePath,
+        revision,
+        hunkIndex,
+        contextLines: contextLines ?? null
+      });
     },
     unstageHunk: (filePath, revision, hunkIndex, contextLines) => {
       if (!window.argmax) return noBridge();
-      return window.argmax.review.unstageHunk({ kind, id, filePath, revision, hunkIndex, contextLines: contextLines ?? null });
+      return window.argmax.review.unstageHunk({
+        kind,
+        id,
+        filePath,
+        revision,
+        hunkIndex,
+        contextLines: contextLines ?? null
+      });
     },
     revertHunk: (filePath, revision, hunkIndex, contextLines) => {
       if (!window.argmax) return noBridge();
-      return window.argmax.review.revertHunk({ kind, id, filePath, revision, hunkIndex, contextLines: contextLines ?? null });
+      return window.argmax.review.revertHunk({
+        kind,
+        id,
+        filePath,
+        revision,
+        hunkIndex,
+        contextLines: contextLines ?? null
+      });
     },
     listFiles: () => {
       if (!window.argmax) return noBridge();

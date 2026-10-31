@@ -13,12 +13,7 @@ const HALF_KEYS = ["ledger", "reviews"] as const;
  */
 export function ActivitySkeleton({ note }: { note?: string }): JSX.Element {
   return (
-    <div
-      className="activity-skeleton"
-      role="status"
-      aria-busy="true"
-      aria-label="Loading activity"
-    >
+    <div className="activity-skeleton" role="status" aria-busy="true" aria-label="Loading activity">
       <div className="activity-skeleton-hero">
         <div className="activity-skeleton-left">
           <span className="loading-block activity-skeleton-figure" />

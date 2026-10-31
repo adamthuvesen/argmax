@@ -46,10 +46,7 @@ function describeTarget(target: EventTarget | null): string {
   const tag = target.tagName.toLowerCase();
   const named = target.closest("[aria-label], [data-testid], [role]");
   const label =
-    named?.getAttribute("aria-label") ??
-    named?.getAttribute("data-testid") ??
-    named?.getAttribute("role") ??
-    null;
+    named?.getAttribute("aria-label") ?? named?.getAttribute("data-testid") ?? named?.getAttribute("role") ?? null;
   return label === null ? tag : `${tag} in ${label}`;
 }
 

@@ -226,17 +226,23 @@ describe("useGlobalKeybindings", () => {
   it.each([
     ["input", () => document.createElement("input")],
     ["textarea", () => document.createElement("textarea")],
-    ["contenteditable editor", () => {
-      const editor = document.createElement("div");
-      editor.setAttribute("contenteditable", "true");
-      return editor;
-    }],
-    ["role textbox editor", () => {
-      const editor = document.createElement("div");
-      editor.setAttribute("role", "textbox");
-      editor.tabIndex = 0;
-      return editor;
-    }]
+    [
+      "contenteditable editor",
+      () => {
+        const editor = document.createElement("div");
+        editor.setAttribute("contenteditable", "true");
+        return editor;
+      }
+    ],
+    [
+      "role textbox editor",
+      () => {
+        const editor = document.createElement("div");
+        editor.setAttribute("role", "textbox");
+        editor.tabIndex = 0;
+        return editor;
+      }
+    ]
   ])("keeps Select All in a focused %s", (_label, makeTarget) => {
     const onOpenActionPalette = vi.fn();
     renderHook(() =>

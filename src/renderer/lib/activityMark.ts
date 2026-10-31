@@ -145,8 +145,6 @@ export function useActivityMark(): ActivityMarkId {
   return useSyncExternalStore(subscribeActivityMark, activityMarkSnapshot, activityMarkSnapshot);
 }
 
-
-
 /**
  * Whether a running session row draws a light travelling under its text —
  * Settings → Appearance → Running row underline.
@@ -232,11 +230,7 @@ export function sessionUnderlineSnapshot(): SessionUnderlineId {
 }
 
 export function useSessionUnderline(): SessionUnderlineId {
-  return useSyncExternalStore(
-    subscribeSessionUnderline,
-    sessionUnderlineSnapshot,
-    sessionUnderlineSnapshot
-  );
+  return useSyncExternalStore(subscribeSessionUnderline, sessionUnderlineSnapshot, sessionUnderlineSnapshot);
 }
 
 /** Push both persisted choices onto `<html>` at boot, before the first paint. */

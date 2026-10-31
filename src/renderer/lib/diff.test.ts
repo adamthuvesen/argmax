@@ -40,11 +40,9 @@ describe("parseUnifiedDiff", () => {
   });
 
   it("reports the bytes a capped diff dropped", () => {
-    const content = [
-      ...hunk(1, 1, ["-a", "+A"]),
-      "[diff truncated at 1048576 bytes; dropped 4096 bytes]",
-      ""
-    ].join("\n");
+    const content = [...hunk(1, 1, ["-a", "+A"]), "[diff truncated at 1048576 bytes; dropped 4096 bytes]", ""].join(
+      "\n"
+    );
 
     const blocks = parseUnifiedDiff(content);
 

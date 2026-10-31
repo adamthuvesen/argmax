@@ -11,7 +11,13 @@ import {
   type MouseEvent as ReactMouseEvent
 } from "react";
 import { FileDiff, FolderTree, Globe } from "lucide-react";
-import { bridgeAvailable, browserActions, resolveFileForOpening, systemActions, workspaceActions } from "../data/bridgeActions.js";
+import {
+  bridgeAvailable,
+  browserActions,
+  resolveFileForOpening,
+  systemActions,
+  workspaceActions
+} from "../data/bridgeActions.js";
 import type { ReviewSideChatContext } from "./ReviewSideChat.js";
 import type { ModelPickerSelection } from "../lib/models.js";
 import type { QueuedMessageDelivery } from "../../shared/types.js";
@@ -115,8 +121,9 @@ function isSideChatComposerTarget(target: EventTarget | null): boolean {
 }
 
 function hasActiveDialog(): boolean {
-  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
-    .some((dialog) => dialog.getAttribute("aria-hidden") !== "true");
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).some(
+    (dialog) => dialog.getAttribute("aria-hidden") !== "true"
+  );
 }
 
 /** Null when the user has never dragged the handle, which leaves the dock on
@@ -221,16 +228,17 @@ export function SessionPane({
   /** Called on mount and on session.id change to backfill timeline events for this pane's session. */
   onLoadSessionEvents?: (sessionId: string) => Promise<void>;
   /** Backfills one subagent's child rows, for the review panel's Agents view. */
-  onLoadAgentEvents?: (sessionId: string, parentToolUseId: string, identity?: NativeAgentIdentity) => Promise<void | { hasMore: boolean }>;
+  onLoadAgentEvents?: (
+    sessionId: string,
+    parentToolUseId: string,
+    identity?: NativeAgentIdentity
+  ) => Promise<void | { hasMore: boolean }>;
   /** Opens a launcher pane beside this one. Absent outside the grid. */
   onNewSession?: (seed?: NewSessionSeed) => void;
   onOpenSideChat?: (seedPrompt: string) => Promise<void>;
   sideChat?: ReviewSideChatContext;
   onOpenSession?: (sessionId: string) => void;
-  onOpenDetails?: (
-    seedPrompt: string,
-    context?: { attachToChat?: () => void }
-  ) => Promise<void>;
+  onOpenDetails?: (seedPrompt: string, context?: { attachToChat?: () => void }) => Promise<void>;
   defaultIde?: IdeId | null;
   detectedIdes?: DetectedIde[];
   onOpenWorkspaceInIde?: (workspaceId: string, ide: IdeId) => void;
@@ -247,17 +255,8 @@ export function SessionPane({
     delivery?: FollowUpDelivery
   ) => Promise<SendInputResult>;
   onCancelQueuedMessage: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow: (
-    sessionId: string,
-    messageId: string,
-    delivery?: QueuedMessageDelivery
-  ) => Promise<void>;
-  onMultitask?: (
-    sessionId: string,
-    prompt: string,
-    provider: ProviderId,
-    pendingMessageId?: string
-  ) => Promise<void>;
+  onSendQueuedMessageNow: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
   /** Multitasks dispatched from this pane's session. They have no sidebar row
    *  of their own — this pane's dock is where they are read and answered. */
   multitasks?: MultitaskChild[];
@@ -297,9 +296,7 @@ export function SessionPane({
   /** When this pane is focused, it registers its workspace file source +
       review-pane file-pick handler with the command palette so its Files
       group routes to this pane's review panel. */
-  registerPaletteFileContext?: (
-    context: PaletteSurfaceContext | null
-  ) => void;
+  registerPaletteFileContext?: (context: PaletteSurfaceContext | null) => void;
 }): JSX.Element {
   const sessionId = session?.id ?? null;
   // Wrap in useMemo so the hook's source identity is stable between renders —
@@ -383,8 +380,7 @@ export function SessionPane({
   ]
     .filter(Boolean)
     .join(" ");
-  const reviewColumnWidth =
-    pinnedPanelWidth === null ? SESSION_RIGHT_PANEL_AUTO_WIDTH : `${pinnedPanelWidth}px`;
+  const reviewColumnWidth = pinnedPanelWidth === null ? SESSION_RIGHT_PANEL_AUTO_WIDTH : `${pinnedPanelWidth}px`;
   const logColumnWidth = reviewState.isPanelOpen ? "clamp(300px, 32vw, 480px)" : reviewColumnWidth;
   // The terminal is a review-panel view, so "open" is that panel showing it.
   const terminalOpen = reviewState.isPanelOpen && reviewState.layout.modes.includes("terminal");
@@ -504,15 +500,8 @@ export function SessionPane({
     },
     [overlayOpenTab]
   );
-  const openAgentOverlay = useCallback(
-    (tool: ToolCall): void => openPeekTab(agentTabId(tool)),
-    [openPeekTab]
-  );
-  const handleOpenAgent = agentsInOverlay
-    ? openAgentOverlay
-    : agentsViewAvailable
-      ? openAgent
-      : undefined;
+  const openAgentOverlay = useCallback((tool: ToolCall): void => openPeekTab(agentTabId(tool)), [openPeekTab]);
+  const handleOpenAgent = agentsInOverlay ? openAgentOverlay : agentsViewAvailable ? openAgent : undefined;
 
   // A multitask row opens its chat in the same dock, one tab over from the
   // subagents: both are work running alongside this one.
@@ -525,12 +514,7 @@ export function SessionPane({
     [openPeekTab]
   );
   const handleOpenMultitask = useMemo(
-    () =>
-      agentsInOverlay
-        ? openMultitaskOverlay
-        : hostsMultitasks
-          ? openMultitaskInPanel
-          : undefined,
+    () => (agentsInOverlay ? openMultitaskOverlay : hostsMultitasks ? openMultitaskInPanel : undefined),
     [agentsInOverlay, hostsMultitasks, openMultitaskInPanel, openMultitaskOverlay]
   );
 
@@ -538,12 +522,9 @@ export function SessionPane({
   // notes. The conversation owns that state; it registers a sink here so its
   // sibling ReviewPanel can feed it without lifting the state up.
   const annotationSinkRef = useRef<((input: DiffNoteInput) => void) | null>(null);
-  const registerAnnotationSink = useCallback(
-    (sink: ((input: DiffNoteInput) => void) | null): void => {
-      annotationSinkRef.current = sink;
-    },
-    []
-  );
+  const registerAnnotationSink = useCallback((sink: ((input: DiffNoteInput) => void) | null): void => {
+    annotationSinkRef.current = sink;
+  }, []);
   const handleAddDiffNote = useCallback((input: DiffNoteInput): void => {
     annotationSinkRef.current?.(input);
   }, []);
@@ -579,7 +560,9 @@ export function SessionPane({
       if (opts?.preferIde && workspaceId && workspaces) {
         void workspaces
           .openInIde({ workspaceId, ide: "default" })
-          .catch((error: unknown) => showErrorToast(error instanceof Error ? error.message : "Could not open the editor."));
+          .catch((error: unknown) =>
+            showErrorToast(error instanceof Error ? error.message : "Could not open the editor.")
+          );
         return;
       }
       if (!workspaceId || !bridgeAvailable()) return;
@@ -595,9 +578,11 @@ export function SessionPane({
         // Files outside this workspace cannot use its guarded preview. An
         // absolute path can still open in its system-associated application.
         if (path.startsWith("/")) {
-          void systemActions()?.openPath({ path }).catch((error: unknown) => {
-            showErrorToast(error instanceof Error ? error.message : "Could not open the file.");
-          });
+          void systemActions()
+            ?.openPath({ path })
+            .catch((error: unknown) => {
+              showErrorToast(error instanceof Error ? error.message : "Could not open the file.");
+            });
           return;
         }
         showErrorToast(`Could not find a single ${path} in this workspace.`);
@@ -626,7 +611,11 @@ export function SessionPane({
 
   // What the palette reads about this pane when it opens. Rebuilt as a
   // closure each render so the read is current without re-registering.
-  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({ filesVisible: false, changedPaths: [], actions: [] }));
+  const paletteLiveRef = useRef<() => PaletteSurfaceLive>(() => ({
+    filesVisible: false,
+    changedPaths: [],
+    actions: []
+  }));
   paletteLiveRef.current = (): PaletteSurfaceLive => {
     const actions: PaletteItem[] = [
       {
@@ -641,27 +630,31 @@ export function SessionPane({
       },
       ...(onOpenChanges
         ? []
-        : [{
-            id: "pane:toggle-changes",
-            label: "Toggle changes",
-            subtitle: "This chat's diff",
-            group: "Actions" as const,
-            icon: FileDiff,
-            keywords: ["diff", "review", "git status"],
-            run: reviewState.toggleChangesPanel
-          }]),
+        : [
+            {
+              id: "pane:toggle-changes",
+              label: "Toggle changes",
+              subtitle: "This chat's diff",
+              group: "Actions" as const,
+              icon: FileDiff,
+              keywords: ["diff", "review", "git status"],
+              run: reviewState.toggleChangesPanel
+            }
+          ]),
       ...(browserActions()
-        ? [{
-            id: "pane:toggle-browser",
-            label: "Toggle browser panel",
-            subtitle: "A browser beside the chat",
-            group: "Actions" as const,
-            icon: Globe,
-            shortcut: "⌘⇧I",
-            keywords: ["web", "preview", "localhost"],
-            run: toggleBrowserPane
-          }]
-        : []),
+        ? [
+            {
+              id: "pane:toggle-browser",
+              label: "Toggle browser panel",
+              subtitle: "A browser beside the chat",
+              group: "Actions" as const,
+              icon: Globe,
+              shortcut: "⌘⇧I",
+              keywords: ["web", "preview", "localhost"],
+              run: toggleBrowserPane
+            }
+          ]
+        : [])
     ];
     return {
       filesVisible: reviewIsPanelOpen && (reviewModes.includes("files") || reviewModes.includes("changes")),
@@ -720,7 +713,8 @@ export function SessionPane({
           event.shiftKey ||
           (isReviewExpanded ? isSideChatComposerTarget(event.target) : isEditorEscapeTarget(event.target)) ||
           hasActiveDialog()
-        ) return;
+        )
+          return;
         if (isLogOpen && !isReviewExpanded) {
           event.preventDefault();
           setIsLogOpen(false);
@@ -735,7 +729,8 @@ export function SessionPane({
           session?.state !== "running" ||
           !readBooleanPreference(ESCAPE_STOPS_CHAT_KEY, false) ||
           escapeTerminationPendingRef.current !== null
-        ) return;
+        )
+          return;
         event.preventDefault();
         const terminationRequest = {};
         escapeTerminationPendingRef.current = terminationRequest;
@@ -844,59 +839,54 @@ export function SessionPane({
     []
   );
 
-  const startPanelResize = useCallback(
-    (event: ReactMouseEvent, dock: "left" | "right"): void => {
-      event.preventDefault();
-      dragCleanupRef.current?.();
-      const startX = event.clientX;
-      // Measure the panel the handle sits in rather than reading the stored
-      // width: on an automatic width there is no stored number, and the drag
-      // has to start from what the user can see.
-      const panel = event.currentTarget.parentElement;
-      const startWidth = panel
-        ? Math.round(panel.getBoundingClientRect().width)
-        : SESSION_RIGHT_PANEL_MIN;
-      let pinned = startWidth;
-      const previousCursor = document.body.style.cursor;
-      const previousUserSelect = document.body.style.userSelect;
-      setIsPanelResizing(true);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
+  const startPanelResize = useCallback((event: ReactMouseEvent, dock: "left" | "right"): void => {
+    event.preventDefault();
+    dragCleanupRef.current?.();
+    const startX = event.clientX;
+    // Measure the panel the handle sits in rather than reading the stored
+    // width: on an automatic width there is no stored number, and the drag
+    // has to start from what the user can see.
+    const panel = event.currentTarget.parentElement;
+    const startWidth = panel ? Math.round(panel.getBoundingClientRect().width) : SESSION_RIGHT_PANEL_MIN;
+    let pinned = startWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    setIsPanelResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
 
-      const onMouseMove = (e: MouseEvent): void => {
-        // The handle sits on the panel's inner edge, so dragging away from the
-        // dock side widens it: right-docked grows leftwards, left-docked grows
-        // rightwards.
-        const delta = e.clientX - startX;
-        const next = Math.round(
-          Math.max(
-            SESSION_RIGHT_PANEL_MIN,
-            Math.min(SESSION_RIGHT_PANEL_MAX, dock === "left" ? startWidth + delta : startWidth - delta)
-          )
-        );
-        pinned = next;
-        setPinnedPanelWidth(next);
-      };
-      const cleanup = (): void => {
-        // Written once the drag settles: a width the user chose, which from
-        // here on outranks the automatic share.
-        if (pinned !== startWidth) writePinnedPanelWidth(pinned);
-        setIsPanelResizing(false);
-        document.body.style.cursor = previousCursor;
-        document.body.style.userSelect = previousUserSelect;
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        window.removeEventListener("blur", cleanup);
-        dragCleanupRef.current = null;
-      };
-      const onMouseUp = (): void => cleanup();
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
-      window.addEventListener("blur", cleanup);
-      dragCleanupRef.current = cleanup;
-    },
-    []
-  );
+    const onMouseMove = (e: MouseEvent): void => {
+      // The handle sits on the panel's inner edge, so dragging away from the
+      // dock side widens it: right-docked grows leftwards, left-docked grows
+      // rightwards.
+      const delta = e.clientX - startX;
+      const next = Math.round(
+        Math.max(
+          SESSION_RIGHT_PANEL_MIN,
+          Math.min(SESSION_RIGHT_PANEL_MAX, dock === "left" ? startWidth + delta : startWidth - delta)
+        )
+      );
+      pinned = next;
+      setPinnedPanelWidth(next);
+    };
+    const cleanup = (): void => {
+      // Written once the drag settles: a width the user chose, which from
+      // here on outranks the automatic share.
+      if (pinned !== startWidth) writePinnedPanelWidth(pinned);
+      setIsPanelResizing(false);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("blur", cleanup);
+      dragCleanupRef.current = null;
+    };
+    const onMouseUp = (): void => cleanup();
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("blur", cleanup);
+    dragCleanupRef.current = cleanup;
+  }, []);
 
   // Read the dock side at mousedown so a setting change mid-session takes
   // effect on the next drag without threading the value through props.
@@ -912,11 +902,7 @@ export function SessionPane({
   );
 
   return (
-    <div
-      className={gridClass}
-      style={gridStyle}
-      data-panel-resizing={isPanelResizing ? "true" : undefined}
-    >
+    <div className={gridClass} style={gridStyle} data-panel-resizing={isPanelResizing ? "true" : undefined}>
       {isPanelResizing ? (
         <div className="session-panel-resize-shield" data-browser-overlay="true" aria-hidden="true" />
       ) : null}
@@ -980,62 +966,58 @@ export function SessionPane({
           revertEnabled={revertEnabled}
         />
 
-        <ApprovalSurface
-          approvals={visibleApprovals}
-          events={visibleEvents}
-          onResolveApproval={onResolveApproval}
-        />
-      {agentsInOverlay && peekPresent ? (
-        <Suspense fallback={null}>
-          <AgentOverlay
-            label="Delegated work"
-            open={peekOpen}
-            awaitsFloorChange={nativeComposerFloor}
-            onClose={closePeek}
-            onExited={() => setPeekPresent(false)}
-          >
-            <AgentsView
-              chatFontSize={chatFontSize}
-              events={visibleEvents}
-              defaultToolCallsDisplay={defaultToolCallsDisplay}
-              defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
-              thinkingDisplay={thinkingDisplay}
-              isFocused={isFocused}
-              parentSession={session}
-              agentTabs={overlayTabs}
-              workspace={workspace}
-              onLoadAgentEvents={onLoadAgentEvents}
-              onLoadSessionEvents={onLoadSessionEvents}
-              onOpenAgent={handleOpenAgent}
-              onOpenFile={handleOpenFile}
-              // A multitask's changed-file rows and its Review button open the
-              // containing dock's Changes view on the desktop. The phone has no
-              // dock, so they take the same way in as a file reference tapped in
-              // the transcript: the host's review screen. Both land on this
-              // pane's workspace, which is the checkout a multitask shares by
-              // default — the desktop dock scopes them the same way.
-              onOpenDiff={handleOpenFile}
-              onOpenReview={onOpenChanges}
-              multitasks={multitasks}
-              pendingMessages={pendingMessages}
-              onCancelQueuedMessage={onCancelQueuedMessage}
-              onClearSession={onClearSession}
-              onOpenFullChat={
-                onOpenSession
-                  ? (sessionId) => {
-                      dropPeek();
-                      overlayCloseAll();
-                      onOpenSession(sessionId);
-                    }
-                  : undefined
-              }
-              onSendQueuedMessageNow={onSendQueuedMessageNow}
-              onSendSessionInput={onSendSessionInput}
-              onTerminateSession={onTerminateSession}
-            />
-          </AgentOverlay>
-        </Suspense>
-      ) : null}
+        <ApprovalSurface approvals={visibleApprovals} events={visibleEvents} onResolveApproval={onResolveApproval} />
+        {agentsInOverlay && peekPresent ? (
+          <Suspense fallback={null}>
+            <AgentOverlay
+              label="Delegated work"
+              open={peekOpen}
+              awaitsFloorChange={nativeComposerFloor}
+              onClose={closePeek}
+              onExited={() => setPeekPresent(false)}
+            >
+              <AgentsView
+                chatFontSize={chatFontSize}
+                events={visibleEvents}
+                defaultToolCallsDisplay={defaultToolCallsDisplay}
+                defaultToolCallGroupsExpanded={defaultToolCallGroupsExpanded}
+                thinkingDisplay={thinkingDisplay}
+                isFocused={isFocused}
+                parentSession={session}
+                agentTabs={overlayTabs}
+                workspace={workspace}
+                onLoadAgentEvents={onLoadAgentEvents}
+                onLoadSessionEvents={onLoadSessionEvents}
+                onOpenAgent={handleOpenAgent}
+                onOpenFile={handleOpenFile}
+                // A multitask's changed-file rows and its Review button open the
+                // containing dock's Changes view on the desktop. The phone has no
+                // dock, so they take the same way in as a file reference tapped in
+                // the transcript: the host's review screen. Both land on this
+                // pane's workspace, which is the checkout a multitask shares by
+                // default — the desktop dock scopes them the same way.
+                onOpenDiff={handleOpenFile}
+                onOpenReview={onOpenChanges}
+                multitasks={multitasks}
+                pendingMessages={pendingMessages}
+                onCancelQueuedMessage={onCancelQueuedMessage}
+                onClearSession={onClearSession}
+                onOpenFullChat={
+                  onOpenSession
+                    ? (sessionId) => {
+                        dropPeek();
+                        overlayCloseAll();
+                        onOpenSession(sessionId);
+                      }
+                    : undefined
+                }
+                onSendQueuedMessageNow={onSendQueuedMessageNow}
+                onSendSessionInput={onSendSessionInput}
+                onTerminateSession={onTerminateSession}
+              />
+            </AgentOverlay>
+          </Suspense>
+        ) : null}
       </div>
       {reviewState.isPanelOpen ? (
         <Suspense fallback={null}>

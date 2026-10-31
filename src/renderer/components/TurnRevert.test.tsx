@@ -6,10 +6,19 @@ import { resetToastForTests, toastSnapshot } from "../state/toast.js";
 
 function checkpoint(): Checkpoint {
   return {
-    id: "checkpoint-1", workspaceId: "w1", sessionId: "s1", label: "Before turn",
-    branch: "main", headSha: "abc", worktreeTree: "tree-1", indexTree: "index-1",
-    untrackedPaths: [], turnBoundary: "event-1", providerConversationId: null,
-    recoveryOf: null, createdAt: "2026-09-08T08:00:00.000Z"
+    id: "checkpoint-1",
+    workspaceId: "w1",
+    sessionId: "s1",
+    label: "Before turn",
+    branch: "main",
+    headSha: "abc",
+    worktreeTree: "tree-1",
+    indexTree: "index-1",
+    untrackedPaths: [],
+    turnBoundary: "event-1",
+    providerConversationId: null,
+    recoveryOf: null,
+    createdAt: "2026-09-08T08:00:00.000Z"
   };
 }
 
@@ -40,7 +49,9 @@ beforeEach(() => {
   window.argmax = { checkpoints } as unknown as ArgmaxApi;
 });
 
-afterEach(() => { delete (window as { argmax?: ArgmaxApi }).argmax; });
+afterEach(() => {
+  delete (window as { argmax?: ArgmaxApi }).argmax;
+});
 
 function renderRevert(onReverted = vi.fn()) {
   render(<TurnRevert workspaceId="w1" checkpointId="checkpoint-1" onReverted={onReverted} />);
@@ -79,15 +90,15 @@ describe("TurnRevert", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revert to here" }));
     fireEvent.click(await screen.findByRole("button", { name: "Revert files" }));
 
-    await waitFor(() => expect(checkpoints.rewindFiles).toHaveBeenCalledWith({
-      workspaceId: "w1",
-      checkpointId: "checkpoint-1",
-      expectedFingerprint: preview().currentFingerprint
-    }));
-    expect(onReverted).toHaveBeenCalledOnce();
     await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument()
+      expect(checkpoints.rewindFiles).toHaveBeenCalledWith({
+        workspaceId: "w1",
+        checkpointId: "checkpoint-1",
+        expectedFingerprint: preview().currentFingerprint
+      })
     );
+    expect(onReverted).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument());
   });
 
   it("commits nothing when the confirm is dismissed", async () => {
@@ -95,9 +106,7 @@ describe("TurnRevert", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revert to here" }));
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
 
-    await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Revert to here" })).not.toBeInTheDocument());
     expect(checkpoints.rewindFiles).not.toHaveBeenCalled();
   });
 
@@ -120,9 +129,7 @@ describe("TurnRevert", () => {
   });
 
   it("cannot revert while the turn's checkout is still moving", () => {
-    render(
-      <TurnRevert workspaceId="w1" checkpointId="checkpoint-1" disabled onReverted={vi.fn()} />
-    );
+    render(<TurnRevert workspaceId="w1" checkpointId="checkpoint-1" disabled onReverted={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Revert to here" })).toBeDisabled();
   });
 });

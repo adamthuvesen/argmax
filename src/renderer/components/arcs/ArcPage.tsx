@@ -143,7 +143,9 @@ export function ArcPage({
   const applyRecord = useCallback((record: ArcRecord): void => {
     const previous = seededArc.current;
     seededArc.current = record;
-    setBriefDraft((draft) => (previous && previous.id === record.id && draft !== previous.brief ? draft : record.brief));
+    setBriefDraft((draft) =>
+      previous && previous.id === record.id && draft !== previous.brief ? draft : record.brief
+    );
     setNameDraft((draft) => (previous && previous.id === record.id && draft !== previous.name ? draft : record.name));
   }, []);
 
@@ -226,7 +228,8 @@ export function ArcPage({
         event.ctrlKey ||
         event.altKey ||
         event.shiftKey
-      ) return;
+      )
+        return;
       if (isTypingTarget(event.target)) return;
       if (document.querySelector('[role="dialog"]')) return;
       event.preventDefault();
@@ -241,9 +244,7 @@ export function ArcPage({
       const routines = routineActions();
       const system = systemActions();
       if (!routines || !system) return;
-      const confirmed = await system.confirm(
-        `Delete “${routine.name}”? Chats it already started stay in the sidebar.`
-      );
+      const confirmed = await system.confirm(`Delete “${routine.name}”? Chats it already started stay in the sidebar.`);
       if (!confirmed) return;
       setRemovingRoutineId(routine.id);
       try {
@@ -474,7 +475,12 @@ export function ArcPage({
           <div className="arc-hero-actions">
             {arc.archivedAt || isDone ? (
               <>
-                <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
+                <button
+                  type="button"
+                  className="settings-button"
+                  disabled={busy}
+                  onClick={() => void handleSetState("active")}
+                >
                   Reopen
                 </button>
                 <button
@@ -489,15 +495,30 @@ export function ArcPage({
             ) : (
               <>
                 {arc.state === "active" ? (
-                  <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("paused")}>
+                  <button
+                    type="button"
+                    className="settings-button"
+                    disabled={busy}
+                    onClick={() => void handleSetState("paused")}
+                  >
                     Pause
                   </button>
                 ) : (
-                  <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("active")}>
+                  <button
+                    type="button"
+                    className="settings-button"
+                    disabled={busy}
+                    onClick={() => void handleSetState("active")}
+                  >
                     Resume
                   </button>
                 )}
-                <button type="button" className="settings-button" disabled={busy} onClick={() => void handleSetState("done")}>
+                <button
+                  type="button"
+                  className="settings-button"
+                  disabled={busy}
+                  onClick={() => void handleSetState("done")}
+                >
                   Mark done
                 </button>
               </>
@@ -557,7 +578,9 @@ export function ArcPage({
             {arc.brief.trim() ? (
               <p className="arc-brief-prose">{briefExcerpt(arc.brief)}</p>
             ) : (
-              <p className="arc-brief-prose arc-brief-empty">No brief yet. Members read it first, so say what done looks like.</p>
+              <p className="arc-brief-prose arc-brief-empty">
+                No brief yet. Members read it first, so say what done looks like.
+              </p>
             )}
             <button type="button" className="arc-quiet-button" onClick={() => setBriefOpen(true)}>
               <Pencil size={12} aria-hidden="true" />
@@ -581,7 +604,9 @@ export function ArcPage({
               onOpen={() => onOpenSession(coordinator.sessionId)}
               label={
                 <>
-                  {isProviderId(coordinator.provider) ? PROVIDER_DISPLAY_NAMES[coordinator.provider] : coordinator.provider}
+                  {isProviderId(coordinator.provider)
+                    ? PROVIDER_DISPLAY_NAMES[coordinator.provider]
+                    : coordinator.provider}
                   {coordinator.modelLabel ? <span className="arc-chat-model">{coordinator.modelLabel}</span> : null}
                 </>
               }
@@ -660,7 +685,11 @@ export function ArcPage({
                 title="Copy folder path"
                 onClick={() => void copy(arc.dir)}
               >
-                {copyFlash === "copied" ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
+                {copyFlash === "copied" ? (
+                  <Check size={13} aria-hidden="true" />
+                ) : (
+                  <Copy size={13} aria-hidden="true" />
+                )}
               </button>
               {systemActions() ? (
                 <>
@@ -703,8 +732,8 @@ export function ArcPage({
             <div className="arc-setup-label">
               <span>Limits</span>
               <span className="arc-card-hint">
-                Up to {detail?.limits.maxActiveMembers ?? 8} members working at once.{" "}
-                {detail?.launchesLast24h ?? 0} of {detail?.limits.maxLaunchesPerDay ?? 40} launches used today.
+                Up to {detail?.limits.maxActiveMembers ?? 8} members working at once. {detail?.launchesLast24h ?? 0} of{" "}
+                {detail?.limits.maxLaunchesPerDay ?? 40} launches used today.
               </span>
             </div>
           </div>
@@ -781,7 +810,12 @@ function briefExcerpt(text: string): string {
 
 /** A brief that is only headings still has something to say. */
 function firstHeading(text: string): string {
-  return text.split("\n").map((line) => line.replace(/^#+\s*/, "").trim()).find(Boolean) ?? "";
+  return (
+    text
+      .split("\n")
+      .map((line) => line.replace(/^#+\s*/, "").trim())
+      .find(Boolean) ?? ""
+  );
 }
 
 /** The tail of a path a person can recognise: nobody reads a UUID folder in

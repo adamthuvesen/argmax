@@ -10,11 +10,13 @@ import type { ReviewSideChatContext, ReviewSideChatSession } from "./ReviewSideC
 import { ReviewPanel } from "./ReviewPanel.js";
 
 vi.mock("../lib/tauriBridge.js", async (importOriginal) => ({
-  ...await importOriginal<typeof TauriBridge>(),
+  ...(await importOriginal<typeof TauriBridge>()),
   hostsBrowserSurface: () => true
 }));
 vi.mock("./BrowserPanel.js", () => ({
-  BrowserPanel: ({ controlledTabId }: { controlledTabId: string }) => <div role="region" aria-label={`Browser surface ${controlledTabId}`} />
+  BrowserPanel: ({ controlledTabId }: { controlledTabId: string }) => (
+    <div role="region" aria-label={`Browser surface ${controlledTabId}`} />
+  )
 }));
 vi.mock("../lib/highlighter.js", () => ({
   tokenizeLines: () => null,
@@ -25,41 +27,76 @@ vi.mock("../lib/highlighter.js", () => ({
 
 function controller(items: ReviewTab[], paneTabIds: ReviewTabsController["paneTabIds"]): ReviewTabsController {
   return {
-    items, paneTabIds, activeIndex: 0, select: vi.fn(), close: vi.fn(), move: vi.fn(), split: vi.fn(),
-    reopenClosed: vi.fn(), canReopen: true, openTool: vi.fn(), openBrowser: vi.fn(), openTerminal: vi.fn(), openSideChat: vi.fn(),
-    selectBrowserTab: vi.fn(), selectTerminalTab: vi.fn()
+    items,
+    paneTabIds,
+    activeIndex: 0,
+    select: vi.fn(),
+    close: vi.fn(),
+    move: vi.fn(),
+    split: vi.fn(),
+    reopenClosed: vi.fn(),
+    canReopen: true,
+    openTool: vi.fn(),
+    openBrowser: vi.fn(),
+    openTerminal: vi.fn(),
+    openSideChat: vi.fn(),
+    selectBrowserTab: vi.fn(),
+    selectTerminalTab: vi.fn()
   };
 }
 
 function sideChatContext(): ReviewSideChatContext {
   return {
     launch: vi.fn().mockResolvedValue({ sessionId: "child", workspaceId: "scratch" }),
-    sessionsById: new Map(), workspacesById: new Map(),
-    onCancelQueuedMessage: vi.fn(), onClearSession: vi.fn(), onSendQueuedMessageNow: vi.fn(),
-    onSendSessionInput: vi.fn(), onTerminateSession: vi.fn()
+    sessionsById: new Map(),
+    workspacesById: new Map(),
+    onCancelQueuedMessage: vi.fn(),
+    onClearSession: vi.fn(),
+    onSendQueuedMessageNow: vi.fn(),
+    onSendSessionInput: vi.fn(),
+    onTerminateSession: vi.fn()
   };
 }
 
 function SideChatTabsHarness({ context }: { context: ReviewSideChatContext }) {
   const [activeId, setActiveId] = useState("tool:side-chat");
-  const tabs = controller([
-    { id: "tool:changes", kind: "tool", mode: "changes" },
-    { id: "tool:side-chat", kind: "tool", mode: "side-chat" }
-  ], [activeId]);
+  const tabs = controller(
+    [
+      { id: "tool:changes", kind: "tool", mode: "changes" },
+      { id: "tool:side-chat", kind: "tool", mode: "side-chat" }
+    ],
+    [activeId]
+  );
   tabs.select = setActiveId;
   const mode = activeId === "tool:changes" ? "changes" : "side-chat";
-  return <ReviewPanel sideChat={context} review={reviewStub({
-    tabs, mode, layout: { modes: [mode], activeIndex: 0, ratio: .5 }
-  })} />;
+  return (
+    <ReviewPanel
+      sideChat={context}
+      review={reviewStub({
+        tabs,
+        mode,
+        layout: { modes: [mode], activeIndex: 0, ratio: 0.5 }
+      })}
+    />
+  );
 }
 
-afterEach(() => { cleanup(); resetBrowserTabsForTests(); window.localStorage.clear(); });
+afterEach(() => {
+  cleanup();
+  resetBrowserTabsForTests();
+  window.localStorage.clear();
+});
 
 describe("shared review tabs", () => {
   it("preserves the browser surface when expanding and restoring", () => {
     const browser = createBrowserTab("chat", "https://example.com");
     const tabs = controller([{ id: "browser", kind: "browser", browserTabId: browser.id }], ["browser"]);
-    const review = reviewStub({ tabs, browserScopeId: "chat", mode: "browser", layout: { modes: ["browser"], activeIndex: 0, ratio: .5 } });
+    const review = reviewStub({
+      tabs,
+      browserScopeId: "chat",
+      mode: "browser",
+      layout: { modes: ["browser"], activeIndex: 0, ratio: 0.5 }
+    });
     function Harness() {
       const [expanded, setExpanded] = useState(false);
       return <ReviewPanel review={review} isExpanded={expanded} onToggleExpanded={() => setExpanded(!expanded)} />;
@@ -76,14 +113,24 @@ describe("shared review tabs", () => {
   it("renders two browser resources from the same scope with one shared strip", () => {
     const first = createBrowserTab("chat", "https://example.com/one");
     const second = createBrowserTab("chat", "https://example.com/two");
-    const tabs = controller([
-      { id: "one", kind: "browser", browserTabId: first.id },
-      { id: "two", kind: "browser", browserTabId: second.id }
-    ], ["one", "two"]);
-    render(<ReviewPanel review={reviewStub({
-      tabs, browserScopeId: "chat", browserOwner: false,
-      layout: { modes: ["browser", "browser"], activeIndex: 0, ratio: .5 }, mode: "browser"
-    })} />);
+    const tabs = controller(
+      [
+        { id: "one", kind: "browser", browserTabId: first.id },
+        { id: "two", kind: "browser", browserTabId: second.id }
+      ],
+      ["one", "two"]
+    );
+    render(
+      <ReviewPanel
+        review={reviewStub({
+          tabs,
+          browserScopeId: "chat",
+          browserOwner: false,
+          layout: { modes: ["browser", "browser"], activeIndex: 0, ratio: 0.5 },
+          mode: "browser"
+        })}
+      />
+    );
     expect(screen.getByRole("region", { name: `Browser surface ${first.id}` })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: `Browser surface ${second.id}` })).toBeInTheDocument();
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
@@ -96,12 +143,19 @@ describe("shared review tabs", () => {
     const tabs = controller([{ id: "tool:changes", kind: "tool", mode: "changes" }], ["tool:changes"]);
     const base = reviewStub();
     const cancel = vi.fn();
-    render(<ReviewPanel review={reviewStub({ tabs, workspaceFiles: {
-      ...base.workspaceFiles,
-      tabs: [{ path: "src/config.ts", isDirty: true, saveState: "idle", externalChange: false }],
-      dirtyClosePrompt: { path: "src/config.ts", saveError: null },
-      cancelDirtyTabClose: cancel
-    } })} />);
+    render(
+      <ReviewPanel
+        review={reviewStub({
+          tabs,
+          workspaceFiles: {
+            ...base.workspaceFiles,
+            tabs: [{ path: "src/config.ts", isDirty: true, saveState: "idle", externalChange: false }],
+            dirtyClosePrompt: { path: "src/config.ts", saveError: null },
+            cancelDirtyTabClose: cancel
+          }
+        })}
+      />
+    );
     expect(screen.getByRole("alert", { name: "Unsaved changes in src/config.ts" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(cancel).toHaveBeenCalledOnce();
@@ -125,9 +179,12 @@ describe("shared review tabs", () => {
     const closeFile = vi.fn();
     review.workspaceFiles = {
       ...review.workspaceFiles,
-      listState: "ready", entries: [{ path: "index.ts" }],
+      listState: "ready",
+      entries: [{ path: "index.ts" }],
       tabs: [{ path: "index.ts", isDirty: false, saveState: "idle", externalChange: false }],
-      activeTabPath: "index.ts", selectedPath: "index.ts", closeTab: closeFile
+      activeTabPath: "index.ts",
+      selectedPath: "index.ts",
+      closeTab: closeFile
     };
     render(<ReviewPanel review={review} />);
     const tree = screen.getByRole("tree", { name: "Workspace files" });
@@ -154,15 +211,24 @@ describe("shared review tabs", () => {
 
   it("shows the new-tab tools and browser input without a file tree or suggestions", () => {
     const tabs = controller([{ id: "tool:new", kind: "tool", mode: "new" }], ["tool:new"]);
-    render(<ReviewPanel sideChat={sideChatContext()} review={reviewStub({
-      tabs, mode: "new", layout: { modes: ["new"], activeIndex: 0, ratio: .5 }
-    })} />);
+    render(
+      <ReviewPanel
+        sideChat={sideChatContext()}
+        review={reviewStub({
+          tabs,
+          mode: "new",
+          layout: { modes: ["new"], activeIndex: 0, ratio: 0.5 }
+        })}
+      />
+    );
     expect(screen.queryByRole("heading", { name: "Suggested" })).not.toBeInTheDocument();
     expect(screen.queryByRole("separator", { name: "Resize file list width" })).not.toBeInTheDocument();
     expect(screen.queryByRole("contentinfo", { name: "File status" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Side chat" }));
     expect(tabs.openTool).toHaveBeenCalledWith("side-chat");
-    fireEvent.change(screen.getByRole("textbox", { name: "Search or enter a URL" }), { target: { value: "example.com" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search or enter a URL" }), {
+      target: { value: "example.com" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Open address" }));
     expect(tabs.openBrowser).toHaveBeenCalledWith("https://example.com");
     fireEvent.keyDown(screen.getByRole("tab", { name: "New tab" }), { key: "t", metaKey: true });
@@ -172,19 +238,29 @@ describe("shared review tabs", () => {
   it("attaches a launched side chat to its original form tab", async () => {
     const tabs = controller([{ id: "tool:side-chat", kind: "tool", mode: "side-chat" }], ["tool:side-chat"]);
     const sideChat = sideChatContext();
-    render(<ReviewPanel sideChat={sideChat} review={reviewStub({
-      tabs, mode: "side-chat", layout: { modes: ["side-chat"], activeIndex: 0, ratio: .5 }
-    })} />);
+    render(
+      <ReviewPanel
+        sideChat={sideChat}
+        review={reviewStub({
+          tabs,
+          mode: "side-chat",
+          layout: { modes: ["side-chat"], activeIndex: 0, ratio: 0.5 }
+        })}
+      />
+    );
     expect(sideChat.launch).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Explore this idea" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), {
+      target: { value: "Explore this idea" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
     await waitFor(() => expect(tabs.openSideChat).toHaveBeenCalledWith("child", "scratch", "tool:side-chat"));
   });
 
-
   it("preserves an unsent side-chat draft across ordinary tab switches", () => {
     render(<SideChatTabsHarness context={sideChatContext()} />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Keep this draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), {
+      target: { value: "Keep this draft" }
+    });
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     expect(screen.queryByRole("textbox", { name: "Side chat message" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
@@ -195,30 +271,43 @@ describe("shared review tabs", () => {
     const form: ReviewTab = { id: "tool:side-chat", kind: "tool", mode: "side-chat" };
     const changes: ReviewTab = { id: "tool:changes", kind: "tool", mode: "changes" };
     const sideChat = sideChatContext();
-    const view = (open: boolean) => <ReviewPanel sideChat={sideChat} review={reviewStub({
-      tabs: controller(open ? [changes, form] : [changes], [open ? form.id : changes.id]),
-      mode: open ? "side-chat" : "changes",
-      layout: { modes: [open ? "side-chat" : "changes"], activeIndex: 0, ratio: .5 }
-    })} />;
+    const view = (open: boolean) => (
+      <ReviewPanel
+        sideChat={sideChat}
+        review={reviewStub({
+          tabs: controller(open ? [changes, form] : [changes], [open ? form.id : changes.id]),
+          mode: open ? "side-chat" : "changes",
+          layout: { modes: [open ? "side-chat" : "changes"], activeIndex: 0, ratio: 0.5 }
+        })}
+      />
+    );
     const { rerender } = render(view(true));
-    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Discard this draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), {
+      target: { value: "Discard this draft" }
+    });
     rerender(view(false));
     rerender(view(true));
     expect(screen.getByRole("textbox", { name: "Side chat message" })).toHaveValue("");
   });
 
-
   it("preserves an in-flight launch and its error while switching tabs", async () => {
     const context = sideChatContext();
     let fail!: (error: Error) => void;
-    context.launch = vi.fn(() => new Promise<ReviewSideChatSession>((_resolve, reject) => { fail = reject; }));
+    context.launch = vi.fn(
+      () =>
+        new Promise<ReviewSideChatSession>((_resolve, reject) => {
+          fail = reject;
+        })
+    );
     render(<SideChatTabsHarness context={context} />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Keep my question" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), {
+      target: { value: "Keep my question" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
     expect(screen.getByRole("button", { name: "Start side chat" })).toBeDisabled();
-    fireEvent.submit(screen.getByRole("textbox", { name: "Side chat message" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("textbox", { name: "Side chat message" }));
     expect(context.launch).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     await act(async () => {
@@ -234,18 +323,28 @@ describe("shared review tabs", () => {
   it("preserves an attachment-only launch and its error while switching tabs", async () => {
     const context = sideChatContext();
     let fail!: (error: Error) => void;
-    context.launch = vi.fn(() => new Promise<ReviewSideChatSession>((_resolve, reject) => { fail = reject; }));
-    writeDraftAttachments("side-chat-tool-side-chat", [{ filePath: "/attachments/shot.png", mimeType: "image/png", sizeBytes: 3 }]);
+    context.launch = vi.fn(
+      () =>
+        new Promise<ReviewSideChatSession>((_resolve, reject) => {
+          fail = reject;
+        })
+    );
+    writeDraftAttachments("side-chat-tool-side-chat", [
+      { filePath: "/attachments/shot.png", mimeType: "image/png", sizeBytes: 3 }
+    ]);
     render(<SideChatTabsHarness context={context} />);
     fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
     expect(context.launch).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
     fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
     expect(screen.getByRole("button", { name: "Start side chat" })).toBeDisabled();
-    fireEvent.submit(screen.getByRole("textbox", { name: "Side chat message" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("textbox", { name: "Side chat message" }));
     expect(context.launch).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("tab", { name: "Changes" }));
-    await act(async () => { fail(new Error("Provider unavailable")); await Promise.resolve(); });
+    await act(async () => {
+      fail(new Error("Provider unavailable"));
+      await Promise.resolve();
+    });
     fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
     expect(screen.getByRole("button", { name: "View attachment" })).toBeVisible();
@@ -258,19 +357,33 @@ describe("shared review tabs", () => {
     const changes: ReviewTab = { id: "tool:changes", kind: "tool", mode: "changes" };
     const context = sideChatContext();
     let fail!: (error: Error) => void;
-    context.launch = vi.fn(() => new Promise<ReviewSideChatSession>((_resolve, reject) => { fail = reject; }));
-    const view = (open: boolean) => <ReviewPanel sideChat={context} review={reviewStub({
-      tabs: controller(open ? [changes, form] : [changes], [open ? form.id : changes.id]),
-      mode: open ? "side-chat" : "changes"
-    })} />;
+    context.launch = vi.fn(
+      () =>
+        new Promise<ReviewSideChatSession>((_resolve, reject) => {
+          fail = reject;
+        })
+    );
+    const view = (open: boolean) => (
+      <ReviewPanel
+        sideChat={context}
+        review={reviewStub({
+          tabs: controller(open ? [changes, form] : [changes], [open ? form.id : changes.id]),
+          mode: open ? "side-chat" : "changes"
+        })}
+      />
+    );
     const { rerender } = render(view(true));
-    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Discard this question" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), {
+      target: { value: "Discard this question" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
     rerender(view(false));
-    await act(async () => { fail(new Error("Provider unavailable")); await Promise.resolve(); });
+    await act(async () => {
+      fail(new Error("Provider unavailable"));
+      await Promise.resolve();
+    });
     rerender(view(true));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Side chat message" })).toHaveValue("");
   });
-
 });

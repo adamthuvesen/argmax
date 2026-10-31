@@ -102,13 +102,29 @@ for (const key of [...keys].sort()) {
   // with each other; that is reported, not failed. Matching neither requires
   // reconciliation and does not establish which reader is correct.
   const status =
-    theirs.length === 0 ? "no-oracle" : agreeing === theirs.length ? "ok" : agreeing > 0 ? "oracles-differ" : "MISMATCH";
+    theirs.length === 0
+      ? "no-oracle"
+      : agreeing === theirs.length
+        ? "ok"
+        : agreeing > 0
+          ? "oracles-differ"
+          : "MISMATCH";
   if (status === "MISMATCH") mismatches += 1;
   if (status === "oracles-differ") oraclesDiffer += 1;
-  rows.push({ date, provider, model, argmax: ours, ccusage: ccusageByKey.get(key) ?? "-", codexbar: codexbarByKey.get(key) ?? "-", status });
+  rows.push({
+    date,
+    provider,
+    model,
+    argmax: ours,
+    ccusage: ccusageByKey.get(key) ?? "-",
+    codexbar: codexbarByKey.get(key) ?? "-",
+    status
+  });
 }
 console.table(rows);
-console.log(`${rows.length} day/model rows, ${mismatches} mismatches, ${oraclesDiffer} where the oracles disagree with each other, tolerance ${tolerance}`);
+console.log(
+  `${rows.length} day/model rows, ${mismatches} mismatches, ${oraclesDiffer} where the oracles disagree with each other, tolerance ${tolerance}`
+);
 process.exit(mismatches === 0 ? 0 : 1);
 
 function providerForModel(modelName) {

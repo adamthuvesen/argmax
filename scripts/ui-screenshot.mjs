@@ -9,7 +9,7 @@
 // Usage:
 //   node scripts/ui-screenshot.mjs [--out shot.png] [--theme dark|light|system]
 //        [--width 1400] [--height 900] [--mobile] [--touch] [--url http://…]
-//        [--eval '<js>'] [--settle 900] [--scale 2]
+//        [--eval '<js>'] [--settle 900] [--scale 2] [--browser-ws ws://…]
 //
 // --touch emulates a phone: the viewport is overridden rather than sized by the
 // window (headless Chrome refuses to go much under 500px wide), and touch
@@ -22,6 +22,9 @@
 // With no --url a vite dev server is started on a spare port and stopped
 // afterwards. --eval runs after load and before the capture — use it to click
 // the UI into the state you want to see. Prints {"out":…} JSON when done.
+//
+// --browser-ws reuses a running headless browser: the page opens in its own
+// browser context, so storage does not leak between captures.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -55,7 +58,8 @@ function parseArgs(argv) {
     url: null,
     evaluate: null,
     settle: 900,
-    scale: 1
+    scale: 1,
+    browserWs: null
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -69,6 +73,7 @@ function parseArgs(argv) {
     else if (arg === "--eval") options.evaluate = argv[++i];
     else if (arg === "--settle") options.settle = Number(argv[++i]);
     else if (arg === "--scale") options.scale = Number(argv[++i]);
+    else if (arg === "--browser-ws") options.browserWs = argv[++i];
     else fail(`unknown argument: ${arg}`);
   }
   if (!["dark", "light", "system"].includes(options.theme)) fail("--theme must be dark, light, or system");
@@ -107,7 +112,13 @@ function connectCdp(wsUrl) {
               () => rejectWait(new Error(`timed out waiting for CDP event ${method}`)),
               timeoutMs
             );
-            eventWaiters.push({ method, resolve: (params) => { clearTimeout(timer); resolveWait(params); } });
+            eventWaiters.push({
+              method,
+              resolve: (params) => {
+                clearTimeout(timer);
+                resolveWait(params);
+              }
+            });
           });
         },
         close() {
@@ -152,48 +163,55 @@ if (!baseUrl) {
   // Vite binds "localhost", which may resolve to ::1 only — probe the same name.
   baseUrl = `http://localhost:${VITE_PORT}/`;
   await waitFor(
-    () => fetch(baseUrl).then((response) => response.ok).catch(() => false),
+    () =>
+      fetch(baseUrl)
+        .then((response) => response.ok)
+        .catch(() => false),
     20000,
     "the vite dev server"
   );
 }
 const pageUrl = options.mobile ? new URL("mobile.html", baseUrl).href : baseUrl;
 
-const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
-if (!chrome) fail(`no Chromium-based browser found (looked for:\n  ${CHROME_CANDIDATES.join("\n  ")})`);
+async function launchBrowser() {
+  const chrome = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
+  if (!chrome) fail(`no Chromium-based browser found (looked for:\n  ${CHROME_CANDIDATES.join("\n  ")})`);
 
-const profileDir = mkdtempSync(path.join(tmpdir(), "argmax-ui-shot-"));
-const browser = spawn(
-  chrome,
-  [
-    "--headless=new",
-    "--remote-debugging-port=0",
-    `--user-data-dir=${profileDir}`,
-    "--no-first-run",
-    "--use-mock-keychain",
-    "--hide-scrollbars",
-    `--window-size=${options.width},${options.height}`,
-    "about:blank"
-  ],
-  { stdio: ["ignore", "ignore", "pipe"] }
-);
-cleanups.push(() => browser.kill("SIGTERM"));
+  const profileDir = mkdtempSync(path.join(tmpdir(), "argmax-ui-shot-"));
+  const browser = spawn(
+    chrome,
+    [
+      "--headless=new",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profileDir}`,
+      "--no-first-run",
+      "--use-mock-keychain",
+      "--hide-scrollbars",
+      `--window-size=${options.width},${options.height}`,
+      "about:blank"
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] }
+  );
+  cleanups.push(() => browser.kill("SIGTERM"));
 
-const wsUrl = await new Promise((resolve, reject) => {
-  let buffer = "";
-  const timer = setTimeout(() => reject(new Error("browser never printed its DevTools URL")), 15000);
-  browser.stderr.on("data", (chunk) => {
-    buffer += String(chunk);
-    const match = buffer.match(/DevTools listening on (ws:\/\/\S+)/);
-    if (match) {
-      clearTimeout(timer);
-      resolve(match[1]);
-    }
-  });
-}).catch((error) => fail(error.message));
+  return new Promise((resolve, reject) => {
+    let buffer = "";
+    const timer = setTimeout(() => reject(new Error("browser never printed its DevTools URL")), 15000);
+    browser.stderr.on("data", (chunk) => {
+      buffer += String(chunk);
+      const match = buffer.match(/DevTools listening on (ws:\/\/\S+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve(match[1]);
+      }
+    });
+  }).catch((error) => fail(error.message));
+}
 
+const wsUrl = options.browserWs ?? (await launchBrowser());
 const cdp = await connectCdp(wsUrl);
-const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
+const context = options.browserWs ? await cdp.send("Target.createBrowserContext") : {};
+const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank", ...context });
 const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
 await cdp.send("Page.enable", {}, sessionId);
 // Theme must exist before the app boots — theme.ts reads localStorage at startup.
@@ -208,12 +226,8 @@ if (options.touch) {
     { width: options.width, height: options.height, deviceScaleFactor: 2, mobile: true },
     sessionId
   );
-  await cdp.send(
-    "Emulation.setTouchEmulationEnabled",
-    { enabled: true, maxTouchPoints: 5 },
-    sessionId
-  );
-} else if (options.scale !== 1) {
+  await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }, sessionId);
+} else if (options.scale !== 1 || options.browserWs) {
   await cdp.send(
     "Emulation.setDeviceMetricsOverride",
     { width: options.width, height: options.height, deviceScaleFactor: options.scale, mobile: false },
@@ -243,8 +257,16 @@ const { data } = await cdp.send("Page.captureScreenshot", { format: "png" }, ses
 const out = path.resolve(options.out);
 mkdirSync(path.dirname(out), { recursive: true });
 writeFileSync(out, Buffer.from(data, "base64"));
+if (context.browserContextId) await cdp.send("Target.disposeBrowserContext", context);
 cdp.close();
 console.log(
-  JSON.stringify({ out, url: pageUrl, theme: options.theme, width: options.width, height: options.height, eval: evaluated })
+  JSON.stringify({
+    out,
+    url: pageUrl,
+    theme: options.theme,
+    width: options.width,
+    height: options.height,
+    eval: evaluated
+  })
 );
 process.exit(0);

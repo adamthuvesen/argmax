@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The pre-push gate: the same checks CI runs, scoped to what the branch
 // changed so the whole thing stays under a couple of minutes. `git push`
-// runs it through `.githooks/pre-push`; `npm run precheck` runs it by hand.
+// runs it through `.githooks/pre-push`; `npm run push-gate` runs it by hand.
 //
 //   node scripts/precheck.mjs            # scope from the diff against main
 //   node scripts/precheck.mjs --all      # every lane, whatever changed
@@ -63,7 +63,11 @@ function parsePushStdin() {
     // with 0 refs (e.g. non-fast-forward rejected ref updates or empty push).
     return targetRemote ? [] : null;
   }
-  const lines = input.trim().split("\n").map((line) => line.trim()).filter(Boolean);
+  const lines = input
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
   const entries = [];
   for (const line of lines) {
     const parts = line.split(/\s+/);
@@ -81,9 +85,7 @@ function parsePushStdin() {
 
 function mergeBase(headRef = "HEAD", remote = null) {
   const primaryRemote = remote || "origin";
-  const candidates = requestedBase
-    ? [requestedBase]
-    : [`${primaryRemote}/main`, "origin/main", "main"];
+  const candidates = requestedBase ? [requestedBase] : [`${primaryRemote}/main`, "origin/main", "main"];
   const seen = new Set();
   for (const candidate of candidates) {
     if (seen.has(candidate)) continue;
@@ -127,18 +129,12 @@ const JS_PATHS = [
   /^package(-lock)?\.json$/,
   /^tsconfig\.json$/,
   /^vite(st)?(\.[\w-]+)?\.config\.ts$/,
-  /^eslint\.config\.js$/,
+  /^\.ox(lint|fmt)rc\.json$/,
+  /^lint-baseline\.json$/,
   /^scripts\//,
   /^\.github\/workflows\//
 ];
-const INERT_PATHS = [
-  /^docs\//,
-  /^\.githooks\//,
-  /^[^/]*\.md$/,
-  /^LICENSE$/,
-  /^\.gitignore$/,
-  /^\.gitattributes$/
-];
+const INERT_PATHS = [/^docs\//, /^\.githooks\//, /^[^/]*\.md$/, /^LICENSE$/, /^\.gitignore$/, /^\.gitattributes$/];
 
 function touches(files, patterns) {
   for (const file of files) {
@@ -148,9 +144,9 @@ function touches(files, patterns) {
 }
 
 function scopeForFiles(files, reason, vitestBase) {
-  const hasUnclassifiedPath = files.size === 0 || [...files].some((file) =>
-    !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS])
-  );
+  const hasUnclassifiedPath =
+    files.size === 0 ||
+    [...files].some((file) => !touches([file], [...RUST_PATHS, ...JS_PATHS, ...IOS_PATHS, ...INERT_PATHS]));
   const rust = hasUnclassifiedPath || touches(files, RUST_PATHS);
   const js = hasUnclassifiedPath || touches(files, JS_PATHS);
   return {
@@ -175,8 +171,7 @@ function decideScope() {
       process.exit(0);
     }
 
-    const isDelete = (entry) =>
-      entry.localSha === ZERO_SHA || entry.localRef === "(delete)" || !entry.localRef;
+    const isDelete = (entry) => entry.localSha === ZERO_SHA || entry.localRef === "(delete)" || !entry.localRef;
     if (pushEntries.every(isDelete)) {
       console.log("precheck: deleting remote ref, skipping checks.");
       process.exit(0);
@@ -216,11 +211,7 @@ function decideScope() {
       }
     }
 
-    return scopeForFiles(
-      files,
-      `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`,
-      vitestBase
-    );
+    return scopeForFiles(files, `${files.size} file(s) differ across ${activeEntries.length} push ref(s)`, vitestBase);
   }
 
   const base = mergeBase("HEAD", targetRemote);
@@ -244,9 +235,7 @@ function step(label, command, commandArgs) {
 }
 
 const scope = decideScope();
-const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle", scope.ios && "ios"].filter(
-  Boolean
-);
+const lanes = [scope.js && "js", scope.rust && "rust", scope.bundle && "bundle", scope.ios && "ios"].filter(Boolean);
 console.log(`precheck: ${lanes.length ? lanes.join(" + ") : "docs only"} (${scope.reason})`);
 const vitestBase = runEverything ? null : scope.vitestBase;
 
@@ -261,16 +250,12 @@ if (scope.rust) {
 }
 
 if (scope.js) {
-  step("eslint", "npx", ["eslint", ".", "--cache", "--cache-strategy", "content", "--cache-location", "node_modules/.cache/eslint/"]);
-  // TypeScript 7 (the `typescript-7` alias); see docs/testing.md.
-  step("tsc", "node", ["node_modules/typescript-7/bin/tsc", "--noEmit"]);
+  // oxlint runs the TypeScript 7 type check too; see docs/testing.md.
+  step("oxlint", "node", ["scripts/lint.mjs"]);
+  step("oxfmt", "npx", ["oxfmt", "--check"]);
   // `--changed` runs only the test files whose import graph reaches a
   // changed file; a config or setup change widens it to the full suite.
-  step(
-    "vitest",
-    "npx",
-    vitestBase ? ["vitest", "run", "--changed", vitestBase] : ["vitest", "run"]
-  );
+  step("vitest", "npx", vitestBase ? ["vitest", "run", "--changed", vitestBase] : ["vitest", "run"]);
   step("perf budgets", "npx", ["vitest", "run", "--config", "vitest.perf.config.ts", "--no-file-parallelism"]);
 }
 

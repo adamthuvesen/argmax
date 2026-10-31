@@ -28,7 +28,7 @@ const docs = [
   ...mdFiles(join(ROOT, "docs")),
   join(ROOT, "AGENTS.md"),
   join(ROOT, "README.md"),
-  join(ROOT, "GLOSSARY.md"),
+  join(ROOT, "GLOSSARY.md")
 ].filter(existsSync);
 
 // 1. Local markdown links resolve.
@@ -78,8 +78,7 @@ for (const group of ["plan", "design"]) {
       isDirectory = false;
     }
     const isEntry =
-      (entry.endsWith(".md") && entry !== "README.md") ||
-      (isDirectory && existsSync(join(full, "index.html")));
+      (entry.endsWith(".md") && entry !== "README.md") || (isDirectory && existsSync(join(full, "index.html")));
     if (isEntry && !index.includes(entry.replace(/\.md$/, ""))) {
       fail(`docs/${group}/${entry} is not listed in docs/${group}/README.md`);
     }
@@ -109,35 +108,64 @@ for (const rel of ["docs/agent-tools.md", "docs/browser.md"]) {
   }
 }
 
-// 4. Every name in the AGENTS.md "Enforced by" column exists. A path must be
-//    a file and an npm script must be defined. Any other name must appear in
-//    the files the row cites (paths, and the scripts its npm scripts run), or
-//    in tracked code when the row cites no file.
+// 4. Every row of the AGENTS.md "Enforced by" column cites something real. A
+//    path must be a tracked file, `path::name` must name a word in that file,
+//    and an npm script must be defined. Any other name must be a word in the
+//    files the row cites (paths, and the scripts its npm scripts run), or in
+//    code (not docs) when the row cites no file. A row that cites nothing fails.
 const tracked = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n");
 const npmScripts = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).scripts;
-const rulesTable = agents.split("## Enforced Rules")[1]?.split("\n## ")[0] ?? "";
-if (!rulesTable) fail("AGENTS.md has no ## Enforced Rules table");
-const filesFor = (path) => tracked.filter((file) => file === path || file.endsWith(`/${path}`) || (path.endsWith("/") && file.startsWith(path)));
-for (const row of rulesTable.split("\n").filter((line) => /^\| (?!Rule |---)/.test(line))) {
-  const cited = [...row.split("|")[2].matchAll(/`([^`]+)`/g)].map(([, raw]) => ({
-    raw,
-    name: raw.replace(/^(npm run|cargo test) /, "").replace(/( --check|\(\))$/, "")
-  }));
-  const enforcers = [];
-  for (const entry of cited) {
-    entry.kind = /^\.|\/$|\.(mjs|cjs|js|ts|tsx|rs|swift|json|txt)$/.test(entry.name) ? "path" : entry.name in npmScripts ? "script" : "name";
-    if (entry.kind === "path") enforcers.push(...filesFor(entry.name));
-    if (entry.kind === "script") enforcers.push(...(npmScripts[entry.name].match(/scripts\/[\w./-]+\.m?js/g) ?? []));
-  }
-  for (const { raw, name, kind } of cited) {
-    const where = enforcers.length ? enforcers : [":!AGENTS.md"];
-    const found =
-      kind === "script" ||
-      (kind === "path" ? filesFor(name).length > 0 : spawnSync("git", ["grep", "-qF", "--", name, ...where], { cwd: ROOT }).status === 0);
-    if (!found) {
-      const scope = enforcers.length ? `the cited enforcer (${[...new Set(enforcers)].join(", ")})` : "tracked code";
-      fail(`AGENTS.md Enforced Rules cites \`${raw}\`, which ${kind === "path" ? "is not a tracked file" : `does not appear in ${scope}`}. Fix the citation or the enforcer.`);
-    }
+const rulesTable = agents.split("\n## Enforced Rules\n")[1]?.split("\n## ")[0] ?? "";
+const rows = rulesTable.split("\n").filter((line) => /^\| (?!Rule |---)/.test(line));
+if (!rows.length)
+  fail("AGENTS.md has no ## Enforced Rules table. Restore the section and its | Rule | Enforced by | Added | rows.");
+const filesFor = (path) =>
+  tracked.filter((file) => file === path || file.endsWith(`/${path}`) || (path.endsWith("/") && file.startsWith(path)));
+const hasWord = (name, paths) => spawnSync("git", ["grep", "-qwF", "--", name, ...paths], { cwd: ROOT }).status === 0;
+const CODE = [":!*.md", ":!docs/"];
+for (const row of rows) {
+  const cited = [...row.split("|")[2].matchAll(/`([^`]+)`/g)].map(([, raw]) => {
+    const name = raw.replace(/^(npm run|cargo test) /, "").replace(/( --check|\(\))$/, "");
+    const [file, key] = name.split("::");
+    const kind =
+      key && (/\.\w+$/.test(file) || tracked.includes(file))
+        ? "key"
+        : /^\.|\/$|\.(mjs|cjs|js|ts|tsx|rs|swift|json|txt|toml)$/.test(name)
+          ? "path"
+          : name in npmScripts
+            ? "script"
+            : "name";
+    return { raw, name, kind, file, key };
+  });
+  if (!cited.length)
+    fail(
+      `AGENTS.md Enforced Rules row cites no enforcer: ${row.split("|")[1].trim()}. Cite a file, path::name, or npm script in backticks.`
+    );
+  const enforcers = cited.flatMap(({ kind, name, file }) =>
+    kind === "path"
+      ? filesFor(name)
+      : kind === "key"
+        ? filesFor(file)
+        : kind === "script"
+          ? (npmScripts[name].match(/scripts\/[\w./-]+\.m?js/g) ?? [])
+          : []
+  );
+  for (const { raw, name, kind, file, key } of cited) {
+    const problem =
+      kind === "path"
+        ? filesFor(name).length
+          ? null
+          : "is not a tracked file"
+        : kind === "key"
+          ? filesFor(file).length && hasWord(key, filesFor(file))
+            ? null
+            : `needs ${file} to be tracked and to define ${key}`
+          : kind === "script"
+            ? null
+            : hasWord(name, enforcers.length ? enforcers : CODE)
+              ? null
+              : `does not appear in ${enforcers.length ? `the cited enforcer (${[...new Set(enforcers)].join(", ")})` : "code outside docs"}`;
+    if (problem) fail(`AGENTS.md Enforced Rules cites \`${raw}\`, which ${problem}. Fix the citation or the enforcer.`);
   }
 }
 
@@ -146,6 +174,4 @@ if (failures.length) {
   for (const problem of failures) console.error(`  ${problem}`);
   process.exit(1);
 }
-console.log(
-  `check-docs: ${docs.length} files, links ok, index ok, MCP tools ${total} (browser ${browser})`
-);
+console.log(`check-docs: ${docs.length} files, links ok, index ok, MCP tools ${total} (browser ${browser})`);

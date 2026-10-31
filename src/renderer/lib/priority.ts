@@ -92,9 +92,7 @@ function rank(kind: PriorityReasonKind): number {
 }
 
 function attentionReason(attention: string): PriorityReasonKind | null {
-  return ATTENTION_REASONS.has(attention as PriorityReasonKind)
-    ? (attention as PriorityReasonKind)
-    : null;
+  return ATTENTION_REASONS.has(attention as PriorityReasonKind) ? (attention as PriorityReasonKind) : null;
 }
 
 interface WorkspaceAttention {
@@ -109,10 +107,7 @@ interface WorkspaceAttention {
 function loudestSession(
   sessions: SessionSummary[]
 ): Map<string, { kind: PriorityReasonKind; changedAt: string | null; lastActivityAt: string }> {
-  const bySession = new Map<
-    string,
-    { kind: PriorityReasonKind; changedAt: string | null; lastActivityAt: string }
-  >();
+  const bySession = new Map<string, { kind: PriorityReasonKind; changedAt: string | null; lastActivityAt: string }>();
   for (const session of sessions) {
     const kind = attentionReason(session.attention);
     if (!kind) continue;
@@ -170,9 +165,7 @@ interface WorkspaceReasonsInput {
  * done here"). Pinned workspaces are *not*: a pin changes where a row sits,
  * not whether it needs you. Placement rules live in `computePriorityEntries`.
  */
-function computeWorkspaceReasons(
-  input: WorkspaceReasonsInput
-): Map<string, PriorityReason[]> {
+function computeWorkspaceReasons(input: WorkspaceReasonsInput): Map<string, PriorityReason[]> {
   const { workspaces, sessions, unreadWorkspaceIds } = input;
   const bySession = loudestSession(sessions);
   const result = new Map<string, PriorityReason[]>();
@@ -285,7 +278,8 @@ export function computePriorityEntries(
       workspace.state === "kept" ||
       workspace.state === "archiving" ||
       workspace.state === "archive-failed"
-    ) continue;
+    )
+      continue;
     const reasons = reasonsByWorkspace.get(workspace.id) ?? [];
     const working = workingWorkspaces.has(workspace.id);
     const manuallyAdded = Boolean(workspace.priorityAddedAt);

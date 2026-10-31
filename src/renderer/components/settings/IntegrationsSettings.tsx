@@ -18,8 +18,8 @@ export function IntegrationsSettings(): JSX.Element {
       <EngramSettings provider={provider} onProviderChange={setProvider} />
       <SettingGroup id="settings-mcp" label="Connections">
         <SettingNote>
-          MCP servers, plugins, and provider connectors available to each agent. Authentication is
-          checked by the provider when it exposes that status.
+          MCP servers, plugins, and provider connectors available to each agent. Authentication is checked by the
+          provider when it exposes that status.
         </SettingNote>
         <div className="connection-provider-tabs" role="tablist" aria-label="Connection provider">
           <SlidingTabIndicator activeKey={provider} />
@@ -39,11 +39,7 @@ export function IntegrationsSettings(): JSX.Element {
         <SettingRow
           label={`Add to ${setup.displayName}`}
           description={<code className="settings-row-code">{setup.mcpCommand ?? "Settings → Tools & MCP"}</code>}
-          control={
-            setup.mcpCommand ? (
-              <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} />
-            ) : null
-          }
+          control={setup.mcpCommand ? <CopyCommandButton command={setup.mcpCommand} name={setup.displayName} /> : null}
         />
       </SettingGroup>
 

@@ -43,11 +43,7 @@ import type {
   SessionSummary,
   WorkspaceSummary
 } from "../../shared/types.js";
-import {
-  cloudProviderName,
-  isHostedCloudProvider,
-  type HostedCloudProvider
-} from "../../shared/cloudProviders.js";
+import { cloudProviderName, isHostedCloudProvider, type HostedCloudProvider } from "../../shared/cloudProviders.js";
 import { PROVIDER_DISPLAY_NAMES, resolveModelId } from "../../shared/providerModels.js";
 import { goalActions, systemActions } from "../data/bridgeActions.js";
 import { attachmentProtocolUrl } from "../../shared/attachmentProtocol.js";
@@ -64,10 +60,7 @@ import { useRouteSwitch, useRouteSwitchElapsed } from "../hooks/useRouteSwitch.j
 import { routeSwitchPace } from "../lib/routeSwitch.js";
 import { useDismissOnOutsideOrEscape } from "../hooks/useDismissOnOutsideOrEscape.js";
 import { useSlashAutocomplete } from "../hooks/useSlashAutocomplete.js";
-import {
-  appendReferencesToPrompt,
-  imageAttachmentReference
-} from "../lib/composerAttachments.js";
+import { appendReferencesToPrompt, imageAttachmentReference } from "../lib/composerAttachments.js";
 import {
   annotationChipLabel,
   prependAnnotationsToPrompt,
@@ -84,12 +77,7 @@ import { multitaskCommandPrompt } from "../lib/multitask.js";
 import { parseGoalCommand } from "../lib/goalCommand.js";
 import { clearDraft, writeDraftAttachments, writeDraftText } from "../lib/composerDrafts.js";
 import { appendOpenFilesToPrompt, openFilesChipLabel } from "../lib/openFileContext.js";
-import {
-  AUTO_TIER_SHORT_LABELS,
-  autoSessionChipLabel,
-  isAutoTier,
-  type ModelPickerSelection
-} from "../lib/models.js";
+import { AUTO_TIER_SHORT_LABELS, autoSessionChipLabel, isAutoTier, type ModelPickerSelection } from "../lib/models.js";
 import { chatChipEnvironmentFor } from "../lib/chatChipEnvironment.js";
 import { chatReferencesAsTitles } from "../lib/composerContext.js";
 import { openChat, useChatDirectory } from "../state/chatDirectory.js";
@@ -194,20 +182,11 @@ export function SessionComposer({
   defaultFollowUpDelivery?: FollowUpDelivery;
   onFastModeEnabledChange?: (enabled: boolean) => void;
   onCancelQueuedMessage?: (sessionId: string, messageId: string) => Promise<void>;
-  onSendQueuedMessageNow?: (
-    sessionId: string,
-    messageId: string,
-    delivery?: QueuedMessageDelivery
-  ) => Promise<void>;
+  onSendQueuedMessageNow?: (sessionId: string, messageId: string, delivery?: QueuedMessageDelivery) => Promise<void>;
   /** Dispatch a prompt as a multitask: a sibling chat in this checkout that
    *  runs alongside the current turn instead of waiting behind it. It inherits
    *  this chat's provider, which is why the call carries it. */
-  onMultitask?: (
-    sessionId: string,
-    prompt: string,
-    provider: ProviderId,
-    pendingMessageId?: string
-  ) => Promise<void>;
+  onMultitask?: (sessionId: string, prompt: string, provider: ProviderId, pendingMessageId?: string) => Promise<void>;
   /** For a chat that lives inside a panel (a multitask in the Agents dock):
    *  promote it to the pane it is docked beside. Absent in a pane, which is
    *  already the full chat. */
@@ -271,18 +250,17 @@ export function SessionComposer({
   const [sendingQueuedMessageId, setSendingQueuedMessageId] = useState<string | null>(null);
   // Touch surfaces (the phone companion) have no Enter key sitting under the
   // hands, so the keyboard shortcuts this composer leans on need a button.
-  const [isCoarsePointer] = useState(
-    () => window.matchMedia?.("(pointer: coarse)").matches ?? false
-  );
+  const [isCoarsePointer] = useState(() => window.matchMedia?.("(pointer: coarse)").matches ?? false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   // A pick that changes provider is held here until the user confirms: the new
   // agent can't resume this one's conversation, so the swap is worth a beat.
   // Cancelling drops the pick and the composer keeps the current provider. The
   // session id rides along because this pane outlives the session it shows: a
   // held pick must not land on whatever session the pane retargets to.
-  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<
-    { sessionId: string; model: ModelPickerSelection } | null
-  >(null);
+  const [pendingProviderSwitch, setPendingProviderSwitch] = useState<{
+    sessionId: string;
+    model: ModelPickerSelection;
+  } | null>(null);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [effortPickerOpen, setEffortPickerOpen] = useState(false);
   const { availability: providerAvailability } = useProviderAvailability();
@@ -429,9 +407,10 @@ export function SessionComposer({
         label: "Clear",
         hint: "Start a fresh conversation here",
         icon: Eraser,
-        run: () => void onClearSession(session.id).catch((error: unknown) => {
-          showErrorToast(errorMessage(error) || "Could not clear the chat.");
-        })
+        run: () =>
+          void onClearSession(session.id).catch((error: unknown) => {
+            showErrorToast(errorMessage(error) || "Could not clear the chat.");
+          })
       });
       commands.push({
         name: "mcp",
@@ -496,9 +475,7 @@ export function SessionComposer({
       commands.push({
         name: "changes",
         label: "Changes",
-        hint: `Open ${changeSummary.fileCount} changed ${
-          changeSummary.fileCount === 1 ? "file" : "files"
-        } in review`,
+        hint: `Open ${changeSummary.fileCount} changed ${changeSummary.fileCount === 1 ? "file" : "files"} in review`,
         icon: FileDiff,
         run: changeSummary.onOpen
       });
@@ -510,9 +487,11 @@ export function SessionComposer({
         hint: "Open the worktree folder",
         icon: FolderOpen,
         run: () => {
-          void systemActions()?.openPath({ path: workspace.path }).catch((error: unknown) => {
-            showErrorToast(error instanceof Error ? error.message : "Could not open the worktree folder.");
-          });
+          void systemActions()
+            ?.openPath({ path: workspace.path })
+            .catch((error: unknown) => {
+              showErrorToast(error instanceof Error ? error.message : "Could not open the worktree folder.");
+            });
         }
       });
     }
@@ -548,10 +527,7 @@ export function SessionComposer({
     chats: chatDirectory,
     ownSessionId: sessionId
   });
-  const chatChips = useMemo(
-    () => chatChipEnvironmentFor(chatDirectory, openChat),
-    [chatDirectory]
-  );
+  const chatChips = useMemo(() => chatChipEnvironmentFor(chatDirectory, openChat), [chatDirectory]);
 
   const dispatchedNames = useMemo(
     () =>
@@ -584,9 +560,7 @@ export function SessionComposer({
   const workspaceContextSummary = `Workspace context: ${[branchLabel, changeSummaryText]
     .filter((part) => part !== null)
     .join(" · ")}`;
-  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () =>
-    setCompactContextOpen(false)
-  );
+  useDismissOnOutsideOrEscape(compactContextRef, compactContextOpen, () => setCompactContextOpen(false));
   // Where the caret goes once text is put into the prompt for the user to
   // work on — set by the queued chip's Edit action. It has to wait for the
   // render that carries the new text: seeking on the old value would land in
@@ -622,7 +596,12 @@ export function SessionComposer({
     const active = document.activeElement;
     // Keyboard navigation can activate a pane through another control. Keep
     // that control focused instead of redirecting its first keystroke.
-    if (becameFocused && !inputRef.current?.contains(active) && inputRef.current?.closest('[role="region"]')?.contains(active)) return;
+    if (
+      becameFocused &&
+      !inputRef.current?.contains(active) &&
+      inputRef.current?.closest('[role="region"]')?.contains(active)
+    )
+      return;
     if (!becameFocused && active !== document.body && !inputFormRef.current?.contains(active)) return;
     inputRef.current?.focus({ preventScroll: true });
   }, [reviewPanelOpen, canSend, inputRef, isCoarsePointer, isFocused, isSending, shouldRefocusInput]);
@@ -637,13 +616,7 @@ export function SessionComposer({
     if (event.defaultPrevented) return;
     fileAutocomplete.onKeyDown(event);
     if (event.defaultPrevented) return;
-    if (
-      event.key === "Tab" &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.altKey &&
-      !event.isComposing
-    ) {
+    if (event.key === "Tab" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
       if (!event.shiftKey && followUpSuggestion && liveInput().length === 0) {
         event.preventDefault();
         setInput(followUpSuggestion);
@@ -671,18 +644,14 @@ export function SessionComposer({
       const recalled = recalledPrompt.current;
       const current = liveInput();
       const recalledIndex =
-        recalled?.sessionId === sessionId && sentPrompts[recalled.index] === current
-          ? recalled.index
-          : null;
+        recalled?.sessionId === sessionId && sentPrompts[recalled.index] === current ? recalled.index : null;
       const selectionStart = inputRef.current?.selectionStart ?? 0;
       const selectionEnd = inputRef.current?.selectionEnd ?? selectionStart;
       // ↑ leaves a recalled prompt only from its first line and ↓ only from
       // its last, so the caret still walks a multiline prompt's lines.
       const caretAtEdge =
         selectionStart === selectionEnd &&
-        (step === -1
-          ? !current.slice(0, selectionStart).includes("\n")
-          : !current.slice(selectionEnd).includes("\n"));
+        (step === -1 ? !current.slice(0, selectionStart).includes("\n") : !current.slice(selectionEnd).includes("\n"));
       let nextIndex: number | null = null;
       if (recalledIndex !== null && caretAtEdge) nextIndex = recalledIndex + step;
       else if (recalledIndex === null && current.length === 0 && step === -1) {
@@ -704,8 +673,7 @@ export function SessionComposer({
 
   // Images, conversation excerpts, and diff notes can be the whole message.
   // Their references or quoted context become the prompt at delivery time.
-  const hasSendableContent =
-    input.trim().length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
+  const hasSendableContent = input.trim().length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
 
   /**
    * Build the prompt from the draft plus attachments and hand it to `deliver`.
@@ -713,16 +681,11 @@ export function SessionComposer({
    * delivery restores both so the user can retry.
    */
   const deliverDraft = async (
-    deliver: (
-      sessionId: string,
-      prompt: string,
-      attachments: ComposerAttachment[] | undefined
-    ) => Promise<void>
+    deliver: (sessionId: string, prompt: string, attachments: ComposerAttachment[] | undefined) => Promise<void>
   ): Promise<void> => {
     const draftInput = liveInput();
     const trimmedInput = draftInput.trim();
-    const hasContent =
-      trimmedInput.length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
+    const hasContent = trimmedInput.length > 0 || pendingAttachments.length > 0 || pendingAnnotations.length > 0;
     if (!session || !hasContent || isSending || sendingQueuedMessageId) {
       return;
     }
@@ -734,7 +697,10 @@ export function SessionComposer({
         return;
       }
       if (!isHostedCloudProvider(selectedModel.provider)) {
-        setStatus({ kind: "error", message: `${PROVIDER_DISPLAY_NAMES[selectedModel.provider]} can’t run cloud tasks.` });
+        setStatus({
+          kind: "error",
+          message: `${PROVIDER_DISPLAY_NAMES[selectedModel.provider]} can’t run cloud tasks.`
+        });
         return;
       }
       if (pendingAttachments.length > 0) {
@@ -876,15 +842,7 @@ export function SessionComposer({
         ? "steer"
         : "queue";
     await deliverDraft((sessionId, prompt, attachments) =>
-      onSendSessionInput(
-        sessionId,
-        prompt,
-        selectedModel,
-        "auto",
-        attachments,
-        undefined,
-        delivery
-      )
+      onSendSessionInput(sessionId, prompt, selectedModel, "auto", attachments, undefined, delivery)
     );
   };
 
@@ -924,9 +882,7 @@ export function SessionComposer({
                 showErrorToast(error instanceof Error ? error.message : "Could not cancel this follow-up.");
               });
             };
-            const sendQueuedNow = async (
-              delivery: QueuedMessageDelivery = "interrupt"
-            ): Promise<void> => {
+            const sendQueuedNow = async (delivery: QueuedMessageDelivery = "interrupt"): Promise<void> => {
               if (!session || !onSendQueuedMessageNow || sendingQueuedMessageId) return;
               setSendingQueuedMessageId(entry.id);
               setStatus(null);
@@ -965,9 +921,7 @@ export function SessionComposer({
               try {
                 await onCancelQueuedMessage(session.id, id);
               } catch (error) {
-                showErrorToast(error instanceof Error
-                  ? error.message
-                  : "Could not take the queued follow-up back.");
+                showErrorToast(error instanceof Error ? error.message : "Could not take the queued follow-up back.");
                 return;
               } finally {
                 setSendingQueuedMessageId(null);
@@ -977,10 +931,13 @@ export function SessionComposer({
               // it, and the caret lands at the end of the restored text — the
               // part the user came here to change.
               const attachments = entry.attachments ?? [];
-              const references = attachments.map((attachment) => imageAttachmentReference(attachment.filePath)).join(" ");
+              const references = attachments
+                .map((attachment) => imageAttachmentReference(attachment.filePath))
+                .join(" ");
               const referenceStart = references ? content.lastIndexOf(references) : -1;
               const referenceEnd = referenceStart + references.length;
-              const hasGeneratedReferences = referenceStart >= 0 &&
+              const hasGeneratedReferences =
+                referenceStart >= 0 &&
                 (referenceStart === 0 || /\s/.test(content[referenceStart - 1] ?? "")) &&
                 (referenceEnd === content.length || /\s/.test(content[referenceEnd] ?? ""));
               const restoredContent = hasGeneratedReferences
@@ -993,7 +950,11 @@ export function SessionComposer({
               if (queuedSelection) setSelectedModel(queuedSelection);
               caretAfterInput.current = restoredContent.length;
               setInput((draft) =>
-                restoredContent === "" ? draft : draft.trim() === "" ? restoredContent : `${restoredContent}\n\n${draft}`
+                restoredContent === ""
+                  ? draft
+                  : draft.trim() === ""
+                    ? restoredContent
+                    : `${restoredContent}\n\n${draft}`
               );
               restoreAttachments((current) => {
                 const paths = new Set(current.map((attachment) => attachment.filePath));
@@ -1009,20 +970,13 @@ export function SessionComposer({
                 title={shownContent}
                 aria-label={`Queued follow-up: ${shownContent}`}
                 onKeyDown={(event) => {
-                  if (
-                    sendingQueuedMessageId === null &&
-                    (event.key === "Backspace" || event.key === "Delete")
-                  ) {
+                  if (sendingQueuedMessageId === null && (event.key === "Backspace" || event.key === "Delete")) {
                     event.preventDefault();
                     cancel();
                   }
                 }}
               >
-                <CornerDownLeft
-                  className="composer-queued-chip-icon"
-                  size={14}
-                  aria-hidden="true"
-                />
+                <CornerDownLeft className="composer-queued-chip-icon" size={14} aria-hidden="true" />
                 <span className="composer-queued-chip-copy">
                   <span className="composer-queued-chip-label">{shownContent}</span>
                   {entry.provider && session && entry.provider !== session.provider ? (
@@ -1031,10 +985,7 @@ export function SessionComposer({
                     </span>
                   ) : null}
                   {entry.recoveryStatus ? (
-                    <span
-                      className="composer-queued-chip-recovery"
-                      data-recovery-status={entry.recoveryStatus}
-                    >
+                    <span className="composer-queued-chip-recovery" data-recovery-status={entry.recoveryStatus}>
                       {entry.recoveryStatus === "delivery-unknown"
                         ? "Delivery uncertain • check the chat before sending again"
                         : "Paused • not sent"}
@@ -1058,11 +1009,7 @@ export function SessionComposer({
                   type="button"
                   className="composer-queued-chip-action"
                   aria-label={`Send queued follow-up: ${shownContent}`}
-                  title={
-                    sessionIsRunning
-                      ? "Stop the current turn and send this follow-up"
-                      : "Send this follow-up"
-                  }
+                  title={sessionIsRunning ? "Stop the current turn and send this follow-up" : "Send this follow-up"}
                   disabled={sendingQueuedMessageId !== null}
                   onClick={() => void sendQueuedNow("interrupt")}
                 >
@@ -1113,329 +1060,321 @@ export function SessionComposer({
           <span>Drop to attach</span>
           <small>Images and files</small>
         </div>
-      {pendingAnnotations.length > 0 || openFilesAttached ? (
-        <div className="composer-annotations" role="list" aria-label="Annotations">
-          {openFilesAttached ? (
-            <div
-              className="composer-annotation-chip"
-              role="listitem"
-              title={openFilePaths.join("\n")}
-              aria-label={`Attached context: ${openFilesChipLabel(openFilePaths)}`}
-            >
-              <FolderOpen size={14} className="composer-annotation-icon" aria-hidden="true" />
-              <span className="composer-annotation-chip-label">{openFilesChipLabel(openFilePaths)}</span>
-              <button
-                type="button"
-                className="composer-annotation-remove"
-                aria-label="Don't attach open files"
-                title="Don't attach open files"
-                onClick={() => setDismissedOpenFilesKey(openFilesKey)}
+        {pendingAnnotations.length > 0 || openFilesAttached ? (
+          <div className="composer-annotations" role="list" aria-label="Annotations">
+            {openFilesAttached ? (
+              <div
+                className="composer-annotation-chip"
+                role="listitem"
+                title={openFilePaths.join("\n")}
+                aria-label={`Attached context: ${openFilesChipLabel(openFilePaths)}`}
               >
-                <X size={13} aria-hidden="true" />
-              </button>
-            </div>
-          ) : null}
-          {pendingAnnotations.map((annotation) => (
-            <div
-              key={annotation.id}
-              className="composer-annotation-chip"
-              role="listitem"
-              title={annotationChipLabel(annotation)}
-              aria-label={`Annotation: ${annotationChipLabel(annotation)}`}
-            >
-              {annotation.kind === "excerpt" ? (
-                <Quote size={14} className="composer-annotation-icon" aria-hidden="true" />
-              ) : (
-                <FileDiff size={14} className="composer-annotation-icon" aria-hidden="true" />
-              )}
-              <span className="composer-annotation-chip-label">{annotationChipLabel(annotation)}</span>
-              <button
-                type="button"
-                className="composer-annotation-remove"
-                aria-label="Remove annotation"
-                title="Remove annotation"
-                onClick={() => onRemoveAnnotation?.(annotation.id)}
+                <FolderOpen size={14} className="composer-annotation-icon" aria-hidden="true" />
+                <span className="composer-annotation-chip-label">{openFilesChipLabel(openFilePaths)}</span>
+                <button
+                  type="button"
+                  className="composer-annotation-remove"
+                  aria-label="Don't attach open files"
+                  title="Don't attach open files"
+                  onClick={() => setDismissedOpenFilesKey(openFilesKey)}
+                >
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
+            {pendingAnnotations.map((annotation) => (
+              <div
+                key={annotation.id}
+                className="composer-annotation-chip"
+                role="listitem"
+                title={annotationChipLabel(annotation)}
+                aria-label={`Annotation: ${annotationChipLabel(annotation)}`}
               >
-                <X size={13} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {pendingAttachments.length > 0 ? (
-        <div className="composer-attachments" aria-label="Attached images">
-          {pendingAttachments.map((attachment) => (
-            <div key={attachment.filePath} className="composer-attachment-chip">
-              <button
-                type="button"
-                className="attachment-open-button"
-                aria-label={
-                  attachmentLabels[attachment.filePath]
-                    ? `View window capture: ${attachmentLabels[attachment.filePath]}`
-                    : "View attachment"
-                }
-                title={attachmentLabels[attachment.filePath] ?? "View attachment"}
-                onClick={() => setLightboxSrc(attachmentProtocolUrl(attachment.filePath))}
-              >
-                <img src={attachmentProtocolUrl(attachment.filePath)} alt="" />
-              </button>
-              <button
-                type="button"
-                className="composer-attachment-remove"
-                aria-label="Remove attachment"
-                title="Remove attachment"
-                onClick={() => removePendingAttachment(attachment.filePath)}
-              >
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      <div className="session-input-field">
-        {routeCaption ? (
-          <div
-            key={routeCaption.id}
-            className="route-switch-caption"
-            role="status"
-            style={{
-              animationDelay: `${(captionPace?.delayMs ?? 0) - (captionElapsed ?? 0)}ms`,
-              animationDuration: `${captionPace?.captionMs ?? 0}ms`
-            }}
-            onAnimationEnd={() => setEndedCaptionId(routeCaption.id)}
-          >
-            <span className="route-switch-caption-direction" aria-hidden="true">
-              {routeCaption.from === null ? "→" : routeCaption.direction === "up" ? "↑" : "↓"}
-            </span>
-            {routeCaption.reason}
+                {annotation.kind === "excerpt" ? (
+                  <Quote size={14} className="composer-annotation-icon" aria-hidden="true" />
+                ) : (
+                  <FileDiff size={14} className="composer-annotation-icon" aria-hidden="true" />
+                )}
+                <span className="composer-annotation-chip-label">{annotationChipLabel(annotation)}</span>
+                <button
+                  type="button"
+                  className="composer-annotation-remove"
+                  aria-label="Remove annotation"
+                  title="Remove annotation"
+                  onClick={() => onRemoveAnnotation?.(annotation.id)}
+                >
+                  <X size={13} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
           </div>
         ) : null}
-        <ComposerEditor
-          ariaLabel="Chat prompt"
-          documentKey={sessionId}
-          dataRouteCaption={routeCaption !== null}
-          dataPlaceholderKind={
-            followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined
-          }
-          expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
-          controls={
-            slashAutocomplete.popoverOpen
-              ? "slash-menu"
-              : fileAutocomplete.popoverOpen
-                ? "file-popover"
-                : undefined
-          }
-          disabled={!canSend || isSending}
-          onChange={setInput}
-          onCaretChange={fileAutocomplete.onSelectionChange}
-          onKeyDown={onSessionInputKeyDown}
-          onPaste={onComposerPaste}
-          placeholder={
-            canSend
-              ? isQueueing
-                ? "Queue a follow-up"
-                : (followUpSuggestion ?? "Reply to your agent, or @-mention files and chats")
-              : ""
-          }
-          fieldRef={inputRef}
-          value={input}
-          isSkill={isSkillToken}
-          chats={chatChips}
-        />
-        <SlashCommandMenu state={slashAutocomplete} />
-        <FilePopover state={fileAutocomplete} inputRef={inputRef} />
-      </div>
-      <div className="session-input-toolbar">
-        {isRemoteBridge() || floating ? null : (
-          <button
-            type="button"
-            className="composer-tool"
-            title="Attach file"
-            aria-label="Attach file"
+        {pendingAttachments.length > 0 ? (
+          <div className="composer-attachments" aria-label="Attached images">
+            {pendingAttachments.map((attachment) => (
+              <div key={attachment.filePath} className="composer-attachment-chip">
+                <button
+                  type="button"
+                  className="attachment-open-button"
+                  aria-label={
+                    attachmentLabels[attachment.filePath]
+                      ? `View window capture: ${attachmentLabels[attachment.filePath]}`
+                      : "View attachment"
+                  }
+                  title={attachmentLabels[attachment.filePath] ?? "View attachment"}
+                  onClick={() => setLightboxSrc(attachmentProtocolUrl(attachment.filePath))}
+                >
+                  <img src={attachmentProtocolUrl(attachment.filePath)} alt="" />
+                </button>
+                <button
+                  type="button"
+                  className="composer-attachment-remove"
+                  aria-label="Remove attachment"
+                  title="Remove attachment"
+                  onClick={() => removePendingAttachment(attachment.filePath)}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="session-input-field">
+          {routeCaption ? (
+            <div
+              key={routeCaption.id}
+              className="route-switch-caption"
+              role="status"
+              style={{
+                animationDelay: `${(captionPace?.delayMs ?? 0) - (captionElapsed ?? 0)}ms`,
+                animationDuration: `${captionPace?.captionMs ?? 0}ms`
+              }}
+              onAnimationEnd={() => setEndedCaptionId(routeCaption.id)}
+            >
+              <span className="route-switch-caption-direction" aria-hidden="true">
+                {routeCaption.from === null ? "→" : routeCaption.direction === "up" ? "↑" : "↓"}
+              </span>
+              {routeCaption.reason}
+            </div>
+          ) : null}
+          <ComposerEditor
+            ariaLabel="Chat prompt"
+            documentKey={sessionId}
+            dataRouteCaption={routeCaption !== null}
+            dataPlaceholderKind={followUpSuggestion !== null && !isQueueing ? "suggested-follow-up" : undefined}
+            expanded={slashAutocomplete.popoverOpen || fileAutocomplete.popoverOpen}
+            controls={
+              slashAutocomplete.popoverOpen ? "slash-menu" : fileAutocomplete.popoverOpen ? "file-popover" : undefined
+            }
             disabled={!canSend || isSending}
-            onClick={openFilePicker}
-          >
-            <Plus size={14} />
-          </button>
-        )}
-        {session ? (
-          <div className="composer-chips-group composer-chips-model">
-            {/* Idle or mid-turn, the picker offers every provider. Idle, a different
+            onChange={setInput}
+            onCaretChange={fileAutocomplete.onSelectionChange}
+            onKeyDown={onSessionInputKeyDown}
+            onPaste={onComposerPaste}
+            placeholder={
+              canSend
+                ? isQueueing
+                  ? "Queue a follow-up"
+                  : (followUpSuggestion ?? "Reply to your agent, or @-mention files and chats")
+                : ""
+            }
+            fieldRef={inputRef}
+            value={input}
+            isSkill={isSkillToken}
+            chats={chatChips}
+          />
+          <SlashCommandMenu state={slashAutocomplete} />
+          <FilePopover state={fileAutocomplete} inputRef={inputRef} />
+        </div>
+        <div className="session-input-toolbar">
+          {isRemoteBridge() || floating ? null : (
+            <button
+              type="button"
+              className="composer-tool"
+              title="Attach file"
+              aria-label="Attach file"
+              disabled={!canSend || isSending}
+              onClick={openFilePicker}
+            >
+              <Plus size={14} />
+            </button>
+          )}
+          {session ? (
+            <div className="composer-chips-group composer-chips-model">
+              {/* Idle or mid-turn, the picker offers every provider. Idle, a different
                 provider relaunches the agent on the next send, carrying context
                 through the transcript. Mid-turn, the follow-up queues with that
                 provider and takes it once the current turn ends. Same-provider
                 model changes commit straight away; a different provider goes
                 through the confirmation below first. */}
-            <LaunchModelSelector
-              value={selectedModel}
-              chipLabel={autoChipLabel}
-              chipTitle={autoChipTitle}
-              routeSwitch={chipRouteSwitch}
-              availability={providerAvailability}
-              onChange={(model) => {
-                // `session.provider` only catches up when the backend
-                // relaunches on the next send, so after a confirmed switch
-                // the staged selection is the truth about what was already
-                // confirmed. Without it, a reasoning-effort nudge would
-                // re-raise the dialog and drop the change.
-                // A chat with no native conversation (a fork child before its
-                // first send, a cleared chat) has nothing to lose, so it
-                // switches without asking.
-                if (
-                  session.providerConversationId !== null &&
-                  model.provider !== session.provider &&
-                  model.provider !== selectedModel.provider
-                ) {
-                  setPendingProviderSwitch({ sessionId: session.id, model });
-                  return;
-                }
-                setSelectedModel(model);
-              }}
-              fastModeEnabled={fastModeEnabled}
-              onFastModeEnabledChange={onFastModeEnabledChange}
-              open={modelPickerOpen}
-              onOpenChange={setModelPickerOpen}
-              withEffortSlider
-              effortOpen={effortPickerOpen}
-              onEffortOpenChange={setEffortPickerOpen}
-              ariaLabel="Chat model"
-            />
-            {floating || selectedModel.autoTier ? null : (
-              <ComposerUsageSlot provider={selectedModel.provider} />
-            )}
-          </div>
-        ) : null}
-        {session && !floating && contextIndicatorEnabled ? <ContextRing session={session} /> : null}
-        {hasWorkspaceContext ? (
-          // Wide, the wrapper is `display: contents` and both chips sit on the
-          // chip floor directly; compact, it becomes the anchor for the "…".
-          <div
-            className="composer-chips-context-group"
-            data-compact-open={compactContextOpen ? "true" : undefined}
-            ref={compactContextRef}
-          >
+              <LaunchModelSelector
+                value={selectedModel}
+                chipLabel={autoChipLabel}
+                chipTitle={autoChipTitle}
+                routeSwitch={chipRouteSwitch}
+                availability={providerAvailability}
+                onChange={(model) => {
+                  // `session.provider` only catches up when the backend
+                  // relaunches on the next send, so after a confirmed switch
+                  // the staged selection is the truth about what was already
+                  // confirmed. Without it, a reasoning-effort nudge would
+                  // re-raise the dialog and drop the change.
+                  // A chat with no native conversation (a fork child before its
+                  // first send, a cleared chat) has nothing to lose, so it
+                  // switches without asking.
+                  if (
+                    session.providerConversationId !== null &&
+                    model.provider !== session.provider &&
+                    model.provider !== selectedModel.provider
+                  ) {
+                    setPendingProviderSwitch({ sessionId: session.id, model });
+                    return;
+                  }
+                  setSelectedModel(model);
+                }}
+                fastModeEnabled={fastModeEnabled}
+                onFastModeEnabledChange={onFastModeEnabledChange}
+                open={modelPickerOpen}
+                onOpenChange={setModelPickerOpen}
+                withEffortSlider
+                effortOpen={effortPickerOpen}
+                onEffortOpenChange={setEffortPickerOpen}
+                ariaLabel="Chat model"
+              />
+              {floating || selectedModel.autoTier ? null : <ComposerUsageSlot provider={selectedModel.provider} />}
+            </div>
+          ) : null}
+          {session && !floating && contextIndicatorEnabled ? <ContextRing session={session} /> : null}
+          {hasWorkspaceContext ? (
+            // Wide, the wrapper is `display: contents` and both chips sit on the
+            // chip floor directly; compact, it becomes the anchor for the "…".
+            <div
+              className="composer-chips-context-group"
+              data-compact-open={compactContextOpen ? "true" : undefined}
+              ref={compactContextRef}
+            >
+              <button
+                type="button"
+                className="composer-compact-context-trigger"
+                // The dot is the only trace a folded dirty tree leaves on the
+                // row, so the trigger carries it rather than the panel inside.
+                data-dirty={changeSummary ? "true" : undefined}
+                title={workspaceContextSummary}
+                aria-label={workspaceContextSummary}
+                aria-haspopup="dialog"
+                aria-expanded={compactContextOpen}
+                onClick={() => setCompactContextOpen((open) => !open)}
+              >
+                <MoreHorizontal size={14} aria-hidden="true" />
+              </button>
+              <div
+                className="composer-footer composer-chips-group composer-chips-context"
+                role={compactContextOpen ? "dialog" : undefined}
+                aria-label="Workspace context"
+              >
+                {branchLabel !== null ? (
+                  <span className="composer-context-chip branch-chip" title={`Branch: ${branchLabel}`}>
+                    <GitBranch size={14} aria-hidden="true" />
+                    <span className="composer-context-chip-label">{branchLabel}</span>
+                  </span>
+                ) : null}
+                {changeSummary ? (
+                  <button
+                    type="button"
+                    className="composer-footer-chip composer-footer-chip--changes"
+                    title={changeSummaryText ?? undefined}
+                    aria-label={changeSummaryAriaLabel}
+                    aria-pressed={changeSummary.isOpen}
+                    onClick={() => {
+                      setCompactContextOpen(false);
+                      changeSummary.onOpen();
+                    }}
+                  >
+                    <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {isRemoteBridge() && !floating ? (
+            // On the phone an image is the usual way in — a screenshot of the
+            // thing you are asking about — so attaching is a primary action
+            // rather than one of the workspace's secondary ones. The "…" keeps
+            // that role everywhere else.
             <button
               type="button"
-              className="composer-compact-context-trigger"
-              // The dot is the only trace a folded dirty tree leaves on the
-              // row, so the trigger carries it rather than the panel inside.
-              data-dirty={changeSummary ? "true" : undefined}
-              title={workspaceContextSummary}
-              aria-label={workspaceContextSummary}
-              aria-haspopup="dialog"
-              aria-expanded={compactContextOpen}
-              onClick={() => setCompactContextOpen((open) => !open)}
+              className="composer-footer-chip composer-attach-chip"
+              title="Attach file"
+              aria-label="Attach file"
+              disabled={!canSend || isSending}
+              onClick={openFilePicker}
             >
-              <MoreHorizontal size={14} aria-hidden="true" />
+              <Paperclip size={15} aria-hidden="true" />
             </button>
-            <div
-              className="composer-footer composer-chips-group composer-chips-context"
-              role={compactContextOpen ? "dialog" : undefined}
-              aria-label="Workspace context"
+          ) : null}
+          <span className="session-toolbar-spacer" />
+          {onExpandToFullChat ? (
+            <button
+              type="button"
+              className="composer-expand-button"
+              title="Open as full chat"
+              aria-label="Open as full chat"
+              onClick={onExpandToFullChat}
             >
-              {branchLabel !== null ? (
-                <span className="composer-context-chip branch-chip" title={`Branch: ${branchLabel}`}>
-                  <GitBranch size={14} aria-hidden="true" />
-                  <span className="composer-context-chip-label">{branchLabel}</span>
-                </span>
-              ) : null}
-              {changeSummary ? (
+              <Maximize2 size={13} aria-hidden="true" />
+            </button>
+          ) : null}
+          {session && session.state === "running" ? (
+            // One control while running: Stop. Enter queues the follow-up, and
+            // interrupting is the queued chip's explicit "Send now" — a second
+            // send button here made the running state read as a puzzle.
+            //
+            // A thumb has no Enter key, so on touch the queue button is the only
+            // way to line a follow-up up — but it arrives with the text it would
+            // queue, so a running turn nobody is typing into still shows Stop
+            // alone. The slot wraps both: the compact toolbar is a grid, and two
+            // bare buttons would land on the same `send` cell.
+            <div className="session-send-slot">
+              <button
+                className="session-send-button session-stop-button"
+                type="button"
+                title="Stop chat"
+                aria-label="Stop chat"
+                disabled={sendingQueuedMessageId !== null}
+                onClick={() => void onTerminateSession(session.id)}
+              >
+                <Square size={9} fill="currentColor" strokeWidth={0} />
+              </button>
+              {isCoarsePointer && hasSendableContent ? (
                 <button
-                  type="button"
-                  className="composer-footer-chip composer-footer-chip--changes"
-                  title={changeSummaryText ?? undefined}
-                  aria-label={changeSummaryAriaLabel}
-                  aria-pressed={changeSummary.isOpen}
-                  onClick={() => {
-                    setCompactContextOpen(false);
-                    changeSummary.onOpen();
-                  }}
+                  className="session-send-button"
+                  type="submit"
+                  title="Queue follow-up — sent when the current turn finishes"
+                  aria-label="Queue follow-up"
+                  disabled={!canSend || isSending || sendingQueuedMessageId !== null}
                 >
-                  <ChangeCount additions={changeSummary.additions} deletions={changeSummary.deletions} />
+                  <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
                 </button>
               ) : null}
             </div>
-          </div>
-        ) : null}
-        {isRemoteBridge() && !floating ? (
-          // On the phone an image is the usual way in — a screenshot of the
-          // thing you are asking about — so attaching is a primary action
-          // rather than one of the workspace's secondary ones. The "…" keeps
-          // that role everywhere else.
-          <button
-            type="button"
-            className="composer-footer-chip composer-attach-chip"
-            title="Attach file"
-            aria-label="Attach file"
-            disabled={!canSend || isSending}
-            onClick={openFilePicker}
-          >
-            <Paperclip size={15} aria-hidden="true" />
-          </button>
-        ) : null}
-        <span className="session-toolbar-spacer" />
-        {onExpandToFullChat ? (
-          <button
-            type="button"
-            className="composer-expand-button"
-            title="Open as full chat"
-            aria-label="Open as full chat"
-            onClick={onExpandToFullChat}
-          >
-            <Maximize2 size={13} aria-hidden="true" />
-          </button>
-        ) : null}
-        {session && session.state === "running" ? (
-          // One control while running: Stop. Enter queues the follow-up, and
-          // interrupting is the queued chip's explicit "Send now" — a second
-          // send button here made the running state read as a puzzle.
-          //
-          // A thumb has no Enter key, so on touch the queue button is the only
-          // way to line a follow-up up — but it arrives with the text it would
-          // queue, so a running turn nobody is typing into still shows Stop
-          // alone. The slot wraps both: the compact toolbar is a grid, and two
-          // bare buttons would land on the same `send` cell.
-          <div className="session-send-slot">
-            <button
-              className="session-send-button session-stop-button"
-              type="button"
-              title="Stop chat"
-              aria-label="Stop chat"
-              disabled={sendingQueuedMessageId !== null}
-              onClick={() => void onTerminateSession(session.id)}
-            >
-              <Square size={9} fill="currentColor" strokeWidth={0} />
-            </button>
-            {isCoarsePointer && hasSendableContent ? (
-              <button
-                className="session-send-button"
-                type="submit"
-                title="Queue follow-up — sent when the current turn finishes"
-                aria-label="Queue follow-up"
-                disabled={!canSend || isSending || sendingQueuedMessageId !== null}
-              >
-                <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-        ) : (() => {
-          const sendDisabled = !canSend || isSending || !hasSendableContent;
-          const sendTitle = isQueueing
-            ? "Queue follow-up — sent when the current turn finishes"
-            : "Send follow-up";
-          return (
-            <button
-              className="session-send-button"
-              type="submit"
-              disabled={sendDisabled}
-              title={sendTitle}
-              aria-label={sendTitle}
-            >
-              <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
-            </button>
-          );
-        })()}
-      </div>
+          ) : (
+            (() => {
+              const sendDisabled = !canSend || isSending || !hasSendableContent;
+              const sendTitle = isQueueing ? "Queue follow-up — sent when the current turn finishes" : "Send follow-up";
+              return (
+                <button
+                  className="session-send-button"
+                  type="submit"
+                  disabled={sendDisabled}
+                  title={sendTitle}
+                  aria-label={sendTitle}
+                >
+                  <Play size={13} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                </button>
+              );
+            })()
+          )}
+        </div>
       </div>
       {status ? (
         // Keyed on kind so a role swap remounts the live region — screen

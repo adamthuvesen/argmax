@@ -28,13 +28,22 @@ function contextStub(): ReviewSideChatContext {
   };
 }
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); window.localStorage.clear(); });
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  window.localStorage.clear();
+});
 
 describe("ReviewSideChat", () => {
   it("launches only on submit and ignores repeated submissions during launch", async () => {
     const context = contextStub();
     let finish!: (session: ReviewSideChatSession) => void;
-    context.launch = vi.fn(() => new Promise<ReviewSideChatSession>((resolve) => { finish = resolve; }));
+    context.launch = vi.fn(
+      () =>
+        new Promise<ReviewSideChatSession>((resolve) => {
+          finish = resolve;
+        })
+    );
     const onLaunched = vi.fn();
     render(<ReviewSideChat context={context} onLaunched={onLaunched} />);
     expect(context.launch).not.toHaveBeenCalled();
@@ -44,7 +53,10 @@ describe("ReviewSideChat", () => {
     const form = message.closest("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
-    expect(context.launch).toHaveBeenCalledExactlyOnceWith("Explain this approach", { model: context.selectedModel, attachments: undefined });
+    expect(context.launch).toHaveBeenCalledExactlyOnceWith("Explain this approach", {
+      model: context.selectedModel,
+      attachments: undefined
+    });
     expect(screen.getByText("Starting chat…")).toBeVisible();
     await act(async () => {
       finish({ sessionId: "child", workspaceId: "scratch" });
@@ -77,8 +89,13 @@ describe("ReviewSideChat", () => {
     fireEvent.click(within(screen.getByRole("listbox", { name: "Side chat model" })).getByText("Opus 5.5"));
     const model = { provider: "claude", label: "Opus 5.5", modelId: "claude-opus-5-5", reasoningEffort: "high" };
     expect(onModelChange).toHaveBeenCalledWith(model);
-    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), { target: { value: "Explain this approach" } });
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start side chat" })); await Promise.resolve(); });
+    fireEvent.change(screen.getByRole("textbox", { name: "Side chat message" }), {
+      target: { value: "Explain this approach" }
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
+      await Promise.resolve();
+    });
     expect(context.launch).toHaveBeenCalledExactlyOnceWith("Explain this approach", { model, attachments: undefined });
   });
 
@@ -87,12 +104,17 @@ describe("ReviewSideChat", () => {
     const attachment = { filePath: "/attachments/side-chat/shot.png", mimeType: "image/png" as const, sizeBytes: 3 };
     const key = "side-chat-tool-side-chat-images";
     writeDraftAttachments(key, [attachment]);
-    const { unmount } = render(<ReviewSideChat context={context} draftKey="tool:side-chat:images" onLaunched={vi.fn()} />);
+    const { unmount } = render(
+      <ReviewSideChat context={context} draftKey="tool:side-chat:images" onLaunched={vi.fn()} />
+    );
     expect(screen.getByRole("button", { name: "View attachment" })).toBeVisible();
     unmount();
     render(<ReviewSideChat context={context} draftKey="tool:side-chat:images" onLaunched={vi.fn()} />);
     expect(screen.getByRole("button", { name: "View attachment" })).toBeVisible();
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start side chat" })); await Promise.resolve(); });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Start side chat" }));
+      await Promise.resolve();
+    });
     expect(context.launch).toHaveBeenCalledExactlyOnceWith("@/attachments/side-chat/shot.png", {
       model: context.selectedModel,
       attachments: [attachment]
@@ -108,7 +130,10 @@ describe("ReviewSideChat", () => {
     fireEvent.keyDown(message, { key: "Enter", shiftKey: true });
     fireEvent.keyDown(message, { key: "Enter", isComposing: true });
     expect(context.launch).not.toHaveBeenCalled();
-    await act(async () => { fireEvent.keyDown(message, { key: "Enter" }); await Promise.resolve(); });
+    await act(async () => {
+      fireEvent.keyDown(message, { key: "Enter" });
+      await Promise.resolve();
+    });
     expect(context.launch).toHaveBeenCalledOnce();
   });
 
@@ -118,18 +143,33 @@ describe("ReviewSideChat", () => {
     context.sessionsById = new Map([[session.id, session]]);
     const onLaunched = vi.fn();
     const { rerender } = render(
-      <ReviewSideChat context={context} sessionId="child" workspaceId="scratch" isFocused={false} onLaunched={onLaunched} />
+      <ReviewSideChat
+        context={context}
+        sessionId="child"
+        workspaceId="scratch"
+        isFocused={false}
+        onLaunched={onLaunched}
+      />
     );
     expect(screen.getByText("Transcript for child")).toBeVisible();
     expect(context.launch).not.toHaveBeenCalled();
-    expect(chat).toHaveBeenLastCalledWith(expect.objectContaining({
-      session,
-      isFocused: false,
-      onSendSessionInput: context.onSendSessionInput,
-      onTerminateSession: context.onTerminateSession
-    }));
+    expect(chat).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        session,
+        isFocused: false,
+        onSendSessionInput: context.onSendSessionInput,
+        onTerminateSession: context.onTerminateSession
+      })
+    );
     const updated = { ...session, state: "complete" as const };
-    rerender(<ReviewSideChat context={{ ...context, sessionsById: new Map([[session.id, updated]]) }} sessionId="child" workspaceId="scratch" onLaunched={onLaunched} />);
+    rerender(
+      <ReviewSideChat
+        context={{ ...context, sessionsById: new Map([[session.id, updated]]) }}
+        sessionId="child"
+        workspaceId="scratch"
+        onLaunched={onLaunched}
+      />
+    );
     expect(chat).toHaveBeenLastCalledWith(expect.objectContaining({ session: updated }));
     expect(context.launch).not.toHaveBeenCalled();
   });

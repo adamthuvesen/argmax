@@ -22,9 +22,7 @@ function renderWithTwoProjects(): void {
 
 async function pickProject(name: string): Promise<void> {
   fireEvent.click(screen.getByRole("button", { name: "Switch project" }));
-  fireEvent.click(
-    within(screen.getByRole("listbox", { name: "Select project" })).getByRole("button", { name })
-  );
+  fireEvent.click(within(screen.getByRole("listbox", { name: "Select project" })).getByRole("button", { name }));
   // Selecting a repo kicks off a branch refresh; settle it so its state update
   // lands inside the test rather than after the assertions.
   await act(async () => {});
@@ -59,9 +57,7 @@ describe("launcher prompt across context changes", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
 
-    await waitFor(() => expect(toastSnapshot()?.message).toBe(
-      "Your local changes would be overwritten by checkout."
-    ));
+    await waitFor(() => expect(toastSnapshot()?.message).toBe("Your local changes would be overwritten by checkout."));
     expect(switchBranch).toHaveBeenCalledWith("project-1", "feature", "project-1:primary");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(prompt).toHaveValue("Refactor the auth guard");
@@ -108,21 +104,24 @@ describe("launcher prompt across context changes", () => {
     expect(screen.getByLabelText("Task prompt")).toHaveValue("Refactor the auth guard");
   });
 
-  it.each(["picker", "sidebar"])("selects the dashboard's current repo from the %s when the launcher remembers another", async (entry) => {
-    persistLaunchProjectId(secondProject().id);
-    renderWithTwoProjects();
-    expect(await screen.findByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");
+  it.each(["picker", "sidebar"])(
+    "selects the dashboard's current repo from the %s when the launcher remembers another",
+    async (entry) => {
+      persistLaunchProjectId(secondProject().id);
+      renderWithTwoProjects();
+      expect(await screen.findByRole("button", { name: "Switch project" })).toHaveTextContent("Dotfiles");
 
-    // Dashboard selection is already Argmax, so picking it cannot depend on
-    // that unrelated state changing to repaint the remembered launcher repo.
-    if (entry === "picker") {
-      await pickProject("Argmax");
-    } else {
-      fireEvent.click(screen.getByRole("button", { name: "Argmax" }));
+      // Dashboard selection is already Argmax, so picking it cannot depend on
+      // that unrelated state changing to repaint the remembered launcher repo.
+      if (entry === "picker") {
+        await pickProject("Argmax");
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "Argmax" }));
+      }
+
+      expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent("Argmax");
     }
-
-    expect(screen.getByRole("button", { name: "Switch project" })).toHaveTextContent("Argmax");
-  });
+  );
 
   it("keeps the picked repo after typing and a dashboard delta from a hidden session", async () => {
     // Default new-chat mode is Full view: ⌘N hides the grid but leaves its
@@ -235,19 +234,23 @@ describe("launcher prompt across context changes", () => {
 
     expect(screen.getByLabelText("Task prompt")).toHaveValue("Fix the parser");
     expect(screen.queryByRole("button", { name: /Remove attachment/i })).not.toBeInTheDocument();
-    const stored = JSON.parse(
-      window.localStorage.getItem("argmax.composer.drafts") ?? "{}"
-    ) as Record<string, { attachments?: unknown[] } | undefined>;
+    const stored = JSON.parse(window.localStorage.getItem("argmax.composer.drafts") ?? "{}") as Record<
+      string,
+      { attachments?: unknown[] } | undefined
+    >;
     expect(stored["launch-project-2"]?.attachments ?? []).toEqual([]);
   });
 
   it("carries an attachment-only draft when the launcher switches projects", async () => {
     const screenshot = { filePath: "/tmp/current.png", mimeType: "image/png", sizeBytes: 10 };
     const unrelated = { filePath: "/tmp/other.png", mimeType: "image/png", sizeBytes: 10 };
-    window.localStorage.setItem("argmax.composer.drafts", JSON.stringify({
-      "launch-project-1": { text: "", attachments: [screenshot] },
-      "launch-project-2": { text: "Old target draft", attachments: [unrelated] }
-    }));
+    window.localStorage.setItem(
+      "argmax.composer.drafts",
+      JSON.stringify({
+        "launch-project-1": { text: "", attachments: [screenshot] },
+        "launch-project-2": { text: "Old target draft", attachments: [unrelated] }
+      })
+    );
     renderWithTwoProjects();
     expect(await screen.findByLabelText("Task prompt")).toHaveValue("");
 
@@ -258,10 +261,14 @@ describe("launcher prompt across context changes", () => {
     expect(readDraft("launch-project-1")).toEqual({ text: "", attachments: [] });
     expect(readDraft("launch-project-2")).toEqual({ text: "", attachments: [screenshot] });
     fireEvent.click(screen.getByRole("button", { name: "Start agent" }));
-    await waitFor(() => expect(launchProvider).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: "@/tmp/current.png",
-      attachments: [screenshot]
-    })));
+    await waitFor(() =>
+      expect(launchProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "@/tmp/current.png",
+          attachments: [screenshot]
+        })
+      )
+    );
   });
 
   it.each(["click", "Enter"])("starts a chat with only a screenshot via %s", async (method) => {

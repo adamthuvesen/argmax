@@ -50,19 +50,11 @@ const activitySummaryRequests = new Map<string, Promise<ActivitySummary>>();
 /** Ledger summaries are large enough that filter exploration needs a hard bound. */
 const SUMMARY_CACHE_LIMIT = 8;
 
-function usageSummaryKey(
-  window: UsageWindow,
-  provider: ProviderId | null,
-  timeZone: string
-): string {
+function usageSummaryKey(window: UsageWindow, provider: ProviderId | null, timeZone: string): string {
   return `${window}\0${provider ?? "all"}\0${timeZone}`;
 }
 
-function activitySummaryKey(
-  window: ActivityWindow,
-  projectId: string | null,
-  timeZone: string
-): string {
+function activitySummaryKey(window: ActivityWindow, projectId: string | null, timeZone: string): string {
   return `${window}\0${projectId ?? "all"}\0${timeZone}`;
 }
 
@@ -85,17 +77,13 @@ function setRecent<V>(cache: Map<string, V>, key: string, value: V): void {
     const oldest = cache.keys().next().value;
     if (oldest === undefined) return;
     const evict = isDefaultSummaryKey(oldest)
-      ? Array.from(cache.keys()).find((candidate) => !isDefaultSummaryKey(candidate)) ?? oldest
+      ? (Array.from(cache.keys()).find((candidate) => !isDefaultSummaryKey(candidate)) ?? oldest)
       : oldest;
     cache.delete(evict);
   }
 }
 
-function clearMatchingRequest<T>(
-  requests: Map<string, Promise<T>>,
-  key: string,
-  request: Promise<T>
-): void {
+function clearMatchingRequest<T>(requests: Map<string, Promise<T>>, key: string, request: Promise<T>): void {
   if (requests.get(key) === request) requests.delete(key);
 }
 
@@ -174,10 +162,7 @@ export function getLastGoodProviderRow(
   return lastGoodRows.get(provider) ?? null;
 }
 
-export function setCachedUsageRemaining(
-  remaining: UsageRemaining | null,
-  error: string | null
-): void {
+export function setCachedUsageRemaining(remaining: UsageRemaining | null, error: string | null): void {
   usageRemaining = remaining;
   usageRemainingError = error;
   for (const row of remaining?.providers ?? []) {
@@ -192,9 +177,7 @@ export function setCachedUsageRemaining(
 }
 
 /** Remaining is one account-wide read, so every caller can share it. */
-export function requestUsageRemaining(
-  fetch: () => Promise<UsageRemaining>
-): Promise<UsageRemaining> {
+export function requestUsageRemaining(fetch: () => Promise<UsageRemaining>): Promise<UsageRemaining> {
   if (usageRemainingRequest) return usageRemainingRequest;
 
   const request = fetch().then((remaining) => {

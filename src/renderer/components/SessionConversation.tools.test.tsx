@@ -101,6 +101,13 @@ const sameEnvelopeProviderCases: Array<{
   },
 ];
 
+function innermostToolCallGroup(element: HTMLElement): HTMLElement | undefined {
+  return screen
+    .getAllByTestId("tool-call-group")
+    .filter((group) => group.contains(element))
+    .at(-1);
+}
+
 describe("SessionConversation — tools & chrome", () => {
   afterEach(() => {
     cleanup();
@@ -176,9 +183,12 @@ describe("SessionConversation — tools & chrome", () => {
     expect(screen.getByText("Worked for 1s")).toBeInTheDocument();
     // The model name belongs to the composer chip, not the turn header — scope
     // the check to the header so the composer's own "Opus 5" doesn't count.
-    const turnHeader = screen.getByText("Worked for 1s").closest(".turn-block-header");
-    expect(turnHeader).not.toBeNull();
-    expect(turnHeader && within(turnHeader as HTMLElement).queryByText("Opus 5")).toBeNull();
+    const workedFor = screen.getByText("Worked for 1s");
+    const turnHeader = screen
+      .getAllByTestId("turn-block-header")
+      .find((header) => header.contains(workedFor));
+    expect(turnHeader).toBeDefined();
+    expect(turnHeader && within(turnHeader).queryByText("Opus 5")).toBeNull();
   });
 
   it("collapses a single MCP tool row when the turn chip is toggled", () => {
@@ -1160,9 +1170,20 @@ describe("SessionConversation — single-line activity mode", () => {
       // it, and a headline is *meant* to change: Compact buckets a lone call
       // as "Ran a command" where Steps names it. What must never go missing is
       // the substance — prose, reasoning, and the calls themselves.
+      // Escaped text never holds "<", so markup in innerHTML means a child element.
+      const groupHeaders = screen.queryAllByTestId("tool-call-group-header");
       return new Set(
-        Array.from(document.querySelectorAll(".turn-block-body *"))
-          .filter((node) => node.children.length === 0 && !node.closest(".tool-call-group-header"))
+        screen
+          .getAllByTestId("turn-block-body")
+          .flatMap((body) =>
+            within(body).queryAllByText(
+              (_, node) =>
+                node !== null &&
+                !node.innerHTML.includes("<") &&
+                !groupHeaders.some((header) => header.contains(node)),
+              { ignore: false },
+            ),
+          )
           .map((node) => node.textContent?.trim() ?? "")
           .filter((text) => text.length > 0),
       );
@@ -1202,7 +1223,7 @@ describe("SessionConversation — single-line activity mode", () => {
     // headline is the whole line, and the chevron waits for a hover. The
     // headline is still the control that opens it.
     const headline = screen.getByRole("button", { name: "Read a file, searched" });
-    expect(headline.closest(".tool-call-group")).toHaveAttribute("data-chevron", "hover");
+    expect(innermostToolCallGroup(headline)).toHaveAttribute("data-chevron", "hover");
     fireEvent.click(headline);
     expect(headline).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Read README.md" })).toBeInTheDocument();
@@ -1215,7 +1236,7 @@ describe("SessionConversation — single-line activity mode", () => {
     const compact = screen.getByRole("button", {
       name: "Read a file, searched: Searched for src/**/*.ts",
     });
-    expect(compact.closest(".tool-call-group")).not.toHaveAttribute("data-chevron");
+    expect(innermostToolCallGroup(compact)).not.toHaveAttribute("data-chevron");
   });
 
   it("hides failed attempts with successful tools after a Minimal turn finishes", () => {

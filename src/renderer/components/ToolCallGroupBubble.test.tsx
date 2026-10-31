@@ -136,13 +136,15 @@ describe("ToolCallGroupBubble", () => {
     const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([first])} />);
     expect(screen.queryByRole("button", { name: "Read a file" })).toBeNull();
     const singletonRow = screen.getByRole("button", { name: "Read first.ts" });
-    const mountedGroup = singletonRow.parentElement?.parentElement;
+    const mountedGroup = screen.getByTestId("tool-call-group");
+    expect(mountedGroup).toContainElement(singletonRow);
     fireEvent.click(singletonRow);
     expect(screen.getByText("Contents of first")).toBeInTheDocument();
 
     rerender(<ToolCallGroupBubble group={buildToolCallGroup([first, tool("second")])} />);
     const groupHeader = screen.getByRole("button", { name: "Read 2 files" });
-    expect(groupHeader.parentElement).toBe(mountedGroup);
+    expect(screen.getByTestId("tool-call-group")).toBe(mountedGroup);
+    expect(mountedGroup).toContainElement(groupHeader);
     expect(groupHeader).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Read first.ts" })).toHaveAttribute(
       "aria-expanded",
@@ -384,7 +386,8 @@ describe("ToolCallGroupBubble", () => {
     );
 
     const header = screen.getByRole("button", { name: "Read files: Read second.ts" });
-    expect(header.parentElement).toHaveAttribute("data-status", "running");
+    expect(screen.getByTestId("tool-call-group")).toContainElement(header);
+    expect(screen.getByTestId("tool-call-group")).toHaveAttribute("data-status", "running");
     await act(() => vi.advanceTimersByTime(200));
 
     rerender(
@@ -396,7 +399,7 @@ describe("ToolCallGroupBubble", () => {
       />,
     );
     expect(screen.getByRole("button", { name: "Read 2 files: Read second.ts" })).toBe(header);
-    expect(header.parentElement).toHaveAttribute("data-status", "done");
+    expect(screen.getByTestId("tool-call-group")).toHaveAttribute("data-status", "done");
     expect(screen.queryByRole("button", { busy: true })).toBeNull();
 
     await act(() => vi.advanceTimersByTime(399));
@@ -492,7 +495,8 @@ describe("ToolCallGroupBubble", () => {
       />,
     );
     const header = screen.getByRole("button", { name: "Read 2 files: Read second.ts" });
-    expect(header.parentElement).toHaveAttribute("data-status", "done");
+    expect(screen.getByTestId("tool-call-group")).toContainElement(header);
+    expect(screen.getByTestId("tool-call-group")).toHaveAttribute("data-status", "done");
     expect(screen.queryByRole("button", { busy: true })).toBeNull();
     fireEvent.click(header);
     fireEvent.click(screen.getByRole("button", { name: "Read second.ts" }));
@@ -544,12 +548,15 @@ describe("the beat between calls", () => {
   // call leaves their tool lines dead and the Thinking cue owning every gap.
   it("marks a settled group live while it holds the turn's beat", () => {
     const landed = tool("landed", { status: "done" });
-    const { container } = render(
+    render(
       <ActivityBeatContext.Provider value="landed">
         <ToolCallGroupBubble group={buildToolCallGroup([landed, tool("other")])} />
       </ActivityBeatContext.Provider>,
     );
-    expect(container.querySelector('[data-reading-wave="true"]')).not.toBeNull();
+    expect(screen.getByTestId("tool-call-group-header")).toHaveAttribute(
+      "data-reading-wave",
+      "true",
+    );
   });
 
   // One head, whatever the line does. A span without its own offset paints the
@@ -560,11 +567,9 @@ describe("the beat between calls", () => {
     vi.useFakeTimers();
     const read = tool("read", { status: "running", completedAt: null });
     const second = tool("second", { status: "running", completedAt: null });
-    const { container, rerender } = render(
-      <ToolCallGroupBubble group={buildToolCallGroup([read])} />,
-    );
+    const { rerender } = render(<ToolCallGroupBubble group={buildToolCallGroup([read])} />);
     rerender(<ToolCallGroupBubble group={buildToolCallGroup([read, second])} />);
-    expectMeasuredWave(container);
+    expectMeasuredWave();
     const ran = tool("ran", {
       name: "Bash",
       status: "running",
@@ -578,23 +583,23 @@ describe("the beat between calls", () => {
     act(() => {
       vi.advanceTimersByTime(CLAUSE_DWELL_MS);
     });
-    expect(container.querySelector(".tool-call-group-eyebrow")?.textContent).toContain("command");
-    expectMeasuredWave(container);
+    expect(screen.getByTestId("tool-call-group-eyebrow")).toHaveTextContent("command");
+    expectMeasuredWave();
   });
 
   it("leaves a group alone once the beat has moved on", () => {
-    const { container } = render(
+    render(
       <ActivityBeatContext.Provider value="elsewhere">
         <ToolCallGroupBubble group={buildToolCallGroup([tool("landed"), tool("other")])} />
       </ActivityBeatContext.Provider>,
     );
-    expect(container.querySelector('[data-reading-wave="true"]')).toBeNull();
+    expect(screen.getByTestId("tool-call-group-header")).not.toHaveAttribute("data-reading-wave");
   });
 });
 
 /** Every word of a waving line has to know where it starts in the pass. */
-function expectMeasuredWave(container: HTMLElement): void {
-  const spans = Array.from(container.querySelectorAll<HTMLElement>(".reading-wave-text"));
+function expectMeasuredWave(): void {
+  const spans = screen.getAllByTestId("reading-wave-text");
   expect(spans.length).toBeGreaterThan(1);
   for (const span of spans) {
     expect(span.style.getPropertyValue("--reading-wave-offset")).not.toBe("");

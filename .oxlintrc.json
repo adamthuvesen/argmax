@@ -171,15 +171,16 @@
         "src/renderer/**/*.tsx"
       ],
       "rules": {
-        "argmax/no-timeline-payload-access": "warn",
-        "argmax/no-raw-model-id": "warn"
+        "argmax/no-timeline-payload-access": "error",
+        "argmax/no-raw-model-id": "error"
       }
     },
     {
       "files": [
         "src/renderer/**/*.test.ts",
         "src/renderer/**/*.test.tsx",
-        "src/renderer/lib/canonicalTimeline.ts"
+        "src/renderer/lib/canonicalTimeline.ts",
+        "src/renderer/lib/toolCalls.ts"
       ],
       "rules": {
         "argmax/no-timeline-payload-access": "off",
@@ -191,8 +192,8 @@
         "src/renderer/**/*.test.tsx"
       ],
       "rules": {
-        "argmax/no-container": "warn",
-        "argmax/no-node-access": "warn"
+        "argmax/no-container": "error",
+        "argmax/no-node-access": "error"
       }
     }
   ]

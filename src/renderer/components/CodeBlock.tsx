@@ -210,11 +210,12 @@ export function CodeBlock({
   return (
     <div
       className="code-block"
+      data-testid="code-block"
       data-lang={lang ?? undefined}
       data-label={labelTag ?? undefined}
       data-wrap={wrapLines ? "true" : undefined}
     >
-      <div className="code-block-header">
+      <div className="code-block-header" data-testid="code-block-header">
         <div className="code-block-heading">
           <Code2 className="code-block-icon" size={15} strokeWidth={2} aria-hidden="true" />
           {labelTag ? <span className="code-block-lang">{labelTag}</span> : null}
@@ -251,8 +252,8 @@ export function CodeBlock({
           </button>
         </div>
       </div>
-      <pre className={className ?? ""}>
-        <code className={className ?? ""}>
+      <pre className={className ?? ""} data-testid="code-block-pre">
+        <code className={className ?? ""} data-testid="code-block-code">
           {lines.map((line, index) => (
             <span className="code-block-line" key={index}>
               {line.length === 0 ? (

@@ -92,8 +92,11 @@ function UserBubbleBody({
       <div
         ref={bodyRef}
         className={`chat-bubble-body${expanded ? " expanded" : clipped ? " clipped" : ""}`}
+        data-testid="chat-bubble-body"
       >
-        <div ref={contentRef}>{children}</div>
+        <div ref={contentRef} data-testid="chat-bubble-content">
+          {children}
+        </div>
       </div>
       {clipped ? (
         <button

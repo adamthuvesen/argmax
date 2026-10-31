@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { vi } from "vitest";
 import { LaunchSurface } from "./LaunchSurface.js";
@@ -28,10 +28,8 @@ function heroFox(): HTMLElement {
   return screen.getByRole("button", { name: /^Fox mascot/ });
 }
 
-function heroSprite(): SVGElement {
-  const svg = heroFox().querySelector("svg");
-  if (!svg) throw new Error("The launcher hero should render a mascot sprite");
-  return svg;
+function heroSprite(): HTMLElement {
+  return within(heroFox()).getByRole("img");
 }
 
 describe("launcher hero mascot", () => {

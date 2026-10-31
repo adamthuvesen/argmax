@@ -377,6 +377,7 @@ function ToolCallGroupBubbleInner({
   return (
     <div
       className="tool-call-group activity-summary-line"
+      data-testid="tool-call-group"
       data-status={activityStatus}
       data-chevron={minimal ? "hover" : undefined}
       data-expanded={directTool ? undefined : expanded}
@@ -400,6 +401,7 @@ function ToolCallGroupBubbleInner({
           <button
             ref={setHeader}
             className="tool-call-group-header"
+            data-testid="tool-call-group-header"
             data-reading-wave={activityStatus === "running" || ownsBeat ? "true" : undefined}
             type="button"
             aria-expanded={expanded}
@@ -417,7 +419,11 @@ function ToolCallGroupBubbleInner({
                 )}
               </span>
             ) : null}
-            <span className="tool-call-group-eyebrow activity-summary-headline" aria-hidden="true">
+            <span
+              className="tool-call-group-eyebrow activity-summary-headline"
+              data-testid="tool-call-group-eyebrow"
+              aria-hidden="true"
+            >
               {clauses.map((clause, index) => {
                 const [verb, ...tail] = index === 0 ? clause.split(" ") : [];
                 const isNew = !previousClauses.includes(clause);
@@ -425,15 +431,24 @@ function ToolCallGroupBubbleInner({
                 return (
                   <Fragment key={clause}>
                     {index === 0 ? (
-                      <span className="tool-call-group-eyebrow-label reading-wave-text">
+                      <span
+                        className="tool-call-group-eyebrow-label reading-wave-text"
+                        data-testid="reading-wave-text"
+                      >
                         {verb}
                       </span>
                     ) : (
-                      <span className="tool-call-group-eyebrow-detail reading-wave-text">, </span>
+                      <span
+                        className="tool-call-group-eyebrow-detail reading-wave-text"
+                        data-testid="reading-wave-text"
+                      >
+                        ,{" "}
+                      </span>
                     )}
                     {detail ? (
                       <span
                         className="tool-call-group-eyebrow-detail reading-wave-text"
+                        data-testid="reading-wave-text"
                         data-arriving={isNew ? "true" : undefined}
                       >
                         {index === 0 ? " " : ""}
@@ -464,7 +479,7 @@ function ToolCallGroupBubbleInner({
             ) : null}
           </button>
           {expanded ? (
-            <div id={detailsId} className="tool-call-group-body">
+            <div id={detailsId} className="tool-call-group-body" data-testid="tool-call-group-body">
               {activityBody}
             </div>
           ) : null}

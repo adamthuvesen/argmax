@@ -66,7 +66,8 @@ describe("SessionConversation — render window", () => {
   it("reveals earlier turns when asked", () => {
     renderConversation(baseSession(), longTranscript(400));
     const earliestVisible = (): number => {
-      const shown = Array.from(document.querySelectorAll("*"))
+      const shown = screen
+        .getAllByText(/^answer \d+$/)
         .map((node) => node.textContent ?? "")
         .flatMap((text) => {
           const match = /^answer (\d+)$/.exec(text);
@@ -94,10 +95,10 @@ describe("SessionConversation — render window", () => {
     fireEvent.click(screen.getByRole("button", { name: /Worked for/ }));
     expect(screen.getByRole("button", { name: "Read 79.ts" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Read 0.ts" })).toBeNull();
-    expect(document.querySelectorAll(".turn-block")).toHaveLength(1);
+    expect(screen.getAllByTestId("turn-block")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: /Show earlier activity/ }));
     expect(screen.getByRole("button", { name: "Read 56.ts" })).toBeTruthy();
-    expect(document.querySelectorAll(".turn-block")).toHaveLength(1);
+    expect(screen.getAllByTestId("turn-block")).toHaveLength(1);
   });
 });

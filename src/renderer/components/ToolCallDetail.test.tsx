@@ -49,7 +49,7 @@ describe("ToolCallDetail", () => {
   // A Cursor write arrives as a unified diff on the input. The card draws it,
   // so it must not also appear as an escaped argument above the card.
   it("draws a provider's diff as a change card, not as an argument", () => {
-    const { container } = render(
+    render(
       <ToolCallDetail
         workspaceCwd="/repo"
         tool={tool({
@@ -64,10 +64,9 @@ describe("ToolCallDetail", () => {
       />,
     );
 
-    const card = container.querySelector(".file-change-card");
-    expect(card?.getAttribute("data-kind")).toBe("edit");
-    expect(card?.getAttribute("aria-label")).toBe("Edited /repo/greet.ts");
-    expect(container.querySelector(".tool-call-args")).toBeNull();
+    const card = screen.getByRole("region", { name: "Edited /repo/greet.ts" });
+    expect(card).toHaveAttribute("data-kind", "edit");
+    expect(screen.queryByTestId("tool-call-args")).toBeNull();
   });
 
   it.each([
@@ -253,7 +252,8 @@ describe("ToolCallDetail", () => {
     // No disclosure, no braces, and the question is above the answer.
     expect(screen.queryByText("Input")).toBeNull();
     expect(screen.queryByText(/^\{/)).toBeNull();
-    const args = screen.getByText("prompt").closest("dl") as HTMLElement;
+    const args = screen.getByTestId("tool-call-args");
+    expect(within(args).getByText("prompt")).toBeInTheDocument();
     expect(within(args).getByText(/per-token request limits/)).toBeInTheDocument();
     const payload = screen.getByText("1,500 requests per hour per token.");
     const order = args.compareDocumentPosition(payload) & Node.DOCUMENT_POSITION_FOLLOWING;

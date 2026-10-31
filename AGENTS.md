@@ -53,8 +53,8 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 | Do not hand-edit generated files | `scripts/agent-hooks/pre-tool-use.mjs`, list in `scripts/generated-files.json` | 2026-11-04 |
 | Do not use blanket staging, stash, or restore in a shared checkout | `scripts/agent-hooks/pre-tool-use.mjs` | 2026-11-04 |
 | No AI attribution in commit messages | `.githooks/commit-msg`, test `gitHooks.test.ts` | 2026-11-04 |
-| Renderer tests query by role, label, or title | `scripts/oxlint-plugin.mjs::no-node-access`, `no-container`, with a ratchet in `lint-baseline.json` | 2026-11-04 |
-| Decode timeline semantics with `decodeTimelineEvent()` | `scripts/oxlint-plugin.mjs::no-timeline-payload-access`, with a ratchet in `lint-baseline.json` | 2026-11-04 |
+| Renderer tests query by role, label, or title | `scripts/oxlint-plugin.mjs::no-node-access`, `no-container` | 2026-11-04 |
+| Decode timeline semantics with `decodeTimelineEvent()` | `scripts/oxlint-plugin.mjs::no-timeline-payload-access` | 2026-11-04 |
 | The store, process, and contracts crates cannot import upward | Crate graph in `src-tauri/Cargo.toml::members`, compile errors E0432 and E0433; `scripts/check-rust-boundaries.mjs` | 2026-11-04 |
 | SQL lives in `argmax-store` | `check:rust-boundaries` rule `sql-outside-store`, with a ratchet | 2026-11-04 |
 | Run git through `argmax_process::git_exec` | `check:rust-boundaries` rule `git-outside-exec` | 2026-11-04 |

@@ -312,7 +312,7 @@ describe("LaunchModelSelector — all providers", () => {
     // The chosen row is the one carrying the check, not a fill.
     const chosen = screen.getByRole("option", { selected: true });
     expect(chosen).toHaveTextContent("GPT-5.6 Sol");
-    expect(chosen.querySelector(".picker-lead svg")).not.toBeNull();
+    expect(within(chosen).getByTestId("picker-lead-check")).toBeInTheDocument();
   });
 
   // Both boxes are placed by `useAnchoredPopover` — the flyout against the
@@ -341,11 +341,12 @@ describe("LaunchModelSelector — all providers", () => {
     await act(async () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
     });
-    const flyout = screen.getByRole("listbox", { name: "Launch model" }).parentElement;
+    const flyout = screen.getByTestId("model-picker-flyout");
+    expect(flyout).toContainElement(screen.getByRole("listbox", { name: "Launch model" }));
     expect(flyout).toHaveStyle({ position: "absolute" });
     // Without `openBelow` the menu may flip upward (session composer). The
     // launcher is what pins the height; this path must not write that cap.
-    expect(flyout?.style.maxHeight).toBe("");
+    expect(flyout.style.maxHeight).toBe("");
 
     fireEvent.click(screen.getByRole("button", { name: "Fast mode" }));
     expect(screen.getByRole("listbox", { name: "Fast mode" })).toHaveStyle({
@@ -501,9 +502,9 @@ describe("LaunchModelSelector — provider availability gating", () => {
 
   it("leaves every model selectable when availability is unknown (optimistic)", () => {
     openLauncher(undefined);
-    const codexRow = screen.getByRole("button", { name: CODEX_SOL_ROW }).closest("li");
+    const codexRow = screen.getByRole("option", { name: CODEX_SOL_ROW });
     expect(codexRow).not.toHaveAttribute("data-disabled");
-    expect(codexRow && within(codexRow).getAllByRole("button")[0]).toBeEnabled();
+    expect(within(codexRow).getAllByRole("button")[0]).toBeEnabled();
   });
 
   it("disables and annotates an uninstalled provider's models", () => {
@@ -512,11 +513,11 @@ describe("LaunchModelSelector — provider availability gating", () => {
       codex: { installed: false, authenticated: null },
       cursor: { installed: true, authenticated: true },
     });
-    const codexRow = screen.getByRole("button", { name: CODEX_SOL_ROW }).closest("li");
+    const codexRow = screen.getByRole("option", { name: CODEX_SOL_ROW });
     expect(codexRow).toHaveAttribute("data-disabled", "true");
-    expect(codexRow && within(codexRow).getByText("not installed")).toBeInTheDocument();
+    expect(within(codexRow).getByText("not installed")).toBeInTheDocument();
     // The row's primary button is disabled, so it can't be chosen.
-    expect(codexRow && within(codexRow).getAllByRole("button")[0]).toBeDisabled();
+    expect(within(codexRow).getAllByRole("button")[0]).toBeDisabled();
   });
 
   it("annotates an installed-but-unauthenticated provider while keeping it selectable", () => {
@@ -525,9 +526,9 @@ describe("LaunchModelSelector — provider availability gating", () => {
       codex: { installed: true, authenticated: false },
       cursor: { installed: true, authenticated: true },
     });
-    const codexRow = screen.getByRole("button", { name: CODEX_SOL_ROW }).closest("li");
+    const codexRow = screen.getByRole("option", { name: CODEX_SOL_ROW });
     expect(codexRow).not.toHaveAttribute("data-disabled");
-    expect(codexRow && within(codexRow).getByText("needs login")).toBeInTheDocument();
+    expect(within(codexRow).getByText("needs login")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: CODEX_SOL_ROW }));
     expect(onChange).toHaveBeenCalledTimes(1);
   });

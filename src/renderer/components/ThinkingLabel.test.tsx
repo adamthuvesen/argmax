@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { __liveTimerTickForTest } from "../lib/liveTimer.js";
 import { THINKING_WORDS } from "../lib/thinkingWords.js";
@@ -39,9 +39,11 @@ describe("<ThinkingLabel />", () => {
       );
 
       expect(window.localStorage.getItem(ACTIVITY_MARK_STORAGE_KEY)).toBe(markId);
-      expect(thinking.querySelector("[data-mark]")).toHaveAttribute("data-mark", markId);
+      expect(within(thinking).getByTestId("working-nest")).toHaveAttribute("data-mark", markId);
       expect(
-        screen.getByRole("status", { name: "Loading projects" }).querySelector("[data-mark]"),
+        within(screen.getByRole("status", { name: "Loading projects" })).getByTestId(
+          "working-nest",
+        ),
       ).toHaveAttribute("data-mark", markId);
       expect(screen.getByTestId("thinking-label")).toHaveTextContent(word ?? "");
       vi.spyOn(performance, "now").mockReturnValue(14_000);
@@ -54,16 +56,16 @@ describe("<ThinkingLabel />", () => {
     // The fade keeps the line on screen for 140ms after another line has taken
     // the beat. It is pixels for that stretch and nothing more: a name and a
     // live region there would announce two live lines at once.
-    const { container, rerender } = render(<ThinkingLabel />);
-    const word = container.querySelector(".thinking-label")?.textContent;
+    const { rerender } = render(<ThinkingLabel />);
+    const word = screen.getByTestId("thinking-word").textContent;
     expect(screen.getByLabelText("Thinking")).toBeInTheDocument();
 
     rerender(<ThinkingLabel leaving />);
 
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    expect(container.querySelector('.thinking-indicator[data-leaving="true"]')).not.toBeNull();
+    expect(screen.getByTestId("thinking-indicator")).toHaveAttribute("data-leaving", "true");
     // Same element, same word: a remount mid-fade would reroll it.
-    expect(container.querySelector(".thinking-label")?.textContent).toBe(word);
+    expect(screen.getByTestId("thinking-word").textContent).toBe(word);
   });
 
   it("chooses one curated word and keeps it stable", () => {
@@ -98,17 +100,17 @@ describe("<ThinkingLabel />", () => {
     let now = 0;
     vi.spyOn(performance, "now").mockImplementation(() => now);
 
-    const { container } = render(<ThinkingLabel />);
-    const elapsed = container.querySelector(".thinking-elapsed");
-    expect(elapsed?.textContent).toBe("");
+    render(<ThinkingLabel />);
+    const elapsed = screen.getByTestId("thinking-elapsed");
+    expect(elapsed.textContent).toBe("");
 
     now = 2_900;
     __liveTimerTickForTest();
-    expect(elapsed?.textContent).toBe("");
+    expect(elapsed.textContent).toBe("");
 
     now = 14_000;
     __liveTimerTickForTest();
-    expect(elapsed?.textContent).toBe("14s");
+    expect(elapsed.textContent).toBe("14s");
   });
 
   it("counts each silent gap from zero rather than from the start of the turn", () => {
@@ -118,13 +120,13 @@ describe("<ThinkingLabel />", () => {
     const first = render(<ThinkingLabel />);
     now = 20_000;
     __liveTimerTickForTest();
-    expect(first.container.querySelector(".thinking-elapsed")?.textContent).toBe("20s");
+    expect(first.getByTestId("thinking-elapsed").textContent).toBe("20s");
     first.unmount();
 
     const second = render(<ThinkingLabel />);
     now = 24_000;
     __liveTimerTickForTest();
-    expect(second.container.querySelector(".thinking-elapsed")?.textContent).toBe("4s");
+    expect(second.getByTestId("thinking-elapsed").textContent).toBe("4s");
   });
 
   it("keeps counting the real wait when an anchored label remounts mid-gap", () => {
@@ -136,23 +138,23 @@ describe("<ThinkingLabel />", () => {
     vi.spyOn(Date, "now").mockImplementation(() => now);
 
     const first = render(<ThinkingLabel startedAtMs={startedAtMs} />);
-    expect(first.container.querySelector(".thinking-elapsed")?.textContent).toBe("20s");
+    expect(first.getByTestId("thinking-elapsed").textContent).toBe("20s");
     first.unmount();
 
     now = startedAtMs + 24_000;
     const second = render(<ThinkingLabel startedAtMs={startedAtMs} />);
-    expect(second.container.querySelector(".thinking-elapsed")?.textContent).toBe("24s");
+    expect(second.getByTestId("thinking-elapsed").textContent).toBe("24s");
   });
 
   it("keeps the word stable across remounts of the same silent gap", () => {
     const startedAtMs = Date.parse("2026-09-06T07:00:00.000Z");
     const first = render(<ThinkingLabel phaseKey="session-1" startedAtMs={startedAtMs} />);
-    const word = first.container.querySelector(".thinking-label")?.textContent;
+    const word = first.getByTestId("thinking-word").textContent;
     expect(THINKING_WORDS).toContain(word);
     first.unmount();
 
     const second = render(<ThinkingLabel phaseKey="session-1" startedAtMs={startedAtMs} />);
-    expect(second.container.querySelector(".thinking-label")?.textContent).toBe(word);
+    expect(second.getByTestId("thinking-word").textContent).toBe(word);
   });
 
   it("draws a fresh word for a new silent stretch", () => {
@@ -160,13 +162,13 @@ describe("<ThinkingLabel />", () => {
     // word, or every beat of a long session would read the same.
     const words = new Set(
       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((minute) => {
-        const { container, unmount } = render(
+        const { getByTestId, unmount } = render(
           <ThinkingLabel
             phaseKey="session-1"
             startedAtMs={Date.parse("2026-09-06T07:00:00.000Z") + minute * 60_000}
           />,
         );
-        const word = container.querySelector(".thinking-label")?.textContent;
+        const word = getByTestId("thinking-word").textContent;
         unmount();
         return word;
       }),

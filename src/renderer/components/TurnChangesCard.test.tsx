@@ -83,10 +83,10 @@ describe("TurnChangesCard", () => {
   });
 
   it("colors each row by file family", () => {
-    const { container } = render(<TurnChangesCard changes={CHANGES} workspaceCwd="/repo" />);
-    const families = [...container.querySelectorAll(".turn-changes-row")].map((row) =>
-      row.getAttribute("data-family"),
-    );
+    render(<TurnChangesCard changes={CHANGES} workspaceCwd="/repo" />);
+    const families = screen
+      .getAllByTestId("turn-changes-row")
+      .map((row) => row.getAttribute("data-family"));
     expect(families).toEqual(["style", "script", "doc"]);
   });
 });

@@ -1,5 +1,9 @@
 // Project lint rules that oxlint has no built-in for. Loaded by .oxlintrc.json
-// as the `argmax` plugin; scripts/lint.mjs ratchets their existing violations.
+// as the `argmax` plugin; every hit fails `npm run lint`.
+//
+// no-timeline-payload-access is off in src/renderer/lib/toolCalls.ts (see
+// .oxlintrc.json): its extract* functions are the accessors that read provider
+// payload fields, so they cannot go through decodeTimelineEvent().
 
 const TIMELINE_PAYLOAD_FIELDS = new Set([
   "thinking",

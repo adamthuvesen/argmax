@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "../App.js";
 import { readDraft } from "../lib/composerDrafts.js";
@@ -233,7 +233,11 @@ describe("a window capture arriving at the New chat draft", () => {
       }),
     );
 
-    expect(screen.getByLabelText("Attached images").querySelectorAll("img")).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Attached images")).getAllByRole("button", {
+        name: "Remove attachment",
+      }),
+    ).toHaveLength(1);
     expect(readDraft("launch-project-1").attachments).toHaveLength(1);
     expect(field).toHaveFocus();
   });

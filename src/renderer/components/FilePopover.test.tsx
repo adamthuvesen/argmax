@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileAutocompleteEntry, FileAutocompleteState } from "../hooks/useFileAutocomplete.js";
@@ -43,9 +43,9 @@ describe("FilePopover", () => {
       "src/persistence/mod.rs",
     ]);
     expect(rows[0]).toHaveTextContent("mod.rs");
-    expect(rows[0].querySelector('[aria-hidden="true"].file-popover-dir')).toHaveTextContent(
-      "src/files",
-    );
+    const folder = within(rows[0]).getByText("src/files");
+    expect(folder).toHaveClass("file-popover-dir");
+    expect(folder).toHaveAttribute("aria-hidden", "true");
   });
 
   it("highlights a row on hover by moving the shared selection index", () => {

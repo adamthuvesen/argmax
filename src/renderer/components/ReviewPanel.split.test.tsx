@@ -238,15 +238,13 @@ describe("ReviewPanel split view", () => {
   });
 
   it("keeps one terminal DOM host across both panes", async () => {
-    const { container } = render(
+    render(
       <ReviewHarness
         initialLayout={{ modes: ["terminal", "changes"], activeIndex: 1, ratio: 0.5 }}
       />,
     );
 
-    await waitFor(() =>
-      expect(container.querySelectorAll(".review-terminal-mount")).toHaveLength(1),
-    );
+    await waitFor(() => expect(screen.getAllByTestId("review-terminal-mount")).toHaveLength(1));
   });
 
   it("routes file shortcuts only from the focused pane", () => {

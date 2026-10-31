@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudHandoffPreview } from "../../shared/types.js";
 import { CloudTaskDialog } from "./CloudTaskDialog.js";
@@ -63,7 +63,9 @@ describe("CloudTaskDialog", () => {
     render(<CloudTaskDialog open provider="claude" sessionId="session-1" onClose={onClose} />);
 
     const preparing = screen.getByRole("status", { name: "Preparing cloud task" });
-    expect(preparing.querySelectorAll(".loading-block").length).toBeGreaterThan(0);
+    expect(within(preparing).getByTestId("cloud-task-skeleton-summary")).toHaveClass(
+      "loading-block",
+    );
     expect(screen.getByRole("button", { name: "Close dialog" })).toBeEnabled();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);

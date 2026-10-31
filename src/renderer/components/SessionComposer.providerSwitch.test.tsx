@@ -50,8 +50,8 @@ describe("SessionComposer provider switch confirmation", () => {
     pickModel("Sonnet 5.5");
 
     const dialog = screen.getByRole("dialog", { name: "Switch this chat to Claude" });
-    expect(dialog.closest(".session-input")).toBeNull();
-    expect(dialog.parentElement).toHaveClass("conversation-surface");
+    expect(screen.getByTestId("session-input")).not.toContainElement(dialog);
+    expect(screen.getByRole("region", { name: "Conversation" })).toContainElement(dialog);
   });
 
   it("applies the pick when the user switches anyway", () => {

@@ -155,9 +155,13 @@ function ToolCallRowInner({
           <ToolActivityIcon kind={iconKind} danger={iconIsDanger} />
         )}
       </span>
-      <span className="tool-call-row-verb reading-wave-text">{verb}</span>
+      <span className="tool-call-row-verb reading-wave-text" data-testid="reading-wave-text">
+        {verb}
+      </span>
       {target ? (
-        <span className="tool-call-row-target reading-wave-text">{shortenPathsInText(target)}</span>
+        <span className="tool-call-row-target reading-wave-text" data-testid="reading-wave-text">
+          {shortenPathsInText(target)}
+        </span>
       ) : null}
       {counts ? <ActivityStat counts={counts} /> : null}
       {opensAgentPane || inertAgentRow || !hasDetail ? null : (
@@ -192,7 +196,12 @@ function ToolCallRowInner({
   );
 
   return (
-    <div className="tool-call-row" data-status={tool.status} data-tool-type={toolTypeBucket}>
+    <div
+      className="tool-call-row"
+      data-status={tool.status}
+      data-tool-type={toolTypeBucket}
+      data-testid={`tool-call-row-${tool.id}`}
+    >
       {opensAgentPane ? (
         <div className="tool-call-row-main">
           {rowButton}

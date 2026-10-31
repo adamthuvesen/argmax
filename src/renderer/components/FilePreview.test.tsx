@@ -241,7 +241,7 @@ describe("FilePreview", () => {
       "echo hi",
       "```",
     ].join("\n");
-    const { container } = render(
+    render(
       <FilePreview
         state={makeState({
           selectedPath: "docs/ARCHITECTURE.md",
@@ -251,7 +251,7 @@ describe("FilePreview", () => {
       />,
     );
     expect(await screen.findByTestId("mermaid-svg")).toBeInTheDocument();
-    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(screen.getAllByTestId("markdown-code-block")).toHaveLength(1);
     expect(screen.getByText("echo hi")).toBeInTheDocument();
   });
 

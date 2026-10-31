@@ -413,7 +413,10 @@ function CloudTaskSkeleton(): JSX.Element {
       aria-busy="true"
       aria-label="Preparing cloud task"
     >
-      <span className="loading-block cloud-task-dialog-skeleton-summary" />
+      <span
+        className="loading-block cloud-task-dialog-skeleton-summary"
+        data-testid="cloud-task-skeleton-summary"
+      />
       <div className="cloud-task-dialog-skeleton-rows">
         {SKELETON_ROWS.map((key) => (
           <div className="cloud-task-dialog-skeleton-row" key={key}>

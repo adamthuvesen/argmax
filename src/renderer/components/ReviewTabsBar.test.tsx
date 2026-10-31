@@ -32,7 +32,8 @@ describe("ReviewTabsBar", () => {
   it("preserves manual tab scrolling across unrelated parent renders", () => {
     const callbacks = props();
     const { rerender } = render(<ReviewTabsBar {...callbacks} />);
-    const active = screen.getByRole("tab", { name: "Changes" }).parentElement!;
+    expect(screen.getByRole("tab", { name: "Changes" })).toHaveAttribute("aria-selected", "true");
+    const active = screen.getByTestId("review-tab-changes");
     const scrollIntoView = vi.fn();
     active.scrollIntoView = scrollIntoView;
     rerender(<ReviewTabsBar {...callbacks} items={callbacks.items.map((item) => ({ ...item }))} />);
@@ -131,7 +132,9 @@ describe("ReviewTabsBar", () => {
     expect(first).toHaveFocus();
     fireEvent.keyDown(first, { key: "End" });
     expect(screen.getByRole("menuitem", { name: "Reopen Closed Tab" })).toHaveFocus();
-    fireEvent.keyDown(document.activeElement ?? first, { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Reopen Closed Tab" }), {
+      key: "Escape",
+    });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(browser).toHaveFocus();
     expect(callbacks.onSelect).not.toHaveBeenCalled();

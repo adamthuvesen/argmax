@@ -134,7 +134,12 @@ function buildDecorations(view: EditorView): ChipSets {
       const end = offset + segment.text.length;
       const insideChip = chips.some((chip) => offset >= chip.from && offset < chip.to);
       if (segment.skill && !insideChip) {
-        all.push(Decoration.mark({ class: "skill-token" }).range(offset, end));
+        all.push(
+          Decoration.mark({
+            class: "skill-token",
+            attributes: { "data-testid": "skill-token" },
+          }).range(offset, end),
+        );
       }
       offset = end;
     }

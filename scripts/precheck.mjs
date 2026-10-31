@@ -132,7 +132,6 @@ const JS_PATHS = [
   /^tsconfig\.json$/,
   /^vite(st)?(\.[\w-]+)?\.config\.ts$/,
   /^\.ox(lint|fmt)rc\.json$/,
-  /^lint-baseline\.json$/,
   /^scripts\//,
   /^\.github\/workflows\//,
 ];

@@ -129,7 +129,7 @@ export function ToolCallDetail({
 
   const argumentList =
     listedArgs.length > 0 ? (
-      <dl className="tool-call-args">
+      <dl className="tool-call-args" data-testid="tool-call-args">
         {listedArgs.map((arg) => (
           <Fragment key={arg.key}>
             <dt>{arg.key}</dt>

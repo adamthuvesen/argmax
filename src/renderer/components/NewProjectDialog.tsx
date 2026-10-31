@@ -26,6 +26,7 @@ export function NewProjectDialog({
   return createPortal(
     <div
       className="project-dialog-overlay motion-modal-overlay"
+      data-testid="new-project-dialog-overlay"
       data-motion-state="open"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) dismiss();

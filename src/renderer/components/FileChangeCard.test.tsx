@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/highlighter.js", () => ({
@@ -26,11 +26,10 @@ function changeFor(name: string, input: Record<string, unknown>) {
 describe("FileChangeCard", () => {
   it("renders a create card with sage data-kind", () => {
     const change = changeFor("Write", { file_path: "/tmp/poem.md", content: "a\nb\nc" });
-    const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
-    const card = container.querySelector(".file-change-card");
-    expect(card).not.toBeNull();
-    expect(card?.getAttribute("data-kind")).toBe("create");
-    expect(card?.getAttribute("aria-label")).toBe("Created /tmp/poem.md");
+    render(<FileChangeCard change={change} workspaceCwd={null} />);
+    const card = screen.getByRole("region", { name: "Created /tmp/poem.md" });
+    expect(card).toHaveAttribute("data-kind", "create");
+    expect(card).toHaveAttribute("aria-label", "Created /tmp/poem.md");
     expect(screen.getByLabelText("Open /tmp/poem.md")).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
   });
@@ -64,20 +63,20 @@ describe("FileChangeCard", () => {
 
   it("renders a delete card with no body diff", () => {
     const change = changeFor("deleteToolCall", { path: "/tmp/gone.md" });
-    const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
-    const card = container.querySelector(".file-change-card");
-    expect(card?.getAttribute("data-kind")).toBe("delete");
+    render(<FileChangeCard change={change} workspaceCwd={null} />);
+    expect(screen.getByRole("region")).toHaveAttribute("data-kind", "delete");
     expect(screen.getByText("File removed.")).toBeInTheDocument();
   });
 
   it("renders large diffs in a single scrollable body, no toggle", () => {
     const big = Array.from({ length: 40 }, (_, i) => `line${i}`).join("\n");
     const change = changeFor("Write", { file_path: "/tmp/big.ts", content: big });
-    const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
-    const body = container.querySelector(".file-change-card-body");
-    expect(body).not.toBeNull();
-    expect(body?.hasAttribute("data-collapsed")).toBe(false);
-    expect(container.querySelectorAll(".diff-line").length).toBeGreaterThanOrEqual(40);
+    render(<FileChangeCard change={change} workspaceCwd={null} />);
+    const body = screen.getByTestId("file-change-card-body");
+    expect(body).not.toHaveAttribute("data-collapsed");
+    for (let index = 0; index < 40; index += 1) {
+      expect(within(body).getByText(`line${index}`)).toBeInTheDocument();
+    }
     expect(screen.queryByRole("button", { name: /^Show all \d+ lines$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Show less" })).toBeNull();
   });
@@ -87,8 +86,8 @@ describe("FileChangeCard", () => {
       file_path: "/tmp/a.ts",
       edits: [{ old_string: "a", new_string: "A" }],
     });
-    const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
-    expect(container.querySelector(".file-change-card[data-no-line-numbers]")).not.toBeNull();
+    render(<FileChangeCard change={change} workspaceCwd={null} />);
+    expect(screen.getByRole("region")).toHaveAttribute("data-no-line-numbers");
   });
 
   it("renders a note when present", () => {
@@ -98,7 +97,7 @@ describe("FileChangeCard", () => {
       new_string: "y",
       replace_all: true,
     });
-    const { container } = render(<FileChangeCard change={change} workspaceCwd={null} />);
-    expect(container.querySelector(".file-change-card-note")?.textContent).toMatch(/all matches/i);
+    render(<FileChangeCard change={change} workspaceCwd={null} />);
+    expect(screen.getByTestId("file-change-card-note")).toHaveTextContent(/all matches/i);
   });
 });

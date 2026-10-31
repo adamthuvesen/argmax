@@ -67,7 +67,7 @@ export function FileChangeCard({
           <span>Open</span>
         </button>
       </header>
-      <div className="file-change-card-body">
+      <div className="file-change-card-body" data-testid="file-change-card-body">
         {change.kind === "delete" ? (
           <p className="file-change-card-empty">File removed.</p>
         ) : change.hunks.length === 0 ? (
@@ -75,7 +75,11 @@ export function FileChangeCard({
         ) : (
           <>
             <DiffBlocks blocks={change.hunks} filePath={change.path} />
-            {note ? <p className="file-change-card-note">{note}</p> : null}
+            {note ? (
+              <p className="file-change-card-note" data-testid="file-change-card-note">
+                {note}
+              </p>
+            ) : null}
           </>
         )}
       </div>

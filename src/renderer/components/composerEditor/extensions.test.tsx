@@ -2,6 +2,7 @@
 import { deleteCharBackward, redo, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { installZeroLayoutForCodeMirror } from "../../../test/jsdomCodeMirror.js";
 import {
@@ -63,13 +64,14 @@ describe("chat chips", () => {
       chats: { resolve: () => ({ title: "Billing v2" }), open },
     });
 
-    const chip = view.dom.querySelector<HTMLElement>(".composer-chat-chip");
-    expect(chip?.dataset.status).toBe("resolved");
-    expect(chip?.textContent).toBe("Billing v2");
-    expect(chip?.getAttribute("aria-label")).toBe("Chat reference: Billing v2. Open chat");
+    const chip = within(view.dom).getByRole("button", {
+      name: "Chat reference: Billing v2. Open chat",
+    });
+    expect(chip).toHaveAttribute("data-status", "resolved");
+    expect(chip.textContent).toBe("Billing v2");
     expect(view.dom.textContent).not.toContain("argmax://");
 
-    chip?.click();
+    chip.click();
     expect(open).toHaveBeenCalledWith("s1");
   });
 
@@ -77,17 +79,20 @@ describe("chat chips", () => {
     const open = vi.fn();
     const view = mount(link, { chats: { resolve: () => null, open } });
 
-    const chip = view.dom.querySelector<HTMLElement>(".composer-chat-chip");
-    expect(chip?.dataset.status).toBe("unresolved");
-    expect(chip?.textContent).toBe("Billing rewrite (unavailable)");
-    chip?.click();
+    const chip = within(view.dom).getByRole("img", {
+      name: "Chat reference: Billing rewrite. No longer available",
+    });
+    expect(chip).toHaveAttribute("data-status", "unresolved");
+    expect(chip.textContent).toBe("Billing rewrite (unavailable)");
+    chip.click();
     expect(open).not.toHaveBeenCalled();
   });
 
   it("leaves a reference this build cannot read as plain, visible text", () => {
     const view = mount("[Later](argmax://chat/s1?v=9)");
 
-    expect(view.dom.querySelector(".composer-chat-chip")).toBeNull();
+    expect(within(view.dom).queryByRole("button", { name: /^Chat reference:/ })).toBeNull();
+    expect(within(view.dom).queryByRole("img", { name: /^Chat reference:/ })).toBeNull();
     expect(view.dom.textContent).toContain("argmax://chat/s1?v=9");
   });
 
@@ -107,7 +112,9 @@ describe("skill tokens", () => {
     const tricky = chatReferenceLink({ sessionId: "s2", title: "x /review y" });
     const view = mount(`/review ${tricky} /nope`, { isSkill: (name) => name === "review" });
 
-    const tinted = [...view.dom.querySelectorAll(".skill-token")].map((node) => node.textContent);
+    const tinted = within(view.dom)
+      .queryAllByTestId("skill-token")
+      .map((node) => node.textContent);
     expect(tinted).toEqual(["/review"]);
   });
 });

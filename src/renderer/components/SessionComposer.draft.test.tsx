@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   baseSession,
@@ -37,7 +37,9 @@ function pasteScreenshot(): void {
 function attachedScreenshots(): string[] {
   const region = screen.queryByLabelText("Attached images");
   if (!region) return [];
-  return Array.from(region.querySelectorAll("img")).map((image) => image.getAttribute("src") ?? "");
+  return within(region)
+    .queryAllByRole("presentation")
+    .map((image) => image.getAttribute("src") ?? "");
 }
 
 describe("SessionComposer unsent drafts", () => {

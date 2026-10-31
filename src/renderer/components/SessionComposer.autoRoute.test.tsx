@@ -106,8 +106,8 @@ describe("SessionComposer Auto chip", () => {
     );
     expect(screen.getByRole("button", { name: "Chat model effort" }).textContent).toBe("High");
     expect(
-      screen.getByText("coding · heavy; confident upgrade").closest("[role='status']"),
-    ).not.toBeNull();
+      within(screen.getByRole("status")).getByText("coding · heavy; confident upgrade"),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Chat prompt"), { target: { value: "n" } });
     expect(screen.queryByText("coding · heavy; confident upgrade")).toBeNull();
@@ -124,7 +124,7 @@ describe("SessionComposer Auto chip", () => {
     expect(screen.getByRole("button", { name: "Chat model" }).textContent).toBe(
       "Balance → Opus 5.5",
     );
-    expect(screen.getByText("coding · standard").closest("[role='status']")).not.toBeNull();
+    expect(within(screen.getByRole("status")).getByText("coding · standard")).toBeInTheDocument();
   });
 
   it("says nothing for the route a chat opened with, or for a pin", () => {

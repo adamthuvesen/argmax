@@ -90,7 +90,7 @@ describe("NewProjectDialog", () => {
     fireEvent.mouseDown(toast);
     fireEvent.mouseDown(screen.getByLabelText("Project name"));
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.mouseDown(screen.getByRole("dialog").parentElement!);
+    fireEvent.mouseDown(screen.getByTestId("new-project-dialog-overlay"));
     expect(onClose).toHaveBeenCalledTimes(1);
     toast.remove();
   });

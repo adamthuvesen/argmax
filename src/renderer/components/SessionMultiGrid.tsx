@@ -426,6 +426,7 @@ export function SessionMultiGrid({
                 <Fragment key={cellKey}>
                   <div
                     className="session-multigrid-cell"
+                    data-testid="session-multigrid-cell"
                     data-focused={focused ? "true" : undefined}
                     role="region"
                     aria-label={paneLabel}
@@ -613,7 +614,12 @@ function DropZones({
       }}
     >
       {hovered ? (
-        <div className="multigrid-drop-zone" data-position={hovered} data-hovered="true">
+        <div
+          className="multigrid-drop-zone"
+          data-testid="multigrid-drop-zone"
+          data-position={hovered}
+          data-hovered="true"
+        >
           <span className="multigrid-drop-label">
             {hovered === "replace"
               ? replaceLabel

@@ -155,16 +155,16 @@ describe("ReviewPanel changes layout", () => {
       { path: "src/a.ts", status: "modified", additions: 1, deletions: 1, staged: false },
       { path: "src/deep/b.ts", status: "added", additions: 12, deletions: 0, staged: false },
     ];
-    const { container } = render(<ReviewPanel review={review} />);
-    const body = container.querySelector(".review-body");
-    const leftCol = container.querySelector(".review-list-col");
+    render(<ReviewPanel review={review} />);
+    const body = screen.getByTestId("review-body");
+    const leftCol = screen.getByTestId("review-list-col");
     const resizeHandle = screen.getByRole("separator", { name: "Resize changed files width" });
     const changedFilesTree = screen.getByRole("tree", { name: "Changed files" });
-    const diff = container.querySelector(".review-diff");
+    const diff = screen.getByTestId("review-diff");
 
-    expect(body).not.toBeNull();
-    expect(diff).not.toBeNull();
-    expect(leftCol).not.toBeNull();
+    expect(body).toBeInTheDocument();
+    expect(diff).toBeInTheDocument();
+    expect(leftCol).toBeInTheDocument();
     expect(resizeHandle).toBeInTheDocument();
     expect(body).toHaveClass("review-body-changes");
     expect(within(changedFilesTree).getByRole("treeitem", { name: "a.ts" })).toHaveAttribute(
@@ -243,7 +243,7 @@ describe("ReviewPanel changes layout", () => {
     fireEvent.click(row);
 
     expect(row).toHaveAttribute("aria-expanded", "false");
-    expect(document.querySelector(".review-diff-scroll")).toBeNull();
+    expect(screen.queryByTestId("review-diff-scroll")).not.toBeInTheDocument();
     expect(review.openFile).not.toHaveBeenCalled();
   });
 
@@ -282,7 +282,7 @@ describe("ReviewPanel changes layout", () => {
     setReviewMode(review, "files");
     render(<ReviewPanel review={review} />);
 
-    expect(document.querySelector<HTMLElement>(".review-list-col")?.style.width).toBe("250px");
+    expect(screen.getByTestId("review-list-col").style.width).toBe("250px");
     clientWidth.mockRestore();
   });
 
@@ -636,12 +636,12 @@ describe("ReviewPanel browser mode", () => {
     setReviewMode(review, "browser");
     review.browserOwner = true;
     review.browserRequest = { url: "https://argmax.dev", seq: 1 };
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
     expect(screen.getByRole("textbox", { name: "Address" })).toHaveValue("https://argmax.dev");
-    expect(container.querySelector(".review-body-browser")).not.toBeNull();
+    expect(screen.getByTestId("review-body")).toHaveClass("review-body-browser");
     // Files-mode furniture stays out of the way.
-    expect(container.querySelector(".review-list-col")).toBeNull();
+    expect(screen.queryByTestId("review-list-col")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("File status")).toBeNull();
   });
 
@@ -691,25 +691,25 @@ describe("ReviewPanel terminal mode", () => {
   it("gives Terminal mode the body to itself, with no Files or Changes furniture", async () => {
     const review = reviewStub();
     setReviewMode(review, "terminal");
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
     await waitFor(() => {
-      expect(container.querySelector(".review-body-terminal")).not.toBeNull();
+      expect(screen.getByTestId("review-body")).toHaveClass("review-body-terminal");
     });
-    expect(container.querySelector(".review-list-col")).toBeNull();
-    expect(container.querySelector(".review-diff")).toBeNull();
+    expect(screen.queryByTestId("review-list-col")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("review-diff")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("File status")).toBeNull();
   });
 
   it("keeps a workspace's terminals mounted, and hidden, behind another mode", async () => {
     addTerminalTab("workspace-1", "zsh");
     const review = reviewStub();
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
     await waitFor(() => {
-      expect(container.querySelector(".review-terminal-mount")).not.toBeNull();
+      expect(screen.getByTestId("review-terminal-mount")).toBeInTheDocument();
     });
-    expect(container.querySelector(".review-terminal-mount")).toHaveAttribute("hidden");
+    expect(screen.getByTestId("review-terminal-mount")).toHaveAttribute("hidden");
 
     // `hidden` alone would lose to the mount's own `display`, painting the
     // terminal over the Changes list.
@@ -722,9 +722,9 @@ describe("ReviewPanel terminal mode", () => {
     const review = reviewStub();
     setReviewMode(review, "terminal");
     review.terminalWorkspaceId = null;
-    const { container } = render(<ReviewPanel review={review} />);
+    render(<ReviewPanel review={review} />);
 
-    expect(container.querySelector(".review-body-changes")).not.toBeNull();
-    expect(container.querySelector(".review-terminal-mount")).toBeNull();
+    expect(screen.getByTestId("review-body")).toHaveClass("review-body-changes");
+    expect(screen.queryByTestId("review-terminal-mount")).not.toBeInTheDocument();
   });
 });

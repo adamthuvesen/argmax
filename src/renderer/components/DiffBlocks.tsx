@@ -304,7 +304,7 @@ function UnifiedHunk({
               }}
             >
               {presentation === "review" ? (
-                <span className="diff-line-rail" aria-hidden="true" />
+                <span className="diff-line-rail" data-testid="diff-line-rail" aria-hidden="true" />
               ) : null}
               <span className="diff-line-number">
                 {lineNumber ?? ""}
@@ -474,6 +474,7 @@ const DiffLineContent = memo(function DiffLineContent({
       {tokens.map((token, index) => (
         <span
           className="hl-token"
+          data-testid="hl-token"
           key={index}
           style={token.color ? { color: token.color } : undefined}
         >

@@ -760,7 +760,11 @@ export function SessionConversationUserMessage({
     // The agent reads the whole notice. The chat only needs to show that the
     // watch woke it, so the text stays one line until opened.
     return (
-      <div className="user-message-group" {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}>
+      <div
+        className="user-message-group"
+        data-testid="user-message-group"
+        {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}
+      >
         <details className="watch-notice">
           <summary className="watch-notice-summary">
             <Eye size={12} aria-hidden="true" />
@@ -779,6 +783,7 @@ export function SessionConversationUserMessage({
   return (
     <div
       className="user-message-group"
+      data-testid="user-message-group"
       {...(isTurnAnchor ? { "data-turn-anchor": "true" } : {})}
       {...(origin ? { role: "article", "aria-label": "Message from another chat" } : {})}
     >

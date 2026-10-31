@@ -288,6 +288,7 @@ export function ReviewTabsBar({
           <div
             key={item.id}
             className="review-resource-tab"
+            data-testid={`review-tab-${item.id}`}
             role="presentation"
             data-active={item.id === activeId}
             data-visible={visibleIds.includes(item.id)}

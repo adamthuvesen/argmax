@@ -40,14 +40,12 @@ const editEvents: TimelineEvent[] = [
 ] as TimelineEvent[];
 
 /** The turn's activity rows name the same file, so reach the row through the
- *  changes card's own header rather than by label alone. */
+ *  changes card itself rather than by label alone. */
 function changesCard(): HTMLElement {
   const collapsed = screen.queryByRole("button", { name: "Show 1 file changed" });
   if (collapsed) fireEvent.click(collapsed);
-  const header = screen.getByRole("button", { name: "Hide 1 file changed" });
-  const card = header.closest("section");
-  if (!card) throw new Error("turn changes card is not a section");
-  return card;
+  expect(screen.getByRole("button", { name: "Hide 1 file changed" })).toBeInTheDocument();
+  return screen.getByTestId("turn-changes");
 }
 
 describe("SessionConversation — a host with its own review surface", () => {

@@ -144,7 +144,7 @@ describe("ComposerEditorView", () => {
     render(<Harness initial={text} fieldRef={createRef()} />);
 
     expect(viewOf().state.doc.toString()).toBe(text);
-    expect(document.querySelectorAll(".composer-chat-chip")).toHaveLength(1);
+    expect(screen.getAllByRole("img", { name: /^Chat reference:/ })).toHaveLength(1);
   });
 
   it("announces its placeholder to assistive technology", () => {
@@ -282,9 +282,9 @@ describe("ComposerEditorView", () => {
 
     // The chip itself is reachable by Tab and answers Enter.
     open.mockClear();
-    const chip = document.querySelector<HTMLElement>(".composer-chat-chip");
-    expect(chip?.tabIndex).toBe(0);
-    chip?.dispatchEvent(
+    const chip = screen.getByRole("button", { name: "Chat reference: Billing. Open chat" });
+    expect(chip.tabIndex).toBe(0);
+    chip.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
     );
     expect(open).toHaveBeenCalledWith("s1");

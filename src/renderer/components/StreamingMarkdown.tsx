@@ -911,6 +911,7 @@ export function StreamingMarkdown({
   return (
     <div
       ref={bodyRef}
+      data-testid="streaming-markdown"
       className={
         hasLogs
           ? `markdown-with-logs${live ? " markdown-streaming" : ""}`

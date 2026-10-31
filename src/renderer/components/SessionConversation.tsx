@@ -1653,6 +1653,7 @@ export function SessionConversation({
           bottom in the meantime and the reveal changes nothing it measured. */}
           <div
             className="conversation-scroll scroll-fade"
+            data-testid="conversation-scroll"
             ref={conversationScrollRef}
             data-restoring={restoringTranscript ? "true" : undefined}
             data-loading={eventsBackfilled || historyLoadFailed ? undefined : "true"}
@@ -1773,14 +1774,20 @@ export function SessionConversation({
                     );
                   })
                 ) : terminalTranscript ? (
-                  <article className="chat-bubble assistant terminal-transcript">
+                  <article
+                    className="chat-bubble assistant terminal-transcript"
+                    data-testid="terminal-transcript"
+                  >
                     <pre>{terminalTranscript}</pre>
                   </article>
                 ) : isThinking ? null : (
                   <p className="conversation-empty">Agent replies will appear here.</p>
                 )}
                 {terminalTranscript && conversationItems.length > 0 ? (
-                  <article className="chat-bubble assistant terminal-transcript">
+                  <article
+                    className="chat-bubble assistant terminal-transcript"
+                    data-testid="terminal-transcript"
+                  >
                     <pre>{terminalTranscript}</pre>
                   </article>
                 ) : null}
@@ -1789,7 +1796,7 @@ export function SessionConversation({
                 moment the first answer token lands. Unmounting the row there
                 would shorten the transcript under a reader pinned to the bottom
                 and pull the view up by its height. */}
-                <div className="conversation-tail">
+                <div className="conversation-tail" data-testid="conversation-tail">
                   {isThinkingVisible || leavingThinking !== null ? (
                     <ThinkingLabel
                       phaseKey={workspace?.id ?? session?.id}
@@ -1811,7 +1818,7 @@ export function SessionConversation({
             {...(askSideChat ? { onAskSideChat: askSideChat } : {})}
             {...(askDetails ? { onMoreDetails: askDetails } : {})}
           />
-          <div className="session-meta-cards">
+          <div className="session-meta-cards" data-testid="session-meta-cards">
             {session ? <ForkBar sessionId={session.id} onOpenSession={onOpenSession} /> : null}
             <ChangedFilesCard
               workspaceId={workspace?.id}
@@ -1842,7 +1849,11 @@ export function SessionConversation({
             </div>
           )}
           {questionDocked && liveQuestion ? (
-            <div className="session-composer-stack" data-question>
+            <div
+              className="session-composer-stack"
+              data-testid="question-composer-stack"
+              data-question
+            >
               {goalInComposer ? goalStatus : null}
               <QuestionDock
                 key={liveQuestion.tool.id}

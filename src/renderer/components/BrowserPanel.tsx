@@ -1700,10 +1700,11 @@ export function BrowserPanel({
           </button>
         </div>
       ) : null}
-      <div ref={surfaceRef} className="browser-panel-surface">
+      <div ref={surfaceRef} className="browser-panel-surface" data-testid="browser-surface">
         {frozenFrame ? (
           <img
             className="browser-panel-frozen-frame"
+            data-testid="browser-frozen-frame"
             src={frozenFrame.src}
             alt=""
             style={{ width: frozenFrame.width, height: frozenFrame.height }}

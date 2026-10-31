@@ -84,7 +84,11 @@ export function TurnChangesCard({
   const fileLabel = `${totals.files} ${totals.files === 1 ? "file" : "files"} changed`;
 
   return (
-    <section className="turn-changes" data-expanded={expanded ? "true" : undefined}>
+    <section
+      className="turn-changes"
+      data-testid="turn-changes"
+      data-expanded={expanded ? "true" : undefined}
+    >
       <div className="turn-changes-head">
         <button
           type="button"
@@ -122,6 +126,7 @@ export function TurnChangesCard({
                 type="button"
                 key={change.path}
                 className="turn-changes-row"
+                data-testid="turn-changes-row"
                 data-family={family}
                 data-kind={change.kind}
                 aria-label={`${KIND_LABELS[change.kind]} ${relativePath}`}

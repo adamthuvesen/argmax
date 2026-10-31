@@ -64,7 +64,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
     this: HTMLElement,
   ) {
-    const x = this.closest('[aria-label="Second browser"]') ? 400 : 0;
+    const x = screen.queryByLabelText("Second browser")?.contains(this) ? 400 : 0;
     return {
       x,
       y: 20,

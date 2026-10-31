@@ -73,7 +73,7 @@ describe("SessionConversation session note", () => {
 
     const note = screen.getByText("Resuming the archive scheduled before Argmax last quit.");
     // A live region, so a note that lands while the reader is elsewhere is announced.
-    expect(note.closest("[role='status']")).not.toBeNull();
+    expect(screen.getAllByRole("status").some((region) => region.contains(note))).toBe(true);
     const answer = screen.getByText("Done");
     // DOCUMENT_POSITION_FOLLOWING === 4: the note sits below the turn.
     expect(answer.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

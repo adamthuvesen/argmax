@@ -214,6 +214,7 @@ export function ReviewSideChat({
       <form
         ref={formRef}
         className="session-composer-stack review-side-chat-composer"
+        aria-label="Side chat composer"
         data-font-size={
           context.chatFontSize === undefined ? undefined : String(context.chatFontSize)
         }

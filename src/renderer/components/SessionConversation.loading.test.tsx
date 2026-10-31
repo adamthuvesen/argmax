@@ -14,16 +14,14 @@ describe("SessionConversation — backfill", () => {
     renderConversation(baseSession(), [], { eventsBackfilled: false });
 
     expect(screen.getByRole("status", { name: "Loading chat" })).not.toHaveTextContent(/\S/);
-    const list = screen.getByLabelText("Conversation messages");
-    expect(list.parentElement?.getAttribute("data-loading")).toBe("true");
+    expect(screen.getByTestId("conversation-scroll")).toHaveAttribute("data-loading", "true");
   });
 
   it("paints and drops the status once the backfill is in", () => {
     renderConversation(baseSession(), [], { eventsBackfilled: true });
 
     expect(screen.queryByRole("status", { name: "Loading chat" })).toBeNull();
-    const list = screen.getByLabelText("Conversation messages");
-    expect(list.parentElement?.hasAttribute("data-loading")).toBe(false);
+    expect(screen.getByTestId("conversation-scroll")).not.toHaveAttribute("data-loading");
   });
 
   it("keeps available and newly arriving replies visible after history retries fail", () => {
@@ -35,9 +33,7 @@ describe("SessionConversation — backfill", () => {
     const { rerender } = renderConversation(session, events, options);
     expect(screen.getByRole("status", { name: "Chat history unavailable" })).toBeInTheDocument();
     expect(screen.getByText("Already received")).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation messages").parentElement).not.toHaveAttribute(
-      "data-loading",
-    );
+    expect(screen.getByTestId("conversation-scroll")).not.toHaveAttribute("data-loading");
     rerenderConversation(
       rerender,
       session,
@@ -45,8 +41,6 @@ describe("SessionConversation — backfill", () => {
       options,
     );
     expect(screen.getByText("Still working")).toBeInTheDocument();
-    expect(screen.getByLabelText("Conversation messages").parentElement).not.toHaveAttribute(
-      "data-loading",
-    );
+    expect(screen.getByTestId("conversation-scroll")).not.toHaveAttribute("data-loading");
   });
 });

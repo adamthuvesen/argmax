@@ -184,7 +184,7 @@ describe("launcher prompt across context changes", () => {
       .map((option) => optionName(option))
       .filter((name) => name && name !== "New project");
     expect(names[0]).toBe("Dotfiles");
-    fireEvent.mouseDown(document.querySelector(".picker-dismiss-layer") as Element);
+    fireEvent.mouseDown(screen.getByTestId("picker-dismiss-layer"));
 
     fireEvent.click(screen.getByRole("button", { name: "Build dashboard" }));
     await screen.findByRole("region", { name: "Conversation" });

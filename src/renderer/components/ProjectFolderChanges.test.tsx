@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProjectFolderChangesState } from "../hooks/useProjectFolderChanges.js";
 import { ProjectFolderChangesList } from "./ProjectFolderChanges.js";
@@ -75,7 +75,9 @@ describe("ProjectFolderChangesList", () => {
     render(<ProjectFolderChangesList state={state} />);
 
     expect(screen.queryByText("No changes")).not.toBeInTheDocument();
-    expect(screen.getByText("context").closest("details")).not.toHaveAttribute("open");
+    const folderGroup = screen.getByRole("group");
+    expect(within(folderGroup).getByText("context")).toBeInTheDocument();
+    expect(folderGroup).not.toHaveAttribute("open");
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 

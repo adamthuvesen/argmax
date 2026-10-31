@@ -49,7 +49,7 @@ describe("ImageLightbox", () => {
 
     // The content box fills the overlay, so clicks in the letterboxing beside
     // the image land on it rather than on the backdrop.
-    fireEvent.mouseDown(image.parentElement as HTMLElement);
+    fireEvent.mouseDown(screen.getByTestId("image-lightbox-content"));
     expect(onClose).toHaveBeenCalledTimes(1);
 
     fireEvent.mouseDown(screen.getByRole("dialog", { name: "Attached image" }));
@@ -58,8 +58,8 @@ describe("ImageLightbox", () => {
 
   it("portals onto the conversation surface so the transcript scroller cannot clip it", () => {
     render(
-      <div className="conversation-surface">
-        <div style={{ overflow: "hidden", width: 160 }}>
+      <div className="conversation-surface" data-testid="conversation-surface">
+        <div data-testid="transcript-scroller" style={{ overflow: "hidden", width: 160 }}>
           <LightboxHarness />
         </div>
       </div>,
@@ -67,6 +67,7 @@ describe("ImageLightbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open preview" }));
 
     const dialog = screen.getByRole("dialog", { name: "Attached image" });
-    expect(dialog.parentElement).toHaveClass("conversation-surface");
+    expect(screen.getByTestId("conversation-surface")).toContainElement(dialog);
+    expect(screen.getByTestId("transcript-scroller")).not.toContainElement(dialog);
   });
 });

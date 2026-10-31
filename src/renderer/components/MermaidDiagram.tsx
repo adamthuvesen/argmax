@@ -193,7 +193,7 @@ export function MermaidDiagram({ source }: { source: string }): JSX.Element {
   const lightbox =
     expanded && svg && typeof document !== "undefined"
       ? createPortal(
-          <div className="mermaid-diagram-overlay">
+          <div className="mermaid-diagram-overlay" data-testid="mermaid-diagram-overlay">
             <div
               ref={dialogRef}
               className="mermaid-diagram-lightbox"

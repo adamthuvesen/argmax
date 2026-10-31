@@ -57,9 +57,11 @@ describe("WelcomePane — provider discovery", () => {
     render(<WelcomePane onAddProject={vi.fn()} />);
 
     const list = await screen.findByRole("list", { name: "Detected providers" });
-    const li = within(list).getByText("Claude Code").closest("li");
+    const [li] = within(list)
+      .getAllByRole("listitem")
+      .filter((item) => within(item).queryByText("Claude Code"));
     expect(li).toHaveAttribute("data-installed", "needs-login");
-    expect(li && within(li).getByText(/not authenticated/i)).toBeInTheDocument();
+    expect(within(li).getByText(/not authenticated/i)).toBeInTheDocument();
   });
 
   it("enables Add Project once a provider is installed", async () => {

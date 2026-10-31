@@ -106,15 +106,15 @@ describe("SessionConversation workspace card", () => {
   // earns that. CSS reads the flag off the surface; the widths where it bites
   // are container queries jsdom cannot run.
   it("marks the surface only while the card is in the tree", () => {
-    const { container } = renderPane();
-    expect(container.querySelector(".conversation-surface")).toHaveAttribute(
+    renderPane();
+    expect(screen.getByRole("region", { name: "Conversation" })).toHaveAttribute(
       "data-workspace-card",
       "true",
     );
 
     cleanup();
-    const off = renderPane({ workspaceCardEnabled: false });
-    expect(off.container.querySelector(".conversation-surface")).not.toHaveAttribute(
+    renderPane({ workspaceCardEnabled: false });
+    expect(screen.getByRole("region", { name: "Conversation" })).not.toHaveAttribute(
       "data-workspace-card",
     );
   });

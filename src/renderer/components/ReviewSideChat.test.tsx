@@ -59,7 +59,7 @@ describe("ReviewSideChat", () => {
     expect(screen.getByRole("button", { name: "Start side chat" })).toBeDisabled();
     const message = screen.getByRole("textbox", { name: "Side chat message" });
     fireEvent.change(message, { target: { value: "  Explain this approach  " } });
-    const form = message.closest("form")!;
+    const form = screen.getByRole("form", { name: "Side chat composer" });
     fireEvent.submit(form);
     fireEvent.submit(form);
     expect(context.launch).toHaveBeenCalledExactlyOnceWith("Explain this approach", {

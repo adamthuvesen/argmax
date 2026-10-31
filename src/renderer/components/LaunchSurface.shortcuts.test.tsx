@@ -63,7 +63,7 @@ describe("LaunchSurface picker shortcuts", () => {
       await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
     });
 
-    const modelMenu = screen.getByRole("listbox", { name: "Switch model" }).parentElement;
+    const modelMenu = screen.getByTestId("model-picker-flyout");
     const projectMenu = screen.getByRole("listbox", { name: "Select project" });
     expect(modelMenu).toHaveStyle({ position: "absolute", bottom: "auto" });
     expect(projectMenu).toHaveStyle({ position: "absolute", bottom: "auto" });

@@ -402,14 +402,14 @@ describe("SessionConversationTurn", () => {
       { path: "src/app.ts", kind: "edit", adds: 1, dels: 1, writes: 1 },
     ] as never);
 
-    const { container } = renderTurn({ openRunAt: "2026-05-12T15:00:12.000Z" });
-    expect(container.querySelector(".turn-changes")).toBeNull();
+    renderTurn({ openRunAt: "2026-05-12T15:00:12.000Z" });
+    expect(screen.queryByTestId("turn-changes")).not.toBeInTheDocument();
 
     cleanup();
     // Once the run's closing marker lands the card is due, without waiting for
     // the row to catch up.
-    const settled = renderTurn({ openRunAt: null });
-    expect(settled.container.querySelector(".turn-changes")).not.toBeNull();
+    renderTurn({ openRunAt: null });
+    expect(screen.getByTestId("turn-changes")).toBeInTheDocument();
 
     collectTurnFileChanges.mockReturnValue([]);
   });
@@ -434,12 +434,12 @@ describe("SessionConversationTurn", () => {
         },
       ],
     };
-    const { container } = renderTurn({
+    renderTurn({
       item: liveTurn,
       session: { ...session, state: "running" },
     });
 
-    expect(container.textContent).toContain(thinking);
+    expect(document.body).toHaveTextContent(thinking);
     vi.useRealTimers();
   });
 

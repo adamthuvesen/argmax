@@ -80,7 +80,7 @@ describe("ToolCallRow", () => {
   });
 
   it("gives skill activation its own semantic icon kind", () => {
-    const { container } = render(
+    render(
       <ToolCallRow
         tool={tool({
           name: "Skill",
@@ -89,13 +89,13 @@ describe("ToolCallRow", () => {
       />,
     );
 
-    const icon = container.querySelector(".tool-activity-icon");
+    const icon = screen.getByTestId("tool-activity-icon");
     expect(icon).toHaveAttribute("data-activity", "skill");
     expect(icon).not.toHaveAttribute("data-tone");
   });
 
   it("marks failed activity as danger and leaves a delete a file change", () => {
-    const { container, rerender } = render(
+    const { rerender } = render(
       <ToolCallRow
         tool={tool({
           status: "error",
@@ -104,7 +104,7 @@ describe("ToolCallRow", () => {
       />,
     );
 
-    expect(container.querySelector(".tool-activity-icon")).toHaveAttribute("data-tone", "danger");
+    expect(screen.getByTestId("tool-activity-icon")).toHaveAttribute("data-tone", "danger");
 
     // Red marks work that did not finish. A delete finished.
     rerender(
@@ -121,7 +121,7 @@ describe("ToolCallRow", () => {
       />,
     );
 
-    expect(container.querySelector(".tool-activity-icon")).not.toHaveAttribute("data-tone");
+    expect(screen.getByTestId("tool-activity-icon")).not.toHaveAttribute("data-tone");
   });
 
   it("does not offer a disclosure when expanding would show nothing", () => {

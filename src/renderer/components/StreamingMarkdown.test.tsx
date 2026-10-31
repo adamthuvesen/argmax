@@ -11,6 +11,19 @@ import { StreamingMarkdown } from "./StreamingMarkdown.js";
 
 const FRAME_MS = 16;
 
+function freshRuns(): HTMLElement[] {
+  return screen.queryAllByText(
+    (_content, element) => element?.classList.contains("stream-fresh") ?? false,
+    { ignore: false },
+  );
+}
+
+function displayEquations(): HTMLElement[] {
+  return screen
+    .queryAllByRole("math", { hidden: true })
+    .filter((math) => math.getAttribute("display") === "block");
+}
+
 const renderMermaidDiagram = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ svg: `<svg data-testid="mermaid-svg"><title>flow</title></svg>` })),
 );
@@ -51,8 +64,8 @@ describe("<StreamingMarkdown />", () => {
     const { rerender } = render(
       <StreamingMarkdown text={text} streaming={false} workspace={workspace} />,
     );
-    const code = screen.getByText("long output");
-    const pre = code.closest("pre")!;
+    const pre = screen.getByTestId("code-block-pre");
+    expect(pre).toContainElement(screen.getByText("long output"));
     pre.scrollLeft = 120;
 
     rerender(
@@ -64,7 +77,8 @@ describe("<StreamingMarkdown />", () => {
       />,
     );
 
-    expect(screen.getByText("long output").closest("pre")).toBe(pre);
+    expect(screen.getByTestId("code-block-pre")).toBe(pre);
+    expect(pre).toContainElement(screen.getByText("long output"));
     expect(pre.scrollLeft).toBe(120);
   });
 
@@ -141,7 +155,7 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it("renders workspace and managed attachment images through guarded protocols", () => {
-    const { container } = render(
+    render(
       <StreamingMarkdown
         text={[
           "![workspace](scratch/lane.png)",
@@ -152,7 +166,7 @@ describe("<StreamingMarkdown />", () => {
       />,
     );
 
-    const sources = Array.from(container.querySelectorAll("img")).map((image) => image.src);
+    const sources = screen.getAllByRole("img").map((image) => image.getAttribute("src") ?? "");
     expect(
       sources.some((source) => source.startsWith(`${WORKSPACE_ASSET_PROTOCOL_SCHEME}://`)),
     ).toBe(true);
@@ -183,7 +197,7 @@ describe("<StreamingMarkdown />", () => {
       />,
     );
 
-    expect(screen.getByText("bad").closest("a")).toHaveAttribute("href", "");
+    expect(screen.getByText("bad")).toHaveAttribute("href", "");
     expect(screen.queryByRole("img", { name: "bad image" })).not.toBeInTheDocument();
   });
 
@@ -198,7 +212,7 @@ describe("<StreamingMarkdown />", () => {
   });
 
   it("draws a remote image as a link instead of fetching it", () => {
-    const { container } = render(
+    render(
       <StreamingMarkdown
         text="![chart](https://tracker.example.com/p.png?secret=abc)"
         streaming={false}
@@ -206,7 +220,8 @@ describe("<StreamingMarkdown />", () => {
       />,
     );
 
-    expect(container.querySelector("img")).toBeNull();
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.queryByRole("presentation")).toBeNull();
     expect(screen.getByRole("link", { name: "tracker.example.com" })).toHaveAttribute(
       "href",
       "https://tracker.example.com/p.png?secret=abc",
@@ -235,8 +250,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "word ".repeat(60).trim();
 
-    const { container } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     expect(markdown?.textContent).toBe("");
 
     const seen: string[] = [];
@@ -271,8 +286,8 @@ describe("<StreamingMarkdown />", () => {
     vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
     const text = "word ".repeat(60).trim();
-    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     expect(markdown?.textContent).toBe("");
 
     rerender(<StreamingMarkdown text={text} streaming={false} />);
@@ -291,8 +306,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const words = Array.from({ length: 400 }, (_, index) => `w${index % 10}`);
     let text = "";
-    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     for (let tick = 0; tick < 40; tick += 1) {
       text = words.slice(0, (tick + 1) * 7).join(" ");
       rerender(<StreamingMarkdown text={text} streaming />);
@@ -311,12 +326,12 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "fade ".repeat(80).trim();
 
-    const { container } = render(<StreamingMarkdown text={text} streaming />);
+    render(<StreamingMarkdown text={text} streaming />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 3);
     });
 
-    const runs = [...container.querySelectorAll(".stream-fresh")];
+    const runs = freshRuns();
     // Reveals within one merge window share a run: a handful of fading spans,
     // not one per frame.
     expect(runs.length).toBeGreaterThan(0);
@@ -331,31 +346,29 @@ describe("<StreamingMarkdown />", () => {
     act(() => {
       vi.advanceTimersByTime(FRESH_RUN_FADE_MS + 100);
     });
-    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+    expect(freshRuns()).toHaveLength(0);
   });
 
   it("leaves an unpaced block — a live thought — unmarked", () => {
     vi.useFakeTimers();
-    const { container, rerender } = render(
+    const { rerender } = render(
       <StreamingMarkdown text={"A".repeat(120)} streaming paced={false} />,
     );
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming paced={false} />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 4);
     });
-    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+    expect(freshRuns()).toHaveLength(0);
   });
 
   it("does not mark a block that is being restored into the pane", () => {
     vi.useFakeTimers();
-    const { container, rerender } = render(
-      <StreamingMarkdown text={"A".repeat(120)} streaming restoring />,
-    );
+    const { rerender } = render(<StreamingMarkdown text={"A".repeat(120)} streaming restoring />);
     rerender(<StreamingMarkdown text={"A".repeat(240)} streaming restoring />);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 4);
     });
-    expect(container.querySelectorAll(".stream-fresh")).toHaveLength(0);
+    expect(freshRuns()).toHaveLength(0);
   });
 
   it("drives every revealing block from one shared animation frame", () => {
@@ -372,8 +385,8 @@ describe("<StreamingMarkdown />", () => {
     });
     // One request per frame for both blocks.
     expect(requestSpy.mock.calls.length).toBeLessThanOrEqual(6);
-    expect(first.container.querySelector(".markdown")?.textContent).not.toBe("");
-    expect(second.container.querySelector(".markdown")?.textContent).not.toBe("");
+    expect(screen.getAllByTestId("streaming-markdown")[0]?.textContent).not.toBe("");
+    expect(screen.getAllByTestId("streaming-markdown")[1]?.textContent).not.toBe("");
 
     // The loop outlives one block and stops with the last.
     first.unmount();
@@ -387,8 +400,8 @@ describe("<StreamingMarkdown />", () => {
     const first = "😀".repeat(120);
     const grown = `${first}${"🧠".repeat(80)}`;
 
-    const { container, rerender } = render(<StreamingMarkdown text={first} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={first} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     const wellFormed = (): boolean => {
       const value = markdown?.textContent ?? "";
       return value.length % 2 === 0 && [...value].every((char) => char === "😀" || char === "🧠");
@@ -419,8 +432,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "sweep ".repeat(400).trim();
 
-    const { container } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     expect(markdown?.textContent).toBe("");
 
     act(() => {
@@ -440,8 +453,8 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "tail ".repeat(160).trim();
 
-    const { container, rerender } = render(<StreamingMarkdown text={text} streaming />);
-    const markdown = container.querySelector(".markdown");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming />);
+    const markdown = screen.getByTestId("streaming-markdown");
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 6);
     });
@@ -474,9 +487,9 @@ describe("<StreamingMarkdown />", () => {
     vi.useFakeTimers();
     const text = "B".repeat(120);
 
-    const { container } = render(<StreamingMarkdown text={text} streaming paced={false} />);
+    render(<StreamingMarkdown text={text} streaming paced={false} />);
 
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
     vi.useRealTimers();
   });
 
@@ -505,7 +518,9 @@ describe("<StreamingMarkdown />", () => {
 
       expect(screen.queryByRole("heading", { name: "This is code" })).not.toBeInTheDocument();
       expect(screen.getAllByRole("button", { name: "Copy code" })).toHaveLength(1);
-      expect(screen.getByText("Still code").closest("code")).not.toBeNull();
+      expect(screen.getByTestId("code-block-code")).toContainElement(
+        screen.getByText("Still code"),
+      );
     },
   );
 
@@ -517,43 +532,41 @@ describe("<StreamingMarkdown />", () => {
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 6);
     });
-    const shown = first.container.querySelector(".markdown")?.textContent ?? "";
+    const shown = screen.getByTestId("streaming-markdown").textContent ?? "";
     expect(shown.length).toBeGreaterThan(0);
     expect(shown.length).toBeLessThan(text.length);
     // Switching to another session unmounts the pane; coming back mounts a new one.
     first.unmount();
 
-    const second = render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
-    expect(second.container.querySelector(".markdown")?.textContent).toBe(shown);
+    render(<StreamingMarkdown text={text} streaming revealKey="session-a:t0:g0" />);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(shown);
   });
 
   it("shows already-arrived text in full when the pane is restoring", () => {
     const text = "R".repeat(120);
 
-    const { container } = render(
-      <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g0" />,
-    );
+    render(<StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g0" />);
 
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
   });
 
   it("does not restart the reveal when restore ends", () => {
     vi.useFakeTimers();
     const text = "S".repeat(120);
 
-    const { container, rerender } = render(
+    const { rerender } = render(
       <StreamingMarkdown text={text} streaming restoring revealKey="session-restore:g1" />,
     );
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
 
     rerender(
       <StreamingMarkdown text={text} streaming restoring={false} revealKey="session-restore:g1" />,
     );
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 16);
     });
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
   });
 
   it("shows a streaming block in full when it mounts while the document is hidden", () => {
@@ -561,32 +574,30 @@ describe("<StreamingMarkdown />", () => {
     const text = "H".repeat(120);
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
 
-    const { container } = render(
-      <StreamingMarkdown text={text} streaming revealKey="session-hidden:g0" />,
-    );
+    render(<StreamingMarkdown text={text} streaming revealKey="session-hidden:g0" />);
 
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
 
     Object.defineProperty(document, "hidden", { configurable: true, value: false });
     act(() => {
       vi.advanceTimersByTime(FRAME_MS * 16);
     });
-    expect(container.querySelector(".markdown")?.textContent).toBe(text);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(text);
   });
 
   it("catches up a live block that grew while the document was hidden", () => {
     vi.useFakeTimers();
     const first = "hidden ".repeat(20).trim();
-    const { container, rerender } = render(
+    const { rerender } = render(
       <StreamingMarkdown text={first} streaming revealKey="session-hidden:g1" />,
     );
-    expect(container.querySelector(".markdown")?.textContent).toBe("");
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe("");
 
     Object.defineProperty(document, "hidden", { configurable: true, value: true });
     act(() => {
       vi.advanceTimersByTime(FRAME_MS);
     });
-    expect(container.querySelector(".markdown")?.textContent).toBe(first);
+    expect(screen.getByTestId("streaming-markdown").textContent).toBe(first);
 
     const grown = `${first} ${"more ".repeat(20).trim()}`;
     rerender(<StreamingMarkdown text={grown} streaming revealKey="session-hidden:g1" />);
@@ -595,7 +606,7 @@ describe("<StreamingMarkdown />", () => {
       vi.advanceTimersByTime(FRAME_MS * 2);
     });
     // Already-arrived text stays; only the growth after becoming visible writes.
-    const shown = container.querySelector(".markdown")?.textContent ?? "";
+    const shown = screen.getByTestId("streaming-markdown").textContent ?? "";
     expect(shown.startsWith(first)).toBe(true);
     expect(shown.length).toBeLessThan(grown.length);
   });
@@ -605,10 +616,11 @@ describe("<StreamingMarkdown />", () => {
     // transcript's scroller, so the whole conversation slides sideways.
     const table = ["| a | b |", "| - | - |", "| 1 | 2 |"].join("\n");
 
-    const { container } = render(<StreamingMarkdown text={table} streaming={false} />);
+    render(<StreamingMarkdown text={table} streaming={false} />);
 
-    const scroller = container.querySelector(".markdown > .markdown-table-scroll");
-    expect(scroller?.firstElementChild?.tagName).toBe("TABLE");
+    const scroller = screen.getByTestId("markdown-table-scroll");
+    expect(screen.getByTestId("streaming-markdown")).toContainElement(scroller);
+    expect(scroller).toContainElement(screen.getByRole("table"));
     expect(screen.getByRole("table")).toBeInTheDocument();
   });
 
@@ -652,15 +664,13 @@ describe("<StreamingMarkdown />", () => {
 
   it("keeps the code node stable when a stream becomes completed", () => {
     const text = ["```ts", "const answer = 42;", "```"].join("\n");
-    const { container, rerender } = render(
-      <StreamingMarkdown text={text} streaming paced={false} />,
-    );
-    const code = container.querySelector("code");
+    const { rerender } = render(<StreamingMarkdown text={text} streaming paced={false} />);
+    const code = screen.getByTestId("code-block-code");
     expect(code).toBeInTheDocument();
 
     rerender(<StreamingMarkdown text={text} streaming={false} paced={false} />);
 
-    expect(container.querySelector("code")).toBe(code);
+    expect(screen.getByTestId("code-block-code")).toBe(code);
   });
 
   it.each([
@@ -762,15 +772,15 @@ describe("<StreamingMarkdown />", () => {
       "$$E = mc^2$$",
     ].join("\n\n");
 
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
     // Math renders through the lazy KaTeX chunk (see MathMarkdown.tsx), so the
     // first paint is the plain fallback and the formatted equations land once
     // the chunk resolves.
     await waitFor(() => {
-      expect(container.querySelectorAll(".katex-display").length).toBe(2);
+      expect(displayEquations()).toHaveLength(2);
     });
-    const katexDisplays = container.querySelectorAll(".katex-display");
+    const katexDisplays = displayEquations();
     expect(katexDisplays[0]?.textContent).toContain("margin");
     expect(katexDisplays[1]?.textContent).toContain("E=mc");
   });
@@ -780,12 +790,12 @@ describe("<StreamingMarkdown />", () => {
     ["Price $50 ($2x + 1$ after adjustment).", 1, "$50"],
     ["Price $50 ($x$ after adjustment).", 1, "$50"],
   ])("renders inline equations alongside prose: %s", async (text, count, prose) => {
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
     await waitFor(() => {
-      expect(container.querySelectorAll(".katex").length).toBe(count);
+      expect(screen.queryAllByRole("math", { hidden: true }).length).toBe(count);
     });
-    expect(container.textContent).toContain(prose);
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain(prose);
   });
 
   it("renders per-unit prices and shell variables as prose, not equations", async () => {
@@ -794,24 +804,28 @@ describe("<StreamingMarkdown />", () => {
       "Export $PATH and $HOME before running.",
     ].join("\n\n");
 
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
     await waitFor(() => {
-      expect(container.textContent).toContain("$1.25/1M in and $4.25/1M out");
+      expect(screen.getByTestId("streaming-markdown").textContent).toContain(
+        "$1.25/1M in and $4.25/1M out",
+      );
     });
-    expect(container.querySelectorAll(".katex").length).toBe(0);
-    expect(container.textContent).toContain("~$5/$25 for Opus 5");
-    expect(container.textContent).toContain("Export $PATH and $HOME");
+    expect(screen.queryAllByRole("math", { hidden: true }).length).toBe(0);
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain("~$5/$25 for Opus 5");
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain(
+      "Export $PATH and $HOME",
+    );
   });
 
   it("preserves code blocks containing dollar signs and LaTeX slashes", () => {
     const text = ["```bash", "PRICE=$50", 'echo "\\[ preserved \\]"', "```"].join("\n");
 
-    const { container } = render(<StreamingMarkdown text={text} streaming={false} />);
+    render(<StreamingMarkdown text={text} streaming={false} />);
 
-    expect(container.querySelectorAll(".katex").length).toBe(0);
-    expect(container.textContent).toContain("PRICE=$50");
-    expect(container.textContent).toContain("\\[ preserved \\]");
+    expect(screen.queryAllByRole("math", { hidden: true }).length).toBe(0);
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain("PRICE=$50");
+    expect(screen.getByTestId("streaming-markdown").textContent).toContain("\\[ preserved \\]");
   });
 
   it("lifts glued tracing logs out of assistant prose into an Error block", () => {

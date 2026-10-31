@@ -3,7 +3,7 @@
  * If these tests fail, the scheme-stripping guard has been disabled and the
  * assistant chat can render unsafe links.
  */
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,10 +13,9 @@ afterEach(() => {
 });
 
 function hrefOf(markdown: string): string | null {
-  const { container } = render(
-    <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>,
-  );
-  return container.querySelector("a")?.getAttribute("href") ?? null;
+  render(<ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>);
+  const label = /^\[([^\]]+)\]/.exec(markdown)?.[1] ?? "";
+  return screen.queryByText(label, { selector: "a" })?.getAttribute("href") ?? null;
 }
 
 describe("ReactMarkdown URL sanitization", () => {

@@ -59,6 +59,7 @@ export function ToolActivityIcon({
     <Icon
       size={14}
       className="tool-activity-icon"
+      data-testid="tool-activity-icon"
       data-activity={kind}
       data-tone={danger ? "danger" : undefined}
       aria-hidden="true"

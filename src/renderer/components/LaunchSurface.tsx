@@ -1488,6 +1488,7 @@ export function LaunchSurface({
           createPortal(
             <div
               className="picker-dismiss-layer"
+              data-testid="picker-dismiss-layer"
               aria-hidden="true"
               onMouseDown={closeContextPickers}
             />,
@@ -1507,6 +1508,7 @@ export function LaunchSurface({
         </header>
         <form
           className="composer"
+          data-testid="launch-composer"
           data-drag-active={isDraggingFiles ? "true" : undefined}
           data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
           data-type-scale={chatFontSize === undefined ? "composer" : undefined}
@@ -1839,6 +1841,7 @@ ${launchFolder.folder.rootPath}${showFolderPicker ? "\nRight-click to choose a f
                         <GitBranch size={14} aria-hidden="true" />
                         <span
                           className="composer-context-chip-label"
+                          data-testid="branch-chip-label"
                           data-in={
                             runsInLinkedCheckout ? checkout?.path?.split("/").pop() : undefined
                           }

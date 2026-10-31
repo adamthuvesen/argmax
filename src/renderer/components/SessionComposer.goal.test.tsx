@@ -89,7 +89,7 @@ describe("SessionComposer goal", () => {
     renderConversation(baseSession(), [], { nativeComposerFloor: true });
 
     const bar = await screen.findByRole("region", { name: "Goal" });
-    expect(bar.closest("form")).toBeNull();
+    expect(screen.getByRole("form", { name: "Session composer" })).not.toContainElement(bar);
 
     fireEvent.click(screen.getByRole("button", { name: "Clear goal" }));
     await waitFor(() => expect(goals.clear).toHaveBeenCalledWith({ sessionId: "session-a" }));
@@ -100,7 +100,7 @@ describe("SessionComposer goal", () => {
     renderConversation(baseSession(), []);
 
     const bar = await screen.findByRole("region", { name: "Goal" });
-    expect(bar.closest("form")).not.toBeNull();
+    expect(screen.getByRole("form", { name: "Session composer" })).toContainElement(bar);
   });
 
   it("leaves the draft alone when goals are switched off in settings", async () => {

@@ -107,6 +107,7 @@ export function ThinkingLabel({
   return (
     <article
       className="chat-bubble assistant thinking-indicator"
+      data-testid="thinking-indicator"
       {...(leaving
         ? { "data-leaving": "true", "aria-hidden": true }
         : { "aria-live": "polite" as const, "aria-label": "Thinking" })}
@@ -115,8 +116,10 @@ export function ThinkingLabel({
         <span className="thinking-mark-slot">
           <WorkingNest active size={16} phaseKey={phaseKey} />
         </span>
-        <span className="thinking-label">{word}</span>
-        <span className="thinking-elapsed" ref={elapsedRef} />
+        <span className="thinking-label" data-testid="thinking-word">
+          {word}
+        </span>
+        <span className="thinking-elapsed" data-testid="thinking-elapsed" ref={elapsedRef} />
       </div>
     </article>
   );

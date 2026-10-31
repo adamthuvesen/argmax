@@ -19,6 +19,29 @@ import {
   STARTED_TURN,
 } from "../../test/sessionConversationTestHarness.js";
 
+function streamingBubbles(): HTMLElement[] {
+  return screen
+    .queryAllByTestId("streaming-markdown")
+    .filter((body) => body.classList.contains("markdown-streaming"));
+}
+
+function userBubbleFor(element: HTMLElement): HTMLElement {
+  const bubble = screen
+    .getAllByRole("article")
+    .filter((article) => article.contains(element))
+    .at(-1);
+  if (!bubble) throw new Error("no chat bubble around the element");
+  return bubble;
+}
+
+function userMessageGroupFor(element: HTMLElement): HTMLElement {
+  const group = screen
+    .getAllByTestId("user-message-group")
+    .find((candidate) => candidate.contains(element));
+  if (!group) throw new Error("no user message group around the element");
+  return group;
+}
+
 describe("SessionConversation — streaming & composer", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -29,11 +52,11 @@ describe("SessionConversation — streaming & composer", () => {
     // The class and the attribute are the CSS contract itself
     // (chat-conversation.css zeroes the entrance animations under
     // `[data-restoring="true"]`), so this asserts them directly.
-    const { container } = renderConversation(baseSession());
-    const scroller = container.querySelector(".conversation-scroll");
+    renderConversation(baseSession());
+    const scroller = screen.getByTestId("conversation-scroll");
 
-    expect(scroller?.getAttribute("data-restoring")).toBe("true");
-    await waitFor(() => expect(scroller?.getAttribute("data-restoring")).toBeNull());
+    expect(scroller).toHaveAttribute("data-restoring", "true");
+    await waitFor(() => expect(scroller).not.toHaveAttribute("data-restoring"));
   });
 
   it.each([
@@ -263,7 +286,8 @@ describe("SessionConversation — streaming & composer", () => {
     // A dirty tree leaves no other trace on the row once the chips fold away.
     expect(trigger).toHaveAttribute("data-dirty", "true");
 
-    const group = trigger.closest(".composer-chips-context-group");
+    const group = screen.getByTestId("composer-chips-context-group");
+    expect(group).toContainElement(trigger);
     expect(group).not.toHaveAttribute("data-compact-open");
     fireEvent.click(trigger);
     expect(group).toHaveAttribute("data-compact-open", "true");
@@ -336,14 +360,14 @@ describe("SessionConversation — streaming & composer", () => {
   });
 
   it("marks an in-flight assistant bubble with .markdown-streaming while deltas arrive", () => {
-    const { container } = renderConversation(baseSession({ state: "running" }), [
+    renderConversation(baseSession({ state: "running" }), [
       event("u1", "user.message", "scan repo", "2026-05-12T15:00:00.000Z"),
       event("d1", "message.delta", "1. First\n2. Second", "2026-05-12T15:00:01.000Z"),
     ]);
 
-    expect(container.querySelector(".markdown-streaming")).not.toBeNull();
+    expect(streamingBubbles().length).toBeGreaterThan(0);
     // No blinking-caret DOM element — token-by-token text is the streaming indicator.
-    expect(container.querySelectorAll(".streaming-caret")).toHaveLength(0);
+    expect(document.body.innerHTML).not.toContain("streaming-caret");
   });
 
   it("does not replay stored delta-only answers when a cancelled session is reopened", () => {
@@ -352,7 +376,7 @@ describe("SessionConversation — streaming & composer", () => {
       "1. Milk 2. Eggs 3. Bread 4. Butter 5. Cheese 6. Yogurt",
       "7. Bananas 8. Apples 9. Oranges 10. Potatoes 11. Onions",
     ].join(" ");
-    const { container } = renderConversation(baseSession({ state: "cancelled" }), [
+    renderConversation(baseSession({ state: "cancelled" }), [
       event(
         "u1",
         "user.message",
@@ -362,7 +386,7 @@ describe("SessionConversation — streaming & composer", () => {
       event("d1", "message.delta", text, "2026-05-12T15:00:01.000Z"),
     ]);
 
-    expect(container.querySelector(".markdown-streaming")).toBeNull();
+    expect(streamingBubbles()).toHaveLength(0);
     expect(screen.getByText(/Here are 100 items/)).toBeInTheDocument();
     expect(screen.getByText(/11\. Onions/)).toBeInTheDocument();
   });
@@ -782,8 +806,10 @@ describe("SessionConversation — streaming & composer", () => {
     expect(activity).toHaveAttribute("aria-expanded", "true");
     const detailsId = activity.getAttribute("aria-controls");
     expect(detailsId).toBeTruthy();
-    const details = detailsId ? document.getElementById(detailsId) : null;
-    expect(details).not.toBeNull();
+    const details = screen
+      .queryAllByTestId("tool-call-group-body")
+      .find((body) => body.id === detailsId);
+    expect(details).toBeDefined();
     if (details)
       expect(within(details).getByRole("button", { name: "Thought" })).toHaveAttribute(
         "aria-expanded",
@@ -916,91 +942,82 @@ describe("SessionConversation — streaming & composer", () => {
       message: { role: "assistant", content: [{ type: "text", text }] },
       timestamp_ms: timestampMs,
     });
-    const { container } = renderConversation(
-      baseSession({ provider: "cursor", state: "running" }),
-      [
-        event(
-          "a2",
-          "message.delta",
-          " Block B.",
-          "2026-05-12T15:00:05.000Z",
-          cursorPayload("Block A. Block B.", 2),
-        ),
-        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-          id: "c1",
-          name: "Read",
-          input: { file_path: "architecture.md" },
-        }),
-        event(
-          "a1",
-          "message.delta",
-          "Block A.",
-          "2026-05-12T15:00:01.000Z",
-          cursorPayload("Block A.", 1),
-        ),
-        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
-      ],
-    );
+    renderConversation(baseSession({ provider: "cursor", state: "running" }), [
+      event(
+        "a2",
+        "message.delta",
+        " Block B.",
+        "2026-05-12T15:00:05.000Z",
+        cursorPayload("Block A. Block B.", 2),
+      ),
+      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+        id: "c1",
+        name: "Read",
+        input: { file_path: "architecture.md" },
+      }),
+      event(
+        "a1",
+        "message.delta",
+        "Block A.",
+        "2026-05-12T15:00:01.000Z",
+        cursorPayload("Block A.", 1),
+      ),
+      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+    ]);
 
-    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    const text = screen.getByLabelText("Conversation messages").textContent ?? "";
     expect(text.match(/Block A\./g)?.length ?? 0).toBe(1);
     expect(text).toContain("Block B.");
   });
 
   it("keeps Cursor narration, tools, and later streamed answer in chronological order", () => {
-    const { container } = renderConversation(
-      baseSession({ provider: "cursor", state: "running" }),
-      [
-        event(
-          "a2",
-          "message.delta",
-          "Here is the answer",
-          "2026-05-12T15:00:05.000Z",
-          cursorAssistantPayload("Here is the answer"),
-        ),
-        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-          id: "c1",
-          name: "Read",
-          input: { file_path: "architecture.md" },
-        }),
-        event(
-          "a1",
-          "message.delta",
-          "Reading the file first.",
-          "2026-05-12T15:00:02.000Z",
-          cursorAssistantPayload("Reading the file first."),
-        ),
-        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
-      ],
-    );
+    renderConversation(baseSession({ provider: "cursor", state: "running" }), [
+      event(
+        "a2",
+        "message.delta",
+        "Here is the answer",
+        "2026-05-12T15:00:05.000Z",
+        cursorAssistantPayload("Here is the answer"),
+      ),
+      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+        id: "c1",
+        name: "Read",
+        input: { file_path: "architecture.md" },
+      }),
+      event(
+        "a1",
+        "message.delta",
+        "Reading the file first.",
+        "2026-05-12T15:00:02.000Z",
+        cursorAssistantPayload("Reading the file first."),
+      ),
+      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+    ]);
 
-    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    const text = screen.getByLabelText("Conversation messages").textContent ?? "";
     expect(text).toContain("architecture.md");
     expect(text.indexOf("Reading the file first.")).toBeLessThan(text.indexOf("architecture.md"));
     expect(text.indexOf("architecture.md")).toBeLessThan(text.indexOf("Here is the answer"));
   });
 
   it("keeps a still-streaming pre-tool narration above the started tool", () => {
-    const { container } = renderConversation(
-      baseSession({ provider: "cursor", state: "running" }),
-      [
-        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-          id: "c1",
-          name: "Read",
-          input: { file_path: "architecture.md" },
-        }),
-        event(
-          "a1",
-          "message.delta",
-          "Reading the file",
-          "2026-05-12T15:00:02.000Z",
-          cursorAssistantPayload("Reading the file"),
-        ),
-        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
-      ],
-    );
+    renderConversation(baseSession({ provider: "cursor", state: "running" }), [
+      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+        id: "c1",
+        name: "Read",
+        input: { file_path: "architecture.md" },
+      }),
+      event(
+        "a1",
+        "message.delta",
+        "Reading the file",
+        "2026-05-12T15:00:02.000Z",
+        cursorAssistantPayload("Reading the file"),
+      ),
+      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+    ]);
 
-    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    const text = screen.getByLabelText("Conversation messages").textContent ?? "";
     expect(text).toContain("architecture.md");
     expect(text).toContain("Reading the file");
     expect(text.indexOf("Reading the file")).toBeLessThan(text.indexOf("architecture.md"));
@@ -1009,21 +1026,18 @@ describe("SessionConversation — streaming & composer", () => {
   it("keeps a completed pre-tool narration above the tool it precedes", () => {
     // A narration chunk that COMPLETED before the tool started is anchored at its
     // own time and must stay above the tool.
-    const { container } = renderConversation(
-      baseSession({ provider: "claude", state: "running" }),
-      [
-        event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
-          id: "c1",
-          name: "Read",
-          input: { file_path: "architecture.md" },
-        }),
-        event("m1", "message.completed", "Let me read the file", "2026-05-12T15:00:02.500Z"),
-        event("d1", "message.delta", "Let me read the file", "2026-05-12T15:00:02.000Z"),
-        event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
-      ],
-    );
+    renderConversation(baseSession({ provider: "claude", state: "running" }), [
+      event("c1", "command.started", "Read", "2026-05-12T15:00:03.000Z", {
+        id: "c1",
+        name: "Read",
+        input: { file_path: "architecture.md" },
+      }),
+      event("m1", "message.completed", "Let me read the file", "2026-05-12T15:00:02.500Z"),
+      event("d1", "message.delta", "Let me read the file", "2026-05-12T15:00:02.000Z"),
+      event("u1", "user.message", "summarize", "2026-05-12T15:00:00.000Z"),
+    ]);
 
-    const text = container.querySelector(".conversation-list")?.textContent ?? "";
+    const text = screen.getByLabelText("Conversation messages").textContent ?? "";
     expect(text).toContain("Let me read the file");
     expect(text.indexOf("Let me read the file")).toBeLessThan(text.indexOf("architecture.md"));
   });
@@ -1085,7 +1099,7 @@ describe("SessionConversation — streaming & composer", () => {
   it("renders image attachments as previews above user.message bubbles", () => {
     const imagePath =
       "/Users/me/Library/Application Support/argmax/local-state/attachments/session-a/screenshot 1.png";
-    const { container } = renderConversation(baseSession({ state: "running" }), [
+    renderConversation(baseSession({ state: "running" }), [
       event(
         "u1",
         "user.message",
@@ -1098,19 +1112,19 @@ describe("SessionConversation — streaming & composer", () => {
     ]);
 
     const image = screen.getByRole("img", { name: "Attached image: screenshot 1.png" });
-    const bubble = screen
-      .getByText("Check this screenshot", { selector: "p" })
-      .closest(".chat-bubble.user");
-    const attachmentStrip = image.closest(".user-message-attachments");
+    const bubble = userBubbleFor(screen.getByText("Check this screenshot", { selector: "p" }));
+    const attachmentStrip = screen.getByLabelText("Attachments");
     expect(image).toHaveAttribute("src", attachmentProtocolUrl(imagePath));
-    expect(bubble).not.toBeNull();
-    expect(attachmentStrip).not.toBeNull();
-    expect(bubble?.contains(image)).toBe(false);
-    expect(attachmentStrip?.nextElementSibling).toBe(bubble);
+    expect(bubble).toHaveClass("chat-bubble", "user");
+    expect(attachmentStrip).toContainElement(image);
+    expect(bubble).not.toContainElement(image);
+    // The strip sits above the bubble, in the same message group.
+    expect(userMessageGroupFor(bubble)).toContainElement(attachmentStrip);
+    expect(
+      attachmentStrip.compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
     expect(screen.queryByText("screenshot 1.png")).toBeNull();
-    expect(container.querySelector(".chat-bubble.user")?.textContent).not.toContain(
-      `@${imagePath}`,
-    );
+    expect(bubble.textContent).not.toContain(`@${imagePath}`);
   });
 
   it("opens an attached screenshot in a pane-scoped preview", () => {
@@ -1130,14 +1144,14 @@ describe("SessionConversation — streaming & composer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "View image: screenshot 1.png" }));
     const dialog = screen.getByRole("dialog", { name: "Attached image" });
-    expect(dialog.parentElement).toHaveClass("conversation-surface");
+    expect(screen.getByRole("region", { name: "Conversation" })).toContainElement(dialog);
   });
 
   it("synthesizes a user bubble from session.prompt before the user.message event arrives", () => {
     renderConversation(baseSession({ state: "running", prompt: "@AGENTS.md" }), []);
 
     const bubbleText = screen.getByText("@AGENTS.md", { selector: "p" });
-    expect(bubbleText.closest(".chat-bubble.user")).not.toBeNull();
+    expect(userBubbleFor(bubbleText)).toHaveClass("chat-bubble", "user");
   });
 
   it("does not duplicate the user bubble once the real user.message event arrives", () => {
@@ -1510,15 +1524,17 @@ describe("SessionConversation — streaming & composer", () => {
     const live = renderConversation(baseSession({ provider: "codex", state: "running" }), [
       event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
     ]);
-    expect(screen.getByLabelText("Thinking").closest(".conversation-tail")).not.toBeNull();
+    expect(screen.getByTestId("conversation-tail")).toContainElement(
+      screen.getByLabelText("Thinking"),
+    );
     live.unmount();
 
-    const settled = renderConversation(baseSession({ provider: "codex", state: "complete" }), [
+    renderConversation(baseSession({ provider: "codex", state: "complete" }), [
       event("u1", "user.message", "hey", "2026-05-12T15:00:00.000Z"),
       event("m1", "message.completed", "Done.", "2026-05-12T15:00:01.000Z"),
     ]);
     expect(screen.queryByLabelText("Thinking")).toBeNull();
-    expect(settled.container.querySelector(".conversation-tail")).not.toBeNull();
+    expect(screen.getByTestId("conversation-tail")).toBeInTheDocument();
   });
 
   it("shows steering before the agent produces its first output", () => {
@@ -1556,7 +1572,7 @@ describe("SessionConversation — streaming & composer", () => {
       const agent = screen.getByRole("button", { name: startedAgentName("Review changes") });
       const workingChip = screen.getByRole("button", { name: /Working/ });
       const prompt = screen.getByText("Review the change");
-      expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
+      expect(userMessageGroupFor(prompt)).toHaveAttribute("data-turn-anchor");
 
       for (const [index, text] of ["Do not post yet", "Check the tests too"].entries()) {
         events = [
@@ -1578,8 +1594,8 @@ describe("SessionConversation — streaming & composer", () => {
           ),
         ];
         rerenderConversation(view.rerender, session, events, options);
-        expect(prompt.closest("[data-turn-anchor]")).not.toBeNull();
-        expect(screen.getByText(text).closest("[data-turn-anchor]")).toBeNull();
+        expect(userMessageGroupFor(prompt)).toHaveAttribute("data-turn-anchor");
+        expect(userMessageGroupFor(screen.getByText(text))).not.toHaveAttribute("data-turn-anchor");
         expect(agent).toBeInTheDocument();
         expect(
           screen.getByRole("img", { name: `Attached image: guidance-${index}.png` }),
@@ -1612,10 +1628,10 @@ describe("SessionConversation — streaming & composer", () => {
         }),
       ];
       rerenderConversation(view.rerender, session, events, options);
-      expect(prompt.closest("[data-turn-anchor]")).toBeNull();
-      expect(
-        screen.getByText("Now review another change").closest("[data-turn-anchor]"),
-      ).not.toBeNull();
+      expect(userMessageGroupFor(prompt)).not.toHaveAttribute("data-turn-anchor");
+      expect(userMessageGroupFor(screen.getByText("Now review another change"))).toHaveAttribute(
+        "data-turn-anchor",
+      );
       expect(screen.getAllByRole("button", { name: /Worked/ })).toHaveLength(1);
       expect(screen.getAllByRole("button", { name: /Working/ })).toHaveLength(1);
     },
@@ -1945,12 +1961,12 @@ describe("SessionConversation — streaming & composer", () => {
       ...events,
     ]);
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    expect(view.container.querySelector('.thinking-indicator[data-leaving="true"]')).not.toBeNull();
+    expect(screen.getByTestId("thinking-indicator")).toHaveAttribute("data-leaving", "true");
 
     act(() => {
       vi.advanceTimersByTime(140);
     });
-    expect(view.container.querySelector(".thinking-indicator")).toBeNull();
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
   });
 
   it("shows Thinking at once when a running session is reopened mid-gap", () => {
@@ -2347,7 +2363,7 @@ describe("SessionConversation — streaming & composer", () => {
 
     expect(screen.getByText("Writing them now")).toBeInTheDocument();
     expect(screen.queryByLabelText("Thinking")).not.toBeInTheDocument();
-    expect(document.querySelector(".thinking-indicator")).toBeNull();
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
   });
 
   it("never puts the cue up when the send itself fails inside the first beat", async () => {
@@ -2434,10 +2450,11 @@ describe("SessionConversation — streaming & composer", () => {
     expect(screen.getByText("then run lint")).toBeInTheDocument();
 
     const queue = screen.getByRole("list", { name: "Queued follow-ups" });
-    const composer = document.querySelector(".session-input");
-    expect(composer).not.toBeNull();
-    expect(composer?.contains(queue)).toBe(false);
-    expect(queue.closest(".session-composer-stack")?.contains(composer)).toBe(true);
+    const composer = screen.getByTestId("session-input");
+    expect(composer).not.toContainElement(queue);
+    const composerStack = screen.getByRole("form", { name: "Session composer" });
+    expect(composerStack).toContainElement(queue);
+    expect(composerStack).toContainElement(composer);
 
     const removeButtons = screen.getAllByRole("button", { name: "Cancel queued follow-up" });
     expect(removeButtons).toHaveLength(2);
@@ -2690,22 +2707,20 @@ describe("SessionConversation — streaming & composer", () => {
     // Without the beacon: transcript fallback should appear so the existing
     // behaviour for non-stream-json providers (where raw stdout IS the
     // human-readable output) keeps working.
-    const without = render(
-      <SessionConversation {...baseProps} events={[userEvent]} rawOutputs={rawOutputs} />,
-    );
-    expect(without.container.querySelector(".terminal-transcript")).not.toBeNull();
+    render(<SessionConversation {...baseProps} events={[userEvent]} rawOutputs={rawOutputs} />);
+    expect(screen.getByTestId("terminal-transcript")).toBeInTheDocument();
     cleanup();
 
     // With the beacon: transcript suppressed even though the user hasn't seen
     // any normalized text yet. The chat shows an empty/Thinking state instead
     // of the JSON wall.
-    const withBeacon = render(
+    render(
       <SessionConversation
         {...baseProps}
         events={[streamingBeacon, userEvent]}
         rawOutputs={rawOutputs}
       />,
     );
-    expect(withBeacon.container.querySelector(".terminal-transcript")).toBeNull();
+    expect(screen.queryByTestId("terminal-transcript")).toBeNull();
   });
 });

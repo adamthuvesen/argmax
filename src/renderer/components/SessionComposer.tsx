@@ -919,6 +919,7 @@ export function SessionComposer({
   return (
     <form
       className="session-composer-stack"
+      aria-label="Session composer"
       data-font-size={chatFontSize === undefined ? undefined : String(chatFontSize)}
       data-type-scale={chatFontSize === undefined ? "composer" : undefined}
       ref={inputFormRef}
@@ -1153,7 +1154,11 @@ export function SessionComposer({
           })}
         </div>
       ) : null}
-      <div className="session-input" data-drag-active={isDraggingFiles ? "true" : undefined}>
+      <div
+        className="session-input"
+        data-testid="session-input"
+        data-drag-active={isDraggingFiles ? "true" : undefined}
+      >
         <div className="composer-drop-overlay" aria-hidden="true">
           <Paperclip size={20} />
           <span>Drop to attach</span>
@@ -1363,6 +1368,7 @@ export function SessionComposer({
             // chip floor directly; compact, it becomes the anchor for the "…".
             <div
               className="composer-chips-context-group"
+              data-testid="composer-chips-context-group"
               data-compact-open={compactContextOpen ? "true" : undefined}
               ref={compactContextRef}
             >

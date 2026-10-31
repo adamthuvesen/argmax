@@ -108,7 +108,9 @@ describe("SessionComposer with the real editor", () => {
     renderConversation(baseSession());
     const view = editor();
     act(() => type(view, "look at @src"));
-    await waitFor(() => expect(document.getElementById("file-popover")).not.toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("listbox", { name: "File suggestions" })).toBeInTheDocument(),
+    );
 
     act(() => {
       press(view, "Enter");
@@ -132,7 +134,9 @@ describe("SessionComposer with the real editor", () => {
     renderConversation(baseSession(), [], { onSendSessionInput });
     const view = editor();
     act(() => type(view, "look at @src"));
-    await waitFor(() => expect(document.getElementById("file-popover")).not.toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("listbox", { name: "File suggestions" })).toBeInTheDocument(),
+    );
 
     act(() => {
       press(view, "Enter");

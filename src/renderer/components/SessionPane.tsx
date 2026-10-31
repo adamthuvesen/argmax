@@ -947,6 +947,7 @@ export function SessionPane({
       {isPanelResizing ? (
         <div
           className="session-panel-resize-shield"
+          data-testid="session-panel-resize-shield"
           data-browser-overlay="true"
           aria-hidden="true"
         />

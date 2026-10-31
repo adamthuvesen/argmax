@@ -859,6 +859,7 @@ function ReviewPanelPane({
                   ? "review-body review-body-terminal"
                   : "review-body"
         }
+        data-testid="review-body"
         onKeyDown={handleFilesModeKeyShortcut}
       >
         {isNew ? (
@@ -945,7 +946,11 @@ function ReviewPanelPane({
         ) : null}
         {terminalMounted && terminalWorkspaceId ? (
           <Suspense fallback={null}>
-            <div className="review-terminal-mount" hidden={!isTerminal}>
+            <div
+              className="review-terminal-mount"
+              data-testid="review-terminal-mount"
+              hidden={!isTerminal}
+            >
               <TerminalTabsPanel
                 key={terminalWorkspaceId}
                 workspaceId={terminalWorkspaceId}
@@ -985,7 +990,11 @@ function ReviewPanelPane({
         ) : null}
         {!isFileSurface ? null : (
           <>
-            <div className="review-list-col" style={{ width: effectiveLeftColumnWidth }}>
+            <div
+              className="review-list-col"
+              data-testid="review-list-col"
+              style={{ width: effectiveLeftColumnWidth }}
+            >
               {isChanges ? (
                 <>
                   {projectFolderChanges && projectFolderChanges.groups.length > 0 ? (
@@ -1058,6 +1067,7 @@ function ReviewPanelPane({
             className={
               isChanges ? "review-diff review-diff-changes" : "review-diff review-diff-files"
             }
+            data-testid="review-diff"
           >
             {isChanges ? (
               projectFolderChanges?.selection ? (
@@ -1141,7 +1151,7 @@ function ReviewPanelPane({
                         </span>
                       </div>
                       {expandedFilePath ? (
-                        <div className="review-diff-scroll">
+                        <div className="review-diff-scroll" data-testid="review-diff-scroll">
                           {review.diffState === "loading" ? (
                             <LinesSkeleton
                               rows={14}
@@ -1564,6 +1574,7 @@ export function ReviewPanel({
       {onResizePanelMouseDown ? (
         <div
           className="panel-col-resize-handle"
+          data-testid="panel-col-resize-handle"
           aria-hidden="true"
           onMouseDown={onResizePanelMouseDown}
         />

@@ -1,4 +1,4 @@
-import { act, cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { baseSession, renderConversation } from "../../test/sessionConversationTestHarness.js";
 import { readDraft } from "../lib/composerDrafts.js";
@@ -35,7 +35,7 @@ describe("SessionComposer window capture", () => {
     act(() => windowSnapshotInbox.deliver(capture));
 
     const region = screen.getByLabelText("Attached images");
-    expect(region.querySelectorAll("img")).toHaveLength(1);
+    expect(within(region).getAllByRole("presentation")).toHaveLength(1);
     expect(
       screen.getByRole("button", { name: "View window capture: Safari — Docs" }),
     ).toBeInTheDocument();

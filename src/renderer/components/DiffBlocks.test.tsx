@@ -107,13 +107,11 @@ describe("DiffBlocks", () => {
 
     // Highlighting lands a slice after the first paint, which shows plain text.
     expect(screen.getByText("const x = 42;")).toBeInTheDocument();
-    await waitFor(() =>
-      expect(document.querySelectorAll("span.hl-token").length).toBeGreaterThan(0),
-    );
+    await waitFor(() => expect(screen.queryAllByTestId("hl-token").length).toBeGreaterThan(0));
 
     // At least one token carries a non-empty color style.
-    const colored = Array.from(document.querySelectorAll("span.hl-token")).filter(
-      (node) => (node as HTMLElement).style.color !== "",
+    const colored = Array.from(screen.queryAllByTestId("hl-token")).filter(
+      (node) => node.style.color !== "",
     );
     expect(colored.length).toBeGreaterThan(0);
     expect(tokenizeLinesMock.mock.calls[0]?.[1]).toBe("typescript");
@@ -145,7 +143,7 @@ describe("DiffBlocks", () => {
 
     // No `.hl-token` spans because lang === null short-circuits before the
     // highlighter is consulted.
-    expect(document.querySelector("span.hl-token")).toBeNull();
+    expect(screen.queryByTestId("hl-token")).toBeNull();
     expect(screen.getByText("weird format")).toBeInTheDocument();
     expect(tokenizeLinesMock).not.toHaveBeenCalled();
   });
@@ -154,7 +152,7 @@ describe("DiffBlocks", () => {
     useHighlighterReadyMock.mockReturnValue(false);
     render(<DiffBlocks blocks={[TS_HUNK]} filePath="src/x.ts" />);
 
-    expect(document.querySelector("span.hl-token")).toBeNull();
+    expect(screen.queryByTestId("hl-token")).toBeNull();
     expect(screen.getByText("const x = 42;")).toBeInTheDocument();
     expect(tokenizeLinesMock).not.toHaveBeenCalled();
   });
@@ -341,7 +339,7 @@ describe("DiffBlocks", () => {
     );
 
     expect(screen.queryByText(TS_HUNK.header)).toBeNull();
-    expect(document.querySelector(".diff-line-rail")).not.toBeNull();
+    expect(screen.queryByTestId("diff-line-rail")).not.toBeNull();
     const gaps = screen.getAllByRole("button", { name: "Expand 16 unmodified lines" });
     expect(gaps[0]).toHaveAttribute("data-direction", "up");
     expect(gaps[1]).toHaveAttribute("data-direction", "down");

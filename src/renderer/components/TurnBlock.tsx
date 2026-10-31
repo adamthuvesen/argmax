@@ -284,8 +284,16 @@ export function TurnBlock({
   }, [hasBody]);
 
   return (
-    <div className="turn-block" data-running={running ? "true" : undefined}>
-      <div className="turn-block-header" data-brief={brief ? "true" : undefined}>
+    <div
+      className="turn-block"
+      data-testid="turn-block"
+      data-running={running ? "true" : undefined}
+    >
+      <div
+        className="turn-block-header"
+        data-testid="turn-block-header"
+        data-brief={brief ? "true" : undefined}
+      >
         {brief?.control ?? null}
         {headerTimestampLabel ? (
           <span
@@ -312,7 +320,12 @@ export function TurnBlock({
           >
             {liveStartMs !== null ? (
               <span>
-                Working for <span className="turn-block-elapsed" ref={liveRef} />
+                Working for{" "}
+                <span
+                  className="turn-block-elapsed"
+                  data-testid="turn-block-elapsed"
+                  ref={liveRef}
+                />
               </span>
             ) : (
               <span>{staticChipLabel}</span>
@@ -331,7 +344,11 @@ export function TurnBlock({
       </div>
       {brief?.quote ?? null}
       {renderedBody.length > 0 ? (
-        <div className="turn-block-body" data-just-revealed={justRevealed ? "true" : undefined}>
+        <div
+          className="turn-block-body"
+          data-testid="turn-block-body"
+          data-just-revealed={justRevealed ? "true" : undefined}
+        >
           {hiddenEarlierBodyCount > 0 ? (
             <ShowEarlier noun="activity" count={hiddenEarlierBodyCount} onClick={showEarlierBody} />
           ) : null}

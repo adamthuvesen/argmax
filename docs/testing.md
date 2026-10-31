@@ -18,7 +18,7 @@ npm run test:ios        # XCTest suite on a simulator (see "iPhone Tests" below)
 npm run lint:rust       # cargo clippy over every target, warnings are errors
 npm run check          # The fast lane: oxlint with type check, oxfmt --check, and check:static in parallel; CI js-static runs this
 npm run fix            # oxlint --fix, then oxfmt
-npm run lint           # oxlint with type check and the ratchet (part of check)
+npm run lint           # oxlint with type check and the argmax rules (part of check)
 npm run fmt:check      # oxfmt --check (part of check)
 npm run check:static   # Every static gate; push-gate runs this same list
 npm run slow           # The perf budgets and the Cargo tests
@@ -33,15 +33,15 @@ npm run verify:native   # Extra, slower lane: build and exercise a disposable ap
 
 ## Ratchets
 
-A common bad pattern fails only on new additions. The `argmax` oxlint rules in
-`scripts/oxlint-plugin.mjs` record existing violations in `lint-baseline.json`,
-and the Rust layer rules record them in `scripts/rust-boundaries-baseline.json`.
+The Rust layer rules record existing violations in
+`scripts/rust-boundaries-baseline.json`. They fail only on new additions.
 After you fix a violation, tighten the record:
 
 ```bash
-npm run lint -- --write-baseline
 node scripts/check-rust-boundaries.mjs --update
 ```
+
+The `argmax` oxlint rules in `scripts/oxlint-plugin.mjs` have no record. Any hit fails `npm run lint`.
 
 Do not add a new suppression. Use the fix that the error message names.
 

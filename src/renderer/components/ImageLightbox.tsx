@@ -74,7 +74,7 @@ export function ImageLightbox({
       aria-label={alt}
       onMouseDown={dismissUnlessOnImage}
     >
-      <div className="image-lightbox-content">
+      <div className="image-lightbox-content" data-testid="image-lightbox-content">
         <img ref={imageRef} className="image-lightbox-image" src={src} alt={alt} />
         <button
           ref={closeButtonRef}

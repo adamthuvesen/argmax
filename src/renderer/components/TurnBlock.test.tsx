@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TurnBlock, type TurnBodyChild, type TurnToolItem } from "./TurnBlock.js";
 import { __liveTimerTickForTest } from "../lib/liveTimer.js";
@@ -242,7 +242,7 @@ describe("TurnBlock", () => {
       kind: "tool",
       id: "disclosure",
       node: (
-        <details>
+        <details data-testid="tool-details">
           <summary>Inspect tool output</summary>
           <p>Tool output</p>
         </details>
@@ -252,7 +252,7 @@ describe("TurnBlock", () => {
       kind: "assistant",
       id: "plan",
       node: (
-        <details>
+        <details data-testid="plan-details">
           <summary>Plan</summary>
           <p>Review the changes</p>
         </details>
@@ -260,14 +260,14 @@ describe("TurnBlock", () => {
     };
     const props = { toolItems: [{ kind: "tool" as const, tool: tool() }], assistantTimestamps: [] };
     const { rerender } = render(<TurnBlock {...props} body={body(activity, disclosure)} />);
-    const toolDetails = screen.getByText("Inspect tool output").closest("details");
-    expect(toolDetails).not.toBeNull();
+    const toolDetails = screen.getByTestId("tool-details");
+    expect(toolDetails).toContainElement(screen.getByText("Inspect tool output"));
     fireEvent.click(screen.getByText("Inspect tool output"));
     expect(toolDetails).toHaveAttribute("open");
 
     rerender(<TurnBlock {...props} body={body(activity, disclosure, plan)} />);
-    const planDetails = screen.getByText("Plan").closest("details");
-    expect(planDetails).not.toBeNull();
+    const planDetails = screen.getByTestId("plan-details");
+    expect(planDetails).toContainElement(screen.getByText("Plan"));
     fireEvent.click(screen.getByText("Plan"));
     expect(planDetails).toHaveAttribute("open");
 
@@ -277,8 +277,10 @@ describe("TurnBlock", () => {
         body={body(plan, activity, disclosure, assistantChild("reply", "Done"))}
       />,
     );
-    expect(screen.getByText("Inspect tool output").closest("details")).toBe(toolDetails);
-    expect(screen.getByText("Plan").closest("details")).toBe(planDetails);
+    expect(screen.getByTestId("tool-details")).toBe(toolDetails);
+    expect(screen.getByTestId("plan-details")).toBe(planDetails);
+    expect(toolDetails).toContainElement(screen.getByText("Inspect tool output"));
+    expect(planDetails).toContainElement(screen.getByText("Plan"));
     expect(toolDetails).toHaveAttribute("open");
     expect(planDetails).toHaveAttribute("open");
     expect(screen.getByText("Done")).toBeInTheDocument();
@@ -317,7 +319,7 @@ describe("TurnBlock", () => {
     const start = Date.parse("2026-05-12T15:00:00.000Z");
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(start);
     try {
-      const { container } = render(
+      render(
         <TurnBlock
           toolItems={[]}
           assistantTimestamps={[]}
@@ -326,20 +328,21 @@ describe("TurnBlock", () => {
           turnStartedAtMs={start}
         />,
       );
-      const live = container.querySelector(".turn-block-chip span span");
-      expect(live).not.toBeNull();
-      expect(live?.textContent).toBe("0s");
+      const live = within(screen.getByRole("button", { name: "Working" })).getByTestId(
+        "turn-block-elapsed",
+      );
+      expect(live.textContent).toBe("0s");
       // Mid-second: chip must still read "0s" — no 0.4s noise.
       nowSpy.mockReturnValue(start + 400);
       __liveTimerTickForTest();
-      expect(live!.textContent).toBe("0s");
+      expect(live.textContent).toBe("0s");
       // A full second later: ticker flips to "1s".
       nowSpy.mockReturnValue(start + 1_000);
       __liveTimerTickForTest();
-      expect(live!.textContent).toBe("1s");
+      expect(live.textContent).toBe("1s");
       nowSpy.mockReturnValue(start + 3_750);
       __liveTimerTickForTest();
-      expect(live!.textContent).toBe("3s");
+      expect(live.textContent).toBe("3s");
     } finally {
       nowSpy.mockRestore();
     }

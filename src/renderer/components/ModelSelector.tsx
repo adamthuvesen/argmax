@@ -868,6 +868,7 @@ function ChipModelPicker<T extends ProviderModelSelection>({
   const modelPickerFlyout = (
     <div
       className={`model-picker-flyout${portaled ? " picker-popover-portaled" : ""}`}
+      data-testid="model-picker-flyout"
       // The menu reads at app-chrome size even when the chip that opened it
       // sits in a composer (one step up). See tokens.css.
       data-type-scale="chrome"

@@ -1007,8 +1007,7 @@ describe("BrowserPanel", () => {
         onClose={() => undefined}
       />,
     );
-    const surface = document.querySelector(".browser-panel-surface");
-    if (!(surface instanceof HTMLElement)) throw new Error("no browser surface");
+    const surface = screen.getByTestId("browser-surface");
     stubRect(surface, { x: 800, y: 60, width: 400, height: 740 });
 
     const paneDialog = appendDialog({ x: 100, y: 200, width: 400, height: 200 }, attribute, value);
@@ -1030,7 +1029,10 @@ describe("BrowserPanel", () => {
     // The hidden page leaves a still of itself behind, not an empty hole.
     expect(browserStub.screenshot).toHaveBeenCalledWith({ tabId: activeTabId() });
     await waitFor(() =>
-      expect(surface.querySelector("img")).toHaveAttribute("src", "data:image/png;base64,c3RpbGw="),
+      expect(within(surface).getByTestId("browser-frozen-frame")).toHaveAttribute(
+        "src",
+        "data:image/png;base64,c3RpbGw=",
+      ),
     );
     overlapping.remove();
     await act(async () => {
@@ -1039,7 +1041,7 @@ describe("BrowserPanel", () => {
     expect(browserStub.setBounds).toHaveBeenLastCalledWith(
       expect.objectContaining({ visible: true, tabId: activeTabId() }),
     );
-    expect(surface.querySelector("img")).toBeNull();
+    expect(within(surface).queryByTestId("browser-frozen-frame")).toBeNull();
   });
 
   it("repositions the native webview when a review pane moves without resizing", async () => {

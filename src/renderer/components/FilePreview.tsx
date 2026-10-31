@@ -359,7 +359,9 @@ export function FilePreview({
                 return isMermaidFenceClass(classes) ? (
                   <>{children}</>
                 ) : (
-                  <pre {...rest}>{children}</pre>
+                  <pre {...rest} data-testid="markdown-code-block">
+                    {children}
+                  </pre>
                 );
               },
               code: ({ className, children, ...rest }) => {

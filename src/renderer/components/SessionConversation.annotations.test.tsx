@@ -232,7 +232,7 @@ describe("SessionConversation selection annotations", () => {
     const prompt = screen.getByLabelText("Chat prompt");
     fireEvent.change(prompt, { target: { value: "draft text" } });
     const range = document.createRange();
-    range.selectNodeContents(prompt.parentElement as HTMLElement);
+    range.selectNode(prompt);
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);

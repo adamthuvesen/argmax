@@ -1,6 +1,6 @@
 # AGENTS.md: Argmax
 
-Argmax is a local Tauri desktop app that orchestrates AI coding agents (Claude Code, Codex, Cursor, OpenCode, Grok Build) in parallel git worktrees. Single-user, on-device, no cloud, no auth.
+Argmax is a local Tauri desktop app that orchestrates AI coding agents (Claude Code, Codex, Cursor, OpenCode, Grok Build) in parallel git worktrees. App state is local. Provider CLIs use their own services and authentication. Optional remote access uses Tailscale.
 
 User-level guidance (tone, principles, git etiquette) lives in `~/.claude/CLAUDE.md` and `~/dotfiles/agents/AGENTS.md` and is *not* duplicated here. This file is for project-specific facts.
 
@@ -59,9 +59,9 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 - **Provider protocol output is not chat.** Visible chat comes from normalized timeline events; raw transcript fallback is only for human-readable stdout/stderr.
 - **An image reaches the user only through Markdown.** `![what it shows](path)` on its own line, pointing inside the checkout or at a path Argmax handed you (a `browser_screenshot`'s `path`). An image a tool returned lands in the model's context, not the chat, and a remote `http(s)` image is drawn as a link rather than fetched. See [docs/chat-cards.md](docs/chat-cards.md).
 - **A diagram reaches the user as a mermaid fence.** A fenced `mermaid` / `mmd` block in the answer is drawn as SVG, wider than the prose column. Prefer mermaid for architecture, sequence, and flow; prefer a Markdown image for a screenshot or chart already on disk. Skip hex `classDef` / `style` colors — Argmax themes the diagram. See [docs/chat-cards.md](docs/chat-cards.md).
-- **Dashboard state is SQLite-first and delta-driven.** Focused reads plus `dashboard:delta`; no recurring renderer poll.
+- **Dashboard state is SQLite-first and delta-driven.** Focused reads and `dashboard:delta` carry updates. See [runtime](docs/runtime.md#event-delivery) for the running-session fallback.
 - **Thinking state yields to content.** Hide the pre-answer Thinking bubble as soon as any visible assistant event arrives.
-- **Auto-approve is the default permission mode.** Keep provider bypass flags centralized in [src-tauri/src/providers/adapters.rs](src-tauri/src/providers/adapters.rs).
+- **Provider defaults apply to new installations.** Keep permission handling consistent with [approvals and checks](docs/approvals-checks.md).
 - **The mascot and the app icon are one sprite.** [assets/fox-mascot.txt](assets/fox-mascot.txt) is the source; [Mascot.tsx](src/renderer/components/Mascot.tsx) and [scripts/build-icons.mjs](scripts/build-icons.mjs) both read it, so an edit moves both. Icon artifacts are generated — run `npm run build:icons` and never hand-edit `assets/icon*`, `assets/Argmax.icon`, `src-tauri/icons`, or `ios/Argmax/Sources/Assets.xcassets`. See [docs/release.md](docs/release.md). The expression sprites ([fox-mascot-wink.txt](assets/fox-mascot-wink.txt), `-sleepy`, `-shades`) share that grid and palette and are read only by `Mascot.tsx`, so a body edit to the base sprite has to be mirrored into all three.
 - **SQLite migrations are append-only and checksummed.** Never edit an applied migration; see [docs/data.md](docs/data.md).
 - **Never commit secrets, `.env`, or AI-attribution lines.**

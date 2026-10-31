@@ -57,10 +57,22 @@ export function checkFile(path, { fast = false } = {}) {
   return problems;
 }
 
+function commandFailure(result, command) {
+  if (result.error) return [`${command} could not run: ${result.error.message}`];
+  if (result.signal) return [`${command} stopped by ${result.signal}. Run the check again.`];
+  return [];
+}
+
 function checkTypescript(files) {
   const result = runNode("node_modules/typescript-7/bin/tsc", "--noEmit");
   if (result.status === 0) return [];
-  return outputLines(result).filter((line) => files.some((file) => line.startsWith(file)));
+  const failure = commandFailure(result, "TypeScript");
+  if (failure.length) return failure;
+  const lines = outputLines(result);
+  const diagnostics = lines.filter((line) => /^.+\(\d+,\d+\): error TS\d+:/.test(line));
+  const globalErrors = lines.filter((line) => !diagnostics.includes(line) && /error|Error/.test(line));
+  if (!diagnostics.length && !globalErrors.length) return ["TypeScript failed. Run: npm run typecheck", ...lines];
+  return [...diagnostics.filter((line) => files.some((file) => line.startsWith(`${file}(`))), ...globalErrors];
 }
 
 function checkEslint(files) {
@@ -91,7 +103,16 @@ function checkRustCompiles(files) {
   if (!files.some((file) => file.endsWith(".rs"))) return [];
   const result = run("cargo", ["check", "--manifest-path", "src-tauri/Cargo.toml", "--workspace", "--message-format", "short"]);
   if (result.status === 0) return [];
-  return outputLines(result).filter((line) => line.includes(": error") && isOwnedError(line, files));
+  const failure = commandFailure(result, "cargo check");
+  if (failure.length) return failure;
+  const lines = outputLines(result);
+  const diagnostics = lines.filter((line) => /^.+\.rs:\d+:\d+: error/.test(line));
+  const globalErrors = lines.filter((line) =>
+    !diagnostics.includes(line) && /(?:^|: )error(?:\[|:)/.test(line) &&
+    !(diagnostics.length && /^error: could not compile .+ due to \d+ previous errors?/.test(line))
+  );
+  if (!diagnostics.length && !globalErrors.length) return ["cargo check failed. Run: cargo check --manifest-path src-tauri/Cargo.toml --workspace", ...lines];
+  return [...diagnostics.filter((line) => isOwnedError(line, files)), ...globalErrors];
 }
 
 /** Every per-file check plus the program-wide ones, filtered to `files`. */

@@ -82,7 +82,7 @@ JS loops that CSS pausing cannot reach check `document.hidden` themselves.
 - The chat typewriter runs on the animation frame and catches up silently on return. Pausing made every finished bubble type out together. All revealing blocks share one frame loop, so React batches them into one render per frame.
 - The open-agent poll in [AgentActivity](../src/renderer/components/AgentActivity.tsx) runs only for the shown tab. A tab shown again reloads, because Codex and Cursor child traces are imported by that read.
 
-General session tails have no interval. A post-commit push hint asks the subscribed timeline to read its durable feed.
+A post-commit push hint asks the subscribed timeline to read its durable feed. The selected running session also uses a polling fallback. See [runtime](runtime.md#event-delivery).
 
 ## Transcript size
 

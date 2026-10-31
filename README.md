@@ -74,7 +74,7 @@ npx vite --host 127.0.0.1
 - [Scheduled tasks](docs/scheduled-tasks.md): run saved prompts on a schedule while the app is running. Missed runs collapse into one run when it reopens.
 - [Usage](docs/usage.md): inspect tokens and cost estimates. Coverage varies by provider, and list-price estimates can differ from subscription charges.
 - [Mobile access](docs/remote.md): enable Remote access in Settings and pair a phone over Tailscale.
-- [Approvals and checks](docs/approvals-checks.md): auto-approve is the default. Native permission handling varies by provider.
+- [Approvals and checks](docs/approvals-checks.md): provider defaults apply to new installations. Native permission handling varies by provider.
 
 ## Stack
 

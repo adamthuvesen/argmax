@@ -123,7 +123,7 @@ Workspaces with a live **reason** or a live turn share the Priority section. A r
 | `pr-open` | the attributed PR at `OPEN` | the PR merging or closing |
 
 - Reasons never expire with time.
-- Opening a chat resolves `review-ready` and nothing else. Unread state is per device ([sessionUnread.ts](../src/renderer/lib/sessionUnread.ts)), so the phone and desktop disagree on purpose.
+- Opening a chat resolves `review-ready` and nothing else. The host shares the viewed watermark across desktop and phone ([sessionUnread.ts](../src/renderer/lib/sessionUnread.ts)).
 - "Done" clears every reason already true, and nothing that happens later. A PR going red after a dismissal brings the row back. Each reason carries its own `since` for that comparison.
 - A row listed only for its running turn has no "Done".
 - Clearing does not mark a chat read.
@@ -138,7 +138,7 @@ A snooze is display metadata. `workspaces.snoozed_until` is the only thing writt
 
 Arcs sit above every other section, because a body of work across projects does not nest under one. State is shown as text, never color alone ([arcs.md](arcs.md)).
 
-Unread stamps live in `localStorage`, so existing history does not light up on first sight. A turn in flight keeps the working nest, and the unread dot waits. A shared checkout needs session evidence for its PR glyph, so later checkout changes cannot assign another session's PR to an old chat ([gh.md](gh.md#session-prs)).
+The host stores viewed watermarks. Local stamps support older hosts and standalone previews. A turn in flight keeps the working nest, and the unread dot waits. A shared checkout needs session evidence for its PR glyph, so later checkout changes cannot assign another session's PR to an old chat ([gh.md](gh.md#session-prs)).
 
 ## Review
 

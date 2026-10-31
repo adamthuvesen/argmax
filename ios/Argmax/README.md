@@ -205,9 +205,8 @@ The Usage page carries the desktop's remaining read:
   the foreground, so the screen opens with numbers rather than the second the
   Mac spends asking five providers. A read inside two minutes is skipped and
   a stale one runs under the rows already on screen; nothing polls, because
-  Claude's endpoint is rate-limited. The ledger
-  above it on the desktop, spend per provider, is not here: it is a page, and
-  it reads no better for being squeezed into a group.
+  Claude's endpoint is rate-limited. The Usage view also shows provider spend
+  above this card.
 - `Sources/Insights/RouterViews.swift` — the desktop's Router card below it:
   what each Auto tier cost, with median turn and first-answer times
   ([docs/usage.md](../../docs/usage.md#router-cost)). One block per tier in

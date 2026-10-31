@@ -65,7 +65,7 @@ support only `<6.1`, and editors load their language service from it.
 
 Workflow changes run both language lanes. Paths are read from Git without quoting,
 so spaces and non-ASCII filenames cannot hide a change. Documentation-only
-changes skip checks. An unclassified path runs both language lanes until it is
+changes run the static checks and skip the language lanes. An unclassified path runs both language lanes until it is
 deliberately classified.
 
 CI runs the same lanes with the same path filter. CI also runs `npm audit` and

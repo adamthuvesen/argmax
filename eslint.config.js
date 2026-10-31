@@ -60,6 +60,17 @@ export default tseslint.config(
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-misused-promises": "error",
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^\\.{1,2}/(?!.*\\.(js|mjs|css|json|txt|svg|png)(\\?.*)?$)",
+              message: "End a relative import in .js, even for a .ts or .tsx file: import { foo } from \"./foo.js\"."
+            }
+          ]
+        }
+      ],
       // Pinned explicitly so it's not silently dropped if the recommended
       // ruleset spread (line 22) changes upstream. Kept at "warn" because a
       // few intentional split-deps patterns in the renderer hooks would

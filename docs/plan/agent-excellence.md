@@ -40,6 +40,21 @@ an exhaustive `isConversationVisible`.
 | 5. Desktop and iOS | Generated response types. Shared case tables. iOS tests in the gate. Pure scroll models. | Tables fail on the known verbosity divergences. |
 | 6. Prose | Generate or delete facts that code owns. Remove rules that checks now enforce. | `check:docs` passes. The model recipe is one step. |
 
+## Result (2026-11-04)
+
+| Measure | Before | After |
+|---|---|---|
+| Files to edit by hand to retire a model | up to 12 | 1 to 4 |
+| Rust compile errors when a provider is added | silent fallthrough at string matches | 34 |
+| Components that call `window.argmax` | 47 | 0 |
+| Files with SQL outside the store | 29 | 11 |
+| Production git commands outside `git_exec` | 2 | 0 |
+| Production imports of `ipc` below the transport edge | 32 files | 0 |
+| Paths that write a turn end by hand | 5 | 0 |
+| Hand-written Swift `Codable` declarations | 90 | 79 |
+| iOS tests in the gate | 0 | 494 |
+| Bytes in the 10 largest subsystem docs | 491,574 | about 164,500 |
+
 ## Metric
 
 Files an agent must edit by hand for each change recipe (model, provider,

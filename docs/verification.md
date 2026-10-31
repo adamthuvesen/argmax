@@ -40,7 +40,7 @@ Native `cancellation` waits past the early-stop window to verify a retained canc
 
 `npm run precheck` runs the CI checks scoped to what the branch changed, and `git push` runs it as a hook ([testing.md](testing.md)). Run them always. Everything above this rung exists for claims these cannot make.
 
-For the Usage page, `node scripts/check-usage-oracle.mjs --days 7` proves the numbers ([usage.md](usage.md#checking-the-numbers)).
+For the Usage page, `node scripts/check-usage-oracle.mjs --days 7` compares the ledger with external tools ([usage.md](usage.md#checking-the-numbers)).
 
 ## Rung 2: the renderer in a real browser
 
@@ -81,11 +81,8 @@ What to expect:
 - **A Rust edit restarts the binary** and kills every session it hosts. Keep only throwaway chats there.
 - **Never quit, kill, or replace the installed app** from a chat it hosts, because that ends the provider mid-turn. Build in the workspace and give the user the install steps.
 
-To stop it, end both processes. A stale binary keeps the profile's lock:
-
-```bash
-pkill -f 'node_modules/.bin/tauri dev'; pkill -f 'target/debug/argmax$'
-```
+To stop it, interrupt the terminal session that started it. If the dev binary remains,
+identify its PID and stop only that process. A stale binary keeps the profile's lock.
 
 The main checkout carries other sessions' edits, and one can break the Rust build. Run from a worktree at a known commit instead, sharing compiled dependencies:
 

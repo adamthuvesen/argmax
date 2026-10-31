@@ -43,6 +43,17 @@ function parseGrid(source: string): ReadonlyArray<string> {
 const GRID: ReadonlyArray<string> = parseGrid(baseSprite);
 const GRID_W = GRID[0].length;
 
+/** An expression file is an overlay: `-` lets the base sprite's pixel through. */
+function withExpression(overlay: string): ReadonlyArray<string> {
+  const face = parseGrid(overlay);
+  if (face.length !== GRID.length || face.some((row) => row.length !== GRID_W)) {
+    throw new Error(`Mascot overlay must be ${GRID_W}x${GRID.length}, the size of assets/fox-mascot.txt`);
+  }
+  return GRID.map((row, y) =>
+    Array.from(row, (cell, x) => (face[y].charAt(x) === "-" ? cell : face[y].charAt(x))).join("")
+  );
+}
+
 // The sprite is wide and short, so the viewBox is squared off below it: the fox
 // keeps the top of a square mark, and callers still size it with one number.
 const VIEW = GRID_W;
@@ -103,17 +114,16 @@ function coverCells(grid: ReadonlyArray<string>, cell: string): SpriteRect[] {
 
 type SpriteLayers = ReadonlyArray<{ className: string; rects: SpriteRect[] }>;
 
-function layersFor(source: string): SpriteLayers {
-  const grid = parseGrid(source);
+function layersFor(grid: ReadonlyArray<string>): SpriteLayers {
   return LAYERS.map(({ cell, className }) => ({ className, rects: coverCells(grid, cell) }));
 }
 
 // Built once at module load, not per render: the sprites never change.
 const SPRITE_LAYERS: Record<SpriteName, SpriteLayers> = {
-  base: layersFor(baseSprite),
-  wink: layersFor(winkSprite),
-  sleepy: layersFor(sleepySprite),
-  shades: layersFor(shadesSprite)
+  base: layersFor(GRID),
+  wink: layersFor(withExpression(winkSprite)),
+  sleepy: layersFor(withExpression(sleepySprite)),
+  shades: layersFor(withExpression(shadesSprite))
 };
 
 const PET_DURATION_MS = 700;

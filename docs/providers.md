@@ -128,10 +128,7 @@ It does not establish compatibility with a newly released provider CLI.
 
 ## Permissions and Approvals
 
-Native permission gates are reported in `ProviderCapabilityReport.approvalSupport`.
-- Claude, Codex, and Grok: Observable-only in structured PTY mode. Gate events become `permission.blocked` notifications.
-- Cursor and OpenCode: Native gate detection is unsupported.
-- Approval rows store provider correlation fields as opaque payload data without mocking user approval responses.
+Provider permission modes and native approval transports are described in [approvals and checks](approvals-checks.md).
 
 ## Linked repositories in a launch
 
@@ -274,7 +271,7 @@ account and a temporary project.
 - **Returning to a provider:** see [Native continuity and forks](#native-continuity-and-forks). A provider switch parks the old conversation instead of forgetting it.
 - **Forking:** `session:fork` forks a chat at a finished turn, or the whole chat. See [Native continuity and forks](#native-continuity-and-forks).
 - **Session moves:** An agent-requested move waits for the current turn to settle and copies the transcript into a fresh session at the destination. A cross-project move always clears `provider_conversation_id`. A move to another checkout of the same project carries it where the provider allows — see below. The first destination turn receives the handoff note, plus the capped transcript when the conversation did not travel.
-- **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). A fresh install starts on Opus 5 at Medium. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
+- **Default agent:** one model and one reasoning effort for the whole app (Settings → Agents), not a per-project setting. A model that doesn't offer the chosen effort runs at Medium instead, and failing that at the nearest level it does offer — see `effortForModel` in [providerModels.ts](../src/shared/providerModels.ts). The fresh-install default comes from the provider catalogue. The renderer owns the preference and mirrors it through `system:set-default-agent` so the sessions Argmax starts on its own (the PR check-failure fix chat) use it too.
 - **Fast mode:** The model catalog explicitly marks eligible models. The picker offers the Fast mode row and shows the Fast indicator only for those entries, and launch and follow-up requests gate the saved preference by that eligibility. Eligible today: Codex Astra, Sol, Terra, and Luna (`serviceTier: "priority"` per turn), Grok 4.7 (`grok-4.7-build-fast` on ACP and the CLI), Claude Opus 5.5 (`"fastMode": true` in `--settings`, twice the price), and every Cursor model whose ACP config has a `fast` option (Grok 4.7, GPT-5.6 Sol/Terra/Luna, Opus 5.5; not Gemini 3.8 Flash or Auto). Composer 2.5 always runs Fast (`cursor_fast_mode` in `adapters.rs`), so it shows no toggle: on a 12-file turn it finished in 39.5 s against 62 s standard (2026-10-02), at 6x the per-token price. Availability depends on the provider account. OpenCode has none. [Claude's documentation](https://code.claude.com/docs/en/fast-mode) limits Fast to Opus 5.5, 5 and 4.8 and says enabling it on another model switches to Opus, so the rest of the Claude catalog stays ineligible. Unknown models default to ineligible. The picker's control is the **Fast mode** row at the foot of the list (Off / On); it is not called Speed because that names a Router tier. [Codex's speed documentation](https://learn.chatgpt.com/docs/agent-configuration/speed) covers Astra and the GPT-5.6 family.
 - **Reasoning effort:** Claude gets the CLI's `--effort` flag (low → max; Ultra clamps to max, the flag's ceiling). The appended system prompt never varies with effort, while cache reuse still depends on the model and endpoint below. Codex app-server receives the effort per turn (Astra/Sol/Terra through ultra, Luna through max). Cursor ACP sets it as the model's `thought_level` config option, described below. Legacy CLI builders retain Codex's `service_tier` and `model_reasoning_effort` overrides and Cursor's effort and `-fast` model suffixes for helper flows. Grok's CLI accepts only low/medium/high/xhigh, so Max and Ultra clamp to xhigh.
 - **Context window:** Claude's 1M models launch on the `[1m]` spelling of their id (`claude-opus-5-5[1m]`, `claude-opus-5[1m]`, `claude-fable-5-1[1m]`), since the CLI only resolves a bare id's window through a first-party lookup — behind a custom `ANTHROPIC_BASE_URL` it assumes 200k and auto-compacts there, a fifth of the way into the advertised window. The suffix rides on the launch flag alone; the CLI reports the bare id back, so usage and pricing are unchanged. The catalog's `contextWindow` decides which ids get it (`CLAUDE_LONG_CONTEXT_MODELS` in [adapters.rs](../src-tauri/src/providers/adapters.rs)).
@@ -775,14 +772,10 @@ The iPhone resolves labels through `ProviderCatalog.swift`.
 
 ### Where Fast mode is decided
 
-The catalogue flag `supportsFastMode` drives the renderer. The Rust side has no
-shared table: [adapters.rs](../src-tauri/src/providers/adapters.rs) decides per
-CLI (`cursor_fast_mode` forces Composer 2.5 on Fast and excludes
-`gemini-3.8-flash`; `codex_fast_mode_args` handles Codex). Internal launches
-(multitask, goals, session control, follow-up flush, ACP/OpenCode servers) pass
-`fast_mode: false`; list them with `grep -rn "fast_mode: false" src-tauri/src`.
-The parametrised test in `useSessionCommands.test.tsx` reads the catalogue, so a
-catalogue change moves it with the code.
+The catalogue flag `supportsFastMode` drives the renderer and is projected into
+Rust. [adapters.rs](../src-tauri/src/providers/adapters.rs) applies the
+provider-specific launch options. The parametrised test in
+`useSessionCommands.test.tsx` reads the catalogue.
 
 ## Default Model Selection
 

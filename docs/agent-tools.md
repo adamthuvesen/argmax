@@ -31,7 +31,7 @@ Tool arguments are snake_case on the wire, and results are camelCase. `session_r
 
 **A launch can target a checkout.** `path` is an existing working tree of the target project. `worktree` creates a new isolated one, and the two are mutually exclusive. `branch` is the ref to work from. Launch never switches another checkout's branch.
 
-Project check runs on this launch ([routing.md](routing.md#project-check)). `model: "auto"` routes it ([routing.md](routing.md)). `provider` and `model` default to the caller's own, so an agent that names neither launches a peer of itself. A named model is passed to the CLI as-is, because Rust has no model-label catalog.
+Project check runs on this launch ([routing.md](routing.md#project-check)). `model: "auto"` routes it ([routing.md](routing.md)). `provider` and `model` default to the caller's own, so an agent that names neither launches a peer of itself. A named model uses a fallback display label. Before launch, the provider model catalogue resolves retired IDs to their successors.
 
 ### Retrying a launch
 
@@ -231,18 +231,18 @@ The server is `argmax mcp`, the same binary as the app, forwarding each call ove
 |---|---|---|
 | Claude | `--mcp-config '<inline json>'` | no |
 | Codex | `-c mcp_servers.argmax.*` | no |
-| Cursor (composer, ACP) | `session/new` and `session/load` | no |
+| Cursor (ACP) | `session/new` and `session/load` | no |
 | OpenCode | `OPENCODE_CONFIG_CONTENT`, merged over the user's config | no |
-| Cursor (other models, PTY) | `<workspace>/.cursor/mcp.json`, merged | yes, restored at exit |
+| Cursor (fork fallback, PTY) | `<workspace>/.cursor/mcp.json`, merged | yes, restored at exit |
 | Grok Build | `<workspace>/.grok/config.toml` and a folder-trust grant | yes, removed at exit |
 
 [mcp_injection.rs](../src-tauri/src/providers/mcp_injection.rs) is the one place that knows which is which. None of them displaces the user's own servers, so `--strict-mcp-config` is deliberately not passed. A file Argmax cannot parse is left alone and the tools stay off for that launch, which beats destroying a working config.
 
-Host policy lives on the server's `instructions` field. The user prompt is the user's prompt. Claude import strips the old prefix from older transcripts when titling a session. The `argmax session …` CLI ([cli.rs](../src-tauri/src/session_control/cli.rs)) still reaches a session from a terminal.
+Host policy lives on the server's `instructions` field. Provider-facing prompts also carry a short Argmax routing instruction. Argmax retains the original user text and strips the instruction from imported transcripts. The `argmax session …` CLI ([cli.rs](../src-tauri/src/session_control/cli.rs)) still reaches a session from a terminal.
 
 ### The two that write a file
 
-Cursor's one-shot path has no per-launch MCP flag, and `CURSOR_CONFIG_DIR` moves authentication too. Grok's config overlays cannot spawn a command. A project-scoped file is the only way in for both.
+Cursor's fork fallback has no per-launch MCP flag, and `CURSOR_CONFIG_DIR` moves authentication too. Grok's config overlays cannot spawn a command. A project-scoped file is the only way in for both.
 
 A file written into a checkout goes into `info/exclude` first, so a launch never makes the repository look dirty. Only a directory the launch itself created is excluded, because hiding a directory the user keeps would be a worse surprise.
 

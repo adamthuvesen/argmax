@@ -529,7 +529,7 @@ pub fn run() {
             // the user's rc files cost. Every git command needs its PATH, so
             // pay it here on a plain thread rather than letting the first
             // status poll block a runtime worker on someone else's `.zshrc`.
-            std::thread::spawn(util::login_shell::warm);
+            std::thread::spawn(argmax_process::login_shell::warm);
             // Warm provider discovery in the background so the first surface
             // that needs it (WelcomePane, settings, launcher availability)
             // reads cached reports instead of paying the cold probe cost
@@ -1336,7 +1336,7 @@ const SYNC_SWEEP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(
 /// Poll for sessions started outside Argmax. The first sweep is also the
 /// catch-up for everything that happened while the app was closed.
 async fn sync_sweep_loop(app: tauri::AppHandle) {
-    use crate::util::sync::LockOrRecover;
+    use argmax_store::sync::LockOrRecover;
     use tauri::Manager;
 
     let Ok(app_data_dir) = crate::util::data_dir::app_data_dir(&app) else {
@@ -1562,7 +1562,7 @@ async fn archive_merged_workspace(
     let result = match context.cleanup {
         MergeCleanup::Off => return,
         MergeCleanup::Archive => {
-            let workspace_id = match ipc::validation::WorkspaceId::try_from(
+            let workspace_id = match argmax_contracts::validation::WorkspaceId::try_from(
                 context.workspace_id.clone(),
             ) {
                 Ok(workspace_id) => workspace_id,

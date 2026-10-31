@@ -11,13 +11,13 @@ use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_shell::ShellExt;
 
 use super::inputs::*;
-use super::validation::ThemeMode;
 use super::{live_database, read_off_main};
 use crate::ide::detection::{detect_installed_ides, DetectedIde};
 use crate::state::AppState;
 use crate::util::log_buffer::LogEntry;
 use crate::util::performance::{PerformanceCapture, PerformanceStatus};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ThemeMode;
 use argmax_store::database::{vacuum_database, ReaderPoolStats};
 use argmax_store::diagnostics::{count_rows, pragma_i64, pragma_string, sqlite_version};
 

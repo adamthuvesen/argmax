@@ -10,10 +10,10 @@ use std::{
 use crate::support::git_repo::seed_git_repo;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{NonEmptyString, Prompt, WorkspaceId};
 use argmax_lib::{
     arcs::{launch_coordinator, promote_session, LaunchCoordinatorRequest, PromoteSessionRequest},
     ipc::inputs::{ProvidersLaunchInput, TerminalCols, TerminalRows},
-    ipc::validation::{NonEmptyString, Prompt, WorkspaceId},
     providers::{
         normalizer::ProviderOutputStream,
         runtime::{

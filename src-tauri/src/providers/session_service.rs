@@ -19,7 +19,7 @@ use std::{
     time::Duration,
 };
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 use specta::Type;
@@ -52,7 +52,6 @@ use super::{
     AgentMode, ApprovalSupport, LaunchContinuity, PermissionMode, ProviderId, ProviderLaunchInput,
 };
 use crate::{
-    application::validation::{NonEmptyString, Prompt, SessionId},
     approvals::service::ApprovalService,
     checkpoints::service::{CheckpointService, CreateCheckpointInput},
     gh::service::{pr_numbers_from_command_event, GhService},
@@ -68,6 +67,7 @@ use crate::{
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
 use argmax_store::authorship::PersonAttestation;
 use argmax_store::{
     arc_events::{record_arc_event, ArcEventKind, NewArcEvent},
@@ -5160,8 +5160,8 @@ mod tests {
     }
 
     use super::*;
-    use crate::application::validation::ReasoningEffort;
     use crate::providers::runtime::{BoxFuture, EventCallback};
+    use argmax_contracts::validation::ReasoningEffort;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]

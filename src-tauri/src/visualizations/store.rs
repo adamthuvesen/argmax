@@ -639,8 +639,7 @@ mod tests {
         assert!(store.read("other", &artifact.id).is_err());
         crate::attachments::store::AttachmentStore::from_data_dir(dir.path())
             .prune_session(
-                &crate::application::validation::SessionId::try_from("session".to_string())
-                    .unwrap(),
+                &argmax_contracts::validation::SessionId::try_from("session".to_string()).unwrap(),
             )
             .unwrap();
         assert!(store.read("session", &artifact.id).is_err());

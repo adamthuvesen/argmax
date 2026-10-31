@@ -4,7 +4,7 @@
 use std::fmt;
 use std::ops::Deref;
 
-use crate::application::validation::{ProviderId, ReasoningEffort};
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 
 /// One row of `PROVIDER_MODELS` or `STORED_ONLY_MODELS`. A stored-only row has
 /// no label, because the picker does not offer it.

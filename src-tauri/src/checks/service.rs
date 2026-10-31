@@ -2,7 +2,7 @@
 // output capture, sensitive-env filtering, per-workspace cancellation, and
 // process-group SIGTERM/SIGKILL escalation.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::{HashMap, VecDeque},
     process::Stdio,
@@ -21,10 +21,10 @@ use uuid::Uuid;
 
 use crate::approvals::dangerous_action_policy::{classify_command_risk, CommandRiskLevel};
 use crate::git::ops::checkout_write_lock;
-use crate::util::login_shell;
 use crate::util::process_control::terminate_process_group_with_escalation;
 use crate::workspaces::lifecycle::WorkspaceLifecycle;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_process::login_shell;
 use argmax_store::checks::{
     persist_check, update_check, CheckRun, PersistCheckInput, UpdateCheckInput,
 };

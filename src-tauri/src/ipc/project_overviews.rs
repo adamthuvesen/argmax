@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::State;
 
-use super::validation::ProjectId;
 use super::{live_database, read_off_main};
 use crate::providers::one_shot::ProjectOverviewAnswer;
 use crate::state::AppState;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProjectId;
 use argmax_store::{
     project_overviews as store,
     projects::{require_project, ProjectSummary},

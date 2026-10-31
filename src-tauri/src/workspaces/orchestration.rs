@@ -43,7 +43,6 @@ use crate::providers::cursor_acp::CursorAcpSessions;
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::session_service::ProviderSessionService;
 use crate::terminal::service::TerminalService;
-use crate::util::sync::LockOrRecover;
 use crate::util::workspace_paths::normalize;
 use crate::workspaces::branch_names::{
     render_branch_step, BranchNameParts, BranchStep, DEFAULT_BRANCH_TEMPLATE,
@@ -73,6 +72,7 @@ use argmax_store::sessions::{
     session_launch_lineage, set_session_resume_fork, update_session_provider_conversation_id,
     PersistSessionInput, SessionSummary,
 };
+use argmax_store::sync::LockOrRecover;
 use argmax_store::workspaces::{
     clear_workspace_checkout_removed, find_workspace_by_id, find_workspace_created_branch,
     mark_workspace_checkout_removed, mark_workspaces_viewed, persist_workspace,
@@ -265,8 +265,8 @@ pub struct WorkspaceService {
 /// newtype. Unlike `create_current` that path is not the project root, because a
 /// chat in a worktree shares that worktree, not the repo.
 pub struct WorkspacesCreateAlongsideInput {
-    pub project_id: crate::application::validation::ProjectId,
-    pub task_label: crate::application::validation::TaskLabel,
+    pub project_id: argmax_contracts::validation::ProjectId,
+    pub task_label: argmax_contracts::validation::TaskLabel,
     pub path: String,
     pub branch: String,
     pub base_ref: String,
@@ -1561,15 +1561,14 @@ impl WorkspaceService {
         };
 
         let project_id =
-            crate::application::validation::ProjectId::try_from(destination_project.id.clone())
+            argmax_contracts::validation::ProjectId::try_from(destination_project.id.clone())
                 .map_err(ArgmaxError::invalid)?;
-        let task_label = crate::application::validation::TaskLabel::try_from(
-            source_workspace.task_label.clone(),
-        )
-        .map_err(ArgmaxError::invalid)?;
+        let task_label =
+            argmax_contracts::validation::TaskLabel::try_from(source_workspace.task_label.clone())
+                .map_err(ArgmaxError::invalid)?;
         let destination_workspace = match &destination {
             MoveDestination::Project { worktree: true, .. } => {
-                let base_ref = crate::application::validation::BaseRef::try_from(
+                let base_ref = argmax_contracts::validation::BaseRef::try_from(
                     destination_project.current_branch.clone(),
                 )
                 .map_err(ArgmaxError::invalid)?;
@@ -1820,7 +1819,7 @@ impl WorkspaceService {
                 Err(error) => {
                     let cleanup = self
                         .archive(WorkspacesArchiveInput {
-                            workspace_id: crate::application::validation::WorkspaceId::try_from(
+                            workspace_id: argmax_contracts::validation::WorkspaceId::try_from(
                                 destination_workspace.id.clone(),
                             )
                             .map_err(ArgmaxError::invalid)?,
@@ -1860,7 +1859,7 @@ impl WorkspaceService {
         } else {
             match self
                 .archive(WorkspacesArchiveInput {
-                    workspace_id: crate::application::validation::WorkspaceId::try_from(
+                    workspace_id: argmax_contracts::validation::WorkspaceId::try_from(
                         source_workspace.id.clone(),
                     )
                     .map_err(ArgmaxError::invalid)?,

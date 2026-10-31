@@ -24,9 +24,9 @@ use crate::{
     application::session_launch::{child_permission_mode, LaunchOutcome, LaunchReceiptTicket},
     arcs::member_preamble,
     providers::session_service::ProviderSessionService,
-    util::sync::LockOrRecover,
     workspaces::{orchestration::resolve_registered_checkout, WorkspaceService},
 };
+use argmax_store::sync::LockOrRecover;
 use argmax_store::{
     arcs::{self, ArcRecord},
     database::Database,

@@ -86,8 +86,8 @@ impl RemainingSource for VerificationRemainingSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::validation::ProviderId;
     use crate::usage::remaining::{fetch_remaining, UsagePlanKind};
+    use argmax_contracts::validation::ProviderId;
     use std::sync::Arc;
 
     #[test]

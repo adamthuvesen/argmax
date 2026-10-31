@@ -13,13 +13,11 @@ use super::{
     RouteDecision, RouteDecisionKind,
 };
 use crate::providers::discovery::AvailableProvider;
-use crate::{
-    application::validation::{ProviderId, ReasoningEffort},
-    providers::{
-        model_catalogue::ModelId,
-        pricing::{cost_of, list_price, ModelPricing, UsageCounts},
-    },
+use crate::providers::{
+    model_catalogue::ModelId,
+    pricing::{cost_of, list_price, ModelPricing, UsageCounts},
 };
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 
 /// Escalate only when the user is clearly unhappy with the work (failing,
 /// disliked, or to be redone): those score 0.90+; a preference or "what

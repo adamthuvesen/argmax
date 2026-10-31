@@ -10,11 +10,11 @@ use std::collections::HashMap;
 
 use serde_json::{Map, Value};
 
-use crate::application::validation::ProviderId;
 use crate::providers::normalizer::{number_value, object_value, string_value};
 use crate::usage::records::{
     line_may_carry_usage, rfc3339_to_ms, TranscriptContext, UsageRecord, UsageRecordTokens,
 };
+use argmax_contracts::validation::ProviderId;
 
 /// Claude's placeholder model for rows it generated without calling the API.
 /// The usage block is a copy of the previous real call, so counting it would

@@ -1164,7 +1164,7 @@ mod tests {
             assert!(label.ends_with(FORK_SUFFIX), "{label:?}");
             assert!(label.len() <= MAX_TASK_LABEL_BYTES, "{} bytes", label.len());
             assert!(
-                crate::application::validation::TaskLabel::try_from(label.clone()).is_ok(),
+                argmax_contracts::validation::TaskLabel::try_from(label.clone()).is_ok(),
                 "{label:?} is not a valid task label"
             );
             if title.len() + FORK_SUFFIX.len() <= MAX_TASK_LABEL_BYTES {

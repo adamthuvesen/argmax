@@ -1,7 +1,7 @@
 //! One usage record per billed model call. Every provider parser produces
 //! these; the scanner buckets them by hour and the summary prices them.
 
-use crate::application::validation::ProviderId;
+use argmax_contracts::validation::ProviderId;
 
 pub use argmax_contracts::usage::UsageRecordTokens;
 

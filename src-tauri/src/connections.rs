@@ -11,7 +11,8 @@ use serde_json::Value;
 use specta::Type;
 use tokio::process::Command;
 
-use crate::{ipc::validation::ProviderId, util::login_shell};
+use argmax_contracts::validation::ProviderId;
+use argmax_process::login_shell;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 

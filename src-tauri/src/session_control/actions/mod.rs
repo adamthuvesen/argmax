@@ -52,11 +52,11 @@ use super::{
     PROTOCOL_VERSION,
 };
 use crate::{
-    application::validation::{TerminalCols, TerminalRows},
     git::exec::{run_git_text, GIT_DEFAULT_TIMEOUT},
     providers::session_service::ProviderSessionService,
     workspaces::WorkspaceService,
 };
+use argmax_contracts::validation::{TerminalCols, TerminalRows};
 use argmax_store::{
     database::Database,
     projects::{list_projects, ProjectSummary},
@@ -507,7 +507,7 @@ async fn clear_goal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::validation::TaskLabel;
+    use argmax_contracts::validation::TaskLabel;
     use argmax_store::projects::{ProjectCounts, ProjectSettings};
 
     fn project(id: &str, name: &str, repo_path: &str) -> ProjectSummary {

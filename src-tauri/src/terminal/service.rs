@@ -9,7 +9,7 @@
 // terminate paths signal every process group that still belongs to the PTY
 // shell's dedicated session.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -889,12 +889,12 @@ fn default_shell_factory() -> ShellFactory {
         }
         // Both are set before the shell's rc files run, so an export there
         // still wins.
-        let op_integration = crate::util::login_shell::OP_APP_INTEGRATION_ENV;
+        let op_integration = argmax_process::login_shell::OP_APP_INTEGRATION_ENV;
         if std::env::var_os(op_integration).is_none() {
             cmd.env(op_integration, "true");
         }
-        if !crate::util::login_shell::names_a_locale(|key| std::env::var_os(key).is_some()) {
-            cmd.env("LANG", crate::util::login_shell::DEFAULT_UTF8_LANG);
+        if !argmax_process::login_shell::names_a_locale(|key| std::env::var_os(key).is_some()) {
+            cmd.env("LANG", argmax_process::login_shell::DEFAULT_UTF8_LANG);
         }
         cmd
     })

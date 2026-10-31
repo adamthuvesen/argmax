@@ -4,9 +4,9 @@
 // task-completion time. Rust owns this table; the renderer only displays the
 // routed result.
 
-use crate::application::validation::{ProviderId, ReasoningEffort};
 use crate::providers::model_catalogue::ModelId;
 pub use argmax_contracts::routing::{AutoTier, Difficulty, TaskKind};
+use argmax_contracts::validation::{ProviderId, ReasoningEffort};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Column {

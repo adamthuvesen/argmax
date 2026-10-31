@@ -32,8 +32,8 @@ use super::{
     inputs::ProvidersSendInput,
     session_service::{MessageOrigin, ProviderSessionService, SendInputResult},
 };
-use crate::application::validation::{Prompt, SessionId};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{Prompt, SessionId};
 use argmax_store::{
     continuity::{
         event_rowid, fork_for_child, latest_merge, list_merges, mark_merge_sent,

@@ -15,13 +15,13 @@ use super::super::{
 };
 use super::resolve_or_register_project;
 use crate::{
-    application::validation::{Prompt, SessionId, WorkspaceId},
     providers::inputs::ProvidersSendInput,
     providers::session_service::ProviderSessionService,
     workspaces::inputs::WorkspacesArchiveInput,
     workspaces::{orchestration::MoveDestination, WorkspaceService},
 };
 use argmax_contracts::error::ArgmaxError;
+use argmax_contracts::validation::{Prompt, SessionId, WorkspaceId};
 use argmax_store::{
     after_turn::{
         AfterTurnAction, ArchiveRequest, MergedPrRequest, MoveDestinationRecord, MoveRequest,

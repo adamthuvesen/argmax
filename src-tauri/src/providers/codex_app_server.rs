@@ -38,8 +38,8 @@ use crate::questions::service::QuestionService;
 use crate::session_control::{
     SessionLaunchProcessConfig, SESSION_LAUNCH_SOCKET_ENV, SESSION_LAUNCH_TOKEN_ENV,
 };
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(20);

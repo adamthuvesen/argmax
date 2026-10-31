@@ -15,10 +15,10 @@ use futures_util::stream::{self, StreamExt};
 
 use crate::activity::git_log::{self, LOG_FORMAT};
 use crate::activity::LEDGER_MONTHS;
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_store::activity::{self as storage, CommitRow};
 use argmax_store::projects;
+use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
 use argmax_store::Database;
 

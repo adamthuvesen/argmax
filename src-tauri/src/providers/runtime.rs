@@ -2,10 +2,8 @@
 // follow-up queue, persistence side effects, and orphan recovery live in
 // `session_service.rs`: this module is the IO, that one is the state machine.
 
-use crate::{
-    session_control::{SessionLaunchProcessConfig, SessionLaunchRegistry},
-    util::sync::LockOrRecover,
-};
+use crate::session_control::{SessionLaunchProcessConfig, SessionLaunchRegistry};
+use argmax_store::sync::LockOrRecover;
 use std::{
     fs::File,
     future::Future,
@@ -796,7 +794,7 @@ pub(super) fn composer_payload(
 
 // Wire coercions for rows read straight out of SQLite. They are lossy; the
 // typed surface in `ipc::inputs` is the entry point everywhere else.
-pub(crate) use crate::application::validation::parse_provider;
+pub(crate) use argmax_contracts::validation::parse_provider;
 
 pub(super) fn parse_permission_mode(value: &str) -> ArgmaxResult<PermissionMode> {
     match value {

@@ -16,8 +16,9 @@ use super::shared::{
     trace_event, TraceFileLines, TraceRunModel,
 };
 use super::{AgentTraceContext, TraceImport, TraceLine};
-use crate::{providers::normalizer::JSON_PARSE_LINE_CAP, util::sync::LockOrRecover};
+use crate::providers::normalizer::JSON_PARSE_LINE_CAP;
 use argmax_store::events::PersistTimelineEventInput;
+use argmax_store::sync::LockOrRecover;
 
 #[derive(Debug, Clone)]
 pub(super) struct CodexNativeRun {

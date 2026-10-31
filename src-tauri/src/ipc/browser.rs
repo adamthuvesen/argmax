@@ -565,8 +565,8 @@ fn op_command(args: &[&str]) -> Command {
     command.args(args);
     #[cfg(unix)]
     {
-        command.env("PATH", crate::util::login_shell::path());
-        command.envs(op_environment(crate::util::login_shell::environment()));
+        command.env("PATH", argmax_process::login_shell::path());
+        command.envs(op_environment(argmax_process::login_shell::environment()));
     }
     command
 }
@@ -581,7 +581,7 @@ fn op_command(args: &[&str]) -> Command {
 /// Argmax has no terminal for `op signin`, so the app integration (and its
 /// Touch ID prompt) is the only sign-in path a fill can use anyway.
 fn op_environment(login_shell: Vec<(String, String)>) -> Vec<(String, String)> {
-    const APP_INTEGRATION: &str = crate::util::login_shell::OP_APP_INTEGRATION_ENV;
+    const APP_INTEGRATION: &str = argmax_process::login_shell::OP_APP_INTEGRATION_ENV;
     let mut vars: Vec<(String, String)> = login_shell
         .into_iter()
         .filter(|(key, _)| key.starts_with("OP_"))

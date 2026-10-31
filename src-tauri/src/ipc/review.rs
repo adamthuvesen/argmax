@@ -31,7 +31,7 @@ pub struct ReviewIndexHunkInput {
     pub file_path: String,
     pub revision: String,
     pub hunk_index: u32,
-    pub context_lines: Option<super::validation::DiffContextLines>,
+    pub context_lines: Option<argmax_contracts::validation::DiffContextLines>,
 }
 
 #[tauri::command(rename = "review:list-changed-files")]

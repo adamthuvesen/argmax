@@ -30,8 +30,8 @@ use super::{mcp_injection, PermissionMode, ProviderId, ProviderLaunchInput, Reas
 use crate::approvals::service::ApprovalService;
 use crate::session_control::SessionLaunchProcessConfig;
 use crate::usage::grok::billed_models;
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
 
 const CANCEL_WAIT: Duration = Duration::from_secs(5);

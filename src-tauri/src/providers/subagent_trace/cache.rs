@@ -6,7 +6,7 @@ use std::{
     time::SystemTime,
 };
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 
 /// Size and modified time of a child trace file when it was last imported.
 pub(super) type TraceFileStamp = (u64, SystemTime);

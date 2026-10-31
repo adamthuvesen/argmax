@@ -6,12 +6,12 @@ use specta::Type;
 use crate::{review::git_review::ReviewComparison, workspaces::WorkspaceTargetKind};
 use argmax_store::routines::RoutineRunTarget;
 
-pub use crate::application::validation::{TerminalCols, TerminalRows};
 pub use crate::browser::tabs::{BrowserBounds, BrowserOpenInput};
 pub use crate::providers::inputs::*;
 pub use crate::workspaces::inputs::*;
+pub use argmax_contracts::validation::{TerminalCols, TerminalRows};
 
-use super::validation::{
+use argmax_contracts::validation::{
     AttachmentMimeType, Base64ImageData, BranchName, CommandText, DiffContextLines, FileContent,
     NonEmptyString, OpenPath, PermissionMode, ProjectId, Prompt, ProviderId, QuestionRequestId,
     ReasoningEffort, RelativePath, RepoPath, SearchQuery, SessionId, StreamChunk, TerminalId,
@@ -550,7 +550,7 @@ pub struct TerminalTerminateInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApprovalsResolveInput {
-    pub approval_id: super::validation::ApprovalId,
+    pub approval_id: argmax_contracts::validation::ApprovalId,
     pub status: ApprovalResolution,
 }
 
@@ -1002,7 +1002,7 @@ mod tests {
         let too_large = serde_json::json!({
             "workspaceId": "w1",
             "filePath": "src/main.rs",
-            "content": "x".repeat(super::super::validation::MAX_FILE_CONTENT_BYTES + 1),
+            "content": "x".repeat(argmax_contracts::validation::MAX_FILE_CONTENT_BYTES + 1),
             "expectedMtimeMs": null
         });
         assert!(serde_json::from_value::<WorkspaceWriteFileInput>(too_large).is_err());
@@ -1145,7 +1145,7 @@ pub struct UsageSummaryInput {
     /// per-provider rows always cover every provider, so the page can still
     /// offer the others.
     #[serde(default)]
-    pub provider: Option<crate::ipc::validation::ProviderId>,
+    pub provider: Option<argmax_contracts::validation::ProviderId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]

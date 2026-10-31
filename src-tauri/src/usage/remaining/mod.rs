@@ -12,10 +12,10 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::application::validation::ProviderId;
 use crate::providers::opencode_gateway::OpencodeGateway;
 use crate::sync::home_dir;
-use crate::util::login_shell;
+use argmax_contracts::validation::ProviderId;
+use argmax_process::login_shell;
 
 mod claude;
 mod codex;

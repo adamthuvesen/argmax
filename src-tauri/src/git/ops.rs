@@ -8,9 +8,9 @@ use std::{
 use regex::Regex;
 
 use crate::git::exec::run_git_text;
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_store::projects::ProjectRemote;
+use argmax_store::sync::LockOrRecover;
 
 static CHECKOUT_WRITE_LOCKS: LazyLock<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));

@@ -18,7 +18,6 @@ use tokio::{sync::broadcast, task::JoinHandle};
 use uuid::Uuid;
 
 use crate::{
-    application::validation::{NonEmptyString, Prompt, SessionId},
     providers::inputs::ProvidersSendInput,
     providers::{
         one_shot,
@@ -27,10 +26,11 @@ use crate::{
         AgentMode,
     },
     routing::RouteDecision,
-    util::sync::LockOrRecover,
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
+use argmax_store::sync::LockOrRecover;
 use argmax_store::{
     database::Database,
     events::goal_transcript_tail,

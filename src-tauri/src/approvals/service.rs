@@ -1,7 +1,7 @@
 //! Persists native approval requests and resolves their live provider responders.
 //! Request and resolution writes are transactional with session state and events.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},

@@ -9,8 +9,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::application::validation::ProviderId;
 use crate::providers::environment::build_provider_environment;
+use argmax_contracts::validation::ProviderId;
 
 use super::{
     remaining_from_used, resets_at_from_epoch, window_id_for_minutes, window_label_for_minutes,

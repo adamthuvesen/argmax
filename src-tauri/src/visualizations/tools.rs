@@ -177,11 +177,11 @@ pub async fn preview(
                 result.diagnostics = capture.diagnostics;
                 if let Some(attachments) = state.attachments.get() {
                     let session_id =
-                        crate::application::validation::SessionId::try_from(session.to_string())
+                        argmax_contracts::validation::SessionId::try_from(session.to_string())
                             .map_err(ArgmaxError::invalid)?;
                     match attachments.save_bytes(
                         &session_id,
-                        crate::application::validation::AttachmentMimeType::ImagePng,
+                        argmax_contracts::validation::AttachmentMimeType::ImagePng,
                         &capture.png,
                     ) {
                         Ok(saved) => result.screenshot_path = Some(saved.file_path),

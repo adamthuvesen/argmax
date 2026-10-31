@@ -9,13 +9,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::checks::service::{CheckService, RunWorkspaceCheckInput};
 use argmax_lib::ipc::inputs::{
     ProvidersLaunchInput, ScratchWorkspaceKind, WorkspacesArchiveInput,
     WorkspacesCreateCurrentInput, WorkspacesCreateIsolatedInput, WorkspacesCreateScratchInput,
     WorkspacesKeepInput,
 };
-use argmax_lib::ipc::validation::{BaseRef, ProjectId, TaskLabel, WorkspaceId};
 use argmax_lib::providers::flush_queue::DashboardDelta;
 use argmax_lib::providers::runtime::{
     BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle,
@@ -1549,8 +1549,9 @@ fn in_checkout_input(
         project_folder_id: None,
         project_id: ProjectId::try_from(PROJECT_ID.to_owned()).expect("project id"),
         task_label: TaskLabel::try_from("new chat".to_owned()).expect("task label"),
-        path: argmax_lib::ipc::validation::NonEmptyString::try_from(path.to_owned()).expect("path"),
-        branch: argmax_lib::ipc::validation::BranchName::try_from(branch.to_owned())
+        path: argmax_contracts::validation::NonEmptyString::try_from(path.to_owned())
+            .expect("path"),
+        branch: argmax_contracts::validation::BranchName::try_from(branch.to_owned())
             .expect("branch"),
     }
 }

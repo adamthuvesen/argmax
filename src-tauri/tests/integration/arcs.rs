@@ -14,10 +14,10 @@ use std::{
 use crate::support::git_repo::{seed_git_repo, SeededGitRepo};
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{NonEmptyString, Prompt, WorkspaceId};
 use argmax_lib::{
     arcs::{launch_coordinator, LaunchCoordinatorRequest},
     ipc::inputs::{ProvidersLaunchInput, TerminalCols, TerminalRows},
-    ipc::validation::{NonEmptyString, Prompt, WorkspaceId},
     providers::{
         runtime::{BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeHandle},
         session_service::ProviderSessionService,

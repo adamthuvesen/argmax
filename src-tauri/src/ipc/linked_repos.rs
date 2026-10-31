@@ -6,12 +6,10 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, State};
 
-use super::{
-    live_database, read_off_main,
-    validation::{NonEmptyString, ProjectId},
-};
+use super::{live_database, read_off_main};
 use crate::{files::linked_roots, providers::one_shot, state::AppState};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{NonEmptyString, ProjectId};
 use argmax_store::{
     app_settings,
     linked_repos::{self, LinkedRepo, LinkedRepoInput},

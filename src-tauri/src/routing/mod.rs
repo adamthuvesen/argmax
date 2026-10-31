@@ -19,11 +19,9 @@ use self::{
     jev::Classification,
     table::{AutoTier, Difficulty, RoutedModel, TaskKind},
 };
-use crate::{
-    application::validation::{NonEmptyString, ProviderId, ReasoningEffort},
-    providers::{discovery::AvailableProvider, inputs::ProvidersLaunchInput},
-};
+use crate::providers::{discovery::AvailableProvider, inputs::ProvidersLaunchInput};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{NonEmptyString, ProviderId, ReasoningEffort};
 use argmax_store::{
     database::Database,
     sessions::{find_session_by_id, SessionSummary},
@@ -315,7 +313,7 @@ mod tests {
         assert_eq!(route.model_id, "claude-sonnet-5-5");
         assert_eq!(
             route.effort,
-            Some(crate::application::validation::ReasoningEffort::Medium)
+            Some(argmax_contracts::validation::ReasoningEffort::Medium)
         );
     }
 
@@ -369,7 +367,7 @@ mod tests {
         assert_eq!(moved.model_id, "claude-sonnet-5-5");
         assert_eq!(
             moved.effort,
-            Some(crate::application::validation::ReasoningEffort::Medium)
+            Some(argmax_contracts::validation::ReasoningEffort::Medium)
         );
     }
 

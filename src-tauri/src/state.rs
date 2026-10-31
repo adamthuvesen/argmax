@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 
-use crate::application::validation::ThemeMode;
 use crate::approvals::service::ApprovalService;
 use crate::attachments::store::AttachmentStore;
 use crate::browser::registry::BrowserTabRegistry;
@@ -28,6 +27,7 @@ use crate::terminal::service::TerminalService;
 use crate::util::startup_timer::StartupTimer;
 use crate::workspaces::WorkspaceService;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ThemeMode;
 use argmax_store::Database;
 
 pub type LiveNotificationService = NotificationService<Box<dyn NotificationSink>>;

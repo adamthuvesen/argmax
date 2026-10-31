@@ -15,12 +15,12 @@ use std::{
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
-use crate::application::validation::ProviderId;
 use crate::providers::pricing::normalize_model_id;
 use crate::usage::records::{TranscriptContext, UsageRecord};
 use crate::usage::{claude, codex, grok, opencode};
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
+use argmax_store::sync::LockOrRecover;
 use argmax_store::{
     time::now_iso,
     usage_scan::{self, ScanFileRecord, UsageContribution},

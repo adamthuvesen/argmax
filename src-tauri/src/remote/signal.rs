@@ -13,10 +13,10 @@
 use std::sync::Mutex;
 
 use crate::notifications::BoundedMap;
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::sessions::attention::AttentionState;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_store::sessions::SessionSummary;
+use argmax_store::sync::LockOrRecover;
 
 use pulldown_cmark::{Event, Options, Parser, TagEnd};
 

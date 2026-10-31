@@ -105,4 +105,4 @@ fn app_data_dir(app: &AppHandle) -> ArgmaxResult<std::path::PathBuf> {
     })
 }
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;

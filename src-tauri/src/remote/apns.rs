@@ -24,8 +24,8 @@ use serde_json::json;
 
 use crate::remote::signal::{signal_for, PushSignal, SignalDedupe};
 use crate::remote::{ApnsConfig, PushDevice};
-use crate::util::sync::LockOrRecover;
 use argmax_store::sessions::SessionSummary;
+use argmax_store::sync::LockOrRecover;
 
 /// The native remote app's bundle id, which is also the `apns-topic` the auth
 /// key must be provisioned for.

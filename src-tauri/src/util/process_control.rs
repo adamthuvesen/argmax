@@ -16,7 +16,7 @@ use std::{
 };
 use tokio::time::sleep;
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 
 #[cfg(unix)]
 use nix::sys::signal::{kill, Signal};

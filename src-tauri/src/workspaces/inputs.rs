@@ -1,6 +1,6 @@
 //! Validated workspace operations shared across transports.
 
-use crate::application::validation::{
+use argmax_contracts::validation::{
     BaseRef, BranchName, NonEmptyString, ProjectId, Prompt, ProviderId, TaskLabel, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};

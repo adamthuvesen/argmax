@@ -5,7 +5,6 @@ use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 
 pub mod events;
 pub mod inputs;
-pub mod validation;
 
 pub mod activity;
 pub mod approvals;

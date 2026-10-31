@@ -29,8 +29,8 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sync::LockOrRecover;
 
 /// Bound on setup calls (initialize, session/new, session/load, set_model).
 /// `session/prompt` is exempt — a turn legitimately runs for minutes.

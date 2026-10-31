@@ -184,7 +184,7 @@ async fn hooks_run_with_the_hydrated_path() {
     // the child got its PATH from us. Containment rather than equality because
     // git prepends its own exec-path before handing PATH to a hook.
     let hook_path = std::fs::read_to_string(&recorded).expect("hook recorded its PATH");
-    let hydrated = argmax_lib::util::login_shell::path();
+    let hydrated = argmax_process::login_shell::path();
     assert!(
         hook_path.contains(&hydrated),
         "hook PATH did not come from the login shell\n  hook: {hook_path}\n  want: {hydrated}"

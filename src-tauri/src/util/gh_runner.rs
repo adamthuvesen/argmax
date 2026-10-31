@@ -10,7 +10,7 @@ fn gh_command(cwd: String, args: Vec<String>) -> tokio::process::Command {
     command.current_dir(cwd).args(args);
     // Finder and Dock launches omit Homebrew paths from the inherited PATH.
     #[cfg(unix)]
-    command.env("PATH", crate::util::login_shell::path());
+    command.env("PATH", argmax_process::login_shell::path());
     command
 }
 

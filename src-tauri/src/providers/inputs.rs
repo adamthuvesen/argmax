@@ -1,11 +1,11 @@
 //! Validated provider session commands shared across transports.
 
-use crate::application::validation::{
-    AgentMode, NonEmptyString, PermissionMode, Prompt, ProviderId, ReasoningEffort, SessionId,
-    TerminalCols, TerminalRows, WorkspaceId,
-};
 pub use argmax_contracts::messages::{
     AgentReference, AttachmentSizeBytes, ComposerAttachmentInput,
+};
+use argmax_contracts::validation::{
+    AgentMode, NonEmptyString, PermissionMode, Prompt, ProviderId, ReasoningEffort, SessionId,
+    TerminalCols, TerminalRows, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;

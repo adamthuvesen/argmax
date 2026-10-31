@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::state::AppState;
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use chrono::Utc;
 use serde::Serialize;
 use specta::Type;

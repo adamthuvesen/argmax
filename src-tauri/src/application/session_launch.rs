@@ -4,10 +4,6 @@
 use std::sync::Arc;
 
 use crate::{
-    application::validation::{
-        BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, TerminalCols, TerminalRows,
-        WorkspaceId,
-    },
     providers::{inputs::ProvidersLaunchInput, session_service::ProviderSessionService},
     workspaces::{
         inputs::{
@@ -18,6 +14,9 @@ use crate::{
     },
 };
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::{
+    BaseRef, NonEmptyString, ProjectId, Prompt, TaskLabel, TerminalCols, TerminalRows, WorkspaceId,
+};
 use argmax_store::{
     authorship::PromptAuthor, database::Database, launch_receipts, projects::ProjectSummary,
 };

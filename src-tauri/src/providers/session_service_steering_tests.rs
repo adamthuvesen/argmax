@@ -5,7 +5,7 @@ use crate::providers::inputs::{
     ProvidersSendInput, ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput,
     QueuedMessageDelivery,
 };
-use crate::application::validation::{NonEmptyString, SessionId};
+use argmax_contracts::validation::{NonEmptyString, SessionId};
 use argmax_store::authorship::PromptAuthor;
 use argmax_store::events::list_session_events_since;
 use argmax_store::pending_messages::{list_session_pending_messages, replace_session_queue};
@@ -15,7 +15,7 @@ use argmax_store::session_messages::{
 use argmax_store::sessions::{find_session_by_id, update_session_state, SessionStateInput};
 use crate::providers::runtime::{BoxFuture, ProviderRuntimeHandle};
 use argmax_contracts::sessions::state::SessionState;
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use serde_json::json;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

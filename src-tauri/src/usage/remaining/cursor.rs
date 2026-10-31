@@ -3,7 +3,7 @@
 
 use serde_json::Value;
 
-use crate::application::validation::ProviderId;
+use argmax_contracts::validation::ProviderId;
 
 use super::{RemainingSource, UsageProviderRemaining};
 

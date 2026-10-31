@@ -7,11 +7,11 @@
 
 use serde_json::{Map, Value};
 
-use crate::application::validation::ProviderId;
 use crate::providers::normalizer::{number_value, object_value, string_value};
 use crate::usage::records::{
     line_may_carry_usage, TranscriptContext, UsageRecord, UsageRecordTokens,
 };
+use argmax_contracts::validation::ProviderId;
 
 /// `costUsdTicks` is USD scaled by 1e10.
 const TICKS_PER_USD: f64 = 1e10;

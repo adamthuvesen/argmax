@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 
 /// One grant Argmax owns: how many live launches want it, and the timestamp we
 /// wrote, which is what proves the entry in the file is still ours.

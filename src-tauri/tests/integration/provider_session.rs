@@ -20,6 +20,7 @@ use std::{path::PathBuf, process::Command, time::Duration};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::attention::AttentionState;
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::approvals::service::ApprovalService;
 use argmax_lib::goals::service::{GoalService, GoalSetInput};
 use argmax_lib::ipc::inputs::{
@@ -27,7 +28,6 @@ use argmax_lib::ipc::inputs::{
     ProvidersSendQueuedMessageNowInput, ProvidersTerminateInput, SessionClearInput, TerminalCols,
     TerminalRows,
 };
-use argmax_lib::ipc::validation::{NonEmptyString, Prompt, ProviderId, SessionId, WorkspaceId};
 use argmax_lib::providers::runtime::{
     BoxFuture, EventCallback, ProviderProcessLauncher, ProviderRuntimeEvent,
     ProviderRuntimeEventType, ProviderRuntimeHandle,
@@ -473,7 +473,7 @@ fn seed_project_and_workspace_at(db: &Database, workspace_path: &str) {
 fn build_launch_input() -> ProvidersLaunchInput {
     ProvidersLaunchInput {
         workspace_id: WorkspaceId::try_from(WORKSPACE_ID.to_owned()).expect("workspace id valid"),
-        provider: argmax_lib::ipc::validation::ProviderId::Claude,
+        provider: argmax_contracts::validation::ProviderId::Claude,
         prompt: Prompt::try_from("hello world".to_owned()).expect("prompt valid"),
         model_label: NonEmptyString::try_from("Sonnet 5.5".to_owned()).expect("label valid"),
         model_id: NonEmptyString::try_from("claude-sonnet-5-5".to_owned()).expect("id valid"),
@@ -3073,7 +3073,7 @@ async fn a_codex_file_change_gets_the_diff_argmax_measured_from_git() {
 
     let session = service
         .launch(ProvidersLaunchInput {
-            provider: argmax_lib::ipc::validation::ProviderId::Codex,
+            provider: argmax_contracts::validation::ProviderId::Codex,
             model_id: NonEmptyString::try_from("gpt-5.6-sol".to_owned()).expect("id valid"),
             ..build_launch_input()
         })

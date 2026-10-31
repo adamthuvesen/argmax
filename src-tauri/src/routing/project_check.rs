@@ -21,8 +21,9 @@ use specta::Type;
 use uuid::Uuid;
 
 use super::jev;
-use crate::{util::sync::LockOrRecover, workspaces::SCRATCH_PROJECT_ID};
+use crate::workspaces::SCRATCH_PROJECT_ID;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sync::LockOrRecover;
 use argmax_store::{
     app_settings::{project_check_mode, ProjectCheckMode},
     project_checks::{

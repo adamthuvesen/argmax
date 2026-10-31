@@ -26,11 +26,9 @@ use std::{
 use serde_json::Value;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::{
-    git::tree_snapshot::{diff_path_between_trees, dirty_paths, snapshot_worktree},
-    util::sync::LockOrRecover,
-};
+use crate::git::tree_snapshot::{diff_path_between_trees, dirty_paths, snapshot_worktree};
 use argmax_store::events::TimelineEvent;
+use argmax_store::sync::LockOrRecover;
 
 /// One path's diff ceiling. A diff this large is a file rewrite, where the
 /// stat stops being the thing a reader wants and the payload cost is real.

@@ -4,8 +4,8 @@
 
 use serde_json::Value;
 
-use crate::application::validation::ProviderId;
 use crate::providers::opencode_gateway::OpencodeGateway;
+use argmax_contracts::validation::ProviderId;
 
 use super::{RemainingSource, UsageLimitWindow, UsageProviderRemaining};
 

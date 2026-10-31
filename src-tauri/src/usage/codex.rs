@@ -7,11 +7,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::application::validation::ProviderId;
 use crate::providers::normalizer::{number_value, object_value, string_value};
 use crate::usage::records::{
     line_may_carry_usage, rfc3339_to_ms, TranscriptContext, UsageRecord, UsageRecordTokens,
 };
+use argmax_contracts::validation::ProviderId;
 
 /// A forked or subagent rollout opens with the parent's history rewritten in
 /// one burst, every copied line stamped within milliseconds of the last. The

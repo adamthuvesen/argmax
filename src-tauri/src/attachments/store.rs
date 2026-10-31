@@ -7,7 +7,7 @@ use serde::Serialize;
 use specta::Type;
 use uuid::Uuid;
 
-use crate::application::validation::{
+use argmax_contracts::validation::{
     AttachmentMimeType, Base64ImageData, SessionId, ATTACHMENT_BYTE_CAP,
 };
 

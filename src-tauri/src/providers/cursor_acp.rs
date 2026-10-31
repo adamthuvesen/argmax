@@ -57,8 +57,8 @@ use crate::questions::service::{typed_answer_text, QuestionService};
 use crate::session_control::SessionLaunchProcessConfig;
 #[cfg(test)]
 use crate::session_control::SESSION_LAUNCH_TOKEN_ENV;
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_store::sync::LockOrRecover;
 use argmax_store::time::now_iso;
 
 /// How long `terminate` waits for a cancelled prompt to resolve before giving

@@ -8,11 +8,11 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 #[cfg(target_os = "macos")]
 mod macos;
 
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
 use argmax_store::gh::GhPrRecord;
 use argmax_store::sessions::SessionSummary;
+use argmax_store::sync::LockOrRecover;
 
 const LAST_NOTIFIED_CAPACITY: usize = 2_000;
 const CHECK_FAILURE_CAPACITY: usize = 500;

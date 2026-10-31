@@ -12,12 +12,12 @@ use super::{
     ProviderSessionService,
 };
 use crate::providers::flush_queue::DashboardDelta;
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::ArgmaxResult;
 use argmax_contracts::sessions::state::SessionState;
 use argmax_store::events::{RawProviderOutput, TimelineEvent};
 use argmax_store::projects::list_projects;
 use argmax_store::sessions::{update_session_state, SessionStateInput};
+use argmax_store::sync::LockOrRecover;
 
 /// How one path ends a turn. Every field is required, so a new path has to
 /// decide each effect.

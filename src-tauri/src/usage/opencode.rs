@@ -8,11 +8,11 @@ use std::path::Path;
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Map, Value};
 
-use crate::application::validation::ProviderId;
 use crate::providers::normalizer::{number_value, object_value, string_value};
 use crate::providers::pricing;
 use crate::usage::records::{UsageRecord, UsageRecordTokens};
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
+use argmax_contracts::validation::ProviderId;
 
 /// Reads every assistant turn created at or after `since_ms`.
 ///

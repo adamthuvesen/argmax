@@ -2,4 +2,3 @@
 
 pub(crate) mod project_registration;
 pub(crate) mod session_launch;
-pub use argmax_contracts::validation;

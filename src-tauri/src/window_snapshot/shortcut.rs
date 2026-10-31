@@ -22,10 +22,10 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use super::{SnapshotError, WindowSnapshotAttach, ATTACH_EVENT, FAILED_EVENT};
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult, InvalidInputIssue};
 use argmax_store::app_settings::{read_ui_value, write_ui_value};
 use argmax_store::sqlite_error;
+use argmax_store::sync::LockOrRecover;
 
 /// ⌘⌥⇧S on macOS. Three modifiers keep it clear of the system's ⌘⇧3/4/5 and of
 /// most apps' own bindings.

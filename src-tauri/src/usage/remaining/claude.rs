@@ -4,7 +4,7 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::application::validation::ProviderId;
+use argmax_contracts::validation::ProviderId;
 
 use super::{
     remaining_from_used, resets_at_from_iso, RemainingSource, UsageLimitWindow,

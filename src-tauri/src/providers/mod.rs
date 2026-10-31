@@ -43,7 +43,7 @@ use specta::Type;
 
 use model_catalogue::ModelId;
 
-pub use crate::application::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
+pub use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId, ReasoningEffort};
 
 /// What Argmax can truthfully do with a provider's native permission gate.
 /// Observable-only means the CLI can emit a request, but this runtime does not

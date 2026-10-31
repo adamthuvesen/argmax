@@ -18,7 +18,6 @@ use uuid::Uuid;
 
 use crate::providers::flush_queue::DashboardDelta;
 use crate::providers::runtime::DeltaPublisher;
-use crate::util::sync::LockOrRecover;
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::sessions::state::SessionState;
 use argmax_store::approvals::list_approvals_for_session;
@@ -27,6 +26,7 @@ use argmax_store::events::{
     has_durable_request, list_durable_pending, persist_timeline_event, PersistTimelineEventInput,
 };
 use argmax_store::sessions::{find_session_by_id, update_session_state, SessionStateInput};
+use argmax_store::sync::LockOrRecover;
 
 const MAX_QUESTIONS: usize = 3;
 const MAX_OPTIONS: usize = 4;

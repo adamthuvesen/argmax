@@ -4,7 +4,7 @@
 // and milestone transitions and publishes a `DashboardDelta` so the renderer
 // can re-render PR status without polling itself.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},

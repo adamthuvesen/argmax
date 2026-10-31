@@ -19,10 +19,10 @@ use super::super::{
 };
 use super::resolve_project;
 use crate::{
-    application::validation::{Prompt, SessionId},
     providers::inputs::{ProvidersSendInput, ProvidersTerminateInput},
     providers::session_service::{MessageOrigin, ProviderSessionService},
 };
+use argmax_contracts::validation::{Prompt, SessionId};
 use argmax_store::{
     dashboard::DASHBOARD_ROW_LIMIT,
     database::Database,

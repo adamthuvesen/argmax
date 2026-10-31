@@ -4,7 +4,7 @@
 // emits a `channel=… latency_ms=…` event. `system:diagnostics` reads p50 /
 // p99 / count via the getters below.
 
-use crate::util::sync::LockOrRecover;
+use argmax_store::sync::LockOrRecover;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;

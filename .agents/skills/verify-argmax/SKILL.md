@@ -23,7 +23,7 @@ Run `verify` after a change, and `verify -- all` before you hand over larger wor
 
 - Each drive prints `PASS|FAIL <drive> <seconds>s <detail>`. A FAIL detail names what was expected and what rendered.
 - Evidence is in `.verify/runs/<utc>-<sha7>[-dirty]/`: `<page>.png`, `<page>.log` (command, exit, stdout, stderr), `composer-editor/` with its JSON report and PNGs, `tripwire.log`, and `summary.json`.
-- The run also fails when a machine-global command (`security`, `defaults`, `launchctl`, ...) was called, or when the checkout changed during the run.
+- The run also fails when a machine-global command (`security`, `defaults`, `launchctl`, ...) was called, or when the checkout changed during the run: HEAD, the index, git config or hooks, a file, or an ignored path.
 - Drives never retry, so there is no FLAKY. Run a failed drive again by name, and report a pass after a fail as flaky.
 
 ## Limits

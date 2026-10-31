@@ -32,14 +32,14 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
 
       # Both halves of the universal binary. Without the x86_64 target the
       # lipo step at the end of `tauri build` has nothing to fuse.
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
-          toolchain: "1.95"
+          toolchain: "1.95.0"
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       # A release build shares no artifacts with CI's debug lanes, so it keeps

@@ -84,7 +84,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
-          toolchain: "1.95"
+          toolchain: "1.95.0"
           components: clippy, rustfmt
 
       # Each lane caches only the artifacts its own commands produce.
@@ -155,7 +155,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
 
       - run: npm ci
@@ -181,7 +181,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
 
       - run: npm ci
@@ -203,7 +203,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
 
       - run: npm ci
@@ -227,7 +227,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "22"
+          node-version-file: .node-version
           cache: npm
 
       - run: npm ci
@@ -258,7 +258,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "22"
+          node-version-file: .node-version
 
       - run: brew install xcodegen
 
@@ -277,7 +277,7 @@ jobs:
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: "22"
+          node-version-file: .node-version
 
       # Fail on high/critical advisories in dependencies that actually ship in
       # the renderer bundle. `--omit=dev` excludes the build/test toolchain

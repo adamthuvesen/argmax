@@ -18,12 +18,16 @@ const FILE_WIDE =
 const env = Object.fromEntries(
   Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
 );
-const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, env, encoding: "utf8" })
+const sources = execFileSync(
+  "git",
+  ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+  { cwd: ROOT, env, encoding: "utf8" },
+)
   .split("\0")
   .filter((name) => SOURCE.test(name));
 
 const hits = [];
-for (const name of tracked) {
+for (const name of sources) {
   let text;
   try {
     text = readFileSync(resolve(ROOT, name), "utf8");
@@ -41,4 +45,4 @@ if (hits.length) {
   );
   process.exit(1);
 }
-console.log(`check-file-wide-disables: ${tracked.length} files, none disable checking file-wide`);
+console.log(`check-file-wide-disables: ${sources.length} files, none disable checking file-wide`);

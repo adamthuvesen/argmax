@@ -126,6 +126,14 @@ if (!rows.length)
   fail(
     "AGENTS.md has no ## Enforced Rules table. Restore the section and its | Rule | Enforced by | Added | rows.",
   );
+const tableLines = rulesTable.split("\n").filter((line) => line.trim() !== "");
+const tableStart = tableLines.findIndex((line) => line.startsWith("|"));
+if (!/^\|\s*Rule\s*\|\s*Enforced by\s*\|/.test(tableLines[tableStart] ?? ""))
+  fail("AGENTS.md Enforced Rules table header must start with | Rule | Enforced by |.");
+if (tableLines.slice(Math.max(tableStart, 0)).some((line) => !line.startsWith("|")))
+  fail(
+    "AGENTS.md Enforced Rules must be the last section, with only table rows after its header. Move prose above the table.",
+  );
 const filesFor = (path) =>
   tracked.filter(
     (file) =>

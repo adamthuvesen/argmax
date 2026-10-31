@@ -45,6 +45,25 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 - **The mascot is the app icon.** [assets/fox-mascot.txt](assets/fox-mascot.txt) feeds both `Mascot.tsx` and `npm run build:icons`. The expression files are overlays on it.
 - **SQLite and PTYs live in Rust.** Do not bring back `better-sqlite3`, `node-pty`, or native rebuild scripts. See [docs/adr](docs/adr).
 
+## Agent Feedback
+
+Hooks in `scripts/agent-hooks/` run after each edit (file checks, the doc to read, the generator to run), at the end of a turn (`check:changed` on this session's files), and at push (`push-gate`). Agents in other clients run `npm run check:changed` before they finish. Add path guidance in `scripts/agent-hooks/feedback-rules.json`. Ratchets are described in [docs/testing.md](docs/testing.md#ratchets).
+
+## Read The Docs First
+
+Prove changes with `npm run verify` (`verify-argmax` skill at `.agents/skills/verify-argmax/SKILL.md`). Read [GLOSSARY.md](GLOSSARY.md) before you name anything. If a doc disagrees with code, fix the doc in the same change.
+
+Before you edit a subsystem, read its doc. Start at [architecture.md](docs/architecture.md).
+
+- Runtime and IPC: [runtime](docs/runtime.md), [ipc](docs/ipc.md), [data](docs/data.md), [debugging](docs/debugging.md), [performance](docs/performance.md)
+- Providers and routing: [providers](docs/providers.md), [routing](docs/routing.md), [approvals-checks](docs/approvals-checks.md), [session-sync](docs/session-sync.md), [usage](docs/usage.md)
+- Agent features: [agent-tools](docs/agent-tools.md), [multitask](docs/multitask.md), [arcs](docs/arcs.md), [goals](docs/goals.md), [scheduled-tasks](docs/scheduled-tasks.md), [memory](docs/memory.md), [skills](docs/skills.md)
+- Workspace and panels: [workspaces](docs/workspaces.md), [gh](docs/gh.md), [terminal](docs/terminal.md), [browser](docs/browser.md), [window-snapshot](docs/window-snapshot.md), [activity](docs/activity.md)
+- UI: [chat-cards](docs/chat-cards.md), [styling](docs/styling.md)
+- Phone: [remote](docs/remote.md), [ios-performance](docs/ios-performance.md)
+- Testing and shipping: [testing](docs/testing.md), [verification](docs/verification.md), [release](docs/release.md), [homebrew](docs/homebrew.md)
+- Snapshots, not kept current: [plans](docs/plan/README.md), [design explorations](docs/design/README.md), [decisions](docs/adr)
+
 ## Enforced Rules
 
 
@@ -83,24 +102,5 @@ npm run tauri:build && osascript -e 'quit app "Argmax"' && rm -rf /Applications/
 | Never edit an applied migration | `verify_applied_checksum` in `migrations.rs`, test `checksum_drift_is_reported_for_applied_migration` | 2026-11-06 |
 | A mascot expression changes only its face | Overlay files composed by `withExpression` in `Mascot.tsx` | 2026-11-06 |
 | Every enforcer this table cites exists | `check:docs` | 2026-11-06 |
-| `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify::CONTROL`, run by `npm run verify` in CI | 2026-11-06 |
+| `npm run verify` passes only with a control that observes FAIL | `.agents/skills/verify-argmax/verify.mjs::CONTROL`, run by `npm run verify` in CI | 2026-11-06 |
 | No file turns off type checking or lint with `@ts-nocheck` or a bare `oxlint-disable` or `eslint-disable` comment | `scripts/check-file-wide-disables.mjs` | 2026-11-07 |
-
-## Agent Feedback
-
-Hooks in `scripts/agent-hooks/` run after each edit (file checks, the doc to read, the generator to run), at the end of a turn (`check:changed` on this session's files), and at push (`push-gate`). Agents in other clients run `npm run check:changed` before they finish. Add path guidance in `scripts/agent-hooks/feedback-rules.json`. Ratchets are described in [docs/testing.md](docs/testing.md#ratchets).
-
-## Read The Docs First
-
-Prove changes with `npm run verify` (`verify-argmax` skill at `.agents/skills/verify-argmax/SKILL.md`). Read [GLOSSARY.md](GLOSSARY.md) before you name anything. If a doc disagrees with code, fix the doc in the same change.
-
-Before you edit a subsystem, read its doc. Start at [architecture.md](docs/architecture.md).
-
-- Runtime and IPC: [runtime](docs/runtime.md), [ipc](docs/ipc.md), [data](docs/data.md), [debugging](docs/debugging.md), [performance](docs/performance.md)
-- Providers and routing: [providers](docs/providers.md), [routing](docs/routing.md), [approvals-checks](docs/approvals-checks.md), [session-sync](docs/session-sync.md), [usage](docs/usage.md)
-- Agent features: [agent-tools](docs/agent-tools.md), [multitask](docs/multitask.md), [arcs](docs/arcs.md), [goals](docs/goals.md), [scheduled-tasks](docs/scheduled-tasks.md), [memory](docs/memory.md), [skills](docs/skills.md)
-- Workspace and panels: [workspaces](docs/workspaces.md), [gh](docs/gh.md), [terminal](docs/terminal.md), [browser](docs/browser.md), [window-snapshot](docs/window-snapshot.md), [activity](docs/activity.md)
-- UI: [chat-cards](docs/chat-cards.md), [styling](docs/styling.md)
-- Phone: [remote](docs/remote.md), [ios-performance](docs/ios-performance.md)
-- Testing and shipping: [testing](docs/testing.md), [verification](docs/verification.md), [release](docs/release.md), [homebrew](docs/homebrew.md)
-- Snapshots, not kept current: [plans](docs/plan/README.md), [design explorations](docs/design/README.md), [decisions](docs/adr)

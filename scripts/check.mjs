@@ -14,6 +14,7 @@ const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 const CHECKS = [
   ["oxlint + types", ["scripts/lint.mjs"]],
+  ["verify helper types", ["node_modules/typescript/bin/tsc", "-p", "tsconfig.verify.json"]],
   ["oxfmt", ["node_modules/oxfmt/bin/oxfmt", "--check"]],
   ["static checks", ["scripts/static-checks.mjs"]],
 ];

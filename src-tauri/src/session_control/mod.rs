@@ -84,7 +84,6 @@ pub const MAX_LAUNCHES_PER_SESSION: i64 = 20;
 // them transactionally against the session insert — and are re-exported here
 // so the existing `ARC_MAX_ACTIVE_MEMBERS`/`ARC_MAX_LAUNCHES_PER_DAY`
 // references in this module's submodules keep resolving unchanged.
-pub(crate) use argmax_store::arcs::{ARC_MAX_ACTIVE_MEMBERS, ARC_MAX_LAUNCHES_PER_DAY};
 /// How many moves a chat may pick the work up after. A move starts a turn in
 /// the destination, and that turn can move again; past this the chat lands,
 /// says why it stopped, and waits for a person.

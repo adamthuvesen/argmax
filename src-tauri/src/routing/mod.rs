@@ -154,7 +154,7 @@ pub(crate) fn with_available_provider(
         route.effort = routed.effort;
     }
     if route.provider == previous {
-        let defaults = crate::provider_defaults(provider);
+        let defaults = crate::providers::model_catalogue::provider_defaults(provider);
         route.provider = provider;
         route.model_id = defaults.model_id.to_string();
         route.model_label = defaults.model_label.to_string();

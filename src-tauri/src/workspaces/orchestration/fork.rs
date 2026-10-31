@@ -228,7 +228,7 @@ fn native_plan(
             return Ok((NativeMode::CodexLastTurn, Some(turn)));
         }
     }
-    let provider = crate::providers::runtime::parse_provider(&source.provider).ok();
+    let provider = argmax_contracts::validation::parse_provider(&source.provider).ok();
     let carries = provider.is_some_and(|provider| {
         let definition = crate::providers::adapters::get_provider_definition(provider);
         provider != argmax_contracts::validation::ProviderId::Cursor

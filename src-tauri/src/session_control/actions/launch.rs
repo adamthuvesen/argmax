@@ -517,7 +517,7 @@ async fn launch_once(
                 parent.reasoning_effort,
             ),
             (None, false) => {
-                let defaults = crate::provider_defaults(provider);
+                let defaults = crate::providers::model_catalogue::provider_defaults(provider);
                 (
                     defaults.model_label.to_string(),
                     defaults.model_id.to_string(),
@@ -875,7 +875,9 @@ fn provider_effort(
     if provider == parent.provider {
         return parent.reasoning_effort;
     }
-    parse_reasoning_effort(crate::provider_defaults(provider).reasoning_effort)
+    parse_reasoning_effort(
+        crate::providers::model_catalogue::provider_defaults(provider).reasoning_effort,
+    )
 }
 
 fn parse_reasoning_effort(

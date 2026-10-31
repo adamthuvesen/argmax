@@ -83,7 +83,7 @@ pub(crate) fn publish_pr_workspaces_for_session(
     let affected = {
         let database = live_database(state)?;
         let conn = database.connection();
-        crate::gh::workspaces_for_pr_refresh(&conn, session_id)?
+        argmax_store::workspaces::workspaces_for_pr_refresh(&conn, session_id)?
     };
     workspaces.publish_workspaces(affected);
     Ok(())

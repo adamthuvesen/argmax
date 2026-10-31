@@ -370,7 +370,9 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         let mut seen = HashSet::new();
         for session_id in sessions {
             super::service::repair_session_pr_evidence(&conn, &session_id)?;
-            for workspace in crate::gh::workspaces_for_pr_refresh(&conn, &session_id)? {
+            for workspace in
+                argmax_store::workspaces::workspaces_for_pr_refresh(&conn, &session_id)?
+            {
                 if seen.insert(workspace.id.clone()) {
                     workspaces.push(workspace);
                 }
@@ -502,7 +504,7 @@ async fn tick_once(inner: Arc<PollerInner>) -> ArgmaxResult<()> {
         {
             let conn = inner.database.connection();
             for transition in transitions.iter().filter(|entry| entry.publish) {
-                let affected = match crate::gh::workspaces_for_pr_refresh(
+                let affected = match argmax_store::workspaces::workspaces_for_pr_refresh(
                     &conn,
                     &transition.context.session_id,
                 ) {
@@ -1472,7 +1474,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM gh_pr", [], |row| row.get(0))
             .unwrap();
         assert_eq!(legacy_count, 0);
-        let mut ids = crate::gh::workspaces_for_pr_refresh(&conn, "s1")
+        let mut ids = argmax_store::workspaces::workspaces_for_pr_refresh(&conn, "s1")
             .unwrap()
             .into_iter()
             .map(|workspace| workspace.id)

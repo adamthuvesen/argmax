@@ -405,7 +405,7 @@ fn model_label(session: &DiscoveredSession, provider: &str) -> String {
         .as_deref()
         .map(crate::fallback_model_label)
         .unwrap_or_else(|| {
-            crate::provider_defaults(import_provider(provider))
+            crate::providers::model_catalogue::provider_defaults(import_provider(provider))
                 .model_label
                 .to_string()
         })
@@ -417,7 +417,7 @@ fn model_label(session: &DiscoveredSession, provider: &str) -> String {
 /// `--model ''` — so the provider default stands in.
 fn model_id(session: &DiscoveredSession, provider: &str) -> String {
     session.model_id.clone().unwrap_or_else(|| {
-        crate::provider_defaults(import_provider(provider))
+        crate::providers::model_catalogue::provider_defaults(import_provider(provider))
             .model_id
             .to_string()
     })

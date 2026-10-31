@@ -624,7 +624,7 @@ fn resolve_routine_permissions(
     provider: &str,
     default_agent: &crate::default_agent::DefaultAgent,
 ) -> Option<(ProviderId, argmax_contracts::validation::PermissionMode)> {
-    let provider = crate::providers::runtime::parse_provider(provider).ok()?;
+    let provider = argmax_contracts::validation::parse_provider(provider).ok()?;
     Some((provider, default_agent.permission_mode_for(provider)))
 }
 

@@ -1632,7 +1632,7 @@ impl WorkspaceService {
             .clone()
             .filter(|_| matches!(destination, MoveDestination::Checkout { .. }))
             .filter(|_| {
-                crate::providers::runtime::parse_provider(&source_session.provider)
+                argmax_contracts::validation::parse_provider(&source_session.provider)
                     .map(|provider| {
                         crate::providers::adapters::get_provider_definition(provider)
                             .move_carries_conversation

@@ -308,7 +308,7 @@ pub(crate) async fn arc_draft_from_session_impl(
         Ok((session.provider, tail.text))
     })
     .await?;
-    let Ok(provider) = crate::providers::runtime::parse_provider(&provider) else {
+    let Ok(provider) = argmax_contracts::validation::parse_provider(&provider) else {
         return Ok(ArcDraft {
             name: None,
             brief: None,

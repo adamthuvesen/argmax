@@ -34,7 +34,9 @@ pub struct DefaultAgent {
 impl DefaultAgent {
     /// What the launcher shows on a fresh install, before anything is chosen.
     pub fn factory() -> Self {
-        let defaults = crate::provider_defaults(argmax_contracts::validation::ProviderId::Claude);
+        let defaults = crate::providers::model_catalogue::provider_defaults(
+            argmax_contracts::validation::ProviderId::Claude,
+        );
         Self {
             provider: argmax_contracts::validation::ProviderId::Claude
                 .as_str()

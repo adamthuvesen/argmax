@@ -1637,7 +1637,7 @@ fn build_check_failure_follow_up_input(
     agent: &default_agent::DefaultAgent,
     context: &gh::poller::CheckFailureContext,
 ) -> argmax_contracts::error::ArgmaxResult<ipc::inputs::ProvidersLaunchInput> {
-    let provider = providers::runtime::parse_provider(&agent.provider)?;
+    let provider = argmax_contracts::validation::parse_provider(&agent.provider)?;
     serde_json::from_value(json!({
         "workspaceId": workspace_id,
         "provider": agent.provider,
@@ -1656,8 +1656,6 @@ fn build_check_failure_follow_up_input(
     }))
     .map_err(|error| argmax_contracts::error::ArgmaxError::service("GH_FOLLOW_UP_INPUT_INVALID", error.to_string()))
 }
-
-pub use providers::model_catalogue::{provider_defaults, ProviderDefaults};
 
 /// Sidebar label for a model id the catalog may not list. Rust has no label
 /// catalog (labels live in `src/shared/providerModels.ts`), so a Claude API id

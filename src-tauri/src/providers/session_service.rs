@@ -43,10 +43,9 @@ use super::{
     normalizer::{CodexCumulativeUsage, NormalizerSessionContext, ProviderOutputEvent},
     orphan_cleanup::{terminate_orphaned_provider_processes, RecoveredProviderSession},
     runtime::{
-        composer_payload, parse_agent_mode, parse_permission_mode, parse_provider,
-        parse_reasoning_effort, sqlite_error, DeltaPublisher, ProviderProcessLauncher,
-        ProviderRuntimeEvent, ProviderRuntimeEventType, ProviderRuntimeHandle,
-        RealProviderProcessLauncher,
+        composer_payload, parse_agent_mode, parse_permission_mode, parse_reasoning_effort,
+        sqlite_error, DeltaPublisher, ProviderProcessLauncher, ProviderRuntimeEvent,
+        ProviderRuntimeEventType, ProviderRuntimeHandle, RealProviderProcessLauncher,
     },
     subagent_trace::reconcile_session_subagent_traces,
     ApprovalSupport, LaunchContinuity, ProviderLaunchInput,
@@ -68,6 +67,7 @@ use crate::{
 use argmax_contracts::error::{ArgmaxError, ArgmaxResult};
 use argmax_contracts::messages::ComposerAttachmentInput;
 use argmax_contracts::sessions::state::SessionState;
+use argmax_contracts::validation::parse_provider;
 use argmax_contracts::validation::{AgentMode, PermissionMode, ProviderId};
 use argmax_contracts::validation::{NonEmptyString, Prompt, SessionId};
 use argmax_store::authorship::PersonAttestation;
@@ -4692,7 +4692,7 @@ impl ProviderSessionService {
             }
             let workspaces = {
                 let connection = service.database.connection();
-                crate::gh::workspaces_for_pr_refresh(&connection, &session_id)
+                argmax_store::workspaces::workspaces_for_pr_refresh(&connection, &session_id)
             };
             match workspaces {
                 Ok(workspaces) => service.publish(DashboardDelta {

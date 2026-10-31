@@ -794,8 +794,6 @@ pub(super) fn composer_payload(
 
 // Wire coercions for rows read straight out of SQLite. They are lossy; the
 // typed surface in `ipc::inputs` is the entry point everywhere else.
-pub(crate) use argmax_contracts::validation::parse_provider;
-
 pub(super) fn parse_permission_mode(value: &str) -> ArgmaxResult<PermissionMode> {
     match value {
         "auto-approve" => Ok(PermissionMode::AutoApprove),
